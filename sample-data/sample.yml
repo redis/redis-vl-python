@@ -1,0 +1,19 @@
+
+
+index:
+  name: sample
+  storage_type: hash
+  prefix: vector
+
+fields:
+  tag:
+    categories:
+      separator: "|"
+    year:
+      separator: "|"
+  vector:
+    vector:
+      datatype: "float32"
+      algorithm: "flat"
+      dims: 768
+      distance_metric: "cosine"
