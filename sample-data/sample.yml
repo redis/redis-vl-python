@@ -14,6 +14,7 @@ fields:
       separator: "|"
   vector:
     vector:
+      initial_cap: 20000
       datatype: "float32"
       algorithm: "flat"
       dims: 768

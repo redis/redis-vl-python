@@ -88,7 +88,7 @@ def _create_vector_field(
     algorithm: str = "FLAT",
     datatype: str = "FLOAT32",
     distance_metric: str = "COSINE",
-    initial_cap: int = 1000000,
+    initial_cap: int = 20000,
     block_size: int = 1000,
     m: int = 16,
     ef_construction: int = 200,

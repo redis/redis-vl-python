@@ -9,7 +9,7 @@ def create_vector_query(
     number_of_results: int = 20,
     vector_field_name: str = "vector",
     tags: str = "*",
-):
+) -> Query:
     base_query = f"{tags}=>[{search_type} {number_of_results} @{vector_field_name} $vector AS vector_score]"
     return (
         Query(base_query)

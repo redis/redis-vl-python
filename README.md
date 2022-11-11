@@ -50,21 +50,22 @@ fields:
 ```
 
 #### Example Usage
+These examples reference [provided sample data](sample-data/).
 
 ```bash
 # load in a pickled dataframe with
-redisvl load -s sample.yml -d embeddings.pkl
+redisvl load -s sample-data/sample.yml -d sample-data/pandas-sample.pkl
 ```
 
 ```bash
 # load in a pickled dataframe to a specific address and port
-redisvl load -s sample.yml -d embeddings.pkl -h 127.0.0.1 -p 6379
+redisvl load -s sample-data/sample.yml -d sample-data/pandas-sample.pkl -h 127.0.0.1 -p 6379
 ```
 
 ```bash
 # load in a pickled dataframe to a specific
 # address and port and with password
-redisvl load -s sample.yml -d embeddings.pkl -h 127.0.0.1 -p 6379 -p supersecret
+redisvl load -s sample-data/sample.yml -d sample-data/pandas-sample.pkl -h 127.0.0.1 -p 6379 -p supersecret
 ```
 
 ### Support
@@ -88,7 +89,7 @@ Install the Python requirements listed in `requirements.txt`.
 ```bash
 git clone https://github.com/RedisVentures/data-loader.git
 cd redisvl
-pip install .
+pip install -e .
 ```
 
 ### Creating Input Data
