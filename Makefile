@@ -59,7 +59,7 @@ test:
 # help: test-verbose                   - Run all tests verbosely
 .PHONY: test-verbose
 test-verbose:
-	@python -m pytest -vv
+	@python -m pytest -vv -s
 
 # help: test-cov                       - Run all tests with coverage
 .PHONY: test-cov

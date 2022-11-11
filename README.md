@@ -28,42 +28,44 @@ into a yaml file for the cli to read. The format of the schema is as follows
 
 ```yaml
 index:
-  name: sample
+  name: sample # index name used for querying
   storage_type: hash
-  prefix: vector
+  key_field: "id" # column name to use for key in redis
+  prefix: vector  # prefix used for all loaded docs
 
+# all fields to create index with
+# sub-items correspond to redis-py Field arguments
 fields:
   tag:
-    categories:
+    categories: # name of a tag field used for queries
       separator: "|"
-    year:
+    year: # name of a tag field used for queries
       separator: "|"
   vector:
-    vector:
+    vector: # name of the vector field used for queries
       datatype: "float32"
-      algorithm: "flat"
+      algorithm: "flat" # flat or HSNW
       dims: 768
-      distance_metric: "cosine"
+      distance_metric: "cosine" # ip, L2, cosine
 ```
 
 #### Example Usage
 
 ```bash
-# load in a pickled dataframe with a column named "vector"
-redisvl load -s sample.yml -d embeddings.pkl -v vector
+# load in a pickled dataframe with
+redisvl load -s sample.yml -d embeddings.pkl
 ```
 
 ```bash
-# load in a pickled dataframe with a column named "vector" to a specific address and port
-redisvl load -s sample.yml -d embeddings.pkl -v vector -h 127.0.0.1 -p 6379
+# load in a pickled dataframe to a specific address and port
+redisvl load -s sample.yml -d embeddings.pkl -h 127.0.0.1 -p 6379
 ```
 
 ```bash
-# load in a pickled dataframe with a column named "vector" to a specific
+# load in a pickled dataframe to a specific
 # address and port and with password
-redisvl load -s sample.yml -d embeddings.pkl -v vector -h 127.0.0.1 -p 6379 -p supersecret
+redisvl load -s sample.yml -d embeddings.pkl -h 127.0.0.1 -p 6379 -p supersecret
 ```
-
 
 ### Support
 
@@ -79,6 +81,7 @@ redisvl load -s sample.yml -d embeddings.pkl -v vector -h 127.0.0.1 -p 6379 -p s
 #### Supported Redis Data Types
  - Hash
  - JSON (soon)
+
 ### Install
 Install the Python requirements listed in `requirements.txt`.
 
@@ -87,3 +90,8 @@ git clone https://github.com/RedisVentures/data-loader.git
 cd redisvl
 pip install .
 ```
+
+### Creating Input Data
+#### Pandas DataFrame
+
+  more to come, see tests and sample-data for usage
