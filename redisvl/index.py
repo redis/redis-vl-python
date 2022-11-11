@@ -84,5 +84,6 @@ class SearchIndex:
             definition=IndexDefinition(prefix=[self.prefix], index_type=storage_type),
         )
 
-    async def delete(self):
-        await self.redis_conn.ft(self.index_name).dropindex(delete_documents=True)
+    async def delete(self, dd: bool = True):
+        # Delete the search index
+        await self.redis_conn.ft(self.index_name).dropindex(delete_documents=dd)
