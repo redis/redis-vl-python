@@ -1,65 +1,97 @@
-# RediSearch Data Loader
-The purpose of this script is to assist in loading datasets to a RediSearch instance efficiently.
+# RedisVL
 
-The project is brand new and will undergo improvements over time.
+A CLI and Library to help with loading data into Redis specifically for
+usage with RediSearch and Redis Vector Search capabilities
 
-## Getting Started
+### Usage
 
-### Requirements
+```
+usage: redisvl <command> [<args>]
+
+Commands:
+        load        Load vector data into redis
+        index       Index manipulation (create, delete, etc.)
+        query       Query an existing index
+
+Redis Vector load CLI
+
+positional arguments:
+  command     Subcommand to run
+
+optional arguments:
+  -h, --help  show this help message and exit
+
+```
+
+For any of the above commands, you will need to have an index schema written
+into a yaml file for the cli to read. The format of the schema is as follows
+
+```yaml
+index:
+  name: sample # index name used for querying
+  storage_type: hash
+  key_field: "id" # column name to use for key in redis
+  prefix: vector  # prefix used for all loaded docs
+
+# all fields to create index with
+# sub-items correspond to redis-py Field arguments
+fields:
+  tag:
+    categories: # name of a tag field used for queries
+      separator: "|"
+    year: # name of a tag field used for queries
+      separator: "|"
+  vector:
+    vector: # name of the vector field used for queries
+      datatype: "float32"
+      algorithm: "flat" # flat or HSNW
+      dims: 768
+      distance_metric: "cosine" # ip, L2, cosine
+```
+
+#### Example Usage
+
+```bash
+# load in a pickled dataframe with
+redisvl load -s sample.yml -d embeddings.pkl
+```
+
+```bash
+# load in a pickled dataframe to a specific address and port
+redisvl load -s sample.yml -d embeddings.pkl -h 127.0.0.1 -p 6379
+```
+
+```bash
+# load in a pickled dataframe to a specific
+# address and port and with password
+redisvl load -s sample.yml -d embeddings.pkl -h 127.0.0.1 -p 6379 -p supersecret
+```
+
+### Support
+
+#### Supported Index Fields
+
+  - ``geo``
+  - ``tag``
+  - ``numeric``
+  - ``vector``
+  - ``text``
+#### Supported Data Types
+ - Pandas DataFrame (pickled)
+#### Supported Redis Data Types
+ - Hash
+ - JSON (soon)
+
+### Install
 Install the Python requirements listed in `requirements.txt`.
 
 ```bash
-$ pip install -r requirements.txt
+git clone https://github.com/RedisVentures/data-loader.git
+cd redisvl
+pip install .
 ```
 
-### Data
-In order to run the script you need to have a dataset that contains your vectors and metadata.
+### Creating Input Data
+#### Pandas DataFrame
 
->Currently, the data file must be a pickled pandas dataframe. Support for more data types will be included in future iterations.
-
-### Schema
-Along with the dataset, you must update the dataset schema for RediSearch in [`data/schema.py`](data/schema.py).
-
-### Running
-The `main.py` script provides an entrypoint with optional arguments to upload your dataset to a Redis server.
-
-#### Usage
-```
-python main.py
-
-  -h, --help          Show this help message and exit
-  --host              Redis host
-  -p, --port          Redis port
-  -a, --password      Redis password
-  -c , --concurrency  Amount of concurrency
-  -d , --data         Path to data file
-  --prefix            Key prefix for all hashes in the search index
-  -v , --vector       Vector field name in df
-  -i , --index        Index name
-```
-
-#### Defaults
-
-| Argument        | Default |
-| ----------- | ----------- |
-| Host | `localhost` |
-| Port  | `6379` |
-| Password | "" |
-| Concurrency | `50` |
-| Data (Path) | `data/embeddings.pkl` |
-| Prefix | `vector:` |
-| Vector (Field Name) | `vector` |
-| Index Name | `index` |
-
-
-#### Examples
-
-Load to a local (default) redis server with a custom index name and with concurrency = 100:
-```bash
-$ python main.py -d data/embeddings.pkl -i myIndex -c 100
-```
-
-Load to a cloud redis server with all other defaults:
-```bash
-$ python main.py -h {redis-host} -p {redis-port} -a {redis-password}
-```
+  more to come, see tests and sample-data for usage
