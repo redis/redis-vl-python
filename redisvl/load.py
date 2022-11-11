@@ -1,34 +1,35 @@
 import asyncio
-import numpy as np
 import typing as t
 
+import numpy as np
 from redis.asyncio import Redis
 
 # TODO Add conncurrent_store_as_json
 
+
 async def concurrent_store_as_hash(
-    data: t.List[t.Dict[str, t.Any]], # TODO: be stricter about the type
-    n: int,
-    vector_field_name: str,
+    data: t.List[t.Dict[str, t.Any]],  # TODO: be stricter about the type
+    concurrency: int,
+    key_field: str,
     prefix: str,
-    redis_conn: Redis
+    redis_conn: Redis,
 ):
     """
     Gather and load the hashes into Redis using
     async connections.
 
     Args:
-        n (int): Max number of "concurrent" async connections.
-        vector_field_name (str): name of the vector field
+        concurrency (int): Max number of "concurrent" async connections.
+        key_field: name of the key in each dict to use as top level key in Redis.
         prefix (str): Redis key prefix for all hashes in the search index.
         redis_conn (Redis): Redis connection.
     """
-    semaphore = asyncio.Semaphore(n)
+    semaphore = asyncio.Semaphore(concurrency)
+
     async def load(d: dict):
         async with semaphore:
-            d[vector_field_name] = np.array(d[vector_field_name], dtype = np.float32).tobytes()
-            key = prefix + str(d["id"])
-            await redis_conn.hset(key, mapping = d)
+            key = prefix + str(d[key_field])
+            await redis_conn.hset(key, mapping=d)
 
     # gather with concurrency
     await asyncio.gather(*[load(d) for d in data])

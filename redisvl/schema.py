@@ -1,17 +1,17 @@
+import typing as t
+from pathlib import Path
 
 import yaml
-import typing as t
-
-from pathlib import Path
 from redis.commands.search.field import (
-    TagField,
-    VectorField,
     GeoField,
+    NumericField,
+    TagField,
     TextField,
-    NumericField
+    VectorField,
 )
 
 from redisvl.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 
@@ -93,7 +93,8 @@ def _create_vector_field(
     m: int = 16,
     ef_construction: int = 200,
     ef_runtime: int = 10,
-    epsilon: float = 0.8):
+    epsilon: float = 0.8,
+):
     """Create a RediSearch VectorField.
 
     Args:
@@ -115,7 +116,8 @@ def _create_vector_field(
     if algorithm.upper() == "HNSW":
         return VectorField(
             name,
-            "HNSW", {
+            "HNSW",
+            {
                 "TYPE": datatype.upper(),
                 "DIM": dims,
                 "DISTANCE_METRIC": distance_metric.upper(),
@@ -123,17 +125,18 @@ def _create_vector_field(
                 "M": m,
                 "EF_CONSTRUCTION": ef_construction,
                 "EF_RUNTIME": ef_runtime,
-                "EPSILON": epsilon
-            }
+                "EPSILON": epsilon,
+            },
         )
     else:
         return VectorField(
             name,
-            "FLAT", {
+            "FLAT",
+            {
                 "TYPE": datatype.upper(),
                 "DIM": dims,
                 "DISTANCE_METRIC": distance_metric.upper(),
                 "INITIAL_CAP": initial_cap,
-                "BLOCK_SIZE": block_size
-            }
+                "BLOCK_SIZE": block_size,
+            },
         )

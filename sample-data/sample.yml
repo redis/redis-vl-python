@@ -3,7 +3,8 @@
 index:
   name: sample
   storage_type: hash
-  prefix: vector
+  prefix: "vector:"
+  key_field: "id"
 
 fields:
   tag:
