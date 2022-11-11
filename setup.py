@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 # function to read in requirements.txt to into a python list
 def read_requirements():
@@ -19,7 +19,7 @@ setup(
     python_requires=">=3.6",
     install_requires=read_requirements(),
     extras_require={"dev": read_dev_requirements()},
-    packages=["redisvl"],
+    packages=find_packages(),
     zip_safe=False,
     entry_points={
         "console_scripts": [
