@@ -65,8 +65,10 @@ class SearchIndex:
 
     @classmethod
     def from_dict(cls, redis_conn: Redis, schema_dict: t.Dict[str, t.Any]):
+        # TODO error handling
         fields = read_field_spec(schema_dict["fields"])
-        return cls(redis_conn, **schema_dict)
+        index_attrs = schema_dict["index"]
+        return cls(redis_conn, fields=fields, **index_attrs)
 
     async def create(
         self,
