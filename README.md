@@ -89,7 +89,7 @@ Install the Python requirements listed in `requirements.txt`.
 ```bash
 git clone https://github.com/RedisVentures/data-loader.git
 cd redisvl
-pip install -e .
+pip install .
 ```
 
 ### Creating Input Data
