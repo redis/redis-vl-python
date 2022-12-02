@@ -1,9 +1,11 @@
+import time
 from pprint import pprint
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from redisvl.index import SearchIndex
+from redisvl.index import AsyncSearchIndex
 from redisvl.query import create_vector_query
 
 data = pd.DataFrame(
@@ -44,16 +46,21 @@ schema = {
 }
 
 
-def test_simple(client):
-    index = SearchIndex.from_dict(schema)
+@pytest.mark.asyncio
+async def test_simple(async_client):
+
+    index = AsyncSearchIndex.from_dict(schema)
     # assign client (only for testing)
-    index.redis = client
+    index.redis = async_client
     # create the index
-    index.create()
+    await index.create()
 
     # load data into the index in Redis
     records = data.to_dict("records")
-    index.load(records)
+    await index.load(records)
+
+    # wait for async index to create
+    time.sleep(1)
 
     query = create_vector_query(
         ["users", "age", "job", "credit_score", "vector_score"],
@@ -61,7 +68,7 @@ def test_simple(client):
         vector_field_name="user_embedding",
     )
 
-    results = index.search(query, query_params={"vector": query_vector})
+    results = await index.search(query, query_params={"vector": query_vector})
 
     # make sure correct users returned
     # users = list(results.docs)
@@ -82,4 +89,4 @@ def test_simple(client):
         print("Score:", doc.vector_score)
         pprint(doc)
 
-    index.delete()
+    await index.delete()
