@@ -3,7 +3,6 @@ from pprint import pprint
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import create_vector_query
@@ -89,4 +88,4 @@ async def test_simple(async_client):
         print("Score:", doc.vector_score)
         pprint(doc)
 
-    await index.delete()
+    index.delete()
