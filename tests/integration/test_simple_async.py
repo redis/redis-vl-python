@@ -1,4 +1,3 @@
-import asyncio
 import time
 from pprint import pprint
 
@@ -6,10 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from redisvl.index import SearchIndex
-from redisvl.load import concurrent_store_as_hash
+from redisvl.index import AsyncSearchIndex
 from redisvl.query import create_vector_query
-from redisvl.utils.connection import get_async_redis_connection
 
 data = pd.DataFrame(
     {
@@ -24,6 +21,7 @@ data = pd.DataFrame(
         ],
     }
 )
+query_vector = np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes()
 
 schema = {
     "index": {
@@ -49,20 +47,19 @@ schema = {
 
 
 @pytest.mark.asyncio
-async def test_simple(async_redis):
-    index = SearchIndex.from_dict(async_redis, schema)
+async def test_simple(async_client):
 
-    await concurrent_store_as_hash(
-        data.to_dict(orient="records"),
-        5,
-        index.key_field,
-        index.prefix,
-        index.redis_conn,
-    )
+    index = AsyncSearchIndex.from_dict(schema)
+    # assign client (only for testing)
+    index.redis = async_client
+    # create the index
     await index.create()
-    # add assertions here
 
-    # wait for indexing to happen on server side
+    # load data into the index in Redis
+    records = data.to_dict("records")
+    await index.load(records)
+
+    # wait for async index to create
     time.sleep(1)
 
     query = create_vector_query(
@@ -71,10 +68,7 @@ async def test_simple(async_redis):
         vector_field_name="user_embedding",
     )
 
-    query_vector = np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes()
-    results = await async_redis.ft(index.index_name).search(
-        query, query_params={"vector": query_vector}
-    )
+    results = await index.search(query, query_params={"vector": query_vector})
 
     # make sure correct users returned
     # users = list(results.docs)

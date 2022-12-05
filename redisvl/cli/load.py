@@ -3,10 +3,7 @@ import asyncio
 import sys
 import typing as t
 
-from redisvl import readers
-from redisvl.index import SearchIndex
-from redisvl.load import concurrent_store_as_hash
-from redisvl.utils.connection import get_async_redis_connection
+from redisvl.index import AsyncSearchIndex
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +23,8 @@ class Load:
         parser.add_argument(
             "-a", "--password", help="Redis password", type=str, default=""
         )
+        parser.add_argument("-r", "--reader", help="Reader", type=str, default="pandas")
+        parser.add_argument("-f", "--format", help="Format", type=str, default="pickle")
         parser.add_argument("-c", "--concurrency", type=int, default=50)
         # TODO add argument to optionally not create index
         args = parser.parse_args(sys.argv[2:])
@@ -33,51 +32,41 @@ class Load:
             parser.print_help()
             exit(0)
 
-        # Create Redis Connection
-        try:
-            logger.info(f"Connecting to {args.host}:{str(args.port)}")
-            redis_conn = get_async_redis_connection(args.host, args.port, args.password)
-            logger.info("Connected.")
-        except:
-            # TODO: be more specific about the exception
-            logger.error("Could not connect to redis.")
-            exit(1)
-
         # validate schema
-        index = SearchIndex.from_yaml(redis_conn, args.schema)
+        index = AsyncSearchIndex.from_yaml(args.schema)
+
+        # try to connect to redis
+        index.connect(host=args.host, port=args.port, password=args.password)
 
         # read in data
         logger.info("Reading data...")
-        data = self.read_data(args)  # TODO add other readers and formats
+        reader = self._get_reader(args)
         logger.info("Data read.")
 
         # load data and create the index
-        asyncio.run(self.load_and_create_index(args.concurrency, data, index))
+        asyncio.run(self._load_and_create_index(args.concurrency, reader, index))
 
-    def read_data(
-        self, args: t.List[str], reader: str = "pandas", format: str = "pickle"
-    ) -> dict:
-        if reader == "pandas":
-            if format == "pickle":
-                return readers.pandas.from_pickle(args.data)
+    def _get_reader(self, args: t.List[str]) -> dict:
+        if args.reader == "pandas":
+            from redisvl.readers import PandasReader
+
+            if args.format == "pickle":
+                return PandasReader.from_pickle(args.data)
+            elif args.format == "json":
+                return PandasReader.from_json(args.data)
             else:
                 raise NotImplementedError(
-                    "Only pickle format is supported for pandas reader."
+                    "Only pickle and json formats are supported for pandas reader using the CLI"
                 )
         else:
             raise NotImplementedError("Only pandas reader is supported.")
 
-    async def load_and_create_index(
-        self, concurrency: int, data: dict, index: SearchIndex
+    async def _load_and_create_index(
+        self, concurrency: int, reader: t.Iterable[dict], index: AsyncSearchIndex
     ):
 
         logger.info("Loading data...")
-        if index.storage_type == "hash":
-            await concurrent_store_as_hash(
-                data, concurrency, index.key_field, index.prefix, index.redis_conn
-            )
-        else:
-            raise NotImplementedError("Only hash storage type is supported.")
+        await index.load(data=reader, concurrency=concurrency)
         logger.info("Data loaded.")
 
         # create index

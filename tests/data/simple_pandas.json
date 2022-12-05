@@ -1,0 +1,1 @@
+{"users":{"0":"john","1":"mary","2":"joe"},"age":{"0":1,"1":2,"2":3},"job":{"0":"engineer","1":"doctor","2":"dentist"},"credit_score":{"0":"high","1":"low","2":"medium"},"user_embedding":{"0":[0.1,0.1,0.5],"1":[0.1,0.1,0.5],"2":[0.9,0.9,0.1]}}

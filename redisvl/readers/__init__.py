@@ -1,1 +1,1 @@
-from . import pandas
+from .pandas import PandasReader
