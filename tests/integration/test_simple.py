@@ -56,7 +56,7 @@ def test_simple(client):
     index.load(records)
 
     query = create_vector_query(
-        ["users", "age", "job", "credit_score", "vector_score"],
+        ["users", "age", "job", "credit_score"],
         number_of_results=3,
         vector_field_name="user_embedding",
     )

@@ -26,36 +26,93 @@ class SearchIndexBase:
 
     @property
     def search(self):
+        """Return a search object for this index
+
+        Wrapper around redis.search.Search that adds the index name
+        to the search query. This is a convenience method to avoid
+        having to specify the index name in every search query.
+
+        Returns:
+            Search: A search object for this index
+        """
         return self.redis.ft(self.index_name).search
 
     @classmethod
     def from_yaml(cls, schema_path: str):
+        """Create a SearchIndex from a YAML schema file
+
+        Args:
+            schema_path (str): Path to the YAML schema file
+
+        Returns:
+            SearchIndex: A SearchIndex object
+        """
         index_attrs, fields = read_schema(schema_path)
         return cls(fields=fields, **index_attrs)
 
     @classmethod
     def from_dict(cls, schema_dict: t.Dict[str, t.Any]):
+        """Create a SearchIndex from a dictionary
+
+        Args:
+            schema_dict (t.Dict[str, t.Any]): A dictionary containing the schema
+
+        Returns:
+            SearchIndex: A SearchIndex object
+        """
         fields = read_field_spec(schema_dict["fields"])
         index_attrs = schema_dict["index"]
         return cls(fields=fields, **index_attrs)
 
     @classmethod
     def from_existing(cls):
+        """Create a SearchIndex from an existing index in Redis
+        """
         raise NotImplementedError
 
     def connect(self, host="localhost", port=6379, username=None, password=None):
+        """Connect to a Redis instance
+
+        Args:
+            host (str, optional): Redis host. Defaults to "localhost".
+            port (int, optional): Redis port. Defaults to 6379.
+            username (str, optional): Redis username. Defaults to None.
+            password (str, optional): Redis password. Defaults to None.
+        """
         raise NotImplementedError
 
     def disconnect(self):
+        """Disconnect from the Redis instance"""
         self.redis = None
 
     def create(self):
+        """Create an index in Redis from this SearchIndex object
+
+        Raises:
+            redis.exceptions.ResponseError: If the index already exists
+        """
         raise NotImplementedError
 
     def delete(self, drop: bool = True):
+        """Delete the search index
+
+        Args:
+            drop (bool, optional): Delete the documents in the index. Defaults to True.
+
+        raises:
+            redis.exceptions.ResponseError: If the index does not exist
+        """
         raise NotImplementedError
 
-    def load(self, reader, **kwargs):
+    def load(self, data: t.Iterable[t.Dict[str, t.Any]], **kwargs):
+        """Load data into Redis and index using this SearchIndex object
+
+        Args:
+            data (t.Iterable[t.Dict[str, t.Any]]): An iterable of dictionaries
+                containing the data to be indexed
+        raises:
+            redis.exceptions.ResponseError: If the index does not exist
+        """
         raise NotImplementedError
 
 
@@ -71,10 +128,22 @@ class SearchIndex(SearchIndexBase):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
     def connect(self, host="localhost", port=6379, username=None, password=None):
-        # TODO error handling
+        """Connect to a Redis instance
+
+        Args:
+            host (str, optional): Redis host. Defaults to "localhost".
+            port (int, optional): Redis port. Defaults to 6379.
+            username (str, optional): Redis username. Defaults to None.
+            password (str, optional): Redis password. Defaults to None.
+        """
         self.redis = get_redis_connection(host, port, username, password)
 
     def create(self):
+        """Create an index in Redis from this SearchIndex object
+
+        Raises:
+            redis.exceptions.ResponseError: If the index already exists
+        """
         # set storage_type, default to hash
         storage_type = IndexType.HASH
         if self.storage_type.lower() == "json":
@@ -87,10 +156,27 @@ class SearchIndex(SearchIndexBase):
         )
 
     def delete(self, drop: bool = True):
+        """Delete the search index
+
+        Args:
+            drop (bool, optional): Delete the documents in the index. Defaults to True.
+
+        raises:
+            redis.exceptions.ResponseError: If the index does not exist
+        """
         # Delete the search index
         self.redis.ft(self.index_name).dropindex(delete_documents=drop)
 
     def load(self, data: t.Iterable[t.Dict[str, t.Any]], **kwargs):
+        """Load data into Redis and index using this SearchIndex object
+
+        Args:
+            data (t.Iterable[t.Dict[str, t.Any]]): An iterable of dictionaries
+                containing the data to be indexed
+        raises:
+            redis.exceptions.ResponseError: If the index does not exist
+        """
+
         for record in data:
             key = self.prefix + str(record[self.key_field])
             self.redis.hset(key, mapping=record)
@@ -108,10 +194,22 @@ class AsyncSearchIndex(SearchIndexBase):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
     def connect(self, host="localhost", port=6379, username=None, password=None):
-        # TODO error handling
+        """Connect to a Redis instance
+
+        Args:
+            host (str, optional): Redis host. Defaults to "localhost".
+            port (int, optional): Redis port. Defaults to 6379.
+            username (str, optional): Redis username. Defaults to None.
+            password (str, optional): Redis password. Defaults to None.
+        """
         self.redis = get_async_redis_connection(host, port, password)
 
     async def create(self):
+        """Create an index in Redis from this SearchIndex object
+
+        Raises:
+            redis.exceptions.ResponseError: If the index already exists
+        """
         # set storage_type, default to hash
         storage_type = IndexType.HASH
         if self.storage_type.lower() == "json":
@@ -124,13 +222,26 @@ class AsyncSearchIndex(SearchIndexBase):
         )
 
     async def delete(self, drop: bool = True):
+        """Delete the search index
+
+        Args:
+            drop (bool, optional): Delete the documents in the index. Defaults to True.
+
+        raises:
+            redis.exceptions.ResponseError: If the index does not exist
+        """
         # Delete the search index
         await self.redis.ft(self.index_name).dropindex(delete_documents=drop)
 
     async def load(self, data: t.Iterable[t.Dict[str, t.Any]], concurrency: int = 10):
-        """
-        Gather and load the hashes into Redis using
-        async connections.
+        """Load data into Redis and index using this SearchIndex object
+
+        Args:
+            data (t.Iterable[t.Dict[str, t.Any]]): An iterable of dictionaries
+            concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
+
+        raises:
+            redis.exceptions.ResponseError: If the index does not exist
         """
         semaphore = asyncio.Semaphore(concurrency)
 

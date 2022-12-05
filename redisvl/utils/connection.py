@@ -1,6 +1,5 @@
 # TODO add username and ACL/TCL support
 
-
 def get_redis_connection(host: str, port: int, password: str = None):
     from redis import Redis
 
