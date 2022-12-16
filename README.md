@@ -1,5 +1,7 @@
 # RedisVL
 
+> DISCLAIMER: This project is still under signifigant development and should not be used in any production settings. We would love input/contributions as we finalize what the CLI and library interfaces should look like.
+
 A CLI and Library to help with loading data into Redis specifically for
 usage with RediSearch and Redis Vector Search capabilities
 
