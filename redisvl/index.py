@@ -6,6 +6,7 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
 from redisvl.schema import read_field_spec, read_schema
 from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
+from redisvl.utils.utils import convert_bytes
 
 
 class SearchIndexBase:
@@ -83,6 +84,14 @@ class SearchIndexBase:
     def disconnect(self):
         """Disconnect from the Redis instance"""
         self.redis = None
+
+    def info(self) -> t.Dict[str, t.Any]:
+        """Get information about the index
+
+        Returns:
+            dict: A dictionary containing the information about the index
+        """
+        return convert_bytes(self.redis.ft(self.index_name).info())
 
     def create(self):
         """Create an index in Redis from this SearchIndex object
