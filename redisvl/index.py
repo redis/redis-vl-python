@@ -24,9 +24,8 @@ class SearchIndexBase:
         self.fields = fields
         self.redis = None
 
-    @property
-    def search(self):
-        """Return a search object for this index
+    def search(self, *args, **kwargs):
+        """Perform a search on this index
 
         Wrapper around redis.search.Search that adds the index name
         to the search query. This is a convenience method to avoid
@@ -35,7 +34,7 @@ class SearchIndexBase:
         Returns:
             Search: A search object for this index
         """
-        return self.redis.ft(self.index_name).search
+        return self.redis.ft(self.index_name).search(*args, **kwargs)
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -127,7 +126,7 @@ class SearchIndex(SearchIndexBase):
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
-    def connect(self, host="localhost", port=6379, username=None, password=None):
+    def connect(self, host="localhost", port=6379, username=None, password=None, **kwargs):
         """Connect to a Redis instance
 
         Args:
@@ -136,7 +135,7 @@ class SearchIndex(SearchIndexBase):
             username (str, optional): Redis username. Defaults to None.
             password (str, optional): Redis password. Defaults to None.
         """
-        self.redis = get_redis_connection(host, port, username, password)
+        self.redis = get_redis_connection(host, port, username, password, **kwargs)
 
     def create(self):
         """Create an index in Redis from this SearchIndex object
@@ -193,7 +192,7 @@ class AsyncSearchIndex(SearchIndexBase):
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
-    def connect(self, host="localhost", port=6379, username=None, password=None):
+    def connect(self, host="localhost", port=6379, username=None, password=None, **kwargs):
         """Connect to a Redis instance
 
         Args:
@@ -202,7 +201,7 @@ class AsyncSearchIndex(SearchIndexBase):
             username (str, optional): Redis username. Defaults to None.
             password (str, optional): Redis password. Defaults to None.
         """
-        self.redis = get_async_redis_connection(host, port, password)
+        self.redis = get_async_redis_connection(host, port, username, password)
 
     async def create(self):
         """Create an index in Redis from this SearchIndex object
