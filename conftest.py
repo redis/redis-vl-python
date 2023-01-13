@@ -14,7 +14,7 @@ PASS = os.environ.get("REDIS_PASSWORD", "")
 
 aredis = get_async_redis_connection(HOST, PORT, PASS)
 redis = get_redis_connection(HOST, PORT, PASS)
-print(type(redis))
+
 
 @pytest.fixture
 def async_client():

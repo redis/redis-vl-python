@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from redisvl.cli.load import Load
+from redisvl.cli.index import Index
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +22,7 @@ def _usage():
 class RedisVlCLI:
     def __init__(self):
         parser = argparse.ArgumentParser(
-            description="Redis Vector load CLI", usage=_usage()
+            description="Redis Vector Library CLI", usage=_usage()
         )
 
         parser.add_argument("command", help="Subcommand to run")
@@ -40,4 +41,6 @@ class RedisVlCLI:
         Load()
         exit(0)
 
-    # TODO index and query functions
+    def index(self):
+        Index()
+        exit(0)

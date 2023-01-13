@@ -22,9 +22,6 @@ class PandasReader:
     def __init__(self, df: pd.DataFrame):
         self.records = df.to_dict("records")
 
-    def _convert_to_bytes(self, column):
-        pass
-
     def __iter__(self):
         """Iterate over the records"""
         for record in self.records:
