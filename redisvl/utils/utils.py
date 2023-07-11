@@ -1,7 +1,8 @@
 import re
-from typing import Any, List, Optional, Pattern, Dict
+from typing import Any, Dict, List, Optional, Pattern
 
 import numpy as np
+
 
 class TokenEscaper:
     """
@@ -25,12 +26,13 @@ class TokenEscaper:
 
         return self.escaped_chars_re.sub(escape_symbol, value)
 
+
 def make_dict(values: List[Any]):
     # TODO make this a real function
     i = 0
     di = {}
-    while i < len(values)-1:
-        di[values[i]] = values[i+1]
+    while i < len(values) - 1:
+        di[values[i]] = values[i + 1]
         i += 2
     return di
 

@@ -1,11 +1,11 @@
 import argparse
 import asyncio
 import sys
-from typing import Iterable, List, Optional
 from argparse import Namespace
+from typing import Iterable, List, Optional
 
-from redisvl.index import AsyncSearchIndex
 from redisvl.cli.utils import create_redis_url
+from redisvl.index import AsyncSearchIndex
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +21,9 @@ class Load:
             "-s", "--schema", help="Path to schema file", type=str, required=True
         )
         parser.add_argument("--host", help="Redis host", type=str, default="localhost")
-        parser.add_argument("--user", help="Redis username", type=str, default="default")
+        parser.add_argument(
+            "--user", help="Redis username", type=str, default="default"
+        )
         parser.add_argument("-p", "--port", help="Redis port", type=int, default=6379)
         parser.add_argument(
             "-a", "--password", help="Redis password", type=str, default=""

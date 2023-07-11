@@ -1,6 +1,7 @@
 import os
 from argparse import Namespace
 
+
 def create_redis_url(args: Namespace) -> str:
     if os.getenv("REDIS_ADDRESS"):
         return os.getenv("REDIS_ADDRESS")

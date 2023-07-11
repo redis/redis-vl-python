@@ -1,8 +1,8 @@
-import yaml
-from typing import Any, Dict, List, Optional, Pattern, Union
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Pattern, Union
+
+import yaml
 from pydantic import BaseModel, Field, validator
-from typing import Union
 from redis.commands.search.field import (
     GeoField,
     NumericField,
@@ -10,7 +10,6 @@ from redis.commands.search.field import (
     TextField,
     VectorField,
 )
-
 
 
 class BaseField(BaseModel):
@@ -25,27 +24,34 @@ class TextFieldSchema(BaseField):
     withsuffixtrie: Optional[bool] = False
 
     def as_field(self):
-        return TextField(self.name, weight=self.weight, no_stem=self.no_stem,
-                         phonetic_matcher=self.phonetic_matcher, sortable=self.sortable)
+        return TextField(
+            self.name,
+            weight=self.weight,
+            no_stem=self.no_stem,
+            phonetic_matcher=self.phonetic_matcher,
+            sortable=self.sortable,
+        )
 
 
 class TagFieldSchema(BaseField):
-    separator: Optional[str] = ','
+    separator: Optional[str] = ","
     case_sensitive: Optional[bool] = False
 
     def as_field(self):
-        return TagField(self.name, separator=self.separator, case_sensitive=self.case_sensitive,
-                        sortable=self.sortable)
+        return TagField(
+            self.name,
+            separator=self.separator,
+            case_sensitive=self.case_sensitive,
+            sortable=self.sortable,
+        )
 
 
 class NumericFieldSchema(BaseField):
-
     def as_field(self):
         return NumericField(self.name, sortable=self.sortable)
 
 
 class GeoFieldSchema(BaseField):
-
     def as_field(self):
         return GeoField(self.name, sortable=self.sortable)
 
@@ -79,6 +85,7 @@ class FlatVectorField(BaseVectorField):
                 "BLOCK_SIZE": self.block_size,
             },
         )
+
 
 class HNSWVectorField(BaseVectorField):
     algorithm: str = Field("HNSW", const=True)
@@ -138,6 +145,7 @@ class SchemaModel(BaseModel):
                 for field in field_group:
                     redis_fields.append(field.as_field())
         return redis_fields
+
 
 def read_schema(file_path: str):
     fp = Path(file_path).resolve()

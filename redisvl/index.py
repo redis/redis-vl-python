@@ -1,11 +1,11 @@
-import redis
 import asyncio
-from typing import Dict, Any, List, Optional, Union, Iterable, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+import redis
 from redis.commands.search.field import Field
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
-from redisvl.schema import read_schema, SchemaModel
+from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
 from redisvl.utils.utils import convert_bytes, make_dict
 
@@ -18,7 +18,6 @@ class SearchIndexBase:
         key_field: str = "id",
         prefix: str = "",
         fields: List[Field] = None,
-
     ):
         self._name = name
         self._key_field = key_field
@@ -73,19 +72,23 @@ class SearchIndexBase:
 
     @classmethod
     def from_existing(cls, client: redis.Redis, index_name: str):
-        """Create a SearchIndex from an existing index in Redis
-        """
+        """Create a SearchIndex from an existing index in Redis"""
         # TODO assert client connected
         # TODO try/except
-        info = convert_bytes(client.ft(index_name).info()) # TODO catch response error
+        info = convert_bytes(client.ft(index_name).info())  # TODO catch response error
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
-        fields = None # TODO figure out if we need to parse fields
-        instance = cls(index_name, key_field=None, storage_type=storage_type, prefix=prefix, fields=fields)
+        fields = None  # TODO figure out if we need to parse fields
+        instance = cls(
+            index_name,
+            key_field=None,
+            storage_type=storage_type,
+            prefix=prefix,
+            fields=fields,
+        )
         instance.set_client(client)
         return instance
-
 
     def connect(self, url: str, **kwargs):
         """Connect to a Redis instance
@@ -149,7 +152,6 @@ class SearchIndex(SearchIndexBase):
         fields: List[Field] = None,
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
-
 
     def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance

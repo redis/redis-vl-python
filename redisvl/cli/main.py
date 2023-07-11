@@ -1,8 +1,8 @@
 import argparse
 import sys
 
-from redisvl.cli.load import Load
 from redisvl.cli.index import Index
+from redisvl.cli.load import Load
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)

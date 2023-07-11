@@ -32,13 +32,15 @@ schema = {
         "tag": [{"name": "credit_score"}],
         "text": [{"name": "job"}],
         "numeric": [{"name": "age"}],
-        "vector": [{
+        "vector": [
+            {
                 "name": "user_embedding",
                 "dims": 3,
                 "distance_metric": "cosine",
                 "algorithm": "flat",
-                "datatype": "float32"}
-        ]
+                "datatype": "float32",
+            }
+        ],
     },
 }
 

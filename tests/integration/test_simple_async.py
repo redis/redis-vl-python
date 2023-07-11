@@ -1,9 +1,9 @@
 import time
-import pytest
 from pprint import pprint
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import create_vector_query
@@ -34,13 +34,15 @@ schema = {
         "tag": [{"name": "credit_score"}],
         "text": [{"name": "job"}],
         "numeric": [{"name": "age"}],
-        "vector": [{
+        "vector": [
+            {
                 "name": "user_embedding",
                 "dims": 3,
                 "distance_metric": "cosine",
                 "algorithm": "flat",
-                "datatype": "float32"}
-        ]
+                "datatype": "float32",
+            }
+        ],
     },
 }
 

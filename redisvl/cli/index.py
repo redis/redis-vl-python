@@ -1,44 +1,50 @@
+import argparse
 import os
 import sys
-import argparse
+from argparse import Namespace
 from pprint import pprint
 from typing import Any, List
-from argparse import Namespace
 
-from redisvl.index import SearchIndex
 from redisvl.cli.utils import create_redis_url
+from redisvl.index import SearchIndex
+from redisvl.utils.connection import get_redis_connection
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import convert_bytes
-from redisvl.utils.connection import get_redis_connection
 
 logger = get_logger(__name__)
 
 
 class Index:
 
-    usage = "\n".join([
-        "redisvl index <command> [<args>]\n",
-        "Commands:",
-        "\tinfo        Obtain information about an index",
-        "\tcreate      Create a new index",
-        "\tdelete      Delete an existing index",
-        "\tdestroy     Delete an existing index and all of its data",
-        "\tlistall     List all indexes",
-        "\n"
-    ])
+    usage = "\n".join(
+        [
+            "redisvl index <command> [<args>]\n",
+            "Commands:",
+            "\tinfo        Obtain information about an index",
+            "\tcreate      Create a new index",
+            "\tdelete      Delete an existing index",
+            "\tdestroy     Delete an existing index and all of its data",
+            "\tlistall     List all indexes",
+            "\n",
+        ]
+    )
 
     def __init__(self):
         parser = argparse.ArgumentParser(usage=self.usage)
 
         parser.add_argument("command", help="Subcommand to run")
 
-        parser.add_argument("-i", "--index", help="Index name", type=str, required=False)
+        parser.add_argument(
+            "-i", "--index", help="Index name", type=str, required=False
+        )
         parser.add_argument(
             "-s", "--schema", help="Path to schema file", type=str, required=False
         )
         parser.add_argument("--host", help="Redis host", type=str, default="localhost")
         parser.add_argument("-p", "--port", help="Redis port", type=int, default=6379)
-        parser.add_argument("--user", help="Redis username", type=str, default="default")
+        parser.add_argument(
+            "--user", help="Redis username", type=str, default="default"
+        )
         parser.add_argument("--ssl", help="Use SSL", action="store_true")
         parser.add_argument(
             "-a", "--password", help="Redis password", type=str, default=""
@@ -53,7 +59,6 @@ class Index:
         except Exception as e:
             logger.error(e)
             exit(0)
-
 
     def create(self, args: Namespace):
         """Create an index
@@ -90,7 +95,7 @@ class Index:
         indices = convert_bytes(conn.execute_command("FT._LIST"))
         logger.info("Indices:")
         for i, index in enumerate(indices):
-            logger.info(str(i+1) + ". " + index)
+            logger.info(str(i + 1) + ". " + index)
 
     def delete(self, args: Namespace, drop=False):
         """Delete an index
@@ -117,7 +122,9 @@ class Index:
             url = create_redis_url(args)
             conn = get_redis_connection(url=url)
         except ValueError:
-            logger.error("Must set REDIS_ADDRESS environment variable or provide host and port")
+            logger.error(
+                "Must set REDIS_ADDRESS environment variable or provide host and port"
+            )
             exit(0)
 
         if args.index:
