@@ -1,12 +1,13 @@
 import asyncio
-import typing as t
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+import redis
 from redis.commands.search.field import Field
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
-from redisvl.schema import read_field_spec, read_schema
+from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
-from redisvl.utils.utils import convert_bytes
+from redisvl.utils.utils import convert_bytes, make_dict
 
 
 class SearchIndexBase:
@@ -16,14 +17,20 @@ class SearchIndexBase:
         storage_type: str = "hash",
         key_field: str = "id",
         prefix: str = "",
-        fields: t.List[Field] = None,
+        fields: List[Field] = None,
     ):
-        self.index_name = name
-        self.key_field = key_field
-        self.storage_type = storage_type
-        self.prefix = prefix
-        self.fields = fields
-        self.redis = None
+        self._name = name
+        self._key_field = key_field
+        self._storage = storage_type
+        self._prefix = prefix
+        self._fields = fields
+        self._redis_conn = None
+
+    def set_client(self, client: redis.Redis):
+        self._redis_conn = client
+
+    def get_client(self) -> redis.Redis:
+        return self._redis_conn
 
     def search(self, *args, **kwargs):
         """Perform a search on this index
@@ -35,7 +42,7 @@ class SearchIndexBase:
         Returns:
             Search: A search object for this index
         """
-        return self.redis.ft(self.index_name).search(*args, **kwargs)
+        return self._redis_conn.ft(self._name).search(*args, **kwargs)
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -47,11 +54,11 @@ class SearchIndexBase:
         Returns:
             SearchIndex: A SearchIndex object
         """
-        index_attrs, fields = read_schema(schema_path)
-        return cls(fields=fields, **index_attrs)
+        schema = read_schema(schema_path)
+        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
-    def from_dict(cls, schema_dict: t.Dict[str, t.Any]):
+    def from_dict(cls, schema_dict: Dict[str, Any]):
         """Create a SearchIndex from a dictionary
 
         Args:
@@ -60,38 +67,48 @@ class SearchIndexBase:
         Returns:
             SearchIndex: A SearchIndex object
         """
-        fields = read_field_spec(schema_dict["fields"])
-        index_attrs = schema_dict["index"]
-        return cls(fields=fields, **index_attrs)
+        schema = SchemaModel(**schema_dict)
+        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
-    def from_existing(cls):
-        """Create a SearchIndex from an existing index in Redis
-        """
-        raise NotImplementedError
+    def from_existing(cls, client: redis.Redis, index_name: str):
+        """Create a SearchIndex from an existing index in Redis"""
+        # TODO assert client connected
+        # TODO try/except
+        info = convert_bytes(client.ft(index_name).info())  # TODO catch response error
+        index_definition = make_dict(info["index_definition"])
+        storage_type = index_definition["key_type"].lower()
+        prefix = index_definition["prefixes"][0]
+        fields = None  # TODO figure out if we need to parse fields
+        instance = cls(
+            index_name,
+            key_field=None,
+            storage_type=storage_type,
+            prefix=prefix,
+            fields=fields,
+        )
+        instance.set_client(client)
+        return instance
 
-    def connect(self, host="localhost", port=6379, username=None, password=None):
+    def connect(self, url: str, **kwargs):
         """Connect to a Redis instance
 
         Args:
-            host (str, optional): Redis host. Defaults to "localhost".
-            port (int, optional): Redis port. Defaults to 6379.
-            username (str, optional): Redis username. Defaults to None.
-            password (str, optional): Redis password. Defaults to None.
+            url (str): Redis URL. Defaults to "redis://localhost:6379".
         """
         raise NotImplementedError
 
     def disconnect(self):
         """Disconnect from the Redis instance"""
-        self.redis = None
+        self._redis_conn = None
 
-    def info(self) -> t.Dict[str, t.Any]:
+    def info(self) -> Dict[str, Any]:
         """Get information about the index
 
         Returns:
             dict: A dictionary containing the information about the index
         """
-        return convert_bytes(self.redis.ft(self.index_name).info())
+        return convert_bytes(self._redis_conn.ft(self._name).info())
 
     def create(self):
         """Create an index in Redis from this SearchIndex object
@@ -112,7 +129,7 @@ class SearchIndexBase:
         """
         raise NotImplementedError
 
-    def load(self, data: t.Iterable[t.Dict[str, t.Any]], **kwargs):
+    def load(self, data: Iterable[Dict[str, Any]], **kwargs):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
@@ -121,6 +138,7 @@ class SearchIndexBase:
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
+        # TODO consider adding key_field
         raise NotImplementedError
 
 
@@ -131,20 +149,22 @@ class SearchIndex(SearchIndexBase):
         storage_type: str = "hash",
         key_field: str = "id",
         prefix: str = "",
-        fields: t.List[Field] = None,
+        fields: List[Field] = None,
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
-    def connect(self, host="localhost", port=6379, username=None, password=None, **kwargs):
+    def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance
 
         Args:
-            host (str, optional): Redis host. Defaults to "localhost".
-            port (int, optional): Redis port. Defaults to 6379.
-            username (str, optional): Redis username. Defaults to None.
-            password (str, optional): Redis password. Defaults to None.
+            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+
+
+        Raises:
+            redis.exceptions.ConnectionError: If the connection to Redis fails
+            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided
         """
-        self.redis = get_redis_connection(host, port, username, password, **kwargs)
+        self._redis_conn = get_redis_connection(url, **kwargs)
 
     def create(self):
         """Create an index in Redis from this SearchIndex object
@@ -154,13 +174,13 @@ class SearchIndex(SearchIndexBase):
         """
         # set storage_type, default to hash
         storage_type = IndexType.HASH
-        if self.storage_type.lower() == "json":
-            self.storage_type = IndexType.JSON
+        if self._storage.lower() == "json":
+            self._storage = IndexType.JSON
 
         # Create Index
-        self.redis.ft(self.index_name).create_index(
-            fields=self.fields,
-            definition=IndexDefinition(prefix=[self.prefix], index_type=storage_type),
+        self._redis_conn.ft(self._name).create_index(
+            fields=self._fields,
+            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
         )
 
     def delete(self, drop: bool = True):
@@ -173,21 +193,21 @@ class SearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist
         """
         # Delete the search index
-        self.redis.ft(self.index_name).dropindex(delete_documents=drop)
+        self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
 
-    def load(self, data: t.Iterable[t.Dict[str, t.Any]], **kwargs):
+    def load(self, data: Iterable[Dict[str, Any]], **kwargs):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
-            data (t.Iterable[t.Dict[str, t.Any]]): An iterable of dictionaries
+            data (Iterable[Dict[str, Any]]): An iterable of dictionaries
                 containing the data to be indexed
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
 
         for record in data:
-            key = self.prefix + str(record[self.key_field])
-            self.redis.hset(key, mapping=record)
+            key = f"{self._prefix}:{str(record[self._key_field])}"
+            self._redis_conn.hset(key, mapping=record)
 
 
 class AsyncSearchIndex(SearchIndexBase):
@@ -197,20 +217,21 @@ class AsyncSearchIndex(SearchIndexBase):
         storage_type: str = "hash",
         key_field: str = "id",
         prefix: str = "",
-        fields: t.List[Field] = None,
+        fields: List[Field] = None,
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
-    def connect(self, host="localhost", port=6379, username=None, password=None, **kwargs):
+    def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance
 
         Args:
-            host (str, optional): Redis host. Defaults to "localhost".
-            port (int, optional): Redis port. Defaults to 6379.
-            username (str, optional): Redis username. Defaults to None.
-            password (str, optional): Redis password. Defaults to None.
+            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+
+        Raises:
+            redis.exceptions.ConnectionError: If the connection to Redis fails
+            ValueError: If no Redis URL is provided and REDIS_ADDRESS env var is not set
         """
-        self.redis = get_async_redis_connection(host, port, username, password)
+        self._redis_conn = get_async_redis_connection(url, **kwargs)
 
     async def create(self):
         """Create an index in Redis from this SearchIndex object
@@ -220,13 +241,13 @@ class AsyncSearchIndex(SearchIndexBase):
         """
         # set storage_type, default to hash
         storage_type = IndexType.HASH
-        if self.storage_type.lower() == "json":
-            self.storage_type = IndexType.JSON
+        if self._storage.lower() == "json":
+            self._storage = IndexType.JSON
 
         # Create Index
-        await self.redis.ft(self.index_name).create_index(
-            fields=self.fields,
-            definition=IndexDefinition(prefix=[self.prefix], index_type=storage_type),
+        await self._redis_conn.ft(self._name).create_index(
+            fields=self._fields,
+            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
         )
 
     async def delete(self, drop: bool = True):
@@ -239,13 +260,13 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist
         """
         # Delete the search index
-        await self.redis.ft(self.index_name).dropindex(delete_documents=drop)
+        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
 
-    async def load(self, data: t.Iterable[t.Dict[str, t.Any]], concurrency: int = 10):
+    async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
-            data (t.Iterable[t.Dict[str, t.Any]]): An iterable of dictionaries
+            data (Iterable[Dict[str, Any]]): An iterable of dictionaries
             concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
 
         raises:
@@ -255,8 +276,8 @@ class AsyncSearchIndex(SearchIndexBase):
 
         async def load(d: dict):
             async with semaphore:
-                key = self.prefix + str(d[self.key_field])
-                await self.redis.hset(key, mapping=d)
+                key = self._prefix + str(d[self._key_field])
+                await self._redis_conn.hset(key, mapping=d)
 
         # gather with concurrency
         await asyncio.gather(*[load(d) for d in data])

@@ -12,7 +12,7 @@ def create_vector_query(
     return_score: bool = True,
     sort: bool = True,
     tags: str = "*",
-    ) -> Query:
+) -> Query:
     """Create a vector query for use with a SearchIndex
 
     Args:

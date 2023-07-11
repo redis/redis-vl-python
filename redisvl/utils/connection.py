@@ -1,36 +1,42 @@
-# TODO add username and ACL/TCL support
+import os
+from typing import Optional
 
-def get_redis_connection(
-    host: str,
-    port: int,
-    username: str = "default",
-    password: str = None,
-    **kwargs
-    ):
+# TODO: handle connection errors.
+
+
+def get_redis_connection(url: Optional[str] = None, **kwargs):
     from redis import Redis
 
-    connection_args = {
-        "host": host, "port": port, "username": username, **kwargs
-    }
-    if password:
-        connection_args.update({"password": password})
-    client = Redis(**connection_args)
+    if url:
+        client = Redis.from_url(url, **kwargs)
+    else:
+        try:
+            client = Redis.from_url(get_address_from_env())
+        except ValueError:
+            raise ValueError("No Redis URL provided and REDIS_ADDRESS env var not set")
     return client
 
 
-# should this be async?
-def get_async_redis_connection(
-    host: str,
-    port: int,
-    username: str = "default",
-    password: str = None,
-    **kwargs
-    ):
+def get_async_redis_connection(url: Optional[str] = None, **kwargs):
     from redis.asyncio import Redis as ARedis
 
-    connection_args = {
-        "host": host, "port": port, "username": username, **kwargs
-    }
-    if password:
-        connection_args.update({"password": password})
-    return ARedis(**connection_args)
+    if url:
+        client = ARedis.from_url(url, **kwargs)
+    else:
+        try:
+            client = ARedis.from_url(get_address_from_env())
+        except ValueError:
+            raise ValueError("No Redis URL provided and REDIS_ADDRESS env var not set")
+    return client
+
+
+def get_address_from_env():
+    """Get a redis connection from environment variables
+
+    Returns:
+        str: Redis URL
+    """
+    addr = os.getenv("REDIS_ADDRESS", None)
+    if not addr:
+        raise ValueError("REDIS_ADDRESS env var not set")
+    return addr

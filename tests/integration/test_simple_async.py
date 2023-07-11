@@ -3,6 +3,7 @@ from pprint import pprint
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import create_vector_query
@@ -30,17 +31,18 @@ schema = {
         "storage_type": "hash",
     },
     "fields": {
-        "tag": {"credit_score": {}},
-        "text": {"job": {}},
-        "numeric": {"age": {}},
-        "vector": {
-            "user_embedding": {
+        "tag": [{"name": "credit_score"}],
+        "text": [{"name": "job"}],
+        "numeric": [{"name": "age"}],
+        "vector": [
+            {
+                "name": "user_embedding",
                 "dims": 3,
                 "distance_metric": "cosine",
                 "algorithm": "flat",
                 "datatype": "float32",
             }
-        },
+        ],
     },
 }
 
@@ -50,7 +52,7 @@ async def test_simple(async_client):
 
     index = AsyncSearchIndex.from_dict(schema)
     # assign client (only for testing)
-    index.redis = async_client
+    index.set_client(async_client)
     # create the index
     await index.create()
 
@@ -88,4 +90,4 @@ async def test_simple(async_client):
         print("Score:", doc.vector_score)
         pprint(doc)
 
-    index.delete()
+    await index.delete()
