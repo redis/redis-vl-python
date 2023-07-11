@@ -6,14 +6,10 @@ from redisvl.utils.connection import (
     get_async_redis_connection,
     get_redis_connection
 )
+REDIS_ADDRESS = os.getenv("REDIS_ADDRESS", "redis://localhost:6379")
 
-HOST = os.environ.get("REDIS_HOST", "localhost")
-PORT = os.environ.get("REDIS_PORT", 6379)
-USER = os.environ.get("REDIS_USER", "default")
-PASS = os.environ.get("REDIS_PASSWORD", "")
-
-aredis = get_async_redis_connection(HOST, PORT, PASS)
-redis = get_redis_connection(HOST, PORT, PASS)
+aredis = get_async_redis_connection(REDIS_ADDRESS)
+redis = get_redis_connection(REDIS_ADDRESS)
 
 
 @pytest.fixture

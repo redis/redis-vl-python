@@ -1,7 +1,8 @@
-import typing as t
-from pathlib import Path
-
 import yaml
+from typing import Any, Dict, List, Optional, Pattern, Union
+from pathlib import Path
+from pydantic import BaseModel, Field, validator
+from typing import Union
 from redis.commands.search.field import (
     GeoField,
     NumericField,
@@ -10,133 +11,140 @@ from redis.commands.search.field import (
     VectorField,
 )
 
-from redisvl.utils.log import get_logger
 
-logger = get_logger(__name__)
 
+class BaseField(BaseModel):
+    name: str = Field(...)
+    sortable: Optional[bool] = False
+
+
+class TextFieldSchema(BaseField):
+    weight: Optional[float] = 1
+    no_stem: Optional[bool] = False
+    phonetic_matcher: Optional[str]
+    withsuffixtrie: Optional[bool] = False
+
+    def as_field(self):
+        return TextField(self.name, weight=self.weight, no_stem=self.no_stem,
+                         phonetic_matcher=self.phonetic_matcher, sortable=self.sortable)
+
+
+class TagFieldSchema(BaseField):
+    separator: Optional[str] = ','
+    case_sensitive: Optional[bool] = False
+
+    def as_field(self):
+        return TagField(self.name, separator=self.separator, case_sensitive=self.case_sensitive,
+                        sortable=self.sortable)
+
+
+class NumericFieldSchema(BaseField):
+
+    def as_field(self):
+        return NumericField(self.name, sortable=self.sortable)
+
+
+class GeoFieldSchema(BaseField):
+
+    def as_field(self):
+        return GeoField(self.name, sortable=self.sortable)
+
+
+class BaseVectorField(BaseModel):
+    name: str = Field(...)
+    dims: int = Field(...)
+    algorithm: str = Field(...)
+    datatype: str = Field(default="FLOAT32")
+    distance_metric: str = Field(default="COSINE")
+    initial_cap: int = Field(default=20000)
+
+    @validator("algorithm", "datatype", "distance_metric", pre=True)
+    def uppercase_strings(cls, v):
+        return v.upper()
+
+
+class FlatVectorField(BaseVectorField):
+    algorithm: str = Field("FLAT", const=True)
+    block_size: int = Field(default=1000)
+
+    def as_field(self):
+        return VectorField(
+            self.name,
+            self.algorithm,
+            {
+                "TYPE": self.datatype,
+                "DIM": self.dims,
+                "DISTANCE_METRIC": self.distance_metric,
+                "INITIAL_CAP": self.initial_cap,
+                "BLOCK_SIZE": self.block_size,
+            },
+        )
+
+class HNSWVectorField(BaseVectorField):
+    algorithm: str = Field("HNSW", const=True)
+    m: int = Field(default=16)
+    ef_construction: int = Field(default=200)
+    ef_runtime: int = Field(default=10)
+    epsilon: float = Field(default=0.8)
+
+    def as_field(self):
+        return VectorField(
+            self.name,
+            self.algorithm,
+            {
+                "TYPE": self.datatype,
+                "DIM": self.dims,
+                "DISTANCE_METRIC": self.distance_metric,
+                "INITIAL_CAP": self.initial_cap,
+                "M": self.m,
+                "EF_CONSTRUCTION": self.ef_construction,
+                "EF_RUNTIME": self.ef_runtime,
+                "EPSILON": self.epsilon,
+            },
+        )
+
+
+class IndexModel(BaseModel):
+    name: str = Field(...)
+    prefix: str = Field(...)
+    key_field: str = Field(...)
+    storage_type: str = Field(default="hash")
+
+
+class FieldsModel(BaseModel):
+    tag: Optional[List[TagFieldSchema]]
+    text: Optional[List[TextFieldSchema]]
+    numeric: Optional[List[NumericFieldSchema]]
+    geo: Optional[List[GeoFieldSchema]]
+    vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]]
+
+
+class SchemaModel(BaseModel):
+    index: IndexModel = Field(...)
+    fields: FieldsModel = Field(...)
+
+    @validator("index")
+    def validate_index(cls, v):
+        if v.storage_type not in ["hash", "json"]:
+            raise ValueError(f"Storage type {v.storage_type} not supported")
+        return v
+
+    @property
+    def index_fields(self):
+        redis_fields = []
+        for field_name in self.fields.__fields__.keys():
+            field_group = getattr(self.fields, field_name)
+            if field_group is not None:
+                for field in field_group:
+                    redis_fields.append(field.as_field())
+        return redis_fields
 
 def read_schema(file_path: str):
     fp = Path(file_path).resolve()
     if not fp.exists():
-        logger.error(f"Schema file {file_path} does not exist")
         raise FileNotFoundError(f"Schema file {file_path} does not exist")
 
     with open(fp, "r") as f:
         schema = yaml.safe_load(f)
 
-    try:
-        index_schema = schema["index"]
-        fields_schema = schema["fields"]
-    except KeyError:
-        logger.error("Schema file must contain both a 'fields' and 'index' key")
-        raise
-
-    index_attrs = read_index_spec(index_schema)
-    fields = read_field_spec(fields_schema)
-    return index_attrs, fields
-
-
-def read_index_spec(index_spec: t.Dict[str, t.Any]):
-    """Read index specification and return the fields
-
-    Args:
-        index_schema (dict): Index specification from schema file.
-
-    Returns:
-        index_fields (dict): List of index fields.
-    """
-    # TODO parsing and validation here
-    return index_spec
-
-
-def read_field_spec(field_spec: t.Dict[str, t.Any]):
-    """
-    Read a schema file and return a list of RediSearch fields.
-
-    Args:
-        field_schema (dict): Field specification from schema file.
-
-    Returns:
-        fields: list of RediSearch fields.
-    """
-    fields = []
-    for key, field in field_spec.items():
-        if key.upper() == "TAG":
-            for name, attrs in field.items():
-                fields.append(TagField(name, **attrs))
-        elif key.upper() == "VECTOR":
-            for name, attrs in field.items():
-                fields.append(_create_vector_field(name, **attrs))
-        elif key.upper() == "GEO":
-            for name, attrs in field.items():
-                fields.append(GeoField(name, **attrs))
-        elif key.upper() == "TEXT":
-            for name, attrs in field.items():
-                fields.append(TextField(name, **attrs))
-        elif key.upper() == "NUMERIC":
-            for name, attrs in field.items():
-                fields.append(NumericField(name, **attrs))
-        else:
-            logger.error(f"Invalid field type: {key}")
-            raise ValueError(f"Invalid field type: {key}")
-    return fields
-
-
-def _create_vector_field(
-    name: str,
-    dims: int,
-    algorithm: str = "FLAT",
-    datatype: str = "FLOAT32",
-    distance_metric: str = "COSINE",
-    initial_cap: int = 20000,
-    block_size: int = 1000,
-    m: int = 16,
-    ef_construction: int = 200,
-    ef_runtime: int = 10,
-    epsilon: float = 0.8,
-):
-    """Create a RediSearch VectorField.
-
-    Args:
-      name: The name of the field.
-      algorithm: The algorithm used to index the vector.
-      dims: The dimensionality of the vector.
-      datatype: The type of the vector. default: FLOAT32
-      distance_metric: The distance metric used to compare vectors.
-      initial_cap: The initial capacity of the index.
-      block_size: The block size of the index.
-      m: The number of outgoing edges in the HNSW graph.
-      ef_construction: Number of maximum allowed potential outgoing edges
-                       candidates for each node in the graph, during the graph building.
-      ef_runtime: The umber of maximum top candidates to hold during the KNN search
-
-    returns:
-      A RediSearch VectorField.
-    """
-    if algorithm.upper() == "HNSW":
-        return VectorField(
-            name,
-            "HNSW",
-            {
-                "TYPE": datatype.upper(),
-                "DIM": dims,
-                "DISTANCE_METRIC": distance_metric.upper(),
-                "INITIAL_CAP": initial_cap,
-                "M": m,
-                "EF_CONSTRUCTION": ef_construction,
-                "EF_RUNTIME": ef_runtime,
-                "EPSILON": epsilon,
-            },
-        )
-    else:
-        return VectorField(
-            name,
-            "FLAT",
-            {
-                "TYPE": datatype.upper(),
-                "DIM": dims,
-                "DISTANCE_METRIC": distance_metric.upper(),
-                "INITIAL_CAP": initial_cap,
-                "BLOCK_SIZE": block_size,
-            },
-        )
+    return SchemaModel(**schema)

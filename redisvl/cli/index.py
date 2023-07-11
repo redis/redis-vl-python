@@ -1,9 +1,12 @@
+import os
 import sys
 import argparse
-import typing as t
 from pprint import pprint
+from typing import Any, List
+from argparse import Namespace
 
 from redisvl.index import SearchIndex
+from redisvl.cli.utils import create_redis_url
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import convert_bytes
 from redisvl.utils.connection import get_redis_connection
@@ -36,6 +39,7 @@ class Index:
         parser.add_argument("--host", help="Redis host", type=str, default="localhost")
         parser.add_argument("-p", "--port", help="Redis port", type=int, default=6379)
         parser.add_argument("--user", help="Redis username", type=str, default="default")
+        parser.add_argument("--ssl", help="Use SSL", action="store_true")
         parser.add_argument(
             "-a", "--password", help="Redis password", type=str, default=""
         )
@@ -51,7 +55,7 @@ class Index:
             exit(0)
 
 
-    def create(self, args):
+    def create(self, args: Namespace):
         """Create an index
 
         Usage:
@@ -60,40 +64,35 @@ class Index:
         if not args.schema:
             logger.error("Schema must be provided to create an index")
         index = SearchIndex.from_yaml(args.schema)
-        index.connect(host=args.host,
-                      port=args.port,
-                      username=args.user,
-                      password=args.password)
+        url = create_redis_url(args)
+        index.connect(url)
         index.create()
         logger.info("Index created successfully")
 
-    def info(self, args):
+    def info(self, args: Namespace):
         """Obtain information about an index
 
         Usage:
             redisvl index info -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        logger.info(pprint(index.info()))
+        logger.info("Index information:")
+        pprint(index.info())
 
-    def listall(self, args):
+    def listall(self, args: Namespace):
         """List all indices
 
         Usage:
             redisvl index listall
         """
-        conn = get_redis_connection(
-            host=args.host,
-            port=args.port,
-            username=args.user,
-            password=args.password
-        )
+        url = create_redis_url(args)
+        conn = get_redis_connection(url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
         logger.info("Indices:")
         for i, index in enumerate(indices):
             logger.info(str(i+1) + ". " + index)
 
-    def delete(self, args, drop=False):
+    def delete(self, args: Namespace, drop=False):
         """Delete an index
 
         Usage:
@@ -103,7 +102,7 @@ class Index:
         index.delete(drop=drop)
         logger.info("Index deleted successfully")
 
-    def destroy(self, args):
+    def destroy(self, args: Namespace):
         """Delete an index and the documents within it
 
         Usage:
@@ -111,19 +110,23 @@ class Index:
         """
         self.delete(args, drop=True)
 
-    def _connect_to_index(self, args: t.Any) -> SearchIndex:
+    def _connect_to_index(self, args: Namespace) -> SearchIndex:
+
+        # connect to redis
+        try:
+            url = create_redis_url(args)
+            conn = get_redis_connection(url=url)
+        except ValueError:
+            logger.error("Must set REDIS_ADDRESS environment variable or provide host and port")
+            exit(0)
+
         if args.index:
-            index = SearchIndex.from_existing(args.index)
+            index = SearchIndex.from_existing(conn, args.index)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema)
+            index.set_client(conn)
         else:
             logger.error("Index name or schema must be provided")
             exit(0)
 
-        index.connect(
-            host=args.host,
-            port=args.port,
-            username=args.user,
-            password=args.password
-        )
         return index

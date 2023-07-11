@@ -29,17 +29,16 @@ schema = {
         "storage_type": "hash",
     },
     "fields": {
-        "tag": {"credit_score": {}},
-        "text": {"job": {}},
-        "numeric": {"age": {}},
-        "vector": {
-            "user_embedding": {
+        "tag": [{"name": "credit_score"}],
+        "text": [{"name": "job"}],
+        "numeric": [{"name": "age"}],
+        "vector": [{
+                "name": "user_embedding",
                 "dims": 3,
                 "distance_metric": "cosine",
                 "algorithm": "flat",
-                "datatype": "float32",
-            }
-        },
+                "datatype": "float32"}
+        ]
     },
 }
 
@@ -47,7 +46,7 @@ schema = {
 def test_simple(client):
     index = SearchIndex.from_dict(schema)
     # assign client (only for testing)
-    index.redis = client
+    index.set_client(client)
     # create the index
     index.create()
 
