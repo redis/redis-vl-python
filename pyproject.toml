@@ -27,3 +27,10 @@ ignore_errors = true
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+# mypy global options:
+
+[tool.mypy]
+warn_unused_configs = true
+ignore_missing_imports = true
+

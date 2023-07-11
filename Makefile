@@ -46,6 +46,11 @@ sort-imports:
 check-lint:
 	@pylint --rcfile=.pylintrc ./redisvl
 
+# help: mypy                           - run mypy
+.PHONY: mypy
+mypy:
+	@mypy ./redisvl
+
 
 # help:
 # help: Test

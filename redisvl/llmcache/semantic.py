@@ -67,11 +67,11 @@ class SemanticCache(BaseLLMCache):
 
     def check(
         self,
-        prompt: str = None,
-        vector: List[float] = None,
-        results: int = 1,
+        prompt: Optional[str] = None,
+        vector: Optional[List[float]] = None,
+        num_results: int = 1,
         fields: List[str] = ["response"],
-    ) -> Optional[Dict[str, str]]:
+    ) -> Optional[List[str]]:
         """Checks whether the cache contains the specified key."""
         if not prompt and not vector:
             raise ValueError("Either prompt or vector must be specified.")
@@ -79,12 +79,12 @@ class SemanticCache(BaseLLMCache):
         query = create_vector_query(
             return_fields=fields,
             vector_field_name="prompt_vector",
-            number_of_results=results,
+            number_of_results=num_results,
         )
         if vector:
             prompt_vector = array_to_buffer(vector)
         else:
-            prompt_vector = array_to_buffer(self._provider.embed(prompt))
+            prompt_vector = array_to_buffer(self._provider.embed(prompt)) # type: ignore
         results = self._index.search(query, query_params={"vector": prompt_vector})
 
         cache_hits = []
@@ -112,18 +112,17 @@ class SemanticCache(BaseLLMCache):
             prompt_vector = array_to_buffer(self._provider.embed(prompt))
 
         payload = {"id": key, "prompt_vector": prompt_vector, "response": response}
-        payload.update(metadata)
+        if metadata:
+            payload.update(metadata)
         self._index.load([payload])
 
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
-        self._cache.expire(key, self.ttl)
-
-    def _delete(self, key: str):
-        self._cache.delete(key)
-
-    def _clear(self):
-        self._cache.flushdb()
+        client = self._index.get_client()
+        if client:
+            client.expire(key, self.ttl)
+        else:
+            raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
 
 def similarity(distance):

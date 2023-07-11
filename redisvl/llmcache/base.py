@@ -1,22 +1,23 @@
 import hashlib
 import logging
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, List
 
 
 class BaseLLMCache:
 
     verbose: bool = True
 
-    def check(self, prompt: str) -> Optional[Dict[str, str]]:
+    def check(self, prompt: str) -> Optional[List[str]]:
         raise NotImplementedError
 
     def store(
         self,
         prompt: str,
         response: str,
+        vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
         key: Optional[str] = None,
-    ):
+    ) -> None:
         """Stores the specified key-value pair in the cache along with metadata."""
         raise NotImplementedError
 
