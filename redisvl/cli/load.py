@@ -1,8 +1,7 @@
 import argparse
 import asyncio
 import sys
-from argparse import Namespace
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 from redisvl.cli.utils import create_redis_url
 from redisvl.index import AsyncSearchIndex

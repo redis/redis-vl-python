@@ -1,6 +1,5 @@
 import hashlib
-import logging
-from typing import Callable, Dict, Optional, List
+from typing import Callable, Optional, List
 
 
 class BaseLLMCache:

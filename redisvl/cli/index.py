@@ -1,9 +1,7 @@
 import argparse
-import os
 import sys
 from argparse import Namespace
 from pprint import pprint
-from typing import Any, List
 
 from redisvl.cli.utils import create_redis_url
 from redisvl.index import SearchIndex
