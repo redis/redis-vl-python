@@ -37,3 +37,8 @@ def df():
         }
     )
     return data
+
+
+@pytest.fixture
+def openai_key():
+    return os.getenv("OPENAI_KEY")
