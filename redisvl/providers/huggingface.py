@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional
 
-from sentence_transformers import SentenceTransformer
 
 from redisvl.providers.base import BaseProvider
 
@@ -10,6 +9,13 @@ class HuggingfaceProvider(BaseProvider):
         # TODO set dims based on model
         dims = 768
         super().__init__(model, dims, api_config)
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError(
+                "Huggingface provider requires sentence-transformers library. Please install with pip install sentence-transformers"
+            )
+
         self._model_client = SentenceTransformer(model)
 
     def embed(self, emb_input: str, preprocess: callable = None) -> List[float]:

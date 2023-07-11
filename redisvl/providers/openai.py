@@ -1,7 +1,5 @@
 from typing import Dict, List, Optional
 
-import openai
-
 from redisvl.providers.base import BaseProvider
 
 
@@ -11,7 +9,12 @@ class OpenAIProvider(BaseProvider):
         super().__init__(model, dims, api_config)
         if not api_config:
             raise ValueError("OpenAI API key is required in api_config")
-
+        try:
+            import openai
+        except ImportError:
+            raise ImportError(
+                "OpenAI provider requires openai library. Please install with pip install openai"
+            )
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding
 
