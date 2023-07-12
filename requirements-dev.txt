@@ -4,3 +4,6 @@ pylint>=2.6.0
 pytest>=6.0.0
 pytest-cov>=2.10.1
 pytest-asyncio
+mypy
+types-redis
+types-pyyaml
