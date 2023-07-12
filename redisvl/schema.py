@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Pattern, Union
+from typing import List, Optional, Union
 
 import yaml
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from redis.commands.search.field import (
     GeoField,
     NumericField,
@@ -10,6 +10,7 @@ from redis.commands.search.field import (
     TextField,
     VectorField,
 )
+from typing_extensions import Literal
 
 
 class BaseField(BaseModel):
@@ -20,7 +21,7 @@ class BaseField(BaseModel):
 class TextFieldSchema(BaseField):
     weight: Optional[float] = 1
     no_stem: Optional[bool] = False
-    phonetic_matcher: Optional[str]
+    phonetic_matcher: Optional[str] = None
     withsuffixtrie: Optional[bool] = False
 
     def as_field(self):
@@ -64,13 +65,14 @@ class BaseVectorField(BaseModel):
     distance_metric: str = Field(default="COSINE")
     initial_cap: int = Field(default=20000)
 
-    @validator("algorithm", "datatype", "distance_metric", pre=True)
+    @field_validator("algorithm", "datatype", "distance_metric", mode="before")
+    @classmethod
     def uppercase_strings(cls, v):
         return v.upper()
 
 
 class FlatVectorField(BaseVectorField):
-    algorithm: str = Field("FLAT", const=True)
+    algorithm: str = Literal["FLAT"]
     block_size: int = Field(default=1000)
 
     def as_field(self):
@@ -88,7 +90,7 @@ class FlatVectorField(BaseVectorField):
 
 
 class HNSWVectorField(BaseVectorField):
-    algorithm: str = Field("HNSW", const=True)
+    algorithm: str = Literal["HNSW"]
     m: int = Field(default=16)
     ef_construction: int = Field(default=200)
     ef_runtime: int = Field(default=10)
@@ -119,18 +121,19 @@ class IndexModel(BaseModel):
 
 
 class FieldsModel(BaseModel):
-    tag: Optional[List[TagFieldSchema]]
-    text: Optional[List[TextFieldSchema]]
-    numeric: Optional[List[NumericFieldSchema]]
-    geo: Optional[List[GeoFieldSchema]]
-    vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]]
+    tag: Optional[List[TagFieldSchema]] = None
+    text: Optional[List[TextFieldSchema]] = None
+    numeric: Optional[List[NumericFieldSchema]] = None
+    geo: Optional[List[GeoFieldSchema]] = None
+    vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]] = None
 
 
 class SchemaModel(BaseModel):
     index: IndexModel = Field(...)
     fields: FieldsModel = Field(...)
 
-    @validator("index")
+    @field_validator("index")
+    @classmethod
     def validate_index(cls, v):
         if v.storage_type not in ["hash", "json"]:
             raise ValueError(f"Storage type {v.storage_type} not supported")
@@ -139,7 +142,7 @@ class SchemaModel(BaseModel):
     @property
     def index_fields(self):
         redis_fields = []
-        for field_name in self.fields.__fields__.keys():
+        for field_name in self.fields.model_fields.keys():
             field_group = getattr(self.fields, field_name)
             if field_group is not None:
                 for field in field_group:

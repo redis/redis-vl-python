@@ -1,9 +1,7 @@
 import argparse
-import os
 import sys
 from argparse import Namespace
 from pprint import pprint
-from typing import Any, List
 
 from redisvl.cli.utils import create_redis_url
 from redisvl.index import SearchIndex
@@ -15,7 +13,6 @@ logger = get_logger(__name__)
 
 
 class Index:
-
     usage = "\n".join(
         [
             "redisvl index <command> [<args>]\n",
@@ -116,7 +113,6 @@ class Index:
         self.delete(args, drop=True)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
-
         # connect to redis
         try:
             url = create_redis_url(args)

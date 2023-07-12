@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, List, Optional, Pattern
+from typing import Any, List, Optional, Pattern
 
 import numpy as np
 
