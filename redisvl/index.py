@@ -64,7 +64,7 @@ class SearchIndexBase:
             SearchIndex: A SearchIndex object
         """
         schema = read_schema(schema_path)
-        return cls(fields=schema.index_fields, **schema.index.dict())
+        return cls(fields=schema.index_fields, **schema.index.model_dump())
 
     @classmethod
     def from_dict(cls, schema_dict: Dict[str, Any]):
@@ -77,7 +77,7 @@ class SearchIndexBase:
             SearchIndex: A SearchIndex object
         """
         schema = SchemaModel(**schema_dict)
-        return cls(fields=schema.index_fields, **schema.index.dict())
+        return cls(fields=schema.index_fields, **schema.index.model_dump())
 
     @classmethod
     def from_existing(cls, client: redis.Redis, index_name: str):

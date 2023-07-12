@@ -11,14 +11,24 @@ def read_dev_requirements():
         requirements = f.read().splitlines()
     return requirements
 
+extras_require = {
+    "all": [
+        "openai>=0.26.4",
+        "sentence-transformers>=2.2.2",
+        "pandas==1.5.1"
+    ],
+    "dev": read_dev_requirements()
+}
+
+
 setup(
     name="redisvl",
     description="Vector loading utility for Redis vector search",
     license="BSD-3-Clause",
     version="0.1.0",
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     install_requires=read_requirements(),
-    extras_require={"dev": read_dev_requirements()},
+    extras_require=extras_require,
     packages=find_packages(),
     zip_safe=False,
     entry_points={
