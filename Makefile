@@ -51,6 +51,14 @@ check-lint:
 mypy:
 	@mypy ./redisvl
 
+# help:
+# help: Documentation
+# help: -------
+
+# help: docs                           - generate project documentation
+.PHONY: docs
+docs:
+	@cd doc; make html
 
 # help:
 # help: Test

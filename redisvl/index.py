@@ -1,6 +1,5 @@
 import asyncio
-from typing import Any, Dict, Iterable, List, Optional
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
@@ -10,9 +9,9 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
 from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import (
+    check_connected,
     get_async_redis_connection,
     get_redis_connection,
-    check_connected
 )
 from redisvl.utils.utils import convert_bytes, make_dict
 
@@ -24,7 +23,7 @@ class SearchIndexBase:
         storage_type: str = "hash",
         key_field: str = "id",
         prefix: str = "",
-        fields: Optional[List['Field']] = None,
+        fields: Optional[List["Field"]] = None,
     ):
         self._name = name
         self._key_field = key_field
@@ -38,7 +37,7 @@ class SearchIndexBase:
 
     @check_connected("_redis_conn")
     def get_client(self) -> redis.Redis:
-        return self._redis_conn # type: ignore
+        return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
     def search(self, *args, **kwargs):
@@ -51,7 +50,7 @@ class SearchIndexBase:
         Returns:
             Search: A search object for this index
         """
-        return self._redis_conn.ft(self._name).search(*args, **kwargs) # type: ignore
+        return self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -91,7 +90,7 @@ class SearchIndexBase:
         fields = None  # TODO figure out if we need to parse fields
         instance = cls(
             index_name,
-            key_field="", # TODO check key field on load again
+            key_field="",  # TODO check key field on load again
             storage_type=storage_type,
             prefix=prefix,
             fields=fields,
@@ -118,7 +117,7 @@ class SearchIndexBase:
         Returns:
             dict: A dictionary containing the information about the index
         """
-        return convert_bytes(self._redis_conn.ft(self._name).info()) # type: ignore
+        return convert_bytes(self._redis_conn.ft(self._name).info())  # type: ignore
 
     def create(self):
         """Create an index in Redis from this SearchIndex object
@@ -143,7 +142,7 @@ class SearchIndexBase:
         """Load data into Redis and index using this SearchIndex object
 
         Args:
-            data (t.Iterable[t.Dict[str, t.Any]]): An iterable of dictionaries
+            data (Iterable[Dict[str, Any]]): An iterable of dictionaries
                 containing the data to be indexed
         raises:
             redis.exceptions.ResponseError: If the index does not exist
@@ -159,7 +158,7 @@ class SearchIndex(SearchIndexBase):
         storage_type: str = "hash",
         key_field: str = "id",
         prefix: str = "",
-        fields: Optional[List['Field']] = None,
+        fields: Optional[List["Field"]] = None,
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
@@ -192,7 +191,7 @@ class SearchIndex(SearchIndexBase):
         self._redis_conn.ft(self._name).create_index(
             fields=self._fields,
             definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
-        ) # type: ignore
+        )  # type: ignore
 
     @check_connected("_redis_conn")
     def delete(self, drop: bool = True):
@@ -205,7 +204,7 @@ class SearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist
         """
         # Delete the search index
-        self._redis_conn.ft(self._name).dropindex(delete_documents=drop) # type: ignore
+        self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
     def load(self, data: Iterable[Dict[str, Any]], **kwargs):
@@ -220,7 +219,7 @@ class SearchIndex(SearchIndexBase):
 
         for record in data:
             key = f"{self._prefix}:{str(record[self._key_field])}"
-            self._redis_conn.hset(key, mapping=record) # type: ignore
+            self._redis_conn.hset(key, mapping=record)  # type: ignore
 
 
 class AsyncSearchIndex(SearchIndexBase):
@@ -230,7 +229,7 @@ class AsyncSearchIndex(SearchIndexBase):
         storage_type: str = "hash",
         key_field: str = "id",
         prefix: str = "",
-        fields: Optional[List['Field']] = None,
+        fields: Optional[List["Field"]] = None,
     ):
         super().__init__(name, storage_type, key_field, prefix, fields)
 
@@ -262,7 +261,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await self._redis_conn.ft(self._name).create_index(
             fields=self._fields,
             definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
-        ) # type: ignore
+        )  # type: ignore
 
     @check_connected("_redis_conn")
     async def delete(self, drop: bool = True):
@@ -275,7 +274,7 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist
         """
         # Delete the search index
-        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop) # type: ignore
+        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
     async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10):
@@ -293,7 +292,7 @@ class AsyncSearchIndex(SearchIndexBase):
         async def load(d: dict):
             async with semaphore:
                 key = self._prefix + str(d[self._key_field])
-                await self._redis_conn.hset(key, mapping=d) # type: ignore
+                await self._redis_conn.hset(key, mapping=d)  # type: ignore
 
         # gather with concurrency
         await asyncio.gather(*[load(d) for d in data])

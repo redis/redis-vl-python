@@ -1,9 +1,8 @@
 from pathlib import Path
 from typing import List, Optional, Union
-from typing_extensions import Literal
 
 import yaml
-from pydantic import field_validator, BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from redis.commands.search.field import (
     GeoField,
     NumericField,
@@ -11,6 +10,7 @@ from redis.commands.search.field import (
     TextField,
     VectorField,
 )
+from typing_extensions import Literal
 
 
 class BaseField(BaseModel):

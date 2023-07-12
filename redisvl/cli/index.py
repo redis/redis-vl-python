@@ -13,7 +13,6 @@ logger = get_logger(__name__)
 
 
 class Index:
-
     usage = "\n".join(
         [
             "redisvl index <command> [<args>]\n",
@@ -114,7 +113,6 @@ class Index:
         self.delete(args, drop=True)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
-
         # connect to redis
         try:
             url = create_redis_url(args)

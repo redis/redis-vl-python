@@ -1,9 +1,8 @@
 import hashlib
-from typing import Callable, Optional, List
+from typing import Callable, List, Optional
 
 
 class BaseLLMCache:
-
     verbose: bool = True
 
     def check(self, prompt: str) -> Optional[List[str]]:

@@ -49,7 +49,6 @@ schema = {
 
 @pytest.mark.asyncio
 async def test_simple(async_client):
-
     index = AsyncSearchIndex.from_dict(schema)
     # assign client (only for testing)
     index.set_client(async_client)

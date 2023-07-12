@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from redis.commands.search.field import VectorField
 
@@ -35,7 +35,6 @@ class SemanticCache(BaseLLMCache):
         connection_args: Optional[dict] = None,
         ttl: Optional[int] = None,
     ):
-
         self.ttl = ttl
         self._provider = provider or self._default_provider
         self._threshold = threshold
@@ -81,14 +80,13 @@ class SemanticCache(BaseLLMCache):
         if vector:
             prompt_vector = array_to_buffer(vector)
         else:
-            prompt_vector = array_to_buffer(self._provider.embed(prompt)) # type: ignore
+            prompt_vector = array_to_buffer(self._provider.embed(prompt))  # type: ignore
         results = self._index.search(query, query_params={"vector": prompt_vector})
 
         cache_hits = []
         for doc in results.docs:
             sim = similarity(doc.vector_score)
-            _logger.info("Similarity: %s", sim)
-            if similarity(doc.vector_score) > self.threshold:
+            if sim > self.threshold:
                 cache_hits.append(doc.response)
         return cache_hits
 
@@ -122,5 +120,5 @@ class SemanticCache(BaseLLMCache):
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
 
-def similarity(distance):
+def similarity(distance: Union[float, str]) -> float:
     return 1 - float(distance)

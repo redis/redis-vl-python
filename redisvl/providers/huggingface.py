@@ -1,5 +1,4 @@
-from typing import Dict, List, Optional, Callable
-
+from typing import Callable, Dict, List, Optional
 
 from redisvl.providers.base import BaseProvider
 
@@ -18,16 +17,20 @@ class HuggingfaceProvider(BaseProvider):
 
         self._model_client = SentenceTransformer(model)
 
-    def embed(self, emb_input: str, preprocess: Optional[Callable] = None) -> List[float]:
+    def embed(
+        self, emb_input: str, preprocess: Optional[Callable] = None
+    ) -> List[float]:
         if preprocess:
             emb_input = preprocess(emb_input)
         embedding = self._model_client.encode([emb_input])[0]
         return embedding.tolist()
 
     def embed_many(
-        self, inputs: List[str], preprocess: Optional[Callable] = None, chunk_size: int = 1000
+        self,
+        inputs: List[str],
+        preprocess: Optional[Callable] = None,
+        chunk_size: int = 1000,
     ) -> List[List[float]]:
-
         embeddings = []
         for batch in self.batchify(inputs, chunk_size, preprocess):
             batch_embeddings = self._model_client.encode(batch)

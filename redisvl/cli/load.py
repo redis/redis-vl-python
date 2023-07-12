@@ -70,7 +70,6 @@ class Load:
     async def _load_and_create_index(
         self, concurrency: int, reader: Iterable[dict], index: AsyncSearchIndex
     ):
-
         logger.info("Loading data...")
         await index.load(data=reader, concurrency=concurrency)
         logger.info("Data loaded.")
