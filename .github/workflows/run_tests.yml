@@ -1,0 +1,43 @@
+name: Test Suite
+
+on: [push, pull_request]
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9, 3.10, 3.11]
+
+    services:
+      redis:
+        image: redis-stack-server:latest
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install .[dev,all]
+    - name: Start Redis
+      run: |
+        REDIS_ADDRESS=localhost:6379
+        echo REDIS_ADDRESS=$REDIS_ADDRESS >> $GITHUB_ENV
+    - name: Run tests
+      env:
+        OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      run: |
+        make test-cov
+    - name: Publish coverage results
+      uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: true
