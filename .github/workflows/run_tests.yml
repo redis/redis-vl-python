@@ -33,7 +33,7 @@ jobs:
         pip install .[dev,all]
     - name: Start Redis
       run: |
-        REDIS_ADDRESS=localhost:6379
+        REDIS_ADDRESS=redis://localhost:6379
         echo REDIS_ADDRESS=$REDIS_ADDRESS >> $GITHUB_ENV
     - name: Run tests
       env:
