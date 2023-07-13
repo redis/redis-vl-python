@@ -1,4 +1,6 @@
 __pycache__/
 redisvl.egg-info/
-.coverage*
+.coverage.*
+.coverage
 scratch
+.DS_Store
