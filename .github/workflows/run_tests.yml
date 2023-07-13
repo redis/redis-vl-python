@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-
+    name: Test on ${{ matrix.python-version }} - ${{ matrix.os }}
     runs-on: ubuntu-latest
 
     strategy:
