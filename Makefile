@@ -58,7 +58,7 @@ mypy:
 # help: docs                           - generate project documentation
 .PHONY: docs
 docs:
-	@cd doc; make html
+	@cd docs; make html
 
 # help:
 # help: Test
