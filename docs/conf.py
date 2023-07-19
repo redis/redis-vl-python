@@ -39,7 +39,12 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
-    'nbsphinx'
+    "sphinx_design",
+    "sphinx_copybutton",
+    "_extension.gallery_directive",
+    'nbsphinx',
+    "myst_nb",
+    "sphinx_favicon"
 ]
 
 
@@ -56,21 +61,72 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', "**.ipynb_checkpoints"]
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "sphinx_book_theme"
+html_theme = "pydata_sphinx_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files = ["main.css", "style.css"]
-
-html_theme_options = {
-    "repository_url": "https://github.com/RedisVentures/redisvl",
-    "use_repository_button": True,
-    "use_issues_button": True,
+html_css_files=["css/custom.css"]
+html_title = "RedisVL"
+html_context = {
+   "default_mode": "dark"
 }
 
+html_context = {
+    "github_user": "RedisVentures",
+    "github_repo": "RedisVL",
+    "github_version": "main",
+    "doc_path": "docs",
+}
+
+# This allows us to use ::: to denote directives, useful for admonitions
+myst_enable_extensions = ["colon_fence"]
+myst_heading_anchors = 2
+
+html_theme_options = {
+    "use_edit_page_button": True,
+    "show_toc_level": 1,
+    "navbar_align": "left",  # [left, content, right] For testing that the navbar items align properly
+    "secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/RedisVentures/RedisVL",
+            "icon": "fa-brands fa-square-github",
+            "type": "fontawesome",
+        }
+    ]
+}
 autoclass_content = 'both'
 add_module_names = False
 
 nbsphinx_execute = 'never'
+
+# -- Options for autosummary/autodoc output ------------------------------------
+autosummary_generate = True
+autodoc_typehints = "description"
+autodoc_member_order = "groupwise"
+
+# -- Options for autoapi -------------------------------------------------------
+autoapi_type = "python"
+autoapi_dirs = ["../src/redisvl"]
+autoapi_keep_files = True
+autoapi_root = "api"
+autoapi_member_order = "groupwise"
+
+
+# -- favicon options ---------------------------------------------------------
+
+# see https://sphinx-favicon.readthedocs.io for more information about the
+# sphinx-favicon extension
+favicons = [
+    # generic icons compatible with most browsers
+    "favicon-32x32.png",
+    "favicon-16x16.png",
+    {"rel": "shortcut icon", "sizes": "any", "href": "favicon.ico"},
+    # chrome specific
+    "android-chrome-192x192.png",
+    # apple icons
+    {"rel": "apple-touch-icon", "href": "apple-touch-icon.png"},
+]
