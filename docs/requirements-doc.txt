@@ -1,0 +1,9 @@
+sphinx>=4.4.0
+pydata-sphinx-theme
+nbsphinx
+ipython
+jinja2
+sphinx-copybutton
+sphinx-favicon
+sphinx-design
+myst_nb
