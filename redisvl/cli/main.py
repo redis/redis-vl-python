@@ -2,7 +2,6 @@ import argparse
 import sys
 
 from redisvl.cli.index import Index
-from redisvl.cli.load import Load
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -10,13 +9,11 @@ logger = get_logger(__name__)
 
 def _usage():
     usage = [
-        "redisvl <command> [<args>]\n",
+        "rvl <command> [<args>]\n",
         "Commands:",
-        "\tload        Load vector data into redis",
         "\tindex       Index manipulation (create, delete, etc.)",
-        "\tquery       Query an existing index",
     ]
-    return "\n".join(usage)
+    return "\n".join(usage) + "\n"
 
 
 class RedisVlCLI:
@@ -36,10 +33,6 @@ class RedisVlCLI:
             parser.print_help()
             exit(0)
         getattr(self, args.command)()
-
-    def load(self):
-        Load()
-        exit(0)
 
     def index(self):
         Index()

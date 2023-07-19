@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 class Index:
     usage = "\n".join(
         [
-            "redisvl index <command> [<args>]\n",
+            "rvl index <command> [<args>]\n",
             "Commands:",
             "\tinfo        Obtain information about an index",
             "\tcreate      Create a new index",
@@ -61,7 +61,7 @@ class Index:
         """Create an index
 
         Usage:
-            redisvl index create -i <index_name> | -s <schema_path>
+            rvl index create -i <index_name> | -s <schema_path>
         """
         if not args.schema:
             logger.error("Schema must be provided to create an index")
@@ -75,7 +75,7 @@ class Index:
         """Obtain information about an index
 
         Usage:
-            redisvl index info -i <index_name> | -s <schema_path>
+            rvl index info -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
         logger.info("Index information:")
@@ -85,7 +85,7 @@ class Index:
         """List all indices
 
         Usage:
-            redisvl index listall
+            rvl index listall
         """
         url = create_redis_url(args)
         conn = get_redis_connection(url)
@@ -108,7 +108,7 @@ class Index:
         """Delete an index and the documents within it
 
         Usage:
-            redisvl index destroy -i <index_name> | -s <schema_path>
+            rvl index destroy -i <index_name> | -s <schema_path>
         """
         self.delete(args, drop=True)
 

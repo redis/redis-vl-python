@@ -1,4 +1,0 @@
-users,age,job,credit_score,user_embedding
-john,1,engineer,high,"[0.1, 0.1, 0.5]"
-mary,2,doctor,low,"[0.1, 0.1, 0.5]"
-joe,3,dentist,medium,"[0.9, 0.9, 0.1]"

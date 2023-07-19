@@ -3,8 +3,9 @@ from argparse import Namespace
 
 
 def create_redis_url(args: Namespace) -> str:
-    if os.getenv("REDIS_ADDRESS"):
-        return os.getenv("REDIS_ADDRESS")
+    env_address = os.getenv("REDIS_ADDRESS")
+    if env_address:
+        return env_address
     else:
         url = "redis://"
         if args.ssl:

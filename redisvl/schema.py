@@ -60,7 +60,7 @@ class GeoFieldSchema(BaseField):
 class BaseVectorField(BaseModel):
     name: str = Field(...)
     dims: int = Field(...)
-    algorithm: str = Field(...)
+    algorithm: object = Field(...)
     datatype: str = Field(default="FLOAT32")
     distance_metric: str = Field(default="COSINE")
     initial_cap: int = Field(default=20000)
@@ -72,7 +72,7 @@ class BaseVectorField(BaseModel):
 
 
 class FlatVectorField(BaseVectorField):
-    algorithm: str = Literal["FLAT"]
+    algorithm: object = Literal["FLAT"]
     block_size: int = Field(default=1000)
 
     def as_field(self):
@@ -90,7 +90,7 @@ class FlatVectorField(BaseVectorField):
 
 
 class HNSWVectorField(BaseVectorField):
-    algorithm: str = Literal["HNSW"]
+    algorithm: object = Literal["HNSW"]
     m: int = Field(default=16)
     ef_construction: int = Field(default=200)
     ef_runtime: int = Field(default=10)

@@ -2,32 +2,44 @@ import time
 from pprint import pprint
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import create_vector_query
 
-data = pd.DataFrame(
+data = [
     {
-        "users": ["john", "mary", "joe"],
-        "age": [1, 2, 3],
-        "job": ["engineer", "doctor", "dentist"],
-        "credit_score": ["high", "low", "medium"],
-        "user_embedding": [
-            np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
-            np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
-            np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
-        ],
-    }
-)
+        "id": 1,
+        "user": "john",
+        "age": 1,
+        "job": "engineer",
+        "credit_score": "high",
+        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
+    },
+    {
+        "id": 2,
+        "user": "mary",
+        "age": 2,
+        "job": "doctor",
+        "credit_score": "low",
+        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
+    },
+    {
+        "id": 3,
+        "user": "joe",
+        "age": 3,
+        "job": "dentist",
+        "credit_score": "medium",
+        "user_embedding": np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
+    },
+]
 query_vector = np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes()
 
 schema = {
     "index": {
         "name": "user_index",
-        "prefix": "user:",
-        "key_field": "users",
+        "prefix": "users",
+        "key_field": "id",
         "storage_type": "hash",
     },
     "fields": {
@@ -53,17 +65,16 @@ async def test_simple(async_client):
     # assign client (only for testing)
     index.set_client(async_client)
     # create the index
-    await index.create()
+    await index.create(overwrite=True)
 
     # load data into the index in Redis
-    records = data.to_dict("records")
-    await index.load(records)
+    await index.load(data)
 
     # wait for async index to create
     time.sleep(1)
 
     query = create_vector_query(
-        ["users", "age", "job", "credit_score", "vector_score"],
+        ["user", "age", "job", "credit_score", "vector_score"],
         number_of_results=3,
         vector_field_name="user_embedding",
     )
@@ -74,8 +85,8 @@ async def test_simple(async_client):
     # users = list(results.docs)
     # print(len(users))
     users = [doc for doc in results.docs]
-    assert users[0].users in ["john", "mary"]
-    assert users[1].users in ["john", "mary"]
+    assert users[0].user in ["john", "mary"]
+    assert users[1].user in ["john", "mary"]
 
     # make sure vector scores are correct
     # query vector and first two are the same vector.
