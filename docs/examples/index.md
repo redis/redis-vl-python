@@ -11,5 +11,5 @@ myst:
 ```{toctree}
 :caption: Getting Started
 
-01-getting-started
+
 ```

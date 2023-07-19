@@ -13,7 +13,7 @@ from redisvl.utils.connection import (
     get_async_redis_connection,
     get_redis_connection,
 )
-from redisvl.utils.utils import convert_bytes, make_dict
+from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_dict
 
 
 class SearchIndexBase:
@@ -119,8 +119,11 @@ class SearchIndexBase:
         """
         return convert_bytes(self._redis_conn.ft(self._name).info())  # type: ignore
 
-    def create(self):
+    def create(self, overwrite: Optional[bool] = False):
         """Create an index in Redis from this SearchIndex object
+
+        Args:
+            overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
 
         Raises:
             redis.exceptions.ResponseError: If the index already exists
@@ -176,22 +179,31 @@ class SearchIndex(SearchIndexBase):
         self._redis_conn = get_redis_connection(url, **kwargs)
 
     @check_connected("_redis_conn")
-    def create(self):
+    def create(self, overwrite: Optional[bool] = False):
         """Create an index in Redis from this SearchIndex object
+
+        Args:
+            overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
 
         Raises:
             redis.exceptions.ResponseError: If the index already exists
         """
+        check_redis_modules_exist(self._redis_conn)
+
+        if self._index_exists() and overwrite:
+            self.delete()
+
         # set storage_type, default to hash
         storage_type = IndexType.HASH
         if self._storage.lower() == "json":
             self._storage = IndexType.JSON
 
         # Create Index
-        self._redis_conn.ft(self._name).create_index(
+        # will raise correct response error if index already exists
+        self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
             definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
-        )  # type: ignore
+        )
 
     @check_connected("_redis_conn")
     def delete(self, drop: bool = True):
@@ -221,6 +233,16 @@ class SearchIndex(SearchIndexBase):
             key = f"{self._prefix}:{str(record[self._key_field])}"
             self._redis_conn.hset(key, mapping=record)  # type: ignore
 
+    @check_connected("_redis_conn")
+    def _index_exists(self) -> bool:
+        """Check if the index exists in Redis
+
+        Returns:
+            bool: True if the index exists, False otherwise
+        """
+        indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
+        return self._name in indices
+
 
 class AsyncSearchIndex(SearchIndexBase):
     def __init__(
@@ -246,22 +268,29 @@ class AsyncSearchIndex(SearchIndexBase):
         self._redis_conn = get_async_redis_connection(url, **kwargs)
 
     @check_connected("_redis_conn")
-    async def create(self):
+    async def create(self, overwrite: Optional[bool] = False):
         """Create an index in Redis from this SearchIndex object
+
+        Args:
+            overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
 
         Raises:
             redis.exceptions.ResponseError: If the index already exists
         """
+        exists = await self._index_exists()
+        if exists and overwrite:
+            await self.delete()
+
         # set storage_type, default to hash
         storage_type = IndexType.HASH
         if self._storage.lower() == "json":
             self._storage = IndexType.JSON
 
         # Create Index
-        await self._redis_conn.ft(self._name).create_index(
+        await self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
             definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
-        )  # type: ignore
+        )
 
     @check_connected("_redis_conn")
     async def delete(self, drop: bool = True):
@@ -296,3 +325,13 @@ class AsyncSearchIndex(SearchIndexBase):
 
         # gather with concurrency
         await asyncio.gather(*[load(d) for d in data])
+
+    @check_connected("_redis_conn")
+    async def _index_exists(self) -> bool:
+        """Check if the index exists in Redis
+
+        Returns:
+            bool: True if the index exists, False otherwise
+        """
+        indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
+        return self._name in convert_bytes(indices)

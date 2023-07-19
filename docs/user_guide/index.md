@@ -14,9 +14,9 @@ RedisVL is still under active development and is subject to change at any time.
 
 
 ```{toctree}
-:caption: Get started
+:caption: Introduction
 
-01-getting-started
+getting_started_01
 ```
 
 ```{toctree}
