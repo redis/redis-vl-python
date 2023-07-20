@@ -7,10 +7,7 @@ from redisvl.llmcache.base import BaseLLMCache
 from redisvl.providers import HuggingfaceProvider
 from redisvl.providers.base import BaseProvider
 from redisvl.query import create_vector_query
-from redisvl.utils.log import get_logger
 from redisvl.utils.utils import array_to_buffer
-
-_logger = get_logger(__name__)
 
 
 class SemanticCache(BaseLLMCache):
@@ -30,12 +27,12 @@ class SemanticCache(BaseLLMCache):
         index_name: str = "cache",
         prefix: str = "llmcache",
         threshold: float = 0.9,
+        ttl: Optional[int] = None,
         provider: Optional[BaseProvider] = None,
         redis_url: Optional[str] = "redis://localhost:6379",
         connection_args: Optional[dict] = None,
-        ttl: Optional[int] = None,
     ):
-        self.ttl = ttl
+        self._ttl = ttl
         self._provider = provider or self._default_provider
         self._threshold = threshold
 
@@ -44,8 +41,17 @@ class SemanticCache(BaseLLMCache):
             index_name, prefix=prefix, fields=self._default_fields
         )
         connection_args = connection_args or {}
-        self._index.connect(redis_url=redis_url, **connection_args)
+        self._index.connect(url=redis_url, **connection_args)
         self._index.create()
+
+    @property
+    def ttl(self) -> Optional[int]:
+        """Returns the TTL for the cache."""
+        return self._ttl
+
+    def set_ttl(self, ttl: int):
+        """Sets the TTL for the cache."""
+        self._ttl = int(ttl)
 
     @property
     def index(self) -> SearchIndex:
@@ -85,6 +91,7 @@ class SemanticCache(BaseLLMCache):
 
         cache_hits = []
         for doc in results.docs:
+            self._refresh_ttl(doc.id)
             sim = similarity(doc.vector_score)
             if sim > self.threshold:
                 cache_hits.append(doc.response)
@@ -113,9 +120,10 @@ class SemanticCache(BaseLLMCache):
 
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
-        client = self._index.get_client()
+        client = self._index.client
         if client:
-            client.expire(key, self.ttl)
+            if self.ttl:
+                client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
 

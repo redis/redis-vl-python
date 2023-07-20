@@ -3,10 +3,10 @@ import sys
 from argparse import Namespace
 from pprint import pprint
 
+from redisvl.cli.log import get_logger
 from redisvl.cli.utils import create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.utils.connection import get_redis_connection
-from redisvl.utils.log import get_logger
 from redisvl.utils.utils import convert_bytes
 
 logger = get_logger(__name__)

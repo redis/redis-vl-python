@@ -35,8 +35,9 @@ class SearchIndexBase:
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
 
+    @property
     @check_connected("_redis_conn")
-    def get_client(self) -> redis.Redis:
+    def client(self) -> redis.Redis:
         return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
@@ -190,6 +191,9 @@ class SearchIndex(SearchIndexBase):
         """
         check_redis_modules_exist(self._redis_conn)
 
+        if not self._fields:
+            raise ValueError("No fields defined for index")
+
         if self._index_exists() and overwrite:
             self.delete()
 
@@ -228,8 +232,14 @@ class SearchIndex(SearchIndexBase):
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
+        if not data:
+            return
+        if not isinstance(data, Iterable):
+            if not isinstance(data[0], dict):
+                raise TypeError("data must be an iterable of dictionaries")
 
         for record in data:
+            # TODO don't use colon if no prefix
             key = f"{self._prefix}:{str(record[self._key_field])}"
             self._redis_conn.hset(key, mapping=record)  # type: ignore
 
@@ -320,7 +330,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         async def load(d: dict):
             async with semaphore:
-                key = self._prefix + str(d[self._key_field])
+                key = self._prefix + ":" + str(d[self._key_field])
                 await self._redis_conn.hset(key, mapping=d)  # type: ignore
 
         # gather with concurrency

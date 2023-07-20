@@ -1,5 +1,6 @@
 import os
 import pytest
+import asyncio
 
 from redisvl.utils.connection import (
     get_async_redis_connection,
@@ -23,3 +24,13 @@ def client():
 @pytest.fixture
 def openai_key():
     return os.getenv("OPENAI_KEY")
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()

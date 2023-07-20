@@ -26,8 +26,7 @@ embedding_creation
 ```
 
 ```{toctree}
-:maxdepth: 2
 :caption: LLMCache
 
-llm_cache
+llmcache_03
 ```

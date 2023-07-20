@@ -42,15 +42,15 @@ Indices can be defined through yaml specification that corresponds directly to t
 
 ```yaml
 index:
-  name: users
+  name: user_index
   storage_type: hash
-  prefix: "user:"
-  key_field: "id"
+  prefix: users
+  key_field: user
 
 fields:
   # define tag fields
   tag:
-  - name: users
+  - name: user
   - name: job
   - name: credit_store
   # define numeric fields
@@ -65,7 +65,7 @@ fields:
 
 This would correspond to a dataset that looked something like
 
-| users | age |     job    | credit_score |           user_embedding          |
+| user  | age |     job    | credit_score |           user_embedding          |
 |-------|-----|------------|--------------|-----------------------------------|
 | john  |  1  |  engineer  |     high     | \x3f\x8c\xcc\x3f\x8c\xcc?@         |
 | mary  |  2  |   doctor   |     low      | \x3f\x8c\xcc\x3f\x8c\xcc?@         |
@@ -74,6 +74,8 @@ This would correspond to a dataset that looked something like
 
 With the schema, the RedisVL library can be used to create, load vectors and perform vector searches
 ```python
+import pandas as pd
+
 from redisvl.index import SearchIndex
 from redisvl.query import create_vector_query
 
@@ -82,16 +84,17 @@ index = SearchIndex.from_yaml("./users_schema.yml"))
 index.connect("redis://localhost:6379")
 index.create()
 
-index.load(pd.read_csv("./users.csv").to_records())
+index.load(pd.read_csv("./users.csv").to_dict("records"))
 
 query = create_vector_query(
-    ["users", "age", "job", "credit_score"],
+    ["user", "age", "job", "credit_score"],
     number_of_results=2,
     vector_field_name="user_embedding",
 )
 
 query_vector = np.array([0.1, 0.1, 0.5]).tobytes()
 results = index.search(query, query_params={"vector": query_vector})
+
 
 ```
 
@@ -100,29 +103,26 @@ results = index.search(query, query_params={"vector": query_vector})
 The ``LLMCache`` Interface in RedisVL can be used as follows.
 
 ```python
-# init open ai client
-import openai
-openai.api_key = "sk-xxx"
-
 from redisvl.llmcache.semantic import SemanticCache
-cache = SemanticCache(redis_host="localhost", redis_port=6379, redis_password=None)
+cache = SemanticCache(
+  redis_url="redis://localhost:6379",
+  threshold=0.9, # semantic similarity threshold
+)
 
-def ask_gpt3(question):
-    response = openai.Completion.create(
-      engine="text-davinci-003",
-      prompt=question,
-      max_tokens=100
-    )
-    return response.choices[0].text.strip()
+# check if the cache has a result for a given query
+cache.check("What is the capital of France?")
+[ ]
 
-def answer_question(question: str):
-    results = cache.check(question)
-    if results:
-        return results[0]
-    else:
-        answer = ask_gpt3(question)
-        cache.store(question, answer)
-        return answer
+# store a result for a given query
+cache.store("What is the capital of France?", "Paris")
+
+# Cache will now have the query
+cache.check("What is the capital of France?")
+["Paris"]
+
+# Cache will return the result if the query is similar enough
+cache.get("What really is the capital of France?")
+["Paris"]
 ```
 
 
