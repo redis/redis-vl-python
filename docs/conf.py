@@ -102,6 +102,7 @@ autoclass_content = 'both'
 add_module_names = False
 
 nbsphinx_execute = 'never'
+jupyter_execute_notebooks = "off"
 
 # -- Options for autosummary/autodoc output ------------------------------------
 autosummary_generate = True
