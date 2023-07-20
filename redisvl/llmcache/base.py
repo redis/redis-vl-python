@@ -39,6 +39,9 @@ class BaseLLMCache:
                 return response
             # Otherwise execute the llm callable here
             response = llm_callable(*args, **kwargs)
+            args = list(args)
+            args.append(response)
+            self.store(*args, **kwargs)
             return response
 
         return wrapper
