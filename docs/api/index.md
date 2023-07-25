@@ -14,5 +14,6 @@ myst:
 searchindex
 query
 filter
+cache
 ```
 

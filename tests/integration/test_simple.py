@@ -3,7 +3,7 @@ from pprint import pprint
 import numpy as np
 
 from redisvl.index import SearchIndex
-from redisvl.query import create_vector_query
+from redisvl.query import VectorQuery
 
 data = [
     {
@@ -31,7 +31,6 @@ data = [
         "user_embedding": np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
     },
 ]
-query_vector = np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes()
 
 schema = {
     "index": {
@@ -67,13 +66,14 @@ def test_simple(client):
     # load data into the index in Redis
     index.load(data)
 
-    query = create_vector_query(
-        ["user", "age", "job", "credit_score"],
-        number_of_results=3,
+    query = VectorQuery(
+        vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
+        return_fields=["user", "age", "job", "credit_score"],
+        num_results=3,
     )
 
-    results = index.search(query, query_params={"vector": query_vector})
+    results = index.search(query.query, query_params=query.params)
 
     # make sure correct users returned
     # users = list(results.docs)
@@ -85,13 +85,13 @@ def test_simple(client):
     # make sure vector scores are correct
     # query vector and first two are the same vector.
     # third is different (hence should be positive difference)
-    assert float(users[0].vector_score) == 0.0
-    assert float(users[1].vector_score) == 0.0
-    assert float(users[2].vector_score) > 0
+    assert float(users[0].vector_distance) == 0.0
+    assert float(users[1].vector_distance) == 0.0
+    assert float(users[2].vector_distance) > 0
 
     print()
     for doc in results.docs:
-        print("Score:", doc.vector_score)
+        print("Score:", doc.vector_distance)
         pprint(doc)
 
     index.delete()

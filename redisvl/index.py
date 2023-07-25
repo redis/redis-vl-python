@@ -1,5 +1,6 @@
 import asyncio
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
@@ -20,17 +21,17 @@ class SearchIndexBase:
     def __init__(
         self,
         name: str,
-        storage_type: str = "hash",
-        key_field: str = "id",
-        prefix: str = "",
+        prefix: str = "rvl",
+        storage_type: Optional[str] = "hash",
+        key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
         self._name = name
-        self._key_field = key_field
-        self._storage = storage_type
         self._prefix = prefix
+        self._storage = storage_type
         self._fields = fields
         self._redis_conn: Optional[redis.Redis] = None
+        self._key_field = key_field
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
@@ -111,6 +112,28 @@ class SearchIndexBase:
         """Disconnect from the Redis instance"""
         self._redis_conn = None
 
+    def _get_key_field(self, record: Dict[str, Any]):
+        """Get the key field for this index
+
+        Args:
+            record (Dict[str, Any]): A dictionary containing the record to be indexed
+
+        Returns:
+            str: The key to be used for a given record
+
+        Raises:
+            ValueError: If the key field is not found in the record
+        """
+        if self._key_field is None:
+            return uuid4().hex
+        else:
+            try:
+                return record[self._key_field]  # type: ignore
+            except KeyError:
+                raise ValueError(
+                    f"Key field {self._key_field} not found in record {record}"
+                )
+
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
         """Get information about the index
@@ -159,12 +182,12 @@ class SearchIndex(SearchIndexBase):
     def __init__(
         self,
         name: str,
-        storage_type: str = "hash",
-        key_field: str = "id",
-        prefix: str = "",
+        prefix: str = "rvl",
+        storage_type: Optional[str] = "hash",
+        key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
-        super().__init__(name, storage_type, key_field, prefix, fields)
+        super().__init__(name, prefix, storage_type, key_field, fields)
 
     def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance
@@ -194,7 +217,7 @@ class SearchIndex(SearchIndexBase):
         if not self._fields:
             raise ValueError("No fields defined for index")
 
-        if self._index_exists() and overwrite:
+        if self.exists() and overwrite:
             self.delete()
 
         # set storage_type, default to hash
@@ -240,11 +263,11 @@ class SearchIndex(SearchIndexBase):
 
         for record in data:
             # TODO don't use colon if no prefix
-            key = f"{self._prefix}:{str(record[self._key_field])}"
+            key = f"{self._prefix}:{self._get_key_field(record)}"
             self._redis_conn.hset(key, mapping=record)  # type: ignore
 
     @check_connected("_redis_conn")
-    def _index_exists(self) -> bool:
+    def exists(self) -> bool:
         """Check if the index exists in Redis
 
         Returns:
@@ -258,12 +281,12 @@ class AsyncSearchIndex(SearchIndexBase):
     def __init__(
         self,
         name: str,
-        storage_type: str = "hash",
-        key_field: str = "id",
-        prefix: str = "",
+        prefix: str = "rvl",
+        storage_type: Optional[str] = "hash",
+        key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
-        super().__init__(name, storage_type, key_field, prefix, fields)
+        super().__init__(name, prefix, storage_type, key_field, fields)
 
     def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance
@@ -287,7 +310,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Raises:
             redis.exceptions.ResponseError: If the index already exists
         """
-        exists = await self._index_exists()
+        exists = await self.exists()
         if exists and overwrite:
             await self.delete()
 
@@ -330,14 +353,14 @@ class AsyncSearchIndex(SearchIndexBase):
 
         async def load(d: dict):
             async with semaphore:
-                key = self._prefix + ":" + str(d[self._key_field])
+                key = f"{self._prefix}:{self._get_key_field(d)}"
                 await self._redis_conn.hset(key, mapping=d)  # type: ignore
 
         # gather with concurrency
         await asyncio.gather(*[load(d) for d in data])
 
     @check_connected("_redis_conn")
-    async def _index_exists(self) -> bool:
+    async def exists(self) -> bool:
         """Check if the index exists in Redis
 
         Returns:

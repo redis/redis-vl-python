@@ -13,6 +13,7 @@ from redisvl.utils.utils import array_to_buffer
 class SemanticCache(BaseLLMCache):
     """Cache for Large Language Models."""
 
+    # TODO allow for user to change default fields
     _default_fields = [
         VectorField(
             "prompt_vector",
@@ -20,7 +21,6 @@ class SemanticCache(BaseLLMCache):
             {"DIM": 768, "TYPE": "FLOAT32", "DISTANCE_METRIC": "COSINE"},
         ),
     ]
-    _default_provider = HuggingfaceProvider("sentence-transformers/all-mpnet-base-v2")
 
     def __init__(
         self,
@@ -28,34 +28,72 @@ class SemanticCache(BaseLLMCache):
         prefix: str = "llmcache",
         threshold: float = 0.9,
         ttl: Optional[int] = None,
-        provider: Optional[BaseProvider] = None,
+        provider: Optional[BaseProvider] = HuggingfaceProvider(
+            "sentence-transformers/all-mpnet-base-v2"
+        ),
         redis_url: Optional[str] = "redis://localhost:6379",
         connection_args: Optional[dict] = None,
     ):
-        self._ttl = ttl
-        self._provider = provider or self._default_provider
-        self._threshold = threshold
+        """Semantic Cache for Large Language Models.
 
-        # TODO - configure logging based on verbosity
-        self._index = SearchIndex(
-            index_name, prefix=prefix, fields=self._default_fields
-        )
+        Args:
+            index_name (str, optional): The name of the index. Defaults to "cache".
+            prefix (str, optional): The prefix for the index. Defaults to "llmcache".
+            threshold (float, optional): Semantic threshold for the cache. Defaults to 0.9.
+            ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
+            provider (Optional[BaseProvider], optional): The provider for the cache.
+                Defaults to HuggingfaceProvider("sentence-transformers/all-mpnet-base-v2").
+            redis_url (Optional[str], optional): The redis url. Defaults to "redis://localhost:6379".
+            connection_args (Optional[dict], optional): The connection arguments for the redis client. Defaults to None.
+
+        Raises:
+            ValueError: If the threshold is not between 0 and 1.
+
+        """
+        self._ttl = ttl
+        self._provider = provider
+        self.set_threshold(threshold)
+
+        index = SearchIndex(name=index_name, prefix=prefix, fields=self._default_fields)
         connection_args = connection_args or {}
-        self._index.connect(url=redis_url, **connection_args)
-        self._index.create()
+        index.connect(url=redis_url, **connection_args)
+
+        # create index or connect to existing index
+        if not index.exists():
+            index.create()
+            self._index = index
+        else:
+            # TODO check prefix and fields are the same
+            client = index.client
+            self._index = SearchIndex.from_existing(client, index_name)
 
     @property
     def ttl(self) -> Optional[int]:
-        """Returns the TTL for the cache."""
+        """Returns the TTL for the cache.
+
+        Returns:
+            Optional[int]: The TTL for the cache.
+        """
         return self._ttl
 
     def set_ttl(self, ttl: int):
-        """Sets the TTL for the cache."""
+        """Sets the TTL for the cache.
+
+        Args:
+            ttl (int): The TTL for the cache.
+
+        Raises:
+            ValueError: If the TTL is not an integer.
+        """
         self._ttl = int(ttl)
 
     @property
     def index(self) -> SearchIndex:
-        """Returns the index for the cache."""
+        """Returns the index for the cache.
+
+        Returns:
+            SearchIndex: The index for the cache.
+        """
         return self._index
 
     @property
@@ -64,8 +102,17 @@ class SemanticCache(BaseLLMCache):
         return self._threshold
 
     def set_threshold(self, threshold: float):
-        """Sets the threshold for the cache."""
-        self._threshold = threshold
+        """Sets the threshold for the cache.
+
+        Args:
+            threshold (float): The threshold for the cache.
+
+        Raises:
+            ValueError: If the threshold is not between 0 and 1.
+        """
+        if not 0 <= float(threshold) <= 1:
+            raise ValueError("Threshold must be between 0 and 1.")
+        self._threshold = float(threshold)
 
     def check(
         self,
@@ -74,28 +121,32 @@ class SemanticCache(BaseLLMCache):
         num_results: int = 1,
         fields: List[str] = ["response"],
     ) -> Optional[List[str]]:
-        """Checks whether the cache contains the specified key."""
+        """Checks whether the cache contains the specified prompt or vector.
+
+        Args:
+            prompt (Optional[str], optional): The prompt to check. Defaults to None.
+            vector (Optional[List[float]], optional): The vector to check. Defaults to None.
+            num_results (int, optional): The number of results to return. Defaults to 1.
+            fields (List[str], optional): The fields to return. Defaults to ["response"].
+
+        Raises:
+            ValueError: If neither prompt nor vector is specified.
+
+        Returns:
+            Optional[List[str]]: The response(s) if the cache contains the prompt or vector.
+        """
         if not prompt and not vector:
             raise ValueError("Either prompt or vector must be specified.")
 
-        query = create_vector_query(
-            return_fields=fields,
-            vector_field_name="prompt_vector",
-            number_of_results=num_results,
-        )
-        if vector:
-            prompt_vector = array_to_buffer(vector)
-        else:
-            prompt_vector = array_to_buffer(self._provider.embed(prompt))  # type: ignore
-
-        # TODO: Come back if vector_distance is changed
-        fields.append("vector_distance")
+        if not vector:
+            vector = self._provider.embed(prompt)  # type: ignore
 
         v = VectorQuery(
-            vector=prompt_vector,
+            vector=vector,
             vector_field_name="prompt_vector",
             return_fields=fields,
-            number_of_results=num_results
+            num_results=num_results,
+            return_score=True,
         )
 
         results = self._index.search(v.query, query_params=v.params)
@@ -116,15 +167,27 @@ class SemanticCache(BaseLLMCache):
         metadata: Optional[dict] = {},
         key: Optional[str] = None,
     ) -> None:
-        """Stores the specified key-value pair in the cache along with metadata."""
+        """Stores the specified key-value pair in the cache along with metadata.
+
+        Args:
+            prompt (str): The prompt to store.
+            response (str): The response to store.
+            vector (Optional[List[float]], optional): The vector to store. Defaults to None
+            metadata (Optional[dict], optional): The metadata to store. Defaults to {}.
+            key (Optional[str], optional): The key to store. Defaults to None.
+
+        Raises:
+            ValueError: If neither prompt nor vector is specified.
+        """
         if not key:
             key = self.hash_input(prompt)
-        if vector:
-            prompt_vector = array_to_buffer(vector)
-        else:
-            prompt_vector = array_to_buffer(self._provider.embed(prompt))
 
-        payload = {"id": key, "prompt_vector": prompt_vector, "response": response}
+        if vector:
+            vector = array_to_buffer(vector)
+        else:
+            vector = self._provider.embed(prompt)  # type: ignore
+
+        payload = {"id": key, "prompt_vector": vector, "response": response}
         if metadata:
             payload.update(metadata)
         self._index.load([payload])

@@ -9,14 +9,14 @@ fields = [TagField("test")]
 
 
 def test_search_index_client(client):
-    si = SearchIndex("my_index", fields=fields)
+    si = SearchIndex("my_index", key_field="id", fields=fields)
     si.set_client(client)
 
     assert si.client is not None
 
 
 def test_search_index_create(client):
-    si = SearchIndex("my_index", fields=fields)
+    si = SearchIndex("my_index", key_field="id", fields=fields)
     si.set_client(client)
     si.create(overwrite=True)
 
@@ -27,7 +27,7 @@ def test_search_index_create(client):
 
 
 def test_search_index_delete(client):
-    si = SearchIndex("my_index", fields=fields)
+    si = SearchIndex("my_index", key_field="id", fields=fields)
     si.set_client(client)
     si.create(overwrite=True)
     si.delete()
@@ -36,18 +36,18 @@ def test_search_index_delete(client):
 
 
 def test_search_index_load(client):
-    si = SearchIndex("my_index", fields=fields)
+    si = SearchIndex("my_index", key_field="id", fields=fields)
     si.set_client(client)
     si.create(overwrite=True)
     data = [{"id": "1", "value": "test"}]
     si.load(data)
 
-    assert convert_bytes(client.hget(":1", "value")) == "test"
+    assert convert_bytes(client.hget("rvl:1", "value")) == "test"
 
 
 @pytest.mark.asyncio
 async def test_async_search_index_creation(async_client):
-    asi = AsyncSearchIndex("my_index", fields=fields)
+    asi = AsyncSearchIndex("my_index", key_field="id", fields=fields)
     asi.set_client(async_client)
 
     assert asi.client == async_client
@@ -55,7 +55,7 @@ async def test_async_search_index_creation(async_client):
 
 @pytest.mark.asyncio
 async def test_async_search_index_create(async_client):
-    asi = AsyncSearchIndex("my_index", fields=fields)
+    asi = AsyncSearchIndex("my_index", key_field="id", fields=fields)
     asi.set_client(async_client)
     await asi.create(overwrite=True)
 
@@ -65,7 +65,7 @@ async def test_async_search_index_create(async_client):
 
 @pytest.mark.asyncio
 async def test_async_search_index_delete(async_client):
-    asi = AsyncSearchIndex("my_index", fields=fields)
+    asi = AsyncSearchIndex("my_index", key_field="id", fields=fields)
     asi.set_client(async_client)
     await asi.create(overwrite=True)
     await asi.delete()
@@ -76,12 +76,12 @@ async def test_async_search_index_delete(async_client):
 
 @pytest.mark.asyncio
 async def test_async_search_index_load(async_client):
-    asi = AsyncSearchIndex("my_index", fields=fields)
+    asi = AsyncSearchIndex("my_index", key_field="id", fields=fields)
     asi.set_client(async_client)
     await asi.create(overwrite=True)
     data = [{"id": "1", "value": "test"}]
     await asi.load(data)
-    result = await async_client.hget(":1", "value")
+    result = await async_client.hget("rvl:1", "value")
     assert convert_bytes(result) == "test"
     await asi.delete()
 
@@ -90,7 +90,7 @@ async def test_async_search_index_load(async_client):
 
 
 def test_search_index_delete_nonexistent(client):
-    si = SearchIndex("my_index")
+    si = SearchIndex("my_index", key_field="id", fields=fields)
     si.set_client(client)
     with pytest.raises(redis.exceptions.ResponseError):
         si.delete()
@@ -98,7 +98,7 @@ def test_search_index_delete_nonexistent(client):
 
 @pytest.mark.asyncio
 async def test_async_search_index_delete_nonexistent(async_client):
-    asi = AsyncSearchIndex("my_index")
+    asi = AsyncSearchIndex("my_index", key_field="id", fields=fields)
     asi.set_client(async_client)
     with pytest.raises(redis.exceptions.ResponseError):
         await asi.delete()
@@ -114,13 +114,13 @@ def test_no_key_field(client):
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
     # TODO make a better error
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         si.load(bad_data)
 
 
 @pytest.mark.asyncio
 async def test_async_search_index_load_bad_data(async_client):
-    asi = AsyncSearchIndex("my_index", fields=fields)
+    asi = AsyncSearchIndex("my_index", key_field="id", fields=fields)
     asi.set_client(async_client)
     await asi.create(overwrite=True)
 

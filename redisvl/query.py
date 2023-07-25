@@ -16,7 +16,7 @@ class Filter:
     def __str__(self):
         base = "(" + self.to_string()
         if self._filters:
-            base += " ".join(self._filters)
+            base += "".join(self._filters)
         return base + ")"
 
     def __iadd__(self, other):
@@ -26,7 +26,7 @@ class Filter:
 
     def __iand__(self, other):
         "union '&='"
-        self._filters.append(f" |{other.to_string()}")
+        self._filters.append(f" | {other.to_string()}")
         return self
 
     def __isub__(self, other):
@@ -66,19 +66,18 @@ class TagFilter(Filter):
 
 
 class NumericFilter(Filter):
-
-    def __init__(self, field, minval, maxval, minExclusive=False, maxExclusive=False):
+    def __init__(self, field, minval, maxval, min_exclusive=False, max_exclusive=False):
         """Filter for Numeric fields.
 
         Args:
             field (str): The field to filter on.
             minval (int): The minimum value.
             maxval (int): The maximum value.
-            minExclusive (bool, optional): Whether the minimum value is exclusive. Defaults to False.
-            maxExclusive (bool, optional): Whether the maximum value is exclusive. Defaults to False.
+            min_exclusive (bool, optional): Whether the minimum value is exclusive. Defaults to False.
+            max_exclusive (bool, optional): Whether the maximum value is exclusive. Defaults to False.
         """
-        self.top = maxval if not maxExclusive else f"({maxval}"
-        self.bottom = minval if not minExclusive else f"{minval})"
+        self.top = maxval if not max_exclusive else f"({maxval}"
+        self.bottom = minval if not min_exclusive else f"({minval}"
         super().__init__(field)
 
     def to_string(self):
@@ -86,7 +85,6 @@ class NumericFilter(Filter):
 
 
 class TextFilter(Filter):
-
     def __init__(self, field, text: str):
         """Filter for Text fields.
         Args:
@@ -127,6 +125,8 @@ class VectorQuery(BaseQuery):
         "float64": np.float64,
     }
 
+    DISTANCE_ID = "vector_distance"
+
     def __init__(
         self,
         vector: List[float],
@@ -135,6 +135,7 @@ class VectorQuery(BaseQuery):
         hybrid_filter: Filter = None,
         dtype: str = "float32",
         num_results: Optional[int] = 10,
+        return_score: bool = True,
     ):
         """Query for vector fields
 
@@ -145,6 +146,11 @@ class VectorQuery(BaseQuery):
             hybrid_filter (Filter, optional): A filter to apply to the query. Defaults to None.
             dtype (str, optional): The dtype of the vector. Defaults to "float32".
             num_results (Optional[int], optional): The number of results to return. Defaults to 10.
+            return_score (bool, optional): Whether to return the score. Defaults to True.
+
+        Raises:
+            TypeError: If hybrid_filter is not of type redisvl.query.Filter
+
         """
         super().__init__(return_fields, num_results)
         self._vector = vector
@@ -154,6 +160,9 @@ class VectorQuery(BaseQuery):
             self.set_filter(hybrid_filter)
         else:
             self._filter = "*"
+
+        if return_score:
+            self._return_fields.append(self.DISTANCE_ID)
 
     def set_filter(self, hybrid_filter: Filter):
         """Set the filter for the query.
@@ -180,11 +189,11 @@ class VectorQuery(BaseQuery):
         Returns:
             redis.commands.search.query.Query: The query object.
         """
-        base_query = f"{self._filter}=>[KNN {self._num_results} @{self._field} $vector AS vector_distance]"
+        base_query = f"{self._filter}=>[KNN {self._num_results} @{self._field} $vector AS {self.DISTANCE_ID}]"
         query = (
             Query(base_query)
             .return_fields(*self._return_fields)
-            .sort_by("vector_distance")
+            .sort_by(self.DISTANCE_ID)
             .paging(0, self._num_results)
             .dialect(2)
         )
