@@ -6,7 +6,7 @@ from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.providers import HuggingfaceProvider
 from redisvl.providers.base import BaseProvider
-from redisvl.query import create_vector_query
+from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
 
 
@@ -87,12 +87,23 @@ class SemanticCache(BaseLLMCache):
             prompt_vector = array_to_buffer(vector)
         else:
             prompt_vector = array_to_buffer(self._provider.embed(prompt))  # type: ignore
-        results = self._index.search(query, query_params={"vector": prompt_vector})
+
+        # TODO: Come back if vector_distance is changed
+        fields.append("vector_distance")
+
+        v = VectorQuery(
+            vector=prompt_vector,
+            vector_field_name="prompt_vector",
+            return_fields=fields,
+            number_of_results=num_results
+        )
+
+        results = self._index.search(v.query, query_params=v.params)
 
         cache_hits = []
         for doc in results.docs:
             self._refresh_ttl(doc.id)
-            sim = similarity(doc.vector_score)
+            sim = similarity(doc.vector_distance)
             if sim > self.threshold:
                 cache_hits.append(doc.response)
         return cache_hits

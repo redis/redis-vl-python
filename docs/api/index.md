@@ -9,7 +9,10 @@ myst:
 
 ```{toctree}
 :caption: RedisVL
+:maxdepth: 2
 
-redisvl_api
+searchindex
+query
+filter
 ```
 
