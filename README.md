@@ -74,27 +74,27 @@ This would correspond to a dataset that looked something like
 
 With the schema, the RedisVL library can be used to create, load vectors and perform vector searches
 ```python
-import pandas as pd
 
 from redisvl.index import SearchIndex
-from redisvl.query import create_vector_query
+from redisvl.query import VectorQuery
 
-# define and create the index
-index = SearchIndex.from_yaml("./users_schema.yml"))
+# initialize the index and connect to Redis
+index = SearchIndex.from_dict(schema)
 index.connect("redis://localhost:6379")
-index.create()
 
-index.load(pd.read_csv("./users.csv").to_dict("records"))
+# create the index in Redis
+index.create(overwrite=True)
 
-query = create_vector_query(
-    ["user", "age", "job", "credit_score"],
-    number_of_results=2,
+# load data into the index in Redis (list of dicts)
+index.load(data)
+
+query = VectorQuery(
+    vector=[0.1, 0.1, 0.5],
     vector_field_name="user_embedding",
+    return_fields=["user", "age", "job", "credit_score"],
+    num_results=3,
 )
-
-query_vector = np.array([0.1, 0.1, 0.5]).tobytes()
-results = index.search(query, query_params={"vector": query_vector})
-
+results = index.search(query.query, query_params=query.params)
 
 ```
 

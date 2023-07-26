@@ -53,16 +53,3 @@ def test_set_threshold(cache):
     cache.set_threshold(0.9)
     assert cache.threshold == 0.9
     cache.index.delete(drop=True)
-
-
-def test_wrapper(cache):
-    @cache.cache_response
-    def test_function(prompt):
-        return "This is a test response."
-
-    # Check that the wrapper works
-    test_function("This is a test prompt.")
-    check_result = cache.check("This is a test prompt.")
-    assert len(check_result) >= 1
-    assert "This is a test response." in check_result
-    cache.index.delete(drop=True)

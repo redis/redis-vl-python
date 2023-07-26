@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Optional, Union
+from uuid import uuid4
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -116,7 +117,7 @@ class HNSWVectorField(BaseVectorField):
 class IndexModel(BaseModel):
     name: str = Field(...)
     prefix: str = Field(...)
-    key_field: str = Field(...)
+    key_field: Optional[str] = Field(default=None)
     storage_type: str = Field(default="hash")
 
 
