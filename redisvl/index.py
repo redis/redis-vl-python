@@ -262,7 +262,6 @@ class SearchIndex(SearchIndexBase):
                 raise TypeError("data must be an iterable of dictionaries")
 
         for record in data:
-            # TODO don't use colon if no prefix
             key = f"{self._prefix}:{self._get_key_field(record)}"
             self._redis_conn.hset(key, mapping=record)  # type: ignore
 

@@ -25,7 +25,7 @@ hybrid_queries_02
 :caption: Providers
 :maxdepth: 3
 
-embedding_creation
+providers_03
 ```
 
 ```{toctree}
