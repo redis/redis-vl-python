@@ -4,7 +4,7 @@ myst:
     "description lang=en": |
       Top-level documentation for RedisVL, with links to the rest
       of the site..
-html_theme.sidebar_secondary.remove: true
+html_theme.sidebar_secondary.remove: false
 ---
 
 # Redis Vector Library (RedisVL)
