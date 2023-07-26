@@ -1,0 +1,14 @@
+
+index:
+    name: providers
+    prefix: rvl
+    storage_type: hash
+
+fields:
+    text:
+        - name: sentence
+    vector:
+        - name: embedding
+          dims: 768
+          algorithm: flat
+          distance_metric: cosine
