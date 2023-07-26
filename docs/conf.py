@@ -72,7 +72,8 @@ html_title = "RedisVL"
 html_context = {
    "default_mode": "dark"
 }
-
+html_logo = "_static/redis-cube-red-white-rgb.svg"
+html_favicon = "_static/redis-cube-red-white-rgb.svg"
 html_context = {
     "github_user": "RedisVentures",
     "github_repo": "RedisVL",
@@ -85,6 +86,11 @@ myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 2
 
 html_theme_options = {
+    "logo": {
+        "text": "RedisVL",
+        "image_dark": "_static/redis-cube-red-white-rgb.svg",
+        "alt_text": "RedisVL",
+    },
     "use_edit_page_button": True,
     "show_toc_level": 1,
     "navbar_align": "left",  # [left, content, right] For testing that the navbar items align properly
