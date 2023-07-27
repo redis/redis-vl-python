@@ -8,11 +8,6 @@ myst:
 # User Guide
 
 
-```{danger}
-RedisVL is still under active development and is subject to change at any time.
-```
-
-
 ```{toctree}
 :caption: Introduction
 :maxdepth: 3
