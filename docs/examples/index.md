@@ -9,7 +9,7 @@ myst:
 
 
 ```{toctree}
-:caption: Getting Started
 
+openai_qna
 
 ```
