@@ -1,5 +1,16 @@
 # RedisVL: Python Client Library for Redis as a Vector Database
 
+<div align="center">
+<div display="inline-block">
+    <a href="https://github.com/RedisVentures/RedisVL"><b>Home</b></a>&nbsp;&nbsp;&nbsp;
+    <a href="https://www.redisvl.com"><b>Documentation</b></a>&nbsp;&nbsp;&nbsp;
+    <a href="https://github.com/RedisVentures"><b>More Projects</b></a>&nbsp;&nbsp;&nbsp;
+  </div>
+    <br />
+</div>
+
+
+<div align="center">
 
 [![Codecov](https://img.shields.io/codecov/c/github/RedisVentures/RedisVL/dev?label=Codecov&logo=codecov&token=E30WxqBeJJ)](https://codecov.io/gh/RedisVentures/RedisVL)
 [![License](https://img.shields.io/badge/License-BSD-3--blue.svg)](https://opensource.org/licenses/mit/)
@@ -8,9 +19,16 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/RedisVentures/RedisVL)
 ![GitHub deployments](https://img.shields.io/github/deployments/RedisVentures/RedisVL/github-pages?label=doc%20build)
 
+</div>
+
 RedisVL provides a powerful Python client library for using Redis as a Vector Database. Leverage the speed and reliability of Redis along with vector-based semantic search capabilities to supercharge your application!
 
-**Note:** This project is rapidly evolving, and the API may change frequently. Always refer to the most recent [documentation](https://www.redisvl.com).
+**Note**: This supported by Redis, Inc. on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/RedisVentures/redisvl/issues).
+
+
+------------
+
+
 ## 🚀 What is RedisVL?
 
 Vector databases have become increasingly popular in recent years due to their ability to store and retrieve vectors efficiently. However, most vector databases are complex to use and require a lot of time and effort to set up. RedisVL aims to solve this problem by providing a simple and intuitive interface for using Redis as a vector database.
