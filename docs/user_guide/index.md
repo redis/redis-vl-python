@@ -17,10 +17,10 @@ hybrid_queries_02
 ```
 
 ```{toctree}
-:caption: Providers
+:caption: Vectorizers
 :maxdepth: 3
 
-providers_03
+vectorizers_03
 ```
 
 ```{toctree}

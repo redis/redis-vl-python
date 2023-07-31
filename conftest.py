@@ -23,7 +23,7 @@ def client():
 
 @pytest.fixture
 def openai_key():
-    return os.getenv("OPENAI_KEY")
+    return os.getenv("OPENAI_API_KEY")
 
 
 @pytest.fixture(scope="session")
