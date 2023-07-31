@@ -200,6 +200,7 @@ class SemanticCache(BaseLLMCache):
         payload = {
             "id": key,
             "prompt_vector": array_to_buffer(vector),
+            "prompt": prompt,
             "response": response
         }
         if metadata:
