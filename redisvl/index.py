@@ -261,10 +261,14 @@ class SearchIndex(SearchIndexBase):
                 if not isinstance(data[0], dict):
                     raise TypeError("data must be an iterable of dictionaries")
 
+            # Check if outer interface passes in TTL on load
+            ttl = kwargs.get("ttl")
             pipe = self._redis_conn.pipeline(transaction=False)
             for record in data:
                 key = f"{self._prefix}:{self._get_key_field(record)}"
                 pipe.hset(key, mapping=record)  # type: ignore
+                if ttl:
+                    pipe.expire(key, ttl)
             pipe.execute()
 
     @check_connected("_redis_conn")

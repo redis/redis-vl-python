@@ -179,16 +179,23 @@ class SemanticCache(BaseLLMCache):
         Raises:
             ValueError: If neither prompt nor vector is specified.
         """
+        # Prepare LLMCache inputs
         if not key:
             key = self.hash_input(prompt)
 
         if not vector:
             vector = self._provider.embed(prompt)  # type: ignore
 
-        payload = {"id": key, "prompt_vector": array_to_buffer(vector), "response": response}
+        payload = {
+            "id": key,
+            "prompt_vector": array_to_buffer(vector),
+            "response": response
+        }
         if metadata:
             payload.update(metadata)
-        self._index.load([payload])
+
+        # Load LLMCache entry with TTL
+        self._index.load([payload], ttl=self._ttl)
 
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
