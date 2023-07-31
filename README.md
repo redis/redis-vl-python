@@ -141,8 +141,8 @@ cache.store("What is the capital of France?", "Paris")
 cache.check("What is the capital of France?")
 ["Paris"]
 
-# Cache will return the result if the query is similar enough
-cache.get("What really is the capital of France?")
+# Cache will still return the result if the query is similar enough
+cache.check("What really is the capital of France?")
 ["Paris"]
 ```
 

@@ -114,6 +114,10 @@ class SemanticCache(BaseLLMCache):
             raise ValueError("Threshold must be between 0 and 1.")
         self._threshold = float(threshold)
 
+    def clear(self):
+        """Clear the LLMCache and create a new underlying index."""
+        self._index.create(overwrite=True)
+
     def check(
         self,
         prompt: Optional[str] = None,
