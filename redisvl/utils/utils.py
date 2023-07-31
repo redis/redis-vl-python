@@ -1,5 +1,5 @@
 import re
-from typing import Any, List, Optional, Pattern
+from typing import Any, List, Optional, Pattern, Union
 
 import numpy as np
 
@@ -79,3 +79,7 @@ def check_redis_modules_exist(client) -> None:
 
 def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
     return np.array(array).astype(dtype).tobytes()
+
+
+def similarity(distance: Union[float, str]) -> float:
+    return 1 - float(distance)

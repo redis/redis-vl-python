@@ -5,9 +5,9 @@ from redis.commands.search.field import VectorField
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
-from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
+from redisvl.utils.utils import array_to_buffer, similarity
 
 
 class SemanticCache(BaseLLMCache):
@@ -230,7 +230,3 @@ class SemanticCache(BaseLLMCache):
                 client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
-
-
-def similarity(distance: Union[float, str]) -> float:
-    return 1 - float(distance)
