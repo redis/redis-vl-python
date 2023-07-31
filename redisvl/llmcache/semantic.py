@@ -153,9 +153,9 @@ class SemanticCache(BaseLLMCache):
 
         cache_hits = []
         for doc in results.docs:
-            self._refresh_ttl(doc.id)
             sim = similarity(doc.vector_distance)
             if sim > self.threshold:
+                self._refresh_ttl(doc.id)
                 cache_hits.append(doc.response)
         return cache_hits
 
