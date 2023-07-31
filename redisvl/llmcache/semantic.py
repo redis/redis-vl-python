@@ -182,12 +182,10 @@ class SemanticCache(BaseLLMCache):
         if not key:
             key = self.hash_input(prompt)
 
-        if vector:
-            vector = array_to_buffer(vector)
-        else:
+        if not vector:
             vector = self._provider.embed(prompt)  # type: ignore
 
-        payload = {"id": key, "prompt_vector": vector, "response": response}
+        payload = {"id": key, "prompt_vector": array_to_buffer(vector), "response": response}
         if metadata:
             payload.update(metadata)
         self._index.load([payload])
