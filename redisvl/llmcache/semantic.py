@@ -195,9 +195,8 @@ class SemanticCache(BaseLLMCache):
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
         client = self._index.client
-        if client:
-            if self.ttl:
-                client.expire(key, self.ttl)
+        if client and self.ttl:
+            client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
