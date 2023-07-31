@@ -4,8 +4,8 @@ from redis.commands.search.field import VectorField
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
-from redisvl.providers import HuggingfaceProvider
-from redisvl.providers.base import BaseProvider
+from redisvl.embed.text import HuggingfaceTextEmbeddings
+from redisvl.embed.text.base import BaseTextEmbeddings
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
 
@@ -28,7 +28,7 @@ class SemanticCache(BaseLLMCache):
         prefix: str = "llmcache",
         threshold: float = 0.9,
         ttl: Optional[int] = None,
-        provider: Optional[BaseProvider] = HuggingfaceProvider(
+        provider: Optional[BaseTextEmbeddings] = HuggingfaceTextEmbeddings(
             "sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: Optional[str] = "redis://localhost:6379",

@@ -2,12 +2,12 @@ import pytest
 
 from time import sleep
 from redisvl.llmcache.semantic import SemanticCache
-from redisvl.providers import HuggingfaceProvider
+from redisvl.embed.text import HuggingfaceTextEmbeddings
 
 
 @pytest.fixture
 def provider():
-    return HuggingfaceProvider("sentence-transformers/all-mpnet-base-v2")
+    return HuggingfaceTextEmbeddings("sentence-transformers/all-mpnet-base-v2")
 
 @pytest.fixture
 def cache(provider):

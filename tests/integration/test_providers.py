@@ -1,14 +1,14 @@
 import pytest
 
-from redisvl.providers import HuggingfaceProvider, OpenAIProvider
+from redisvl.embed.text import HuggingfaceTextEmbeddings, OpenAITextEmbeddings
 
 
-@pytest.fixture(params=[HuggingfaceProvider, OpenAIProvider])
+@pytest.fixture(params=[HuggingfaceTextEmbeddings, OpenAITextEmbeddings])
 def provider(request, openai_key):
     # Here we use actual models for integration test
-    if request.param == HuggingfaceProvider:
+    if request.param == HuggingfaceTextEmbeddings:
         return request.param(model="sentence-transformers/all-mpnet-base-v2")
-    elif request.param == OpenAIProvider:
+    elif request.param == OpenAITextEmbeddings:
         return request.param(
             model="text-embedding-ada-002", api_config={"api_key": openai_key}
         )
@@ -33,10 +33,10 @@ def test_provider_embed_many(provider):
     )
 
 
-@pytest.fixture(params=[OpenAIProvider])
+@pytest.fixture(params=[OpenAITextEmbeddings])
 def aprovider(request, openai_key):
     # Here we use actual models for integration test
-    if request.param == OpenAIProvider:
+    if request.param == OpenAITextEmbeddings:
         return request.param(
             model="text-embedding-ada-002", api_config={"api_key": openai_key}
         )
