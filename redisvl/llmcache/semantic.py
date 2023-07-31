@@ -116,7 +116,7 @@ class SemanticCache(BaseLLMCache):
 
     def clear(self):
         """Clear the LLMCache and create a new underlying index."""
-        self._index.create(overwrite=True)
+        self._index.delete(drop=True)
 
     def check(
         self,
