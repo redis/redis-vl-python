@@ -24,48 +24,67 @@ class SemanticCache(BaseLLMCache):
 
     def __init__(
         self,
-        index_name: str = "cache",
-        prefix: str = "llmcache",
-        threshold: float = 0.9,
+        index_name: Optional[str] = "cache",
+        prefix: Optional[str] = "llmcache",
+        threshold: Optional[float] = 0.9,
         ttl: Optional[int] = None,
         vectorizer: Optional[BaseVectorizer] = HuggingfaceVectorizer(
             "sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: Optional[str] = "redis://localhost:6379",
         connection_args: Optional[dict] = None,
+        index: Optional[SearchIndex] = None
     ):
         """Semantic Cache for Large Language Models.
 
         Args:
-            index_name (str, optional): The name of the index. Defaults to "cache".
-            prefix (str, optional): The prefix for the index. Defaults to "llmcache".
-            threshold (float, optional): Semantic threshold for the cache. Defaults to 0.9.
+            index_name (Optional[str], optional): The name of the index. Defaults to "cache".
+            prefix (Optional[str], optional): The prefix for the index. Defaults to "llmcache".
+            threshold (Optional[float], optional): Semantic threshold for the cache. Defaults to 0.9.
             ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
                 Defaults to HuggingfaceVectorizer("sentence-transformers/all-mpnet-base-v2").
             redis_url (Optional[str], optional): The redis url. Defaults to "redis://localhost:6379".
             connection_args (Optional[dict], optional): The connection arguments for the redis client. Defaults to None.
+            index (Optional[SearchIndex], optional): The underlying search index to use for the semantic cache. Defaults to None.
 
         Raises:
             ValueError: If the threshold is not between 0 and 1.
-
+            ValueError: If the index name or prefix is not supplied when constructing index manually.
         """
         self._ttl = ttl
         self._vectorizer = vectorizer
         self.set_threshold(threshold)
-
-        index = SearchIndex(name=index_name, prefix=prefix, fields=self._default_fields)
         connection_args = connection_args or {}
-        index.connect(url=redis_url, **connection_args)
 
-        # create index or connect to existing index
+        if not index:
+            if index_name and prefix:
+                index = SearchIndex(name=index_name, prefix=prefix, fields=self._default_fields)
+                index.connect(url=redis_url, **connection_args)
+            else:
+                raise ValueError("Index name and prefix must be provided if not constructing from an existing index.")
+
+        # create index if non-existent
         if not index.exists():
             index.create()
-            self._index = index
-        else:
-            # TODO check prefix and fields are the same
-            client = index.client
-            self._index = SearchIndex.from_existing(client, index_name)
+
+        self._index = index
+
+
+    @classmethod
+    def from_index(cls, index: SearchIndex, **kwargs):
+        """Create a SemanticCache from a pre-existing SearchIndex.
+
+        Args:
+            index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
+
+        Returns:
+            SemanticCache: A SemanticCache object.
+        """
+        return cls(
+            index=index,
+            **kwargs
+        )
 
     @property
     def ttl(self) -> Optional[int]:
@@ -176,7 +195,6 @@ class SemanticCache(BaseLLMCache):
         response: str,
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
-        key: Optional[str] = None,
     ) -> None:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -191,12 +209,13 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither prompt nor vector is specified.
         """
         # Prepare LLMCache inputs
-        if not key:
-            key = self.hash_input(prompt)
+        key = self.hash_input(prompt)
 
         if not vector:
+            # TODO - do we need to allow custom vector and custom key???
             vector = self._vectorizer.embed(prompt)  # type: ignore
 
+        # TODO - what about schema mismatch???
         payload = {
             "id": key,
             "prompt_vector": array_to_buffer(vector),
@@ -207,7 +226,7 @@ class SemanticCache(BaseLLMCache):
             payload.update(metadata)
 
         # Load LLMCache entry with TTL
-        self._index.load([payload], ttl=self._ttl)
+        self._index.load([payload], ttl=self._ttl, key_field="id")
 
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""

@@ -1,9 +1,16 @@
 import hashlib
 from typing import Callable, List, Optional
 
+from redisvl.index import SearchIndex
+
 
 class BaseLLMCache:
     verbose: bool = True
+
+    @classmethod
+    def from_index(cls, index: SearchIndex, **kwargs):
+        """Create a SemanticCache from a pre-existing SearchIndex."""
+        raise NotImplementedError
 
     def clear(self):
         """Clear the LLMCache and create a new underlying index."""
@@ -18,7 +25,6 @@ class BaseLLMCache:
         response: str,
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
-        key: Optional[str] = None,
     ) -> None:
         """Stores the specified key-value pair in the cache along with metadata."""
         raise NotImplementedError

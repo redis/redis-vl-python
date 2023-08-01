@@ -1,8 +1,11 @@
 import pytest
 
 from time import sleep
+
+from redisvl.index import SearchIndex
 from redisvl.llmcache.semantic import SemanticCache
 from redisvl.vectorize.text import HuggingfaceVectorizer
+
 
 
 @pytest.fixture
@@ -70,7 +73,27 @@ def test_set_threshold(cache):
     assert cache.threshold == 0.9
     cache._index.delete(True)
 
-def test_from_existing(cache, vector, vectorizer):
+
+
+def test_from_index(client, vector):
+    # Create customer index
+    index = SearchIndex(name="test", fields=SemanticCache._default_fields)
+    index.set_client(client)
+    index.create(overwrite=True)
+
+    cache = SemanticCache.from_index(index)
+    assert cache._index == index
+
+    cache.store("test", "test", vector=vector)
+    check_result = cache.check(vector=vector)
+    assert len(check_result) >= 1
+
+    cache.clear()
+    check_result = cache.check(vector=vector)
+    assert len(check_result) == 0
+
+
+def test_from_existing_cache(cache, vector, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
     metadata = {"source": "test"}
