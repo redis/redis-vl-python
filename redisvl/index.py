@@ -254,9 +254,8 @@ class SearchIndex(SearchIndexBase):
                 containing the data to be indexed
         raises:
             redis.exceptions.ResponseError: If the index does not exist
-
-        # TODO -- should we return a count of the upserts? or some kind of metadata?
         """
+        # TODO -- should we return a count of the upserts? or some kind of metadata?
         if data:
             if not isinstance(data, Iterable):
                 if not isinstance(data[0], dict):
