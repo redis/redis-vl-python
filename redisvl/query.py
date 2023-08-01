@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-
+import base64
 import numpy as np
 from redis.commands.search.query import Query
 
@@ -19,22 +19,22 @@ class Filter:
             base += "".join(self._filters)
         return base + ")"
 
-    def __iadd__(self, other):
+    def __iadd__(self, other) -> "Filter":
         "intersection '+='"
         self._filters.append(f" {other.to_string()}")
         return self
 
-    def __iand__(self, other):
+    def __iand__(self, other) -> "Filter":
         "union '&='"
         self._filters.append(f" | {other.to_string()}")
         return self
 
-    def __isub__(self, other):
+    def __isub__(self, other) -> "Filter":
         "subtract '-='"
         self._filters.append(f" -{other.to_string()}")
         return self
 
-    def __ixor__(self, other):
+    def __ixor__(self, other) -> "Filter":
         "With optional '^='"
         self._filters.append(f" ~{other.to_string()}")
         return self
@@ -174,7 +174,7 @@ class VectorQuery(BaseQuery):
             raise TypeError("hybrid_filter must be of type redisvl.query.Filter")
         self._filter = str(hybrid_filter)
 
-    def get_filter(self):
+    def get_filter(self) -> Filter:
         """Get the filter for the query.
 
         Returns:
@@ -182,8 +182,12 @@ class VectorQuery(BaseQuery):
         """
         return self._filter
 
+
+    def __str__(self):
+        return " ".join([str(x) for x in self.query.get_args()])
+
     @property
-    def query(self):
+    def query(self) -> Query:
         """Return a Redis-Py Query object representing the query.
 
         Returns:
@@ -200,7 +204,7 @@ class VectorQuery(BaseQuery):
         return query
 
     @property
-    def params(self):
+    def params(self) -> Dict[str, Any]:
         """Return the parameters for the query.
 
         Returns:
