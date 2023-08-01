@@ -115,8 +115,15 @@ class SemanticCache(BaseLLMCache):
         self._threshold = float(threshold)
 
     def clear(self):
-        """Clear the LLMCache and create a new underlying index."""
-        self._index.delete(drop=True)
+        """Clear the LLMCache of all keys in the index"""
+        client = self._index.client
+        if client:
+            pipe = client.pipeline()
+            for key in client.scan_iter(match=f"{self._index._prefix}:*"):
+                pipe.delete(key)
+            pipe.execute()
+        else:
+            raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
     def check(
         self,
@@ -209,7 +216,6 @@ class SemanticCache(BaseLLMCache):
                 client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
-
 
 def similarity(distance: Union[float, str]) -> float:
     return 1 - float(distance)
