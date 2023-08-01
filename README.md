@@ -67,7 +67,6 @@ index:
   name: user_index
   storage_type: hash
   prefix: users
-  key_field: user
 
 fields:
   # define tag fields

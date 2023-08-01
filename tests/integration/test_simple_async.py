@@ -39,7 +39,6 @@ schema = {
     "index": {
         "name": "user_index",
         "prefix": "users",
-        "key_field": "id",
         "storage_type": "hash",
     },
     "fields": {
