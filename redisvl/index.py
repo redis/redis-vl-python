@@ -254,6 +254,7 @@ class SearchIndex(SearchIndexBase):
                 containing the data to be indexed
         raises:
             redis.exceptions.ResponseError: If the index does not exist
+
         # TODO -- should we return a count of the upserts? or some kind of metadata?
         """
         if data:
@@ -344,7 +345,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
-    async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10):
+    async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10, **kwargs):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
@@ -354,12 +355,15 @@ class AsyncSearchIndex(SearchIndexBase):
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
+        ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
 
         async def _load(d: dict):
             async with semaphore:
                 key = f"{self._prefix}:{self._get_key_field(d)}"
                 await self._redis_conn.hset(key, mapping=d)  # type: ignore
+                if ttl:
+                    await self._redis_conn.expire(key, ttl)
 
         # gather with concurrency
         await asyncio.gather(*[_load(d) for d in data])
