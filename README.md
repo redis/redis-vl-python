@@ -42,7 +42,7 @@ RedisVL has a host of powerful features designed to streamline your vector datab
 
 1. **Index Management**: RedisVL allows for indices to be created, updated, and deleted with ease. A schema for each index can be defined in yaml or directly in python code and used throughout the lifetime of the index.
 
-2. **Vector Creation**: RedisVL integrates with OpenAI and other text embedding providers to make the process of creating vectors straightforward. *Image support coming soon.*
+2. **Embedding Creation**: RedisVL integrates with OpenAI and other text embedding providers to simplify the process of vectorizing unstructured data. *Image support coming soon.*
 
 3. **Vector Search**: RedisVL provides robust search capabilities that enable you to query vectors synchronously and asynchronously. Hybrid queries that utilize tag, geographic, numeric, and other filters like full-text search are also supported.
 

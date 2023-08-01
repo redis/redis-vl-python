@@ -2,24 +2,24 @@ import pytest
 
 from time import sleep
 from redisvl.llmcache.semantic import SemanticCache
-from redisvl.embed.text import HuggingfaceTextEmbeddings
+from redisvl.vectorize import HuggingfaceVectorizer
 
 
 @pytest.fixture
-def provider():
-    return HuggingfaceTextEmbeddings("sentence-transformers/all-mpnet-base-v2")
+def vectorizer():
+    return HuggingfaceVectorizer("sentence-transformers/all-mpnet-base-v2")
 
 @pytest.fixture
-def cache(provider):
-    return SemanticCache(provider=provider, threshold=0.8)
+def cache(vectorizer):
+    return SemanticCache(vectorizer=vectorizer, threshold=0.8)
 
 @pytest.fixture
 def cache_with_ttl(provider):
     return SemanticCache(provider=provider, threshold=0.8, ttl=2)
 
 @pytest.fixture
-def vector(provider):
-    return provider.embed("This is a test sentence.")
+def vector(vectorizer):
+    return vectorizer.embed("This is a test sentence.")
 
 
 def test_store_and_check_and_clear(cache, vector):

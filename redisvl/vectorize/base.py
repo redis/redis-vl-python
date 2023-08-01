@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
 
-class BaseTextEmbeddings:
+class BaseVectorizer:
     def __init__(self, model: str, dims: int, api_config: Optional[Dict] = None):
         self._dims = dims
         self._model = model

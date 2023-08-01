@@ -1,9 +1,9 @@
 from typing import Callable, Dict, List, Optional
 
-from redisvl.embed.text.base import BaseTextEmbeddings
+from redisvl.vectorize.base import BaseVectorizer
 
 
-class HuggingfaceTextEmbeddings(BaseTextEmbeddings):
+class HuggingfaceVectorizer(BaseVectorizer):
     def __init__(self, model: str, api_config: Optional[Dict] = None):
         # TODO set dims based on model
         dims = 768
@@ -12,7 +12,7 @@ class HuggingfaceTextEmbeddings(BaseTextEmbeddings):
             from sentence_transformers import SentenceTransformer
         except ImportError:
             raise ImportError(
-                "Huggingface provider requires sentence-transformers library. Please install with pip install sentence-transformers"
+                "Huggingface vectorizer requires sentence-transformers library. Please install with pip install sentence-transformers"
             )
 
         self._model_client = SentenceTransformer(model)
