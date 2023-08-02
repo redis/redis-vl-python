@@ -1,9 +1,9 @@
 from typing import Callable, Dict, List, Optional
 
-from redisvl.providers.base import BaseProvider
+from redisvl.vectorize.base import BaseVectorizer
 
 
-class OpenAIProvider(BaseProvider):
+class OpenAITextVectorizer(BaseVectorizer):
     def __init__(self, model: str, api_config: Optional[Dict] = None):
         dims = 1536
         super().__init__(model, dims, api_config)
@@ -13,7 +13,7 @@ class OpenAIProvider(BaseProvider):
             import openai
         except ImportError:
             raise ImportError(
-                "OpenAI provider requires openai library. Please install with pip install openai"
+                "OpenAI vectorizer requires openai library. Please install with pip install openai"
             )
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding

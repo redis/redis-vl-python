@@ -4,8 +4,8 @@ from redis.commands.search.field import VectorField
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
-from redisvl.providers import HuggingfaceProvider
-from redisvl.providers.base import BaseProvider
+from redisvl.vectorize.text import HFTextVectorizer
+from redisvl.vectorize.base import BaseVectorizer
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
 
@@ -28,7 +28,7 @@ class SemanticCache(BaseLLMCache):
         prefix: str = "llmcache",
         threshold: float = 0.9,
         ttl: Optional[int] = None,
-        provider: Optional[BaseProvider] = HuggingfaceProvider(
+        vectorizer: Optional[BaseVectorizer] = HFTextVectorizer(
             "sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: Optional[str] = "redis://localhost:6379",
@@ -41,8 +41,8 @@ class SemanticCache(BaseLLMCache):
             prefix (str, optional): The prefix for the index. Defaults to "llmcache".
             threshold (float, optional): Semantic threshold for the cache. Defaults to 0.9.
             ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
-            provider (Optional[BaseProvider], optional): The provider for the cache.
-                Defaults to HuggingfaceProvider("sentence-transformers/all-mpnet-base-v2").
+            vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
+                Defaults to HFTextVectorizer("sentence-transformers/all-mpnet-base-v2").
             redis_url (Optional[str], optional): The redis url. Defaults to "redis://localhost:6379".
             connection_args (Optional[dict], optional): The connection arguments for the redis client. Defaults to None.
 
@@ -51,7 +51,7 @@ class SemanticCache(BaseLLMCache):
 
         """
         self._ttl = ttl
-        self._provider = provider
+        self._vectorizer = vectorizer
         self.set_threshold(threshold)
 
         index = SearchIndex(name=index_name, prefix=prefix, fields=self._default_fields)
@@ -150,7 +150,7 @@ class SemanticCache(BaseLLMCache):
             raise ValueError("Either prompt or vector must be specified.")
 
         if not vector:
-            vector = self._provider.embed(prompt)  # type: ignore
+            vector = self._vectorizer.embed(prompt)  # type: ignore
 
         v = VectorQuery(
             vector=vector,
@@ -195,7 +195,7 @@ class SemanticCache(BaseLLMCache):
             key = self.hash_input(prompt)
 
         if not vector:
-            vector = self._provider.embed(prompt)  # type: ignore
+            vector = self._vectorizer.embed(prompt)  # type: ignore
 
         payload = {
             "id": key,

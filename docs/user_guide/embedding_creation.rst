@@ -4,22 +4,17 @@
 Embedding Providers
 ===================
 
-RedisVL enables you to call out to embedding providers
+RedisVL enables you to vectorize unstructured data by calling out to embedding providers:
 
 
 OpenAI
 ======
 
-OpenAI is a commercial service that provides access to a number of models
+[OpenAI](https://platform.openai.com) is a commercial service that provides access to a number of models.
 
 
 HuggingFace
 ===========
 
-HuggingFace is a commercial service that provides access to a number of models
+[HuggingFace](https://huggingface.co) is a commercial service that provides access to a number of models.
 
-
-Cohere
-======
-
-Cohere is a commercial service that provides access to a number of models

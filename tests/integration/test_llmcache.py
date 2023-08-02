@@ -2,24 +2,24 @@ import pytest
 
 from time import sleep
 from redisvl.llmcache.semantic import SemanticCache
-from redisvl.providers import HuggingfaceProvider
+from redisvl.vectorize.text import HFTextVectorizer
 
 
 @pytest.fixture
-def provider():
-    return HuggingfaceProvider("sentence-transformers/all-mpnet-base-v2")
+def vectorizer():
+    return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
 
 @pytest.fixture
-def cache(provider):
-    return SemanticCache(provider=provider, threshold=0.8)
+def cache(vectorizer):
+    return SemanticCache(vectorizer=vectorizer, threshold=0.8)
 
 @pytest.fixture
-def cache_with_ttl(provider):
-    return SemanticCache(provider=provider, threshold=0.8, ttl=2)
+def cache_with_ttl(vectorizer):
+    return SemanticCache(vectorizer=vectorizer, threshold=0.8, ttl=2)
 
 @pytest.fixture
-def vector(provider):
-    return provider.embed("This is a test sentence.")
+def vector(vectorizer):
+    return vectorizer.embed("This is a test sentence.")
 
 
 def test_store_and_check_and_clear(cache, vector):
@@ -70,13 +70,13 @@ def test_set_threshold(cache):
     assert cache.threshold == 0.9
     cache._index.delete(True)
 
-def test_from_existing(cache, vector, provider):
+def test_from_existing(cache, vector, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
     metadata = {"source": "test"}
     cache.store(prompt, response, vector=vector, metadata=metadata)
     # connect from existing?
-    new_cache = SemanticCache(provider=provider, threshold=0.8)
+    new_cache = SemanticCache(vectorizer=vectorizer, threshold=0.8)
     check_result = new_cache.check(vector=vector)
     assert len(check_result) >= 1
     assert response in check_result

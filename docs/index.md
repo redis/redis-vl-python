@@ -21,7 +21,7 @@ to supercharge your application!
 - header: "{fas}`bolt;pst-color-primary` Vector Search"
   content: "Simple vector search capabilities supporting synchronous and asyncronous search."
 - header: "{fas}`circle-half-stroke;pst-color-primary` Embedding Creation"
-  content: "User OpenAI or any of the other embedding providers to create embeddings"
+  content: "User OpenAI or any of the other supported vectorizers to create embeddings"
 - header: "{fas}`palette;pst-color-primary` CLI"
   content: "Command line interface for RedisVL makes interacting with Redis as a vector database easy."
 - header: "{fab}`python;pst-color-primary` Semantic Caching"

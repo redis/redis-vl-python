@@ -42,11 +42,12 @@ RedisVL has a host of powerful features designed to streamline your vector datab
 
 1. **Index Management**: RedisVL allows for indices to be created, updated, and deleted with ease. A schema for each index can be defined in yaml or directly in python code and used throughout the lifetime of the index.
 
-2. **Vector Creation**: RedisVL integrates with OpenAI and other embedding providers to make the process of creating vectors straightforward.
+2. **Embedding Creation**: RedisVL integrates with OpenAI and other text embedding providers to simplify the process of vectorizing unstructured data. *Image support coming soon.*
 
 3. **Vector Search**: RedisVL provides robust search capabilities that enable you to query vectors synchronously and asynchronously. Hybrid queries that utilize tag, geographic, numeric, and other filters like full-text search are also supported.
 
-4. **Semantic Caching**: ``LLMCache`` is a semantic caching interface built directly into RedisVL. It allows for the caching of generated output from LLM models like GPT-3 and others. As semantic search is used to check the cache, a threshold can be set to determine if the cached result is relevant enough to be returned. If not, the model is called and the result is cached for future use. This can increase the QPS and reduce the cost of using LLM models.
+4. **Powerful Abstractions**
+    - **Semantic Caching**: `LLMCache` is a semantic caching interface built directly into RedisVL. It allows for the caching of generated output from LLMs like GPT-3 and others. As semantic search is used to check the cache, a threshold can be set to determine if the cached result is relevant enough to be returned. If not, the model is called and the result is cached for future use. This can increase the QPS and reduce the cost of using LLM models in production.
 
 
 ## 😊 Quick Start
@@ -125,6 +126,7 @@ The ``LLMCache`` Interface in RedisVL can be used as follows.
 
 ```python
 from redisvl.llmcache.semantic import SemanticCache
+
 cache = SemanticCache(
   redis_url="redis://localhost:6379",
   threshold=0.9, # semantic similarity threshold
