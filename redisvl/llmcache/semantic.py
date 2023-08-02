@@ -4,7 +4,7 @@ from redis.commands.search.field import VectorField
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
-from redisvl.vectorize import HuggingfaceVectorizer
+from redisvl.vectorize.text import HuggingfaceVectorizer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer

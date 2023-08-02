@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from redisvl.vectorize import HuggingfaceVectorizer, OpenAIVectorizer
+from redisvl.vectorize.text import HuggingfaceVectorizer, OpenAIVectorizer
 
 @pytest.fixture
 def openai_key():

@@ -2,7 +2,7 @@ import pytest
 
 from time import sleep
 from redisvl.llmcache.semantic import SemanticCache
-from redisvl.vectorize import HuggingfaceVectorizer
+from redisvl.vectorize.text import HuggingfaceVectorizer
 
 
 @pytest.fixture
