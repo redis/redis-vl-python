@@ -16,9 +16,12 @@ SearchIndex
     SearchIndex.from_yaml
     SearchIndex.from_dict
     SearchIndex.from_existing
+    SearchIndex.search
+    SearchIndex.query
     SearchIndex.create
     SearchIndex.delete
     SearchIndex.load
+    SearchIndex.client
     SearchIndex.connect
     SearchIndex.disconnect
     SearchIndex.info
@@ -27,6 +30,7 @@ SearchIndex
 
 .. autoclass:: SearchIndex
    :show-inheritance:
+   :inherited-members:
    :members:
 
 
@@ -43,6 +47,8 @@ AsyncSearchIndex
     AsyncSearchIndex.from_yaml
     AsyncSearchIndex.from_dict
     AsyncSearchIndex.from_existing
+    AsyncSearchIndex.search
+    AsyncSearchIndex.query
     AsyncSearchIndex.create
     AsyncSearchIndex.delete
     AsyncSearchIndex.load
@@ -54,6 +60,7 @@ AsyncSearchIndex
 
 .. autoclass:: AsyncSearchIndex
    :show-inheritance:
+   :inherited-members:
    :members:
 
 

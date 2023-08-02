@@ -4,10 +4,12 @@ from uuid import uuid4
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
+    from redis.commands.search.result import Result
 
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
+from redisvl.query import BaseQuery
 from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import (
     check_connected,
@@ -39,20 +41,43 @@ class SearchIndexBase:
     @property
     @check_connected("_redis_conn")
     def client(self) -> redis.Redis:
+        """The redis-py client object
+
+        Returns:
+            redis.Redis: The redis-py client object
+        """
         return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
-    def search(self, *args, **kwargs):
+    def search(self, *args, **kwargs) -> List["Result"]:
         """Perform a search on this index
 
         Wrapper around redis.search.Search that adds the index name
-        to the search query. This is a convenience method to avoid
-        having to specify the index name in every search query.
+        to the search query and passes along the rest of the arguments
+        to the redis-py ft.search() method.
 
         Returns:
-            Search: A search object for this index
+            List[Result]: A list of search results
         """
         return self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+
+    @check_connected("_redis_conn")
+    def query(self, query: BaseQuery) -> List["Result"]:
+        """Run a query on this index
+
+        This is similar to the search method, but takes a BaseQuery
+        object directly and does not allow for the usage of a raw
+        redis query string.
+
+        Args:
+            query (BaseQuery): The query to run
+
+        Returns:
+            List[Result]: A list of search results
+        """
+        return self._redis_conn.ft(self._name).search(query.query,
+                                                      query_params=query.params)
+
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -179,6 +204,18 @@ class SearchIndexBase:
 
 
 class SearchIndex(SearchIndexBase):
+    """A class for interacting with Redis as a vector database
+
+    This class is a wrapper around the redis-py client that provides
+    purpose-built methods for interacting with Redis as a vector database.
+
+    Example:
+        >>> from redisvl.index import SearchIndex
+        >>> index = SearchIndex.from_yaml("schema.yaml")
+        >>> index.create(overwrite=True)
+        >>> index.load(data) # data is an iterable of dictionaries
+    """
+
     def __init__(
         self,
         name: str,
@@ -187,6 +224,15 @@ class SearchIndex(SearchIndexBase):
         key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
+        """Create a SearchIndex object
+
+        Args:
+            name (str): The name of the index
+            prefix (str, optional): The prefix to use for the index. Defaults to "rvl".
+            storage_type (str, optional): Redis data structure to use loaded data. Defaults to "hash".
+            key_field (str, optional): field name of value within loaded records to use as key. Defaults to UUID4.hex
+            fields (List[Field], optional): A list of Field objects. Defaults to None.
+        """
         super().__init__(name, prefix, storage_type, key_field, fields)
 
     def connect(self, url: Optional[str] = None, **kwargs):
@@ -283,6 +329,18 @@ class SearchIndex(SearchIndexBase):
 
 
 class AsyncSearchIndex(SearchIndexBase):
+    """A class for interacting with Redis as a vector database asynchronously
+
+    This class is a wrapper around the redis-py client that provides
+    purpose-built methods for interacting with Redis as a vector database.
+
+    Example:
+        >>> from redisvl.index import AsyncSearchIndex
+        >>> index = AsyncSearchIndex.from_yaml("schema.yaml")
+        >>> index.create(overwrite=True)
+        >>> index.load(data) # data is an iterable of dictionaries
+    """
+
     def __init__(
         self,
         name: str,
@@ -291,6 +349,15 @@ class AsyncSearchIndex(SearchIndexBase):
         key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
+        """Create a SearchIndex object
+
+        Args:
+            name (str): The name of the index
+            prefix (str, optional): The prefix to use for the index. Defaults to "rvl".
+            storage_type (str, optional): Redis data structure to use loaded data. Defaults to "hash".
+            key_field (str, optional): field name of value within loaded records to use as key. Defaults to UUID4.hex
+            fields (List[Field], optional): A list of Field objects. Defaults to None.
+        """
         super().__init__(name, prefix, storage_type, key_field, fields)
 
     def connect(self, url: Optional[str] = None, **kwargs):
