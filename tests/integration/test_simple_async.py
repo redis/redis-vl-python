@@ -81,6 +81,8 @@ async def test_simple(async_client):
     )
 
     results = await index.search(query.query, query_params=query.params)
+    results_2 = await index.query(query)
+    assert len(results.docs) == len(results_2.docs)
 
     # make sure correct users returned
     # users = list(results.docs)
