@@ -194,9 +194,7 @@ class SemanticCache(BaseLLMCache):
         if not key:
             key = self.hash_input(prompt)
 
-        if vector:
-            vector = array_to_buffer(vector)
-        else:
+        if not vector:
             vector = self._vectorizer.embed(prompt)  # type: ignore
 
         payload = {
