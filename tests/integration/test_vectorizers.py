@@ -3,9 +3,7 @@ import pytest
 
 from redisvl.vectorize.text import HFTextVectorizer, OpenAITextVectorizer
 
-@pytest.fixture
-def openai_key():
-    return os.getenv("OPENAI_API_KEY")
+
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer])
 def vectorizer(request, openai_key):
