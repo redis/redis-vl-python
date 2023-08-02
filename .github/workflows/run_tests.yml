@@ -37,7 +37,7 @@ jobs:
         echo REDIS_ADDRESS=$REDIS_ADDRESS >> $GITHUB_ENV
     - name: Run tests
       env:
-        OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
       run: |
         make test-cov
     - name: Publish coverage results
