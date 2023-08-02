@@ -255,15 +255,21 @@ class SearchIndex(SearchIndexBase):
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
-        if not data:
-            return
-        if not isinstance(data, Iterable):
-            if not isinstance(data[0], dict):
-                raise TypeError("data must be an iterable of dictionaries")
+        # TODO -- should we return a count of the upserts? or some kind of metadata?
+        if data:
+            if not isinstance(data, Iterable):
+                if not isinstance(data[0], dict):
+                    raise TypeError("data must be an iterable of dictionaries")
 
-        for record in data:
-            key = f"{self._prefix}:{self._get_key_field(record)}"
-            self._redis_conn.hset(key, mapping=record)  # type: ignore
+            # Check if outer interface passes in TTL on load
+            ttl = kwargs.get("ttl")
+            pipe = self._redis_conn.pipeline(transaction=False)
+            for record in data:
+                key = f"{self._prefix}:{self._get_key_field(record)}"
+                pipe.hset(key, mapping=record)  # type: ignore
+                if ttl:
+                    pipe.expire(key, ttl)
+            pipe.execute()
 
     @check_connected("_redis_conn")
     def exists(self) -> bool:
@@ -338,7 +344,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
-    async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10):
+    async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10, **kwargs):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
@@ -348,15 +354,18 @@ class AsyncSearchIndex(SearchIndexBase):
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
+        ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
 
-        async def load(d: dict):
+        async def _load(d: dict):
             async with semaphore:
                 key = f"{self._prefix}:{self._get_key_field(d)}"
                 await self._redis_conn.hset(key, mapping=d)  # type: ignore
+                if ttl:
+                    await self._redis_conn.expire(key, ttl)
 
         # gather with concurrency
-        await asyncio.gather(*[load(d) for d in data])
+        await asyncio.gather(*[_load(d) for d in data])
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:

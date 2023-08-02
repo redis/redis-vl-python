@@ -114,6 +114,17 @@ class SemanticCache(BaseLLMCache):
             raise ValueError("Threshold must be between 0 and 1.")
         self._threshold = float(threshold)
 
+    def clear(self):
+        """Clear the LLMCache of all keys in the index"""
+        client = self._index.client
+        if client:
+            pipe = client.pipeline()
+            for key in client.scan_iter(match=f"{self._index._prefix}:*"):
+                pipe.delete(key)
+            pipe.execute()
+        else:
+            raise RuntimeError("LLMCache is not connected to a Redis instance.")
+
     def check(
         self,
         prompt: Optional[str] = None,
@@ -153,9 +164,9 @@ class SemanticCache(BaseLLMCache):
 
         cache_hits = []
         for doc in results.docs:
-            self._refresh_ttl(doc.id)
             sim = similarity(doc.vector_distance)
             if sim > self.threshold:
+                self._refresh_ttl(doc.id)
                 cache_hits.append(doc.response)
         return cache_hits
 
@@ -179,18 +190,23 @@ class SemanticCache(BaseLLMCache):
         Raises:
             ValueError: If neither prompt nor vector is specified.
         """
+        # Prepare LLMCache inputs
         if not key:
             key = self.hash_input(prompt)
 
-        if vector:
-            vector = array_to_buffer(vector)
-        else:
+        if not vector:
             vector = self._provider.embed(prompt)  # type: ignore
 
-        payload = {"id": key, "prompt_vector": vector, "response": response}
+        payload = {
+            "id": key,
+            "prompt_vector": array_to_buffer(vector),
+            "response": response
+        }
         if metadata:
             payload.update(metadata)
-        self._index.load([payload])
+
+        # Load LLMCache entry with TTL
+        self._index.load([payload], ttl=self._ttl)
 
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
@@ -200,7 +216,6 @@ class SemanticCache(BaseLLMCache):
                 client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
-
 
 def similarity(distance: Union[float, str]) -> float:
     return 1 - float(distance)
