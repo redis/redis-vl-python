@@ -25,6 +25,7 @@ def vector(vectorizer):
     return vectorizer.embed("This is a test sentence.")
 
 
+
 def test_store_and_check_and_clear(cache, vector):
     # Check that we can store and retrieve a response
     prompt = "This is a test prompt."
@@ -54,6 +55,10 @@ def test_check_no_match(cache, vector):
     check_result = cache.check(vector=vector)
     assert len(check_result) == 0
     cache._index.delete(True)
+
+def test_check_failure(cache):
+    with pytest.raises(ValueError):
+        cache.check(num_results=1)
 
 def test_store_with_vector_and_metadata(cache, vector):
     # Test storing a response with a vector and metadata

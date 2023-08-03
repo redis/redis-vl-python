@@ -14,9 +14,10 @@ class SemanticCache(BaseLLMCache):
     """Cache for Large Language Models."""
 
     # TODO allow for user to change default fields
+    _vector_field_name = "prompt_vector"
     _default_fields = [
         VectorField(
-            "prompt_vector",
+            _vector_field_name,
             "FLAT",
             {"DIM": 768, "TYPE": "FLOAT32", "DISTANCE_METRIC": "COSINE"},
         ),
@@ -173,7 +174,7 @@ class SemanticCache(BaseLLMCache):
 
         v = VectorQuery(
             vector=vector,
-            vector_field_name="prompt_vector",
+            vector_field_name=self._vector_field_name,
             return_fields=fields,
             num_results=num_results,
             return_score=True,
@@ -194,7 +195,7 @@ class SemanticCache(BaseLLMCache):
         prompt: str,
         response: str,
         vector: Optional[List[float]] = None,
-        metadata: Optional[dict] = {},
+        metadata: Optional[dict] = {}
     ) -> None:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -203,23 +204,17 @@ class SemanticCache(BaseLLMCache):
             response (str): The response to store.
             vector (Optional[List[float]], optional): The vector to store. Defaults to None
             metadata (Optional[dict], optional): The metadata to store. Defaults to {}.
-            key (Optional[str], optional): The key to store. Defaults to None.
 
         Raises:
             ValueError: If neither prompt nor vector is specified.
         """
-        # Prepare LLMCache inputs
-        key = self.hash_input(prompt)
-
-        if not vector:
-            # TODO - do we need to allow custom vector and custom key???
-            vector = self._vectorizer.embed(prompt)  # type: ignore
-
-        # TODO - what about schema mismatch???
+        # TODO - foot gun for schema mismatch if user has a different index
+        vector = vector or self._vectorizer.embed(prompt)
         payload = {
-            "id": key,
-            "prompt_vector": array_to_buffer(vector),
-            "response": response
+            "id": self.hash_input(prompt),
+            "prompt": prompt,
+            "response": response,
+            self._vector_field_name: array_to_buffer(vector)
         }
         if metadata:
             payload.update(metadata)
