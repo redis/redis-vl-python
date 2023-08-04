@@ -1,6 +1,13 @@
 import pytest
 
-from redisvl.query import Filter, NumericFilter, TagFilter, TextFilter, VectorQuery
+from redisvl.query import (
+    Filter,
+    GeoFilter,
+    NumericFilter,
+    TagFilter,
+    TextFilter,
+    VectorQuery,
+)
 from redisvl.utils.utils import TokenEscaper
 
 
@@ -24,6 +31,13 @@ class TestFilters:
     def test_text_filter(self):
         txt_f = TextFilter("text_field", "text")
         assert txt_f.to_string() == "@text_field:text"
+
+    def test_geo_filter(self):
+        geo_f = GeoFilter("geo_field", 1, 2, 3)
+        assert geo_f.to_string() == "@geo_field:[1 2 3 km]"
+
+        geo_f = GeoFilter("geo_field", 1, 2, 3, unit="m")
+        assert geo_f.to_string() == "@geo_field:[1 2 3 m]"
 
     def test_filters_combination(self):
         tf1 = TagFilter("tag_field", ["tag1", "tag2"])

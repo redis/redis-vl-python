@@ -57,3 +57,20 @@ NumericFilter
     :show-inheritance:
     :members:
     :inherited-members:
+
+
+GeoFilter
+=========
+
+.. currentmodule:: redisvl.query
+
+.. autosummary::
+
+    GeoFilter.__init__
+    GeoFilter.to_string
+
+
+.. autoclass:: GeoFilter
+    :show-inheritance:
+    :members:
+    :inherited-members:
