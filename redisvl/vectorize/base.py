@@ -1,5 +1,7 @@
 from typing import Callable, Dict, List, Optional
+
 from redisvl.utils.utils import array_to_buffer
+
 
 class BaseVectorizer:
     def __init__(self, model: str, dims: int, api_config: Optional[Dict] = None):
@@ -24,7 +26,7 @@ class BaseVectorizer:
         texts: List[str],
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = 1000,
-        as_buffer: Optional[bool] = False
+        as_buffer: Optional[bool] = False,
     ) -> List[List[float]]:
         raise NotImplementedError
 
@@ -32,7 +34,7 @@ class BaseVectorizer:
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[bool] = False
+        as_buffer: Optional[bool] = False,
     ) -> List[float]:
         raise NotImplementedError
 
@@ -41,7 +43,7 @@ class BaseVectorizer:
         texts: List[str],
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = 1000,
-        as_buffer: Optional[bool] = False
+        as_buffer: Optional[bool] = False,
     ) -> List[List[float]]:
         raise NotImplementedError
 
@@ -49,7 +51,7 @@ class BaseVectorizer:
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[bool] = False
+        as_buffer: Optional[bool] = False,
     ) -> List[float]:
         raise NotImplementedError
 

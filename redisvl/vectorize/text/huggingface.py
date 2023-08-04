@@ -22,7 +22,7 @@ class HFTextVectorizer(BaseVectorizer):
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[float] = False
+        as_buffer: Optional[float] = False,
     ) -> List[float]:
         """Embed a chunk of text using the Hugging Face sentence transformer.
 
@@ -46,7 +46,7 @@ class HFTextVectorizer(BaseVectorizer):
         texts: List[str],
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
-        as_buffer: Optional[float] = None
+        as_buffer: Optional[float] = None,
     ) -> List[List[float]]:
         """Asynchronously embed many chunks of texts using the Hugging Face sentence
         transformer.
@@ -66,7 +66,10 @@ class HFTextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             batch_embeddings = self._model_client.encode(batch)
-            embeddings.extend([
-                self._process_embedding(embedding.tolist(), as_buffer) for embedding in batch_embeddings
-            ])
+            embeddings.extend(
+                [
+                    self._process_embedding(embedding.tolist(), as_buffer)
+                    for embedding in batch_embeddings
+                ]
+            )
         return embeddings
