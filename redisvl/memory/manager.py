@@ -12,7 +12,7 @@ import hashlib
 
 
 class MemoryManager:
-    """Memory manager for Large Language Models applications"""
+    """Memory manager for Large Language Models applications."""
 
     _return_fields = list(Interaction.model_fields.keys())
     _tag_field_name = "session_id"
@@ -67,11 +67,9 @@ class MemoryManager:
         # create index or connect to existing index
         if not index.exists():
             index.create()
-            self._index = index
-        else:
-            # TODO - updtae with new from existing work
-            client = index.client
-            self._index = SearchIndex.from_existing(client, index_name)
+
+        self._index = index
+
 
     @property
     def index(self) -> SearchIndex:
@@ -126,7 +124,7 @@ class MemoryManager:
         }
         # write memory
         self._index.load([payload], key_field="id")
-        self._append(interaction.session_id, id)
+        self._append_session(interaction.session_id, id)
         return True
 
     def _append_session(self, session_id: str, interaction_id: str) -> None:
@@ -180,8 +178,10 @@ class MemoryManager:
         for i in recent_interactions:
             pipe.hmget(i, *self._return_fields)
         # unpack and return interactions
+        res = pipe.execute()
+        print(res)
         return [
-            Interaction(**interaction) for interaction in pipe.execute()
+            Interaction.from_dict(interaction) for interaction in pipe.execute()
         ]
 
     def seek_relevant(
@@ -201,10 +201,9 @@ class MemoryManager:
             List[Interaction]: _description_
         """
         # create vector from context
-        vector = array_to_buffer(
-            self._vectorizer.embed(context)
-        )
+        vector = self._vectorizer.embed(context)
         # create redis vector query
+        # TODO - implement filter on session_id
         v = VectorQuery(
             vector=vector,
             vector_field_name=self._vector_field_name,
@@ -219,7 +218,7 @@ class MemoryManager:
         for doc in results.docs:
             # TODO should we enforce this threshold? Trying to think through use cases
             if similarity(doc.vector_distance) > self.semantic_threshold:
-                memory_hits.append(Interaction(**doc.__dict__))
+                memory_hits.append(Interaction.from_dict(doc.__dict__))
         return memory_hits
 
 
