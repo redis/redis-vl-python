@@ -1,4 +1,9 @@
 from typing import Callable, Dict, List, Optional
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_random_exponential,
+)  # for exponential backoff
 
 from redisvl.vectorize.base import BaseVectorizer
 
@@ -19,6 +24,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     def embed_many(
         self,
         texts: List[str],
@@ -48,6 +54,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             ]
         return embeddings
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     def embed(
         self,
         text: str,
@@ -71,6 +78,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         result = self._model_client.create(input=[text], engine=self._model)
         return self._process_embedding(result["data"][0]["embedding"], as_buffer)
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     async def aembed_many(
         self,
         texts: List[str],
@@ -100,6 +108,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             ]
         return embeddings
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     async def aembed(
         self,
         text: str,
