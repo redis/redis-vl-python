@@ -124,7 +124,7 @@ class Index:
             exit(0)
 
         if args.index:
-            index = SearchIndex.from_existing(conn, args.index)
+            index = SearchIndex.from_existing(name=args.index, url=url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema)
             index.set_client(conn)

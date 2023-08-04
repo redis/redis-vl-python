@@ -25,7 +25,6 @@ class SearchIndexBase:
         name: str,
         prefix: str = "rvl",
         storage_type: Optional[str] = "hash",
-        key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
         self._name = name
@@ -33,7 +32,6 @@ class SearchIndexBase:
         self._storage = storage_type
         self._fields = fields
         self._redis_conn: Optional[redis.Redis] = None
-        self._key_field = key_field
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
@@ -75,9 +73,9 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        return self._redis_conn.ft(self._name).search(query.query,
-                                                      query_params=query.params)
-
+        return self._redis_conn.ft(self._name).search(
+            query.query, query_params=query.params
+        )
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -106,30 +104,36 @@ class SearchIndexBase:
         return cls(fields=schema.index_fields, **schema.index.model_dump())
 
     @classmethod
-    def from_existing(cls, client: redis.Redis, index_name: str):
-        """Create a SearchIndex from an existing index in Redis"""
-        # TODO assert client connected
-        # TODO try/except
-        info = convert_bytes(client.ft(index_name).info())  # TODO catch response error
-        index_definition = make_dict(info["index_definition"])
-        storage_type = index_definition["key_type"].lower()
-        prefix = index_definition["prefixes"][0]
-        fields = None  # TODO figure out if we need to parse fields
-        instance = cls(
-            index_name,
-            key_field="",  # TODO check key field on load again
-            storage_type=storage_type,
-            prefix=prefix,
-            fields=fields,
-        )
-        instance.set_client(client)
-        return instance
+    def from_existing(
+        cls,
+        name: str,
+        url: Optional[str] = None,
+        fields: Optional[List["Field"]] = None,
+        **kwargs,
+    ):
+        """Create a SearchIndex from an existing index in Redis.
+
+        Args:
+            name (str): Index name.
+            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+                is used if not provided. Defaults to None.
+            fields (Optional[List[Field]], optional): List of Redis search
+                fields to include in the schema. Defaults to None.
+
+        Returns:
+            SearchIndex: A SearchIndex object.
+
+        Raises:
+            redis.exceptions.ResponseError: If the index does not exist.
+            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+        """
+        raise NotImplementedError
 
     def connect(self, url: str, **kwargs):
         """Connect to a Redis instance
 
         Args:
-            url (str): Redis URL. Defaults to "redis://localhost:6379".
+            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
         """
         raise NotImplementedError
 
@@ -137,27 +141,28 @@ class SearchIndexBase:
         """Disconnect from the Redis instance"""
         self._redis_conn = None
 
-    def _get_key_field(self, record: Dict[str, Any]):
-        """Get the key field for this index
+    def _get_key(self, record: Dict[str, Any], key_field: str = None) -> str:
+        """Construct the Redis HASH top level key.
 
         Args:
-            record (Dict[str, Any]): A dictionary containing the record to be indexed
+            record (Dict[str, Any]): A dictionary containing the record to be indexed.
+            key_field (Optional[str], optional): A field within the record
+                to use in the Redis hash key.
 
         Returns:
-            str: The key to be used for a given record
+            str: The key to be used for a given record in Redis.
 
         Raises:
             ValueError: If the key field is not found in the record
         """
-        if self._key_field is None:
-            return uuid4().hex
+        if key_field is None:
+            key = uuid4().hex
         else:
             try:
-                return record[self._key_field]  # type: ignore
+                key = record[key_field]  # type: ignore
             except KeyError:
-                raise ValueError(
-                    f"Key field {self._key_field} not found in record {record}"
-                )
+                raise ValueError(f"Key field {key_field} not found in record {record}")
+        return f"{self._prefix}:{key}"
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -190,16 +195,20 @@ class SearchIndexBase:
         """
         raise NotImplementedError
 
-    def load(self, data: Iterable[Dict[str, Any]], **kwargs):
+    def load(
+        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+    ):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
                 containing the data to be indexed
+            key_field (Optional[str], optional): A field within the record
+                to use in the Redis hash key.
+
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
-        # TODO consider adding key_field
         raise NotImplementedError
 
 
@@ -221,26 +230,54 @@ class SearchIndex(SearchIndexBase):
         name: str,
         prefix: str = "rvl",
         storage_type: Optional[str] = "hash",
-        key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
-        """Create a SearchIndex object
+        super().__init__(name, prefix, storage_type, fields)
+
+    @classmethod
+    def from_existing(
+        cls,
+        name: str,
+        url: Optional[str] = None,
+        fields: Optional[List["Field"]] = None,
+        **kwargs,
+    ):
+        """Create a SearchIndex from an existing index in Redis.
 
         Args:
-            name (str): The name of the index
-            prefix (str, optional): The prefix to use for the index. Defaults to "rvl".
-            storage_type (str, optional): Redis data structure to use loaded data. Defaults to "hash".
-            key_field (str, optional): field name of value within loaded records to use as key. Defaults to UUID4.hex
-            fields (List[Field], optional): A list of Field objects. Defaults to None.
+            name (str): Index name.
+            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+                is used if not provided. Defaults to None.
+            fields (Optional[List[Field]], optional): List of Redis search
+                fields to include in the schema. Defaults to None.
+
+        Returns:
+            SearchIndex: A SearchIndex object.
+
+        Raises:
+            redis.exceptions.ResponseError: If the index does not exist.
+            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+
         """
-        super().__init__(name, prefix, storage_type, key_field, fields)
+        client = get_redis_connection(url, **kwargs)
+        info = convert_bytes(client.ft(name).info())
+        index_definition = make_dict(info["index_definition"])
+        storage_type = index_definition["key_type"].lower()
+        prefix = index_definition["prefixes"][0]
+        instance = cls(
+            name=name,
+            storage_type=storage_type,
+            prefix=prefix,
+            fields=fields,
+        )
+        instance.set_client(client)
+        return instance
 
     def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance
 
         Args:
             url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
-
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails
@@ -292,12 +329,17 @@ class SearchIndex(SearchIndexBase):
         self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
-    def load(self, data: Iterable[Dict[str, Any]], **kwargs):
+    def load(
+        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+    ):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
                 containing the data to be indexed
+            key_field (Optional[str], optional): A field within the record to
+                use in the Redis hash key.
+
         raises:
             redis.exceptions.ResponseError: If the index does not exist
         """
@@ -311,7 +353,7 @@ class SearchIndex(SearchIndexBase):
             ttl = kwargs.get("ttl")
             pipe = self._redis_conn.pipeline(transaction=False)
             for record in data:
-                key = f"{self._prefix}:{self._get_key_field(record)}"
+                key = self._get_key(record, key_field)
                 pipe.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     pipe.expire(key, ttl)
@@ -346,19 +388,48 @@ class AsyncSearchIndex(SearchIndexBase):
         name: str,
         prefix: str = "rvl",
         storage_type: Optional[str] = "hash",
-        key_field: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
     ):
-        """Create a SearchIndex object
+        super().__init__(name, prefix, storage_type, fields)
+
+    @classmethod
+    async def from_existing(
+        cls,
+        name: str,
+        url: Optional[str] = None,
+        fields: Optional[List["Field"]] = None,
+        **kwargs,
+    ):
+        """Create a SearchIndex from an existing index in Redis.
 
         Args:
-            name (str): The name of the index
-            prefix (str, optional): The prefix to use for the index. Defaults to "rvl".
-            storage_type (str, optional): Redis data structure to use loaded data. Defaults to "hash".
-            key_field (str, optional): field name of value within loaded records to use as key. Defaults to UUID4.hex
-            fields (List[Field], optional): A list of Field objects. Defaults to None.
+            name (str): Index name.
+            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+                is used if not provided. Defaults to None.
+            fields (Optional[List[Field]], optional): List of Redis search
+                fields to include in the schema. Defaults to None.
+
+        Returns:
+            SearchIndex: A SearchIndex object.
+
+        Raises:
+            redis.exceptions.ResponseError: If the index does not exist.
+            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+
         """
-        super().__init__(name, prefix, storage_type, key_field, fields)
+        client = get_async_redis_connection(url, **kwargs)
+        info = convert_bytes(await client.ft(name).info())
+        index_definition = make_dict(info["index_definition"])
+        storage_type = index_definition["key_type"].lower()
+        prefix = index_definition["prefixes"][0]
+        instance = cls(
+            name=name,
+            storage_type=storage_type,
+            prefix=prefix,
+            fields=fields,
+        )
+        instance.set_client(client)
+        return instance
 
     def connect(self, url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance
@@ -411,12 +482,21 @@ class AsyncSearchIndex(SearchIndexBase):
         await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
-    async def load(self, data: Iterable[Dict[str, Any]], concurrency: int = 10, **kwargs):
+    async def load(
+        self,
+        data: Iterable[Dict[str, Any]],
+        concurrency: int = 10,
+        key_field: Optional[str] = None,
+        **kwargs,
+    ):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
+                containing the data to be indexed.
             concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
+            key_field (Optional[str], optional): A field within the record to
+                use in the Redis hash key.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist
@@ -424,15 +504,15 @@ class AsyncSearchIndex(SearchIndexBase):
         ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
 
-        async def _load(d: dict):
+        async def _load(record: dict):
             async with semaphore:
-                key = f"{self._prefix}:{self._get_key_field(d)}"
-                await self._redis_conn.hset(key, mapping=d)  # type: ignore
+                key = self._get_key(record, key_field)
+                await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     await self._redis_conn.expire(key, ttl)
 
         # gather with concurrency
-        await asyncio.gather(*[_load(d) for d in data])
+        await asyncio.gather(*[_load(record) for record in data])
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:

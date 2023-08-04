@@ -117,8 +117,7 @@ class HNSWVectorField(BaseVectorField):
 class IndexModel(BaseModel):
     name: str = Field(...)
     prefix: str = Field(...)
-    key_field: Optional[str] = Field(default=None)
-    storage_type: str = Field(default="hash")
+    storage_type: Optional[str] = Field(default="hash")
 
 
 class FieldsModel(BaseModel):

@@ -1,6 +1,8 @@
+from time import sleep
+
 import pytest
 
-from time import sleep
+from redisvl.index import SearchIndex
 from redisvl.llmcache.semantic import SemanticCache
 from redisvl.vectorize.text import HFTextVectorizer
 
@@ -9,13 +11,16 @@ from redisvl.vectorize.text import HFTextVectorizer
 def vectorizer():
     return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
 
+
 @pytest.fixture
 def cache(vectorizer):
     return SemanticCache(vectorizer=vectorizer, threshold=0.8)
 
+
 @pytest.fixture
 def cache_with_ttl(vectorizer):
     return SemanticCache(vectorizer=vectorizer, threshold=0.8, ttl=2)
+
 
 @pytest.fixture
 def vector(vectorizer):
@@ -35,6 +40,7 @@ def test_store_and_check_and_clear(cache, vector):
     assert len(check_result) == 0
     cache._index.delete(True)
 
+
 def test_ttl(cache_with_ttl, vector):
     # Check that TTL expiration kicks in after 2 seconds
     prompt = "This is a test prompt."
@@ -45,12 +51,19 @@ def test_ttl(cache_with_ttl, vector):
     assert len(check_result) == 0
     cache_with_ttl._index.delete(True)
 
+
 def test_check_no_match(cache, vector):
     # Check behavior when there is no match in the cache
     # In this case, we're using a vector, but the cache is empty
     check_result = cache.check(vector=vector)
     assert len(check_result) == 0
     cache._index.delete(True)
+
+
+def test_check_failure(cache):
+    with pytest.raises(ValueError):
+        cache.check(num_results=1)
+
 
 def test_store_with_vector_and_metadata(cache, vector):
     # Test storing a response with a vector and metadata
@@ -63,6 +76,7 @@ def test_store_with_vector_and_metadata(cache, vector):
     assert response in check_result
     cache._index.delete(True)
 
+
 def test_set_threshold(cache):
     # Test the getter and setter for the threshold
     assert cache.threshold == 0.8
@@ -70,7 +84,26 @@ def test_set_threshold(cache):
     assert cache.threshold == 0.9
     cache._index.delete(True)
 
-def test_from_existing(cache, vector, vectorizer):
+
+def test_from_index(client, vector):
+    # Create customer index
+    index = SearchIndex(name="test", fields=SemanticCache._default_fields)
+    index.set_client(client)
+    index.create(overwrite=True)
+
+    cache = SemanticCache.from_index(index)
+    assert cache._index == index
+
+    cache.store("test", "test", vector=vector)
+    check_result = cache.check(vector=vector)
+    assert len(check_result) >= 1
+
+    cache.clear()
+    check_result = cache.check(vector=vector)
+    assert len(check_result) == 0
+
+
+def test_from_existing_cache(cache, vector, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
     metadata = {"source": "test"}

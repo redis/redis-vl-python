@@ -1,8 +1,8 @@
 import os
+
 import pytest
 
 from redisvl.vectorize.text import HFTextVectorizer, OpenAITextVectorizer
-
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer])
