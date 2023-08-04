@@ -66,6 +66,61 @@ class TagFilter(Filter):
         )
 
 
+class GeoFilter(Filter):
+    GEO_UNITS = ["m", "km", "mi", "ft"]
+
+    def __init__(self, field, longitude, latitude, radius, unit="km"):
+        """Filter for Geo fields.
+
+        Args:
+            field (str): The field to filter on.
+            longitude (float): The longitude.
+            latitude (float): The latitude.
+            radius (float): The radius.
+            unit (str, optional): The unit of the radius. Defaults to "km".
+
+        Raises:
+            ValueError: If the unit is not one of ["m", "km", "mi", "ft"].
+
+        Examples:
+            >>> # looking for Chinese restaurants near San Francisco
+            >>> # (within a 5km radius) would be
+            >>> #
+            >>> from redisvl.query import GeoFilter
+            >>> gf = GeoFilter("location", -122.4194, 37.7749, 5)
+        """
+        super().__init__(field)
+        self._longitude = longitude
+        self._latitude = latitude
+        self._radius = radius
+        self._unit = self._set_unit(unit)
+
+    def _set_unit(self, unit):
+        if unit.lower() not in self.GEO_UNITS:
+            raise ValueError(f"Unit must be one of {self.GEO_UNITS}")
+        return unit.lower()
+
+    def to_string(self) -> str:
+        """Converts the geo filter to a string.
+
+        Returns:
+            str: The geo filter as a string.
+        """
+        return (
+            "@"
+            + self._field
+            + ":["
+            + str(self._longitude)
+            + " "
+            + str(self._latitude)
+            + " "
+            + str(self._radius)
+            + " "
+            + self._unit
+            + "]"
+        )
+
+
 class NumericFilter(Filter):
     def __init__(self, field, minval, maxval, min_exclusive=False, max_exclusive=False):
         """Filter for Numeric fields.

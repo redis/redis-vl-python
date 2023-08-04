@@ -60,11 +60,14 @@ def test_check_no_match(cache, vector):
     cache._index.delete(True)
 
 
+<<<<<<< HEAD
 def test_check_failure(cache):
     with pytest.raises(ValueError):
         cache.check(num_results=1)
 
 
+=======
+>>>>>>> 5956bf2 (Add GeoFilter)
 def test_store_with_vector_and_metadata(cache, vector):
     # Test storing a response with a vector and metadata
     prompt = "This is another test prompt."
@@ -85,6 +88,7 @@ def test_set_threshold(cache):
     cache._index.delete(True)
 
 
+<<<<<<< HEAD
 def test_from_index(client, vector):
     # Create customer index
     index = SearchIndex(name="test", fields=SemanticCache._default_fields)
@@ -104,6 +108,9 @@ def test_from_index(client, vector):
 
 
 def test_from_existing_cache(cache, vector, vectorizer):
+=======
+def test_from_existing(cache, vector, vectorizer):
+>>>>>>> 5956bf2 (Add GeoFilter)
     prompt = "This is another test prompt."
     response = "This is another test response."
     metadata = {"source": "test"}
