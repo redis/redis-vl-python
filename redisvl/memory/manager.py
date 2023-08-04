@@ -5,10 +5,9 @@ from redis.commands.search.field import VectorField, TagField
 from redisvl.index import SearchIndex
 from redisvl.vectorize.text import HFTextVectorizer
 from redisvl.vectorize.base import BaseVectorizer
-from redisvl.query import VectorQuery
+from redisvl.query import VectorQuery, TagFilter
 from redisvl.utils.utils import array_to_buffer, similarity
 from redisvl.memory.interaction import Interaction
-import hashlib
 
 
 class MemoryManager:
@@ -29,7 +28,7 @@ class MemoryManager:
     def __init__(
         self,
         index_name: Optional[str] = "llm_memory",
-        prefix: Optional[str] = "memory",
+        prefix: Optional[str] = "llm_interaction",
         max_session_len: Optional[int] = 30,
         semantic_threshold: Optional[float] = 0.9,
         vectorizer: Optional[BaseVectorizer] = HFTextVectorizer(
@@ -98,12 +97,8 @@ class MemoryManager:
             raise ValueError("Threshold must be between 0 and 1.")
         self._semantic_threshold = float(semantic_threshold)
 
-    def hash_input(self, prompt: str):
-        """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-
-    def _interaction_id(self, session_id: str, content: str) -> str:
-        return f"{session_id}:{self.hash_input(content)}"
+    def _session_key(self, session_id: str) -> str:
+        return f"{self._index._name}:session:{session_id}"
 
     def add(self, interaction: Interaction) -> None:
         """Stores the LLM exchange in the memory store.
@@ -111,34 +106,28 @@ class MemoryManager:
         Args:
             interaction (Interaction): Interaction object to persist
         """
-        id = self._interaction_id(interaction.session_id, interaction.content)
-        vector = array_to_buffer(
-            self._vectorizer.embed(interaction.content)
-        )
         # construct payload
         payload = interaction.as_dict()
-        payload = {
-            "id": id,
-            **payload,
-            self._vector_field_name: vector,
-        }
+        payload[self._vector_field_name] = array_to_buffer(
+            self._vectorizer.embed(interaction.content)
+        )
         # write memory
         self._index.load([payload], key_field="id")
-        self._append_session(interaction.session_id, id)
+        self._session_append(interaction.session_id, interaction.id)
         return True
 
-    def _append_session(self, session_id: str, interaction_id: str) -> None:
-        # create list_key
-        list_key = f"{self._index._name}:session:{session_id}"
+    def _session_append(self, session_id: str, interaction_id: str) -> None:
+        # create session key
+        session_key = self._session_key(session_id)
         # add interaction to session and get session len
         pipe = self._index.client.pipeline()
-        pipe.lpush(list_key, interaction_id).llen(list_key)
+        pipe.lpush(session_key, interaction_id).llen(session_key)
         res = pipe.execute()
         # check session len and clean up old interactions
         session_len = res[1]
         session_overhang = session_len - self._max_session_len
         if session_overhang > 0:
-            old_interactions = self._index.client.rpop(list_key, session_overhang)
+            old_interactions = self._index.client.rpop(session_key, session_overhang)
             self._index.client.delete(*old_interactions)
 
     def seek(self, session_id: str, n: int) -> List[Interaction]:
@@ -170,9 +159,10 @@ class MemoryManager:
         Returns:
             List[Interaction]: _description_
         """
+        # create session key
+        session_key = self._session_key(session_id)
         # fetch recent interactions
-        list_key = f"{self._index._name}:session:{session_id}"
-        recent_interactions = self._index.client.lrange(list_key, start, end)
+        recent_interactions = self._index.client.lrange(session_key, start, end)
         # grab interaction data and return
         pipe = self._index.client.pipeline()
         for i in recent_interactions:
@@ -203,7 +193,6 @@ class MemoryManager:
         # create vector from context
         vector = self._vectorizer.embed(context)
         # create redis vector query
-        # TODO - implement filter on session_id
         v = VectorQuery(
             vector=vector,
             vector_field_name=self._vector_field_name,
@@ -212,6 +201,7 @@ class MemoryManager:
             num_results=n,
             return_score=True,
         )
+        v.set_filter(TagFilter(self._tag_field_name, session_id))
         results = self._index.query(v)
         # unpack results
         memory_hits = []
@@ -221,11 +211,21 @@ class MemoryManager:
                 memory_hits.append(Interaction.from_dict(doc.__dict__))
         return memory_hits
 
-
     def len(self, session_id: str) -> int:
-        list_key = f"{self._index._name}:session:{session_id}"
-        return self._index.client.llen(list_key)
+        """_summary_
+
+        Args:
+            session_id (str): _description_
+
+        Returns:
+            int: _description_
+        """
+        return self._index.client.llen(self._session_key(session_id))
 
     def clear(self, session_id: str):
-        list_key = f"{self._index._name}:session:{session_id}"
-        self._index.client.delete(list_key)
+        """_summary_
+
+        Args:
+            session_id (str): _description_
+        """
+        self._index.client.delete(self._session_key(session_id))

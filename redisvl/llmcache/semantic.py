@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from redis.commands.search.field import VectorField
 
@@ -7,7 +7,7 @@ from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
-from redisvl.utils.utils import array_to_buffer, similarity
+from redisvl.utils.utils import array_to_buffer, similarity, hash_input
 
 
 class SemanticCache(BaseLLMCache):
@@ -211,7 +211,7 @@ class SemanticCache(BaseLLMCache):
         # TODO - foot gun for schema mismatch if user has a different index
         vector = vector or self._vectorizer.embed(prompt)
         payload = {
-            "id": self.hash_input(prompt),
+            "id": hash_input(prompt),
             "prompt": prompt,
             "response": response,
             self._vector_field_name: array_to_buffer(vector),

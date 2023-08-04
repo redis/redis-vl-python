@@ -1,5 +1,4 @@
-import hashlib
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from redisvl.index import SearchIndex
 
@@ -32,7 +31,3 @@ class BaseLLMCache:
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
         raise NotImplementedError
-
-    def hash_input(self, prompt: str):
-        """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()

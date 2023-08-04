@@ -1,4 +1,5 @@
 import re
+import hashlib
 from typing import Any, List, Optional, Pattern, Union
 
 import numpy as np
@@ -83,3 +84,8 @@ def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
 
 def similarity(distance: Union[float, str]) -> float:
     return 1 - float(distance)
+
+
+def hash_input(prompt: str):
+    """Hashes the input using SHA256."""
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
