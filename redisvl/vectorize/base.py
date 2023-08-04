@@ -1,5 +1,5 @@
 from typing import Callable, Dict, List, Optional
-
+from redisvl.utils.utils import array_to_buffer
 
 class BaseVectorizer:
     def __init__(self, model: str, dims: int, api_config: Optional[Dict] = None):
@@ -51,3 +51,8 @@ class BaseVectorizer:
                 yield [preprocess(chunk) for chunk in seq[pos : pos + size]]
             else:
                 yield seq[pos : pos + size]
+
+    def _process_embedding(self, embedding: List[float], as_buffer: bool):
+        if as_buffer:
+            return array_to_buffer(embedding)
+        return embedding

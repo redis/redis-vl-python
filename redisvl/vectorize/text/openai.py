@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
 from redisvl.vectorize.base import BaseVectorizer
-from redisvl.utils.utils import array_to_buffer
+
 
 class OpenAITextVectorizer(BaseVectorizer):
     # TODO - add docstring
@@ -19,14 +19,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding
 
-    def _process_embedding(self, embedding: List[float], as_buffer: bool):
-        if as_buffer:
-            return array_to_buffer(embedding)
-        return embedding
-
     def embed_many(
         self,
-        inputs: List[str],
+        texts: List[str],
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = 10,
         as_buffer: Optional[float] = False
@@ -34,17 +29,19 @@ class OpenAITextVectorizer(BaseVectorizer):
         """Embed many chunks of texts using the OpenAI API.
 
         Args:
-            inputs (List[str]): List of text chunks to embed.
+            texts (List[str]): List of text chunks to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding to a byte string. Defaults to False.
+            batch_size (int, optional): Batch size of texts to use when creating
+                embeddings. Defaults to 10.
+            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+                to a byte string. Defaults to False.
 
         Returns:
-            List[List[float]]: _description_
+            List[List[float]]: List of embeddings.
         """
         embeddings: List = []
-        for batch in self.batchify(inputs, batch_size, preprocess):
+        for batch in self.batchify(texts, batch_size, preprocess):
             response = self._model_client.create(input=batch, engine=self._model)
             embeddings += [
                 self._process_embedding(r["embedding"], as_buffer) for r in response["data"]
@@ -53,49 +50,50 @@ class OpenAITextVectorizer(BaseVectorizer):
 
     def embed(
         self,
-        inputs: List[str],
+        text: str,
         preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = 10,
         as_buffer: Optional[float] = False
     ) -> List[float]:
-        """Embed chunks of texts using the OpenAI API.
+        """Embed a chunk of text using the OpenAI API.
 
         Args:
-            inputs (List[str]): List of text chunks to embed.
+            text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding to a byte string. Defaults to False.
+            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+                to a byte string. Defaults to False.
 
         Returns:
-            List[List[float]]: _description_
+            List[float]: Embedding.
         """
         if preprocess:
-            emb_input = preprocess(emb_input)
-        result = self._model_client.create(input=[emb_input], engine=self._model)
+            text = preprocess(text)
+        result = self._model_client.create(input=[text], engine=self._model)
         return self._process_embedding(result["data"][0]["embedding"], as_buffer)
-
 
     async def aembed_many(
         self,
-        inputs: List[str],
+        texts: List[str],
         preprocess: Optional[Callable] = None,
-        chunk_size: int = 1000,
+        batch_size: int = 1000,
         as_buffer: Optional[bool] = False
     ) -> List[List[float]]:
-        """_summary_
+        """Asynchronously embed many chunks of texts using the OpenAI API.
 
         Args:
-            inputs (List[str]): _description_
-            preprocess (Optional[Callable], optional): _description_. Defaults to None.
-            chunk_size (int, optional): _description_. Defaults to 1000.
-            as_buffer (Optional[bool], optional): _description_. Defaults to False.
+            texts (List[str]): List of text chunks to embed.
+            preprocess (Optional[Callable], optional): Optional preprocessing callable to
+                perform before vectorization. Defaults to None.
+            batch_size (int, optional): Batch size of texts to use when creating
+                embeddings. Defaults to 10.
+            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+                to a byte string. Defaults to False.
 
         Returns:
-            List[List[float]]: _description_
+            List[List[float]]: List of embeddings.
         """
         embeddings: List = []
-        for batch in self.batchify(inputs, chunk_size, preprocess):
+        for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._model_client.acreate(input=batch, engine=self._model)
             embeddings += [
                 self._process_embedding(r["embedding"], as_buffer) for r in response["data"]
@@ -104,21 +102,23 @@ class OpenAITextVectorizer(BaseVectorizer):
 
     async def aembed(
         self,
-        emb_input: str,
+        text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: Optional[bool] = False
     ) -> List[float]:
-        """_summary_
+        """Asynchronously embed a chunk of text using the OpenAI API.
 
         Args:
-            emb_input (str): _description_
-            preprocess (Optional[Callable], optional): _description_. Defaults to None.
-            as_buffer (Optional[bool], optional): _description_. Defaults to False.
+            text (str): Chunk of text to embed.
+            preprocess (Optional[Callable], optional): Optional preprocessing callable to
+                perform before vectorization. Defaults to None.
+            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+                to a byte string. Defaults to False.
 
         Returns:
-            List[float]: _description_
+            List[float]: Embedding.
         """
         if preprocess:
-            emb_input = preprocess(emb_input)
-        result = await self._model_client.acreate(input=[emb_input], engine=self._model)
+            text = preprocess(text)
+        result = await self._model_client.acreate(input=[text], engine=self._model)
         return self._process_embedding(result["data"][0]["embedding"], as_buffer)

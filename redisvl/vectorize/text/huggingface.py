@@ -1,10 +1,10 @@
 from typing import Callable, Dict, List, Optional
 
 from redisvl.vectorize.base import BaseVectorizer
-from redisvl.utils.utils import array_to_buffer
 
 
 class HFTextVectorizer(BaseVectorizer):
+    # TODO - add docstring
     def __init__(self, model: str, api_config: Optional[Dict] = None):
         # TODO set dims based on model
         dims = 768
@@ -20,30 +20,53 @@ class HFTextVectorizer(BaseVectorizer):
 
     def embed(
         self,
-        emb_input: str,
+        text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[bool] = False
+        as_buffer: Optional[float] = False
     ) -> List[float]:
+        """Embed a chunk of text using the Hugging Face sentence transformer.
+
+        Args:
+            text (str): Chunk of text to embed.
+            preprocess (Optional[Callable], optional): Optional preprocessing callable to
+                perform before vectorization. Defaults to None.
+            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+                to a byte string. Defaults to False.
+
+        Returns:
+            List[float]: Embedding.
+        """
         if preprocess:
-            emb_input = preprocess(emb_input)
-        embedding = self._model_client.encode([emb_input])[0]
-        embedding = embedding.tolist()
-        if as_buffer:
-            return array_to_buffer(embedding)
-        return embedding
+            text = preprocess(text)
+        embedding = self._model_client.encode([text])[0]
+        return self._process_embedding(embedding.tolist(), as_buffer)
 
     def embed_many(
         self,
-        inputs: List[str],
+        texts: List[str],
         preprocess: Optional[Callable] = None,
-        chunk_size: int = 1000,
+        batch_size: int = 1000,
         as_buffer: Optional[float] = None
     ) -> List[List[float]]:
-        embeddings = []
-        for batch in self.batchify(inputs, chunk_size, preprocess):
+        """Asynchronously embed many chunks of texts using the Hugging Face sentence
+        transformer.
+
+        Args:
+            texts (List[str]): List of text chunks to embed.
+            preprocess (Optional[Callable], optional): Optional preprocessing callable to
+                perform before vectorization. Defaults to None.
+            batch_size (int, optional): Batch size of texts to use when creating
+                embeddings. Defaults to 10.
+            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+                to a byte string. Defaults to False.
+
+        Returns:
+            List[List[float]]: List of embeddings.
+        """
+        embeddings: List = []
+        for batch in self.batchify(texts, batch_size, preprocess):
             batch_embeddings = self._model_client.encode(batch)
             embeddings.extend([
-                array_to_buffer(embedding.tolist()) if as_buffer else embedding.tolist()
-                for embedding in batch_embeddings
+                self._process_embedding(embedding.tolist(), as_buffer) for embedding in batch_embeddings
             ])
         return embeddings
