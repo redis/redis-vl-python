@@ -73,9 +73,9 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        return self._redis_conn.ft(self._name).search(query.query,
-                                                      query_params=query.params)
-
+        return self._redis_conn.ft(self._name).search(
+            query.query, query_params=query.params
+        )
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -109,7 +109,7 @@ class SearchIndexBase:
         name: str,
         url: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
-        **kwargs
+        **kwargs,
     ):
         """Create a SearchIndex from an existing index in Redis.
 
@@ -161,9 +161,7 @@ class SearchIndexBase:
             try:
                 key = record[key_field]  # type: ignore
             except KeyError:
-                raise ValueError(
-                    f"Key field {key_field} not found in record {record}"
-                )
+                raise ValueError(f"Key field {key_field} not found in record {record}")
         return f"{self._prefix}:{key}"
 
     @check_connected("_redis_conn")
@@ -197,7 +195,9 @@ class SearchIndexBase:
         """
         raise NotImplementedError
 
-    def load(self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs):
+    def load(
+        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+    ):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
@@ -240,7 +240,7 @@ class SearchIndex(SearchIndexBase):
         name: str,
         url: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
-        **kwargs
+        **kwargs,
     ):
         """Create a SearchIndex from an existing index in Redis.
 
@@ -329,7 +329,9 @@ class SearchIndex(SearchIndexBase):
         self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
-    def load(self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs):
+    def load(
+        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+    ):
         """Load data into Redis and index using this SearchIndex object
 
         Args:
@@ -396,7 +398,7 @@ class AsyncSearchIndex(SearchIndexBase):
         name: str,
         url: Optional[str] = None,
         fields: Optional[List["Field"]] = None,
-        **kwargs
+        **kwargs,
     ):
         """Create a SearchIndex from an existing index in Redis.
 
@@ -485,7 +487,7 @@ class AsyncSearchIndex(SearchIndexBase):
         data: Iterable[Dict[str, Any]],
         concurrency: int = 10,
         key_field: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object
 

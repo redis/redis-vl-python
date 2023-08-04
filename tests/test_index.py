@@ -7,6 +7,7 @@ from redisvl.utils.utils import convert_bytes
 
 fields = [TagField("test")]
 
+
 def test_search_index_get_key():
     si = SearchIndex("my_index", fields=fields)
     key = si._get_key({"id": "foo"}, "id")

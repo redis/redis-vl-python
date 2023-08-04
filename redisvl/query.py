@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Optional
 import base64
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 from redis.commands.search.query import Query
 
@@ -181,7 +182,6 @@ class VectorQuery(BaseQuery):
             Filter: The filter for the query.
         """
         return self._filter
-
 
     def __str__(self):
         return " ".join([str(x) for x in self.query.get_args()])

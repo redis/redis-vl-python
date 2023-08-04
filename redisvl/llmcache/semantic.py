@@ -4,10 +4,10 @@ from redis.commands.search.field import VectorField
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
-from redisvl.vectorize.text import HFTextVectorizer
-from redisvl.vectorize.base import BaseVectorizer
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
+from redisvl.vectorize.base import BaseVectorizer
+from redisvl.vectorize.text import HFTextVectorizer
 
 
 class SemanticCache(BaseLLMCache):
@@ -34,7 +34,7 @@ class SemanticCache(BaseLLMCache):
         ),
         redis_url: Optional[str] = "redis://localhost:6379",
         connection_args: Optional[dict] = None,
-        index: Optional[SearchIndex] = None
+        index: Optional[SearchIndex] = None,
     ):
         """Semantic Cache for Large Language Models.
 
@@ -60,17 +60,20 @@ class SemanticCache(BaseLLMCache):
 
         if not index:
             if index_name and prefix:
-                index = SearchIndex(name=index_name, prefix=prefix, fields=self._default_fields)
+                index = SearchIndex(
+                    name=index_name, prefix=prefix, fields=self._default_fields
+                )
                 index.connect(url=redis_url, **connection_args)
             else:
-                raise ValueError("Index name and prefix must be provided if not constructing from an existing index.")
+                raise ValueError(
+                    "Index name and prefix must be provided if not constructing from an existing index."
+                )
 
         # create index if non-existent
         if not index.exists():
             index.create()
 
         self._index = index
-
 
     @classmethod
     def from_index(cls, index: SearchIndex, **kwargs):
@@ -82,10 +85,7 @@ class SemanticCache(BaseLLMCache):
         Returns:
             SemanticCache: A SemanticCache object.
         """
-        return cls(
-            index=index,
-            **kwargs
-        )
+        return cls(index=index, **kwargs)
 
     @property
     def ttl(self) -> Optional[int]:
@@ -195,7 +195,7 @@ class SemanticCache(BaseLLMCache):
         prompt: str,
         response: str,
         vector: Optional[List[float]] = None,
-        metadata: Optional[dict] = {}
+        metadata: Optional[dict] = {},
     ) -> None:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -214,7 +214,7 @@ class SemanticCache(BaseLLMCache):
             "id": self.hash_input(prompt),
             "prompt": prompt,
             "response": response,
-            self._vector_field_name: array_to_buffer(vector)
+            self._vector_field_name: array_to_buffer(vector),
         }
         if metadata:
             payload.update(metadata)
@@ -230,6 +230,7 @@ class SemanticCache(BaseLLMCache):
                 client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
+
 
 def similarity(distance: Union[float, str]) -> float:
     return 1 - float(distance)
