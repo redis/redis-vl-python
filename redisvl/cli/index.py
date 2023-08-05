@@ -9,8 +9,7 @@ from redisvl.index import SearchIndex
 from redisvl.utils.connection import get_redis_connection
 from redisvl.utils.utils import convert_bytes
 
-logger = get_logger(__name__)
-
+logger = get_logger("[RedisVL]")
 
 class Index:
     usage = "\n".join(
