@@ -1,5 +1,5 @@
-import re
 import hashlib
+import re
 from typing import Any, List, Optional, Pattern, Union
 
 import numpy as np

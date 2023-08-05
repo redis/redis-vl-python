@@ -1,13 +1,13 @@
 from typing import List, Optional
 
-from redis.commands.search.field import VectorField, TagField
+from redis.commands.search.field import TagField, VectorField
 
 from redisvl.index import SearchIndex
-from redisvl.vectorize.text import HFTextVectorizer
-from redisvl.vectorize.base import BaseVectorizer
-from redisvl.query import VectorQuery, TagFilter
-from redisvl.utils.utils import array_to_buffer, similarity
 from redisvl.memory.interaction import Interaction
+from redisvl.query import TagFilter, VectorQuery
+from redisvl.utils.utils import array_to_buffer, convert_bytes, similarity
+from redisvl.vectorize.base import BaseVectorizer
+from redisvl.vectorize.text import HFTextVectorizer
 
 
 class MemoryManager:
@@ -69,7 +69,6 @@ class MemoryManager:
 
         self._index = index
 
-
     @property
     def index(self) -> SearchIndex:
         """Returns the index for the long term memory.
@@ -107,28 +106,29 @@ class MemoryManager:
             interaction (Interaction): Interaction object to persist
         """
         # construct payload
-        payload = interaction.as_dict()
+        payload = interaction.model_dump()
         payload[self._vector_field_name] = array_to_buffer(
             self._vectorizer.embed(interaction.content)
         )
         # write memory
-        self._index.load([payload], key_field="id")
-        self._session_append(interaction.session_id, interaction.id)
+        keys = self._index.load([payload], return_keys=True)
+        self._session_append(interaction.session_id, interaction_key=keys[0])
         return True
 
-    def _session_append(self, session_id: str, interaction_id: str) -> None:
+    def _session_append(self, session_id: str, interaction_key: str) -> None:
         # create session key
         session_key = self._session_key(session_id)
         # add interaction to session and get session len
         pipe = self._index.client.pipeline()
-        pipe.lpush(session_key, interaction_id).llen(session_key)
-        res = pipe.execute()
+        pipe.lpush(session_key, interaction_key).llen(session_key)
+        _, session_len = pipe.execute()
         # check session len and clean up old interactions
-        session_len = res[1]
         session_overhang = session_len - self._max_session_len
         if session_overhang > 0:
-            old_interactions = self._index.client.rpop(session_key, session_overhang)
-            self._index.client.delete(*old_interactions)
+            removed_interaction_keys = self._index.client.rpop(
+                session_key, session_overhang
+            )
+            self._index.client.delete(*removed_interaction_keys)
 
     def seek(self, session_id: str, n: int) -> List[Interaction]:
         """_summary_
@@ -146,7 +146,7 @@ class MemoryManager:
         if n < 1:
             raise ValueError("Must seek atleast 1 recent interaction")
         # use seek range
-        return self.seek_range(session_id, start=0, end=n-1)
+        return self.seek_range(session_id, start=0, end=n - 1)
 
     def seek_range(self, session_id: str, start: int, end: int) -> List[Interaction]:
         """_summary_
@@ -163,22 +163,19 @@ class MemoryManager:
         session_key = self._session_key(session_id)
         # fetch recent interactions
         recent_interactions = self._index.client.lrange(session_key, start, end)
-        # grab interaction data and return
+        # grab interaction data and fetch with pipeline
         pipe = self._index.client.pipeline()
         for i in recent_interactions:
             pipe.hmget(i, *self._return_fields)
         # unpack and return interactions
-        res = pipe.execute()
-        print(res)
-        return [
-            Interaction.from_dict(interaction) for interaction in pipe.execute()
+        interactions: List[Interaction] = [
+            Interaction(**convert_bytes(dict(zip(self._return_fields, res))))
+            for res in pipe.execute()
         ]
+        return interactions
 
     def seek_relevant(
-        self,
-        session_id: str,
-        context: str,
-        n: Optional[int] = 3
+        self, session_id: str, context: str, n: Optional[int] = 3
     ) -> List[Interaction]:
         """_summary_
 
@@ -206,9 +203,9 @@ class MemoryManager:
         # unpack results
         memory_hits = []
         for doc in results.docs:
-            # TODO should we enforce this threshold? Trying to think through use cases
+            print("DOC", doc, flush=True)
             if similarity(doc.vector_distance) > self.semantic_threshold:
-                memory_hits.append(Interaction.from_dict(doc.__dict__))
+                memory_hits.append(Interaction(**doc.__dict__))
         return memory_hits
 
     def len(self, session_id: str) -> int:
@@ -228,4 +225,9 @@ class MemoryManager:
         Args:
             session_id (str): _description_
         """
-        self._index.client.delete(self._session_key(session_id))
+        session_key = self._session_key(session_id)
+        pipe = self._index.client.pipeline()
+        for key in self._index.client.lrange(session_key, 0, -1):
+            pipe.delete(key)
+        pipe.delete(session_key)
+        pipe.execute()

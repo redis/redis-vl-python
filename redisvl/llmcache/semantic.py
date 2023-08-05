@@ -5,9 +5,9 @@ from redis.commands.search.field import VectorField
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
+from redisvl.utils.utils import array_to_buffer, hash_input, similarity
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
-from redisvl.utils.utils import array_to_buffer, similarity, hash_input
 
 
 class SemanticCache(BaseLLMCache):
@@ -27,7 +27,7 @@ class SemanticCache(BaseLLMCache):
         self,
         index_name: Optional[str] = "cache",
         prefix: Optional[str] = "llmcache",
-        threshold: Optional[float] = 0.9,
+        semantic_threshold: Optional[float] = 0.9,
         ttl: Optional[int] = None,
         vectorizer: Optional[BaseVectorizer] = HFTextVectorizer(
             "sentence-transformers/all-mpnet-base-v2"
@@ -41,7 +41,7 @@ class SemanticCache(BaseLLMCache):
         Args:
             index_name (Optional[str], optional): The name of the index. Defaults to "cache".
             prefix (Optional[str], optional): The prefix for the index. Defaults to "llmcache".
-            threshold (Optional[float], optional): Semantic threshold for the cache. Defaults to 0.9.
+            semantic_threshold (Optional[float], optional): Semantic threshold for the cache. Defaults to 0.9.
             ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer("sentence-transformers/all-mpnet-base-v2").
@@ -55,7 +55,7 @@ class SemanticCache(BaseLLMCache):
         """
         self._ttl = ttl
         self._vectorizer = vectorizer
-        self.set_threshold(threshold)
+        self.set_threshold(semantic_threshold)
         connection_args = connection_args or {}
 
         if not index:
@@ -117,11 +117,11 @@ class SemanticCache(BaseLLMCache):
         return self._index
 
     @property
-    def threshold(self) -> float:
+    def semantic_threshold(self) -> float:
         """Returns the threshold for the cache."""
-        return self._threshold
+        return self._semantic_threshold
 
-    def set_threshold(self, threshold: float):
+    def set_threshold(self, semantic_threshold: float):
         """Sets the threshold for the cache.
 
         Args:
@@ -130,9 +130,9 @@ class SemanticCache(BaseLLMCache):
         Raises:
             ValueError: If the threshold is not between 0 and 1.
         """
-        if not 0 <= float(threshold) <= 1:
-            raise ValueError("Threshold must be between 0 and 1.")
-        self._threshold = float(threshold)
+        if not 0 <= float(semantic_threshold) <= 1:
+            raise ValueError("Semantic threshold must be between 0 and 1.")
+        self._threshold = float(semantic_threshold)
 
     def clear(self):
         """Clear the LLMCache of all keys in the index"""

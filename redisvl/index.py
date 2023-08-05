@@ -196,7 +196,11 @@ class SearchIndexBase:
         raise NotImplementedError
 
     def load(
-        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+        self,
+        data: Iterable[Dict[str, Any]],
+        key_field: Optional[str] = None,
+        return_keys: Optional[bool] = False,
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object
 
@@ -205,6 +209,8 @@ class SearchIndexBase:
                 containing the data to be indexed
             key_field (Optional[str], optional): A field within the record
                 to use in the Redis hash key.
+            return_keys (Optional[bool], optional): Optionally return the inserted keys
+                in Redis. Defaults to False.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist
@@ -330,7 +336,11 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def load(
-        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+        self,
+        data: Iterable[Dict[str, Any]],
+        key_field: Optional[str] = None,
+        return_keys: Optional[bool] = False,
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object
 
@@ -339,25 +349,31 @@ class SearchIndex(SearchIndexBase):
                 containing the data to be indexed
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
+            return_keys (Optional[bool], optional): Optionally return the inserted keys
+                in Redis. Defaults to False.
 
-        raises:
-            redis.exceptions.ResponseError: If the index does not exist
+        Raises:
+            redis.exceptions.ResponseError: If the index does not exist.
+            TypeError: If data is not an iterable of dicts.
         """
-        # TODO -- should we return a count of the upserts? or some kind of metadata?
         if data:
             if not isinstance(data, Iterable):
                 if not isinstance(data[0], dict):
                     raise TypeError("data must be an iterable of dictionaries")
 
             # Check if outer interface passes in TTL on load
+            keys: List[str] = []
             ttl = kwargs.get("ttl")
             pipe = self._redis_conn.pipeline(transaction=False)
             for record in data:
                 key = self._get_key(record, key_field)
                 pipe.hset(key, mapping=record)  # type: ignore
+                keys.append(key)
                 if ttl:
                     pipe.expire(key, ttl)
             pipe.execute()
+            if return_keys:
+                return keys
 
     @check_connected("_redis_conn")
     def exists(self) -> bool:
@@ -479,14 +495,17 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist
         """
         # Delete the search index
-        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
+        await (
+            self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
+        )  # type: ignore
 
     @check_connected("_redis_conn")
     async def load(
         self,
         data: Iterable[Dict[str, Any]],
-        concurrency: int = 10,
+        concurrency: Optional[int] = 10,
         key_field: Optional[str] = None,
+        return_keys: Optional[bool] = False,
         **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object
@@ -494,25 +513,36 @@ class AsyncSearchIndex(SearchIndexBase):
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
                 containing the data to be indexed.
-            concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
+            concurrency (Optional[int], optional): Number of concurrent tasks to run. Defaults to 10.
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
+            return_keys (Optional[bool], optional): Optionally return the inserted keys
+                in Redis. Defaults to False.
 
-        raises:
-            redis.exceptions.ResponseError: If the index does not exist
+        Raises:
+            redis.exceptions.ResponseError: If the index does not exist.
+            TypeError: If data is not an iterable of dicts.
         """
-        ttl = kwargs.get("ttl")
-        semaphore = asyncio.Semaphore(concurrency)
+        if data:
+            if not isinstance(data, Iterable):
+                if not isinstance(data[0], dict):
+                    raise TypeError("data must be an iterable of dictionaries")
 
-        async def _load(record: dict):
-            async with semaphore:
-                key = self._get_key(record, key_field)
-                await self._redis_conn.hset(key, mapping=record)  # type: ignore
-                if ttl:
-                    await self._redis_conn.expire(key, ttl)
+            ttl = kwargs.get("ttl")
+            semaphore = asyncio.Semaphore(concurrency)
 
-        # gather with concurrency
-        await asyncio.gather(*[_load(record) for record in data])
+            async def _load(record: dict):
+                async with semaphore:
+                    key = self._get_key(record, key_field)
+                    await self._redis_conn.hset(key, mapping=record)  # type: ignore
+                    if ttl:
+                        await self._redis_conn.expire(key, ttl)
+                    return key
+
+            # gather with concurrency
+            keys = await asyncio.gather(*[_load(record) for record in data])
+            if return_keys:
+                return keys
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:

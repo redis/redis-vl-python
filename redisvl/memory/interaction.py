@@ -1,14 +1,11 @@
 import json
-
-from typing import Dict, Optional
 from datetime import datetime
-from pydantic import BaseModel, model_validator
+from typing import Dict, Optional
 
-from redisvl.utils.utils import hash_input
+from pydantic import BaseModel, field_serializer, field_validator, model_validator
 
 
 class Interaction(BaseModel):
-    id: str
     session_id: str
     prompt: str
     response: str
@@ -16,22 +13,20 @@ class Interaction(BaseModel):
     timestamp: int = int(datetime.utcnow().timestamp())
     metadata: Optional[Dict[str, str]] = {}
 
-    @model_validator(mode='before')
-    def _set_fields(cls, values: dict) -> dict:
+    @model_validator(mode="before")
+    def set_content(cls, values: dict) -> dict:
         if "content" not in values:
-            content =  f"""Prompt: {values["prompt"]} Response: {values["response"]}"""
-            values["content"] = content
-        if "id" not in values:
-            values["id"] = f"""{values["session_id"]}:{hash_input(content)}"""
+            values[
+                "content"
+            ] = f"""Prompt: {values["prompt"]} Response: {values["response"]}"""
         return values
 
-    @classmethod
-    def from_dict(cls, d: dict):
-        if "metadata" in d:
-            d["metadata"] = json.loads(d["metadata"])
-        return cls(**d)
+    @field_serializer("metadata")
+    def serialize_metadata(self, metadata: dict, _info):
+        return json.dumps(metadata)
 
-    def as_dict(self) -> Dict[str, str]:
-        d = self.__dict__
-        d["metadata"] = json.dumps(d["metadata"])
-        return d
+    @field_validator("metadata", mode="before")
+    def parse_metadata(cls, metadata: dict, _info):
+        if isinstance(metadata, str):
+            return json.loads(metadata)
+        return metadata
