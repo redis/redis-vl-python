@@ -3,7 +3,7 @@ name: deploy-release
 on:
   pull_request:
     types: [closed]
-    branches: [master]
+    branches: [main]
 
 jobs:
   build_release:
