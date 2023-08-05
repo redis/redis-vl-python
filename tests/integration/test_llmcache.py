@@ -14,12 +14,12 @@ def vectorizer():
 
 @pytest.fixture
 def cache(vectorizer):
-    return SemanticCache(vectorizer=vectorizer, threshold=0.8)
+    return SemanticCache(vectorizer=vectorizer, semantic_threshold=0.8)
 
 
 @pytest.fixture
 def cache_with_ttl(vectorizer):
-    return SemanticCache(vectorizer=vectorizer, threshold=0.8, ttl=2)
+    return SemanticCache(vectorizer=vectorizer, semantic_threshold=0.8, ttl=2)
 
 
 @pytest.fixture
@@ -79,9 +79,9 @@ def test_store_with_vector_and_metadata(cache, vector):
 
 def test_set_threshold(cache):
     # Test the getter and setter for the threshold
-    assert cache.threshold == 0.8
+    assert cache.semantic_threshold == 0.8
     cache.set_threshold(0.9)
-    assert cache.threshold == 0.9
+    assert cache.semantic_threshold == 0.9
     cache._index.delete(True)
 
 
@@ -109,7 +109,7 @@ def test_from_existing_cache(cache, vector, vectorizer):
     metadata = {"source": "test"}
     cache.store(prompt, response, vector=vector, metadata=metadata)
     # connect from existing?
-    new_cache = SemanticCache(vectorizer=vectorizer, threshold=0.8)
+    new_cache = SemanticCache(vectorizer=vectorizer, semantic_threshold=0.8)
     check_result = new_cache.check(vector=vector)
     assert len(check_result) >= 1
     assert response in check_result

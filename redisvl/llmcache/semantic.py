@@ -50,7 +50,7 @@ class SemanticCache(BaseLLMCache):
             index (Optional[SearchIndex], optional): The underlying search index to use for the semantic cache. Defaults to None.
 
         Raises:
-            ValueError: If the threshold is not between 0 and 1.
+            ValueError: If the semantic threshold is not between 0 and 1.
             ValueError: If the index name or prefix is not supplied when constructing index manually.
         """
         self._ttl = ttl
@@ -132,7 +132,7 @@ class SemanticCache(BaseLLMCache):
         """
         if not 0 <= float(semantic_threshold) <= 1:
             raise ValueError("Semantic threshold must be between 0 and 1.")
-        self._threshold = float(semantic_threshold)
+        self._semantic_threshold = float(semantic_threshold)
 
     def clear(self):
         """Clear the LLMCache of all keys in the index"""
@@ -185,7 +185,7 @@ class SemanticCache(BaseLLMCache):
         cache_hits = []
         for doc in results.docs:
             sim = similarity(doc.vector_distance)
-            if sim > self.threshold:
+            if sim > self._semantic_threshold:
                 self._refresh_ttl(doc.id)
                 cache_hits.append(doc.response)
         return cache_hits

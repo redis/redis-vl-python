@@ -204,7 +204,7 @@ class MemoryManager:
         memory_hits = []
         for doc in results.docs:
             print("DOC", doc, flush=True)
-            if similarity(doc.vector_distance) > self.semantic_threshold:
+            if similarity(doc.vector_distance) > self._semantic_threshold:
                 memory_hits.append(Interaction(**doc.__dict__))
         return memory_hits
 
