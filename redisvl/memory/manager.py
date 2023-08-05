@@ -40,11 +40,11 @@ class MemoryManager:
         """Multi-faceted memory manager for Large Language Model (LLM) applications.
 
         Args:
-            index_name (Optional[str], optional): The name of the index. Defaults to "memory".
-            prefix (Optional[str], optional): The prefix for the index. Defaults to "memory".
+            index_name (Optional[str], optional): The name of the index. Defaults to "llm_memory".
+            prefix (Optional[str], optional): The prefix for the index. Defaults to "llm_interaction".
             max_session_len (Optional[int], optional): Strict max number of interactions to
                 persist per session. Defaults to 30.
-            semantic_threshold (Optional[float], optional): Semantic threshold for the cache. Defaults to 0.9.
+            semantic_threshold (Optional[float], optional): Semantic threshold for the memory manager. Defaults to 0.9.
             ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
             vectorizer (Optional[Basevectorizer], optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer("sentence-transformers/all-mpnet-base-v2").
@@ -131,17 +131,17 @@ class MemoryManager:
             self._index.client.delete(*removed_interaction_keys)
 
     def seek(self, session_id: str, n: int) -> List[Interaction]:
-        """_summary_
+        """Seek the most recent "n" interactions from the memory layer.
 
         Args:
-            session_id (str): _description_
-            n (int): _description_
+            session_id (str): Unique session_id associated with the conversation.
+            n (int): Number of recent interactions to pull.
 
         Raises:
-            ValueError: _description_
+            ValueError: When the number of recent interactions to pull is less than 1.
 
         Returns:
-            List[Interaction]: _description_
+            List[Interaction]: List of Interaction objects.
         """
         if n < 1:
             raise ValueError("Must seek atleast 1 recent interaction")
@@ -149,15 +149,15 @@ class MemoryManager:
         return self.seek_range(session_id, start=0, end=n - 1)
 
     def seek_range(self, session_id: str, start: int, end: int) -> List[Interaction]:
-        """_summary_
+        """Seek a range of interactions from the memory layer.
 
         Args:
-            session_id (str): _description_
-            start (int): _description_
-            end (int): _description_
+            session_id (str): Unique session_id associated with the conversation.
+            start (int): Start index in the session list to retrieve from the memory layer.
+            end (int): End index in the session list to retrieve from the memory layer.
 
         Returns:
-            List[Interaction]: _description_
+            List[Interaction]: List of Interaction objects.
         """
         # create session key
         session_key = self._session_key(session_id)
@@ -177,15 +177,15 @@ class MemoryManager:
     def seek_relevant(
         self, session_id: str, context: str, n: Optional[int] = 3
     ) -> List[Interaction]:
-        """_summary_
+        """Seek relevant interactions from the memory layer.
 
         Args:
-            session_id (str): _description_
-            context (str): _description_
-            n (Optional, optional): _description_. Defaults to 3.
+            session_id (str): Unique session_id associated with the conversation.
+            context (str): The context to use for relevancy search.
+            n (Optional[int'], optional): The max number of relevant interactions to seek. Defaults to 3.
 
         Returns:
-            List[Interaction]: _description_
+            List[Interaction]: List of Interaction objects.
         """
         # create vector from context
         vector = self._vectorizer.embed(context)
@@ -209,21 +209,21 @@ class MemoryManager:
         return memory_hits
 
     def len(self, session_id: str) -> int:
-        """_summary_
+        """Check the length of a session.
 
         Args:
-            session_id (str): _description_
+            session_id (str): Unique session_id associated with the conversation.
 
         Returns:
-            int: _description_
+            int: Count of session interactions persisted in the memory layer.
         """
         return self._index.client.llen(self._session_key(session_id))
 
     def clear(self, session_id: str):
-        """_summary_
+        """Clear out a given session
 
         Args:
-            session_id (str): _description_
+            session_id (str): Unique session_id associated with the conversation.
         """
         session_key = self._session_key(session_id)
         pipe = self._index.client.pipeline()
