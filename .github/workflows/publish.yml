@@ -27,7 +27,6 @@ jobs:
       - name: check-version
         run: |
           echo "VERSION=$(python setup.py --version)" >> $GITHUB_OUTPUT
-          id: version
 
       - name: create python package
         run: python setup.py sdist bdist_wheel
@@ -39,7 +38,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           generateReleaseNotes: true
-          tag: v${{ steps.version.outputs.VERSION }}
+          tag: v${{ steps.check-version.outputs.VERSION }}
           commit: main
 
       - name: deploy
