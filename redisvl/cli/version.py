@@ -2,6 +2,7 @@ import sys
 import argparse
 from argparse import Namespace
 
+from redisvl import __version__
 from redisvl.cli.log import get_logger
 logger = get_logger("[RedisVL]")
 
@@ -25,6 +26,6 @@ class Version:
 
     def version(self, args: Namespace):
         if args.short:
-            print("0.1.0")
+            print(__version__)
         else:
-            logger.info("RedisVL version 0.1.0")
+            logger.info(f"RedisVL version {__version__}")
