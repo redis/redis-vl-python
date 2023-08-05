@@ -1,5 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
+from redisvl.utils.utils import array_to_buffer
+
 
 class BaseVectorizer:
     def __init__(self, model: str, dims: int, api_config: Optional[Dict] = None):
@@ -21,27 +23,35 @@ class BaseVectorizer:
 
     def embed_many(
         self,
-        inputs: List[str],
+        texts: List[str],
         preprocess: Optional[Callable] = None,
-        chunk_size: int = 1000,
+        batch_size: Optional[int] = 1000,
+        as_buffer: Optional[bool] = False,
     ) -> List[List[float]]:
         raise NotImplementedError
 
     def embed(
-        self, emb_input: str, preprocess: Optional[Callable] = None
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: Optional[bool] = False,
     ) -> List[float]:
         raise NotImplementedError
 
     async def aembed_many(
         self,
-        inputs: List[str],
+        texts: List[str],
         preprocess: Optional[Callable] = None,
-        chunk_size: int = 1000,
+        batch_size: Optional[int] = 1000,
+        as_buffer: Optional[bool] = False,
     ) -> List[List[float]]:
         raise NotImplementedError
 
     async def aembed(
-        self, emb_input: str, preprocess: Optional[Callable] = None
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: Optional[bool] = False,
     ) -> List[float]:
         raise NotImplementedError
 
@@ -51,3 +61,8 @@ class BaseVectorizer:
                 yield [preprocess(chunk) for chunk in seq[pos : pos + size]]
             else:
                 yield seq[pos : pos + size]
+
+    def _process_embedding(self, embedding: List[float], as_buffer: bool):
+        if as_buffer:
+            return array_to_buffer(embedding)
+        return embedding
