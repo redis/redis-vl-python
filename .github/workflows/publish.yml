@@ -1,0 +1,42 @@
+name: deploy-release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+jobs:
+  build_release:
+    if: |
+        ${{ github.event.pull_request.merged == true }}
+        && ${{ contains(github.event.pull_request.labels.*.name, 'release') }}
+    name: Build Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: check-version
+        run: echo ::set_output name=version::$(python setup.py --version)
+
+      - name: create python package
+        run: python setup.py bdist_wheel
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          generateReleaseNotes: true
+          tag: v${{ steps.check-version.outputs.version }}
+          commit: master
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          repository_url: https://test.pypi.org/legacy/

@@ -22,13 +22,12 @@ extras_require = {
 
 setup(
     name="redisvl",
-    description="Vector loading utility for Redis vector search",
-    license="BSD-3-Clause",
-    version="0.1.0",
+    version="0.0.1",
     python_requires=">=3.7",
     install_requires=read_requirements(),
     extras_require=extras_require,
     packages=find_packages(),
+    package_data = {"redisvl": ["requirements.txt", "requirements-dev.txt"]},
     zip_safe=False,
     entry_points={
         "console_scripts": [
