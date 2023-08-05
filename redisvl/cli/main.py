@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from redisvl.cli.index import Index
+from redisvl.cli.version import Version
 from redisvl.cli.log import get_logger
 
 logger = get_logger(__name__)
@@ -12,6 +13,7 @@ def _usage():
         "rvl <command> [<args>]\n",
         "Commands:",
         "\tindex       Index manipulation (create, delete, etc.)",
+        "\tversion     Obtain the version of RedisVL",
     ]
     return "\n".join(usage) + "\n"
 
@@ -36,4 +38,8 @@ class RedisVlCLI:
 
     def index(self):
         Index()
+        exit(0)
+
+    def version(self):
+        Version()
         exit(0)
