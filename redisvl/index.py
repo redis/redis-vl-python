@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Callable
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -23,6 +23,7 @@ def _default_process_results(results: List["Result"]) -> List[Dict[str, Any]]:
     # Convert a list of Result objects into a list of document dicts
     # Process results functions must accept a list of results and return a list
     return [doc.__dict__ for doc in results.docs]
+
 
 class SearchIndexBase:
     def __init__(
@@ -67,13 +68,19 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        process_results = kwargs.pop("process_results") if "process_results" in kwargs else None
-        results: List["Result"] =  self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        process_results = (
+            kwargs.pop("process_results") if "process_results" in kwargs else None
+        )
+        results: List["Result"] = self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
         if process_results:
             return process_results(results)
         return results
 
-    def query(self, query: BaseQuery, process_results: Optional[Callable] = _default_process_results) -> List[Any]:
+    def query(
+        self,
+        query: BaseQuery,
+        process_results: Optional[Callable] = _default_process_results,
+    ) -> List[Any]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -546,13 +553,19 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             List[Result]: A list of search results
         """
-        process_results = kwargs.pop("process_results") if "process_results" in kwargs else None
-        results: List["Result"] =  await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        process_results = (
+            kwargs.pop("process_results") if "process_results" in kwargs else None
+        )
+        results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
         if process_results:
             return process_results(results)
         return results
 
-    async def query(self, query: BaseQuery, process_results: Optional[Callable] = _default_process_results) -> List[Any]:
+    async def query(
+        self,
+        query: BaseQuery,
+        process_results: Optional[Callable] = _default_process_results,
+    ) -> List[Any]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery

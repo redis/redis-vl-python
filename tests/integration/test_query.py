@@ -2,7 +2,6 @@ from pprint import pprint
 
 import numpy as np
 import pytest
-
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
