@@ -12,8 +12,7 @@ from redisvl.vectorize.base import BaseVectorizer
 class OpenAITextVectorizer(BaseVectorizer):
     # TODO - add docstring
     def __init__(self, model: str, api_config: Optional[Dict] = None):
-        dims = 1536
-        super().__init__(model, dims, api_config)
+        super().__init__(model)
         if not api_config:
             raise ValueError("OpenAI API key is required in api_config")
         try:
@@ -24,6 +23,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             )
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding
+        self._dims = len(
+            self._model_client.create(input=["dimension test"], engine=self._model)["data"][0]["embedding"]
+        )
 
     @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     def embed_many(

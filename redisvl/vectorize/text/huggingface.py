@@ -6,9 +6,7 @@ from redisvl.vectorize.base import BaseVectorizer
 class HFTextVectorizer(BaseVectorizer):
     # TODO - add docstring
     def __init__(self, model: str, api_config: Optional[Dict] = None):
-        # TODO set dims based on model
-        dims = 768
-        super().__init__(model, dims, api_config)
+        super().__init__(model)
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -16,7 +14,8 @@ class HFTextVectorizer(BaseVectorizer):
                 "HFTextVectorizer requires sentence-transformers library. Please install with pip install sentence-transformers"
             )
 
-        self._model_client = SentenceTransformer(model)
+        self._model_client = SentenceTransformer(self._model)
+        self._dims = len(self._model_client.encode(["dimension check"])[0])
 
     def embed(
         self,
