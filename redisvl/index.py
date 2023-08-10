@@ -20,17 +20,6 @@ from redisvl.utils.connection import (
 from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_dict
 
 
-def _default_process_results(results: List["Result"]) -> List[Dict[str, Any]]:
-    # Convert a list of Result objects into a list of document dicts
-    # Process results functions must accept a list of results and return a list
-    def _process(doc: "Document") -> dict:
-        d = doc.__dict__
-        if "payload" in d:
-            del d["payload"]
-        return d
-    return [_process(doc) for doc in results.docs]
-
-
 class SearchIndexBase:
     def __init__(
         self,
@@ -66,27 +55,15 @@ class SearchIndexBase:
         to the search query and passes along the rest of the arguments
         to the redis-py ft.search() method.
 
-        Args:
-            process_results (Optional[Callable], optional): Optional support for
-                post-processing search results from the raw format returned by the
-                Redis Python client. Defaults to None.
-
         Returns:
             List[Result]: A list of search results
         """
-        process_results = (
-            kwargs.pop("process_results") if "process_results" in kwargs else None
+        results: List["Result"] = self._redis_conn.ft(self._name).search(
+            *args, **kwargs
         )
-        results: List["Result"] = self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
-        if process_results:
-            return process_results(results)
         return results
 
-    def query(
-        self,
-        query: BaseQuery,
-        process_results: Optional[Callable] = _default_process_results,
-    ) -> List[Any]:
+    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -95,16 +72,12 @@ class SearchIndexBase:
 
         Args:
             query (BaseQuery): The query to run.
-            process_results (Optional[Callable], optional): Optional support for
-                post-processing search results from the raw format returned by the
-                Redis Python client. Defaults to the default results processor.
 
         Returns:
             List[Result]: A list of search results.
         """
-        return self.search(
-            query.query, query_params=query.params, process_results=process_results
-        )
+        results = self.search(query.query, query_params=query.params)
+        return self._process_results(results)
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -192,6 +165,18 @@ class SearchIndexBase:
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {record}")
         return f"{self._prefix}:{key}"
+
+    @staticmethod
+    def _process_results(results: List["Result"]) -> List[Dict[str, Any]]:
+        # Convert a list of Result objects into a list of document dicts
+        # Process results functions must accept a list of results and return a list
+        def _process(doc: "Document") -> dict:
+            d = doc.__dict__
+            if "payload" in d:
+                del d["payload"]
+            return d
+
+        return [_process(doc) for doc in results.docs]
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -551,27 +536,13 @@ class AsyncSearchIndex(SearchIndexBase):
         to the search query and passes along the rest of the arguments
         to the redis-py ft.search() method.
 
-        Args:
-            process_results (Optional[Callable], optional): Optional support for
-                post-processing search results from the raw format returned by the
-                Redis Python client. Defaults to None.
-
         Returns:
             List[Result]: A list of search results
         """
-        process_results = (
-            kwargs.pop("process_results") if "process_results" in kwargs else None
-        )
         results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
-        if process_results:
-            return process_results(results)
         return results
 
-    async def query(
-        self,
-        query: BaseQuery,
-        process_results: Optional[Callable] = _default_process_results,
-    ) -> List[Any]:
+    async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -580,16 +551,12 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Args:
             query (BaseQuery): The query to run.
-            process_results (Optional[Callable], optional): Optional support for
-                post-processing search results from the raw format returned by the
-                Redis Python client. Defaults to the default results processor.
 
         Returns:
             List[Result]: A list of search results.
         """
-        return await self.search(
-            query.query, query_params=query.params, process_results=process_results
-        )
+        results = await self.search(query.query, query_params=query.params)
+        return self._process_results(results)
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:

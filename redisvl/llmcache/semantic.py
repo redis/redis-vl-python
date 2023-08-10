@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
     from redis.commands.search.result import Result
@@ -154,7 +154,7 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         fields: List[str] = ["response"],
-    ) -> Optional[List[str]]:
+    ) -> List[str]:
         """Checks whether the cache contains the specified prompt or vector.
 
         Args:
@@ -167,7 +167,7 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither prompt nor vector is specified.
 
         Returns:
-            Optional[List[str]]: The response(s) if the cache contains the prompt or vector.
+            List[str]: The response(s) if the cache contains the prompt or vector.
         """
         if not prompt and not vector:
             raise ValueError("Either prompt or vector must be specified.")
@@ -183,18 +183,14 @@ class SemanticCache(BaseLLMCache):
             return_score=True,
         )
 
-        cache_hits = self._index.query(v, process_results=self._process_cache_hits)
-        return cache_hits
-
-    def _process_cache_hits(self, results: List["Result"]) -> List[str]:
         cache_hits: List[str] = []
-        for doc in results.docs:
-            sim = similarity(doc.vector_distance)
+        for result in self._index.query(v):
+            sim = similarity(result["vector_distance"])
             if sim > self.threshold:
-                self._refresh_ttl(doc.id)
+                self._refresh_ttl(result["id"])
                 cache_hits.append(
-                    doc.response
-                )  # TODO what do we actually want to return here?
+                    result["response"]
+                )  # TODO - in the future what do we actually want to return here?
         return cache_hits
 
     def store(

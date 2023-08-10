@@ -120,7 +120,7 @@ def test_simple(index):
         assert doc.credit_score in ["high", "low", "medium"]
 
 
-def test_process_results(index):
+def test_search_qeury(index):
     # *=>[KNN 7 @user_embedding $vector AS vector_distance]
     v = VectorQuery(
         [0.1, 0.1, 0.5],
@@ -132,13 +132,12 @@ def test_process_results(index):
     assert isinstance(results, Result)
     assert len(results.docs) == 7
 
-    query_results = index.query(v, process_results=False)
-    assert isinstance(query_results, Result)
-    assert len(query_results.docs) == 7
-
     processed_results = index.query(v)
     assert len(processed_results) == 7
     assert isinstance(processed_results[0], dict)
+    result = results.docs[0].__dict__
+    result.pop("payload")
+    assert processed_results[0] == results.docs[0].__dict__
 
 
 def test_simple_tag_filter(index):
