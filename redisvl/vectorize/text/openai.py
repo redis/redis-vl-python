@@ -20,16 +20,19 @@ class OpenAITextVectorizer(BaseVectorizer):
             )
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding
-        self._dims = len(
-            self._model_client.create(input=["dimension test"], engine=self._model)[
-                "data"
-            ][0]["embedding"]
-        )
+        self._dims = self._model_dims()
+
+    def _model_dims(self):
+        embedding = self._model_client.create(
+            input=["dimension test"],
+            engine=self._model
+        )["data"][0]["embedding"]
+        return len(embedding)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(ValueError),
+        retry=retry_if_not_exception_type(TypeError),
     )
     def embed_many(
         self,
@@ -51,9 +54,14 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[List[float]]: List of embeddings.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(texts, list):
-            raise ValueError("Must pass in a list of str values to embed.")
+                raise TypeError("Must pass in a list of str values to embed.")
+        if  len(texts) > 0 and not isinstance(texts[0], str):
+                raise TypeError("Must pass in a list of str values to embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -67,7 +75,7 @@ class OpenAITextVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(ValueError),
+        retry=retry_if_not_exception_type(TypeError),
     )
     def embed(
         self,
@@ -86,9 +94,12 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[float]: Embedding.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(text, str):
-            raise ValueError("Must pass in a str value to embed.")
+            raise TypeError("Must pass in a str value to embed.")
 
         if preprocess:
             text = preprocess(text)
@@ -98,7 +109,7 @@ class OpenAITextVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(ValueError),
+        retry=retry_if_not_exception_type(TypeError),
     )
     async def aembed_many(
         self,
@@ -120,9 +131,14 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[List[float]]: List of embeddings.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(texts, list):
-            raise ValueError("Must pass in a list of str values to embed.")
+                raise TypeError("Must pass in a list of str values to embed.")
+        if  len(texts) > 0 and not isinstance(texts[0], str):
+                raise TypeError("Must pass in a list of str values to embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -136,7 +152,7 @@ class OpenAITextVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(ValueError),
+        retry=retry_if_not_exception_type(TypeError),
     )
     async def aembed(
         self,
@@ -155,9 +171,12 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[float]: Embedding.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(text, str):
-            raise ValueError("Must pass in a str value to embed.")
+            raise TypeError("Must pass in a str value to embed.")
 
         if preprocess:
             text = preprocess(text)

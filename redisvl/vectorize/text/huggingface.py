@@ -15,7 +15,11 @@ class HFTextVectorizer(BaseVectorizer):
             )
 
         self._model_client = SentenceTransformer(self._model)
-        self._dims = len(self._model_client.encode(["dimension check"])[0])
+        self._dims = self._model_dims()
+
+    def _model_dims(self):
+        embedding = self._model_client.encode(["dimension check"])[0]
+        return len(embedding)
 
     def embed(
         self,
@@ -34,9 +38,12 @@ class HFTextVectorizer(BaseVectorizer):
 
         Returns:
             List[float]: Embedding.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(text, str):
-            raise ValueError("Must pass in a str value to embed.")
+            raise TypeError("Must pass in a str value to embed.")
 
         if preprocess:
             text = preprocess(text)
@@ -64,9 +71,14 @@ class HFTextVectorizer(BaseVectorizer):
 
         Returns:
             List[List[float]]: List of embeddings.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(texts, list):
-            raise ValueError("Must pass in a list of str values to embed.")
+                raise TypeError("Must pass in a list of str values to embed.")
+        if  len(texts) > 0 and not isinstance(texts[0], str):
+                raise TypeError("Must pass in a list of str values to embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
