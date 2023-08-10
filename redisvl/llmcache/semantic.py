@@ -1,4 +1,8 @@
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
+
+if TYPE_CHECKING:
+    from redis.commands.search.result import Result
+    from redis.commands.search.document import Document
 
 from redis.commands.search.field import VectorField
 
@@ -138,10 +142,10 @@ class SemanticCache(BaseLLMCache):
         """Clear the LLMCache of all keys in the index"""
         client = self._index.client
         if client:
-            pipe = client.pipeline()
-            for key in client.scan_iter(match=f"{self._index._prefix}:*"):
-                pipe.delete(key)
-            pipe.execute()
+            with client.pipeline() as pipe:
+                for key in client.scan_iter(match=f"{self._index._prefix}:*"):
+                    pipe.delete(key)
+                pipe.execute()
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
@@ -180,14 +184,16 @@ class SemanticCache(BaseLLMCache):
             return_score=True,
         )
 
-        results = self._index.search(v.query, query_params=v.params)
+        cache_hits = self._index.query(v, process_results=self._process_cache_hits)
+        return cache_hits
 
-        cache_hits = []
+    def _process_cache_hits(self, results: List["Result"]) -> List[str]:
+        cache_hits: List[str] = []
         for doc in results.docs:
             sim = similarity(doc.vector_distance)
             if sim > self.threshold:
                 self._refresh_ttl(doc.id)
-                cache_hits.append(doc.response)
+                cache_hits.append(doc.response)  # TODO what do we actually want to return here?
         return cache_hits
 
     def store(

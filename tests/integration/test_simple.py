@@ -73,7 +73,7 @@ def test_simple(client):
     )
 
     results = index.search(query.query, query_params=query.params)
-    results_2 = index.query(query)
+    results_2 = index.query(query, process_results=False)
     assert len(results.docs) == len(results_2.docs)
 
     # make sure correct users returned
