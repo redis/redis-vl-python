@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from redisvl.vectorize.text import HFTextVectorizer, OpenAITextVectorizer
@@ -33,6 +35,17 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
+def test_vectorizer_bad_input(vectorizer):
+    with pytest.raises(ValueError):
+        vectorizer.embed(1)
+
+    with pytest.raises(ValueError):
+        vectorizer.embed({"foo": "bar"})
+
+    with pytest.raises(ValueError):
+        vectorizer.embed_many(42)
+
+
 @pytest.fixture(params=[OpenAITextVectorizer])
 def avectorizer(request, openai_key):
     # Here we use actual models for integration test
@@ -61,3 +74,15 @@ async def test_vectorizer_aembed_many(avectorizer):
     assert all(
         isinstance(emb, list) and len(emb) == avectorizer.dims for emb in embeddings
     )
+
+
+@pytest.mark.asyncio
+async def test_avectorizer_bad_input(avectorizer):
+    with pytest.raises(ValueError):
+        avectorizer.embed(1)
+
+    with pytest.raises(ValueError):
+        avectorizer.embed({"foo": "bar"})
+
+    with pytest.raises(ValueError):
+        avectorizer.embed_many(42)
