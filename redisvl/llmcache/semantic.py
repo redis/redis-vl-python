@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 if TYPE_CHECKING:
     from redis.commands.search.result import Result
-    from redis.commands.search.document import Document
 
 from redis.commands.search.field import VectorField
 
@@ -142,7 +141,7 @@ class SemanticCache(BaseLLMCache):
         """Clear the LLMCache of all keys in the index"""
         client = self._index.client
         if client:
-            with client.pipeline() as pipe:
+            with client.pipeline(transaction=False) as pipe:
                 for key in client.scan_iter(match=f"{self._index._prefix}:*"):
                     pipe.delete(key)
                 pipe.execute()

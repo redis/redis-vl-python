@@ -1,4 +1,5 @@
 from IPython.display import display, HTML
+from redis.commands.search.result import Result
 
 def table_print(dict_list):
     # If there's nothing in the list, there's nothing to print
@@ -27,16 +28,17 @@ def table_print(dict_list):
 
 
 def result_print(results):
-    # If there's nothing in the list, there's nothing to print
-    if len(results.docs) == 0:
-        return
+    if isinstance(results, Result):
+        # If there's nothing in the list, there's nothing to print
+        if len(results.docs) == 0:
+            return
 
-    data = [doc.__dict__ for doc in results.docs]
+        results = [doc.__dict__ for doc in results.docs]
 
-    to_remove = ["id", "payload"]
-    for doc in data:
-        for key in to_remove:
-            if key in doc:
-                del doc[key]
+        to_remove = ["id", "payload"]
+        for doc in results:
+            for key in to_remove:
+                if key in doc:
+                    del doc[key]
 
-    table_print(data)
+    table_print(results)

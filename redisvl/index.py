@@ -5,6 +5,7 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
     from redis.commands.search.result import Result
+    from redis.commands.search.document import Document
 
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
@@ -22,7 +23,12 @@ from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_d
 def _default_process_results(results: List["Result"]) -> List[Dict[str, Any]]:
     # Convert a list of Result objects into a list of document dicts
     # Process results functions must accept a list of results and return a list
-    return [doc.__dict__ for doc in results.docs]
+    def _process(doc: "Document") -> dict:
+        d = doc.__dict__
+        if "payload" in d:
+            del d["payload"]
+        return d
+    return [_process(doc) for doc in results.docs]
 
 
 class SearchIndexBase:
@@ -374,7 +380,7 @@ class SearchIndex(SearchIndexBase):
 
             # Check if outer interface passes in TTL on load
             ttl = kwargs.get("ttl")
-            with self._redis_conn.pipeline() as pipe:
+            with self._redis_conn.pipeline(transaction=False) as pipe:
                 for record in data:
                     key = self._get_key(record, key_field)
                     pipe.hset(key, mapping=record)  # type: ignore
