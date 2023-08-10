@@ -47,6 +47,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         Returns:
             List[List[float]]: List of embeddings.
         """
+        if not isinstance(texts, list):
+            raise ValueError("Must pass in a list of str values to embed.")
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._model_client.create(input=batch, engine=self._model)
@@ -75,6 +78,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         Returns:
             List[float]: Embedding.
         """
+        if not isinstance(text, str):
+            raise ValueError("Must pass in a str value to embed.")
+
         if preprocess:
             text = preprocess(text)
         result = self._model_client.create(input=[text], engine=self._model)
@@ -102,6 +108,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         Returns:
             List[List[float]]: List of embeddings.
         """
+        if not isinstance(texts, list):
+            raise ValueError("Must pass in a list of str values to embed.")
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._model_client.acreate(input=batch, engine=self._model)
@@ -130,6 +139,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         Returns:
             List[float]: Embedding.
         """
+        if not isinstance(text, str):
+            raise ValueError("Must pass in a str value to embed.")
+
         if preprocess:
             text = preprocess(text)
         result = await self._model_client.acreate(input=[text], engine=self._model)

@@ -36,6 +36,9 @@ class HFTextVectorizer(BaseVectorizer):
         Returns:
             List[float]: Embedding.
         """
+        if not isinstance(text, str):
+            raise ValueError("Must pass in a str value to embed.")
+
         if preprocess:
             text = preprocess(text)
         embedding = self._model_client.encode([text])[0]
@@ -63,6 +66,9 @@ class HFTextVectorizer(BaseVectorizer):
         Returns:
             List[List[float]]: List of embeddings.
         """
+        if not isinstance(texts, list):
+            raise ValueError("Must pass in a list of str values to embed.")
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             batch_embeddings = self._model_client.encode(batch)
