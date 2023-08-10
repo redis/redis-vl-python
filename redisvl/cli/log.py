@@ -5,9 +5,8 @@ import coloredlogs
 
 # constants for logging
 coloredlogs.DEFAULT_DATE_FORMAT = "%H:%M:%S"
-coloredlogs.DEFAULT_LOG_FORMAT = (
-    "%(asctime)s %(name)s %(levelname)s   %(message)s"
-)
+coloredlogs.DEFAULT_LOG_FORMAT = "%(asctime)s %(name)s %(levelname)s   %(message)s"
+
 
 def get_logger(name, log_level="info", fmt=None):
     """Return a logger instance"""

@@ -2,8 +2,8 @@ import argparse
 import sys
 
 from redisvl.cli.index import Index
-from redisvl.cli.version import Version
 from redisvl.cli.log import get_logger
+from redisvl.cli.version import Version
 
 logger = get_logger(__name__)
 
