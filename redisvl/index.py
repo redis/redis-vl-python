@@ -1,11 +1,10 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
     from redis.commands.search.result import Result
-    from redis.commands.search.document import Document
 
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
@@ -17,7 +16,12 @@ from redisvl.utils.connection import (
     get_async_redis_connection,
     get_redis_connection,
 )
-from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_dict
+from redisvl.utils.utils import (
+    check_redis_modules_exist,
+    convert_bytes,
+    make_dict,
+    process_results,
+)
 
 
 class SearchIndexBase:
@@ -77,7 +81,7 @@ class SearchIndexBase:
             List[Result]: A list of search results.
         """
         results = self.search(query.query, query_params=query.params)
-        return self._process_results(results)
+        return process_results(results)
 
     @classmethod
     def from_yaml(cls, schema_path: str):
@@ -165,18 +169,6 @@ class SearchIndexBase:
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {record}")
         return f"{self._prefix}:{key}"
-
-    @staticmethod
-    def _process_results(results: List["Result"]) -> List[Dict[str, Any]]:
-        # Convert a list of Result objects into a list of document dicts
-        # Process results functions must accept a list of results and return a list
-        def _process(doc: "Document") -> dict:
-            d = doc.__dict__
-            if "payload" in d:
-                del d["payload"]
-            return d
-
-        return [_process(doc) for doc in results.docs]
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -556,7 +548,7 @@ class AsyncSearchIndex(SearchIndexBase):
             List[Result]: A list of search results.
         """
         results = await self.search(query.query, query_params=query.params)
-        return self._process_results(results)
+        return process_results(results)
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:

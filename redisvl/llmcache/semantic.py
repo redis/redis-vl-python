@@ -1,7 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
-
-if TYPE_CHECKING:
-    from redis.commands.search.result import Result
+from typing import List, Optional, Union
 
 from redis.commands.search.field import VectorField
 
@@ -184,7 +181,8 @@ class SemanticCache(BaseLLMCache):
         )
 
         cache_hits: List[str] = []
-        for result in self._index.query(v):
+        results = self._index.search(v.query, query_params=v.params)
+        for result in results.docs:
             sim = similarity(result["vector_distance"])
             if sim > self.threshold:
                 self._refresh_ttl(result["id"])
