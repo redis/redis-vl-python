@@ -1,10 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
-from tenacity import (  # for exponential backoff
-    retry,
-    stop_after_attempt,
-    wait_random_exponential,
-)
+from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.vectorize.base import BaseVectorizer
 
@@ -12,8 +9,7 @@ from redisvl.vectorize.base import BaseVectorizer
 class OpenAITextVectorizer(BaseVectorizer):
     # TODO - add docstring
     def __init__(self, model: str, api_config: Optional[Dict] = None):
-        dims = 1536
-        super().__init__(model, dims, api_config)
+        super().__init__(model)
         if not api_config:
             raise ValueError("OpenAI API key is required in api_config")
         try:
@@ -25,7 +21,23 @@ class OpenAITextVectorizer(BaseVectorizer):
         openai.api_key = api_config.get("api_key", None)
         self._model_client = openai.Embedding
 
-    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+        try:
+            self._dims = self._set_model_dims()
+        except:
+            raise ValueError("Error setting embedding model dimensions")
+
+    def _set_model_dims(self):
+        embedding = self._model_client.create(
+            input=["dimension test"],
+            engine=self._model
+        )["data"][0]["embedding"]
+        return len(embedding)
+
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
     def embed_many(
         self,
         texts: List[str],
@@ -46,7 +58,15 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[List[float]]: List of embeddings.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
+        if not isinstance(texts, list):
+                raise TypeError("Must pass in a list of str values to embed.")
+        if  len(texts) > 0 and not isinstance(texts[0], str):
+                raise TypeError("Must pass in a list of str values to embed.")
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._model_client.create(input=batch, engine=self._model)
@@ -56,7 +76,11 @@ class OpenAITextVectorizer(BaseVectorizer):
             ]
         return embeddings
 
-    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
     def embed(
         self,
         text: str,
@@ -74,13 +98,23 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[float]: Embedding.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
+        if not isinstance(text, str):
+            raise TypeError("Must pass in a str value to embed.")
+
         if preprocess:
             text = preprocess(text)
         result = self._model_client.create(input=[text], engine=self._model)
         return self._process_embedding(result["data"][0]["embedding"], as_buffer)
 
-    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
     async def aembed_many(
         self,
         texts: List[str],
@@ -101,7 +135,15 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[List[float]]: List of embeddings.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
+        if not isinstance(texts, list):
+                raise TypeError("Must pass in a list of str values to embed.")
+        if  len(texts) > 0 and not isinstance(texts[0], str):
+                raise TypeError("Must pass in a list of str values to embed.")
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._model_client.acreate(input=batch, engine=self._model)
@@ -111,7 +153,11 @@ class OpenAITextVectorizer(BaseVectorizer):
             ]
         return embeddings
 
-    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
     async def aembed(
         self,
         text: str,
@@ -129,7 +175,13 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Returns:
             List[float]: Embedding.
+
+        Raises:
+            TypeError: If the wrong input type is passed in for the test.
         """
+        if not isinstance(text, str):
+            raise TypeError("Must pass in a str value to embed.")
+
         if preprocess:
             text = preprocess(text)
         result = await self._model_client.acreate(input=[text], engine=self._model)
