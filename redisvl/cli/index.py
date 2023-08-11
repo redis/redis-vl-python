@@ -119,7 +119,7 @@ class Index:
             conn = get_redis_connection(url=url)
         except ValueError:
             logger.error(
-                "Must set REDIS_ADDRESS environment variable or provide host and port"
+                "Must set REDIS_URL environment variable or provide host and port"
             )
             exit(0)
 

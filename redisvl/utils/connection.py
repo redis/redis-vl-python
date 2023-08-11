@@ -14,7 +14,7 @@ def get_redis_connection(url: Optional[str] = None, **kwargs):
         try:
             client = Redis.from_url(get_address_from_env())
         except ValueError:
-            raise ValueError("No Redis URL provided and REDIS_ADDRESS env var not set")
+            raise ValueError("No Redis URL provided and REDIS_URL env var not set")
     return client
 
 
@@ -27,7 +27,7 @@ def get_async_redis_connection(url: Optional[str] = None, **kwargs):
         try:
             client = ARedis.from_url(get_address_from_env())
         except ValueError:
-            raise ValueError("No Redis URL provided and REDIS_ADDRESS env var not set")
+            raise ValueError("No Redis URL provided and REDIS_URL env var not set")
     return client
 
 
@@ -37,9 +37,9 @@ def get_address_from_env():
     Returns:
         str: Redis URL
     """
-    addr = os.getenv("REDIS_ADDRESS", None)
+    addr = os.getenv("REDIS_URL", None)
     if not addr:
-        raise ValueError("REDIS_ADDRESS env var not set")
+        raise ValueError("REDIS_URL env var not set")
     return addr
 
 

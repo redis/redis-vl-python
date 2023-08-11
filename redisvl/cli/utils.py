@@ -3,7 +3,7 @@ from argparse import Namespace
 
 
 def create_redis_url(args: Namespace) -> str:
-    env_address = os.getenv("REDIS_ADDRESS")
+    env_address = os.getenv("REDIS_URL")
     if env_address:
         return env_address
     else:

@@ -121,7 +121,7 @@ class SearchIndexBase:
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+            url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
@@ -131,7 +131,7 @@ class SearchIndexBase:
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
         """
         raise NotImplementedError
 
@@ -139,7 +139,7 @@ class SearchIndexBase:
         """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+            url (str): Redis URL. REDIS_URL env var is used if not provided.
         """
         raise NotImplementedError
 
@@ -252,7 +252,7 @@ class SearchIndex(SearchIndexBase):
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+            url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
@@ -262,7 +262,7 @@ class SearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
 
         """
         client = get_redis_connection(url, **kwargs)
@@ -283,11 +283,11 @@ class SearchIndex(SearchIndexBase):
         """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+            url (str): Redis URL. REDIS_URL env var is used if not provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
         """
         self._redis_conn = get_redis_connection(url, **kwargs)
 
@@ -410,7 +410,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+            url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
@@ -420,7 +420,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
 
         """
         client = get_async_redis_connection(url, **kwargs)
@@ -441,11 +441,11 @@ class AsyncSearchIndex(SearchIndexBase):
         """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+            url (str): Redis URL. REDIS_URL env var is used if not provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If no Redis URL is provided and REDIS_ADDRESS env var is not set.
+            ValueError: If no Redis URL is provided and REDIS_URL env var is not set.
         """
         self._redis_conn = get_async_redis_connection(url, **kwargs)
 

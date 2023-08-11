@@ -33,8 +33,8 @@ jobs:
         pip install .[dev,all]
     - name: Start Redis
       run: |
-        REDIS_ADDRESS=redis://localhost:6379
-        echo REDIS_ADDRESS=$REDIS_ADDRESS >> $GITHUB_ENV
+        REDIS_URL=redis://localhost:6379
+        echo REDIS_URL=$REDIS_URL >> $GITHUB_ENV
     - name: Run tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
