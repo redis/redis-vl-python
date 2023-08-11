@@ -138,10 +138,10 @@ class SemanticCache(BaseLLMCache):
         """Clear the LLMCache of all keys in the index"""
         client = self._index.client
         if client:
-            pipe = client.pipeline()
-            for key in client.scan_iter(match=f"{self._index._prefix}:*"):
-                pipe.delete(key)
-            pipe.execute()
+            with client.pipeline(transaction=False) as pipe:
+                for key in client.scan_iter(match=f"{self._index._prefix}:*"):
+                    pipe.delete(key)
+                pipe.execute()
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
@@ -151,7 +151,7 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         fields: List[str] = ["response"],
-    ) -> Optional[List[str]]:
+    ) -> List[str]:
         """Checks whether the cache contains the specified prompt or vector.
 
         Args:
@@ -164,7 +164,7 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither prompt nor vector is specified.
 
         Returns:
-            Optional[List[str]]: The response(s) if the cache contains the prompt or vector.
+            List[str]: The response(s) if the cache contains the prompt or vector.
         """
         if not prompt and not vector:
             raise ValueError("Either prompt or vector must be specified.")
@@ -180,14 +180,15 @@ class SemanticCache(BaseLLMCache):
             return_score=True,
         )
 
+        cache_hits: List[str] = []
         results = self._index.search(v.query, query_params=v.params)
-
-        cache_hits = []
-        for doc in results.docs:
-            sim = similarity(doc.vector_distance)
+        for result in results.docs:
+            sim = similarity(result["vector_distance"])
             if sim > self.threshold:
-                self._refresh_ttl(doc.id)
-                cache_hits.append(doc.response)
+                self._refresh_ttl(result["id"])
+                cache_hits.append(
+                    result["response"]
+                )  # TODO - in the future what do we actually want to return here?
         return cache_hits
 
     def store(
