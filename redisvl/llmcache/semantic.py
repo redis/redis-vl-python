@@ -203,7 +203,7 @@ class SemanticCache(BaseLLMCache):
         Args:
             prompt (str): The prompt to store.
             response (str): The response to store.
-            vector (Optional[List[float]], optional): The vector to store. Defaults to None
+            vector (Optional[List[float]], optional): The vector to store. Defaults to None.
             metadata (Optional[dict], optional): The metadata to store. Defaults to {}.
 
         Raises:
