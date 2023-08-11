@@ -7,30 +7,54 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class OpenAITextVectorizer(BaseVectorizer):
-    # TODO - add docstring
+    """OpenAI text vectorizer
+
+    This vectorizer uses the OpenAI API to create embeddings for text. It requires an
+    API key to be passed in the api_config dictionary. The API key can be obtained from
+    https://api.openai.com/.
+    """
     def __init__(self, model: str, api_config: Optional[Dict] = None):
+        """Initialize the OpenAI vectorizer.
+
+        Args:
+            model (str): Model to use for embedding.
+            api_config (Optional[Dict], optional): Dictionary containing the API key.
+                Defaults to None.
+
+        Raises:
+            ImportError: If the openai library is not installed.
+            ValueError: If the API key is not provided.
+        """
         super().__init__(model)
-        if not api_config:
-            raise ValueError("OpenAI API key is required in api_config")
+        # Dynamic import of the openai module
         try:
+            global openai
             import openai
         except ImportError:
             raise ImportError(
-                "OpenAI vectorizer requires openai library. Please install with pip install openai"
+                "OpenAI vectorizer requires the openai library. Please install with pip install openai"
             )
-        openai.api_key = api_config.get("api_key", None)
+
+        if not api_config or "api_key" not in api_config:
+            raise ValueError("OpenAI API key is required in api_config")
+
+        openai.api_key = api_config["api_key"]
         self._model_client = openai.Embedding
+        self._dims = self._set_model_dims()
 
+    def _set_model_dims(self) -> int:
         try:
-            self._dims = self._set_model_dims()
-        except:
-            raise ValueError("Error setting embedding model dimensions")
-
-    def _set_model_dims(self):
-        embedding = self._model_client.create(
-            input=["dimension test"],
-            engine=self._model
-        )["data"][0]["embedding"]
+            embedding = self._model_client.create(
+                input=["dimension test"],
+                engine=self._model
+            )["data"][0]["embedding"]
+        except (KeyError, IndexError) as ke:
+            raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
+        except openai.error.AuthenticationError as ae:
+            raise ValueError(f"Error authenticating with the OpenAI API: {str(ae)}")
+        except Exception as e: # pylint: disable=broad-except
+            # fall back (TODO get more specific)
+            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
     @retry(
