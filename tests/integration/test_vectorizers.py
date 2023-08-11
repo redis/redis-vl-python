@@ -35,6 +35,17 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
+def test_vectorizer_bad_input(vectorizer):
+    with pytest.raises(TypeError):
+        vectorizer.embed(1)
+
+    with pytest.raises(TypeError):
+        vectorizer.embed({"foo": "bar"})
+
+    with pytest.raises(TypeError):
+        vectorizer.embed_many(42)
+
+
 @pytest.fixture(params=[OpenAITextVectorizer])
 def avectorizer(request, openai_key):
     # Here we use actual models for integration test
@@ -63,3 +74,15 @@ async def test_vectorizer_aembed_many(avectorizer):
     assert all(
         isinstance(emb, list) and len(emb) == avectorizer.dims for emb in embeddings
     )
+
+
+@pytest.mark.asyncio
+async def test_avectorizer_bad_input(avectorizer):
+    with pytest.raises(TypeError):
+        avectorizer.embed(1)
+
+    with pytest.raises(TypeError):
+        avectorizer.embed({"foo": "bar"})
+
+    with pytest.raises(TypeError):
+        avectorizer.embed_many(42)

@@ -16,7 +16,12 @@ from redisvl.utils.connection import (
     get_async_redis_connection,
     get_redis_connection,
 )
-from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_dict
+from redisvl.utils.utils import (
+    check_redis_modules_exist,
+    convert_bytes,
+    make_dict,
+    process_results,
+)
 
 
 class SearchIndexBase:
@@ -39,7 +44,7 @@ class SearchIndexBase:
     @property
     @check_connected("_redis_conn")
     def client(self) -> redis.Redis:
-        """The redis-py client object
+        """The redis-py client object.
 
         Returns:
             redis.Redis: The redis-py client object
@@ -48,7 +53,7 @@ class SearchIndexBase:
 
     @check_connected("_redis_conn")
     def search(self, *args, **kwargs) -> List["Result"]:
-        """Perform a search on this index
+        """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
         to the search query and passes along the rest of the arguments
@@ -57,32 +62,33 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        return self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        results: List["Result"] = self._redis_conn.ft(self._name).search(
+            *args, **kwargs
+        )
+        return results
 
-    @check_connected("_redis_conn")
-    def query(self, query: BaseQuery) -> List["Result"]:
-        """Run a query on this index
+    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+        """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
-        object directly and does not allow for the usage of a raw
-        redis query string.
+        object directly (does not allow for the usage of a raw
+        redis query string) and post-processes results of the search.
 
         Args:
-            query (BaseQuery): The query to run
+            query (BaseQuery): The query to run.
 
         Returns:
-            List[Result]: A list of search results
+            List[Result]: A list of search results.
         """
-        return self._redis_conn.ft(self._name).search(
-            query.query, query_params=query.params
-        )
+        results = self.search(query.query, query_params=query.params)
+        return process_results(results)
 
     @classmethod
     def from_yaml(cls, schema_path: str):
-        """Create a SearchIndex from a YAML schema file
+        """Create a SearchIndex from a YAML schema file.
 
         Args:
-            schema_path (str): Path to the YAML schema file
+            schema_path (str): Path to the YAML schema file.
 
         Returns:
             SearchIndex: A SearchIndex object
@@ -351,13 +357,13 @@ class SearchIndex(SearchIndexBase):
 
             # Check if outer interface passes in TTL on load
             ttl = kwargs.get("ttl")
-            pipe = self._redis_conn.pipeline(transaction=False)
-            for record in data:
-                key = self._get_key(record, key_field)
-                pipe.hset(key, mapping=record)  # type: ignore
-                if ttl:
-                    pipe.expire(key, ttl)
-            pipe.execute()
+            with self._redis_conn.pipeline(transaction=False) as pipe:
+                for record in data:
+                    key = self._get_key(record, key_field)
+                    pipe.hset(key, mapping=record)  # type: ignore
+                    if ttl:
+                        pipe.expire(key, ttl)
+                pipe.execute()
 
     @check_connected("_redis_conn")
     def exists(self) -> bool:
@@ -513,6 +519,36 @@ class AsyncSearchIndex(SearchIndexBase):
 
         # gather with concurrency
         await asyncio.gather(*[_load(record) for record in data])
+
+    @check_connected("_redis_conn")
+    async def search(self, *args, **kwargs) -> List["Result"]:
+        """Perform a search on this index.
+
+        Wrapper around redis.search.Search that adds the index name
+        to the search query and passes along the rest of the arguments
+        to the redis-py ft.search() method.
+
+        Returns:
+            List[Result]: A list of search results
+        """
+        results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        return results
+
+    async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+        """Run a query on this index.
+
+        This is similar to the search method, but takes a BaseQuery
+        object directly (does not allow for the usage of a raw
+        redis query string) and post-processes results of the search.
+
+        Args:
+            query (BaseQuery): The query to run.
+
+        Returns:
+            List[Result]: A list of search results.
+        """
+        results = await self.search(query.query, query_params=query.params)
+        return process_results(results)
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:
