@@ -7,3 +7,4 @@ pytest-asyncio
 mypy
 types-redis
 types-pyyaml
+types-tabulate

@@ -71,8 +71,7 @@ class Index:
             rvl index info -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        logger.info("Index information:")
-        display_in_table(index.info(), output_format=args.format)
+        _display_in_table(index.info(), output_format=args.format)
 
     def listall(self, args: Namespace):
         """List all indices
@@ -127,7 +126,7 @@ class Index:
 
         return index
 
-def display_in_table(index_info, output_format="rounded_outline"):
+def _display_in_table(index_info, output_format="rounded_outline"):
     print("\n")
     attributes = index_info.get("attributes", [])
     definition = make_dict(index_info.get("index_definition"))
