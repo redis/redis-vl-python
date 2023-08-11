@@ -176,20 +176,20 @@ def filter_test(
     # print(str(v) + "\n") # to print the query
     results = index.query(v)
     if credit_check:
-        for doc in results.docs:
-            assert doc.credit_score == credit_check
+        for doc in results:
+            assert doc["credit_score"] == credit_check
     if age_range:
-        for doc in results.docs:
+        for doc in results:
             if len(age_range) == 3:
-                assert int(doc.age) != age_range[2]
+                assert int(doc["age"]) != age_range[2]
             elif age_range[1] < age_range[0]:
-                assert (int(doc.age) <= age_range[0]) or (int(doc.age) >= age_range[1])
+                assert (int(doc["age"]) <= age_range[0]) or (int(doc["age"]) >= age_range[1])
             else:
-                assert age_range[0] <= int(doc.age) <= age_range[1]
+                assert age_range[0] <= int(doc["age"]) <= age_range[1]
     if location:
-        for doc in results.docs:
-            assert doc.location == location
-    assert len(results.docs) == expected_count
+        for doc in results:
+            assert doc["location"] == location
+    assert len(results) == expected_count
 
 
 def test_filters(index):
