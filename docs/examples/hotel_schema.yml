@@ -1,0 +1,24 @@
+
+index:
+    name: hotelsindex
+    prefix: hotels
+
+fields:
+    tag:
+        - name: name
+        - name: city
+        - name: state
+        - name: categories
+          separator: ","
+    text:
+        - name: review
+        - name: title
+        - name: address
+    numeric:
+        - name: rating
+    vector:
+        - name: embedding
+          dims: 384
+          distance_metric: cosine
+          algorithm: flat
+          datatype: float32
