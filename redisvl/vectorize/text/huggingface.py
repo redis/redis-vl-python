@@ -15,9 +15,13 @@ class HFTextVectorizer(BaseVectorizer):
             )
 
         self._model_client = SentenceTransformer(self._model)
-        self._dims = self._model_dims()
 
-    def _model_dims(self):
+        try:
+            self._dims = self._set_model_dims()
+        except:
+            raise ValueError("Error setting embedding model dimensions")
+
+    def _set_model_dims(self):
         embedding = self._model_client.encode(["dimension check"])[0]
         return len(embedding)
 
