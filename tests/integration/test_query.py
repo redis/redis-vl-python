@@ -156,7 +156,7 @@ def test_simple_tag_filter(index):
         [0.1, 0.1, 0.5],
         "user_embedding",
         return_fields=["user", "credit_score", "age", "job"],
-        hybrid_filter=t,
+        filter_expression=t,
     )
 
     results = index.search(v.query, query_params=v.params)
@@ -171,7 +171,7 @@ def filter_test(
         [0.1, 0.1, 0.5],
         "user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
-        hybrid_filter=_filter,
+        filter_expression=_filter,
     )
     # print(str(v) + "\n") # to print the query
     results = index.query(v)
