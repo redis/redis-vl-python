@@ -4,6 +4,8 @@ import sys
 from redisvl.cli.index import Index
 from redisvl.cli.log import get_logger
 from redisvl.cli.version import Version
+from redisvl.cli.stats import Stats
+
 
 logger = get_logger(__name__)
 
@@ -14,6 +16,7 @@ def _usage():
         "Commands:",
         "\tindex       Index manipulation (create, delete, etc.)",
         "\tversion     Obtain the version of RedisVL",
+        "\tstats       Obtain statistics about an index",
     ]
     return "\n".join(usage) + "\n"
 
@@ -43,3 +46,8 @@ class RedisVlCLI:
     def version(self):
         Version()
         exit(0)
+
+    def stats(self):
+        Stats()
+        exit(0)
+
