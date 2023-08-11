@@ -1,15 +1,17 @@
 import argparse
 import sys
+from tabulate import tabulate
 from argparse import Namespace
-from pprint import pprint
+
 
 from redisvl.cli.log import get_logger
-from redisvl.cli.utils import create_redis_url
+from redisvl.cli.utils import create_redis_url, add_index_parsing_options
 from redisvl.index import SearchIndex
 from redisvl.utils.connection import get_redis_connection
-from redisvl.utils.utils import convert_bytes
+from redisvl.utils.utils import convert_bytes, make_dict
 
 logger = get_logger("[RedisVL]")
+
 
 class Index:
     usage = "\n".join(
@@ -29,22 +31,14 @@ class Index:
         parser = argparse.ArgumentParser(usage=self.usage)
 
         parser.add_argument("command", help="Subcommand to run")
-
         parser.add_argument(
-            "-i", "--index", help="Index name", type=str, required=False
+            "-f",
+            "--format",
+            help="Output format for info command",
+            type=str,
+            default="rounded_outline"
         )
-        parser.add_argument(
-            "-s", "--schema", help="Path to schema file", type=str, required=False
-        )
-        parser.add_argument("--host", help="Redis host", type=str, default="localhost")
-        parser.add_argument("-p", "--port", help="Redis port", type=int, default=6379)
-        parser.add_argument(
-            "--user", help="Redis username", type=str, default="default"
-        )
-        parser.add_argument("--ssl", help="Use SSL", action="store_true")
-        parser.add_argument(
-            "-a", "--password", help="Redis password", type=str, default=""
-        )
+        parser = add_index_parsing_options(parser)
 
         args = parser.parse_args(sys.argv[2:])
         if not hasattr(self, args.command):
@@ -78,7 +72,7 @@ class Index:
         """
         index = self._connect_to_index(args)
         logger.info("Index information:")
-        pprint(index.info())
+        display_in_table(index.info(), output_format=args.format)
 
     def listall(self, args: Namespace):
         """List all indices
@@ -132,3 +126,62 @@ class Index:
             exit(0)
 
         return index
+
+def display_in_table(index_info, output_format="rounded_outline"):
+    print("\n")
+    attributes = index_info.get("attributes", [])
+    definition = make_dict(index_info.get("index_definition"))
+    index_info = [
+        index_info.get("index_name"),
+        definition.get("key_type"),
+        definition.get("prefixes"),
+        index_info.get("index_options"),
+        index_info.get("indexing"),
+    ]
+
+    # Display the index information in tabular format
+    print("Index Information:")
+    print(
+        tabulate(
+            [index_info],
+            headers=[
+                "Index Name",
+                "Storage Type",
+                "Prefixes",
+                "Index Options",
+                "Indexing",
+            ],
+            tablefmt=output_format,
+        )
+    )
+
+    attr_values = []
+    headers = [
+        "Name",
+        "Attribute",
+        "Type",
+    ]
+
+    for attrs in attributes:
+        attr = make_dict(attrs)
+
+        values = [attr.get("identifier"), attr.get("attribute"), attr.get("type")]
+        if len(attrs) > 5:
+            options = make_dict(attrs)
+            for k, v in options.items():
+                if k not in ["identifier", "attribute", "type"]:
+                    headers.append("Field Option")
+                    headers.append("Option Value")
+                    values.append(k)
+                    values.append(v)
+        attr_values.append(values)
+
+    # Display the attributes in tabular format
+    print("Index Fields:")
+    print(
+        tabulate(
+            attr_values,
+            headers=headers,
+            tablefmt=output_format,
+        )
+    )
