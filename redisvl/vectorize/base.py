@@ -1,11 +1,12 @@
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from redisvl.utils.utils import array_to_buffer
 
 
 class BaseVectorizer:
-    def __init__(self, model: str, dims: int, api_config: Optional[Dict] = None):
-        self._dims = dims
+    _dims = None
+
+    def __init__(self, model: str):
         self._model = model
 
     @property

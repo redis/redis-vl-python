@@ -4,3 +4,4 @@ redisvl.egg-info/
 .coverage
 scratch
 .DS_Store
+*.csv

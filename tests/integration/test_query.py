@@ -2,6 +2,7 @@ from pprint import pprint
 
 import numpy as np
 import pytest
+from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
@@ -126,6 +127,26 @@ def test_simple(index):
         assert int(doc.age) in [18, 14, 94, 100, 12, 15, 35]
         assert doc.job in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
         assert doc.credit_score in ["high", "low", "medium"]
+
+
+def test_search_qeury(index):
+    # *=>[KNN 7 @user_embedding $vector AS vector_distance]
+    v = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job"],
+        num_results=7,
+    )
+    results = index.search(v.query, query_params=v.params)
+    assert isinstance(results, Result)
+    assert len(results.docs) == 7
+
+    processed_results = index.query(v)
+    assert len(processed_results) == 7
+    assert isinstance(processed_results[0], dict)
+    result = results.docs[0].__dict__
+    result.pop("payload")
+    assert processed_results[0] == results.docs[0].__dict__
 
 
 def test_simple_tag_filter(index):
