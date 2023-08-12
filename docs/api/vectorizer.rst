@@ -1,10 +1,10 @@
 
-*****
+**********
 Vectorizer
-*****
+**********
 
 HFTextVectorizer
-===========
+================
 
 .. _hftextvectorizer_api:
 
@@ -23,7 +23,7 @@ HFTextVectorizer
 
 
 OpenAITextVectorizer
-================
+====================
 
 .. _openaitextvectorizer_api:
 

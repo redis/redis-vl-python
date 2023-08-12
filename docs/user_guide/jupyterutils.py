@@ -35,10 +35,10 @@ def result_print(results):
 
         results = [doc.__dict__ for doc in results.docs]
 
-        to_remove = ["id", "payload"]
-        for doc in results:
-            for key in to_remove:
-                if key in doc:
-                    del doc[key]
+    to_remove = ["id", "payload"]
+    for doc in results:
+        for key in to_remove:
+            if key in doc:
+                del doc[key]
 
     table_print(results)

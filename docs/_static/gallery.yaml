@@ -1,0 +1,14 @@
+# Metadata to create our example gallery. This YAML file does two things:
+#
+# 1. Used by `generate_gallery_images.py` to take snapshots of each item and place an image in `gallery`.
+# 2. Used by our Gallery Grid directive to create the grid on our `examples/gallery.md` page.
+#
+# This file should only be modified by maintainer, contributors should add their project
+# to the list of `gallery.md`.
+
+- title: Question and Answer with OpenAI
+  website: https://www.redisvl.com/docs/html/examples/openai_qna.html
+  img-bottom: ../_static/gallery-images/RedisOpenAI-QnA.png
+- title: LLM Recommender for Hotels
+  website: https://github.com/RedisVentures/LLM-Recommender
+  img-bottom: ../_static/gallery-images/hotel-recommender.png

@@ -31,46 +31,12 @@ to supercharge your application!
   link: "examples/index"
 ```
 
-## Concepts (Coming Soon)
-
-Glossary of AI terminology and concepts related to vector databases.
-
-
-## User Guide
-
-How to use RedisVL
+## Table of Contents
 
 ```{toctree}
 :maxdepth: 2
 
-user_guide/index
-```
-
-
-## Examples
-
-Examples of RedisVL
-
-```{toctree}
-:maxdepth: 2
-
-examples/index
-```
-
-
-## API
-
-The redisVL API
-
-```{toctree}
-:maxdepth: 2
-
+User Guide <user_guide/index>
+Example Gallery <examples/index>
 API <api/index>
-```
-
-
-```{toctree}
-:hidden:
-
-Changelog <https://github.com/RedisVentures/redisvl/releases>
 ```
