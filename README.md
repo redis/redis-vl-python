@@ -115,7 +115,41 @@ query = VectorQuery(
     return_fields=["user", "age", "job", "credit_score"],
     num_results=3,
 )
-results = index.search(query.query, query_params=query.params)
+results = index.query(query)
+
+```
+
+### Flexible Querying
+
+RedisVL supports a variety of filter types, including tag, numeric, geographic, and full text search to create filter expressions. Filter expressions can be used to create hybrid queries which allow you to combine multiple query types (i.e. text and vector search) into a single query.
+
+```python
+from redisvl.index import SearchIndex
+from redisvl.query import VectorQuery
+from redisvl.query.filter import Tag, Num, Geo, GeoRadius, Text
+
+# exact tag match
+is_sam = Tag("user") == "Sam"
+
+# numeric range
+is_over_10 = Num("age") > 10
+
+# geographic radius
+works_in_sf = Geo("location") == GeoRadius(37.7749, -122.4194, 10)
+
+# full text search with fuzzy match
+is_engineer = Text("job") % "enginee*"
+
+filter_expression = is_sam & is_over_10 & works_in_sf & is_engineer
+
+query = VectorQuery(
+    vector=[0.1, 0.1, 0.5],
+    vector_field_name="user_embedding",
+    return_fields=["user", "age", "job", "credit_score"],
+    num_results=3,
+    filter_expression=filter_expression,
+)
+results = index.query(query)
 
 ```
 
