@@ -1,65 +1,63 @@
 import pytest
 
-from redisvl.query import (
-    Filter,
-    GeoFilter,
-    NumericFilter,
-    TagFilter,
-    TextFilter,
-    VectorQuery,
-)
-from redisvl.utils.utils import TokenEscaper
+from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 
 
-class TestFilters:
-    def test_tag_filter(self):
-        tf = TagFilter("tag_field", ["tag1", "tag2"])
-        assert tf.to_string() == "@tag_field:{tag1 | tag2}"
+def test_tag_filter():
+    tf = Tag("tag_field") == ["tag1", "tag2"]
+    assert str(tf) == "@tag_field:{tag1|tag2}"
 
-    def test_numeric_filter(self):
-        nf = NumericFilter(
-            "numeric_field", 1, 10, min_exclusive=True, max_exclusive=True
-        )
-        assert nf.to_string() == "@numeric_field:[(1 (10]"
+    tf = Tag("tag_field") == "tag1"
+    assert str(tf) == "@tag_field:{tag1}"
 
-    def test_numeric_filter_2(self):
-        nf = NumericFilter(
-            "numeric_field", 1, 10, min_exclusive=False, max_exclusive=False
-        )
-        assert nf.to_string() == "@numeric_field:[1 10]"
+    tf = Tag("tag_field") != ["tag1", "tag2"]
+    assert str(tf) == "(-@tag_field:{tag1|tag2})"
 
-    def test_text_filter(self):
-        txt_f = TextFilter("text_field", "text")
-        assert txt_f.to_string() == "@text_field:text"
 
-    def test_geo_filter(self):
-        geo_f = GeoFilter("geo_field", 1, 2, 3)
-        assert geo_f.to_string() == "@geo_field:[1 2 3 km]"
+def test_numeric_filter():
+    nf = Num("numeric_field") == 5
+    assert str(nf) == "@numeric_field:[5 5]"
 
-        geo_f = GeoFilter("geo_field", 1, 2, 3, unit="m")
-        assert geo_f.to_string() == "@geo_field:[1 2 3 m]"
+    nf = Num("numeric_field") != 5
+    assert str(nf) == "(-@numeric_field:[5 5])"
 
-    def test_filters_combination(self):
-        tf1 = TagFilter("tag_field", ["tag1", "tag2"])
-        tf2 = TagFilter("tag_field", ["tag3"])
-        tf1 += tf2
-        assert str(tf1) == "(@tag_field:{tag1 | tag2} @tag_field:{tag3})"
-        tf1 &= tf2
-        assert (
-            str(tf1)
-            == "(@tag_field:{tag1 | tag2} @tag_field:{tag3} | @tag_field:{tag3})"
-        )
-        tf1 -= tf2
-        assert (
-            str(tf1)
-            == "(@tag_field:{tag1 | tag2} @tag_field:{tag3} | @tag_field:{tag3} -@tag_field:{tag3})"
-        )
-        tf1 ^= tf2
-        assert (
-            str(tf1)
-            == "(@tag_field:{tag1 | tag2} @tag_field:{tag3} | @tag_field:{tag3} -@tag_field:{tag3} ~@tag_field:{tag3})"
-        )
+    nf = Num("numeric_field") > 5
+    assert str(nf) == "@numeric_field:[(5 +inf]"
 
-    def test_filter_raise_not_implemented_error(self):
-        with pytest.raises(NotImplementedError):
-            Filter("field").to_string()
+    nf = Num("numeric_field") >= 5
+    assert str(nf) == "@numeric_field:[5 +inf]"
+
+    nf = Num("numeric_field") < 5
+    assert str(nf) == "@numeric_field:[-inf (5]"
+
+    nf = Num("numeric_field") <= 5
+    assert str(nf) == "@numeric_field:[-inf 5]"
+
+
+def test_text_filter():
+    txt_f = Text("text_field") == "text"
+    assert str(txt_f) == '@text_field:"text"'
+
+    txt_f = Text("text_field") != "text"
+    assert str(txt_f) == '(-@text_field:"text")'
+
+    txt_f = Text("text_field") % "text"
+    assert str(txt_f) == "@text_field:text"
+
+
+def test_geo_filter():
+    geo_f = Geo("geo_field") == GeoRadius(1.0, 2.0, 3, "km")
+    assert str(geo_f) == "@geo_field:[1.000000 2.000000 3 km]"
+
+    geo_f = Geo("geo_field") != GeoRadius(1.0, 2.0, 3, "km")
+    assert str(geo_f) != "(-@geo_field:[1.000000 2.000000 3 m])"
+
+
+def test_filters_combination():
+    tf1 = Tag("tag_field") == ["tag1", "tag2"]
+    tf2 = Tag("tag_field") == "tag3"
+    combined = tf1 & tf2
+    assert str(combined) == "(@tag_field:{tag1|tag2} @tag_field:{tag3})"
+
+    combined = tf1 | tf2
+    assert str(combined) == "(@tag_field:{tag1|tag2} | @tag_field:{tag3})"

@@ -5,11 +5,11 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
     from redis.commands.search.result import Result
+    from redisvl.query.query import BaseQuery
 
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
-from redisvl.query import BaseQuery
 from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import (
     check_connected,
@@ -67,7 +67,8 @@ class SearchIndexBase:
         )
         return results
 
-    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    @check_connected("_redis_conn")
+    def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -534,7 +535,7 @@ class AsyncSearchIndex(SearchIndexBase):
         results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
         return results
 
-    async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
