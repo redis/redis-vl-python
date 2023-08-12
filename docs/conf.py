@@ -92,7 +92,9 @@ html_theme_options = {
         "alt_text": "RedisVL",
     },
     "use_edit_page_button": True,
-    "show_toc_level": 1,
+    "show_toc_level": 4,
+    "show_nav_level": 3,
+    "navigation_depth": 5,
     "navbar_align": "left",  # [left, content, right] For testing that the navbar items align properly
     "secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
     "icon_links": [
