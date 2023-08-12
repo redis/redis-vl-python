@@ -54,7 +54,21 @@ RedisVL has a host of powerful features designed to streamline your vector datab
 
 Please note that this library is still under heavy development, and while you can quickly try RedisVL and deploy it in a production environment, the API may be subject to change at any time.
 
-`pip install redisvl` (Coming Soon)
+First, install RedisVL using pip:
+
+```
+pip install redisvl
+```
+
+Then make sure to have Redis with the Search and Query capability running on Redis Cloud or
+locally in docker by running
+
+```bash
+docker run -d -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+```
+
+This will also spin up the Redis Insight UI at http://localhost:8001
+
 
 ## Example Usage
 
