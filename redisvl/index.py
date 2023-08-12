@@ -92,20 +92,20 @@ class SearchIndexBase:
             schema_path (str): Path to the YAML schema file.
 
         Returns:
-            SearchIndex: A SearchIndex object
+            SearchIndex: A SearchIndex object.
         """
         schema = read_schema(schema_path)
         return cls(fields=schema.index_fields, **schema.index.model_dump())
 
     @classmethod
     def from_dict(cls, schema_dict: Dict[str, Any]):
-        """Create a SearchIndex from a dictionary
+        """Create a SearchIndex from a dictionary.
 
         Args:
-            schema_dict (t.Dict[str, t.Any]): A dictionary containing the schema
+            schema_dict (Dict[str, Any]): A dictionary containing the schema.
 
         Returns:
-            SearchIndex: A SearchIndex object
+            SearchIndex: A SearchIndex object.
         """
         schema = SchemaModel(**schema_dict)
         return cls(fields=schema.index_fields, **schema.index.model_dump())
@@ -122,7 +122,7 @@ class SearchIndexBase:
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+            url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
@@ -132,15 +132,15 @@ class SearchIndexBase:
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
         """
         raise NotImplementedError
 
     def connect(self, url: str, **kwargs):
-        """Connect to a Redis instance
+        """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+            url (str): Redis URL. REDIS_URL env var is used if not provided.
         """
         raise NotImplementedError
 
@@ -160,7 +160,7 @@ class SearchIndexBase:
             str: The key to be used for a given record in Redis.
 
         Raises:
-            ValueError: If the key field is not found in the record
+            ValueError: If the key field is not found in the record.
         """
         if key_field is None:
             key = uuid4().hex
@@ -173,54 +173,54 @@ class SearchIndexBase:
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
-        """Get information about the index
+        """Get information about the index.
 
         Returns:
-            dict: A dictionary containing the information about the index
+            dict: A dictionary containing the information about the index.
         """
         return convert_bytes(self._redis_conn.ft(self._name).info())  # type: ignore
 
     def create(self, overwrite: Optional[bool] = False):
-        """Create an index in Redis from this SearchIndex object
+        """Create an index in Redis from this SearchIndex object.
 
         Args:
             overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
 
         Raises:
-            redis.exceptions.ResponseError: If the index already exists
+            redis.exceptions.ResponseError: If the index already exists.
         """
         raise NotImplementedError
 
     def delete(self, drop: bool = True):
-        """Delete the search index
+        """Delete the search index.
 
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
         raises:
-            redis.exceptions.ResponseError: If the index does not exist
+            redis.exceptions.ResponseError: If the index does not exist.
         """
         raise NotImplementedError
 
     def load(
         self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
     ):
-        """Load data into Redis and index using this SearchIndex object
+        """Load data into Redis and index using this SearchIndex object.
 
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
-                containing the data to be indexed
+                containing the data to be indexed.
             key_field (Optional[str], optional): A field within the record
                 to use in the Redis hash key.
 
         raises:
-            redis.exceptions.ResponseError: If the index does not exist
+            redis.exceptions.ResponseError: If the index does not exist.
         """
         raise NotImplementedError
 
 
 class SearchIndex(SearchIndexBase):
-    """A class for interacting with Redis as a vector database
+    """A class for interacting with Redis as a vector database.
 
     This class is a wrapper around the redis-py client that provides
     purpose-built methods for interacting with Redis as a vector database.
@@ -253,7 +253,7 @@ class SearchIndex(SearchIndexBase):
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+            url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
@@ -263,7 +263,7 @@ class SearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
 
         """
         client = get_redis_connection(url, **kwargs)
@@ -281,26 +281,26 @@ class SearchIndex(SearchIndexBase):
         return instance
 
     def connect(self, url: Optional[str] = None, **kwargs):
-        """Connect to a Redis instance
+        """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+            url (str): Redis URL. REDIS_URL env var is used if not provided.
 
         Raises:
-            redis.exceptions.ConnectionError: If the connection to Redis fails
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided
+            redis.exceptions.ConnectionError: If the connection to Redis fails.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
         """
         self._redis_conn = get_redis_connection(url, **kwargs)
 
     @check_connected("_redis_conn")
     def create(self, overwrite: Optional[bool] = False):
-        """Create an index in Redis from this SearchIndex object
+        """Create an index in Redis from this SearchIndex object.
 
         Args:
             overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
 
         Raises:
-            redis.exceptions.ResponseError: If the index already exists
+            redis.exceptions.ResponseError: If the index already exists.
         """
         check_redis_modules_exist(self._redis_conn)
 
@@ -324,13 +324,13 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def delete(self, drop: bool = True):
-        """Delete the search index
+        """Delete the search index.
 
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
         raises:
-            redis.exceptions.ResponseError: If the index does not exist
+            redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
         self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
@@ -339,16 +339,16 @@ class SearchIndex(SearchIndexBase):
     def load(
         self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
     ):
-        """Load data into Redis and index using this SearchIndex object
+        """Load data into Redis and index using this SearchIndex object.
 
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
-                containing the data to be indexed
+                containing the data to be indexed.
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
 
         raises:
-            redis.exceptions.ResponseError: If the index does not exist
+            redis.exceptions.ResponseError: If the index does not exist.
         """
         # TODO -- should we return a count of the upserts? or some kind of metadata?
         if data:
@@ -368,17 +368,17 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def exists(self) -> bool:
-        """Check if the index exists in Redis
+        """Check if the index exists in Redis.
 
         Returns:
-            bool: True if the index exists, False otherwise
+            bool: True if the index exists, False otherwise.
         """
         indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
         return self._name in indices
 
 
 class AsyncSearchIndex(SearchIndexBase):
-    """A class for interacting with Redis as a vector database asynchronously
+    """A class for interacting with Redis as a vector database asynchronously.
 
     This class is a wrapper around the redis-py client that provides
     purpose-built methods for interacting with Redis as a vector database.
@@ -411,7 +411,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_ADDRESS env var
+            url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
@@ -421,7 +421,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_ADDRESS env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and url is not provided.
 
         """
         client = get_async_redis_connection(url, **kwargs)
@@ -439,26 +439,26 @@ class AsyncSearchIndex(SearchIndexBase):
         return instance
 
     def connect(self, url: Optional[str] = None, **kwargs):
-        """Connect to a Redis instance
+        """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_ADDRESS env var is used if not provided.
+            url (str): Redis URL. REDIS_URL env var is used if not provided.
 
         Raises:
-            redis.exceptions.ConnectionError: If the connection to Redis fails
-            ValueError: If no Redis URL is provided and REDIS_ADDRESS env var is not set
+            redis.exceptions.ConnectionError: If the connection to Redis fails.
+            ValueError: If no Redis URL is provided and REDIS_URL env var is not set.
         """
         self._redis_conn = get_async_redis_connection(url, **kwargs)
 
     @check_connected("_redis_conn")
     async def create(self, overwrite: Optional[bool] = False):
-        """Create an index in Redis from this SearchIndex object
+        """Create an index in Redis from this SearchIndex object.
 
         Args:
             overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
 
         Raises:
-            redis.exceptions.ResponseError: If the index already exists
+            redis.exceptions.ResponseError: If the index already exists.
         """
         exists = await self.exists()
         if exists and overwrite:
@@ -477,13 +477,13 @@ class AsyncSearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     async def delete(self, drop: bool = True):
-        """Delete the search index
+        """Delete the search index.
 
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
         raises:
-            redis.exceptions.ResponseError: If the index does not exist
+            redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
         await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
@@ -496,7 +496,7 @@ class AsyncSearchIndex(SearchIndexBase):
         key_field: Optional[str] = None,
         **kwargs,
     ):
-        """Load data into Redis and index using this SearchIndex object
+        """Load data into Redis and index using this SearchIndex object.
 
         Args:
             data (Iterable[Dict[str, Any]]): An iterable of dictionaries
@@ -506,7 +506,7 @@ class AsyncSearchIndex(SearchIndexBase):
                 use in the Redis hash key.
 
         raises:
-            redis.exceptions.ResponseError: If the index does not exist
+            redis.exceptions.ResponseError: If the index does not exist.
         """
         ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
@@ -530,7 +530,7 @@ class AsyncSearchIndex(SearchIndexBase):
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results
+            List[Result]: A list of search results.
         """
         results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
         return results
@@ -553,10 +553,10 @@ class AsyncSearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:
-        """Check if the index exists in Redis
+        """Check if the index exists in Redis.
 
         Returns:
-            bool: True if the index exists, False otherwise
+            bool: True if the index exists, False otherwise.
         """
         indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
         return self._name in convert_bytes(indices)

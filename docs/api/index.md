@@ -14,6 +14,7 @@ myst:
 searchindex
 query
 filter
+vectorizer
 cache
 ```
 

@@ -17,20 +17,23 @@ to supercharge your application!
 :grid-columns: 1 2 2 3
 
 - header: "{fab}`bootstrap;pst-color-primary` Index Management"
-  content: "Manipulate Redis index in Python for from a CLI."
-- header: "{fas}`bolt;pst-color-primary` Vector Search"
-  content: "Simple vector search capabilities supporting synchronous and asyncronous search."
+  content: "Manipulate Redis search indices in Python or from CLI."
+- header: "{fas}`bolt;pst-color-primary` Vector Similarity Search"
+  content: "Perform powerful vector similarity search with filtering support."
 - header: "{fas}`circle-half-stroke;pst-color-primary` Embedding Creation"
-  content: "User OpenAI or any of the other supported vectorizers to create embeddings"
+  content: "Use OpenAI or any of the other supported vectorizers to create embeddings."
 - header: "{fas}`palette;pst-color-primary` CLI"
-  content: "Command line interface for RedisVL makes interacting with Redis as a vector database easy."
+  content: "Interact with RedisVL using a Command line interface (CLI) for ease of use."
 - header: "{fab}`python;pst-color-primary` Semantic Caching"
-  content: "Use RedisVL to cache the results of your LLM models increasing QPS and decreasing cost."
+  content: "Use RedisVL to cache LLM results, increasing QPS and decreasing cost."
 - header: "{fas}`lightbulb;pst-color-primary` Example Gallery"
-  content: "See our gallery of projects that use RedisVL"
+  content: "Explore our gallery of examples to get started."
   link: "examples/index"
 ```
 
+## Concepts (Coming Soon)
+
+Glossary of AI terminology and concepts related to vector databases.
 
 
 ## User Guide
@@ -65,19 +68,9 @@ The redisVL API
 API <api/index>
 ```
 
-## Developer
-
-How to contribute
-
-```{toctree}
-:maxdepth: 2
-
-developer/index
-```
-
 
 ```{toctree}
 :hidden:
 
-Changelog <https://github.com/pydata/pydata-sphinx-theme/releases>
+Changelog <https://github.com/RedisVentures/redisvl/releases>
 ```
