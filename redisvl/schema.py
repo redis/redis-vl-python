@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 from uuid import uuid4
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, validator
 from redis.commands.search.field import (
     GeoField,
     NumericField,
@@ -66,8 +66,7 @@ class BaseVectorField(BaseModel):
     distance_metric: str = Field(default="COSINE")
     initial_cap: int = Field(default=20000)
 
-    @field_validator("algorithm", "datatype", "distance_metric", mode="before")
-    @classmethod
+    @validator("algorithm", "datatype", "distance_metric", pre=True, each_item=True)
     def uppercase_strings(cls, v):
         return v.upper()
 
@@ -132,8 +131,7 @@ class SchemaModel(BaseModel):
     index: IndexModel = Field(...)
     fields: FieldsModel = Field(...)
 
-    @field_validator("index")
-    @classmethod
+    @validator("index")
     def validate_index(cls, v):
         if v.storage_type not in ["hash", "json"]:
             raise ValueError(f"Storage type {v.storage_type} not supported")
@@ -142,7 +140,7 @@ class SchemaModel(BaseModel):
     @property
     def index_fields(self):
         redis_fields = []
-        for field_name in self.fields.model_fields.keys():
+        for field_name in self.fields.__fields__.keys():
             field_group = getattr(self.fields, field_name)
             if field_group is not None:
                 for field in field_group:

@@ -95,7 +95,7 @@ class SearchIndexBase:
             SearchIndex: A SearchIndex object.
         """
         schema = read_schema(schema_path)
-        return cls(fields=schema.index_fields, **schema.index.model_dump())
+        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
     def from_dict(cls, schema_dict: Dict[str, Any]):
@@ -108,7 +108,7 @@ class SearchIndexBase:
             SearchIndex: A SearchIndex object.
         """
         schema = SchemaModel(**schema_dict)
-        return cls(fields=schema.index_fields, **schema.index.model_dump())
+        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
     def from_existing(
