@@ -13,6 +13,7 @@ class OpenAITextVectorizer(BaseVectorizer):
     API key to be passed in the api_config dictionary. The API key can be obtained from
     https://api.openai.com/.
     """
+
     def __init__(self, model: str, api_config: Optional[Dict] = None):
         """Initialize the OpenAI vectorizer.
 
@@ -45,14 +46,13 @@ class OpenAITextVectorizer(BaseVectorizer):
     def _set_model_dims(self) -> int:
         try:
             embedding = self._model_client.create(
-                input=["dimension test"],
-                engine=self._model
+                input=["dimension test"], engine=self._model
             )["data"][0]["embedding"]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
         except openai.error.AuthenticationError as ae:
             raise ValueError(f"Error authenticating with the OpenAI API: {str(ae)}")
-        except Exception as e: # pylint: disable=broad-except
+        except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
@@ -87,9 +87,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(texts, list):
-                raise TypeError("Must pass in a list of str values to embed.")
-        if  len(texts) > 0 and not isinstance(texts[0], str):
-                raise TypeError("Must pass in a list of str values to embed.")
+            raise TypeError("Must pass in a list of str values to embed.")
+        if len(texts) > 0 and not isinstance(texts[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -164,9 +164,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(texts, list):
-                raise TypeError("Must pass in a list of str values to embed.")
-        if  len(texts) > 0 and not isinstance(texts[0], str):
-                raise TypeError("Must pass in a list of str values to embed.")
+            raise TypeError("Must pass in a list of str values to embed.")
+        if len(texts) > 0 and not isinstance(texts[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

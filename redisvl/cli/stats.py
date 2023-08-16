@@ -1,13 +1,14 @@
 import argparse
 import sys
-from tabulate import tabulate
 from argparse import Namespace
 
-from redisvl.cli.utils import create_redis_url, add_index_parsing_options
+from tabulate import tabulate
+
+from redisvl.cli.log import get_logger
+from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.utils.connection import get_redis_connection
 
-from redisvl.cli.log import get_logger
 logger = get_logger("[RedisVL]")
 
 STATS_KEYS = [
@@ -32,6 +33,7 @@ STATS_KEYS = [
     "vector_index_sz_mb",
 ]
 
+
 class Stats:
     usage = "\n".join(
         [
@@ -43,11 +45,7 @@ class Stats:
         parser = argparse.ArgumentParser(usage=self.usage)
 
         parser.add_argument(
-            "-f",
-            "--format",
-            help="Output format",
-            type=str,
-            default="rounded_outline"
+            "-f", "--format", help="Output format", type=str, default="rounded_outline"
         )
         parser = add_index_parsing_options(parser)
         args = parser.parse_args(sys.argv[2:])
@@ -56,7 +54,6 @@ class Stats:
         except Exception as e:
             logger.error(e)
             exit(0)
-
 
     def stats(self, args: Namespace):
         """Obtain stats about an index

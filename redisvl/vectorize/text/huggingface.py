@@ -80,9 +80,9 @@ class HFTextVectorizer(BaseVectorizer):
             TypeError: If the wrong input type is passed in for the test.
         """
         if not isinstance(texts, list):
-                raise TypeError("Must pass in a list of str values to embed.")
-        if  len(texts) > 0 and not isinstance(texts[0], str):
-                raise TypeError("Must pass in a list of str values to embed.")
+            raise TypeError("Must pass in a list of str values to embed.")
+        if len(texts) > 0 and not isinstance(texts[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

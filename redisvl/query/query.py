@@ -23,6 +23,88 @@ class BaseQuery:
         pass
 
 
+class FilterQuery(BaseQuery):
+    def __init__(
+        self,
+        return_fields: List[str],
+        filter_expression: FilterExpression,
+        num_results: Optional[int] = 10,
+        params: Optional[Dict[str, Any]] = None,
+    ):
+        """Query for a filter expression.
+
+        Args:
+            return_fields (List[str]): The fields to return.
+            filter_expression (FilterExpression): The filter expression to query for.
+            num_results (Optional[int], optional): The number of results to return. Defaults to 10.
+            params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        Examples:
+            >>> from redisvl.query import FilterQuery
+            >>> from redisvl.query.filter import Tag
+            >>> t = Tag("brand") == "Nike"
+            >>> q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
+        """
+
+        super().__init__(return_fields, num_results)
+        self.set_filter(filter_expression)
+        self._params = params
+
+    def __str__(self) -> str:
+        return " ".join([str(x) for x in self.query.get_args()])
+
+    def set_filter(self, filter_expression: FilterExpression):
+        """Set the filter for the query.
+
+        Args:
+            filter_expression (FilterExpression): The filter to apply to the query.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+        """
+        if not isinstance(filter_expression, FilterExpression):
+            raise TypeError(
+                "filter_expression must be of type redisvl.query.FilterExpression"
+            )
+        self._filter = str(filter_expression)
+
+    def get_filter(self) -> FilterExpression:
+        """Get the filter for the query.
+
+        Returns:
+            FilterExpression: The filter for the query.
+        """
+        return self._filter
+
+    @property
+    def query(self) -> Query:
+        """Return a Redis-Py Query object representing the query.
+
+        Returns:
+            redis.commands.search.query.Query: The query object.
+        """
+        base_query = str(self._filter)
+        query = (
+            Query(base_query)
+            .return_fields(*self._return_fields)
+            .paging(0, self._num_results)
+            .dialect(2)
+        )
+        return query
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """Return the parameters for the query.
+
+        Returns:
+            Dict[str, Any]: The parameters for the query.
+        """
+        return self._params
+
+
 class VectorQuery(BaseQuery):
     dtypes = {
         "float32": np.float32,

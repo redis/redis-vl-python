@@ -1,11 +1,11 @@
 import argparse
 import sys
-from tabulate import tabulate
 from argparse import Namespace
 
+from tabulate import tabulate
 
 from redisvl.cli.log import get_logger
-from redisvl.cli.utils import create_redis_url, add_index_parsing_options
+from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.utils.connection import get_redis_connection
 from redisvl.utils.utils import convert_bytes, make_dict
@@ -36,7 +36,7 @@ class Index:
             "--format",
             help="Output format for info command",
             type=str,
-            default="rounded_outline"
+            default="rounded_outline",
         )
         parser = add_index_parsing_options(parser)
 
@@ -125,6 +125,7 @@ class Index:
             exit(0)
 
         return index
+
 
 def _display_in_table(index_info, output_format="rounded_outline"):
     print("\n")
