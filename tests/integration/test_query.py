@@ -5,7 +5,7 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import VectorQuery
+from redisvl.query import FilterQuery, VectorQuery
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 
 data = [
@@ -91,6 +91,19 @@ schema = {
 }
 
 
+vector_query = VectorQuery(
+    [0.1, 0.1, 0.5],
+    "user_embedding",
+    return_fields=["user", "credit_score", "age", "job", "location"],
+)
+
+filter_query = FilterQuery(
+    return_fields=["user", "credit_score", "age", "job", "location"],
+    # this will get set everytime
+    filter_expression=Tag("credit_score") == "high",
+)
+
+
 @pytest.fixture(scope="module")
 def index():
     # construct a search index from the schema
@@ -163,101 +176,112 @@ def test_simple_tag_filter(index):
     assert len(results.docs) == 4
 
 
+@pytest.fixture(params=[vector_query, filter_query], ids=["VectorQuery", "FilterQuery"])
+def query(request):
+    return request.param
+
+
 def filter_test(
-    index, _filter, expected_count, credit_check=None, age_range=None, location=None
+    query,
+    index,
+    _filter,
+    expected_count,
+    credit_check=None,
+    age_range=None,
+    location=None,
 ):
     """Utility function to test filters"""
-    v = VectorQuery(
-        [0.1, 0.1, 0.5],
-        "user_embedding",
-        return_fields=["user", "credit_score", "age", "job", "location"],
-        filter_expression=_filter,
-    )
+
+    # set the new filter
+    query.set_filter(_filter)
+
     # print(str(v) + "\n") # to print the query
-    results = index.query(v)
+    results = index.search(query.query, query_params=query.params)
     if credit_check:
-        for doc in results:
-            assert doc["credit_score"] == credit_check
+        for doc in results.docs:
+            assert doc.credit_score == credit_check
     if age_range:
-        for doc in results:
+        for doc in results.docs:
             if len(age_range) == 3:
-                assert int(doc["age"]) != age_range[2]
+                assert int(doc.age) != age_range[2]
             elif age_range[1] < age_range[0]:
-                assert (int(doc["age"]) <= age_range[0]) or (int(doc["age"]) >= age_range[1])
+                assert (int(doc.age) <= age_range[0]) or (int(doc.age) >= age_range[1])
             else:
-                assert age_range[0] <= int(doc["age"]) <= age_range[1]
+                assert age_range[0] <= int(doc.age) <= age_range[1]
     if location:
-        for doc in results:
-            assert doc["location"] == location
-    assert len(results) == expected_count
+        for doc in results.docs:
+            assert doc.location == location
+    assert len(results.docs) == expected_count
 
 
-def test_filters(index):
+def test_filters(index, query):
     # Simple Tag Filter
     t = Tag("credit_score") == "high"
-    filter_test(index, t, 4, credit_check="high")
+    filter_test(query, index, t, 4, credit_check="high")
 
     # Simple Numeric Filter
     n1 = Num("age") >= 18
-    filter_test(index, n1, 4, age_range=(18, 100))
+    filter_test(query, index, n1, 4, age_range=(18, 100))
 
     # intersection of rules
     n2 = (Num("age") >= 18) & (Num("age") < 100)
-    filter_test(index, n2, 3, age_range=(18, 99))
+    filter_test(query, index, n2, 3, age_range=(18, 99))
 
     # union
     n3 = (Num("age") < 18) | (Num("age") > 94)
-    filter_test(index, n3, 4, age_range=(95, 17))
+    filter_test(query, index, n3, 4, age_range=(95, 17))
 
     n4 = Num("age") != 18
-    filter_test(index, n4, 6, age_range=(0, 0, 18))
+    filter_test(query, index, n4, 6, age_range=(0, 0, 18))
 
     # Geographic filters
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    filter_test(index, g, 3, location="-122.4194,37.7749")
+    filter_test(query, index, g, 3, location="-122.4194,37.7749")
 
     g = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    filter_test(index, g, 4, location="-110.0839,37.3861")
+    filter_test(query, index, g, 4, location="-110.0839,37.3861")
 
     # Text filters
     t = Text("job") == "engineer"
-    filter_test(index, t, 2)
+    filter_test(query, index, t, 2)
 
     t = Text("job") != "engineer"
-    filter_test(index, t, 5)
+    filter_test(query, index, t, 5)
 
     t = Text("job") % "enginee*"
-    filter_test(index, t, 2)
+    filter_test(query, index, t, 2)
 
 
-def test_filter_combinations(index):
+def test_filter_combinations(index, query):
     # test combinations
     # intersection
     t = Tag("credit_score") == "high"
     text = Text("job") == "engineer"
-    filter_test(index, t & text, 2, credit_check="high")
+    filter_test(query, index, t & text, 2, credit_check="high")
 
     # union
     t = Tag("credit_score") == "high"
     text = Text("job") == "engineer"
-    filter_test(index, t | text, 4, credit_check="high")
+    filter_test(query, index, t | text, 4, credit_check="high")
 
     # union of negated expressions
     _filter = (Tag("credit_score") != "high") & (Text("job") != "engineer")
-    filter_test(index, _filter, 3)
+    filter_test(query, index, _filter, 3)
 
     # geo + text
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
     text = Text("job") == "engineer"
-    filter_test(index, g & text, 1, location="-122.4194,37.7749")
+    filter_test(query, index, g & text, 1, location="-122.4194,37.7749")
 
     # geo + text
     g = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
     text = Text("job") == "engineer"
-    filter_test(index, g & text, 1, location="-110.0839,37.3861")
+    filter_test(query, index, g & text, 1, location="-110.0839,37.3861")
 
     # num + text + geo
     n = (Num("age") >= 18) & (Num("age") < 100)
     t = Text("job") != "engineer"
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    filter_test(index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749")
+    filter_test(
+        query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749"
+    )

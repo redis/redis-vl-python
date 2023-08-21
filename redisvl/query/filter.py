@@ -117,6 +117,7 @@ class Geo(FilterField):
     field in a Redis index.
 
     """
+
     OPERATORS = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
@@ -174,12 +175,13 @@ class GeoSpec:
 
 class GeoRadius(GeoSpec):
     """A GeoRadius is a GeoSpec representing a geographic radius"""
+
     def __init__(
         self,
         longitude: float,
         latitude: float,
         radius: Optional[int] = 1,
-        unit: Optional[str] = "km"
+        unit: Optional[str] = "km",
     ):
         """Create a GeoRadius specification (GeoSpec)
 
@@ -202,6 +204,7 @@ class GeoRadius(GeoSpec):
 
 class Num(FilterField):
     """A Num is a FilterField representing a numeric field in a Redis index."""
+
     OPERATORS = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
@@ -311,6 +314,7 @@ class Num(FilterField):
 
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index."""
+
     OPERATORS = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
@@ -399,6 +403,7 @@ class FilterExpression:
         ...     filter_expression=filter,
         ... )
     """
+
     def __init__(
         self,
         _filter: str = None,
