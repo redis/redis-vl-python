@@ -2,10 +2,14 @@ import os
 
 import pytest
 
-from redisvl.vectorize.text import HFTextVectorizer, OpenAITextVectorizer
+from redisvl.vectorize.text import (
+    HFTextVectorizer,
+    OpenAITextVectorizer,
+    VertexAITextVectorizer,
+)
 
 
-@pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer])
+@pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
 def vectorizer(request, openai_key):
     # Here we use actual models for integration test
     if request.param == HFTextVectorizer:
@@ -13,6 +17,15 @@ def vectorizer(request, openai_key):
     elif request.param == OpenAITextVectorizer:
         return request.param(
             model="text-embedding-ada-002", api_config={"api_key": openai_key}
+        )
+    elif request.param == VertexAITextVectorizer:
+        # also need to set GOOGLE_APPLICATION_CREDENTIALS env var
+        return request.param(
+            model="textembedding-gecko",
+            api_config={
+                "location": os.environ["LOCATION"],
+                "project": os.environ["PROJECT"],
+            },
         )
 
 
