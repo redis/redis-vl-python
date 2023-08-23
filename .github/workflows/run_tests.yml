@@ -38,6 +38,8 @@ jobs:
     - name: Run tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       run: |
         make test-cov
     - name: Run notebooks

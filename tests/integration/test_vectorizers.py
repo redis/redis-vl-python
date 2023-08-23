@@ -23,8 +23,8 @@ def vectorizer(request, openai_key):
         return request.param(
             model="textembedding-gecko",
             api_config={
-                "location": os.environ["LOCATION"],
-                "project": os.environ["PROJECT"],
+                "location": os.environ["GCP_LOCATION"],
+                "project_id": os.environ["GCP_PROJECT_ID"],
             },
         )
 
