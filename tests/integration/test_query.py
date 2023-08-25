@@ -5,7 +5,7 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery, VectorQuery
+from redisvl.query import FilterQuery, VectorQuery, RangeQuery
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 
 data = [
@@ -92,8 +92,8 @@ schema = {
 
 
 vector_query = VectorQuery(
-    [0.1, 0.1, 0.5],
-    "user_embedding",
+    vector=[0.1, 0.1, 0.5],
+    vector_field_name="user_embedding",
     return_fields=["user", "credit_score", "age", "job", "location"],
 )
 
@@ -101,6 +101,13 @@ filter_query = FilterQuery(
     return_fields=["user", "credit_score", "age", "job", "location"],
     # this will get set everytime
     filter_expression=Tag("credit_score") == "high",
+)
+
+range_query = RangeQuery(
+    vector=[0.1, 0.1, 0.5],
+    vector_field_name="user_embedding",
+    return_fields=["user", "credit_score", "age", "job", "location"],
+    distance_threshold=0.2
 )
 
 
@@ -142,7 +149,7 @@ def test_simple(index):
         assert doc.credit_score in ["high", "low", "medium"]
 
 
-def test_search_qeury(index):
+def test_search_query(index):
     # *=>[KNN 7 @user_embedding $vector AS vector_distance]
     v = VectorQuery(
         [0.1, 0.1, 0.5],
@@ -176,7 +183,7 @@ def test_simple_tag_filter(index):
     assert len(results.docs) == 4
 
 
-@pytest.fixture(params=[vector_query, filter_query], ids=["VectorQuery", "FilterQuery"])
+@pytest.fixture(params=[vector_query, filter_query, range_query], ids=["VectorQuery", "FilterQuery", "RangeQuery"])
 def query(request):
     return request.param
 
