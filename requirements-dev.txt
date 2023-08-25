@@ -8,3 +8,4 @@ mypy
 types-redis
 types-pyyaml
 types-tabulate
+treon
