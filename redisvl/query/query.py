@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 from redis.commands.search.query import Query
@@ -270,11 +270,11 @@ class RangeQuery(BaseQuery):
             )
         self._distance_threshold = distance_threshold
 
-    def get_distance_threshold(self) -> Any[float, int]:
+    def get_distance_threshold(self) -> Union[float, int]:
         """Get the distance threhold for the query.
 
         Returns:
-            Any[float, int]: The distance threshold for the query.
+            Union[float, int]: The distance threshold for the query.
         """
         return self._distance_threshold
 
