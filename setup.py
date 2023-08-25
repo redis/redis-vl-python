@@ -14,7 +14,8 @@ def read_dev_requirements():
 extras_require = {
     "all": [
         "openai>=0.26.4",
-        "sentence-transformers>=2.2.2"
+        "sentence-transformers>=2.2.2",
+        "google-cloud-aiplatform>=1.26"
     ],
     "dev": read_dev_requirements()
 }
