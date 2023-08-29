@@ -14,7 +14,7 @@ class BaseVectorizer:
         return self._model
 
     @property
-    def dims(self) -> int:
+    def dims(self) -> Optional[int]:
         return self._dims
 
     def set_model(self, model: str, dims: Optional[int] = None) -> None:
@@ -26,8 +26,8 @@ class BaseVectorizer:
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = 1000,
-        as_buffer: Optional[bool] = False,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
     ) -> List[List[float]]:
         raise NotImplementedError
 
@@ -35,7 +35,7 @@ class BaseVectorizer:
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[bool] = False,
+        as_buffer: bool = False,
     ) -> List[float]:
         raise NotImplementedError
 
@@ -43,8 +43,8 @@ class BaseVectorizer:
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = 1000,
-        as_buffer: Optional[bool] = False,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
     ) -> List[List[float]]:
         raise NotImplementedError
 
@@ -52,7 +52,7 @@ class BaseVectorizer:
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[bool] = False,
+        as_buffer: bool = False,
     ) -> List[float]:
         raise NotImplementedError
 

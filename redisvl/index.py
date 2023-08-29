@@ -29,7 +29,7 @@ class SearchIndexBase:
         self,
         name: str,
         prefix: str = "rvl",
-        storage_type: Optional[str] = "hash",
+        storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
         self._name = name
@@ -62,7 +62,7 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        results: List["Result"] = self._redis_conn.ft(self._name).search(
+        results: List["Result"] = self._redis_conn.ft(self._name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -148,7 +148,7 @@ class SearchIndexBase:
         """Disconnect from the Redis instance"""
         self._redis_conn = None
 
-    def _get_key(self, record: Dict[str, Any], key_field: str = None) -> str:
+    def _get_key(self, record: Dict[str, Any], key_field: Optional[str] = None) -> str:
         """Construct the Redis HASH top level key.
 
         Args:
@@ -236,7 +236,7 @@ class SearchIndex(SearchIndexBase):
         self,
         name: str,
         prefix: str = "rvl",
-        storage_type: Optional[str] = "hash",
+        storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
         super().__init__(name, prefix, storage_type, fields)
@@ -313,7 +313,7 @@ class SearchIndex(SearchIndexBase):
         # set storage_type, default to hash
         storage_type = IndexType.HASH
         if self._storage.lower() == "json":
-            self._storage = IndexType.JSON
+            storage_type = IndexType.JSON
 
         # Create Index
         # will raise correct response error if index already exists
@@ -358,7 +358,7 @@ class SearchIndex(SearchIndexBase):
 
             # Check if outer interface passes in TTL on load
             ttl = kwargs.get("ttl")
-            with self._redis_conn.pipeline(transaction=False) as pipe:
+            with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
                 for record in data:
                     key = self._get_key(record, key_field)
                     pipe.hset(key, mapping=record)  # type: ignore
@@ -394,7 +394,7 @@ class AsyncSearchIndex(SearchIndexBase):
         self,
         name: str,
         prefix: str = "rvl",
-        storage_type: Optional[str] = "hash",
+        storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
         super().__init__(name, prefix, storage_type, fields)
@@ -467,7 +467,7 @@ class AsyncSearchIndex(SearchIndexBase):
         # set storage_type, default to hash
         storage_type = IndexType.HASH
         if self._storage.lower() == "json":
-            self._storage = IndexType.JSON
+            storage_type = IndexType.JSON
 
         # Create Index
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
@@ -516,7 +516,7 @@ class AsyncSearchIndex(SearchIndexBase):
                 key = self._get_key(record, key_field)
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
-                    await self._redis_conn.expire(key, ttl)
+                    await self._redis_conn.expire(key, ttl)  # type: ignore
 
         # gather with concurrency
         await asyncio.gather(*[_load(record) for record in data])

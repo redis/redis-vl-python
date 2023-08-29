@@ -1,7 +1,11 @@
 from enum import Enum
-from typing import Any, List, Optional, Union
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from redisvl.utils.utils import TokenEscaper
+
+# disable mypy error for dunder method overrides
+# mypy: disable-error-code="override"
 
 
 class FilterOperator(Enum):
@@ -18,13 +22,18 @@ class FilterOperator(Enum):
 
 
 class FilterField:
-    escaper = TokenEscaper()
-    OPERATORS = []
+    escaper: TokenEscaper = TokenEscaper()
+    OPERATORS: Dict[FilterOperator, str] = {}
 
     def __init__(self, field: str):
         self._field = field
-        self._value = None
-        self._operator = None
+        self._value: Any = None
+        self._operator: FilterOperator = FilterOperator.EQ
+
+    def equals(self, other: "FilterField") -> bool:
+        if not isinstance(other, type(self)):
+            return False
+        return (self._field == other._field) and (self._value == other._value)
 
     def _set_value(self, val: Any, val_type: type, operator: FilterOperator):
         # check that the operator is supported by this class
@@ -36,23 +45,45 @@ class FilterField:
 
         if not isinstance(val, val_type):
             raise TypeError(
-                f"Right side argument passed to operator {self.OPERATORS[operator]} with left side "
+                f"Right side argument passed to operator {self.OPERATORS[operator]} "
+                f"with left side "
                 f"argument {self.__class__.__name__} must be of type {val_type}"
             )
         self._value = val
         self._operator = operator
 
 
+def check_operator_misuse(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(instance: Any, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
+        # Extracting 'other' from positional arguments or keyword arguments
+        other = kwargs.get("other") if "other" in kwargs else None
+        if not other:
+            for arg in args:
+                if isinstance(arg, type(instance)):
+                    other = arg
+                    break
+
+        if isinstance(other, type(instance)):
+            raise ValueError(
+                "Equality operators are overridden for FilterExpression creation. Use "
+                ".equals() for equality checks"
+            )
+        return func(instance, *args, **kwargs)
+
+    return wrapper
+
+
 class Tag(FilterField):
     """A Tag is a FilterField representing a tag in a Redis index."""
 
-    OPERATORS = {
+    OPERATORS: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.IN: "==",
     }
 
-    OPERATOR_MAP = {
+    OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:{%s}",
         FilterOperator.NE: "(-@%s:{%s})",
         FilterOperator.IN: "@%s:{%s}",
@@ -74,6 +105,7 @@ class Tag(FilterField):
             other = [other]
         self._set_value(other, list, operator)
 
+    @check_operator_misuse
     def __eq__(self, other: Union[List[str], str]) -> "FilterExpression":
         """Create a Tag equality filter expression
 
@@ -87,6 +119,7 @@ class Tag(FilterField):
         self._set_tag_value(other, FilterOperator.EQ)
         return FilterExpression(str(self))
 
+    @check_operator_misuse
     def __ne__(self, other) -> "FilterExpression":
         """Create a Tag inequality filter expression
 
@@ -118,15 +151,16 @@ class Geo(FilterField):
 
     """
 
-    OPERATORS = {
+    OPERATORS: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
     }
-    OPERATOR_MAP = {
+    OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:[%f %f %i %s]",
         FilterOperator.NE: "(-@%s:[%f %f %i %s])",
     }
 
+    @check_operator_misuse
     def __eq__(self, other) -> "FilterExpression":
         """Create a Geographic equality filter expression
 
@@ -140,6 +174,7 @@ class Geo(FilterField):
         self._set_value(other, GeoSpec, FilterOperator.EQ)
         return FilterExpression(str(self))
 
+    @check_operator_misuse
     def __ne__(self, other) -> "FilterExpression":
         """Create a Geographic inequality filter expression
 
@@ -153,8 +188,14 @@ class Geo(FilterField):
         self._set_value(other, GeoSpec, FilterOperator.NE)
         return FilterExpression(str(self))
 
-    def __str__(self) -> "FilterExpression":
+    def __str__(self) -> str:
         """Return the Redis Query syntax for a Geographic filter expression"""
+        if not self._value:
+            raise ValueError(
+                f"Operator must be used before calling __str__. Operators are "
+                f"{self.OPERATORS.values()}"
+            )
+
         return self.OPERATOR_MAP[self._operator] % (
             self._field,
             *self._value.get_args(),
@@ -180,8 +221,8 @@ class GeoRadius(GeoSpec):
         self,
         longitude: float,
         latitude: float,
-        radius: Optional[int] = 1,
-        unit: Optional[str] = "km",
+        radius: int = 1,
+        unit: str = "km",
     ):
         """Create a GeoRadius specification (GeoSpec)
 
@@ -205,7 +246,7 @@ class GeoRadius(GeoSpec):
 class Num(FilterField):
     """A Num is a FilterField representing a numeric field in a Redis index."""
 
-    OPERATORS = {
+    OPERATORS: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.LT: "<",
@@ -213,7 +254,7 @@ class Num(FilterField):
         FilterOperator.LE: "<=",
         FilterOperator.GE: ">=",
     }
-    OPERATOR_MAP = {
+    OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:[%i %i]",
         FilterOperator.NE: "(-@%s:[%i %i])",
         FilterOperator.GT: "@%s:[(%i +inf]",
@@ -224,6 +265,12 @@ class Num(FilterField):
 
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Numeric filter expression"""
+        if not self._value:
+            raise ValueError(
+                f"Operator must be used before calling __str__. Operators are "
+                f"{self.OPERATORS.values()}"
+            )
+
         if self._operator == FilterOperator.EQ or self._operator == FilterOperator.NE:
             return self.OPERATOR_MAP[self._operator] % (
                 self._field,
@@ -315,17 +362,18 @@ class Num(FilterField):
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index."""
 
-    OPERATORS = {
+    OPERATORS: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.LIKE: "%",
     }
-    OPERATOR_MAP = {
+    OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: '@%s:"%s"',
         FilterOperator.NE: '(-@%s:"%s")',
         FilterOperator.LIKE: "@%s:%s",
     }
 
+    @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
         """Create a Text equality filter expression
 
@@ -339,6 +387,7 @@ class Text(FilterField):
         self._set_value(other, str, FilterOperator.EQ)
         return FilterExpression(str(self))
 
+    @check_operator_misuse
     def __ne__(self, other: str) -> "FilterExpression":
         """Create a Text inequality filter expression
 
@@ -366,10 +415,12 @@ class Text(FilterField):
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
-        try:
-            return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
-        except KeyError:
-            raise Exception("Invalid operator")
+        if not self._value:
+            raise ValueError(
+                f"Operator must be used before calling __str__. Operators are "
+                f"{self.OPERATORS.values()}"
+            )
+        return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
 
 class FilterExpression:
@@ -406,8 +457,8 @@ class FilterExpression:
 
     def __init__(
         self,
-        _filter: str = None,
-        operator: FilterOperator = None,
+        _filter: Optional[str] = None,
+        operator: Optional[FilterOperator] = None,
         left: Optional["FilterExpression"] = None,
         right: Optional["FilterExpression"] = None,
     ):
@@ -416,14 +467,22 @@ class FilterExpression:
         self._left = left
         self._right = right
 
-    def __and__(self, other):
+    def __and__(self, other) -> "FilterExpression":
         return FilterExpression(operator=FilterOperator.AND, left=self, right=other)
 
-    def __or__(self, other):
+    def __or__(self, other) -> "FilterExpression":
         return FilterExpression(operator=FilterOperator.OR, left=self, right=other)
 
-    def __str__(self):
+    def __str__(self) -> str:
+        # top level check that allows recursive calls to __str__
+        if not self._filter and not self._operator:
+            raise ValueError("Improperly initialized FilterExpression")
+
         if self._operator:
             operator_str = " | " if self._operator == FilterOperator.OR else " "
             return f"({str(self._left)}{operator_str}{str(self._right)})"
+
+        # check that base case, the filter is set
+        if not self._filter:
+            raise ValueError("Improperly initialized FilterExpression")
         return self._filter

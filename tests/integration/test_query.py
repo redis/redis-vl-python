@@ -5,7 +5,7 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery, VectorQuery, RangeQuery
+from redisvl.query import FilterQuery, RangeQuery, VectorQuery
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 
 data = [
