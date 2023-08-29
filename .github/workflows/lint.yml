@@ -37,7 +37,7 @@ jobs:
 
     - name: check-sort-import
       run: |
-        make check-sort-import
+        make check-sort-imports
 
     - name: check-black-format
       run: |
@@ -45,4 +45,4 @@ jobs:
 
     - name: check-mypy
       run: |
-        make check-mypy
+        make mypy
