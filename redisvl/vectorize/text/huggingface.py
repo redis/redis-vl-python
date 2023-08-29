@@ -29,7 +29,7 @@ class HFTextVectorizer(BaseVectorizer):
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[float] = False,
+        as_buffer: bool = False,
     ) -> List[float]:
         """Embed a chunk of text using the Hugging Face sentence transformer.
 
@@ -37,7 +37,7 @@ class HFTextVectorizer(BaseVectorizer):
             text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
@@ -59,7 +59,7 @@ class HFTextVectorizer(BaseVectorizer):
         texts: List[str],
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
-        as_buffer: Optional[float] = None,
+        as_buffer: bool = False,
     ) -> List[List[float]]:
         """Asynchronously embed many chunks of texts using the Hugging Face sentence
         transformer.
@@ -70,7 +70,7 @@ class HFTextVectorizer(BaseVectorizer):
                 perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:

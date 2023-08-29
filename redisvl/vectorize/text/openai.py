@@ -5,6 +5,9 @@ from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.vectorize.base import BaseVectorizer
 
+# ignore that openai isn't imported
+# mypy: disable-error-code="name-defined"
+
 
 class OpenAITextVectorizer(BaseVectorizer):
     """OpenAI text vectorizer
@@ -66,8 +69,8 @@ class OpenAITextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = 10,
-        as_buffer: Optional[float] = False,
+        batch_size: int = 10,
+        as_buffer: bool = False,
     ) -> List[List[float]]:
         """Embed many chunks of texts using the OpenAI API.
 
@@ -109,7 +112,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[float] = False,
+        as_buffer: bool = False,
     ) -> List[float]:
         """Embed a chunk of text using the OpenAI API.
 
@@ -117,7 +120,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
@@ -144,7 +147,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         texts: List[str],
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
-        as_buffer: Optional[bool] = False,
+        as_buffer: bool = False,
     ) -> List[List[float]]:
         """Asynchronously embed many chunks of texts using the OpenAI API.
 
@@ -154,7 +157,7 @@ class OpenAITextVectorizer(BaseVectorizer):
                 perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
@@ -186,7 +189,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[bool] = False,
+        as_buffer: bool = False,
     ) -> List[float]:
         """Asynchronously embed a chunk of text using the OpenAI API.
 
@@ -194,7 +197,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (float, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:

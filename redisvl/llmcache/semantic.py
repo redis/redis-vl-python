@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 
-from redis.commands.search.field import VectorField
+from redis.commands.search.field import Field, VectorField
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
@@ -14,8 +14,8 @@ class SemanticCache(BaseLLMCache):
     """Cache for Large Language Models."""
 
     # TODO allow for user to change default fields
-    _vector_field_name = "prompt_vector"
-    _default_fields = [
+    _vector_field_name: str = "prompt_vector"
+    _default_fields: List[Field] = [
         VectorField(
             _vector_field_name,
             "FLAT",
@@ -25,27 +25,27 @@ class SemanticCache(BaseLLMCache):
 
     def __init__(
         self,
-        index_name: Optional[str] = "cache",
-        prefix: Optional[str] = "llmcache",
-        threshold: Optional[float] = 0.9,
+        index_name: str = "cache",
+        prefix: str = "llmcache",
+        threshold: float = 0.9,
         ttl: Optional[int] = None,
-        vectorizer: Optional[BaseVectorizer] = HFTextVectorizer(
+        vectorizer: BaseVectorizer = HFTextVectorizer(
             "sentence-transformers/all-mpnet-base-v2"
         ),
-        redis_url: Optional[str] = "redis://localhost:6379",
+        redis_url: str = "redis://localhost:6379",
         connection_args: Optional[dict] = None,
         index: Optional[SearchIndex] = None,
     ):
         """Semantic Cache for Large Language Models.
 
         Args:
-            index_name (Optional[str], optional): The name of the index. Defaults to "cache".
-            prefix (Optional[str], optional): The prefix for the index. Defaults to "llmcache".
-            threshold (Optional[float], optional): Semantic threshold for the cache. Defaults to 0.9.
+            index_name (str, optional): The name of the index. Defaults to "cache".
+            prefix (str, optional): The prefix for the index. Defaults to "llmcache".
+            threshold (float, optional): Semantic threshold for the cache. Defaults to 0.9.
             ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
-            vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
+            vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer("sentence-transformers/all-mpnet-base-v2").
-            redis_url (Optional[str], optional): The redis url. Defaults to "redis://localhost:6379".
+            redis_url (str, optional): The redis url. Defaults to "redis://localhost:6379".
             connection_args (Optional[dict], optional): The connection arguments for the redis client. Defaults to None.
             index (Optional[SearchIndex], optional): The underlying search index to use for the semantic cache. Defaults to None.
 

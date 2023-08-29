@@ -86,10 +86,10 @@ def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
     return np.array(array).astype(dtype).tobytes()
 
 
-def process_results(results: List["Result"]) -> List[Dict[str, Any]]:
+def process_results(results: "Result") -> List[Dict[str, Any]]:
     """Convert a list of search Result objects into a list of document dicts"""
 
-    def _process(doc: "Document") -> dict:
+    def _process(doc: "Document") -> Dict[str, Any]:
         d = doc.__dict__
         if "payload" in d:
             del d["payload"]

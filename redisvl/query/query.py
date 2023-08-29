@@ -8,19 +8,17 @@ from redisvl.utils.utils import array_to_buffer
 
 
 class BaseQuery:
-    def __init__(
-        self, return_fields: Optional[List[str]] = None, num_results: Optional[int] = 10
-    ):
+    def __init__(self, return_fields: List[str] = [], num_results: int = 10):
         self._return_fields = return_fields
         self._num_results = num_results
 
     @property
     def query(self) -> "Query":
-        pass
+        raise NotImplementedError
 
     @property
     def params(self) -> Dict[str, Any]:
-        pass
+        raise NotImplementedError
 
 
 class FilterQuery(BaseQuery):
@@ -28,7 +26,7 @@ class FilterQuery(BaseQuery):
         self,
         return_fields: List[str],
         filter_expression: FilterExpression,
-        num_results: Optional[int] = 10,
+        num_results: int = 10,
         params: Optional[Dict[str, Any]] = None,
     ):
         """Query for a filter expression.
@@ -69,7 +67,7 @@ class FilterQuery(BaseQuery):
             raise TypeError(
                 "filter_expression must be of type redisvl.query.FilterExpression"
             )
-        self._filter = str(filter_expression)
+        self._filter = filter_expression
 
     def get_filter(self) -> FilterExpression:
         """Get the filter for the query.
@@ -102,6 +100,8 @@ class FilterQuery(BaseQuery):
         Returns:
             Dict[str, Any]: The parameters for the query.
         """
+        if not self._params:
+            self._params = {}
         return self._params
 
 
@@ -118,9 +118,9 @@ class BaseVectorQuery(BaseQuery):
         vector: List[float],
         vector_field_name: str,
         return_fields: List[str],
-        filter_expression: FilterExpression = None,
+        filter_expression: Optional[FilterExpression] = None,
         dtype: str = "float32",
-        num_results: Optional[int] = 10,
+        num_results: int = 10,
         return_score: bool = True,
     ):
         super().__init__(return_fields, num_results)
@@ -129,8 +129,6 @@ class BaseVectorQuery(BaseQuery):
         self._dtype = dtype.lower()
         if filter_expression:
             self.set_filter(filter_expression)
-        else:
-            self._filter = "*"
 
         if return_score:
             self._return_fields.append(self.DISTANCE_ID)
@@ -145,7 +143,7 @@ class BaseVectorQuery(BaseQuery):
             raise TypeError(
                 "filter_expression must be of type redisvl.query.FilterExpression"
             )
-        self._filter = str(filter_expression)
+        self._filter = filter_expression
 
     def get_filter(self) -> FilterExpression:
         """Get the filter for the query.
@@ -165,9 +163,9 @@ class VectorQuery(BaseVectorQuery):
         vector: List[float],
         vector_field_name: str,
         return_fields: List[str],
-        filter_expression: FilterExpression = None,
+        filter_expression: Optional[FilterExpression] = None,
         dtype: str = "float32",
-        num_results: Optional[int] = 10,
+        num_results: int = 10,
         return_score: bool = True,
     ):
         """Query for vector fields.
@@ -204,7 +202,10 @@ class VectorQuery(BaseVectorQuery):
         Returns:
             redis.commands.search.query.Query: The query object.
         """
-        base_query = f"{self._filter}=>[KNN {self._num_results} @{self._field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
+        _filter = "*"
+        if self._filter:
+            _filter = str(self._filter)
+        base_query = f"{_filter}=>[KNN {self._num_results} @{self._field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
         query = (
             Query(base_query)
             .return_fields(*self._return_fields)
@@ -236,10 +237,10 @@ class RangeQuery(BaseVectorQuery):
         vector: List[float],
         vector_field_name: str,
         return_fields: List[str],
-        filter_expression: FilterExpression = None,
+        filter_expression: Optional[FilterExpression] = None,
         dtype: str = "float32",
         distance_threshold: float = 0.2,
-        num_results: Optional[int] = None,
+        num_results: int = 1000,
         return_score: bool = True,
     ):
         """Vector query by distance range.
@@ -257,7 +258,7 @@ class RangeQuery(BaseVectorQuery):
             filter_expression (FilterExpression, optional): A filter to apply to the query. Defaults to None.
             dtype (str, optional): The dtype of the vector. Defaults to "float32".
             distance_threshold (str, float): The threshold for vector distance. Defaults to 0.2.
-            num_results (Optional[int], optional): The MAX number of results to return. Defaults to None.
+            num_results (int): The MAX number of results to return. defaults to 1000.
             return_score (bool, optional): Whether to return the score. Defaults to True.
 
         Raises:
@@ -303,12 +304,12 @@ class RangeQuery(BaseVectorQuery):
         """
         base_query = f"@{self._field}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
 
-        if self._filter != "*":
+        if self._filter:
             base_query = (
                 "("
                 + base_query
                 + f"=>{{$yield_distance_as: {self.DISTANCE_ID}}} "
-                + self._filter
+                + str(self._filter)
                 + ")"
             )
         else:

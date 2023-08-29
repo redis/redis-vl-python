@@ -19,26 +19,31 @@ help:
 # help: Style
 # help: -------
 
-# help: style                          - Sort imports and format with black
-.PHONY: style
-style: sort-imports format
-
-
-# help: check-style                    - check code style compliance
-.PHONY: check-style
-check-style: check-sort-imports check-format
-
+# help: check                          - run all checks for a commit
+.PHONY: check
+check: check-format check-sort-imports mypy
 
 # help: format                         - perform code style format
 .PHONY: format
-format:
+format: sort-imports
 	@black ./redisvl ./tests/
+
+
+# help: check-format                   - check code format compliance
+.PHONY: check-format
+check-format:
+	@black --check ./redisvl
 
 
 # help: sort-imports                   - apply import sort ordering
 .PHONY: sort-imports
 sort-imports:
 	@isort ./redisvl ./tests/ --profile black
+
+# help: check-sort-imports             - check imports are sorted
+.PHONY: check-sort-imports
+check-sort-imports:
+	@isort ./redisvl --check-only --profile black
 
 
 # help: check-lint                     - run static analysis checks
