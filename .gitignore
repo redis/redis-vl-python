@@ -5,3 +5,4 @@ redisvl.egg-info/
 scratch
 .DS_Store
 *.csv
+wiki_schema.yaml

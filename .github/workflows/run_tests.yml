@@ -40,6 +40,11 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
       run: |
         make test-cov
+    - name: Run notebooks
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+      run: |
+        cd docs/ && treon -v --exclude="./examples/openai_qna.ipynb"
     - name: Publish coverage results
       uses: codecov/codecov-action@v2
       with:
