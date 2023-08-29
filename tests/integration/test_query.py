@@ -91,26 +91,6 @@ schema = {
 }
 
 
-vector_query = VectorQuery(
-    vector=[0.1, 0.1, 0.5],
-    vector_field_name="user_embedding",
-    return_fields=["user", "credit_score", "age", "job", "location"],
-)
-
-filter_query = FilterQuery(
-    return_fields=["user", "credit_score", "age", "job", "location"],
-    # this will get set everytime
-    filter_expression=Tag("credit_score") == "high",
-)
-
-range_query = RangeQuery(
-    vector=[0.1, 0.1, 0.5],
-    vector_field_name="user_embedding",
-    return_fields=["user", "credit_score", "age", "job", "location"],
-    distance_threshold=0.2
-)
-
-
 @pytest.fixture(scope="module")
 def index():
     # construct a search index from the schema
@@ -169,23 +149,46 @@ def test_search_query(index):
     assert processed_results[0] == results.docs[0].__dict__
 
 
-def test_simple_tag_filter(index):
-    # (@credit_score:{high})=>[KNN 10 @user_embedding $vector AS vector_distance]
-    t = Tag("credit_score") == "high"
-    v = VectorQuery(
+def test_range_query(index):
+    r = RangeQuery(
         [0.1, 0.1, 0.5],
         "user_embedding",
         return_fields=["user", "credit_score", "age", "job"],
-        filter_expression=t,
+        distance_threshold=0.2,
+        num_results=7,
     )
+    results = index.query(r)
+    for result in results:
+        assert float(result["vector_distance"]) <= 0.2
+    assert len(results) == 4
+    assert r.distance_threshold == 0.2
 
-    results = index.search(v.query, query_params=v.params)
-    assert len(results.docs) == 4
+    r.set_distance_threshold(0.1)
+    assert r.distance_threshold == 0.1
+    results = index.query(r)
+    for result in results:
+        assert float(result["vector_distance"]) <= 0.1
+    assert len(results) == 2
 
 
-@pytest.fixture(params=[vector_query, filter_query, range_query], ids=["VectorQuery", "FilterQuery", "RangeQuery"])
-def query(request):
-    return request.param
+vector_query = VectorQuery(
+    vector=[0.1, 0.1, 0.5],
+    vector_field_name="user_embedding",
+    return_fields=["user", "credit_score", "age", "job", "location"],
+)
+
+filter_query = FilterQuery(
+    return_fields=["user", "credit_score", "age", "job", "location"],
+    # this will get set everytime
+    filter_expression=Tag("credit_score") == "high",
+)
+
+range_query = RangeQuery(
+    vector=[0.1, 0.1, 0.5],
+    vector_field_name="user_embedding",
+    return_fields=["user", "credit_score", "age", "job", "location"],
+    distance_threshold=0.2,
+)
 
 
 def filter_test(
@@ -196,17 +199,23 @@ def filter_test(
     credit_check=None,
     age_range=None,
     location=None,
+    distance_threshold=0.2,
 ):
     """Utility function to test filters"""
 
     # set the new filter
     query.set_filter(_filter)
+    print(str(query))
 
     # print(str(v) + "\n") # to print the query
     results = index.search(query.query, query_params=query.params)
+
+    # check for tag filter correctness
     if credit_check:
         for doc in results.docs:
             assert doc.credit_score == credit_check
+
+    # check for numeric filter correctness
     if age_range:
         for doc in results.docs:
             if len(age_range) == 3:
@@ -215,10 +224,29 @@ def filter_test(
                 assert (int(doc.age) <= age_range[0]) or (int(doc.age) >= age_range[1])
             else:
                 assert age_range[0] <= int(doc.age) <= age_range[1]
+
+    # check for geographic filter correctness
     if location:
         for doc in results.docs:
             assert doc.location == location
-    assert len(results.docs) == expected_count
+
+    # if range query, test results by distance threshold
+    if isinstance(query, RangeQuery):
+        for doc in results.docs:
+            print(doc.vector_distance)
+            assert float(doc.vector_distance) <= distance_threshold
+
+    # otherwise check by expected count.
+    else:
+        assert len(results.docs) == expected_count
+
+
+@pytest.fixture(
+    params=[vector_query, filter_query, range_query],
+    ids=["VectorQuery", "FilterQuery", "RangeQuery"],
+)
+def query(request):
+    return request.param
 
 
 def test_filters(index, query):
