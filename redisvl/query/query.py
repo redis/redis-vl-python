@@ -127,6 +127,7 @@ class BaseVectorQuery(BaseQuery):
         self._vector = vector
         self._field = vector_field_name
         self._dtype = dtype.lower()
+        self._filter = filter_expression
         if filter_expression:
             self.set_filter(filter_expression)
 
@@ -145,11 +146,11 @@ class BaseVectorQuery(BaseQuery):
             )
         self._filter = filter_expression
 
-    def get_filter(self) -> FilterExpression:
+    def get_filter(self) -> Optional[FilterExpression]:
         """Get the filter for the query.
 
         Returns:
-            FilterExpression: The filter for the query.
+            Optional[FilterExpression]: The filter for the query.
         """
         return self._filter
 
@@ -277,10 +278,10 @@ class RangeQuery(BaseVectorQuery):
         self.set_distance_threshold(distance_threshold)
 
     def set_distance_threshold(self, distance_threshold: float):
-        """_summary_
+        """Set the distance treshold for the query.
 
         Args:
-            distance_threshold (float): _description_
+            distance_threshold (float): vector distance
         """
         if not isinstance(distance_threshold, (float, int)):
             raise TypeError("distance_threshold must be of type int or float")
