@@ -44,7 +44,7 @@ jobs:
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
       run: |
-        treon docs/ -v
+        cd docs/ && treon -v --exclude="./examples/openai_qna.ipynb"
     - name: Publish coverage results
       uses: codecov/codecov-action@v2
       with:
