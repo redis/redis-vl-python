@@ -43,7 +43,7 @@ RedisVL has a host of powerful features designed to streamline your vector datab
 
 1. **Index Management**: RedisVL allows for indices to be created, updated, and deleted with ease. A schema for each index can be defined in yaml or directly in python code and used throughout the lifetime of the index.
 
-2. **Embedding Creation**: RedisVL integrates with OpenAI, HuggingFace, and GCP VertexAI to simplify the process of vectorizing unstructured data. *Image support coming soon. Submitt a PR for new vectorizers.*
+2. **Embedding Creation**: RedisVL integrates with OpenAI, HuggingFace, and GCP VertexAI to simplify the process of vectorizing unstructured data. *Image support coming soon. Submit a PR for new vectorizers.*
 
 3. **Vector Search**: RedisVL provides robust search capabilities that enable you to query vectors synchronously and asynchronously. Hybrid queries that utilize tag, geographic, numeric, and other filters like full-text search are also supported.
 
