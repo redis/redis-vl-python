@@ -56,8 +56,14 @@ Please note that this library is still under heavy development, and while you ca
 
 First, install RedisVL using pip:
 
-```
+```bash
 pip install redisvl
+```
+
+This library supports the use of hiredis, so you can also install by running:
+
+```bash
+pip install redisvl[hiredis]
 ```
 
 Then make sure to have Redis with the Search and Query capability running on Redis Cloud or
@@ -194,5 +200,3 @@ cache.check("What is the capital of France?")
 cache.check("What really is the capital of France?")
 ["Paris"]
 ```
-
-
