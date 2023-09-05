@@ -35,8 +35,8 @@ jobs:
       run: |
         REDIS_URL=redis://localhost:6379
         echo REDIS_URL=$REDIS_URL >> $GITHUB_ENV
-    - name: 'Authenticate to Google Cloud'
-      uses: 'google-github-actions/auth@v1'
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
     - name: Run tests
