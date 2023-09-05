@@ -43,7 +43,9 @@ class VertexAITextVectorizer(BaseVectorizer):
             import vertexai
             from vertexai.preview.language_models import TextEmbeddingModel
 
-            vertexai.init(project=api_config["project_id"], location=api_config["location"])
+            vertexai.init(
+                project=api_config["project_id"], location=api_config["location"]
+            )
         except ImportError:
             raise ImportError(
                 "VertexAI vectorizer requires the google-cloud-aiplatform library."
