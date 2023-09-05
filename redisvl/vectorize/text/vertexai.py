@@ -58,8 +58,6 @@ class VertexAITextVectorizer(BaseVectorizer):
             embedding = self._model_client.get_embeddings(["dimension test"])[0].values
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
-        # TODO - except openai.error.AuthenticationError as ae:
-        #     raise ValueError(f"Error authenticating with the OpenAI API: {str(ae)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
