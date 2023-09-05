@@ -28,15 +28,6 @@ class VertexAITextVectorizer(BaseVectorizer):
             ValueError: If the API key is not provided.
         """
         super().__init__(model)
-        try:
-            global vertexai
-            import vertexai
-            from vertexai.preview.language_models import TextEmbeddingModel
-        except ImportError:
-            raise ImportError(
-                "VertexAI vectorizer requires the google-cloud-aiplatform library."
-                "Please install with pip install google-cloud-aiplatform>=1.26"
-            )
 
         if (
             not api_config
@@ -47,9 +38,17 @@ class VertexAITextVectorizer(BaseVectorizer):
                 "GCP project id and valid location are required in the api_config"
             )
 
-        print(api_config, flush=True)
+        try:
+            global vertexai
+            import vertexai
+            from vertexai.preview.language_models import TextEmbeddingModel
 
-        vertexai.init(project=api_config["project_id"], location=api_config["location"])
+            vertexai.init(project=api_config["project_id"], location=api_config["location"])
+        except ImportError:
+            raise ImportError(
+                "VertexAI vectorizer requires the google-cloud-aiplatform library."
+                "Please install with pip install google-cloud-aiplatform>=1.26"
+            )
 
         self._model_client = TextEmbeddingModel.from_pretrained(model)
         self._dims = self._set_model_dims()

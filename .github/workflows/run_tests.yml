@@ -35,14 +35,16 @@ jobs:
       run: |
         REDIS_URL=redis://localhost:6379
         echo REDIS_URL=$REDIS_URL >> $GITHUB_ENV
+    - name: 'Authenticate to Google Cloud'
+      uses: 'google-github-actions/auth@v1'
+      with:
+        credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
     - name: Run tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
         GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        GOOGLE_APPLICATION_CREDENTIALS: gcp-credentials.json
       run: |
-        echo "$GCP_SERVICE_ACCOUNT_API_KEY_BASE64" | base64 --decode | jq > gcp-credentials.json
         make test-cov
     - name: Run notebooks
       env:
