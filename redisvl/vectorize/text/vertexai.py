@@ -71,8 +71,8 @@ class VertexAITextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = 10,
-        as_buffer: Optional[float] = False,
+        batch_size: int = 10,
+        as_buffer: bool = False,
     ) -> List[List[float]]:
         """Embed many chunks of texts using the VertexAI API.
 
@@ -82,7 +82,7 @@ class VertexAITextVectorizer(BaseVectorizer):
                 perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
@@ -113,7 +113,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         self,
         text: str,
         preprocess: Optional[Callable] = None,
-        as_buffer: Optional[float] = False,
+        as_buffer: bool = False,
     ) -> List[float]:
         """Embed a chunk of text using the VertexAI API.
 
@@ -121,7 +121,7 @@ class VertexAITextVectorizer(BaseVectorizer):
             text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
