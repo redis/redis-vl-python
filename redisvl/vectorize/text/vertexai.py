@@ -47,6 +47,10 @@ class VertexAITextVectorizer(BaseVectorizer):
                 "GCP project id and valid location are required in the api_config"
             )
 
+        print(api_config, flush=True)
+
+        vertexai.init(project=api_config["project_id"], location=api_config["location"])
+
         self._model_client = TextEmbeddingModel.from_pretrained(model)
         self._dims = self._set_model_dims()
 
