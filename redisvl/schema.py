@@ -64,7 +64,6 @@ class BaseVectorField(BaseModel):
     algorithm: object = Field(...)
     datatype: str = Field(default="FLOAT32")
     distance_metric: str = Field(default="COSINE")
-    initial_cap: int = Field(default=20000)
 
     @validator("algorithm", "datatype", "distance_metric", pre=True, each_item=True)
     def uppercase_strings(cls, v):
@@ -73,7 +72,6 @@ class BaseVectorField(BaseModel):
 
 class FlatVectorField(BaseVectorField):
     algorithm: object = Literal["FLAT"]
-    block_size: int = Field(default=1000)
 
     def as_field(self):
         return VectorField(
@@ -83,8 +81,6 @@ class FlatVectorField(BaseVectorField):
                 "TYPE": self.datatype,
                 "DIM": self.dims,
                 "DISTANCE_METRIC": self.distance_metric,
-                "INITIAL_CAP": self.initial_cap,
-                "BLOCK_SIZE": self.block_size,
             },
         )
 
@@ -104,7 +100,6 @@ class HNSWVectorField(BaseVectorField):
                 "TYPE": self.datatype,
                 "DIM": self.dims,
                 "DISTANCE_METRIC": self.distance_metric,
-                "INITIAL_CAP": self.initial_cap,
                 "M": self.m,
                 "EF_CONSTRUCTION": self.ef_construction,
                 "EF_RUNTIME": self.ef_runtime,
@@ -115,7 +110,7 @@ class HNSWVectorField(BaseVectorField):
 
 class IndexModel(BaseModel):
     name: str = Field(...)
-    prefix: str = Field(...)
+    prefix: Optional[str] = Field(default="")
     storage_type: Optional[str] = Field(default="hash")
 
 
