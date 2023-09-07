@@ -39,7 +39,6 @@ class VertexAITextVectorizer(BaseVectorizer):
             )
 
         try:
-            global vertexai
             import vertexai
             from vertexai.preview.language_models import TextEmbeddingModel
 
