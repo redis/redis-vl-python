@@ -80,7 +80,7 @@ class OpenAITextVectorizer(BaseVectorizer):
                 perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
@@ -197,7 +197,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            as_buffer (float, optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
