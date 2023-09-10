@@ -47,14 +47,22 @@ jobs:
         REDIS_URL=redis://localhost:6379
         echo REDIS_URL=$REDIS_URL >> $GITHUB_ENV
 
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
     - name: Run tests
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       run: |
         make test-cov
     - name: Run notebooks
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       run: |
         cd docs/ && treon -v --exclude="./examples/openai_qna.ipynb"
     - name: Publish coverage results

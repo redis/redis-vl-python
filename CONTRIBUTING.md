@@ -36,7 +36,7 @@ Here's how to get started with your code contribution:
 ### Security Vulnerabilities
 
 **NOTE**: If you find a security vulnerability, do NOT open an issue.
-Email [Tyler Hutcherson (<tyler.hutcherson@redis.com>)](mailto:tyler.hutcherson@redis.com) instead.
+Email [Redis OSS (<oss@redis.com>)](mailto:oss@redis.com) instead.
 
 In order to determine whether you are dealing with a security issue, ask
 yourself these two questions:

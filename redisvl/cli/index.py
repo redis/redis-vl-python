@@ -90,7 +90,7 @@ class Index:
         """Delete an index
 
         Usage:
-            redisvl index delete -i <index_name> | -s <schema_path>
+            rvl index delete -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
         index.delete(drop=drop)

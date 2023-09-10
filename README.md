@@ -18,6 +18,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![GitHub last commit](https://img.shields.io/github/last-commit/RedisVentures/RedisVL)
 ![GitHub deployments](https://img.shields.io/github/deployments/RedisVentures/RedisVL/github-pages?label=doc%20build)
+[![pypi](https://badge.fury.io/py/redisvl.svg)](https://pypi.org/project/redisvl/)
 
 </div>
 
@@ -33,7 +34,7 @@ RedisVL provides a powerful Python client library for using Redis as a Vector Da
 
 Vector databases have become increasingly popular in recent years due to their ability to store and retrieve vectors efficiently. However, most vector databases are complex to use and require a lot of time and effort to set up. RedisVL aims to solve this problem by providing a simple and intuitive interface for using Redis as a vector database.
 
-RedisVL provides a client library that enables you to harness the power of Redis as a vector database. This library simplifies the process of storing, retrieving, and performing semantic searches on vectors in Redis. It also provides a robust index management system that allows you to create, update, and delete indices with ease.
+RedisVL provides a client library that enables you to harness the power and flexibility of Redis as a vector database. This library simplifies the process of storing, retrieving, and performing complex semantic and hybrid searches over vectors in Redis. It also provides a robust index management system that allows you to create, update, and delete indices with ease.
 
 
 ### Capabilities
@@ -42,7 +43,7 @@ RedisVL has a host of powerful features designed to streamline your vector datab
 
 1. **Index Management**: RedisVL allows for indices to be created, updated, and deleted with ease. A schema for each index can be defined in yaml or directly in python code and used throughout the lifetime of the index.
 
-2. **Embedding Creation**: RedisVL integrates with OpenAI and other text embedding providers to simplify the process of vectorizing unstructured data. *Image support coming soon.*
+2. **Embedding Creation**: RedisVL integrates with OpenAI, HuggingFace, and GCP VertexAI to simplify the process of vectorizing unstructured data. *Image support coming soon. Submit a PR for new vectorizers.*
 
 3. **Vector Search**: RedisVL provides robust search capabilities that enable you to query vectors synchronously and asynchronously. Hybrid queries that utilize tag, geographic, numeric, and other filters like full-text search are also supported.
 
@@ -54,7 +55,7 @@ RedisVL has a host of powerful features designed to streamline your vector datab
 
 Please note that this library is still under heavy development, and while you can quickly try RedisVL and deploy it in a production environment, the API may be subject to change at any time.
 
-First, install RedisVL using pip:
+Install `redisvl` using `pip`:
 
 ```bash
 pip install redisvl
@@ -66,14 +67,14 @@ This library supports the use of hiredis, so you can also install by running:
 pip install redisvl[hiredis]
 ```
 
-Then make sure to have Redis with the Search and Query capability running on Redis Cloud or
-locally in docker by running
+Then make sure to have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
 
 ```bash
-docker run -d -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 ```
 
-This will also spin up the Redis Insight UI at http://localhost:8001
+This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/) at `http://localhost:8001`.
+
 
 
 ## Example Usage
@@ -85,7 +86,6 @@ Indices can be defined through yaml specification that corresponds directly to t
 ```yaml
 index:
   name: user_index
-  storage_type: hash
   prefix: users
 
 fields:
@@ -100,6 +100,7 @@ fields:
   # define vector fields
   vector:
   - name: user_embedding
+    dim: 3
     algorithm: hnsw
     distance_metric: cosine
 ```

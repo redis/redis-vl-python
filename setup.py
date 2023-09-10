@@ -14,7 +14,8 @@ def read_dev_requirements():
 extras_require = {
     "all": [
         "openai>=0.26.4",
-        "sentence-transformers>=2.2.2"
+        "sentence-transformers>=2.2.2",
+        "google-cloud-aiplatform>=1.26"
     ],
     "dev": read_dev_requirements()
 }
@@ -22,7 +23,7 @@ extras_require = {
 
 setup(
     name="redisvl",
-    version="0.0.3",
+    version="0.0.4",
     python_requires=">=3.7",
     install_requires=read_requirements(),
     extras_require=extras_require,

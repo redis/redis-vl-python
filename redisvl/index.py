@@ -169,7 +169,7 @@ class SearchIndexBase:
                 key = record[key_field]  # type: ignore
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {record}")
-        return f"{self._prefix}:{key}"
+        return f"{self._prefix}:{key}" if self._prefix else key
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
