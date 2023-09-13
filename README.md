@@ -227,11 +227,17 @@ cache.check("What is the capital of France?")
 # store a result for a given query
 cache.store("What is the capital of France?", "Paris")
 
-# Cache will now have the query
+# cache will now have the query
 cache.check("What is the capital of France?")
 ["Paris"]
 
-# Cache will still return the result if the query is similar enough
-cache.check("What really is the capital of France?")
+# cache will still return the result if the query is similar enough
+cache.check("Question -- What really is the capital of France?")
 ["Paris"]
 ```
+<<<<<<< HEAD
+=======
+
+## Contributing
+Please help us by contributing PRs or opening GitHub issues for desired behaviors or discovered bugs. [Read more about how to contribute to RedisVL!](CONTRIBUTING.md)
+>>>>>>> 2ef8e43 (update contributing and reade)
