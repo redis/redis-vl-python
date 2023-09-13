@@ -12,3 +12,6 @@
 - title: LLM Recommender for Hotels
   website: https://github.com/RedisVentures/LLM-Recommender
   img-bottom: ../_static/gallery-images/hotel-recommender.png
+- title: Chat YOUR PDF
+  website: https://github.com/RedisVentures/gcp-redis-llm-stack/tree/main/examples/chat-your-pdf
+  img-bottom: ../_static/gallery-images/chat-your-pdf.png
