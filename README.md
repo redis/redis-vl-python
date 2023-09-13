@@ -51,7 +51,7 @@ RedisVL has a host of powerful features designed to streamline your vector datab
     - **Semantic Caching**: `LLMCache` is a semantic caching interface built directly into RedisVL. It allows for the caching of generated output from LLMs like GPT-3 and others. As semantic search is used to check the cache, a threshold can be set to determine if the cached result is relevant enough to be returned. If not, the model is called and the result is cached for future use. This can increase the QPS and reduce the cost of using LLM models in production.
 
 
-## 😊 Quick Start
+## Installation
 
 Please note that this library is still under heavy development, and while you can quickly try RedisVL and deploy it in a production environment, the API may be subject to change at any time.
 
@@ -81,7 +81,7 @@ This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterpris
 
 ### Index Management
 
-Indices can be defined through yaml specification that corresponds directly to the RediSearch field names and arguments in redis-py
+Indices can be defined through yaml specification, or json, that correspond directly to the Redis index, field names and arguments in `redis-py`. Take this example `idx.yaml` file:
 
 ```yaml
 index:
@@ -105,7 +105,7 @@ fields:
     distance_metric: cosine
 ```
 
-This would correspond to a dataset that looked something like
+This would correspond to a dataset that looked something like:
 
 | user  | age |     job    | credit_score |           user_embedding          |
 |-------|-----|------------|--------------|-----------------------------------|
@@ -114,14 +114,14 @@ This would correspond to a dataset that looked something like
 |  joe  |  3  |  dentist   |    medium    | \x3f\xab\xcc?\xab\xcc?@         |
 
 
-With the schema, the RedisVL library can be used to create, load vectors and perform vector searches
+With the YAML schema, the RedisVL library can be used to create the index, load vectors and perform vector searches:
 ```python
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 
-# initialize the index and connect to Redis
-index = SearchIndex.from_dict(schema)
+# initialize the index and connect to local Redis
+index = SearchIndex.from_schema("idx.yaml")
 index.connect("redis://localhost:6379")
 
 # create the index in Redis
@@ -140,9 +140,9 @@ results = index.query(query)
 
 ```
 
-### Flexible Querying
+### Redis Filter Expressions
 
-RedisVL supports a variety of filter types, including tag, numeric, geographic, and full text search to create filter expressions. Filter expressions can be used to create hybrid queries which allow you to combine multiple query types (i.e. text and vector search) into a single query.
+RedisVL supports a variety of filter types, including tag, numeric, geographic, and full text search to create *Filter Expressions*. Filter expressions can be used to create hybrid queries which allow you to combine multiple complex data types (i.e. text and vector search) into a single query.
 
 ```python
 from redisvl.index import SearchIndex
@@ -172,6 +172,40 @@ query = VectorQuery(
 )
 results = index.query(query)
 
+```
+
+### Interoperability with core Redis Clients
+The purpose of RedisVL is **NOT** to fully replace your usage of the trusted Redis client libraries. It's simply here to make your life easier getting started and building generative AI applications on top of Redis. With that in mind, the RedisVL query interface and filter expressions can be ported and used with clients like `redis-py`.
+
+Take the example filter expression from above:
+```python
+print(str(filter_expression))
+```
+
+This prints the RediSearch hybrid filter expression:
+```
+'(((@user:{Sam} @age:[(10 +inf]) @location:[37.774900 -122.419400 10 km]) @job:enginee*)'
+```
+
+Take the fully formed vector query from above:
+```python
+print(str(query))
+```
+
+This prints the full RediSearch query, including hybrid filters and VSS:
+```
+'(((@user:{Sam} @age:[(10 +inf]) @location:[37.774900 -122.419400 10 km]) @job:enginee*)=>[KNN 3 @user_embedding $vector AS vector_distance] RETURN 5 user age job credit_score vector_distance SORTBY vector_distance ASC DIALECT 2 LIMIT 0 3'
+```
+
+> Both of these query strings and expressions can be used with the core RediSearch API.
+
+For example, use the RedisVL `query` object with the standard `redis-py` client:
+```python
+import redis
+
+r = redis.Redis.from_url("redis://localhost:6379")
+
+results = r.ft("user_index").search(query.query, query.params)
 ```
 
 ### Semantic cache
