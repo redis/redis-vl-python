@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union, Callable
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -223,7 +223,11 @@ class SearchIndexBase:
         raise NotImplementedError
 
     def load(
-        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+        self,
+        data: Iterable[Dict[str, Any]],
+        key_field: Optional[str] = None,
+        preprocess: Optional[Callable] = None,
+        **kwargs
     ):
         """Load data into Redis and index using this SearchIndex object.
 
@@ -232,6 +236,8 @@ class SearchIndexBase:
                 containing the data to be indexed.
             key_field (Optional[str], optional): A field within the record
                 to use in the Redis hash key.
+            preprocess (Optional[Callabl], optional): An optional preprocessor function
+                that mutates the individual record before writing to redis.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist.
@@ -360,6 +366,7 @@ class SearchIndex(SearchIndexBase):
         self,
         data: Iterable[Dict[str, Any]],
         key_field: Optional[str] = None,
+        preprocess: Optional[Callable] = None,
         **kwargs
     ):
         """Load data into Redis and index using this SearchIndex object.
@@ -369,6 +376,8 @@ class SearchIndex(SearchIndexBase):
                 containing the data to be indexed.
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
+            preprocess (Optional[Callable], optional): An optional preprocessor function
+                that mutates the individual record before writing to redis.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist.
@@ -384,6 +393,8 @@ class SearchIndex(SearchIndexBase):
             with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
                 for record in data:
                     key = self._create_key(record, key_field)
+                    if preprocess:
+                        record = preprocess(record)
                     pipe.hset(key, mapping=record)  # type: ignore
                     if ttl:
                         pipe.expire(key, ttl)
@@ -517,6 +528,7 @@ class AsyncSearchIndex(SearchIndexBase):
         data: Iterable[Dict[str, Any]],
         concurrency: int = 10,
         key_field: Optional[str] = None,
+        preprocess: Optional[Callable] = None,
         **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object.
@@ -527,6 +539,8 @@ class AsyncSearchIndex(SearchIndexBase):
             concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
+            preprocess (Optional[Callable], optional): An optional preprocessor function
+                that mutates the individual record before writing to redis.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist.
@@ -537,6 +551,8 @@ class AsyncSearchIndex(SearchIndexBase):
         async def _load(record: dict):
             async with semaphore:
                 key = self._create_key(record, key_field)
+                if preprocess:
+                    record = preprocess(record)
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     await self._redis_conn.expire(key, ttl)  # type: ignore
