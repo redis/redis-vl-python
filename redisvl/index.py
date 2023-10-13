@@ -29,12 +29,12 @@ class SearchIndexBase:
     def __init__(
         self,
         name: str,
-        prefix: str = "rvl",
+        key_prefix: str = "rvl",
         storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
         self._name = name
-        self._prefix = prefix
+        self._key_prefix = key_prefix
         self._storage = storage_type
         self._fields = fields
         self._redis_conn: Optional[redis.Redis] = None
@@ -151,7 +151,10 @@ class SearchIndexBase:
         """Disconnect from the Redis instance"""
         self._redis_conn = None
 
-    def _get_key(self, record: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def key(self, key_value: str) -> str:
+        return f"{self._key_prefix}:{key_value}" if self._key_prefix else key_value
+
+    def _create_key(self, record: Dict[str, Any], key_field: Optional[str] = None) -> str:
         """Construct the Redis HASH top level key.
 
         Args:
@@ -166,13 +169,13 @@ class SearchIndexBase:
             ValueError: If the key field is not found in the record.
         """
         if key_field is None:
-            key = uuid4().hex
+            key_value = uuid4().hex
         else:
             try:
-                key = record[key_field]  # type: ignore
+                key_value = record[key_field]  # type: ignore
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {record}")
-        return f"{self._prefix}:{key}" if self._prefix else key
+        return self.key(key_value)
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -238,11 +241,11 @@ class SearchIndex(SearchIndexBase):
     def __init__(
         self,
         name: str,
-        prefix: str = "rvl",
+        key_prefix: str = "rvl",
         storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
-        super().__init__(name, prefix, storage_type, fields)
+        super().__init__(name, key_prefix, storage_type, fields)
 
     @classmethod
     def from_existing(
@@ -273,11 +276,11 @@ class SearchIndex(SearchIndexBase):
         info = convert_bytes(client.ft(name).info())
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
-        prefix = index_definition["prefixes"][0]
+        key_prefix = index_definition["prefixes"][0]
         instance = cls(
             name=name,
             storage_type=storage_type,
-            prefix=prefix,
+            key_prefix=key_prefix,
             fields=fields,
         )
         instance.set_client(client)
@@ -322,7 +325,7 @@ class SearchIndex(SearchIndexBase):
         # will raise correct response error if index already exists
         self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
+            definition=IndexDefinition(prefix=[self._key_prefix], index_type=storage_type),
         )
 
     @check_connected("_redis_conn")
@@ -340,7 +343,10 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def load(
-        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+        self,
+        data: Iterable[Dict[str, Any]],
+        key_field: Optional[str] = None,
+        **kwargs
     ):
         """Load data into Redis and index using this SearchIndex object.
 
@@ -363,7 +369,7 @@ class SearchIndex(SearchIndexBase):
             ttl = kwargs.get("ttl")
             with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
                 for record in data:
-                    key = self._get_key(record, key_field)
+                    key = self._create_key(record, key_field)
                     pipe.hset(key, mapping=record)  # type: ignore
                     if ttl:
                         pipe.expire(key, ttl)
@@ -396,11 +402,11 @@ class AsyncSearchIndex(SearchIndexBase):
     def __init__(
         self,
         name: str,
-        prefix: str = "rvl",
+        key_prefix: str = "rvl",
         storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
-        super().__init__(name, prefix, storage_type, fields)
+        super().__init__(name, key_prefix, storage_type, fields)
 
     @classmethod
     async def from_existing(
@@ -431,11 +437,11 @@ class AsyncSearchIndex(SearchIndexBase):
         info = convert_bytes(await client.ft(name).info())
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
-        prefix = index_definition["prefixes"][0]
+        key_prefix = index_definition["prefixes"][0]
         instance = cls(
             name=name,
             storage_type=storage_type,
-            prefix=prefix,
+            key_prefix=key_prefix,
             fields=fields,
         )
         instance.set_client(client)
@@ -475,7 +481,7 @@ class AsyncSearchIndex(SearchIndexBase):
         # Create Index
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
+            definition=IndexDefinition(prefix=[self._key_prefix], index_type=storage_type),
         )
 
     @check_connected("_redis_conn")
@@ -516,7 +522,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         async def _load(record: dict):
             async with semaphore:
-                key = self._get_key(record, key_field)
+                key = self._create_key(record, key_field)
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     await self._redis_conn.expire(key, ttl)  # type: ignore
