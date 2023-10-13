@@ -28,7 +28,7 @@ Here's how to get started with your code contribution:
     pull request.
 
 ### Dev Environment
-There is a provided `requirements.txt` and `requirements-dev.txt` file you can use to install required libraries with pip into your virtual environment.
+There is a provided `requirements.txt` and `requirements-dev.txt` file you can use to install required libraries with `pip` into your virtual environment.
 
 ### Docker Tips
 
