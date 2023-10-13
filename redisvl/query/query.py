@@ -21,6 +21,84 @@ class BaseQuery:
         raise NotImplementedError
 
 
+class CountQuery(BaseQuery):
+    def __init__(
+        self,
+        filter_expression: FilterExpression,
+        params: Optional[Dict[str, Any]] = None,
+    ):
+        """Query for a simple count operation on a filter expression.
+
+        Args:
+            filter_expression (FilterExpression): The filter expression to query for.
+            params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        Examples:
+            >>> from redisvl.query import CountQuery
+            >>> from redisvl.query.filter import Tag
+            >>> t = Tag("brand") == "Nike"
+            >>> q = CountQuery(filter_expression=t)
+        """
+        self.set_filter(filter_expression)
+        self._params = params
+
+    def __str__(self) -> str:
+        return " ".join([str(x) for x in self.query.get_args()])
+
+    def set_filter(self, filter_expression: FilterExpression):
+        """Set the filter for the query.
+
+        Args:
+            filter_expression (FilterExpression): The filter to apply to the query.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+        """
+        if not isinstance(filter_expression, FilterExpression):
+            raise TypeError(
+                "filter_expression must be of type redisvl.query.FilterExpression"
+            )
+        self._filter = filter_expression
+
+    def get_filter(self) -> FilterExpression:
+        """Get the filter for the query.
+
+        Returns:
+            FilterExpression: The filter for the query.
+        """
+        return self._filter
+
+    @property
+    def query(self) -> Query:
+        """Return a Redis-Py Query object representing the query.
+
+        Returns:
+            redis.commands.search.query.Query: The query object.
+        """
+        base_query = str(self._filter)
+        query = (
+            Query(base_query)
+            .no_content()
+            .dialect(2)
+        )
+        return query
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """Return the parameters for the query.
+
+        Returns:
+            Dict[str, Any]: The parameters for the query.
+        """
+        if not self._params:
+            self._params = {}
+        return self._params
+
+
+
 class FilterQuery(BaseQuery):
     def __init__(
         self,

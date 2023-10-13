@@ -5,8 +5,8 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery, RangeQuery, VectorQuery
-from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
+from redisvl.query import FilterQuery, RangeQuery, VectorQuery, CountQuery
+from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 
 data = [
     {
@@ -170,6 +170,18 @@ def test_range_query(index):
         assert float(result["vector_distance"]) <= 0.1
     assert len(results) == 2
 
+
+def test_count_query(index):
+    c = CountQuery(FilterExpression("*"))
+    results = index.query(c)
+    assert len(results) == len(data)
+
+    c = CountQuery(Tag("credit_score") == "high")
+    results = index.query(c)
+    assert len(results) == 4
+
+    results = index.search(c.query)
+    assert results.total == 4
 
 vector_query = VectorQuery(
     vector=[0.1, 0.1, 0.5],
