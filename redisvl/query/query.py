@@ -41,6 +41,8 @@ class CountQuery(BaseQuery):
             >>> from redisvl.query.filter import Tag
             >>> t = Tag("brand") == "Nike"
             >>> q = CountQuery(filter_expression=t)
+            >>> results = index.search(q.query)
+            >>> count = results.total
         """
         self.set_filter(filter_expression)
         self._params = params
