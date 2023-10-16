@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ class SearchIndexBase:
         return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
-    def search(self, *args, **kwargs) -> List["Result"]:
+    def search(self, *args, **kwargs) -> Union[Result, Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -63,7 +63,7 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        results: List["Result"] = self._redis_conn.ft(self._name).search(
+        results = self._redis_conn.ft(self._name).search(
             *args, **kwargs
         )
         return results
@@ -525,7 +525,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await asyncio.gather(*[_load(record) for record in data])
 
     @check_connected("_redis_conn")
-    async def search(self, *args, **kwargs) -> List["Result"]:
+    async def search(self, *args, **kwargs) -> Union[Result, Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -535,7 +535,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             List[Result]: A list of search results.
         """
-        results: List["Result"] = await self._redis_conn.ft(self._name).search(
+        results = await self._redis_conn.ft(self._name).search(
             *args, **kwargs
         )
         return results
