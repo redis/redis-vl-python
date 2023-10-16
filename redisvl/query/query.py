@@ -175,7 +175,7 @@ class BaseVectorQuery(BaseQuery):
         self._vector = vector
         self._field = vector_field_name
         self._dtype = dtype.lower()
-        self._filter = filter_expression # type: ignore
+        self._filter = filter_expression  # type: ignore
 
         if filter_expression:
             self.set_filter(filter_expression)
