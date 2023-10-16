@@ -154,7 +154,9 @@ class SearchIndexBase:
     def key(self, key_value: str) -> str:
         return f"{self._prefix}:{key_value}" if self._prefix else key_value
 
-    def _create_key(self, record: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def _create_key(
+        self, record: Dict[str, Any], key_field: Optional[str] = None
+    ) -> str:
         """Construct the Redis HASH top level key.
 
         Args:
@@ -343,10 +345,7 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def load(
-        self,
-        data: Iterable[Dict[str, Any]],
-        key_field: Optional[str] = None,
-        **kwargs
+        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
     ):
         """Load data into Redis and index using this SearchIndex object.
 
