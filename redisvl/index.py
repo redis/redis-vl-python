@@ -63,7 +63,7 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        results = self._redis_conn.ft(self._name).search(
+        results = self._redis_conn.ft(self._name).search( # type: ignore
             *args, **kwargs
         )
         return results
@@ -535,7 +535,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             List[Result]: A list of search results.
         """
-        results = await self._redis_conn.ft(self._name).search(
+        results = await self._redis_conn.ft(self._name).search( # type: ignore
             *args, **kwargs
         )
         return results
