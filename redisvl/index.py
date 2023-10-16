@@ -61,7 +61,7 @@ class SearchIndexBase:
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results
+            Union["Result", Any]: Search results.
         """
         results = self._redis_conn.ft(self._name).search( # type: ignore
             *args, **kwargs
@@ -533,7 +533,7 @@ class AsyncSearchIndex(SearchIndexBase):
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results.
+            Union["Result", Any]: Search results.
         """
         results = await self._redis_conn.ft(self._name).search( # type: ignore
             *args, **kwargs
