@@ -1,8 +1,3 @@
-from redisvl.query.query import FilterQuery, RangeQuery, VectorQuery, CountQuery
+from redisvl.query.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
 
-__all__ = [
-    "VectorQuery",
-    "FilterQuery",
-    "RangeQuery",
-    "CountQuery"
-]
+__all__ = ["VectorQuery", "FilterQuery", "RangeQuery", "CountQuery"]

@@ -81,11 +81,7 @@ class CountQuery(BaseQuery):
             redis.commands.search.query.Query: The query object.
         """
         base_query = str(self._filter)
-        query = (
-            Query(base_query)
-            .no_content()
-            .dialect(2)
-        )
+        query = Query(base_query).no_content().dialect(2)
         return query
 
     @property

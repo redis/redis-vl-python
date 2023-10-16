@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
+from redisvl.query.query import CountQuery
 from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import (
     check_connected,
@@ -62,7 +63,7 @@ class SearchIndexBase:
         Returns:
             List[Result]: A list of search results
         """
-        results: List["Result"] = self._redis_conn.ft(self._name).search(  # type: ignore
+        results: List["Result"] = self._redis_conn.ft(self._name).search(
             *args, **kwargs
         )
         return results
@@ -82,6 +83,8 @@ class SearchIndexBase:
             List[Result]: A list of search results.
         """
         results = self.search(query.query, query_params=query.params)
+        if isinstance(query, CountQuery):
+            return results.total
         return process_results(results)
 
     @classmethod
@@ -532,7 +535,9 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             List[Result]: A list of search results.
         """
-        results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        results: List["Result"] = await self._redis_conn.ft(self._name).search(
+            *args, **kwargs
+        )
         return results
 
     async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -549,6 +554,8 @@ class AsyncSearchIndex(SearchIndexBase):
             List[Result]: A list of search results.
         """
         results = await self.search(query.query, query_params=query.params)
+        if isinstance(query, CountQuery):
+            return results.total
         return process_results(results)
 
     @check_connected("_redis_conn")
