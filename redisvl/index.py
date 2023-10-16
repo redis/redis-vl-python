@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
+from redisvl.query.query import CountQuery
 from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import (
     check_connected,
@@ -52,7 +53,7 @@ class SearchIndexBase:
         return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
-    def search(self, *args, **kwargs) -> List["Result"]:
+    def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -60,9 +61,9 @@ class SearchIndexBase:
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results
+            Union["Result", Any]: Search results.
         """
-        results: List["Result"] = self._redis_conn.ft(self._name).search(  # type: ignore
+        results = self._redis_conn.ft(self._name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -82,6 +83,8 @@ class SearchIndexBase:
             List[Result]: A list of search results.
         """
         results = self.search(query.query, query_params=query.params)
+        if isinstance(query, CountQuery):
+            return results.total
         return process_results(results)
 
     @classmethod
@@ -522,7 +525,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await asyncio.gather(*[_load(record) for record in data])
 
     @check_connected("_redis_conn")
-    async def search(self, *args, **kwargs) -> List["Result"]:
+    async def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -530,9 +533,11 @@ class AsyncSearchIndex(SearchIndexBase):
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results.
+            Union["Result", Any]: Search results.
         """
-        results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        results = await self._redis_conn.ft(self._name).search(  # type: ignore
+            *args, **kwargs
+        )
         return results
 
     async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -549,6 +554,8 @@ class AsyncSearchIndex(SearchIndexBase):
             List[Result]: A list of search results.
         """
         results = await self.search(query.query, query_params=query.params)
+        if isinstance(query, CountQuery):
+            return results.total
         return process_results(results)
 
     @check_connected("_redis_conn")
