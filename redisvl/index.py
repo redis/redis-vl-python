@@ -63,7 +63,7 @@ class SearchIndexBase:
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = self._redis_conn.ft(self._name).search( # type: ignore
+        results = self._redis_conn.ft(self._name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -535,7 +535,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.ft(self._name).search( # type: ignore
+        results = await self._redis_conn.ft(self._name).search(  # type: ignore
             *args, **kwargs
         )
         return results
