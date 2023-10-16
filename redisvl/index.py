@@ -345,9 +345,7 @@ class SearchIndex(SearchIndexBase):
         # will raise correct response error if index already exists
         self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(
-                prefix=[self._prefix], index_type=storage_type
-            ),
+            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
         )
 
     @check_connected("_redis_conn")
@@ -508,9 +506,7 @@ class AsyncSearchIndex(SearchIndexBase):
         # Create Index
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(
-                prefix=[self._prefix], index_type=storage_type
-            ),
+            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
         )
 
     @check_connected("_redis_conn")
