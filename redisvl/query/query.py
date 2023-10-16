@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 from redis.commands.search.query import Query
@@ -11,6 +11,32 @@ class BaseQuery:
     def __init__(self, return_fields: List[str] = [], num_results: int = 10):
         self._return_fields = return_fields
         self._num_results = num_results
+
+    def __str__(self) -> str:
+        return " ".join([str(x) for x in self.query.get_args()])
+
+    def set_filter(self, filter_expression: FilterExpression):
+        """Set the filter for the query.
+
+        Args:
+            filter_expression (FilterExpression): The filter to apply to the query.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+        """
+        if not isinstance(filter_expression, FilterExpression):
+            raise TypeError(
+                "filter_expression must be of type redisvl.query.FilterExpression"
+            )
+        self._filter = filter_expression
+
+    def get_filter(self) -> FilterExpression:
+        """Get the filter for the query.
+
+        Returns:
+            FilterExpression: The filter for the query.
+        """
+        return self._filter
 
     @property
     def query(self) -> "Query":
@@ -47,32 +73,6 @@ class CountQuery(BaseQuery):
         self.set_filter(filter_expression)
         self._params = params
 
-    def __str__(self) -> str:
-        return " ".join([str(x) for x in self.query.get_args()])
-
-    def set_filter(self, filter_expression: FilterExpression):
-        """Set the filter for the query.
-
-        Args:
-            filter_expression (FilterExpression): The filter to apply to the query.
-
-        Raises:
-            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-        """
-        if not isinstance(filter_expression, FilterExpression):
-            raise TypeError(
-                "filter_expression must be of type redisvl.query.FilterExpression"
-            )
-        self._filter = filter_expression
-
-    def get_filter(self) -> FilterExpression:
-        """Get the filter for the query.
-
-        Returns:
-            FilterExpression: The filter for the query.
-        """
-        return self._filter
-
     @property
     def query(self) -> Query:
         """Return a Redis-Py Query object representing the query.
@@ -98,7 +98,6 @@ class CountQuery(BaseQuery):
         if not self._params:
             self._params = {}
         return self._params
-
 
 
 class FilterQuery(BaseQuery):
@@ -130,32 +129,6 @@ class FilterQuery(BaseQuery):
         super().__init__(return_fields, num_results)
         self.set_filter(filter_expression)
         self._params = params
-
-    def __str__(self) -> str:
-        return " ".join([str(x) for x in self.query.get_args()])
-
-    def set_filter(self, filter_expression: FilterExpression):
-        """Set the filter for the query.
-
-        Args:
-            filter_expression (FilterExpression): The filter to apply to the query.
-
-        Raises:
-            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-        """
-        if not isinstance(filter_expression, FilterExpression):
-            raise TypeError(
-                "filter_expression must be of type redisvl.query.FilterExpression"
-            )
-        self._filter = filter_expression
-
-    def get_filter(self) -> FilterExpression:
-        """Get the filter for the query.
-
-        Returns:
-            FilterExpression: The filter for the query.
-        """
-        return self._filter
 
     @property
     def query(self) -> Query:
@@ -208,34 +181,12 @@ class BaseVectorQuery(BaseQuery):
         self._field = vector_field_name
         self._dtype = dtype.lower()
         self._filter = filter_expression
+
         if filter_expression:
             self.set_filter(filter_expression)
 
         if return_score:
             self._return_fields.append(self.DISTANCE_ID)
-
-    def set_filter(self, filter_expression: FilterExpression):
-        """Set the filter for the query.
-
-        Args:
-            filter_expression (FilterExpression): The filter to apply to the query.
-        """
-        if not isinstance(filter_expression, FilterExpression):
-            raise TypeError(
-                "filter_expression must be of type redisvl.query.FilterExpression"
-            )
-        self._filter = filter_expression
-
-    def get_filter(self) -> Optional[FilterExpression]:
-        """Get the filter for the query.
-
-        Returns:
-            Optional[FilterExpression]: The filter for the query.
-        """
-        return self._filter
-
-    def __str__(self):
-        return " ".join([str(x) for x in self.query.get_args()])
 
 
 class VectorQuery(BaseVectorQuery):
