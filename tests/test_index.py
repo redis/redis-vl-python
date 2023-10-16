@@ -11,10 +11,10 @@ fields = [TagField("test")]
 def test_search_index_get_key():
     si = SearchIndex("my_index", fields=fields)
     key = si.key("foo")
-    assert key.startswith(si._key_prefix)
+    assert key.startswith(si._prefix)
     assert "foo" in key
     key = si._create_key({"id": "foo"})
-    assert key.startswith(si._key_prefix)
+    assert key.startswith(si._prefix)
     assert "foo" not in key
 
 
