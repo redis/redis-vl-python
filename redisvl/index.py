@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union, Callable
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -29,12 +29,12 @@ class SearchIndexBase:
     def __init__(
         self,
         name: str,
-        key_prefix: str = "rvl",
+        prefix: str = "rvl",
         storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
         self._name = name
-        self._key_prefix = key_prefix
+        self._prefix = prefix
         self._storage = storage_type
         self._fields = fields
         self._redis_conn: Optional[redis.Redis] = None
@@ -227,7 +227,7 @@ class SearchIndexBase:
         data: Iterable[Dict[str, Any]],
         key_field: Optional[str] = None,
         preprocess: Optional[Callable] = None,
-        **kwargs
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object.
 
@@ -261,11 +261,11 @@ class SearchIndex(SearchIndexBase):
     def __init__(
         self,
         name: str,
-        key_prefix: str = "rvl",
+        prefix: str = "rvl",
         storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
-        super().__init__(name, key_prefix, storage_type, fields)
+        super().__init__(name, prefix, storage_type, fields)
 
     @classmethod
     def from_existing(
@@ -296,11 +296,11 @@ class SearchIndex(SearchIndexBase):
         info = convert_bytes(client.ft(name).info())
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
-        key_prefix = index_definition["prefixes"][0]
+        prefix = index_definition["prefixes"][0]
         instance = cls(
             name=name,
             storage_type=storage_type,
-            key_prefix=key_prefix,
+            prefix=prefix,
             fields=fields,
         )
         instance.set_client(client)
@@ -345,7 +345,9 @@ class SearchIndex(SearchIndexBase):
         # will raise correct response error if index already exists
         self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(prefix=[self._key_prefix], index_type=storage_type),
+            definition=IndexDefinition(
+                prefix=[self._prefix], index_type=storage_type
+            ),
         )
 
     @check_connected("_redis_conn")
@@ -367,7 +369,7 @@ class SearchIndex(SearchIndexBase):
         data: Iterable[Dict[str, Any]],
         key_field: Optional[str] = None,
         preprocess: Optional[Callable] = None,
-        **kwargs
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object.
 
@@ -427,11 +429,11 @@ class AsyncSearchIndex(SearchIndexBase):
     def __init__(
         self,
         name: str,
-        key_prefix: str = "rvl",
+        prefix: str = "rvl",
         storage_type: str = "hash",
         fields: Optional[List["Field"]] = None,
     ):
-        super().__init__(name, key_prefix, storage_type, fields)
+        super().__init__(name, prefix, storage_type, fields)
 
     @classmethod
     async def from_existing(
@@ -462,11 +464,11 @@ class AsyncSearchIndex(SearchIndexBase):
         info = convert_bytes(await client.ft(name).info())
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
-        key_prefix = index_definition["prefixes"][0]
+        prefix = index_definition["prefixes"][0]
         instance = cls(
             name=name,
             storage_type=storage_type,
-            key_prefix=key_prefix,
+            prefix=prefix,
             fields=fields,
         )
         instance.set_client(client)
@@ -506,7 +508,9 @@ class AsyncSearchIndex(SearchIndexBase):
         # Create Index
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(prefix=[self._key_prefix], index_type=storage_type),
+            definition=IndexDefinition(
+                prefix=[self._prefix], index_type=storage_type
+            ),
         )
 
     @check_connected("_redis_conn")
