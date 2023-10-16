@@ -357,10 +357,7 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def load(
-        self,
-        data: Iterable[Dict[str, Any]],
-        key_field: Optional[str] = None,
-        **kwargs
+        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
     ):
         """Load data into Redis and index using this SearchIndex object.
 
