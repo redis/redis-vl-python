@@ -53,7 +53,7 @@ class SearchIndexBase:
         return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
-    def search(self, *args, **kwargs) -> Union[Result, Any]:
+    def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -525,7 +525,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await asyncio.gather(*[_load(record) for record in data])
 
     @check_connected("_redis_conn")
-    async def search(self, *args, **kwargs) -> Union[Result, Any]:
+    async def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
