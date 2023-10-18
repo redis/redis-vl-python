@@ -403,9 +403,13 @@ class SearchIndex(SearchIndexBase):
                         try:
                             record = preprocess(record)
                         except Exception as e:
-                            raise RuntimeError("Error while preprocessing records on load") from e
+                            raise RuntimeError(
+                                "Error while preprocessing records on load"
+                            ) from e
                     if not isinstance(record, dict):
-                        raise TypeError(f"Individual records must be of type dict, got type {type(record)}")
+                        raise TypeError(
+                            f"Individual records must be of type dict, got type {type(record)}"
+                        )
                     # Write the record to Redis
                     pipe.hset(key, mapping=record)  # type: ignore
                     if ttl:
@@ -573,9 +577,13 @@ class AsyncSearchIndex(SearchIndexBase):
                     try:
                         record = preprocess(record)
                     except Exception as e:
-                        raise RuntimeError("Error while preprocessing records on load") from e
+                        raise RuntimeError(
+                            "Error while preprocessing records on load"
+                        ) from e
                 if not isinstance(record, dict):
-                    raise TypeError(f"Individual records must be of type dict, got type {type(record)}")
+                    raise TypeError(
+                        f"Individual records must be of type dict, got type {type(record)}"
+                    )
                 # Write the record to Redis
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
