@@ -1,16 +1,24 @@
 import pytest
 from pydantic import ValidationError
+from redis.commands.search.field import (
+    GeoField,
+    NumericField,
+    TagField,
+    TextField,
+    VectorField,
+)
+
 from redisvl.schema import (
-    TextFieldSchema,
-    TagFieldSchema,
-    NumericFieldSchema,
-    GeoFieldSchema,
     FlatVectorField,
+    GeoFieldSchema,
     HNSWVectorField,
+    NumericFieldSchema,
     SchemaModel,
+    TagFieldSchema,
+    TextFieldSchema,
     read_schema,
 )
-from redis.commands.search.field import TextField, TagField, NumericField, GeoField, VectorField
+
 
 # Utility functions to create schema instances with default values
 def create_text_field_schema(**kwargs):
@@ -18,28 +26,41 @@ def create_text_field_schema(**kwargs):
     defaults.update(kwargs)
     return TextFieldSchema(**defaults)
 
+
 def create_tag_field_schema(**kwargs):
     defaults = {"name": "example_tagfield", "sortable": False, "separator": ","}
     defaults.update(kwargs)
     return TagFieldSchema(**defaults)
+
 
 def create_numeric_field_schema(**kwargs):
     defaults = {"name": "example_numericfield", "sortable": False}
     defaults.update(kwargs)
     return NumericFieldSchema(**defaults)
 
+
 def create_geo_field_schema(**kwargs):
     defaults = {"name": "example_geofield", "sortable": False}
     defaults.update(kwargs)
     return GeoFieldSchema(**defaults)
+
 
 def create_flat_vector_field(**kwargs):
     defaults = {"name": "example_flatvectorfield", "dims": 128, "algorithm": "FLAT"}
     defaults.update(kwargs)
     return FlatVectorField(**defaults)
 
+
 def create_hnsw_vector_field(**kwargs):
-    defaults = {"name": "example_hnswvectorfield", "dims": 128, "algorithm": "HNSW", "m": 16, "ef_construction": 200, "ef_runtime": 10, "epsilon": 0.01}
+    defaults = {
+        "name": "example_hnswvectorfield",
+        "dims": 128,
+        "algorithm": "HNSW",
+        "m": 16,
+        "ef_construction": 200,
+        "ef_runtime": 10,
+        "epsilon": 0.01,
+    }
     defaults.update(kwargs)
     return HNSWVectorField(**defaults)
 
@@ -90,7 +111,7 @@ def test_vector_fields_with_optional_params(vector_schema_func, extra_params):
     for param, value in extra_params.items():
         assert param.upper() in vector_field.args
         i = vector_field.args.index(param.upper())
-        assert vector_field.args[i+1] == value
+        assert vector_field.args[i + 1] == value
 
 
 def test_hnsw_vector_field_optional_params_not_set():
@@ -105,10 +126,11 @@ def test_hnsw_vector_field_optional_params_not_set():
     field_exported = hnsw_field.as_field()
 
     # Check the default values are correctly applied in the exported object
-    assert field_exported.args[field_exported.args.index('M')+1] == 16
-    assert field_exported.args[field_exported.args.index('EF_CONSTRUCTION')+1] == 200
-    assert field_exported.args[field_exported.args.index('EF_RUNTIME')+1] == 10
-    assert field_exported.args[field_exported.args.index('EPSILON')+1] == 0.01
+    assert field_exported.args[field_exported.args.index("M") + 1] == 16
+    assert field_exported.args[field_exported.args.index("EF_CONSTRUCTION") + 1] == 200
+    assert field_exported.args[field_exported.args.index("EF_RUNTIME") + 1] == 10
+    assert field_exported.args[field_exported.args.index("EPSILON") + 1] == 0.01
+
 
 def test_flat_vector_field_block_size_not_set():
     # Create Flat vector field without setting block_size
@@ -116,8 +138,8 @@ def test_flat_vector_field_block_size_not_set():
     field_exported = flat_field.as_field()
 
     # block_size and initial_cap should not be in the exported field if it was not set
-    assert 'BLOCK_SIZE' not in field_exported.args
-    assert 'INITIAL_CAP' not in field_exported.args
+    assert "BLOCK_SIZE" not in field_exported.args
+    assert "INITIAL_CAP" not in field_exported.args
 
 
 # Test for schema model validation

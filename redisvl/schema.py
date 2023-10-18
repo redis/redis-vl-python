@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 import yaml
@@ -103,12 +103,14 @@ class HNSWVectorField(BaseVectorField):
     def as_field(self):
         # grab base field params and augment with hnsw-specific fields
         field_data = super().as_field()
-        field_data.update({
-            "M": self.m,
-            "EF_CONSTRUCTION": self.ef_construction,
-            "EF_RUNTIME": self.ef_runtime,
-            "EPSILON": self.epsilon,
-        })
+        field_data.update(
+            {
+                "M": self.m,
+                "EF_CONSTRUCTION": self.ef_construction,
+                "EF_RUNTIME": self.ef_runtime,
+                "EPSILON": self.epsilon,
+            }
+        )
         return VectorField(self.name, self.algorithm, field_data)
 
 
