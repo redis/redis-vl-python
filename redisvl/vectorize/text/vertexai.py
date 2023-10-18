@@ -48,7 +48,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         except ImportError:
             raise ImportError(
                 "VertexAI vectorizer requires the google-cloud-aiplatform library."
-                "Please install with pip install google-cloud-aiplatform>=1.26"
+                "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
 
         self._model_client = TextEmbeddingModel.from_pretrained(model)
