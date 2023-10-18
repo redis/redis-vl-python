@@ -151,7 +151,24 @@ class SearchIndexBase:
         """Disconnect from the Redis instance"""
         self._redis_conn = None
 
-    def _get_key(self, record: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def key(self, key_value: str) -> str:
+        """
+        Create a redis key as a combination of an index key prefix (optional) and specified key value.
+        The key value is typically a unique identifier, created at random, or derived from
+        some specified metadata.
+
+        Args:
+            key_value (str): The specified unique identifier for a particular document
+                             indexed in Redis.
+
+        Returns:
+            str: The full Redis key including key prefix and value as a string.
+        """
+        return f"{self._prefix}:{key_value}" if self._prefix else key_value
+
+    def _create_key(
+        self, record: Dict[str, Any], key_field: Optional[str] = None
+    ) -> str:
         """Construct the Redis HASH top level key.
 
         Args:
@@ -166,13 +183,13 @@ class SearchIndexBase:
             ValueError: If the key field is not found in the record.
         """
         if key_field is None:
-            key = uuid4().hex
+            key_value = uuid4().hex
         else:
             try:
-                key = record[key_field]  # type: ignore
+                key_value = record[key_field]  # type: ignore
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {record}")
-        return f"{self._prefix}:{key}" if self._prefix else key
+        return self.key(key_value)
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -363,7 +380,7 @@ class SearchIndex(SearchIndexBase):
             ttl = kwargs.get("ttl")
             with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
                 for record in data:
-                    key = self._get_key(record, key_field)
+                    key = self._create_key(record, key_field)
                     pipe.hset(key, mapping=record)  # type: ignore
                     if ttl:
                         pipe.expire(key, ttl)
@@ -516,7 +533,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         async def _load(record: dict):
             async with semaphore:
-                key = self._get_key(record, key_field)
+                key = self._create_key(record, key_field)
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     await self._redis_conn.expire(key, ttl)  # type: ignore
