@@ -152,6 +152,18 @@ class SearchIndexBase:
         self._redis_conn = None
 
     def key(self, key_value: str) -> str:
+        """
+        Create a redis key as a combination of an index key prefix (optional) and specified key value.
+        The key value is typically a unique identifier, created at random, or derived from
+        some specified metadata.
+
+        Args:
+            key_value (str): The specified unique identifier for a particular document
+                             indexed in Redis.
+
+        Returns:
+            str: The full Redis key including key prefix and value as a string.
+        """
         return f"{self._prefix}:{key_value}" if self._prefix else key_value
 
     def _create_key(
