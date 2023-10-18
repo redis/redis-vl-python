@@ -71,10 +71,13 @@ def test_search_index_load_preprocess(client):
     def preprocess(record):
         record["test"] = "foo"
         return record
-
     si.load(data, key_field="id", preprocess=preprocess)
-
     assert convert_bytes(client.hget("rvl:1", "test")) == "foo"
+
+    def bad_preprocess(record):
+        return 1
+    with pytest.raises(TypeError):
+        si.load(data, key_field="id", preprocess=bad_preprocess)
 
 
 @pytest.mark.asyncio

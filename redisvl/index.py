@@ -217,7 +217,7 @@ class SearchIndexBase:
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         raise NotImplementedError
@@ -239,7 +239,7 @@ class SearchIndexBase:
             preprocess (Optional[Callabl], optional): An optional preprocessor function
                 that mutates the individual record before writing to redis.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         raise NotImplementedError
@@ -381,6 +381,11 @@ class SearchIndex(SearchIndexBase):
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist.
+
+        Example:
+            >>> data = [{"foo": "bar"}, {"test": "values"}]
+            >>> def func(record: dict): record["new"]="value";return record
+            >>> index.load(data, preprocess=func)
         """
         # TODO -- should we return a count of the upserts? or some kind of metadata?
         if data:
@@ -393,8 +398,15 @@ class SearchIndex(SearchIndexBase):
             with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
                 for record in data:
                     key = self._create_key(record, key_field)
+                    # Optionally preprocess the record and validate type
                     if preprocess:
-                        record = preprocess(record)
+                        try:
+                            record = preprocess(record)
+                        except Exception as e:
+                            raise RuntimeError("Error while preprocessing records on load") from e
+                    if not isinstance(record, dict):
+                        raise TypeError(f"Individual records must be of type dict, got type {type(record)}")
+                    # Write the record to Redis
                     pipe.hset(key, mapping=record)  # type: ignore
                     if ttl:
                         pipe.expire(key, ttl)
@@ -420,8 +432,8 @@ class AsyncSearchIndex(SearchIndexBase):
     Example:
         >>> from redisvl.index import AsyncSearchIndex
         >>> index = AsyncSearchIndex.from_yaml("schema.yaml")
-        >>> index.create(overwrite=True)
-        >>> index.load(data) # data is an iterable of dictionaries
+        >>> await index.create(overwrite=True)
+        >>> await index.load(data) # data is an iterable of dictionaries
     """
 
     def __init__(
@@ -516,7 +528,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
@@ -542,8 +554,13 @@ class AsyncSearchIndex(SearchIndexBase):
             preprocess (Optional[Callable], optional): An optional preprocessor function
                 that mutates the individual record before writing to redis.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
+
+        Example:
+            >>> data = [{"foo": "bar"}, {"test": "values"}]
+            >>> def func(record: dict): record["new"]="value";return record
+            >>> await index.load(data, preprocess=func)
         """
         ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
@@ -551,13 +568,20 @@ class AsyncSearchIndex(SearchIndexBase):
         async def _load(record: dict):
             async with semaphore:
                 key = self._create_key(record, key_field)
+                # Optionally preprocess the record and validate type
                 if preprocess:
-                    record = preprocess(record)
+                    try:
+                        record = preprocess(record)
+                    except Exception as e:
+                        raise RuntimeError("Error while preprocessing records on load") from e
+                if not isinstance(record, dict):
+                    raise TypeError(f"Individual records must be of type dict, got type {type(record)}")
+                # Write the record to Redis
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     await self._redis_conn.expire(key, ttl)  # type: ignore
 
-        # gather with concurrency
+        # Gather with concurrency
         await asyncio.gather(*[_load(record) for record in data])
 
     @check_connected("_redis_conn")
