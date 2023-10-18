@@ -1,5 +1,4 @@
 import re
-
 from typing import Optional, Pattern
 
 
@@ -20,7 +19,10 @@ class TokenEscaper:
 
     def escape(self, value: str) -> str:
         if not isinstance(value, str):
-            raise TypeError(f"Value must be a string object for token escaping, got type {type(value)}")
+            raise TypeError(
+                f"Value must be a string object for token escaping, got type {type(value)}"
+            )
+
         def escape_symbol(match):
             value = match.group(0)
             return f"\\{value}"
