@@ -11,7 +11,7 @@ import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
 from redisvl.query.query import CountQuery
-from redisvl.schema import SchemaModel, read_schema
+from redisvl.schema import SchemaModel, Storage, read_schema
 from redisvl.utils.connection import (
     check_connected,
     get_async_redis_connection,
@@ -35,9 +35,17 @@ class SearchIndexBase:
     ):
         self._name = name
         self._prefix = prefix
-        self._storage = storage_type
         self._fields = fields
+        self._storage = self._validate_and_convert_storage(storage_type)
         self._redis_conn: Optional[redis.Redis] = None
+
+
+    def _validate_and_convert_storage(self, storage: str) -> Storage:
+        try:
+            return Storage(storage.lower())
+        except ValueError as e:
+            raise e(f"Invalid storage type provided: {storage}. Allowed values are: 'hash', 'json'.")
+
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
@@ -321,17 +329,21 @@ class SearchIndex(SearchIndexBase):
         return self
 
     @check_connected("_redis_conn")
-    def create(self, overwrite: Optional[bool] = False):
-        """Create an index in Redis from this SearchIndex object.
+    def create(self, overwrite: Optional[bool] = False) -> None:
+        """
+        Create an index in Redis from this SearchIndex object.
 
         Args:
-            overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
+            overwrite: Whether to overwrite the index if it already exists. Defaults to False.
 
         Raises:
-            redis.exceptions.ResponseError: If the index already exists.
+            RuntimeError: If the index already exists and 'overwrite' is False.
+            ValueError: If no fields are defined for the index.
         """
+        # Ensure that the Redis connection has the necessary modules.
         check_redis_modules_exist(self._redis_conn)
 
+        # Check that fields are defined.
         if not self._fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
@@ -350,11 +362,10 @@ class SearchIndex(SearchIndexBase):
         # if self._storage.lower() == "json":
         #     storage_type = IndexType.JSON
 
-        # Create Index
-        # will raise correct response error if index already exists
+        # Create the index with the specified fields and settings.
         self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
+            definition=IndexDefinition(prefix=[self._prefix], index_type=index_type),
         )
 
     @check_connected("_redis_conn")
@@ -370,60 +381,101 @@ class SearchIndex(SearchIndexBase):
         # Delete the search index
         self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
+    def _set(self, pipe, key: str, record: dict, ttl: Optional[int]) -> None:
+        """
+        Set the record in Redis using the appropriate storage mechanism.
+
+        Args:
+            pipe: Redis pipeline object.
+            key (str): Key under which the record is stored.
+            record (dict): The record to store.
+            ttl (Optional[int]): Time to live for the key.
+
+        Raises:
+            ValueError: If an unexpected storage type is encountered.
+        """
+        if self._storage == Storage.HASH:
+            pipe.hset(key, mapping=record)
+        elif self._storage == Storage.JSON:
+            pipe.json.set(key, path="$", obj=record)
+        else:
+            raise ValueError(f"Unexpected storage type: {self._storage}. Invalid storage type.")
+
+        if ttl:
+            pipe.expire(key, ttl)
+
+
+    def _preprocess(self, preprocess: Callable, record: dict) -> dict:
+        """
+        Preprocess the record using a custom function.
+
+        Args:
+            preprocess (Callable): The function to apply to the record.
+            record (dict): The record to preprocess.
+
+        Returns:
+            dict: The preprocessed record.
+
+        Raises:
+            RuntimeError: If an error occurs during preprocessing.
+            TypeError: If the preprocessed record is not a dictionary.
+        """
+        try:
+            record = preprocess(record)
+        except Exception as e:
+            raise RuntimeError("Error while preprocessing records on load") from e
+
+        if not isinstance(record, dict):
+            raise TypeError(f"Preprocessed records must be of type dict, got {type(record)}")
+
+        return record
+
     @check_connected("_redis_conn")
     def load(
         self,
         data: Iterable[Dict[str, Any]],
         key_field: Optional[str] = None,
         preprocess: Optional[Callable] = None,
+        batch_size: int = 300,
         **kwargs,
-    ):
-        """Load data into Redis and index using this SearchIndex object.
+    ) -> None:
+        """
+        Load data into Redis and index using this SearchIndex object.
 
         Args:
-            data (Iterable[Dict[str, Any]]): An iterable of dictionaries
-                containing the data to be indexed.
-            key_field (Optional[str], optional): A field within the record to
-                use in the Redis hash key.
-            preprocess (Optional[Callable], optional): An optional preprocessor function
-                that mutates the individual record before writing to redis.
+            data (Iterable[Dict[str, Any]]): An iterable of dictionaries to be indexed.
+            key_field (Optional[str], optional): A field within the record to use as the Redis hash key.
+            preprocess (Optional[Callable], optional): An optional function to modify records before writing to Redis.
+            batch_size (int, optional): The size of batches to use for writes to Redis db.
 
-        raises:
+        Raises:
+            TypeError: If data is not a non-empty iterable or does not contain dictionaries.
             redis.exceptions.ResponseError: If the index does not exist.
 
         Example:
             >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> def func(record: dict): record["new"]="value";return record
+            >>> def func(record: dict): record["new"] = "value"; return record
             >>> index.load(data, preprocess=func)
         """
-        # TODO -- should we return a count of the upserts? or some kind of metadata?
-        if data:
-            if not isinstance(data, Iterable):
-                if not isinstance(data[0], dict):
-                    raise TypeError("data must be an iterable of dictionaries")
+        if not isinstance(data, Iterable) or not data:
+            raise TypeError("data must be a non-empty iterable")
+        if not isinstance(next(iter(data)), dict):
+            raise TypeError("data must contain dictionaries")
 
-            # Check if outer interface passes in TTL on load
-            ttl = kwargs.get("ttl")
-            with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
-                for record in data:
-                    key = self._create_key(record, key_field)
-                    # Optionally preprocess the record and validate type
-                    if preprocess:
-                        try:
-                            record = preprocess(record)
-                        except Exception as e:
-                            raise RuntimeError(
-                                "Error while preprocessing records on load"
-                            ) from e
-                    if not isinstance(record, dict):
-                        raise TypeError(
-                            f"Individual records must be of type dict, got type {type(record)}"
-                        )
-                    # Write the record to Redis
-                    pipe.hset(key, mapping=record)  # type: ignore
-                    if ttl:
-                        pipe.expire(key, ttl)
-                pipe.execute()
+        ttl = kwargs.get("ttl")
+
+        with self._redis_conn.pipeline(transaction=False) as pipe:
+            for i, record in enumerate(data, start=1):
+                key = self._create_key(record, key_field)
+                if preprocess:
+                    record = self._preprocess(preprocess, record)
+                self._set(pipe, key, record, ttl)
+
+                # execute mini batches
+                if i % batch_size == 0:
+                    pipe.execute()
+            # final batch cleanup
+            pipe.execute()
 
     @check_connected("_redis_conn")
     def exists(self) -> bool:
@@ -511,14 +563,15 @@ class AsyncSearchIndex(SearchIndexBase):
         return self
 
     @check_connected("_redis_conn")
-    async def create(self, overwrite: Optional[bool] = False):
-        """Create an index in Redis from this SearchIndex object.
+    async def create(self, overwrite: Optional[bool] = False) -> None:
+        """
+        Asynchronously create an index in Redis from this SearchIndex object.
 
         Args:
-            overwrite (bool, optional): Overwrite the index if it already exists. Defaults to False.
+            overwrite: Whether to overwrite the index if it already exists. Defaults to False.
 
         Raises:
-            redis.exceptions.ResponseError: If the index already exists.
+            RuntimeError: If the index already exists and 'overwrite' is False.
         """
         # TODO - enable async version of this
         # check_redis_modules_exist(self._redis_conn)
@@ -541,10 +594,17 @@ class AsyncSearchIndex(SearchIndexBase):
         # if self._storage.lower() == "json":
         #     storage_type = IndexType.JSON
 
-        # Create Index
+        # Delete the existing index if 'overwrite' is True.
+        if self.exists() and overwrite:
+            self.delete()
+
+        # Translate the internal storage type to the appropriate index type.
+        index_type = IndexType.HASH if self._storage == "hash" else IndexType.JSON
+
+        # Create Index with proper IndexType
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
             fields=self._fields,
-            definition=IndexDefinition(prefix=[self._prefix], index_type=storage_type),
+            definition=IndexDefinition(prefix=[self._prefix], index_type=index_type),
         )
 
     @check_connected("_redis_conn")
@@ -560,6 +620,53 @@ class AsyncSearchIndex(SearchIndexBase):
         # Delete the search index
         await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
+    async def _set(self, key: str, record: dict, ttl: Optional[int]) -> None:
+        """
+        Asynchronously set the record in Redis using the appropriate storage mechanism.
+
+        Args:
+            key (str): Key under which the record is stored.
+            record (dict): The record to store.
+            ttl (Optional[int]): Time to live for the key.
+
+        Raises:
+            ValueError: If an unexpected storage type is encountered.
+        """
+        if self._storage == Storage.HASH:
+            await self._redis_conn.hset(key, mapping=record)
+        elif self._storage == Storage.JSON:
+            await self._redis_conn.json.set(key, path="$", obj=record)
+        else:
+            raise ValueError(f"Unexpected storage type: {self._storage}. Invalid storage type.")
+
+        if ttl:
+            await self._redis_conn.expire(key, ttl)
+
+    async def _preprocess(self, preprocess: Callable, record: dict) -> dict:
+        """
+        Asynchronously preprocess the record using a custom function.
+
+        Args:
+            preprocess (Callable): The function to apply to the record.
+            record (dict): The record to preprocess.
+
+        Returns:
+            dict: The preprocessed record.
+
+        Raises:
+            RuntimeError: If an error occurs during preprocessing.
+            TypeError: If the preprocessed record is not a dictionary.
+        """
+        try:
+            record = preprocess(record)
+        except Exception as e:
+            raise RuntimeError("Error while preprocessing records on load") from e
+
+        if not isinstance(record, dict):
+            raise TypeError(f"Preprocessed records must be of type dict, got {type(record)}")
+
+        return record
+
     @check_connected("_redis_conn")
     async def load(
         self,
@@ -568,51 +675,44 @@ class AsyncSearchIndex(SearchIndexBase):
         key_field: Optional[str] = None,
         preprocess: Optional[Callable] = None,
         **kwargs,
-    ):
-        """Load data into Redis and index using this SearchIndex object.
+    ) -> None:
+        """
+        Asynchronously load data into Redis and index using this SearchIndex object.
 
         Args:
-            data (Iterable[Dict[str, Any]]): An iterable of dictionaries
-                containing the data to be indexed.
+            data (Iterable[Dict[str, Any]]): An iterable of dictionaries to be indexed.
             concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
-            key_field (Optional[str], optional): A field within the record to
-                use in the Redis hash key.
-            preprocess (Optional[Callable], optional): An optional preprocessor function
-                that mutates the individual record before writing to redis.
+            key_field (Optional[str], optional): A field within the record to use as the Redis hash key.
+            preprocess (Optional[Callable], optional): An optional function to modify records before writing to Redis.
 
         Raises:
+            TypeError: If data is not a non-empty iterable or does not contain dictionaries.
             redis.exceptions.ResponseError: If the index does not exist.
 
         Example:
             >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> def func(record: dict): record["new"]="value";return record
+            >>> async def func(record: dict): record["new"] = "value"; return record
             >>> await index.load(data, preprocess=func)
         """
+        if not isinstance(data, Iterable) or not data:
+            raise TypeError("data must be a non-empty iterable")
+        if not isinstance(next(iter(data)), dict):
+            raise TypeError("data must contain dictionaries")
+
         ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
 
-        async def _load(record: dict):
+        async def _load(record: Dict[str, Any]) -> None:
             async with semaphore:
-                key = self._create_key(record, key_field)
-                # Optionally preprocess the record and validate type
+                key = await self._create_key(record, key_field)
                 if preprocess:
-                    try:
-                        record = preprocess(record)
-                    except Exception as e:
-                        raise RuntimeError(
-                            "Error while preprocessing records on load"
-                        ) from e
-                if not isinstance(record, dict):
-                    raise TypeError(
-                        f"Individual records must be of type dict, got type {type(record)}"
-                    )
-                # Write the record to Redis
-                await self._redis_conn.hset(key, mapping=record)  # type: ignore
-                if ttl:
-                    await self._redis_conn.expire(key, ttl)  # type: ignore
+                    record = await self._preprocess(preprocess, record)
+                await self._set(key, record, ttl)
 
-        # Gather with concurrency
-        await asyncio.gather(*[_load(record) for record in data])
+        tasks = [_load(record) for record in data]
+
+        if tasks:
+            await asyncio.gather(*tasks)
 
     @check_connected("_redis_conn")
     async def search(self, *args, **kwargs) -> Union["Result", Any]:

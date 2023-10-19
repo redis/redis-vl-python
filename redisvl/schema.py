@@ -1,3 +1,4 @@
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
@@ -17,6 +18,7 @@ from typing_extensions import Literal
 class BaseField(BaseModel):
     name: str = Field(...)
     sortable: Optional[bool] = False
+    as_name: Optional[str] = None
 
 
 class TextFieldSchema(BaseField):
@@ -32,6 +34,7 @@ class TextFieldSchema(BaseField):
             no_stem=self.no_stem,
             phonetic_matcher=self.phonetic_matcher,
             sortable=self.sortable,
+            as_name=self.as_name
         )
 
 
@@ -45,17 +48,18 @@ class TagFieldSchema(BaseField):
             separator=self.separator,
             case_sensitive=self.case_sensitive,
             sortable=self.sortable,
+            as_name=self.as_name
         )
 
 
 class NumericFieldSchema(BaseField):
     def as_field(self):
-        return NumericField(self.name, sortable=self.sortable)
+        return NumericField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class GeoFieldSchema(BaseField):
     def as_field(self):
-        return GeoField(self.name, sortable=self.sortable)
+        return GeoField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class BaseVectorField(BaseModel):
@@ -65,6 +69,7 @@ class BaseVectorField(BaseModel):
     datatype: str = Field(default="FLOAT32")
     distance_metric: str = Field(default="COSINE")
     initial_cap: Optional[int] = None
+    as_name: Optional[str] = None
 
     @validator("algorithm", "datatype", "distance_metric", pre=True)
     def uppercase_strings(cls, v):
@@ -90,7 +95,7 @@ class FlatVectorField(BaseVectorField):
         field_data = super().as_field()
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
-        return VectorField(self.name, self.algorithm, field_data)
+        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
 
 
 class HNSWVectorField(BaseVectorField):
@@ -111,13 +116,32 @@ class HNSWVectorField(BaseVectorField):
                 "EPSILON": self.epsilon,
             }
         )
-        return VectorField(self.name, self.algorithm, field_data)
+        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+
+
+class Storage(Enum):
+    HASH = "hash"
+    JSON = "json"
 
 
 class IndexModel(BaseModel):
-    name: str = Field(...)
-    prefix: Optional[str] = Field(default="")
-    storage_type: Optional[str] = Field(default="hash")
+    """
+    Represents the schema for an index, including its name,
+    optional prefix, and the storage type used.
+    """
+    name: str
+    prefix: Optional[str] = None
+    storage_type: Storage = Storage.HASH
+
+    # Force Pydantic use the value of the enum, not the enum itself
+    class Config:
+        use_enum_values = True
+
+    @validator('name')
+    def name_must_not_be_empty(cls, value):
+        if not value:
+            raise ValueError('name must not be empty')
+        return value
 
 
 class FieldsModel(BaseModel):
@@ -131,12 +155,6 @@ class FieldsModel(BaseModel):
 class SchemaModel(BaseModel):
     index: IndexModel = Field(...)
     fields: FieldsModel = Field(...)
-
-    @validator("index")
-    def validate_index(cls, v):
-        if v.storage_type not in ["hash", "json"]:
-            raise ValueError(f"Storage type {v.storage_type} not supported")
-        return v
 
     @property
     def index_fields(self):
