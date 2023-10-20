@@ -62,6 +62,26 @@ def test_search_index_load(client):
     assert convert_bytes(client.hget("rvl:1", "value")) == "test"
 
 
+def test_search_index_load_preprocess(client):
+    si = SearchIndex("my_index", fields=fields)
+    si.set_client(client)
+    si.create(overwrite=True)
+    data = [{"id": "1", "value": "test"}]
+
+    def preprocess(record):
+        record["test"] = "foo"
+        return record
+
+    si.load(data, key_field="id", preprocess=preprocess)
+    assert convert_bytes(client.hget("rvl:1", "test")) == "foo"
+
+    def bad_preprocess(record):
+        return 1
+
+    with pytest.raises(TypeError):
+        si.load(data, key_field="id", preprocess=bad_preprocess)
+
+
 @pytest.mark.asyncio
 async def test_async_search_index_creation(async_client):
     asi = AsyncSearchIndex("my_index", fields=fields)
