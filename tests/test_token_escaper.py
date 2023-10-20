@@ -9,7 +9,7 @@ def escaper():
 
 
 @pytest.mark.parametrize(
-    "test_input,expected",
+    ("test_input,expected"),
     [
         (r"a [big] test.", r"a\ \[big\]\ test\."),
         (r"hello, world!", r"hello\,\ world\!"),
@@ -24,13 +24,20 @@ def escaper():
         # underscores are ignored
         (r"-dashes_and_underscores-", r"\-dashes_and_underscores\-"),
     ],
+    ids=[
+        "brackets",
+        "commas",
+        "quotes",
+        "symbols",
+        "underscores"
+    ]
 )
 def test_escape_text_chars(escaper, test_input, expected):
     assert escaper.escape(test_input) == expected
 
 
 @pytest.mark.parametrize(
-    "test_input,expected",
+    ("test_input,expected"),
     [
         # Simple tags
         ("user:name", r"user\:name"),
@@ -62,6 +69,27 @@ def test_escape_text_chars(escaper, test_input, expected):
         ("emoji:😊", r"emoji\:😊"),
         # ...other cases as needed...
     ],
+    ids=[
+        ":",
+        "#",
+        "-",
+        "$",
+        "*",
+        "&",
+        "@",
+        "space",
+        "space-2",
+        "complex",
+        "special",
+        "hyphen",
+        "underscore",
+        "dot",
+        "parentheses",
+        "brackets",
+        "braces",
+        "non-latin",
+        "emoji"
+    ]
 )
 def test_escape_tag_like_values(escaper, test_input, expected):
     assert escaper.escape(test_input) == expected
@@ -80,6 +108,9 @@ def test_escape_non_string_input(escaper, test_input):
         ("😊 ❤️ 👍", r"😊\ ❤️\ 👍"),
         # ...other cases as needed...
     ],
+    ids=[
+        "emoji"
+    ]
 )
 def test_escape_unicode_characters(escaper, test_input, expected):
     assert escaper.escape(test_input) == expected
