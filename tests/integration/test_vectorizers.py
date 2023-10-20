@@ -10,7 +10,7 @@ from redisvl.vectorize.text import (
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
-def vectorizer(request, openai_key):
+def vectorizer(request, openai_key, gcp_location, gcp_project_id):
     # Here we use actual models for integration test
     if request.param == HFTextVectorizer:
         return request.param(model="sentence-transformers/all-mpnet-base-v2")
@@ -23,8 +23,8 @@ def vectorizer(request, openai_key):
         return request.param(
             model="textembedding-gecko",
             api_config={
-                "location": os.environ["GCP_LOCATION"],
-                "project_id": os.environ["GCP_PROJECT_ID"],
+                "location": gcp_location,
+                "project_id": gcp_project_id,
             },
         )
 
