@@ -2,7 +2,7 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from redisvl.utils.utils import TokenEscaper
+from redisvl.utils.token_escaper import TokenEscaper
 
 # disable mypy error for dunder method overrides
 # mypy: disable-error-code="override"

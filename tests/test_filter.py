@@ -3,15 +3,54 @@ import pytest
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 
 
-def test_tag_filter():
-    tf = Tag("tag_field") == ["tag1", "tag2"]
-    assert str(tf) == "@tag_field:{tag1|tag2}"
+# Test cases for various scenarios of tag usage, combinations, and their string representations.
+@pytest.mark.parametrize(
+    "operation,tags,expected",
+    [
+        # Testing single tags
+        ("==", "simpletag", "@tag_field:{simpletag}"),
+        (
+            "==",
+            "tag with space",
+            "@tag_field:{tag\\ with\\ space}",
+        ),  # Escaping spaces within quotes
+        (
+            "==",
+            "special$char",
+            "@tag_field:{special\\$char}",
+        ),  # Escaping a special character
+        ("!=", "negated", "(-@tag_field:{negated})"),
+        # Testing multiple tags
+        ("==", ["tag1", "tag2"], "@tag_field:{tag1|tag2}"),
+        (
+            "==",
+            ["alpha", "beta with space", "gamma$special"],
+            "@tag_field:{alpha|beta\\ with\\ space|gamma\\$special}",
+        ),  # Multiple tags with spaces and special chars
+        ("!=", ["tagA", "tagB"], "(-@tag_field:{tagA|tagB})"),
+        # Complex tag scenarios with special characters
+        ("==", "weird:tag", "@tag_field:{weird\\:tag}"),  # Tags with colon
+        ("==", "tag&another", "@tag_field:{tag\\&another}"),  # Tags with ampersand
+        # Escaping various special characters within tags
+        ("==", "tag/with/slashes", "@tag_field:{tag\\/with\\/slashes}"),
+        (
+            "==",
+            ["hypen-tag", "under_score", "dot.tag"],
+            "@tag_field:{hypen\\-tag|under_score|dot\\.tag}",
+        ),
+        # ...additional unique cases as desired...
+    ],
+)
+def test_tag_filter_varied(operation, tags, expected):
+    if operation == "==":
+        tf = Tag("tag_field") == tags
+    elif operation == "!=":
+        tf = Tag("tag_field") != tags
+    else:
+        raise ValueError(f"Unsupported operation: {operation}")
 
-    tf = Tag("tag_field") == "tag1"
-    assert str(tf) == "@tag_field:{tag1}"
-
-    tf = Tag("tag_field") != ["tag1", "tag2"]
-    assert str(tf) == "(-@tag_field:{tag1|tag2})"
+    # Verify the string representation matches the expected RediSearch query part
+    assert str(tf) == expected
 
 
 def test_numeric_filter():
