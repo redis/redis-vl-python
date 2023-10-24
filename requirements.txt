@@ -1,5 +1,5 @@
 numpy
-redis>=4.3.4
+redis>=5.0.0
 pyyaml
 coloredlogs
 pydantic<2.0.0
