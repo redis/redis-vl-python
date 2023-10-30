@@ -139,9 +139,12 @@ class Tag(FilterField):
 
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Tag filter expression"""
+        _tag_value = self._formatted_tag_value
+        if not _tag_value:
+            return '*'
         return self.OPERATOR_MAP[self._operator] % (
             self._field,
-            self._formatted_tag_value,
+            _tag_value,
         )
 
 
@@ -480,7 +483,17 @@ class FilterExpression:
 
         if self._operator:
             operator_str = " | " if self._operator == FilterOperator.OR else " "
-            return f"({str(self._left)}{operator_str}{str(self._right)})"
+            # evaluate left and right sides
+            _left, _right = str(self._left), str(self._right)
+            # check sides
+            if _left == _right == "*":
+                return _left
+            if _left == "*" != _right:
+                return _right
+            if _right == "*" != _left:
+                return _left
+            else:
+                return f"({_left}{operator_str}{_right})"
 
         # check that base case, the filter is set
         if not self._filter:
