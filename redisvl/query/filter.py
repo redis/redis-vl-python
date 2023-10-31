@@ -277,6 +277,13 @@ class Num(FilterField):
     }
     SUPPORTED_VAL_TYPES = (int,)
 
+    def _set_num_value(self, other: int, operator: FilterOperator):
+        if not isinstance(other, self.SUPPORTED_VAL_TYPES):
+            # TODO -- what about floats
+            raise TypeError("Numeric filter value must be an integer.")
+        # Additional checks, e.g., value range, can be placed here
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
+
     def __eq__(self, other: int) -> "FilterExpression":
         """Create a Numeric equality filter expression
 
@@ -287,7 +294,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("zipcode") == 90210
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
+        self._set_num_value(other, FilterOperator.EQ)
         return FilterExpression(str(self))
 
     def __ne__(self, other: int) -> "FilterExpression":
@@ -300,7 +307,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("zipcode") != 90210
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
+        self._set_num_value(other, FilterOperator.NE)
         return FilterExpression(str(self))
 
     def __gt__(self, other: int) -> "FilterExpression":
@@ -313,7 +320,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") > 18
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
+        self._set_num_value(other, FilterOperator.GT)
         return FilterExpression(str(self))
 
     def __lt__(self, other: int) -> "FilterExpression":
@@ -326,7 +333,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") < 18
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
+        self._set_num_value(other, FilterOperator.LT)
         return FilterExpression(str(self))
 
     def __ge__(self, other: int) -> "FilterExpression":
@@ -339,7 +346,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") >= 18
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
+        self._set_num_value(other, FilterOperator.GE)
         return FilterExpression(str(self))
 
     def __le__(self, other: int) -> "FilterExpression":
@@ -352,16 +359,13 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") <= 18
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
+        self._set_num_value(other, FilterOperator.LE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Numeric filter expression"""
         if not self._value:
-            raise ValueError(
-                f"Operator must be used before calling __str__. Operators are "
-                f"{self.OPERATORS.values()}"
-            )
+            return "*"
 
         if self._operator == FilterOperator.EQ or self._operator == FilterOperator.NE:
             return self.OPERATOR_MAP[self._operator] % (
@@ -388,11 +392,16 @@ class Text(FilterField):
     SUPPORTED_VAL_TYPES = (str,)
 
     def _set_text_value(self, other: str, operator: FilterOperator):
+        # handle case where other is None/null
+        if other is None:
+            other = ""
+
         if not isinstance(other, str):
-            raise ValueError("Text filter value must be a string.")
+            # TODO -- should we cast to string?
+            raise TypeError("Text filter value must be a string.")
 
         # Additional processing or validation can go here
-        # TODO -- is there any escaping that should be done?
+        # TODO -- is there any other escaping that should be done?
         self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse

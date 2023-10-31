@@ -72,17 +72,28 @@ def test_numeric_filter():
     nf = Num("numeric_field") <= 5
     assert str(nf) == "@numeric_field:[-inf 5]"
 
+    with pytest.raises(TypeError):
+        nf = Num("numeric_field") == None
+
 
 def test_text_filter():
     txt_f = Text("text_field") == "text"
-    assert str(txt_f) == '@text_field:"text"'
+    assert str(txt_f) == '@text_field:("text")'
 
     txt_f = Text("text_field") != "text"
     assert str(txt_f) == '(-@text_field:"text")'
 
     txt_f = Text("text_field") % "text"
-    assert str(txt_f) == "@text_field:text"
+    assert str(txt_f) == "@text_field:(text)"
 
+    txt_f = Text("text_field") % "tex*"
+    assert str(txt_f) == "@text_field:(tex*)"
+
+    txt_f = Text("text_field") % "%text%"
+    assert str(txt_f) == "@text_field:(%text%)"
+
+    txt_f = Text("text_field") % ""
+    assert str(txt_f) == "*"
 
 def test_geo_filter():
     geo_f = Geo("geo_field") == GeoRadius(1.0, 2.0, 3, "km")
@@ -100,3 +111,8 @@ def test_filters_combination():
 
     combined = tf1 | tf2
     assert str(combined) == "(@tag_field:{tag1|tag2} | @tag_field:{tag3})"
+
+    tf1 = Tag("tag_field") == []
+    assert str(tf1) == "*"
+    assert str(tf1 & tf2) == str(tf2)
+    assert str(tf1 | tf2) == str(tf2)
