@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Set
 
 from redisvl.utils.token_escaper import TokenEscaper
 
@@ -42,7 +42,7 @@ class FilterField:
                 f"Operator {operator} not supported by {self.__class__.__name__}. "
                 + f"Supported operators are {self.OPERATORS.values()}"
             )
-
+        # check that the value is of the proper type
         if not isinstance(val, val_type):
             raise TypeError(
                 f"Right side argument passed to operator {self.OPERATORS[operator]} "
@@ -89,6 +89,8 @@ class Tag(FilterField):
         FilterOperator.IN: "@%s:{%s}",
     }
 
+    SUPPORTED_VAL_TYPES = (list, set)
+
     def __init__(self, field: str):
         """Create a Tag FilterField
 
@@ -97,13 +99,13 @@ class Tag(FilterField):
         """
         super().__init__(field)
 
-    def _set_tag_value(self, other: Union[List[str], str], operator: FilterOperator):
-        if isinstance(other, list):
+    def _set_tag_value(self, other: Union[List[str], Set[str], str], operator: FilterOperator):
+        if isinstance(other, self.SUPPORTED_VAL_TYPES):
             if not all(isinstance(tag, str) for tag in other):
                 raise ValueError("All tags must be strings")
         else:
             other = [other]
-        self._set_value(other, list, operator)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse
     def __eq__(self, other: Union[List[str], str]) -> "FilterExpression":
