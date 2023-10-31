@@ -82,13 +82,11 @@ class Tag(FilterField):
         FilterOperator.NE: "!=",
         FilterOperator.IN: "==",
     }
-
     OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:{%s}",
         FilterOperator.NE: "(-@%s:{%s})",
         FilterOperator.IN: "@%s:{%s}",
     }
-
     SUPPORTED_VAL_TYPES = (list, set)
 
     def __init__(self, field: str):
@@ -150,63 +148,6 @@ class Tag(FilterField):
         )
 
 
-class Geo(FilterField):
-    """A Geo is a FilterField representing a geographic (lat/lon)
-    field in a Redis index.
-
-    """
-
-    OPERATORS: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: "==",
-        FilterOperator.NE: "!=",
-    }
-    OPERATOR_MAP: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%f %f %i %s]",
-        FilterOperator.NE: "(-@%s:[%f %f %i %s])",
-    }
-
-    @check_operator_misuse
-    def __eq__(self, other) -> "FilterExpression":
-        """Create a Geographic equality filter expression
-
-        Args:
-            other (GeoSpec): The geographic spec to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Geo, GeoRadius
-            >>> filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
-        """
-        self._set_value(other, GeoSpec, FilterOperator.EQ)
-        return FilterExpression(str(self))
-
-    @check_operator_misuse
-    def __ne__(self, other) -> "FilterExpression":
-        """Create a Geographic inequality filter expression
-
-        Args:
-            other (GeoSpec): The geographic spec to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Geo, GeoRadius
-            >>> filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
-        """
-        self._set_value(other, GeoSpec, FilterOperator.NE)
-        return FilterExpression(str(self))
-
-    def __str__(self) -> str:
-        """Return the Redis Query syntax for a Geographic filter expression"""
-        if not self._value:
-            raise ValueError(
-                f"Operator must be used before calling __str__. Operators are "
-                f"{self.OPERATORS.values()}"
-            )
-
-        return self.OPERATOR_MAP[self._operator] % (
-            self._field,
-            *self._value.get_args(),
-        )
-
-
 class GeoSpec:
     GEO_UNITS = ["m", "km", "mi", "ft"]
 
@@ -248,6 +189,64 @@ class GeoRadius(GeoSpec):
         return [self._longitude, self._latitude, self._radius, self._unit]
 
 
+class Geo(FilterField):
+    """A Geo is a FilterField representing a geographic (lat/lon)
+    field in a Redis index.
+
+    """
+
+    OPERATORS: Dict[FilterOperator, str] = {
+        FilterOperator.EQ: "==",
+        FilterOperator.NE: "!=",
+    }
+    OPERATOR_MAP: Dict[FilterOperator, str] = {
+        FilterOperator.EQ: "@%s:[%f %f %i %s]",
+        FilterOperator.NE: "(-@%s:[%f %f %i %s])",
+    }
+    SUPPORTED_VAL_TYPES = (GeoSpec,)
+
+    @check_operator_misuse
+    def __eq__(self, other) -> "FilterExpression":
+        """Create a Geographic equality filter expression
+
+        Args:
+            other (GeoSpec): The geographic spec to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Geo, GeoRadius
+            >>> filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
+        return FilterExpression(str(self))
+
+    @check_operator_misuse
+    def __ne__(self, other) -> "FilterExpression":
+        """Create a Geographic inequality filter expression
+
+        Args:
+            other (GeoSpec): The geographic spec to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Geo, GeoRadius
+            >>> filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
+        return FilterExpression(str(self))
+
+    def __str__(self) -> str:
+        """Return the Redis Query syntax for a Geographic filter expression"""
+        if not self._value:
+            raise ValueError(
+                f"Operator must be used before calling __str__. Operators are "
+                f"{self.OPERATORS.values()}"
+            )
+
+        return self.OPERATOR_MAP[self._operator] % (
+            self._field,
+            *self._value.get_args(),
+        )
+
+
 class Num(FilterField):
     """A Num is a FilterField representing a numeric field in a Redis index."""
 
@@ -267,6 +266,7 @@ class Num(FilterField):
         FilterOperator.GE: "@%s:[%i +inf]",
         FilterOperator.LE: "@%s:[-inf %i]",
     }
+    SUPPORTED_VAL_TYPES = (int,)
 
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Numeric filter expression"""
@@ -295,7 +295,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("zipcode") == 90210
         """
-        self._set_value(other, int, FilterOperator.EQ)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
     def __ne__(self, other: str) -> "FilterExpression":
@@ -308,7 +308,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("zipcode") != 90210
         """
-        self._set_value(other, int, FilterOperator.NE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
 
     def __gt__(self, other: str) -> "FilterExpression":
@@ -321,7 +321,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") > 18
         """
-        self._set_value(other, int, FilterOperator.GT)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
 
     def __lt__(self, other: str) -> "FilterExpression":
@@ -334,7 +334,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") < 18
         """
-        self._set_value(other, int, FilterOperator.LT)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
         return FilterExpression(str(self))
 
     def __ge__(self, other: str) -> "FilterExpression":
@@ -347,7 +347,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") >= 18
         """
-        self._set_value(other, int, FilterOperator.GE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
         return FilterExpression(str(self))
 
     def __le__(self, other: str) -> "FilterExpression":
@@ -360,7 +360,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") <= 18
         """
-        self._set_value(other, int, FilterOperator.LE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
 
@@ -377,6 +377,7 @@ class Text(FilterField):
         FilterOperator.NE: '(-@%s:"%s")',
         FilterOperator.LIKE: "@%s:%s",
     }
+    SUPPORTED_VAL_TYPES = (str,)
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
@@ -389,7 +390,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") == "engineer"
         """
-        self._set_value(other, str, FilterOperator.EQ)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
     @check_operator_misuse
@@ -403,7 +404,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") != "engineer"
         """
-        self._set_value(other, str, FilterOperator.NE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
 
     def __mod__(self, other: str) -> "FilterExpression":
@@ -416,7 +417,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") % "engineer"
         """
-        self._set_value(other, str, FilterOperator.LIKE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
