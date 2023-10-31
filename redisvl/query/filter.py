@@ -277,6 +277,84 @@ class Num(FilterField):
     }
     SUPPORTED_VAL_TYPES = (int,)
 
+    def __eq__(self, other: int) -> "FilterExpression":
+        """Create a Numeric equality filter expression
+
+        Args:
+            other (int): The value to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Num
+            >>> filter = Num("zipcode") == 90210
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
+        return FilterExpression(str(self))
+
+    def __ne__(self, other: int) -> "FilterExpression":
+        """Create a Numeric inequality filter expression
+
+        Args:
+            other (int): The value to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Num
+            >>> filter = Num("zipcode") != 90210
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
+        return FilterExpression(str(self))
+
+    def __gt__(self, other: int) -> "FilterExpression":
+        """Create a Numeric greater than filter expression
+
+        Args:
+            other (int): The value to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Num
+            >>> filter = Num("age") > 18
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
+        return FilterExpression(str(self))
+
+    def __lt__(self, other: int) -> "FilterExpression":
+        """Create a Numeric less than filter expression
+
+        Args:
+            other (int): The value to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Num
+            >>> filter = Num("age") < 18
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
+        return FilterExpression(str(self))
+
+    def __ge__(self, other: int) -> "FilterExpression":
+        """Create a Numeric greater than or equal to filter expression
+
+        Args:
+            other (int): The value to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Num
+            >>> filter = Num("age") >= 18
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
+        return FilterExpression(str(self))
+
+    def __le__(self, other: int) -> "FilterExpression":
+        """Create a Numeric less than or equal to filter expression
+
+        Args:
+            other (int): The value to filter on.
+
+        Example:
+            >>> from redisvl.query.filter import Num
+            >>> filter = Num("age") <= 18
+        """
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
+        return FilterExpression(str(self))
+
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Numeric filter expression"""
         if not self._value:
@@ -293,85 +371,6 @@ class Num(FilterField):
             )
         else:
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
-
-    def __eq__(self, other: str) -> "FilterExpression":
-        """Create a Numeric equality filter expression
-
-        Args:
-            other (int): The value to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("zipcode") == 90210
-        """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
-        return FilterExpression(str(self))
-
-    def __ne__(self, other: str) -> "FilterExpression":
-        """Create a Numeric inequality filter expression
-
-        Args:
-            other (int): The value to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("zipcode") != 90210
-        """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
-        return FilterExpression(str(self))
-
-    def __gt__(self, other: str) -> "FilterExpression":
-        """Create a Numeric greater than filter expression
-
-        Args:
-            other (int): The value to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") > 18
-        """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
-        return FilterExpression(str(self))
-
-    def __lt__(self, other: str) -> "FilterExpression":
-        """Create a Numeric less than filter expression
-
-        Args:
-            other (int): The value to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") < 18
-        """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
-        return FilterExpression(str(self))
-
-    def __ge__(self, other: str) -> "FilterExpression":
-        """Create a Numeric greater than or equal to filter expression
-
-        Args:
-            other (int): The value to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") >= 18
-        """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
-        return FilterExpression(str(self))
-
-    def __le__(self, other: str) -> "FilterExpression":
-        """Create a Numeric less than or equal to filter expression
-
-        Args:
-            other (int): The value to filter on.
-
-        Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") <= 18
-        """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
-        return FilterExpression(str(self))
-
 
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index."""
