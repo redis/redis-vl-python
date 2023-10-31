@@ -393,11 +393,13 @@ class Text(FilterField):
             raise ValueError("Text filter value must be a string.")
 
         # Additional processing or validation can go here
+        # TODO -- is there any escaping that should be done?
         self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
-        """Create a Text equality filter expression
+        """Create a Text equality filter expression. These expressions
+           yield filters that enforce an exact match on the supplied term(s).
 
         Args:
             other (str): The text value to filter on.
@@ -411,7 +413,9 @@ class Text(FilterField):
 
     @check_operator_misuse
     def __ne__(self, other: str) -> "FilterExpression":
-        """Create a Text inequality filter expression
+        """Create a Text inequality filter expression. These expressions yield
+           negated filters on exact matches on the supplied term(s). Opposite of
+           an equality filter expression.
 
         Args:
             other (str): The text value to filter on.
@@ -424,14 +428,19 @@ class Text(FilterField):
         return FilterExpression(str(self))
 
     def __mod__(self, other: str) -> "FilterExpression":
-        """Create a Text like filter expression
+        """Create a Text "LIKE" filter expression. A flexible expression that
+           yields filters that can use a variety of additional operators like
+           wildcards (*), fuzzy matches (%%), or combinatorics (|) of the supplied term(s).
 
         Args:
             other (str): The text value to filter on.
 
         Example:
             >>> from redisvl.query.filter import Text
-            >>> filter = Text("job") % "engine*"
+            >>> filter = Text("job") % "engine*"         # suffix wild card match
+            >>> filter = Text("job") % "%%engine%%"      # fuzzy match w/ Levenshtein Distance
+            >>> filter = Text("job") % "engineer|doctor" # contains either term in field
+            >>> filter = Text("job") % "engineer doctor" # contains both terms in field
         """
         self._set_text_value(other, FilterOperator.LIKE)
         return FilterExpression(str(self))
@@ -519,7 +528,7 @@ class FilterExpression:
                 raise TypeError(
                     "Improper combination of filters. Both left and right should be type FilterExpression"
                 )
-    
+
             operator_str = " | " if self._operator == FilterOperator.OR else " "
             return self.format_expression(self._left, self._right, operator_str)
 
