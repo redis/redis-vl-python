@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from redisvl.utils.token_escaper import TokenEscaper
 
@@ -35,7 +35,12 @@ class FilterField:
             return False
         return (self._field == other._field) and (self._value == other._value)
 
-    def _set_value(self, val: Any, val_type: type, operator: FilterOperator):
+    def _set_value(
+        self,
+        val: Any,
+        val_type: Union[type, Tuple[type, ...]],
+        operator: FilterOperator,
+    ):
         # check that the operator is supported by this class
         if operator not in self.OPERATORS:
             raise ValueError(
@@ -87,7 +92,7 @@ class Tag(FilterField):
         FilterOperator.NE: "(-@%s:{%s})",
         FilterOperator.IN: "@%s:{%s}",
     }
-    SUPPORTED_VAL_TYPES = (list, set)
+    SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
 
     def __init__(self, field: str):
         """Create a Tag FilterField
@@ -100,21 +105,19 @@ class Tag(FilterField):
     def _set_tag_value(
         self, other: Union[List[str], Set[str], str], operator: FilterOperator
     ):
-        # handle case where other is a None/null value
-        if other is None:
+        if isinstance(other, (list, set, tuple)):
+            try:
+                # "if val" clause removes non-truthy values from list
+                other = [str(val) for val in other if val]
+            except ValueError:
+                raise ValueError("All tags within collection must be strings")
+        # above to catch the "" case
+        elif not other:
             other = []
-
-        # handle other edge case where None is a valid single instance
-        elif not isinstance(other, self.SUPPORTED_VAL_TYPES):
-            # TODO -- do we automatically cast this value to a string?
+        elif isinstance(other, str):
             other = [other]
 
-        # check to make sure each value is a string
-        if not all(isinstance(tag, str) for tag in other):
-            # TODO -- is this necessary? Can we cast values to strings?
-            raise ValueError("All tags must be strings")
-
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)  # type: ignore
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse
     def __eq__(self, other: Union[List[str], str]) -> "FilterExpression":
@@ -214,7 +217,7 @@ class Geo(FilterField):
         FilterOperator.EQ: "@%s:[%f %f %i %s]",
         FilterOperator.NE: "(-@%s:[%f %f %i %s])",
     }
-    SUPPORTED_VAL_TYPES = (GeoSpec,)
+    SUPPORTED_VAL_TYPES = (GeoSpec, type(None))
 
     @check_operator_misuse
     def __eq__(self, other) -> "FilterExpression":
@@ -247,10 +250,7 @@ class Geo(FilterField):
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Geographic filter expression"""
         if not self._value:
-            raise ValueError(
-                f"Operator must be used before calling __str__. Operators are "
-                f"{self.OPERATORS.values()}"
-            )
+            return "*"
 
         return self.OPERATOR_MAP[self._operator] % (
             self._field,
@@ -277,14 +277,7 @@ class Num(FilterField):
         FilterOperator.GE: "@%s:[%i +inf]",
         FilterOperator.LE: "@%s:[-inf %i]",
     }
-    SUPPORTED_VAL_TYPES = (int,)
-
-    def _set_num_value(self, other: int, operator: FilterOperator):
-        if not isinstance(other, self.SUPPORTED_VAL_TYPES):
-            # TODO -- what about floats
-            raise TypeError("Numeric filter value must be an integer.")
-        # Additional checks, e.g., value range, can be placed here
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)  # type: ignore
+    SUPPORTED_VAL_TYPES = (int, float, type(None))
 
     def __eq__(self, other: int) -> "FilterExpression":
         """Create a Numeric equality filter expression
@@ -296,7 +289,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("zipcode") == 90210
         """
-        self._set_num_value(other, FilterOperator.EQ)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
     def __ne__(self, other: int) -> "FilterExpression":
@@ -309,7 +302,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("zipcode") != 90210
         """
-        self._set_num_value(other, FilterOperator.NE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
 
     def __gt__(self, other: int) -> "FilterExpression":
@@ -322,7 +315,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") > 18
         """
-        self._set_num_value(other, FilterOperator.GT)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
 
     def __lt__(self, other: int) -> "FilterExpression":
@@ -335,7 +328,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") < 18
         """
-        self._set_num_value(other, FilterOperator.LT)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
         return FilterExpression(str(self))
 
     def __ge__(self, other: int) -> "FilterExpression":
@@ -348,7 +341,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") >= 18
         """
-        self._set_num_value(other, FilterOperator.GE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
         return FilterExpression(str(self))
 
     def __le__(self, other: int) -> "FilterExpression":
@@ -361,7 +354,7 @@ class Num(FilterField):
             >>> from redisvl.query.filter import Num
             >>> filter = Num("age") <= 18
         """
-        self._set_num_value(other, FilterOperator.LE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
@@ -392,20 +385,7 @@ class Text(FilterField):
         FilterOperator.NE: '(-@%s:"%s")',
         FilterOperator.LIKE: "@%s:(%s)",
     }
-    SUPPORTED_VAL_TYPES = (str,)
-
-    def _set_text_value(self, other: str, operator: FilterOperator):
-        # handle case where other is None/null
-        if other is None:
-            other = ""
-
-        if not isinstance(other, str):
-            # TODO -- should we cast to string?
-            raise TypeError("Text filter value must be a string.")
-
-        # Additional processing or validation can go here
-        # TODO -- is there any other escaping that should be done?
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)  # type: ignore
+    SUPPORTED_VAL_TYPES = (str, type(None))
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
@@ -419,7 +399,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") == "engineer"
         """
-        self._set_text_value(other, FilterOperator.EQ)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
     @check_operator_misuse
@@ -435,7 +415,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") != "engineer"
         """
-        self._set_text_value(other, FilterOperator.NE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
 
     def __mod__(self, other: str) -> "FilterExpression":
@@ -453,7 +433,7 @@ class Text(FilterField):
             >>> filter = Text("job") % "engineer|doctor" # contains either term in field
             >>> filter = Text("job") % "engineer doctor" # contains both terms in field
         """
-        self._set_text_value(other, FilterOperator.LIKE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
