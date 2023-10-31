@@ -95,6 +95,7 @@ def test_text_filter():
     txt_f = Text("text_field") % ""
     assert str(txt_f) == "*"
 
+
 def test_geo_filter():
     geo_f = Geo("geo_field") == GeoRadius(1.0, 2.0, 3, "km")
     assert str(geo_f) == "@geo_field:[1.000000 2.000000 3 km]"

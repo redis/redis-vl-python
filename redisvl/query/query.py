@@ -331,10 +331,12 @@ class RangeQuery(BaseVectorQuery):
         """
         base_query = f"@{self._field}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
 
-        _filter = str(self._filter) if self._filter else self._filter
+        _filter = "*"
+        if self._filter:
+            _filter = str(self._filter)
 
         # Avoid appending a filter that yields '*' as it will cause a syntax error in Redis query language
-        if _filter and _filter != "*":
+        if _filter != "*":
             base_query = (
                 "("
                 + base_query

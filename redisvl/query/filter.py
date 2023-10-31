@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from redisvl.utils.token_escaper import TokenEscaper
 
@@ -97,7 +97,9 @@ class Tag(FilterField):
         """
         super().__init__(field)
 
-    def _set_tag_value(self, other: Union[List[str], Set[str], str], operator: FilterOperator):
+    def _set_tag_value(
+        self, other: Union[List[str], Set[str], str], operator: FilterOperator
+    ):
         # handle case where other is a None/null value
         if other is None:
             other = []
@@ -112,7 +114,7 @@ class Tag(FilterField):
             # TODO -- is this necessary? Can we cast values to strings?
             raise ValueError("All tags must be strings")
 
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)  # type: ignore
 
     @check_operator_misuse
     def __eq__(self, other: Union[List[str], str]) -> "FilterExpression":
@@ -225,7 +227,7 @@ class Geo(FilterField):
             >>> from redisvl.query.filter import Geo, GeoRadius
             >>> filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)  # type: ignore
         return FilterExpression(str(self))
 
     @check_operator_misuse
@@ -239,7 +241,7 @@ class Geo(FilterField):
             >>> from redisvl.query.filter import Geo, GeoRadius
             >>> filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)  # type: ignore
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
@@ -282,7 +284,7 @@ class Num(FilterField):
             # TODO -- what about floats
             raise TypeError("Numeric filter value must be an integer.")
         # Additional checks, e.g., value range, can be placed here
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)  # type: ignore
 
     def __eq__(self, other: int) -> "FilterExpression":
         """Create a Numeric equality filter expression
@@ -376,6 +378,7 @@ class Num(FilterField):
         else:
             return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
 
+
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index."""
 
@@ -402,7 +405,7 @@ class Text(FilterField):
 
         # Additional processing or validation can go here
         # TODO -- is there any other escaping that should be done?
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)  # type: ignore
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
@@ -531,8 +534,9 @@ class FilterExpression:
 
         # if theres an operator, combine expressions accordingly
         if self._operator:
-            if not isinstance(self._left, FilterExpression) \
-                or not isinstance(self._right, FilterExpression):
+            if not isinstance(self._left, FilterExpression) or not isinstance(
+                self._right, FilterExpression
+            ):
                 raise TypeError(
                     "Improper combination of filters. Both left and right should be type FilterExpression"
                 )

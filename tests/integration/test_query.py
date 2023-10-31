@@ -8,7 +8,6 @@ from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
 from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 
-
 data = [
     {
         "user": "john",
@@ -72,28 +71,30 @@ data = [
 @pytest.fixture(scope="module")
 def index():
     # construct a search index from the schema
-    index = SearchIndex.from_dict({
-        "index": {
-            "name": "user_index",
-            "prefix": "v1",
-            "storage_type": "hash",
-        },
-        "fields": {
-            "tag": [{"name": "credit_score"}],
-            "text": [{"name": "job"}],
-            "numeric": [{"name": "age"}],
-            "geo": [{"name": "location"}],
-            "vector": [
-                {
-                    "name": "user_embedding",
-                    "dims": 3,
-                    "distance_metric": "cosine",
-                    "algorithm": "flat",
-                    "datatype": "float32",
-                }
-            ],
-        },
-    })
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": {
+                "tag": [{"name": "credit_score"}],
+                "text": [{"name": "job"}],
+                "numeric": [{"name": "age"}],
+                "geo": [{"name": "location"}],
+                "vector": [
+                    {
+                        "name": "user_embedding",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    }
+                ],
+            },
+        }
+    )
 
     # connect to local redis instance
     index.connect("redis://localhost:6379")
