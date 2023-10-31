@@ -485,7 +485,7 @@ class FilterExpression:
             operator_str = " | " if self._operator == FilterOperator.OR else " "
             # evaluate left and right sides
             _left, _right = str(self._left), str(self._right)
-            # check sides
+            # check sides -- scrubbing for "*"
             if _left == _right == "*":
                 return _left
             if _left == "*" != _right:
