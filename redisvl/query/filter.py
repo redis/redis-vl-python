@@ -98,11 +98,20 @@ class Tag(FilterField):
         super().__init__(field)
 
     def _set_tag_value(self, other: Union[List[str], Set[str], str], operator: FilterOperator):
-        if isinstance(other, self.SUPPORTED_VAL_TYPES):
-            if not all(isinstance(tag, str) for tag in other):
-                raise ValueError("All tags must be strings")
-        else:
+        # handle case where other is a None/null value
+        if other is None:
+            other = []
+
+        # handle other edge case where None is a valid single instance
+        elif not isinstance(other, self.SUPPORTED_VAL_TYPES):
+            # TODO -- do we automatically cast this value to a string?
             other = [other]
+
+        # check to make sure each value is a string
+        if not all(isinstance(tag, str) for tag in other):
+            # TODO -- is this necessary? Can we cast values to strings?
+            raise ValueError("All tags must be strings")
+
         self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse
@@ -139,12 +148,12 @@ class Tag(FilterField):
 
     def __str__(self) -> str:
         """Return the Redis Query syntax for a Tag filter expression"""
-        _tag_value = self._formatted_tag_value
-        if not _tag_value:
-            return '*'
+        if not self._value:
+            return "*"
+
         return self.OPERATOR_MAP[self._operator] % (
             self._field,
-            _tag_value,
+            self._formatted_tag_value,
         )
 
 
@@ -373,11 +382,18 @@ class Text(FilterField):
         FilterOperator.LIKE: "%",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: '@%s:"%s"',
+        FilterOperator.EQ: '@%s:("%s")',
         FilterOperator.NE: '(-@%s:"%s")',
-        FilterOperator.LIKE: "@%s:%s",
+        FilterOperator.LIKE: "@%s:(%s)",
     }
     SUPPORTED_VAL_TYPES = (str,)
+
+    def _set_text_value(self, other: str, operator: FilterOperator):
+        if not isinstance(other, str):
+            raise ValueError("Text filter value must be a string.")
+
+        # Additional processing or validation can go here
+        self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
@@ -390,7 +406,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") == "engineer"
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
+        self._set_text_value(other, FilterOperator.EQ)
         return FilterExpression(str(self))
 
     @check_operator_misuse
@@ -404,7 +420,7 @@ class Text(FilterField):
             >>> from redisvl.query.filter import Text
             >>> filter = Text("job") != "engineer"
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
+        self._set_text_value(other, FilterOperator.NE)
         return FilterExpression(str(self))
 
     def __mod__(self, other: str) -> "FilterExpression":
@@ -415,18 +431,19 @@ class Text(FilterField):
 
         Example:
             >>> from redisvl.query.filter import Text
-            >>> filter = Text("job") % "engineer"
+            >>> filter = Text("job") % "engine*"
         """
-        self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
+        self._set_text_value(other, FilterOperator.LIKE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
         if not self._value:
-            raise ValueError(
-                f"Operator must be used before calling __str__. Operators are "
-                f"{self.OPERATORS.values()}"
-            )
-        return self.OPERATOR_MAP[self._operator] % (self._field, self._value)
+            return "*"
+
+        return self.OPERATOR_MAP[self._operator] % (
+            self._field,
+            self._value,
+        )
 
 
 class FilterExpression:
@@ -479,24 +496,32 @@ class FilterExpression:
     def __or__(self, other) -> "FilterExpression":
         return FilterExpression(operator=FilterOperator.OR, left=self, right=other)
 
+    @staticmethod
+    def format_expression(left, right, operator_str) -> str:
+        _left, _right = str(left), str(right)
+        if _left == _right == "*":
+            return _left
+        if _left == "*" != _right:
+            return _right
+        if _right == "*" != _left:
+            return _left
+        return f"({_left}{operator_str}{_right})"
+
     def __str__(self) -> str:
         # top level check that allows recursive calls to __str__
         if not self._filter and not self._operator:
             raise ValueError("Improperly initialized FilterExpression")
 
+        # if theres an operator, combine expressions accordingly
         if self._operator:
+            if not isinstance(self._left, FilterExpression) \
+                or not isinstance(self._right, FilterExpression):
+                raise TypeError(
+                    "Improper combination of filters. Both left and right should be type FilterExpression"
+                )
+    
             operator_str = " | " if self._operator == FilterOperator.OR else " "
-            # evaluate left and right sides
-            _left, _right = str(self._left), str(self._right)
-            # check sides -- scrubbing for "*"
-            if _left == _right == "*":
-                return _left
-            if _left == "*" != _right:
-                return _right
-            if _right == "*" != _left:
-                return _left
-            else:
-                return f"({_left}{operator_str}{_right})"
+            return self.format_expression(self._left, self._right, operator_str)
 
         # check that base case, the filter is set
         if not self._filter:
