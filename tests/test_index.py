@@ -10,12 +10,20 @@ fields = [TagField("test")]
 
 def test_search_index_get_key():
     si = SearchIndex("my_index", fields=fields)
-    key = si._get_key({"id": "foo"}, "id")
+    key = si.key("foo")
     assert key.startswith(si._prefix)
     assert "foo" in key
-    key = si._get_key({"id": "foo"})
+    key = si._create_key({"id": "foo"})
     assert key.startswith(si._prefix)
     assert "foo" not in key
+
+
+def test_search_index_no_prefix():
+    # specify None as the prefix...
+    si = SearchIndex("my_index", prefix=None, fields=fields)
+    key = si.key("foo")
+    assert not si._prefix
+    assert key == "foo"
 
 
 def test_search_index_client(client):
@@ -29,6 +37,7 @@ def test_search_index_create(client, redis_url):
     si = SearchIndex("my_index", fields=fields)
     si.set_client(client)
     si.create(overwrite=True)
+    assert si.exists()
     assert "my_index" in convert_bytes(si.client.execute_command("FT._LIST"))
 
     s1_2 = SearchIndex.from_existing("my_index", url=redis_url)
@@ -40,7 +49,6 @@ def test_search_index_delete(client):
     si.set_client(client)
     si.create(overwrite=True)
     si.delete()
-
     assert "my_index" not in convert_bytes(si.client.execute_command("FT._LIST"))
 
 
@@ -52,6 +60,26 @@ def test_search_index_load(client):
     si.load(data, key_field="id")
 
     assert convert_bytes(client.hget("rvl:1", "value")) == "test"
+
+
+def test_search_index_load_preprocess(client):
+    si = SearchIndex("my_index", fields=fields)
+    si.set_client(client)
+    si.create(overwrite=True)
+    data = [{"id": "1", "value": "test"}]
+
+    def preprocess(record):
+        record["test"] = "foo"
+        return record
+
+    si.load(data, key_field="id", preprocess=preprocess)
+    assert convert_bytes(client.hget("rvl:1", "test")) == "foo"
+
+    def bad_preprocess(record):
+        return 1
+
+    with pytest.raises(TypeError):
+        si.load(data, key_field="id", preprocess=bad_preprocess)
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 import yaml
@@ -64,48 +64,54 @@ class BaseVectorField(BaseModel):
     algorithm: object = Field(...)
     datatype: str = Field(default="FLOAT32")
     distance_metric: str = Field(default="COSINE")
+    initial_cap: Optional[int] = None
 
     @validator("algorithm", "datatype", "distance_metric", pre=True, each_item=True)
     def uppercase_strings(cls, v):
         return v.upper()
 
+    def as_field(self) -> Dict[str, Any]:
+        field_data = {
+            "TYPE": self.datatype,
+            "DIM": self.dims,
+            "DISTANCE_METRIC": self.distance_metric,
+        }
+        if self.initial_cap is not None:  # Only include it if it's set
+            field_data["INITIAL_CAP"] = self.initial_cap
+        return field_data
+
 
 class FlatVectorField(BaseVectorField):
-    algorithm: object = Literal["FLAT"]
+    algorithm: Literal["FLAT"] = "FLAT"
+    block_size: Optional[int] = None
 
     def as_field(self):
-        return VectorField(
-            self.name,
-            self.algorithm,
-            {
-                "TYPE": self.datatype,
-                "DIM": self.dims,
-                "DISTANCE_METRIC": self.distance_metric,
-            },
-        )
+        # grab base field params and augment with flat-specific fields
+        field_data = super().as_field()
+        if self.block_size is not None:
+            field_data["BLOCK_SIZE"] = self.block_size
+        return VectorField(self.name, self.algorithm, field_data)
 
 
 class HNSWVectorField(BaseVectorField):
-    algorithm: object = Literal["HNSW"]
+    algorithm: Literal["HNSW"] = "HNSW"
     m: int = Field(default=16)
     ef_construction: int = Field(default=200)
     ef_runtime: int = Field(default=10)
-    epsilon: float = Field(default=0.8)
+    epsilon: float = Field(default=0.01)
 
     def as_field(self):
-        return VectorField(
-            self.name,
-            self.algorithm,
+        # grab base field params and augment with hnsw-specific fields
+        field_data = super().as_field()
+        field_data.update(
             {
-                "TYPE": self.datatype,
-                "DIM": self.dims,
-                "DISTANCE_METRIC": self.distance_metric,
                 "M": self.m,
                 "EF_CONSTRUCTION": self.ef_construction,
                 "EF_RUNTIME": self.ef_runtime,
                 "EPSILON": self.epsilon,
-            },
+            }
         )
+        return VectorField(self.name, self.algorithm, field_data)
 
 
 class IndexModel(BaseModel):

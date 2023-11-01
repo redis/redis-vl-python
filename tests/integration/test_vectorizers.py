@@ -10,7 +10,7 @@ from redisvl.vectorize.text import (
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
-def vectorizer(request, openai_key, skip_vectorizer):
+def vectorizer(request, openai_key, gcp_location, gcp_project_id, skip_vectorizer):
     if skip_vectorizer:
         pytest.skip("Skipping vectorizer tests")
     # Here we use actual models for integration test
@@ -25,8 +25,8 @@ def vectorizer(request, openai_key, skip_vectorizer):
         return request.param(
             model="textembedding-gecko",
             api_config={
-                "location": os.environ["GCP_LOCATION"],
-                "project_id": os.environ["GCP_PROJECT_ID"],
+                "location": gcp_location,
+                "project_id": gcp_project_id,
             },
         )
 

@@ -31,6 +31,13 @@ def skip_vectorizer():
 def openai_key():
     return os.getenv("OPENAI_API_KEY")
 
+@pytest.fixture
+def gcp_location():
+    return os.getenv("GCP_LOCATION")
+
+@pytest.fixture
+def gcp_project_id():
+    return os.getenv("GCP_PROJECT_ID")
 
 @pytest.fixture(scope="session")
 def event_loop():

@@ -1,34 +1,10 @@
-import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Pattern
+from typing import TYPE_CHECKING, Any, Dict, List
 
 if TYPE_CHECKING:
     from redis.commands.search.result import Result
     from redis.commands.search.document import Document
 
 import numpy as np
-
-
-class TokenEscaper:
-    """
-    Escape punctuation within an input string. Taken from RedisOM Python.
-    """
-
-    # Characters that RediSearch requires us to escape during queries.
-    # Source: https://redis.io/docs/stack/search/reference/escaping/#the-rules-of-text-field-tokenization
-    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ ]"
-
-    def __init__(self, escape_chars_re: Optional[Pattern] = None):
-        if escape_chars_re:
-            self.escaped_chars_re = escape_chars_re
-        else:
-            self.escaped_chars_re = re.compile(self.DEFAULT_ESCAPED_CHARS)
-
-    def escape(self, value: str) -> str:
-        def escape_symbol(match):
-            value = match.group(0)
-            return f"\\{value}"
-
-        return self.escaped_chars_re.sub(escape_symbol, value)
 
 
 def make_dict(values: List[Any]):

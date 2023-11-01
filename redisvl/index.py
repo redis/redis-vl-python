@@ -1,5 +1,5 @@
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
+from redisvl.query.query import CountQuery
 from redisvl.schema import SchemaModel, read_schema
 from redisvl.utils.connection import (
     check_connected,
@@ -52,7 +53,7 @@ class SearchIndexBase:
         return self._redis_conn  # type: ignore
 
     @check_connected("_redis_conn")
-    def search(self, *args, **kwargs) -> List["Result"]:
+    def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -60,9 +61,9 @@ class SearchIndexBase:
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results
+            Union["Result", Any]: Search results.
         """
-        results: List["Result"] = self._redis_conn.ft(self._name).search(  # type: ignore
+        results = self._redis_conn.ft(self._name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -82,6 +83,8 @@ class SearchIndexBase:
             List[Result]: A list of search results.
         """
         results = self.search(query.query, query_params=query.params)
+        if isinstance(query, CountQuery):
+            return results.total
         return process_results(results)
 
     @classmethod
@@ -148,7 +151,24 @@ class SearchIndexBase:
         """Disconnect from the Redis instance"""
         self._redis_conn = None
 
-    def _get_key(self, record: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def key(self, key_value: str) -> str:
+        """
+        Create a redis key as a combination of an index key prefix (optional) and specified key value.
+        The key value is typically a unique identifier, created at random, or derived from
+        some specified metadata.
+
+        Args:
+            key_value (str): The specified unique identifier for a particular document
+                             indexed in Redis.
+
+        Returns:
+            str: The full Redis key including key prefix and value as a string.
+        """
+        return f"{self._prefix}:{key_value}" if self._prefix else key_value
+
+    def _create_key(
+        self, record: Dict[str, Any], key_field: Optional[str] = None
+    ) -> str:
         """Construct the Redis HASH top level key.
 
         Args:
@@ -163,13 +183,13 @@ class SearchIndexBase:
             ValueError: If the key field is not found in the record.
         """
         if key_field is None:
-            key = uuid4().hex
+            key_value = uuid4().hex
         else:
             try:
-                key = record[key_field]  # type: ignore
+                key_value = record[key_field]  # type: ignore
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {record}")
-        return f"{self._prefix}:{key}" if self._prefix else key
+        return self.key(key_value)
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -197,13 +217,17 @@ class SearchIndexBase:
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         raise NotImplementedError
 
     def load(
-        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+        self,
+        data: Iterable[Dict[str, Any]],
+        key_field: Optional[str] = None,
+        preprocess: Optional[Callable] = None,
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object.
 
@@ -212,8 +236,10 @@ class SearchIndexBase:
                 containing the data to be indexed.
             key_field (Optional[str], optional): A field within the record
                 to use in the Redis hash key.
+            preprocess (Optional[Callabl], optional): An optional preprocessor function
+                that mutates the individual record before writing to redis.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         raise NotImplementedError
@@ -337,7 +363,11 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def load(
-        self, data: Iterable[Dict[str, Any]], key_field: Optional[str] = None, **kwargs
+        self,
+        data: Iterable[Dict[str, Any]],
+        key_field: Optional[str] = None,
+        preprocess: Optional[Callable] = None,
+        **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object.
 
@@ -346,9 +376,16 @@ class SearchIndex(SearchIndexBase):
                 containing the data to be indexed.
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
+            preprocess (Optional[Callable], optional): An optional preprocessor function
+                that mutates the individual record before writing to redis.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist.
+
+        Example:
+            >>> data = [{"foo": "bar"}, {"test": "values"}]
+            >>> def func(record: dict): record["new"]="value";return record
+            >>> index.load(data, preprocess=func)
         """
         # TODO -- should we return a count of the upserts? or some kind of metadata?
         if data:
@@ -360,7 +397,20 @@ class SearchIndex(SearchIndexBase):
             ttl = kwargs.get("ttl")
             with self._redis_conn.pipeline(transaction=False) as pipe:  # type: ignore
                 for record in data:
-                    key = self._get_key(record, key_field)
+                    key = self._create_key(record, key_field)
+                    # Optionally preprocess the record and validate type
+                    if preprocess:
+                        try:
+                            record = preprocess(record)
+                        except Exception as e:
+                            raise RuntimeError(
+                                "Error while preprocessing records on load"
+                            ) from e
+                    if not isinstance(record, dict):
+                        raise TypeError(
+                            f"Individual records must be of type dict, got type {type(record)}"
+                        )
+                    # Write the record to Redis
                     pipe.hset(key, mapping=record)  # type: ignore
                     if ttl:
                         pipe.expire(key, ttl)
@@ -386,8 +436,8 @@ class AsyncSearchIndex(SearchIndexBase):
     Example:
         >>> from redisvl.index import AsyncSearchIndex
         >>> index = AsyncSearchIndex.from_yaml("schema.yaml")
-        >>> index.create(overwrite=True)
-        >>> index.load(data) # data is an iterable of dictionaries
+        >>> await index.create(overwrite=True)
+        >>> await index.load(data) # data is an iterable of dictionaries
     """
 
     def __init__(
@@ -482,7 +532,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Args:
             drop (bool, optional): Delete the documents in the index. Defaults to True.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
@@ -494,6 +544,7 @@ class AsyncSearchIndex(SearchIndexBase):
         data: Iterable[Dict[str, Any]],
         concurrency: int = 10,
         key_field: Optional[str] = None,
+        preprocess: Optional[Callable] = None,
         **kwargs,
     ):
         """Load data into Redis and index using this SearchIndex object.
@@ -504,25 +555,45 @@ class AsyncSearchIndex(SearchIndexBase):
             concurrency (int, optional): Number of concurrent tasks to run. Defaults to 10.
             key_field (Optional[str], optional): A field within the record to
                 use in the Redis hash key.
+            preprocess (Optional[Callable], optional): An optional preprocessor function
+                that mutates the individual record before writing to redis.
 
-        raises:
+        Raises:
             redis.exceptions.ResponseError: If the index does not exist.
+
+        Example:
+            >>> data = [{"foo": "bar"}, {"test": "values"}]
+            >>> def func(record: dict): record["new"]="value";return record
+            >>> await index.load(data, preprocess=func)
         """
         ttl = kwargs.get("ttl")
         semaphore = asyncio.Semaphore(concurrency)
 
         async def _load(record: dict):
             async with semaphore:
-                key = self._get_key(record, key_field)
+                key = self._create_key(record, key_field)
+                # Optionally preprocess the record and validate type
+                if preprocess:
+                    try:
+                        record = preprocess(record)
+                    except Exception as e:
+                        raise RuntimeError(
+                            "Error while preprocessing records on load"
+                        ) from e
+                if not isinstance(record, dict):
+                    raise TypeError(
+                        f"Individual records must be of type dict, got type {type(record)}"
+                    )
+                # Write the record to Redis
                 await self._redis_conn.hset(key, mapping=record)  # type: ignore
                 if ttl:
                     await self._redis_conn.expire(key, ttl)  # type: ignore
 
-        # gather with concurrency
+        # Gather with concurrency
         await asyncio.gather(*[_load(record) for record in data])
 
     @check_connected("_redis_conn")
-    async def search(self, *args, **kwargs) -> List["Result"]:
+    async def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -530,9 +601,11 @@ class AsyncSearchIndex(SearchIndexBase):
         to the redis-py ft.search() method.
 
         Returns:
-            List[Result]: A list of search results.
+            Union["Result", Any]: Search results.
         """
-        results: List["Result"] = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        results = await self._redis_conn.ft(self._name).search(  # type: ignore
+            *args, **kwargs
+        )
         return results
 
     async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -549,6 +622,8 @@ class AsyncSearchIndex(SearchIndexBase):
             List[Result]: A list of search results.
         """
         results = await self.search(query.query, query_params=query.params)
+        if isinstance(query, CountQuery):
+            return results.total
         return process_results(results)
 
     @check_connected("_redis_conn")
