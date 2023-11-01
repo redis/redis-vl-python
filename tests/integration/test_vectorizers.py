@@ -10,7 +10,9 @@ from redisvl.vectorize.text import (
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
-def vectorizer(request, openai_key):
+def vectorizer(request, openai_key, skip_vectorizer):
+    if skip_vectorizer:
+        pytest.skip("Skipping vectorizer tests")
     # Here we use actual models for integration test
     if request.param == HFTextVectorizer:
         return request.param(model="sentence-transformers/all-mpnet-base-v2")

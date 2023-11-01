@@ -23,6 +23,9 @@ def async_client():
 def client():
     return redis
 
+@pytest.fixture
+def skip_vectorizer():
+    return os.getenv("SKIP_VECTORIZER", False)
 
 @pytest.fixture
 def openai_key():
