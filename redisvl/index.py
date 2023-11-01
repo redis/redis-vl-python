@@ -356,11 +356,8 @@ class SearchIndex(SearchIndexBase):
             print("Index already exists, overwriting.")
             self.delete()
 
-        # set storage_type, default to hash
-        storage_type = IndexType.HASH
-        # TODO - enable JSON support
-        # if self._storage.lower() == "json":
-        #     storage_type = IndexType.JSON
+        # Translate the internal storage type to the appropriate index type.
+        index_type = IndexType.JSON if self._storage == Storage.JSON else IndexType.HASH
 
         # Create the index with the specified fields and settings.
         self._redis_conn.ft(self._name).create_index(  # type: ignore
@@ -588,18 +585,8 @@ class AsyncSearchIndex(SearchIndexBase):
             print("Index already exists, overwriting.")
             await self.delete()
 
-        # set storage_type, default to hash
-        storage_type = IndexType.HASH
-        # TODO - enable JSON support
-        # if self._storage.lower() == "json":
-        #     storage_type = IndexType.JSON
-
-        # Delete the existing index if 'overwrite' is True.
-        if self.exists() and overwrite:
-            self.delete()
-
         # Translate the internal storage type to the appropriate index type.
-        index_type = IndexType.HASH if self._storage == "hash" else IndexType.JSON
+        index_type = IndexType.JSON if self._storage == Storage.JSON else IndexType.HASH
 
         # Create Index with proper IndexType
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
@@ -704,7 +691,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         async def _load(record: Dict[str, Any]) -> None:
             async with semaphore:
-                key = await self._create_key(record, key_field)
+                key = self._create_key(record, key_field)
                 if preprocess:
                     record = await self._preprocess(preprocess, record)
                 await self._set(key, record, ttl)
