@@ -67,34 +67,34 @@ data = [
     },
 ]
 
-schema = {
-    "index": {
-        "name": "user_index",
-        "prefix": "v1",
-        "storage_type": "hash",
-    },
-    "fields": {
-        "tag": [{"name": "credit_score"}],
-        "text": [{"name": "job"}],
-        "numeric": [{"name": "age"}],
-        "geo": [{"name": "location"}],
-        "vector": [
-            {
-                "name": "user_embedding",
-                "dims": 3,
-                "distance_metric": "cosine",
-                "algorithm": "flat",
-                "datatype": "float32",
-            }
-        ],
-    },
-}
-
 
 @pytest.fixture(scope="module")
 def index():
     # construct a search index from the schema
-    index = SearchIndex.from_dict(schema)
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": {
+                "tag": [{"name": "credit_score"}],
+                "text": [{"name": "job"}],
+                "numeric": [{"name": "age"}],
+                "geo": [{"name": "location"}],
+                "vector": [
+                    {
+                        "name": "user_embedding",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    }
+                ],
+            },
+        }
+    )
 
     # connect to local redis instance
     index.connect("redis://localhost:6379")
@@ -108,7 +108,7 @@ def index():
     yield index
 
     # clean up
-    index.delete()
+    index.delete(drop=True)
 
 
 def test_simple(index):
@@ -264,6 +264,14 @@ def test_filters(index, query):
     t = Tag("credit_score") == "high"
     filter_test(query, index, t, 4, credit_check="high")
 
+    # Multiple Tags
+    t = Tag("credit_score") == ["high", "low"]
+    filter_test(query, index, t, 6)
+
+    # Empty tag filter
+    t = Tag("credit_score") == []
+    filter_test(query, index, t, 7)
+
     # Simple Numeric Filter
     n1 = Num("age") >= 18
     filter_test(query, index, n1, 4, age_range=(18, 100))
@@ -295,6 +303,19 @@ def test_filters(index, query):
 
     t = Text("job") % "enginee*"
     filter_test(query, index, t, 2)
+
+    t = Text("job") % "engine*|doctor"
+    filter_test(query, index, t, 4)
+
+    t = Text("job") % "%%engine%%"
+    filter_test(query, index, t, 2)
+
+    # Test empty filters
+    t = Text("job") % ""
+    filter_test(query, index, t, 7)
+
+    t = Text("job") % None
+    filter_test(query, index, t, 7)
 
 
 def test_filter_combinations(index, query):

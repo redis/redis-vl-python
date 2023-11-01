@@ -43,6 +43,10 @@ def test_search_index_create(client, redis_url):
     s1_2 = SearchIndex.from_existing("my_index", url=redis_url)
     assert s1_2.info()["index_name"] == si.info()["index_name"]
 
+    si.create(overwrite=False)
+    assert si.exists()
+    assert "my_index" in convert_bytes(si.client.execute_command("FT._LIST"))
+
 
 def test_search_index_delete(client):
     si = SearchIndex("my_index", fields=fields)

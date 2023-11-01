@@ -66,7 +66,7 @@ class BaseVectorField(BaseModel):
     distance_metric: str = Field(default="COSINE")
     initial_cap: Optional[int] = None
 
-    @validator("algorithm", "datatype", "distance_metric", pre=True, each_item=True)
+    @validator("algorithm", "datatype", "distance_metric", pre=True)
     def uppercase_strings(cls, v):
         return v.upper()
 

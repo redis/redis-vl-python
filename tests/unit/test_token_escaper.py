@@ -24,13 +24,7 @@ def escaper():
         # underscores are ignored
         (r"-dashes_and_underscores-", r"\-dashes_and_underscores\-"),
     ],
-    ids=[
-        "brackets",
-        "commas",
-        "quotes",
-        "symbols",
-        "underscores"
-    ]
+    ids=["brackets", "commas", "quotes", "symbols", "underscores"],
 )
 def test_escape_text_chars(escaper, test_input, expected):
     assert escaper.escape(test_input) == expected
@@ -88,8 +82,8 @@ def test_escape_text_chars(escaper, test_input, expected):
         "brackets",
         "braces",
         "non-latin",
-        "emoji"
-    ]
+        "emoji",
+    ],
 )
 def test_escape_tag_like_values(escaper, test_input, expected):
     assert escaper.escape(test_input) == expected
@@ -108,9 +102,7 @@ def test_escape_non_string_input(escaper, test_input):
         ("😊 ❤️ 👍", r"😊\ ❤️\ 👍"),
         # ...other cases as needed...
     ],
-    ids=[
-        "emoji"
-    ]
+    ids=["emoji"],
 )
 def test_escape_unicode_characters(escaper, test_input, expected):
     assert escaper.escape(test_input) == expected

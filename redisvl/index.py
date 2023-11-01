@@ -150,6 +150,7 @@ class SearchIndexBase:
     def disconnect(self):
         """Disconnect from the Redis instance"""
         self._redis_conn = None
+        return self
 
     def key(self, key_value: str) -> str:
         """
@@ -317,6 +318,7 @@ class SearchIndex(SearchIndexBase):
             ValueError: If the REDIS_URL env var is not set and url is not provided.
         """
         self._redis_conn = get_redis_connection(url, **kwargs)
+        return self
 
     @check_connected("_redis_conn")
     def create(self, overwrite: Optional[bool] = False):
@@ -332,14 +334,21 @@ class SearchIndex(SearchIndexBase):
 
         if not self._fields:
             raise ValueError("No fields defined for index")
+        if not isinstance(overwrite, bool):
+            raise TypeError("overwrite must be of type bool")
 
-        if self.exists() and overwrite:
+        if self.exists():
+            if not overwrite:
+                print("Index already exists, not overwriting.")
+                return None
+            print("Index already exists, overwriting.")
             self.delete()
 
         # set storage_type, default to hash
         storage_type = IndexType.HASH
-        if self._storage.lower() == "json":
-            storage_type = IndexType.JSON
+        # TODO - enable JSON support
+        # if self._storage.lower() == "json":
+        #     storage_type = IndexType.JSON
 
         # Create Index
         # will raise correct response error if index already exists
@@ -499,6 +508,7 @@ class AsyncSearchIndex(SearchIndexBase):
             ValueError: If no Redis URL is provided and REDIS_URL env var is not set.
         """
         self._redis_conn = get_async_redis_connection(url, **kwargs)
+        return self
 
     @check_connected("_redis_conn")
     async def create(self, overwrite: Optional[bool] = False):
@@ -510,14 +520,26 @@ class AsyncSearchIndex(SearchIndexBase):
         Raises:
             redis.exceptions.ResponseError: If the index already exists.
         """
-        exists = await self.exists()
-        if exists and overwrite:
+        # TODO - enable async version of this
+        # check_redis_modules_exist(self._redis_conn)
+
+        if not self._fields:
+            raise ValueError("No fields defined for index")
+        if not isinstance(overwrite, bool):
+            raise TypeError("overwrite must be of type bool")
+
+        if await self.exists():
+            if not overwrite:
+                print("Index already exists, not overwriting.")
+                return None
+            print("Index already exists, overwriting.")
             await self.delete()
 
         # set storage_type, default to hash
         storage_type = IndexType.HASH
-        if self._storage.lower() == "json":
-            storage_type = IndexType.JSON
+        # TODO - enable JSON support
+        # if self._storage.lower() == "json":
+        #     storage_type = IndexType.JSON
 
         # Create Index
         await self._redis_conn.ft(self._name).create_index(  # type: ignore
