@@ -25,7 +25,7 @@ def client():
 
 @pytest.fixture
 def skip_vectorizer():
-    return os.getenv("SKIP_VECTORIZER", False)
+    return os.getenv("SKIP_VECTORIZERS", False)
 
 @pytest.fixture
 def openai_key():
