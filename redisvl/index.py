@@ -419,7 +419,8 @@ class SearchIndex(SearchIndexBase):
             TypeError: If the preprocessed record is not a dictionary.
         """
         try:
-            record = preprocess(record)
+            if preprocess:
+                record = preprocess(record)
         except Exception as e:
             raise RuntimeError("Error while preprocessing records on load") from e
 
@@ -427,7 +428,12 @@ class SearchIndex(SearchIndexBase):
             raise TypeError(
                 f"Preprocessed records must be of type dict, got {type(record)}"
             )
-
+        # Need a way to ensure no user Foot Guns when working with JSON over Hash...
+        if self._storage == Storage.JSON:
+            if any([type(val) == bytes for val in record.values()]):
+                raise TypeError(
+                    f"Record values must be valid JSON types, {record}"
+                )
         return record
 
     @check_connected("_redis_conn")
@@ -467,8 +473,7 @@ class SearchIndex(SearchIndexBase):
         with self._redis_conn.pipeline(transaction=False) as pipe:
             for i, record in enumerate(data, start=1):
                 key = self._create_key(record, key_field)
-                if preprocess:
-                    record = self._preprocess(preprocess, record)
+                record = self._preprocess(preprocess, record)
                 self._set(pipe, key, record, ttl)
 
                 # execute mini batches
@@ -650,7 +655,8 @@ class AsyncSearchIndex(SearchIndexBase):
             TypeError: If the preprocessed record is not a dictionary.
         """
         try:
-            record = preprocess(record)
+            if preprocess:
+                record = preprocess(record)
         except Exception as e:
             raise RuntimeError("Error while preprocessing records on load") from e
 
@@ -658,6 +664,13 @@ class AsyncSearchIndex(SearchIndexBase):
             raise TypeError(
                 f"Preprocessed records must be of type dict, got {type(record)}"
             )
+
+        # Need a way to ensure no user Foot Guns when working with JSON over Hash...
+        if self._storage == Storage.JSON:
+            if any([type(val) == bytes for val in record.values()]):
+                raise TypeError(
+                    f"Record values must be valid JSON types, {record}"
+                )
 
         return record
 
@@ -699,8 +712,7 @@ class AsyncSearchIndex(SearchIndexBase):
         async def _load(record: Dict[str, Any]) -> None:
             async with semaphore:
                 key = self._create_key(record, key_field)
-                if preprocess:
-                    record = await self._preprocess(preprocess, record)
+                record = await self._preprocess(preprocess, record)
                 await self._set(key, record, ttl)
 
         tasks = [_load(record) for record in data]
