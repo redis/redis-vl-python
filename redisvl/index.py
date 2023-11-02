@@ -39,13 +39,13 @@ class SearchIndexBase:
         self._storage = self._validate_and_convert_storage(storage_type)
         self._redis_conn: Optional[redis.Redis] = None
 
-
     def _validate_and_convert_storage(self, storage: str) -> Storage:
         try:
             return Storage(storage.lower())
         except ValueError as e:
-            raise e(f"Invalid storage type provided: {storage}. Allowed values are: 'hash', 'json'.")
-
+            raise e(
+                f"Invalid storage type provided: {storage}. Allowed values are: 'hash', 'json'."
+            )
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
@@ -396,11 +396,12 @@ class SearchIndex(SearchIndexBase):
         elif self._storage == Storage.JSON:
             pipe.json.set(key, path="$", obj=record)
         else:
-            raise ValueError(f"Unexpected storage type: {self._storage}. Invalid storage type.")
+            raise ValueError(
+                f"Unexpected storage type: {self._storage}. Invalid storage type."
+            )
 
         if ttl:
             pipe.expire(key, ttl)
-
 
     def _preprocess(self, preprocess: Callable, record: dict) -> dict:
         """
@@ -423,7 +424,9 @@ class SearchIndex(SearchIndexBase):
             raise RuntimeError("Error while preprocessing records on load") from e
 
         if not isinstance(record, dict):
-            raise TypeError(f"Preprocessed records must be of type dict, got {type(record)}")
+            raise TypeError(
+                f"Preprocessed records must be of type dict, got {type(record)}"
+            )
 
         return record
 
@@ -624,7 +627,9 @@ class AsyncSearchIndex(SearchIndexBase):
         elif self._storage == Storage.JSON:
             await self._redis_conn.json.set(key, path="$", obj=record)
         else:
-            raise ValueError(f"Unexpected storage type: {self._storage}. Invalid storage type.")
+            raise ValueError(
+                f"Unexpected storage type: {self._storage}. Invalid storage type."
+            )
 
         if ttl:
             await self._redis_conn.expire(key, ttl)
@@ -650,7 +655,9 @@ class AsyncSearchIndex(SearchIndexBase):
             raise RuntimeError("Error while preprocessing records on load") from e
 
         if not isinstance(record, dict):
-            raise TypeError(f"Preprocessed records must be of type dict, got {type(record)}")
+            raise TypeError(
+                f"Preprocessed records must be of type dict, got {type(record)}"
+            )
 
         return record
 

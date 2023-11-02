@@ -34,7 +34,7 @@ class TextFieldSchema(BaseField):
             no_stem=self.no_stem,
             phonetic_matcher=self.phonetic_matcher,
             sortable=self.sortable,
-            as_name=self.as_name
+            as_name=self.as_name,
         )
 
 
@@ -48,7 +48,7 @@ class TagFieldSchema(BaseField):
             separator=self.separator,
             case_sensitive=self.case_sensitive,
             sortable=self.sortable,
-            as_name=self.as_name
+            as_name=self.as_name,
         )
 
 
@@ -129,6 +129,7 @@ class IndexModel(BaseModel):
     Represents the schema for an index, including its name,
     optional prefix, and the storage type used.
     """
+
     name: str
     prefix: Optional[str] = None
     storage_type: Storage = Storage.HASH
@@ -137,10 +138,10 @@ class IndexModel(BaseModel):
     class Config:
         use_enum_values = True
 
-    @validator('name')
+    @validator("name")
     def name_must_not_be_empty(cls, value):
         if not value:
-            raise ValueError('name must not be empty')
+            raise ValueError("name must not be empty")
         return value
 
 
