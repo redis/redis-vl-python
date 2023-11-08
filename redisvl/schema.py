@@ -119,7 +119,7 @@ class HNSWVectorField(BaseVectorField):
         return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
 
 
-class Storage(Enum):
+class StorageType(Enum):
     HASH = "hash"
     JSON = "json"
 
@@ -131,8 +131,9 @@ class IndexModel(BaseModel):
     """
 
     name: str
-    prefix: Optional[str] = None
-    storage_type: Storage = Storage.HASH
+    prefix: Optional[str] = "rvl"
+    key_separator: Optional[str] = ":"
+    storage_type: StorageType = StorageType.HASH
 
     # Force Pydantic use the value of the enum, not the enum itself
     class Config:
