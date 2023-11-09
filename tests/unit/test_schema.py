@@ -1,3 +1,4 @@
+import pathlib
 import pytest
 from pydantic import ValidationError
 from redis.commands.search.field import (
@@ -15,11 +16,15 @@ from redisvl.schema import (
     MetadataSchemaGenerator,
     NumericFieldSchema,
     SchemaModel,
+    IndexModel,
     TagFieldSchema,
     TextFieldSchema,
     read_schema,
 )
 
+
+def get_base_path():
+    return pathlib.Path(__file__).parent.resolve()
 
 # Utility functions to create schema instances with default values
 def create_text_field_schema(**kwargs):
@@ -154,6 +159,32 @@ def test_schema_model_validation_success():
     assert len(schema_model.fields.text) == 1
 
 
+# Tests for IndexModel
+def test_valid_index_model_defaults():
+    index = IndexModel(name="test_index")
+    assert index.name == "test_index"
+    assert index.prefix == "rvl"
+    assert index.storage_type == "hash"
+    assert index.key_separator == ":"
+
+
+def test_invalid_index_model_empty_name():
+    with pytest.raises(ValidationError):
+        IndexModel(name="")
+
+
+def test_index_model_default_prefix():
+    index = IndexModel(name="test_index", prefix=None, key_separator=None)
+    assert index.prefix == ""
+    assert index.key_separator == ":"
+
+
+def test_index_model_custom_settings():
+    index = IndexModel(name="test_index", prefix="custom", key_separator="_")
+    assert index.prefix == "custom"
+    assert index.key_separator == "_"
+
+
 def test_schema_model_validation_failures():
     # Invalid storage type
     with pytest.raises(ValueError):
@@ -163,6 +194,16 @@ def test_schema_model_validation_failures():
     # Missing required field
     with pytest.raises(ValidationError):
         SchemaModel(index={}, fields={})
+
+
+def test_read_hash_schema():
+    hash_schema = read_schema(str(get_base_path().joinpath("../sample_hash_schema.yaml")))
+    assert hash_schema.index.name == "hash-test"
+
+
+def test_read_json_schema():
+    json_schema = read_schema(str(get_base_path().joinpath("../sample_json_schema.yaml")))
+    assert json_schema.index.name == "json-test"
 
 
 def test_read_schema_file_not_found():
