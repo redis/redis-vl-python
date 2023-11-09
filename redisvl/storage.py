@@ -1,14 +1,12 @@
 import asyncio
 import uuid
-
-from typing import Callable, List, Optional, Dict, Any, Iterable
-
-from redisvl.utils.utils import convert_bytes
-from redisvl.schema import SchemaModel
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
+
+from redisvl.utils.utils import convert_bytes
 
 
 class BaseStorage:
@@ -17,84 +15,148 @@ class BaseStorage:
     DEFAULT_WRITE_CONCURRENCY: int = 20
 
     def __init__(self, prefix: str, key_separator: str):
+        """
+        Initialize the BaseStorage with a specific prefix and key separator for Redis keys.
+
+        Args:
+            prefix (str): The prefix to prepend to each Redis key.
+            key_separator (str): The separator to use between the prefix and the key value.
+        """
         self._prefix = prefix
         self._key_separator = key_separator
 
     @staticmethod
-    def _key(
-        key_value: str,
-        prefix: str = "",
-        key_separator: str = ""
-    ) -> str:
+    def _key(key_value: str, prefix: str = "", key_separator: str = "") -> str:
         """
-        Create a redis key as a combination of an index key prefix (optional) and specified key value.
-        The key value is typically a unique identifier, created at random, or derived from
-        some specified metadata.
+        Create a Redis key using a combination of a prefix, separator, and the key value.
 
         Args:
-            key_value (str): The specified unique identifier for a particular document
-                             indexed in Redis.
+            key_value (str): The unique identifier for the Redis entry.
+            prefix (str): An optional prefix to append before the key value.
+            key_separator (str): An optional separator to insert between prefix and key value.
 
         Returns:
-            str: The full Redis key including key prefix and value as a string.
+            str: The fully formed Redis key.
         """
         return f"{prefix}{key_separator}{key_value}"
 
-    def _create_key(
-        self, record: Dict[str, Any], key_field: Optional[str] = None
-    ) -> str:
-        """Construct the Redis top level key.
+    def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
+        """
+        Construct a Redis key for a given object, optionally using a specified field from the object as the key.
 
         Args:
-            record (Dict[str, Any]): A dictionary containing the record to be indexed.
-            key_field (Optional[str], optional): A field within the record
-                to use in the Redis key.
+            obj (Dict[str, Any]): The object from which to construct the key.
+            key_field (Optional[str]): The field to use as the key, if provided.
 
         Returns:
-            str: The key to be used for a given record in Redis.
+            str: The constructed Redis key for the object.
 
         Raises:
-            ValueError: If the key field is not found in the record.
+            ValueError: If the key_field is not found in the object.
         """
         if key_field is None:
             key_value = uuid.uuid4().hex
         else:
             try:
-                key_value = record[key_field]  # type: ignore
+                key_value = obj[key_field]  # type: ignore
             except KeyError:
-                raise ValueError(f"Key field {key_field} not found in record {record}")
+                raise ValueError(f"Key field {key_field} not found in record {obj}")
 
         return self._key(key_value, prefix=self._prefix, sep=self._key_separator)
 
-    def _preprocess(self, preprocess: Callable, obj: Any) -> Dict[str, Any]:
+    @staticmethod
+    def _preprocess(preprocess: Callable, obj: Any) -> Dict[str, Any]:
+        """
+        Apply a preprocessing function to the object if provided.
+
+        Args:
+            preprocess (Callable): Function to process the object.
+            obj (Any): Object to preprocess.
+
+        Returns:
+            Dict[str, Any]: Processed object as a dictionary.
+        """
         # optionally preprocess object
         if preprocess:
             obj = preprocess(obj)
         return obj
 
-    async def _apreprocess(self, preprocess: Callable, obj: Any) -> Dict[str, Any]:
+    @staticmethod
+    async def _apreprocess(preprocess: Callable, obj: Any) -> Dict[str, Any]:
+        """
+        Asynchronously apply a preprocessing function to the object if provided.
+
+        Args:
+            preprocess (Callable): Async function to process the object.
+            obj (Any): Object to preprocess.
+
+        Returns:
+            Dict[str, Any]: Processed object as a dictionary.
+        """
         # optionally async preprocess object
         if preprocess:
             obj = await preprocess(obj)
         return obj
 
-    def _validate(self, obj: dict):
+    def _validate(self, obj: Dict[str, Any]):
+        """
+        Validate the object before writing to Redis. This method should be implemented by subclasses.
+
+        Args:
+            obj (Dict[str, Any]): The object to validate.
+        """
         raise NotImplementedError
 
-    def _set(client, key: str, obj: dict):
-        """Storage type-specific set operator."""
+    @staticmethod
+    def _set(client: Redis, key: str, obj: Dict[str, Any]):
+        """
+        Synchronously set the value in Redis for the given key.
+
+        Args:
+            client (Redis): The Redis client instance.
+            key (str): The key under which to store the object.
+            obj (Dict[str, Any]): The object to store in Redis.
+        """
         raise NotImplementedError
 
-    async def _aset(client, key: str, obj: dict):
-        """Storage type-specific async set operator."""
+    @staticmethod
+    async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
+        """
+        Asynchronously set the value in Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key under which to store the object.
+            obj (Dict[str, Any]): The object to store in Redis.
+        """
         raise NotImplementedError
 
-    def _get(client, key: str):
-        """Storage type-specific get operator."""
+    @staticmethod
+    def _get(client: Redis, key: str) -> Dict[str, Any]:
+        """
+        Synchronously get the value from Redis for the given key.
+
+        Args:
+            client (Redis): The Redis client instance.
+            key (str): The key for which to retrieve the object.
+
+        Returns:
+            Dict[str, Any]: The retrieved object from Redis.
+        """
         raise NotImplementedError
 
-    async def _aget(client, key: str):
-        """Storage type-specific get operator."""
+    @staticmethod
+    async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
+        """
+        Asynchronously get the value from Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key for which to retrieve the object.
+
+        Returns:
+            Dict[str, Any]: The retrieved object from Redis.
+        """
         raise NotImplementedError
 
     def write(
@@ -274,58 +336,154 @@ class BaseStorage:
 class HashStorage(BaseStorage):
     type: IndexType = IndexType.HASH
 
-    def __init__(self, schema: SchemaModel):
-        """
-        Initialize the HashStorage with a schema model.
+    def __init__(self, prefix: str, key_separator: str):
+        """ Initialize the HashStorage.
 
         Args:
-            schema (SchemaModel): A schema model that defines the structure and rules for stored data.
+            prefix (str): The key prefix appended before the separator and value.
+            separator (str): The key separator used to join the prefix and value.
         """
+        super().__init__(prefix, key_separator)
 
-        super().__init__(schema)
+    def _validate(self, obj: Dict[str, Any]):
+        """
+        Validate that the given object is a dictionary, suitable for storage as a Redis hash.
 
-    def _validate(self, obj: dict):
+        Args:
+            obj (Dict[str, Any]): The object to validate.
+
+        Raises:
+            TypeError: If the object is not a dictionary.
+        """
         if not isinstance(obj, dict):
             raise TypeError("Object must be a dictionary.")
 
+    @staticmethod
+    def _set(client: Redis, key: str, obj: Dict[str, Any]):
+        """
+        Synchronously set a hash value in Redis for the given key.
 
-    def _set(client, key: str, obj: dict):
-        client.hset(key, mapping=obj)
+        Args:
+            client (Redis): The Redis client instance.
+            key (str): The key under which to store the hash.
+            obj (Dict[str, Any]): The hash to store in Redis.
+        """
+        client.hset(name=key, mapping=obj)
 
-    async def _aset(client, key: str, obj: dict):
-        await client.hset(key, mapping=obj)
+    @staticmethod
+    async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
+        """
+        Asynchronously set a hash value in Redis for the given key.
 
-    def _get(client, key: str):
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key under which to store the hash.
+            obj (Dict[str, Any]): The hash to store in Redis.
+        """
+        await client.hset(name=key, mapping=obj)
+
+    @staticmethod
+    def _get(client: Redis, key: str) -> Dict[str, Any]:
+        """
+        Synchronously retrieve a hash value from Redis for the given key.
+
+        Args:
+            client (Redis): The Redis client instance.
+            key (str): The key for which to retrieve the hash.
+
+        Returns:
+            Dict[str, Any]: The retrieved hash from Redis.
+        """
         return client.hgetall(key)
 
-    async def _aget(client, key: str):
+    @staticmethod
+    async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
+        """
+        Asynchronously retrieve a hash value from Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key for which to retrieve the hash.
+
+        Returns:
+            Dict[str, Any]: The retrieved hash from Redis.
+        """
         return await client.hgetall(key)
 
 
 class JsonStorage(BaseStorage):
     type: IndexType = IndexType.JSON
 
-    def __init__(self, schema: SchemaModel):
-        """
-        Initialize the JsonStorage with a schema model.
+    def __init__(self, prefix: str, key_separator: str):
+        """ Initialize the JsonStorage.
 
         Args:
-            schema (SchemaModel): A schema model that defines the structure and rules for stored data.
+            prefix (str): The key prefix appended before the separator and value.
+            separator (str): The key separator used to join the prefix and value.
         """
-        super().__init__(schema)
+        super().__init__(prefix, key_separator)
 
-    def _validate(self, obj: dict):
+    def _validate(self, obj: Dict[str, Any]):
+        """
+        Validate that the given object is a dictionary, suitable for JSON serialization.
+
+        Args:
+            obj (Dict[str, Any]): The object to validate.
+
+        Raises:
+            TypeError: If the object is not a dictionary.
+        """
         if not isinstance(obj, dict):
             raise TypeError("Object must be a dictionary.")
 
-    def _set(client, key: str, obj: dict):
+    @staticmethod
+    def _set(client: Redis, key: str, obj: Dict[str, Any]):
+        """
+        Synchronously set a JSON obj in Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key under which to store the JSON obj.
+            obj (Dict[str, Any]): The JSON obj to store in Redis.
+        """
         client.json().set(key, "$", obj)
 
-    async def _aset(client, key: str, obj: dict):
+    @staticmethod
+    async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
+        """
+        Asynchronously set a JSON obj in Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key under which to store the JSON obj.
+            obj (Dict[str, Any]): The JSON obj to store in Redis.
+        """
         await client.json().set(key, "$", obj)
 
-    def _get(client, key: str):
+    @staticmethod
+    def _get(client: Redis, key: str) -> Dict[str, Any]:
+        """
+        Synchronously retrieve a JSON obj from Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key for which to retrieve the JSON obj.
+
+        Returns:
+            Dict[str, Any]: The retrieved JSON obj from Redis.
+        """
         return client.json().get(key)
 
-    async def _aget(client, key: str):
-       return await client.json().get(key)
+    @staticmethod
+    async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
+        """
+        Asynchronously retrieve a JSON obj from Redis for the given key.
+
+        Args:
+            client (AsyncRedis): The Redis client instance.
+            key (str): The key for which to retrieve the JSON obj.
+
+        Returns:
+            Dict[str, Any]: The retrieved JSON obj from Redis.
+        """
+        return await client.json().get(key)
