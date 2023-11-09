@@ -137,9 +137,10 @@ class SemanticCache(BaseLLMCache):
     def clear(self):
         """Clear the LLMCache of all keys in the index"""
         client = self._index.client
+        prefix = self._index.prefix
         if client:
             with client.pipeline(transaction=False) as pipe:
-                for key in client.scan_iter(match=f"{self._index._prefix}:*"):
+                for key in client.scan_iter(match=f"{prefix}:*"):
                     pipe.delete(key)
                 pipe.execute()
         else:

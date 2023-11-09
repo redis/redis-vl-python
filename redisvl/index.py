@@ -28,12 +28,14 @@ class SearchIndexBase:
     def __init__(
         self,
         name: str,
-        prefix: str,
-        storage_type: str,
-        key_separator: str,
+        prefix: str = "rvl",
+        storage_type: str = "hash",
+        key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
     ):
+        # init empty redis conn
         self._redis_conn: Optional[redis.Redis] = None
+
         # configure index and storage specs
         self._index = IndexModel(
             name=name,
@@ -47,10 +49,10 @@ class SearchIndexBase:
     @staticmethod
     def _create_storage(index: IndexModel) -> BaseStorage:
         """Create and return a storage instance based on the provided storage type."""
-        if index.storage_type == StorageType.HASH:
-            return HashStorage.from_index_model(index)
-        elif index.storage_type == StorageType.JSON:
-            return JsonStorage.from_index_model(index)
+        if index.storage_type == StorageType.HASH.value:
+            return HashStorage(prefix=index.prefix, key_separator=index.key_separator)
+        elif index.storage_type == StorageType.JSON.value:
+            return JsonStorage(prefix=index.prefix, key_separator=index.key_separator)
         else:
             raise ValueError(f"Invalid storage type provided: {index.storage_type}")
 
@@ -153,7 +155,7 @@ class SearchIndexBase:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(key_value)
+        return self._storage._key(key_value, self._index.prefix, self._index.key_separator)
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -190,10 +192,10 @@ class SearchIndex(SearchIndexBase):
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        prefix: Optional[str] = None,
-        storage_type: Optional[str] = None,
-        key_separator: Optional[str] = None,
+        name: str,
+        prefix: str = "rvl",
+        storage_type: str = "hash",
+        key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
     ):
         super().__init__(name, prefix, storage_type, key_separator, fields)
@@ -414,10 +416,10 @@ class AsyncSearchIndex(SearchIndexBase):
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        prefix: Optional[str] = None,
-        storage_type: Optional[str] = None,
-        key_separator: Optional[str] = None,
+        name: str,
+        prefix: str = "rvl",
+        storage_type: str = "hash",
+        key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
     ):
         super().__init__(name, prefix, storage_type, key_separator, fields)

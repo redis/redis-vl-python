@@ -26,19 +26,22 @@ class BaseStorage:
         self._key_separator = key_separator
 
     @staticmethod
-    def _key(key_value: str, prefix: str = "", key_separator: str = "") -> str:
+    def _key(key_value: str, prefix: str, key_separator: str) -> str:
         """
         Create a Redis key using a combination of a prefix, separator, and the key value.
 
         Args:
             key_value (str): The unique identifier for the Redis entry.
-            prefix (str): An optional prefix to append before the key value.
-            key_separator (str): An optional separator to insert between prefix and key value.
+            prefix (str): A prefix to append before the key value.
+            key_separator (str): A separator to insert between prefix and key value.
 
         Returns:
             str: The fully formed Redis key.
         """
-        return f"{prefix}{key_separator}{key_value}"
+        if not prefix:
+            return key_value
+        else:
+            return f"{prefix}{key_separator}{key_value}"
 
     def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
         """
@@ -62,7 +65,7 @@ class BaseStorage:
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {obj}")
 
-        return self._key(key_value, prefix=self._prefix, sep=self._key_separator)
+        return self._key(key_value, prefix=self._prefix, key_separator=self._key_separator)
 
     @staticmethod
     def _preprocess(preprocess: Callable, obj: Any) -> Dict[str, Any]:
