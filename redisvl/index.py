@@ -9,7 +9,7 @@ import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import CountQuery
-from redisvl.schema import SchemaModel, IndexModel, FieldsModel, StorageType, read_schema
+from redisvl.schema import SchemaModel, IndexModel, StorageType, read_schema
 from redisvl.storage import HashStorage, JsonStorage, BaseStorage
 from redisvl.utils.connection import (
     check_connected,
