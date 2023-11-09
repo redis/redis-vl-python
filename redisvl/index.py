@@ -9,8 +9,8 @@ import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import CountQuery
-from redisvl.schema import SchemaModel, IndexModel, StorageType, read_schema
-from redisvl.storage import HashStorage, JsonStorage, BaseStorage
+from redisvl.schema import IndexModel, SchemaModel, StorageType, read_schema
+from redisvl.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.utils.connection import (
     check_connected,
     get_async_redis_connection,
@@ -41,7 +41,7 @@ class SearchIndexBase:
             name=name,
             prefix=prefix,
             storage_type=storage_type,
-            key_separator=key_separator
+            key_separator=key_separator,
         )
         self._storage = self._create_storage(self._index)
         self._fields = fields
@@ -155,7 +155,9 @@ class SearchIndexBase:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(key_value, self._index.prefix, self._index.key_separator)
+        return self._storage._key(
+            key_value, self._index.prefix, self._index.key_separator
+        )
 
     @check_connected("_redis_conn")
     def info(self) -> Dict[str, Any]:
@@ -286,8 +288,7 @@ class SearchIndex(SearchIndexBase):
         self._redis_conn.ft(self._index.name).create_index(  # type: ignore
             fields=self._fields,
             definition=IndexDefinition(
-                prefix=[self._index.prefix],
-                index_type=self._storage.type
+                prefix=[self._index.prefix], index_type=self._storage.type
             ),
         )
 
@@ -313,7 +314,7 @@ class SearchIndex(SearchIndexBase):
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Load a batch of objects to Redis.
@@ -397,7 +398,7 @@ class SearchIndex(SearchIndexBase):
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            self._redis_conn.ft(self._index.name).info() # type: ignore
+            self._redis_conn.ft(self._index.name).info()  # type: ignore
         )
 
 
@@ -508,8 +509,7 @@ class AsyncSearchIndex(SearchIndexBase):
         await self._redis_conn.ft(self._index.name).create_index(  # type: ignore
             fields=self._fields,
             definition=IndexDefinition(
-                prefix=[self._index.prefix],
-                index_type=self._storage.type
+                prefix=[self._index.prefix], index_type=self._storage.type
             ),
         )
 
@@ -535,7 +535,7 @@ class AsyncSearchIndex(SearchIndexBase):
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Asynchronously load objects to Redis with concurrency control.
@@ -564,7 +564,7 @@ class AsyncSearchIndex(SearchIndexBase):
             keys=keys,
             ttl=ttl,
             preprocess=preprocess,
-            concurrency=concurrency
+            concurrency=concurrency,
         )
 
     @check_connected("_redis_conn")
@@ -619,5 +619,5 @@ class AsyncSearchIndex(SearchIndexBase):
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            await self._redis_conn.ft(self._index.name).info() # type: ignore
+            await self._redis_conn.ft(self._index.name).info()  # type: ignore
         )

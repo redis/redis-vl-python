@@ -65,7 +65,9 @@ class BaseStorage:
             except KeyError:
                 raise ValueError(f"Key field {key_field} not found in record {obj}")
 
-        return self._key(key_value, prefix=self._prefix, key_separator=self._key_separator)
+        return self._key(
+            key_value, prefix=self._prefix, key_separator=self._key_separator
+        )
 
     @staticmethod
     def _preprocess(preprocess: Callable, obj: Any) -> Dict[str, Any]:
@@ -170,7 +172,7 @@ class BaseStorage:
         keys: Optional[Iterable[str]] = None,
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = None
+        batch_size: Optional[int] = None,
     ):
         """
         Write a batch of objects to Redis as hash entries.
@@ -191,13 +193,19 @@ class BaseStorage:
             raise ValueError("Length of keys does not match the length of objects")
 
         if batch_size is None:
-            batch_size = self.DEFAULT_BATCH_SIZE  # Use default or calculate based on the input data
+            batch_size = (
+                self.DEFAULT_BATCH_SIZE
+            )  # Use default or calculate based on the input data
 
         keys_iterator = iter(keys) if keys else None
 
         with redis_client.pipeline(transaction=False) as pipe:
             for i, obj in enumerate(objects, start=1):
-                key = next(keys_iterator) if keys_iterator else self._create_key(obj, key_field)
+                key = (
+                    next(keys_iterator)
+                    if keys_iterator
+                    else self._create_key(obj, key_field)
+                )
                 obj = self._preprocess(preprocess, obj)
                 self._validate(obj)
                 self._set(pipe, key, obj)
@@ -255,17 +263,16 @@ class BaseStorage:
                     await redis_client.expire(key)
 
         if keys_iterator:
-            tasks = [asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects]
+            tasks = [
+                asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects
+            ]
         else:
             tasks = [asyncio.create_task(_load(obj)) for obj in objects]
 
         await asyncio.gather(*tasks)
 
     def get(
-        self,
-        redis_client: Redis,
-        keys: Iterable[str],
-        batch_size: Optional[int] = None
+        self, redis_client: Redis, keys: Iterable[str], batch_size: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Retrieve objects from Redis by keys.
 
@@ -285,7 +292,9 @@ class BaseStorage:
             return []
 
         if batch_size is None:
-            batch_size = self.DEFAULT_BATCH_SIZE  # Use default or calculate based on the input data
+            batch_size = (
+                self.DEFAULT_BATCH_SIZE
+            )  # Use default or calculate based on the input data
 
         # Use a pipeline to batch the retrieval
         with redis_client.pipeline(transaction=False) as pipe:
@@ -340,7 +349,7 @@ class HashStorage(BaseStorage):
     type: IndexType = IndexType.HASH
 
     def __init__(self, prefix: str, key_separator: str):
-        """ Initialize the HashStorage.
+        """Initialize the HashStorage.
 
         Args:
             prefix (str): The key prefix appended before the separator and value.
@@ -418,7 +427,7 @@ class JsonStorage(BaseStorage):
     type: IndexType = IndexType.JSON
 
     def __init__(self, prefix: str, key_separator: str):
-        """ Initialize the JsonStorage.
+        """Initialize the JsonStorage.
 
         Args:
             prefix (str): The key prefix appended before the separator and value.

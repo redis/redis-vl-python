@@ -155,6 +155,7 @@ class IndexModel(BaseModel):
         # If key separator is None we need to fall back to a ":"
         return v if v is not None else ":"
 
+
 class FieldsModel(BaseModel):
     tag: Optional[List[TagFieldSchema]] = None
     text: Optional[List[TextFieldSchema]] = None
