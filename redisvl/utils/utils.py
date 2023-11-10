@@ -1,10 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List
-
-if TYPE_CHECKING:
-    from redis.commands.search.result import Result
-    from redis.commands.search.document import Document
+from typing import Any, List
 
 import numpy as np
+
 
 
 def make_dict(values: List[Any]):
@@ -60,15 +57,3 @@ def check_redis_modules_exist(client) -> None:
 def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
     """Convert a list of floats into a numpy byte string."""
     return np.array(array).astype(dtype).tobytes()
-
-
-def process_results(results: "Result") -> List[Dict[str, Any]]:
-    """Convert a list of search Result objects into a list of document dicts"""
-
-    def _process(doc: "Document") -> Dict[str, Any]:
-        d = doc.__dict__
-        if "payload" in d:
-            del d["payload"]
-        return d
-
-    return [_process(doc) for doc in results.docs]

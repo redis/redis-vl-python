@@ -1,14 +1,16 @@
+import json
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
+    from redis.commands.search.document import Document
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
 
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.query.query import CountQuery
+from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.schema import IndexModel, SchemaModel, StorageType, read_schema
 from redisvl.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.utils.connection import (
@@ -20,8 +22,54 @@ from redisvl.utils.utils import (
     check_redis_modules_exist,
     convert_bytes,
     make_dict,
-    process_results,
 )
+
+
+def process_results(results: "Result", query: BaseQuery, storage_type: str) -> List[Dict[str, Any]]:
+    """
+    Convert a list of search Result objects into a list of document dictionaries.
+
+    This function processes results from Redis, handling different storage types
+    and query types. For JSON storage with empty return fields, it unpacks the JSON object
+    while retaining the document ID. The 'payload' field is also removed from all
+    documents for consistency.
+
+    Args:
+        results (Result): The search results from Redis.
+        query (BaseQuery): The query object used for the search.
+        storage_type (str): The storage type of the search index (e.g., json or hash).
+
+    Returns:
+        List[Dict[str, Any]]: A list of processed document dictionaries.
+    """
+    # Handle count queries
+    if isinstance(query, CountQuery):
+        return results.total
+
+    # Determine if unpacking JSON is needed
+    unpack_json = (storage_type == StorageType.JSON.value) and \
+                  isinstance(query, FilterQuery) and \
+                  not query._return_fields
+
+   # Process records
+    def _process(doc: "Document") -> Dict[str, Any]:
+        doc_dict = doc.__dict__
+
+        # Unpack and Project JSON fields properly
+        if unpack_json and "json" in doc_dict:
+            json_data = doc_dict.get("json", {})
+            if isinstance(json_data, str):
+                json_data = json.loads(json_data)
+            if isinstance(json_data, dict):
+                return {"id": doc_dict.get("id"), **json_data}
+            raise ValueError(f"Unable to parse json data from Redis {json_data}")
+
+        # Remove 'payload' if present
+        doc_dict.pop("payload", None)
+
+        return doc_dict
+
+    return [_process(doc) for doc in results.docs]
 
 
 class SearchIndexBase:
@@ -65,7 +113,7 @@ class SearchIndexBase:
 
     @property
     def storage_type(self) -> str:
-        return str(self._index.storage_type)
+        return self._index.storage_type
 
     @property
     def name(self) -> str:
@@ -376,9 +424,10 @@ class SearchIndex(SearchIndexBase):
             List[Result]: A list of search results.
         """
         results = self.search(query.query, query_params=query.params)
-        if isinstance(query, CountQuery):
-            return results.total
-        return process_results(results)
+        # post process the results
+        return process_results(
+            results, query=query, storage_type=self._index.storage_type
+        )
 
     @check_connected("_redis_conn")
     def exists(self) -> bool:
@@ -597,9 +646,10 @@ class AsyncSearchIndex(SearchIndexBase):
             List[Result]: A list of search results.
         """
         results = await self.search(query.query, query_params=query.params)
-        if isinstance(query, CountQuery):
-            return results.total
-        return process_results(results)
+        # post process the results
+        return process_results(
+            results, query=query, storage_type=self._index.storage_type
+        )
 
     @check_connected("_redis_conn")
     async def exists(self) -> bool:
