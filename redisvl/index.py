@@ -108,33 +108,34 @@ class SearchIndexBase:
         self._redis_conn = client
 
     @property
-    def storage(self) -> BaseStorage:
-        return self._storage
-
-    @property
-    def storage_type(self) -> str:
-        return self._index.storage_type
-
-    @property
     def name(self) -> str:
+        """The name of the Redis search index."""
         return self._index.name
 
     @property
     def prefix(self) -> str:
+        """The optional key prefix that comes before a unique key value in forming a Redis key."""
         return self._index.prefix
 
     @property
     def key_separator(self) -> str:
+        """The optional separator between a defined prefix and key value in forming a Redis key."""
         return self._index.key_separator
+
+    @property
+    def storage(self) -> BaseStorage:
+        """The Storage class that handles all upserts and reads to/from the Redis instances."""
+        return self._storage
+
+    @property
+    def storage_type(self) -> str:
+        """The underlying storage type for the search index: hash or json."""
+        return self._index.storage_type
 
     @property
     @check_connected("_redis_conn")
     def client(self) -> redis.Redis:
-        """The redis-py client object.
-
-        Returns:
-            redis.Redis: The redis-py client object
-        """
+        """The underlying redis-py client object."""
         return self._redis_conn  # type: ignore
 
     @classmethod
