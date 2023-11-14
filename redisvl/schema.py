@@ -244,8 +244,8 @@ class MetadataSchemaGenerator:
                 "tag": TagFieldSchema,
                 "numeric": NumericFieldSchema,
             }.get(
-                field_type
-            )  # type: ignore
+                field_type  # type: ignore
+            )
 
             if field_class:
                 result[field_type].append(field_class(name=key).dict(exclude_none=True))  # type: ignore
