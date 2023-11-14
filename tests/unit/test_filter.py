@@ -98,6 +98,9 @@ def test_numeric_filter():
     nf = Num("numeric_field") <= 5
     assert str(nf) == "@numeric_field:[-inf 5]"
 
+    nf = Num("numeric_field") > 5.5
+    assert str(nf) == "@numeric_field:[-inf 5.5]"
+
     nf = Num("numeric_field") <= None
     assert str(nf) == "*"
 

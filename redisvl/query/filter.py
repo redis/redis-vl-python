@@ -214,8 +214,8 @@ class Geo(FilterField):
         FilterOperator.NE: "!=",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%f %f %i %s]",
-        FilterOperator.NE: "(-@%s:[%f %f %i %s])",
+        FilterOperator.EQ: "@%s:[%s %s %i %s]",
+        FilterOperator.NE: "(-@%s:[%s %s %i %s])",
     }
     SUPPORTED_VAL_TYPES = (GeoSpec, type(None))
 
@@ -270,12 +270,12 @@ class Num(FilterField):
         FilterOperator.GE: ">=",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%i %i]",
-        FilterOperator.NE: "(-@%s:[%i %i])",
-        FilterOperator.GT: "@%s:[(%i +inf]",
-        FilterOperator.LT: "@%s:[-inf (%i]",
-        FilterOperator.GE: "@%s:[%i +inf]",
-        FilterOperator.LE: "@%s:[-inf %i]",
+        FilterOperator.EQ: "@%s:[%s %s]",
+        FilterOperator.NE: "(-@%s:[%s %s])",
+        FilterOperator.GT: "@%s:[(%s +inf]",
+        FilterOperator.LT: "@%s:[-inf (%s]",
+        FilterOperator.GE: "@%s:[%s +inf]",
+        FilterOperator.LE: "@%s:[-inf %s]",
     }
     SUPPORTED_VAL_TYPES = (int, float, type(None))
 
