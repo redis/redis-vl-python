@@ -12,6 +12,7 @@ from redisvl.schema import (
     FlatVectorField,
     GeoFieldSchema,
     HNSWVectorField,
+    MetadataSchemaGenerator,
     NumericFieldSchema,
     SchemaModel,
     TagFieldSchema,
@@ -167,3 +168,71 @@ def test_schema_model_validation_failures():
 def test_read_schema_file_not_found():
     with pytest.raises(FileNotFoundError):
         read_schema("non_existent_file.yaml")
+
+
+# Fixture for the generator instance
+@pytest.fixture
+def schema_generator():
+    return MetadataSchemaGenerator()
+
+
+# Test cases for _test_numeric
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (123, True),
+        ("123", True),
+        ("123.45", True),
+        ("abc", False),
+        (None, False),
+        ("", False),
+    ],
+)
+def test_test_numeric(schema_generator, value, expected):
+    assert schema_generator._test_numeric(value) == expected
+
+
+# Test cases for _infer_type
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (123, "numeric"),
+        ("123", "numeric"),
+        (["tag1", "tag2"], "tag"),
+        ("text", "text"),
+        (None, None),
+        ("", None),
+        ({"key": "value"}, "unknown"),
+    ],
+)
+def test_infer_type(schema_generator, value, expected):
+    assert schema_generator._infer_type(value) == expected
+
+
+# Test cases for generate
+@pytest.mark.parametrize(
+    "metadata, strict, expected",
+    [
+        (
+            {"name": "John", "age": 30, "tags": ["friend", "colleague"]},
+            False,
+            {
+                "text": [TextFieldSchema(name="name").dict(exclude_none=True)],
+                "numeric": [NumericFieldSchema(name="age").dict(exclude_none=True)],
+                "tag": [TagFieldSchema(name="tags").dict(exclude_none=True)],
+            },
+        ),
+        (
+            {"invalid": {"nested": "dict"}},
+            False,
+            {"text": [], "numeric": [], "tag": []},
+        ),
+        ({"invalid": {"nested": "dict"}}, True, pytest.raises(ValueError)),
+    ],
+)
+def test_generate(schema_generator, metadata, strict, expected):
+    if not isinstance(expected, dict):
+        with expected:
+            schema_generator.generate(metadata, strict)
+    else:
+        assert schema_generator.generate(metadata, strict) == expected

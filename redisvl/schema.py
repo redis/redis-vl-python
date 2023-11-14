@@ -195,7 +195,9 @@ class MetadataSchemaGenerator:
             return None
         elif self._test_numeric(value):
             return "numeric"
-        elif isinstance(value, (list, set, tuple)) and all(isinstance(v, str) for v in value):
+        elif isinstance(value, (list, set, tuple)) and all(
+            isinstance(v, str) for v in value
+        ):
             return "tag"
         elif isinstance(value, str):
             return "text"
@@ -203,9 +205,7 @@ class MetadataSchemaGenerator:
             return "unknown"
 
     def generate(
-        self,
-        metadata: Dict[str, Any],
-        strict: Optional[bool] = False
+        self, metadata: Dict[str, Any], strict: Optional[bool] = False
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Generate a schema from the provided metadata.
@@ -223,11 +223,7 @@ class MetadataSchemaGenerator:
         Raises:
             ValueError: If the force parameter is True and a field's type cannot be determined.
         """
-        result: Dict[str, List[Dict[str, Any]]] = {
-            "text": [],
-            "numeric": [],
-            "tag": []
-        }
+        result: Dict[str, List[Dict[str, Any]]] = {"text": [], "numeric": [], "tag": []}
 
         for key, value in metadata.items():
             field_type = self._infer_type(value)
@@ -246,10 +242,10 @@ class MetadataSchemaGenerator:
             field_class = {
                 "text": TextFieldSchema,
                 "tag": TagFieldSchema,
-                "numeric": NumericFieldSchema
-            }.get(field_type)
+                "numeric": NumericFieldSchema,
+            }.get(field_type)  # type: ignore
 
             if field_class:
-                result[field_type].append(field_class(name=key).dict(exclude_none=True))
+                result[field_type].append(field_class(name=key).dict(exclude_none=True))  # type: ignore
 
         return result
