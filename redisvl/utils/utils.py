@@ -3,7 +3,6 @@ from typing import Any, List
 import numpy as np
 
 
-
 def make_dict(values: List[Any]):
     # TODO make this a real function
     i = 0

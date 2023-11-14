@@ -18,14 +18,12 @@ from redisvl.utils.connection import (
     get_async_redis_connection,
     get_redis_connection,
 )
-from redisvl.utils.utils import (
-    check_redis_modules_exist,
-    convert_bytes,
-    make_dict,
-)
+from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_dict
 
 
-def process_results(results: "Result", query: BaseQuery, storage_type: str) -> List[Dict[str, Any]]:
+def process_results(
+    results: "Result", query: BaseQuery, storage_type: str
+) -> List[Dict[str, Any]]:
     """
     Convert a list of search Result objects into a list of document dictionaries.
 
@@ -47,11 +45,13 @@ def process_results(results: "Result", query: BaseQuery, storage_type: str) -> L
         return results.total
 
     # Determine if unpacking JSON is needed
-    unpack_json = (storage_type == StorageType.JSON.value) and \
-                  isinstance(query, FilterQuery) and \
-                  not query._return_fields
+    unpack_json = (
+        (storage_type == StorageType.JSON.value)
+        and isinstance(query, FilterQuery)
+        and not query._return_fields
+    )
 
-   # Process records
+    # Process records
     def _process(doc: "Document") -> Dict[str, Any]:
         doc_dict = doc.__dict__
 

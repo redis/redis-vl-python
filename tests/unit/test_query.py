@@ -1,19 +1,18 @@
 import pytest
-
 from redis.commands.search.document import Document
-from redis.commands.search.result import Result
 from redis.commands.search.query import Query
+from redis.commands.search.result import Result
 
-from redisvl.query import CountQuery, FilterQuery, VectorQuery
 from redisvl.index import process_results
+from redisvl.query import CountQuery, FilterQuery, VectorQuery
 from redisvl.query.filter import FilterExpression, Tag
-
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
 
 
 # Test Cases
+
 
 def test_count_query():
     # Create a filter expression

@@ -5,7 +5,6 @@ from redis.commands.search.field import TagField
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.utils.utils import convert_bytes
 
-
 fields = [TagField("test")]
 
 

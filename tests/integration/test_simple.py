@@ -1,11 +1,11 @@
-import pytest
-import numpy as np
 from pprint import pprint
+
+import numpy as np
+import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
-
 
 data = [
     {
@@ -63,8 +63,10 @@ json_schema = {
         "storage_type": "json",
     },
     "fields": {
-        "tag": [{"name": "$.credit_score", "as_name": "credit_score"},
-                {"name": "$.user", "as_name": "user"}],
+        "tag": [
+            {"name": "$.credit_score", "as_name": "credit_score"},
+            {"name": "$.user", "as_name": "user"},
+        ],
         "text": [{"name": "$.job", "as_name": "job"}],
         "numeric": [{"name": "$.age", "as_name": "age"}],
         "vector": [
@@ -80,6 +82,7 @@ json_schema = {
     },
 }
 
+
 @pytest.mark.parametrize("schema", [hash_schema, json_schema])
 def test_simple(client, schema):
     index = SearchIndex.from_dict(schema)
@@ -91,6 +94,7 @@ def test_simple(client, schema):
     # Prepare and load the data based on storage type
     def hash_preprocess(item: dict) -> dict:
         return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
+
     if index.storage_type == "hash":
         index.load(data, preprocess=hash_preprocess)
     else:
