@@ -11,7 +11,7 @@ import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
-from redisvl.schema import IndexModel, SchemaModel, StorageType, read_schema
+from redisvl.schema import IndexModel, SchemaModel, StorageType, read_schema, FieldsModel, MetadataSchemaGenerator
 from redisvl.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.utils.connection import (
     check_connected,
@@ -71,103 +71,88 @@ def process_results(
 
     return [_process(doc) for doc in results.docs]
 
+def check_index_exists():
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if not self.exists():
+                raise ValueError(
+                    f"Index has not been created. Must be created before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def check_modules_present(client_variable_name: str):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            client = getattr(self, client_variable_name)
+            check_redis_modules_exist(client)
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def check_connected(client_variable_name: str):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if getattr(self, client_variable_name) is None:
+                raise ValueError(
+                    f"SearchIndex.connect() must be called before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
 
 class SearchIndexBase:
+
+    STORAGE_MAP = {
+        StorageType.HASH.value: HashStorage,
+        StorageType.JSON.value: JsonStorage,
+    }
+
     def __init__(
         self,
-        name: str,
-        prefix: str = "rvl",
-        storage_type: str = "hash",
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
+        schema: Union[SchemaModel, Dict[str, str], str, os.PathLike],
+        **kwargs,
     ):
+        self._schema = read_schema(schema)
+        # configure index and storage specs
+        self._storage = self.STORAGE_MAP[schema.storage_type](
+            prefix, key_separator
+        )
         # init empty redis conn
         self._redis_conn: Optional[redis.Redis] = None
+        if "redis_url" in kwargs:
+            redis_url = kwargs.pop("redis_url")
+            self.connect(redis_url, **kwargs)
 
-        # configure index and storage specs
-        self._index = IndexModel(
-            name=name,
-            prefix=prefix,
-            storage_type=storage_type,  # type: ignore
-            key_separator=key_separator,
-        )
-        self._storage = self._create_storage()
-        self._fields = fields
-
-    def _create_storage(self) -> BaseStorage:
-        """Create and return a storage instance based on the provided storage type."""
-        if self._index.storage_type == StorageType.HASH.value:
-            return HashStorage(
-                prefix=self._index.prefix, key_separator=self._index.key_separator
-            )
-        elif self._index.storage_type == StorageType.JSON.value:
-            return JsonStorage(
-                prefix=self._index.prefix, key_separator=self._index.key_separator
-            )
-        else:
-            raise ValueError(
-                f"Invalid storage type provided: {self._index.storage_type}"
-            )
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
 
     @property
-    def name(self) -> str:
-        """The name of the Redis search index."""
-        return self._index.name
+    def schema(self) -> Dict[str, List[Any]]:
+        """Return the schema of the index."""
+        return self._schema.as_dict()
 
-    @property
-    def prefix(self) -> str:
-        """The optional key prefix that comes before a unique key value in forming a Redis key."""
-        return self._index.prefix
+    def write_schema(self, path: Union[str, os.PathLike]) -> None:
+        """Write the schema to a yaml file."""
+        with open(path, "w+") as f:
+            yaml.dump(self.schema, f)
 
-    @property
-    def key_separator(self) -> str:
-        """The optional separator between a defined prefix and key value in forming a Redis key."""
-        return self._index.key_separator
-
-    @property
-    def storage(self) -> BaseStorage:
-        """The Storage class that handles all upserts and reads to/from the Redis instances."""
-        return self._storage
-
-    @property
-    def storage_type(self) -> str:
-        """The underlying storage type for the search index: hash or json."""
-        return self._index.storage_type
 
     @property
     @check_connected("_redis_conn")
     def client(self) -> redis.Redis:
         """The underlying redis-py client object."""
         return self._redis_conn  # type: ignore
-
-    @classmethod
-    def from_yaml(cls, schema_path: str):
-        """Create a SearchIndex from a YAML schema file.
-
-        Args:
-            schema_path (str): Path to the YAML schema file.
-
-        Returns:
-            SearchIndex: A SearchIndex object.
-        """
-        schema = read_schema(schema_path)
-        return cls(fields=schema.index_fields, **schema.index.dict())
-
-    @classmethod
-    def from_dict(cls, schema_dict: Dict[str, Any]):
-        """Create a SearchIndex from a dictionary.
-
-        Args:
-            schema_dict (Dict[str, Any]): A dictionary containing the schema.
-
-        Returns:
-            SearchIndex: A SearchIndex object.
-        """
-        schema = SchemaModel(**schema_dict)
-        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
     def from_existing(
@@ -180,10 +165,14 @@ class SearchIndexBase:
         raise NotImplementedError
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def search(self, *args, **kwargs) -> Union["Result", Any]:
         raise NotImplementedError
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -210,10 +199,12 @@ class SearchIndexBase:
             str: The full Redis key including key prefix and value as a string.
         """
         return self._storage._key(
-            key_value, self._index.prefix, self._index.key_separator
+            key_value, self._schema.prefix, self._schema.key_separator
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def info(self) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -248,13 +239,9 @@ class SearchIndex(SearchIndexBase):
 
     def __init__(
         self,
-        name: str,
-        prefix: str = "rvl",
-        storage_type: str = "hash",
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
+        schema: SchemaModel
     ):
-        super().__init__(name, prefix, storage_type, key_separator, fields)
+        super().__init__(schema)
 
     @classmethod
     def from_existing(
@@ -287,14 +274,15 @@ class SearchIndex(SearchIndexBase):
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
-        validated_key_separator = key_separator if key_separator is not None else ":"
-        instance = cls(
+        index = IndexModel(
             name=name,
             storage_type=storage_type,
             prefix=prefix,
-            key_separator=validated_key_separator,
-            fields=fields,
+            key_separator=key_separator
         )
+        fields = FieldsModel(fields)
+        schema = SchemaModel(index=index, fields=fields)
+        instance = cls(schema)
         instance.set_client(client)
         return instance
 
@@ -340,14 +328,16 @@ class SearchIndex(SearchIndexBase):
             self.delete()
 
         # Create the index with the specified fields and settings.
-        self._redis_conn.ft(self._index.name).create_index(  # type: ignore
+        self._redis_conn.ft(self._schema.name).create_index(  # type: ignore
             fields=self._fields,
             definition=IndexDefinition(
-                prefix=[self._index.prefix], index_type=self._storage.type
+                prefix=[self._schema.prefix], index_type=self._storage.type
             ),
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def delete(self, drop: bool = True):
         """Delete the search index.
 
@@ -358,7 +348,7 @@ class SearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        self._redis_conn.ft(self._index.name).dropindex(delete_documents=drop)  # type: ignore
+        self._redis_conn.ft(self._schema.name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
     def load(
@@ -401,6 +391,59 @@ class SearchIndex(SearchIndexBase):
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    def upsert(
+        self,
+        data: Iterable[Any],
+        key_field: Optional[str] = None,
+        keys: Optional[Iterable[str]] = None,
+        ttl: Optional[int] = None,
+        preprocess: Optional[Callable] = None,
+        batch_size: Optional[int] = None,
+        generate: bool = True,
+        **kwargs,
+    ):
+        """
+        Load a batch of objects to Redis.
+
+        Args:
+            data (Iterable[Any]): An iterable of objects to store.
+            key_field (Optional[str]): Field used as the key for each object. Defaults to None.
+            keys (Optional[Iterable[str]]): Optional iterable of keys, must match the length of objects if provided.
+            ttl (Optional[int]): Time-to-live in seconds for each key. Defaults to None.
+            preprocess (Optional[Callable]): A function to preprocess objects before storage. Defaults to None.
+            batch_size (Optional[int]): Number of objects to write in a single Redis pipeline execution. Defaults to class's default batch size.
+
+        Raises:
+            ValueError: If the length of provided keys does not match the length of objects.
+
+        Example:
+            >>> data = [{"foo": "bar"}, {"test": "values"}]
+            >>> async def func(record: dict): record["new"] = "value"; return record
+            >>> index.load(data, preprocess=func)
+        """
+        if self._schema.fields.is_empty and generate:
+            field_map = MetadataSchemaGenerator(data).generate()
+            self._schema.fields = FieldsModel(field_map)
+
+        if not self.exists():
+            self.create(overwrite=False)
+
+        self._storage.write(
+            self.client,
+            objects=data,
+            key_field=key_field,
+            keys=keys,
+            ttl=ttl,
+            preprocess=preprocess,
+            batch_size=batch_size,
+        )
+
+
+
+    @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
@@ -411,12 +454,14 @@ class SearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = self._redis_conn.ft(self._index.name).search(  # type: ignore
+        results = self._redis_conn.ft(self._schema.name).search(  # type: ignore
             *args, **kwargs
         )
         return results
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         """Run a query on this index.
 
@@ -433,10 +478,11 @@ class SearchIndex(SearchIndexBase):
         results = self.search(query.query, query_params=query.params)
         # post process the results
         return process_results(
-            results, query=query, storage_type=self._index.storage_type
+            results, query=query, storage_type=self._schema.storage_type
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     def exists(self) -> bool:
         """Check if the index exists in Redis.
 
@@ -444,9 +490,11 @@ class SearchIndex(SearchIndexBase):
             bool: True if the index exists, False otherwise.
         """
         indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
-        return self._index.name in indices
+        return self._schema.name in indices
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
     def info(self) -> Dict[str, Any]:
         """Get information about the index.
 
@@ -454,7 +502,7 @@ class SearchIndex(SearchIndexBase):
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            self._redis_conn.ft(self._index.name).info()  # type: ignore
+            self._redis_conn.ft(self._schema.name).info()  # type: ignore
         )
 
 
@@ -473,11 +521,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
     def __init__(
         self,
-        name: str,
-        prefix: str = "rvl",
-        storage_type: str = "hash",
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
+        schema: SchemaModel
     ):
         super().__init__(name, prefix, storage_type, key_separator, fields)
 
@@ -512,14 +556,15 @@ class AsyncSearchIndex(SearchIndexBase):
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
-        validated_key_separator = key_separator if key_separator is not None else ":"
-        instance = cls(
+        index = IndexModel(
             name=name,
             storage_type=storage_type,
             prefix=prefix,
-            key_separator=validated_key_separator,
-            fields=fields,
+            key_separator=key_separator
         )
+        fields = FieldsModel(fields)
+        schema = SchemaModel(index=index, fields=fields)
+        instance = cls(schema)
         instance.set_client(client)
         return instance
 
@@ -537,6 +582,7 @@ class AsyncSearchIndex(SearchIndexBase):
         return self
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def create(self, overwrite: Optional[bool] = False) -> None:
         """
         Asynchronously create an index in Redis from this SearchIndex object.
@@ -563,14 +609,15 @@ class AsyncSearchIndex(SearchIndexBase):
             await self.delete()
 
         # Create Index with proper IndexType
-        await self._redis_conn.ft(self._index.name).create_index(  # type: ignore
+        await self._redis_conn.ft(self._schema.name).create_index(  # type: ignore
             fields=self._fields,
             definition=IndexDefinition(
-                prefix=[self._index.prefix], index_type=self._storage.type
+                prefix=[self._schema.prefix], index_type=self._storage.type
             ),
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def delete(self, drop: bool = True):
         """Delete the search index.
 
@@ -581,9 +628,10 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        await self._redis_conn.ft(self._index.name).dropindex(delete_documents=drop)  # type: ignore
+        await self._redis_conn.ft(self._schema.name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def load(
         self,
         data: Iterable[Any],
@@ -625,6 +673,54 @@ class AsyncSearchIndex(SearchIndexBase):
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
+    async def upsert(
+        self,
+        data: Iterable[Any],
+        key_field: Optional[str] = None,
+        keys: Optional[Iterable[str]] = None,
+        ttl: Optional[int] = None,
+        preprocess: Optional[Callable] = None,
+        batch_size: Optional[int] = None,
+        generate: bool = True,
+        **kwargs,
+    ):
+        """
+        Load a batch of objects to Redis.
+
+        Args:
+            data (Iterable[Any]): An iterable of objects to store.
+            key_field (Optional[str]): Field used as the key for each object. Defaults to None.
+            keys (Optional[Iterable[str]]): Optional iterable of keys, must match the length of objects if provided.
+            ttl (Optional[int]): Time-to-live in seconds for each key. Defaults to None.
+            preprocess (Optional[Callable]): A function to preprocess objects before storage. Defaults to None.
+            batch_size (Optional[int]): Number of objects to write in a single Redis pipeline execution. Defaults to class's default batch size.
+
+        Raises:
+            ValueError: If the length of provided keys does not match the length of objects.
+
+        Example:
+            >>> data = [{"foo": "bar"}, {"test": "values"}]
+            >>> async def func(record: dict): record["new"] = "value"; return record
+            >>> index.load(data, preprocess=func)
+        """
+
+        if not self.exists():
+            await self.create(overwrite=False)
+
+        await self._storage.awrite(
+            self.client,
+            objects=data,
+            key_field=key_field,
+            keys=keys,
+            ttl=ttl,
+            preprocess=preprocess,
+            batch_size=batch_size,
+        )
+
+
+    @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
@@ -635,11 +731,13 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.ft(self._index.name).search(  # type: ignore
+        results = await self._redis_conn.ft(self._schema.name).search(  # type: ignore
             *args, **kwargs
         )
         return results
 
+    @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         """Run a query on this index.
 
@@ -656,10 +754,11 @@ class AsyncSearchIndex(SearchIndexBase):
         results = await self.search(query.query, query_params=query.params)
         # post process the results
         return process_results(
-            results, query=query, storage_type=self._index.storage_type
+            results, query=query, storage_type=self._schema.storage_type
         )
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def exists(self) -> bool:
         """Check if the index exists in Redis.
 
@@ -667,9 +766,10 @@ class AsyncSearchIndex(SearchIndexBase):
             bool: True if the index exists, False otherwise.
         """
         indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
-        return self._index.name in convert_bytes(indices)
+        return self._schema.name in convert_bytes(indices)
 
     @check_connected("_redis_conn")
+    @check_modules_present("_redis_conn")
     async def info(self) -> Dict[str, Any]:
         """Get information about the index.
 
@@ -677,5 +777,5 @@ class AsyncSearchIndex(SearchIndexBase):
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            await self._redis_conn.ft(self._index.name).info()  # type: ignore
+            await self._redis_conn.ft(self._schema.name).info()  # type: ignore
         )

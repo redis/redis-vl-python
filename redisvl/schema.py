@@ -14,12 +14,26 @@ from redis.commands.search.field import (
 )
 from typing_extensions import Literal
 
+import numpy as np
+
+
+# distance metrics
+REDIS_DISTANCE_METRICS: List[str] = ["COSINE", "IP", "L2"]
+
+# supported vector datatypes
+REDIS_VECTOR_DTYPE_MAP: Dict[str, Any] = {
+    "FLOAT32": np.float32,
+    "FLOAT64": np.float64,
+}
 
 class BaseField(BaseModel):
     name: str = Field(...)
     sortable: Optional[bool] = False
     as_name: Optional[str] = None
 
+class ExtraField(BaseModel):
+    """Extra Field for non-indexed Metadata"""
+    name: str = Field(...)
 
 class TextFieldSchema(BaseField):
     weight: Optional[float] = 1
@@ -85,6 +99,13 @@ class BaseVectorField(BaseModel):
             field_data["INITIAL_CAP"] = self.initial_cap
         return field_data
 
+    @validator("datatype", pre=True)
+    def uppercase_and_check_dtype(cls, v: str) -> str:
+        if v.upper() not in REDIS_VECTOR_DTYPE_MAP:
+            raise ValueError(
+                f"datatype must be one of {REDIS_VECTOR_DTYPE_MAP.keys()}. Got {v}"
+            )
+        return v.upper()
 
 class FlatVectorField(BaseVectorField):
     algorithm: Literal["FLAT"] = "FLAT"
@@ -162,17 +183,50 @@ class IndexModel(BaseModel):
             raise ValueError(f"Invalid storage type: {v}")
 
 
+
+
 class FieldsModel(BaseModel):
     tag: Optional[List[TagFieldSchema]] = None
     text: Optional[List[TextFieldSchema]] = None
     numeric: Optional[List[NumericFieldSchema]] = None
     geo: Optional[List[GeoFieldSchema]] = None
     vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]] = None
+    extra: Optional[List[ExtraField]] = None
 
+    @property
+    def is_empty(self) -> bool:
+        return all(
+            field is None for field in [self.tag, self.text, self.numeric, self.vector]
+        )
 
 class SchemaModel(BaseModel):
     index: IndexModel = Field(...)
     fields: FieldsModel = Field(...)
+
+    @property
+    def name(self) -> str:
+        """The name of the Redis search index."""
+        return self._index.name
+
+    @property
+    def prefix(self) -> str:
+        """The optional key prefix that comes before a unique key value in forming a Redis key."""
+        return self._index.prefix
+
+    @property
+    def key_separator(self) -> str:
+        """The optional separator between a defined prefix and key value in forming a Redis key."""
+        return self._index.key_separator
+
+    @property
+    def storage(self) -> BaseStorage:
+        """The Storage class that handles all upserts and reads to/from the Redis instances."""
+        return self._storage
+
+    @property
+    def storage_type(self) -> str:
+        """The underlying storage type for the search index: hash or json."""
+        return self._index.storage_type
 
     @property
     def index_fields(self):
@@ -231,10 +285,9 @@ class MetadataSchemaGenerator:
             return None
         elif self._test_numeric(value):
             return "numeric"
-        elif isinstance(value, (list, set, tuple)) and all(
-            isinstance(v, str) for v in value
-        ):
-            return "tag"
+        elif isinstance(value, (list, set, tuple)):
+            if all(isinstance(v, str) for v in value):
+                return "tag"
         elif isinstance(value, str):
             return "text"
         else:
@@ -245,17 +298,13 @@ class MetadataSchemaGenerator:
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Generate a schema from the provided metadata.
-
         This method categorizes each metadata field into text, numeric, or tag types based on the field values.
         It also allows forcing strict type determination by raising an exception if a type cannot be inferred.
-
         Args:
             metadata: The metadata dictionary to generate the schema from.
             strict: If True, the method will raise an exception for fields where the type cannot be determined.
-
         Returns:
             Dict[str, List[Dict[str, Any]]]: A dictionary with keys 'text', 'numeric', and 'tag', each mapping to a list of field schemas.
-
         Raises:
             ValueError: If the force parameter is True and a field's type cannot be determined.
         """
@@ -279,9 +328,7 @@ class MetadataSchemaGenerator:
                 "text": TextFieldSchema,
                 "tag": TagFieldSchema,
                 "numeric": NumericFieldSchema,
-            }.get(
-                field_type  # type: ignore
-            )
+            }.get(field_type)
 
             if field_class:
                 result[field_type].append(field_class(name=key).dict(exclude_none=True))  # type: ignore

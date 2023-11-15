@@ -53,6 +53,19 @@ def check_redis_modules_exist(client) -> None:
     raise ValueError(error_message)
 
 
+
+def check_modules_present(client_variable_name: str):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            client = getattr(self, client_variable_name)
+            check_redis_modules_exist(client)
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+
 def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
     """Convert a list of floats into a numpy byte string."""
     return np.array(array).astype(dtype).tobytes()
