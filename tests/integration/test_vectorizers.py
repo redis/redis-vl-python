@@ -12,7 +12,8 @@ from redisvl.vectorize.text import (
 @pytest.fixture
 def skip_vectorizer() -> bool:
     # os.getenv returns a string
-    return os.getenv("SKIP_VECTORIZERS", 'False').lower() == 'true'
+    return os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
+
 
 skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
