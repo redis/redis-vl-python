@@ -11,14 +11,27 @@ import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
-from redisvl.schema import IndexModel, SchemaModel, StorageType, read_schema, FieldsModel, MetadataSchemaGenerator
-from redisvl.storage import BaseStorage, HashStorage, JsonStorage
-from redisvl.utils.connection import (
+from redisvl.schema import (
+    IndexModel,
+    SchemaModel,
+    StorageType,
+    read_schema,
+    FieldsModel,
+    MetadataSchemaGenerator,
+)
+from redisvl.storage import (
+    BaseStorage,
+    HashStorage,
+    JsonStorage
+)
+from redisvl.utils import (
     check_connected,
     get_async_redis_connection,
     get_redis_connection,
+    check_redis_modules_exist,
+    convert_bytes,
+    make_dict,
 )
-from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_dict
 
 
 def process_results(
@@ -125,7 +138,7 @@ class SearchIndexBase:
         self._schema = read_schema(schema)
         # configure index and storage specs
         self._storage = self.STORAGE_MAP[schema.storage_type](
-            prefix, key_separator
+            self._schema.index.prefix, self._schema.index.key_separator
         )
         # init empty redis conn
         self._redis_conn: Optional[redis.Redis] = None
