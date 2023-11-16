@@ -131,11 +131,10 @@ class IndexModel(BaseModel):
     """
 
     name: str
-    prefix: Optional[str] = "rvl"
-    key_separator: Optional[str] = ":"
-    storage_type: StorageType = "hash"
+    prefix: str
+    key_separator: str = ":"
+    storage_type: StorageType = StorageType.HASH
 
-    # Force Pydantic use the value of the enum, not the enum itself
     class Config:
         use_enum_values = True
 
@@ -147,13 +146,20 @@ class IndexModel(BaseModel):
 
     @validator("prefix", pre=True, always=True)
     def set_default_prefix(cls, v):
-        # If prefix is None we need to fallback to empty string
         return v if v is not None else ""
 
     @validator("key_separator", pre=True, always=True)
     def set_default_key_separator(cls, v):
-        # If key separator is None we need to fall back to a ":"
         return v if v is not None else ":"
+
+    @validator("storage_type", pre=True, always=True)
+    def validate_storage_type(cls, v):
+        if isinstance(v, StorageType):
+            return v
+        try:
+            return StorageType(v)
+        except ValueError:
+            raise ValueError(f"Invalid storage type: {v}")
 
 
 class FieldsModel(BaseModel):

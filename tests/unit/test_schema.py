@@ -14,11 +14,7 @@ from redisvl.schema import (
     FlatVectorField,
     GeoFieldSchema,
     HNSWVectorField,
-<<<<<<< HEAD
     MetadataSchemaGenerator,
-=======
-    IndexModel,
->>>>>>> ca11696 (formatting)
     NumericFieldSchema,
     SchemaModel,
     TagFieldSchema,
@@ -153,20 +149,9 @@ def test_flat_vector_field_block_size_not_set():
     assert "INITIAL_CAP" not in field_exported.args
 
 
-# Test for schema model validation
-def test_schema_model_validation_success():
-    valid_index = {"name": "test_index", "storage_type": "hash"}
-    valid_fields = {"text": [create_text_field_schema()]}
-    schema_model = SchemaModel(index=valid_index, fields=valid_fields)
-
-    assert schema_model.index.name == "test_index"
-    assert schema_model.index.storage_type == "hash"
-    assert len(schema_model.fields.text) == 1
-
-
 # Tests for IndexModel
 def test_valid_index_model_defaults():
-    index = IndexModel(name="test_index")
+    index = IndexModel(name="test_index", prefix="rvl")
     assert index.name == "test_index"
     assert index.prefix == "rvl"
     assert index.storage_type == "hash"

@@ -22,7 +22,7 @@ from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_d
 
 
 def process_results(
-    results: "Result", query: BaseQuery, storage_type: str
+    results: "Result", query: BaseQuery, storage_type: StorageType
 ) -> List[Dict[str, Any]]:
     """
     Convert a list of search Result objects into a list of document dictionaries.
@@ -35,7 +35,7 @@ def process_results(
     Args:
         results (Result): The search results from Redis.
         query (BaseQuery): The query object used for the search.
-        storage_type (str): The storage type of the search index (e.g., json or hash).
+        storage_type (StorageType): The storage type of the search index (e.g., json or hash).
 
     Returns:
         List[Dict[str, Any]]: A list of processed document dictionaries.
@@ -46,7 +46,7 @@ def process_results(
 
     # Determine if unpacking JSON is needed
     unpack_json = (
-        (storage_type == StorageType.JSON.value)
+        (storage_type == StorageType.JSON)
         and isinstance(query, FilterQuery)
         and not query._return_fields
     )
@@ -88,21 +88,26 @@ class SearchIndexBase:
         self._index = IndexModel(
             name=name,
             prefix=prefix,
-            storage_type=storage_type,
+            storage_type=storage_type,  # type: ignore
             key_separator=key_separator,
         )
-        self._storage = self._create_storage(self._index)
+        self._storage = self._create_storage()
         self._fields = fields
 
-    @staticmethod
-    def _create_storage(index: IndexModel) -> BaseStorage:
+    def _create_storage(self) -> BaseStorage:
         """Create and return a storage instance based on the provided storage type."""
-        if index.storage_type == StorageType.HASH.value:
-            return HashStorage(prefix=index.prefix, key_separator=index.key_separator)
-        elif index.storage_type == StorageType.JSON.value:
-            return JsonStorage(prefix=index.prefix, key_separator=index.key_separator)
+        if self._index.storage_type == StorageType.HASH.value:
+            return HashStorage(
+                prefix=self._index.prefix, key_separator=self._index.key_separator
+            )
+        elif self._index.storage_type == StorageType.JSON.value:
+            return JsonStorage(
+                prefix=self._index.prefix, key_separator=self._index.key_separator
+            )
         else:
-            raise ValueError(f"Invalid storage type provided: {index.storage_type}")
+            raise ValueError(
+                f"Invalid storage type provided: {self._index.storage_type}"
+            )
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
@@ -282,11 +287,12 @@ class SearchIndex(SearchIndexBase):
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
+        validated_key_separator = key_separator if key_separator is not None else ":"
         instance = cls(
             name=name,
             storage_type=storage_type,
             prefix=prefix,
-            key_separator=key_separator,
+            key_separator=validated_key_separator,
             fields=fields,
         )
         instance.set_client(client)
@@ -506,11 +512,12 @@ class AsyncSearchIndex(SearchIndexBase):
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
+        validated_key_separator = key_separator if key_separator is not None else ":"
         instance = cls(
             name=name,
             storage_type=storage_type,
             prefix=prefix,
-            key_separator=key_separator,
+            key_separator=validated_key_separator,
             fields=fields,
         )
         instance.set_client(client)

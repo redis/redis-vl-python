@@ -75,6 +75,6 @@ async def test_preprocess(storage_instance):
         d["foo"] = "bar"
         return d
 
-    preprocessed_data = await storage_instance._apreprocess(fn, data)
+    preprocessed_data = await storage_instance._apreprocess(data, fn)
     assert "foo" in preprocessed_data
     assert preprocessed_data["foo"] == "bar"

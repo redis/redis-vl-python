@@ -10,7 +10,7 @@ from redisvl.utils.utils import convert_bytes
 
 
 class BaseStorage:
-    type: IndexType = None
+    type: IndexType
     DEFAULT_BATCH_SIZE: int = 200
     DEFAULT_WRITE_CONCURRENCY: int = 20
 
@@ -70,12 +70,12 @@ class BaseStorage:
         )
 
     @staticmethod
-    def _preprocess(preprocess: Callable, obj: Any) -> Dict[str, Any]:
+    def _preprocess(obj: Any, preprocess: Optional[Callable] = None) -> Dict[str, Any]:
         """
         Apply a preprocessing function to the object if provided.
 
         Args:
-            preprocess (Callable): Function to process the object.
+            preprocess (Optional[Callable]): Function to process the object.
             obj (Any): Object to preprocess.
 
         Returns:
@@ -87,12 +87,14 @@ class BaseStorage:
         return obj
 
     @staticmethod
-    async def _apreprocess(preprocess: Callable, obj: Any) -> Dict[str, Any]:
+    async def _apreprocess(
+        obj: Any, preprocess: Optional[Callable] = None
+    ) -> Dict[str, Any]:
         """
         Asynchronously apply a preprocessing function to the object if provided.
 
         Args:
-            preprocess (Callable): Async function to process the object.
+            preprocess (Optional[Callable]): Async function to process the object.
             obj (Any): Object to preprocess.
 
         Returns:
@@ -189,7 +191,7 @@ class BaseStorage:
         Raises:
             ValueError: If the length of provided keys does not match the length of objects.
         """
-        if keys and len(keys) != len(objects):
+        if keys and len(keys) != len(objects):  # type: ignore
             raise ValueError("Length of keys does not match the length of objects")
 
         if batch_size is None:
@@ -206,7 +208,7 @@ class BaseStorage:
                     if keys_iterator
                     else self._create_key(obj, key_field)
                 )
-                obj = self._preprocess(preprocess, obj)
+                obj = self._preprocess(obj, preprocess)
                 self._validate(obj)
                 self._set(pipe, key, obj)
                 if ttl:
@@ -243,7 +245,7 @@ class BaseStorage:
         Raises:
             ValueError: If the length of provided keys does not match the length of objects.
         """
-        if keys and len(keys) != len(objects):
+        if keys and len(keys) != len(objects):  # type: ignore
             raise ValueError("Length of keys does not match the length of objects")
 
         if not concurrency:
@@ -252,15 +254,15 @@ class BaseStorage:
         semaphore = asyncio.Semaphore(concurrency)
         keys_iterator = iter(keys) if keys else None
 
-        async def _load(obj: Dict[str, Any], key: str = None) -> None:
+        async def _load(obj: Dict[str, Any], key: Optional[str] = None) -> None:
             async with semaphore:
                 if key is None:
                     key = self._create_key(obj, key_field)
-                obj = await self._apreprocess(preprocess, obj)
+                obj = await self._apreprocess(obj, preprocess)
                 self._validate(obj)
                 await self._aset(redis_client, key, obj)
                 if ttl:
-                    await redis_client.expire(key)
+                    await redis_client.expire(key, ttl)
 
         if keys_iterator:
             tasks = [
@@ -285,10 +287,10 @@ class BaseStorage:
         """
         results: List = []
 
-        if not isinstance(keys, Iterable):
+        if not isinstance(keys, Iterable):  # type: ignore
             raise TypeError("Keys must be an iterable of strings")
 
-        if len(keys) == 0:
+        if len(keys) == 0:  # type: ignore
             return []
 
         if batch_size is None:
@@ -324,10 +326,10 @@ class BaseStorage:
         Returns:
             Dict[str, Any]: Dictionary with keys and their corresponding objects.
         """
-        if not isinstance(keys, Iterable):
+        if not isinstance(keys, Iterable):  # type: ignore
             raise TypeError("Keys must be an iterable of strings")
 
-        if len(keys) == 0:
+        if len(keys) == 0:  # type: ignore
             return []
 
         if not concurrency:
@@ -380,7 +382,7 @@ class HashStorage(BaseStorage):
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
-        client.hset(name=key, mapping=obj)
+        client.hset(name=key, mapping=obj)  # type: ignore
 
     @staticmethod
     async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
@@ -392,7 +394,7 @@ class HashStorage(BaseStorage):
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
-        await client.hset(name=key, mapping=obj)
+        await client.hset(name=key, mapping=obj)  # type: ignore
 
     @staticmethod
     def _get(client: Redis, key: str) -> Dict[str, Any]:
