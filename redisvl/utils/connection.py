@@ -1,5 +1,5 @@
 import os
-from functools import wraps
+
 from typing import Optional
 
 # TODO: handle connection errors.
@@ -42,17 +42,3 @@ def get_address_from_env():
         raise ValueError("REDIS_URL env var not set")
     return addr
 
-
-def check_connected(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if getattr(self, client_variable_name) is None:
-                raise ValueError(
-                    f"SearchIndex.connect() must be called before calling {func.__name__}"
-                )
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator

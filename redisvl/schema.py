@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -16,9 +17,14 @@ from typing_extensions import Literal
 
 import numpy as np
 
+from redisvl.storage import BaseStorage
+
 
 # distance metrics
 REDIS_DISTANCE_METRICS: List[str] = ["COSINE", "IP", "L2"]
+
+# vector index algorithims
+REDIS_VECTOR_INDEX_ALGORITHMS: List[str] = ["FLAT", "HNSW"]
 
 # supported vector datatypes
 REDIS_VECTOR_DTYPE_MAP: Dict[str, Any] = {
@@ -26,14 +32,17 @@ REDIS_VECTOR_DTYPE_MAP: Dict[str, Any] = {
     "FLOAT64": np.float64,
 }
 
+
 class BaseField(BaseModel):
     name: str = Field(...)
     sortable: Optional[bool] = False
     as_name: Optional[str] = None
 
+
 class ExtraField(BaseModel):
     """Extra Field for non-indexed Metadata"""
     name: str = Field(...)
+
 
 class TextFieldSchema(BaseField):
     weight: Optional[float] = 1
@@ -85,8 +94,28 @@ class BaseVectorField(BaseModel):
     initial_cap: Optional[int] = None
     as_name: Optional[str] = None
 
-    @validator("algorithm", "datatype", "distance_metric", pre=True)
-    def uppercase_strings(cls, v):
+    @validator("distance_metric", pre=True)
+    def uppercase_and_check_metric(cls, v: str) -> str:
+        if v.upper() not in REDIS_DISTANCE_METRICS:
+            raise ValueError(
+                f"distance_metric must be one of {REDIS_DISTANCE_METRICS.keys()}. Got {v}"
+            )
+        return v.upper()
+
+    @validator("algorithm", pre=True)
+    def uppercase_and_check_algo(cls, v: str) -> str:
+        if v.upper() not in REDIS_VECTOR_INDEX_ALGORITHMS:
+            raise ValueError(
+                f"datatype must be one of {REDIS_VECTOR_INDEX_ALGORITHMS.keys()}. Got {v}"
+            )
+        return v.upper()
+
+    @validator("datatype", pre=True)
+    def uppercase_and_check_dtype(cls, v: str) -> str:
+        if v.upper() not in REDIS_VECTOR_DTYPE_MAP:
+            raise ValueError(
+                f"datatype must be one of {REDIS_VECTOR_DTYPE_MAP.keys()}. Got {v}"
+            )
         return v.upper()
 
     def as_field(self) -> Dict[str, Any]:
@@ -99,13 +128,6 @@ class BaseVectorField(BaseModel):
             field_data["INITIAL_CAP"] = self.initial_cap
         return field_data
 
-    @validator("datatype", pre=True)
-    def uppercase_and_check_dtype(cls, v: str) -> str:
-        if v.upper() not in REDIS_VECTOR_DTYPE_MAP:
-            raise ValueError(
-                f"datatype must be one of {REDIS_VECTOR_DTYPE_MAP.keys()}. Got {v}"
-            )
-        return v.upper()
 
 class FlatVectorField(BaseVectorField):
     algorithm: Literal["FLAT"] = "FLAT"
@@ -150,7 +172,6 @@ class IndexModel(BaseModel):
     Represents the schema for an index, including its name,
     optional prefix, and the storage type used.
     """
-
     name: str
     prefix: str
     key_separator: str = ":"
@@ -183,8 +204,6 @@ class IndexModel(BaseModel):
             raise ValueError(f"Invalid storage type: {v}")
 
 
-
-
 class FieldsModel(BaseModel):
     tag: Optional[List[TagFieldSchema]] = None
     text: Optional[List[TextFieldSchema]] = None
@@ -199,34 +218,30 @@ class FieldsModel(BaseModel):
             field is None for field in [self.tag, self.text, self.numeric, self.vector]
         )
 
+
 class SchemaModel(BaseModel):
     index: IndexModel = Field(...)
     fields: FieldsModel = Field(...)
 
-    @property
-    def name(self) -> str:
-        """The name of the Redis search index."""
-        return self._index.name
-
-    @property
-    def prefix(self) -> str:
-        """The optional key prefix that comes before a unique key value in forming a Redis key."""
-        return self._index.prefix
-
-    @property
-    def key_separator(self) -> str:
-        """The optional separator between a defined prefix and key value in forming a Redis key."""
-        return self._index.key_separator
-
-    @property
-    def storage(self) -> BaseStorage:
-        """The Storage class that handles all upserts and reads to/from the Redis instances."""
-        return self._storage
-
-    @property
-    def storage_type(self) -> str:
-        """The underlying storage type for the search index: hash or json."""
-        return self._index.storage_type
+    @classmethod
+    def from_args(
+        cls,
+        name,
+        prefix,
+        storage_type,
+        key_separator,
+        fields
+    ):
+        """Load the SchemaModel from args."""
+        index = IndexModel(
+            name=name,
+            storage_type=storage_type,
+            prefix=prefix,
+            key_separator=key_separator
+        )
+        # TODO something is breaking in the tests here. I think this needs to be fixed
+        fields = FieldsModel(fields)
+        return cls(index=index, fields=fields)
 
     @property
     def index_fields(self):
@@ -238,15 +253,40 @@ class SchemaModel(BaseModel):
                     redis_fields.append(field.as_field())
         return redis_fields
 
+    def dump(self, path: Union[str, os.PathLike]) -> None:
+        model_dict = self.dict()
+        yaml_data = yaml.dump(model_dict)
+        with open(path, "w+") as f:
+            f.write(yaml_data)
 
-def read_schema(file_path: str):
-    fp = Path(file_path).resolve()
-    if not fp.exists():
-        raise FileNotFoundError(f"Schema file {file_path} does not exist")
 
-    with open(fp, "r") as f:
-        schema = yaml.safe_load(f)
+def read_schema(
+    index_schema: Optional[Union[Dict[str, List[Any]], str, os.PathLike]]
+) -> SchemaModel:
+    """Reads in the index schema from a dict or yaml file.
 
+    Check if it is a dict and return RedisModel otherwise, check if it's a path and
+    read in the file assuming it's a yaml file and return a RedisModel
+    """
+    schema: Dict[str, Any] = {}
+    if isinstance(index_schema, SchemaModel):
+        return index_schema
+    elif isinstance(index_schema, dict):
+        schema = index_schema
+    elif isinstance(index_schema, Path):
+        with open(index_schema, "rb") as f:
+            schema = yaml.safe_load(f)
+    elif isinstance(index_schema, str):
+        if Path(index_schema).resolve().is_file():
+            with open(index_schema, "rb") as f:
+                schema = yaml.safe_load(f)
+        else:
+            raise FileNotFoundError(f"index_schema file {index_schema} does not exist")
+    else:
+        raise TypeError(
+            f"index_schema must be a dict, or path to a yaml file "
+            f"Got {type(index_schema)}"
+        )
     return SchemaModel(**schema)
 
 
