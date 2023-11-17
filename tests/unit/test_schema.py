@@ -14,13 +14,13 @@ from redisvl.schema import (
     FlatVectorField,
     GeoFieldSchema,
     HNSWVectorField,
+    IndexModel,
     MetadataSchemaGenerator,
     NumericFieldSchema,
     SchemaModel,
     TagFieldSchema,
     TextFieldSchema,
     read_schema,
-    IndexModel
 )
 
 

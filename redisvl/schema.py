@@ -20,7 +20,9 @@ class BaseField(BaseModel):
     sortable: Optional[bool] = False
     as_name: Optional[str] = None
 
+
 # @Tyler Do we want to include Extra Field in this PR?
+
 
 class TextFieldSchema(BaseField):
     weight: Optional[float] = 1
@@ -139,7 +141,7 @@ class IndexModel(BaseModel):
 
     @validator("name")
     def name_must_not_be_empty(cls, value):
-    # @Tyler: Are these necessary? Doesn't the pydantic class do this?
+        # @Tyler: Are these necessary? Doesn't the pydantic class do this?
         if not value:
             raise ValueError("name must not be empty")
         return value
@@ -217,14 +219,27 @@ class MetadataSchemaGenerator:
         if self._test_numeric(value):
             return "numeric"
         if isinstance(value, (list, set, tuple)) and all(
-           isinstance(v, str) for v in value):
+            isinstance(v, str) for v in value
+        ):
             return "tag"
         return "text" if isinstance(value, str) else "unknown"
 
-    def generate(self, metadata: Dict[str, Any],
-                 strict: Optional[bool] = False) -> Dict[str, List[Dict[str, Any]]]:
-        """Generate a schema from metadata."""
-        result = {"text": [], "numeric": [], "tag": []}
+    def generate(
+        self, metadata: Dict[str, Any], strict: bool = False
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Generate a schema from metadata.
+
+        Args:
+            metadata (Dict[str, Any]): Metadata object to validate and generate schema.
+            strict (bool, optional): Whether to generate schema in strict mode. Defaults to False.
+
+        Raises:
+            ValueError: Unable to determine schema field type for a key-value pair.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: Output metadata schema.
+        """
+        result: Dict[str, List[Dict[str, Any]]] = {"text": [], "numeric": [], "tag": []}
         field_classes = {
             "text": TextFieldSchema,
             "tag": TagFieldSchema,
@@ -234,17 +249,21 @@ class MetadataSchemaGenerator:
         for key, value in metadata.items():
             field_type = self._infer_type(value)
 
-            if field_type in [None, "unknown"]:
+            if field_type is None or field_type == "unknown":
                 if strict:
                     raise ValueError(
                         f"Unable to determine field type for key '{key}' with"
-                        f" value '{value}'")
-                print(f"Warning: Unable to determine field type for key '{key}'"
-                      f" with value '{value}'")
+                        f" value '{value}'"
+                    )
+                print(
+                    f"Warning: Unable to determine field type for key '{key}'"
+                    f" with value '{value}'"
+                )
                 continue
 
-            field_class = field_classes.get(field_type)
-            if field_class:
-                result[field_type].append(field_class(name=key).dict(exclude_none=True))
+            if isinstance(field_type, str):
+                field_class = field_classes.get(field_type)
+                if field_class:
+                    result[field_type].append(field_class(name=key).dict(exclude_none=True))
 
         return result

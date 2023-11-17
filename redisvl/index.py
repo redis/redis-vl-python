@@ -73,7 +73,6 @@ def process_results(
 
 
 class SearchIndexBase:
-
     STORAGE_MAP = {
         StorageType.HASH.value: HashStorage,
         StorageType.JSON.value: JsonStorage,
@@ -86,8 +85,18 @@ class SearchIndexBase:
         storage_type: str = "hash",
         key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
-        **kwargs
+        **kwargs,
     ):
+        """_summary_
+
+        Args:
+            name (str): Index name.
+            prefix (str, optional): Key prefix associated with the index. Defaults to "rvl".
+            storage_type (str, optional): Underlying Redis storage type (hash or json). Defaults to "hash".
+            key_separator (str, optional): : Separator character to combine
+                prefix and key value for constructing redis keys. Defaults to ":".
+            fields (Optional[List[Field]], optional): List of Redis fields to index. Defaults to None.
+        """
         # configure index and storage specs
         # @ Tyler: I think we keep the init args in this release
         # but still hold onto the schema??
@@ -98,7 +107,7 @@ class SearchIndexBase:
             key_separator=key_separator,
         )
         # configure index and storage specs
-        self._storage = self.STORAGE_MAP[self.storage_type](
+        self._storage = self.STORAGE_MAP[self.storage_type](  # type: ignore
             self.prefix, self.key_separator
         )
         self._fields = fields
@@ -109,11 +118,10 @@ class SearchIndexBase:
             redis_url = kwargs.pop("redis_url")
             self.connect(redis_url, **kwargs)
 
-
     def set_client(self, client: redis.Redis):
+        """Set the Redis client object for the search index."""
         self._redis_conn = client
 
-    # @tyler keep in both?
     @property
     def name(self) -> str:
         """The name of the Redis search index."""
@@ -138,7 +146,7 @@ class SearchIndexBase:
         return self._storage
 
     @property
-    def storage_type(self) -> str:
+    def storage_type(self) -> StorageType:
         """The underlying storage type for the search index: hash or json."""
         return self._index.storage_type
 
@@ -179,6 +187,7 @@ class SearchIndexBase:
         cls,
         name: str,
         url: Optional[str] = None,
+        key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
         **kwargs,
     ):
@@ -265,8 +274,8 @@ class SearchIndex(SearchIndexBase):
         cls,
         name: str,
         url: Optional[str] = None,
+        key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
-        key_separator: Optional[str] = None,
         **kwargs,
     ):
         """Create a SearchIndex from an existing index in Redis.
@@ -275,6 +284,8 @@ class SearchIndex(SearchIndexBase):
             name (str): Index name.
             url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
+            key_separator (str, optional): Separator character to combine
+                prefix and key value for constructing redis keys. Defaults to ":".
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
 
@@ -290,12 +301,11 @@ class SearchIndex(SearchIndexBase):
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
-        validated_key_separator = key_separator if key_separator is not None else ":"
         instance = cls(
             name=name,
             storage_type=storage_type,
             prefix=prefix,
-            key_separator=validated_key_separator,
+            key_separator=key_separator,
             fields=fields,
         )
         instance.set_client(client)
@@ -488,8 +498,8 @@ class AsyncSearchIndex(SearchIndexBase):
         cls,
         name: str,
         url: Optional[str] = None,
+        key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
-        key_separator: Optional[str] = None,
         **kwargs,
     ):
         """Create a SearchIndex from an existing index in Redis.
@@ -498,11 +508,13 @@ class AsyncSearchIndex(SearchIndexBase):
             name (str): Index name.
             url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
+            key_separator (str, optional): Separator character to combine
+                prefix and key value for constructing redis keys. Defaults to ":".
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
 
         Returns:
-            SearchIndex: A SearchIndex object.
+            AsyncSearchIndex: An AsyncSearchIndex object.
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
@@ -513,12 +525,11 @@ class AsyncSearchIndex(SearchIndexBase):
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
         prefix = index_definition["prefixes"][0]
-        validated_key_separator = key_separator if key_separator is not None else ":"
         instance = cls(
             name=name,
             storage_type=storage_type,
             prefix=prefix,
-            key_separator=validated_key_separator,
+            key_separator=key_separator,
             fields=fields,
         )
         instance.set_client(client)
