@@ -59,8 +59,8 @@ class Index:
         if not args.schema:
             logger.error("Schema must be provided to create an index")
         index = SearchIndex.from_yaml(args.schema)
-        url = create_redis_url(args)
-        index.connect(url)
+        redis_url = create_redis_url(args)
+        index.connect(redis_url)
         index.create()
         logger.info("Index created successfully")
 
@@ -79,8 +79,8 @@ class Index:
         Usage:
             rvl index listall
         """
-        url = create_redis_url(args)
-        conn = get_redis_connection(url)
+        redis_url = create_redis_url(args)
+        conn = get_redis_connection(redis_url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
         logger.info("Indices:")
         for i, index in enumerate(indices):
@@ -107,8 +107,8 @@ class Index:
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
         try:
-            url = create_redis_url(args)
-            conn = get_redis_connection(url=url)
+            redis_url = create_redis_url(args)
+            conn = get_redis_connection(url=redis_url)
         except ValueError:
             logger.error(
                 "Must set REDIS_URL environment variable or provide host and port"
@@ -116,7 +116,7 @@ class Index:
             exit(0)
 
         if args.index:
-            index = SearchIndex.from_existing(name=args.index, url=url)
+            index = SearchIndex.from_existing(name=args.index, redis_url=redis_url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema)
             index.set_client(conn)

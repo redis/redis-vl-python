@@ -63,7 +63,7 @@ class SemanticCache(BaseLLMCache):
                 index = SearchIndex(
                     name=index_name, prefix=prefix, fields=self._default_fields
                 )
-                index.connect(url=redis_url, **connection_args)
+                index.connect(redis_url=redis_url, **connection_args)
             else:
                 raise ValueError(
                     "Index name and prefix must be provided if not constructing from an existing index."

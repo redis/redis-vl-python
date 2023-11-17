@@ -40,7 +40,7 @@ def test_search_index_create(client, redis_url):
     assert si.exists()
     assert "my_index" in convert_bytes(si.client.execute_command("FT._LIST"))
 
-    s1_2 = SearchIndex.from_existing("my_index", url=redis_url)
+    s1_2 = SearchIndex.from_existing("my_index", redis_url=redis_url)
     assert s1_2.info()["index_name"] == si.info()["index_name"]
 
     si.create(overwrite=False)

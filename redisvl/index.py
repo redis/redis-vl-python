@@ -186,7 +186,7 @@ class SearchIndexBase:
     def from_existing(
         cls,
         name: str,
-        url: Optional[str] = None,
+        redis_url: Optional[str] = None,
         key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
         **kwargs,
@@ -201,7 +201,7 @@ class SearchIndexBase:
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         raise NotImplementedError
 
-    def connect(self, url: str, **kwargs):
+    def connect(self, redis_url: str, **kwargs):
         """Connect to a Redis instance."""
         raise NotImplementedError
 
@@ -273,7 +273,7 @@ class SearchIndex(SearchIndexBase):
     def from_existing(
         cls,
         name: str,
-        url: Optional[str] = None,
+        redis_url: Optional[str] = None,
         key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
         **kwargs,
@@ -282,7 +282,7 @@ class SearchIndex(SearchIndexBase):
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_URL env var
+            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             key_separator (str, optional): Separator character to combine
                 prefix and key value for constructing redis keys. Defaults to ":".
@@ -294,9 +294,9 @@ class SearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_URL env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and redis_url is not provided.
         """
-        client = get_redis_connection(url, **kwargs)
+        client = get_redis_connection(redis_url, **kwargs)
         info = convert_bytes(client.ft(name).info())
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
@@ -311,17 +311,17 @@ class SearchIndex(SearchIndexBase):
         instance.set_client(client)
         return instance
 
-    def connect(self, url: Optional[str] = None, **kwargs):
+    def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_URL env var is used if not provided.
+            redis_url (str): Redis URL. REDIS_URL env var is used if not provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If the REDIS_URL env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and redis_url is not provided.
         """
-        self._redis_conn = get_redis_connection(url, **kwargs)
+        self._redis_conn = get_redis_connection(redis_url, **kwargs)
         return self
 
     @check_connected("_redis_conn")
@@ -497,7 +497,7 @@ class AsyncSearchIndex(SearchIndexBase):
     async def from_existing(
         cls,
         name: str,
-        url: Optional[str] = None,
+        redis_url: Optional[str] = None,
         key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
         **kwargs,
@@ -506,7 +506,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Args:
             name (str): Index name.
-            url (Optional[str], optional): Redis URL. REDIS_URL env var
+            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
             key_separator (str, optional): Separator character to combine
                 prefix and key value for constructing redis keys. Defaults to ":".
@@ -518,9 +518,9 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_URL env var is not set and url is not provided.
+            ValueError: If the REDIS_URL env var is not set and redis_url is not provided.
         """
-        client = get_async_redis_connection(url, **kwargs)
+        client = get_async_redis_connection(redis_url, **kwargs)
         info = convert_bytes(await client.ft(name).info())
         index_definition = make_dict(info["index_definition"])
         storage_type = index_definition["key_type"].lower()
@@ -535,17 +535,17 @@ class AsyncSearchIndex(SearchIndexBase):
         instance.set_client(client)
         return instance
 
-    def connect(self, url: Optional[str] = None, **kwargs):
+    def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance.
 
         Args:
-            url (str): Redis URL. REDIS_URL env var is used if not provided.
+            redis_url (str): Redis URL. REDIS_URL env var is used if not provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
             ValueError: If no Redis URL is provided and REDIS_URL env var is not set.
         """
-        self._redis_conn = get_async_redis_connection(url, **kwargs)
+        self._redis_conn = get_async_redis_connection(redis_url, **kwargs)
         return self
 
     @check_connected("_redis_conn")

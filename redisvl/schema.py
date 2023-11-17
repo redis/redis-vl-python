@@ -264,6 +264,8 @@ class MetadataSchemaGenerator:
             if isinstance(field_type, str):
                 field_class = field_classes.get(field_type)
                 if field_class:
-                    result[field_type].append(field_class(name=key).dict(exclude_none=True))
+                    result[field_type].append(
+                        field_class(name=key).dict(exclude_none=True)
+                    )
 
         return result
