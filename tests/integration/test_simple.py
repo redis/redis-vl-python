@@ -5,6 +5,7 @@ import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
+from redisvl.schema import StorageType
 from redisvl.utils.utils import array_to_buffer
 
 data = [
@@ -95,10 +96,11 @@ def test_simple(client, schema):
     def hash_preprocess(item: dict) -> dict:
         return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
 
-    if index.storage_type == "hash":
+    if index.storage_type == StorageType.HASH:
         index.load(data, preprocess=hash_preprocess)
     else:
         # Load the prepared data into the index
+        print("DATA", data, flush=True)
         index.load(data)
 
     query = VectorQuery(

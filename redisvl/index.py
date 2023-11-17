@@ -74,8 +74,8 @@ def process_results(
 
 class SearchIndexBase:
     STORAGE_MAP = {
-        StorageType.HASH.value: HashStorage,
-        StorageType.JSON.value: JsonStorage,
+        StorageType.HASH: HashStorage,
+        StorageType.JSON: JsonStorage,
     }
 
     def __init__(
@@ -98,8 +98,6 @@ class SearchIndexBase:
             fields (Optional[List[Field]], optional): List of Redis fields to index. Defaults to None.
         """
         # configure index and storage specs
-        # @ Tyler: I think we keep the init args in this release
-        # but still hold onto the schema??
         self._index = IndexModel(
             name=name,
             prefix=prefix,

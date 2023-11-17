@@ -21,9 +21,6 @@ class BaseField(BaseModel):
     as_name: Optional[str] = None
 
 
-# @Tyler Do we want to include Extra Field in this PR?
-
-
 class TextFieldSchema(BaseField):
     weight: Optional[float] = 1
     no_stem: Optional[bool] = False
@@ -132,38 +129,9 @@ class IndexModel(BaseModel):
     and the storage type used."""
 
     name: str
-    prefix: str
+    prefix: str = "rvl"
     key_separator: str = ":"
     storage_type: StorageType = StorageType.HASH
-
-    class Config:
-        use_enum_values = True
-
-    @validator("name")
-    def name_must_not_be_empty(cls, value):
-        # @Tyler: Are these necessary? Doesn't the pydantic class do this?
-        if not value:
-            raise ValueError("name must not be empty")
-        return value
-
-    @validator("prefix", pre=True, always=True)
-    # @Tyler: Are these necessary? Doesn't the pydantic class do this?
-    def set_default_prefix(cls, v):
-        return v if v is not None else ""
-
-    @validator("key_separator", pre=True, always=True)
-    # @Tyler: Are these necessary? Doesn't the pydantic class do this?
-    def set_default_key_separator(cls, v):
-        return v if v is not None else ":"
-
-    @validator("storage_type", pre=True, always=True)
-    def validate_storage_type(cls, v):
-        if isinstance(v, StorageType):
-            return v
-        try:
-            return StorageType(v)
-        except ValueError:
-            raise ValueError(f"Invalid storage type: {v}")
 
 
 class FieldsModel(BaseModel):

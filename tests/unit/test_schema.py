@@ -18,6 +18,7 @@ from redisvl.schema import (
     MetadataSchemaGenerator,
     NumericFieldSchema,
     SchemaModel,
+    StorageType,
     TagFieldSchema,
     TextFieldSchema,
     read_schema,
@@ -151,29 +152,42 @@ def test_flat_vector_field_block_size_not_set():
 
 
 # Tests for IndexModel
-def test_valid_index_model_defaults():
-    index = IndexModel(name="test_index", prefix="rvl")
+
+
+def test_index_model_defaults():
+    index = IndexModel(name="test_index")
     assert index.name == "test_index"
     assert index.prefix == "rvl"
-    assert index.storage_type == "hash"
     assert index.key_separator == ":"
-
-
-def test_invalid_index_model_empty_name():
-    with pytest.raises(ValidationError):
-        IndexModel(name="")
-
-
-def test_index_model_default_prefix():
-    index = IndexModel(name="test_index", prefix=None, key_separator=None)
-    assert index.prefix == ""
-    assert index.key_separator == ":"
+    assert index.storage_type == StorageType.HASH
 
 
 def test_index_model_custom_settings():
-    index = IndexModel(name="test_index", prefix="custom", key_separator="_")
+    index = IndexModel(
+        name="test_index", prefix="custom", key_separator="_", storage_type="json"
+    )
+    assert index.name == "test_index"
     assert index.prefix == "custom"
     assert index.key_separator == "_"
+    assert index.storage_type == StorageType.JSON
+
+
+def test_index_model_validation_errors():
+    # Missing required field
+    with pytest.raises(ValueError):
+        IndexModel()
+
+    # Invalid type
+    with pytest.raises(ValidationError):
+        IndexModel(name="test_index", prefix=None)
+
+    # Invalid type
+    with pytest.raises(ValidationError):
+        IndexModel(name="test_index", key_separator=None)
+
+    # Invalid type
+    with pytest.raises(ValidationError):
+        IndexModel(name="test_index", storage_type=None)
 
 
 def test_schema_model_validation_failures():

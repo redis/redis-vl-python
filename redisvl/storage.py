@@ -204,6 +204,7 @@ class BaseStorage:
                 )
                 obj = self._preprocess(obj, preprocess)
                 self._validate(obj)
+                print("OBJ", obj, flush=True)
                 self._set(pipe, key, obj)
                 if ttl:
                     pipe.expire(key, ttl)  # Set TTL if provided

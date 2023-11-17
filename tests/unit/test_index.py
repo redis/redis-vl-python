@@ -20,7 +20,7 @@ def test_search_index_get_key():
 
 def test_search_index_no_prefix():
     # specify None as the prefix...
-    si = SearchIndex("my_index", prefix=None, fields=fields)
+    si = SearchIndex("my_index", prefix="", fields=fields)
     key = si.key("foo")
     assert not si.prefix
     assert key == "foo"
