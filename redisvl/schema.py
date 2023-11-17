@@ -20,6 +20,7 @@ class BaseField(BaseModel):
     sortable: Optional[bool] = False
     as_name: Optional[str] = None
 
+# @Tyler Do we want to include Extra Field in this PR?
 
 class TextFieldSchema(BaseField):
     weight: Optional[float] = 1
@@ -138,15 +139,18 @@ class IndexModel(BaseModel):
 
     @validator("name")
     def name_must_not_be_empty(cls, value):
+    # @Tyler: Are these necessary? Doesn't the pydantic class do this?
         if not value:
             raise ValueError("name must not be empty")
         return value
 
     @validator("prefix", pre=True, always=True)
+    # @Tyler: Are these necessary? Doesn't the pydantic class do this?
     def set_default_prefix(cls, v):
         return v if v is not None else ""
 
     @validator("key_separator", pre=True, always=True)
+    # @Tyler: Are these necessary? Doesn't the pydantic class do this?
     def set_default_key_separator(cls, v):
         return v if v is not None else ":"
 

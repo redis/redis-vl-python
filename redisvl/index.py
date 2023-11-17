@@ -73,6 +73,12 @@ def process_results(
 
 
 class SearchIndexBase:
+
+    STORAGE_MAP = {
+        StorageType.HASH.value: HashStorage,
+        StorageType.JSON.value: JsonStorage,
+    }
+
     def __init__(
         self,
         name: str,
@@ -80,39 +86,34 @@ class SearchIndexBase:
         storage_type: str = "hash",
         key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
+        **kwargs
     ):
-        # init empty redis conn
-        self._redis_conn: Optional[redis.Redis] = None
-
         # configure index and storage specs
+        # @ Tyler: I think we keep the init args in this release
+        # but still hold onto the schema??
         self._index = IndexModel(
             name=name,
             prefix=prefix,
             storage_type=storage_type,  # type: ignore
             key_separator=key_separator,
         )
-        self._storage = self._create_storage()
+        # configure index and storage specs
+        self._storage = self.STORAGE_MAP[self.storage_type](
+            self.prefix, self.key_separator
+        )
         self._fields = fields
 
-    def _create_storage(self) -> BaseStorage:
-        """Create and return a storage instance based on the provided storage
-        type."""
-        if self._index.storage_type == StorageType.HASH.value:
-            return HashStorage(
-                prefix=self._index.prefix, key_separator=self._index.key_separator
-            )
-        elif self._index.storage_type == StorageType.JSON.value:
-            return JsonStorage(
-                prefix=self._index.prefix, key_separator=self._index.key_separator
-            )
-        else:
-            raise ValueError(
-                f"Invalid storage type provided: {self._index.storage_type}"
-            )
+        # init empty redis conn
+        self._redis_conn: Optional[redis.Redis] = None
+        if "redis_url" in kwargs:
+            redis_url = kwargs.pop("redis_url")
+            self.connect(redis_url, **kwargs)
+
 
     def set_client(self, client: redis.Redis):
         self._redis_conn = client
 
+    # @tyler keep in both?
     @property
     def name(self) -> str:
         """The name of the Redis search index."""
@@ -374,6 +375,7 @@ class SearchIndex(SearchIndexBase):
     ):
         """Load a batch of objects to Redis.
 
+        @tlyer: Wrap comments
         Args:
             data (Iterable[Any]): An iterable of objects to store.
             key_field (Optional[str]): Field used as the key for each object. Defaults to None.

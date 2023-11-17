@@ -20,6 +20,7 @@ from redisvl.schema import (
     TagFieldSchema,
     TextFieldSchema,
     read_schema,
+    IndexModel
 )
 
 
