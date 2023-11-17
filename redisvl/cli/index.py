@@ -51,7 +51,7 @@ class Index:
             exit(0)
 
     def create(self, args: Namespace):
-        """Create an index
+        """Create an index.
 
         Usage:
             rvl index create -i <index_name> | -s <schema_path>
@@ -65,7 +65,7 @@ class Index:
         logger.info("Index created successfully")
 
     def info(self, args: Namespace):
-        """Obtain information about an index
+        """Obtain information about an index.
 
         Usage:
             rvl index info -i <index_name> | -s <schema_path>
@@ -74,7 +74,7 @@ class Index:
         _display_in_table(index.info(), output_format=args.format)
 
     def listall(self, args: Namespace):
-        """List all indices
+        """List all indices.
 
         Usage:
             rvl index listall
@@ -87,7 +87,7 @@ class Index:
             logger.info(str(i + 1) + ". " + index)
 
     def delete(self, args: Namespace, drop=False):
-        """Delete an index
+        """Delete an index.
 
         Usage:
             rvl index delete -i <index_name> | -s <schema_path>
@@ -97,7 +97,7 @@ class Index:
         logger.info("Index deleted successfully")
 
     def destroy(self, args: Namespace):
-        """Delete an index and the documents within it
+        """Delete an index and the documents within it.
 
         Usage:
             rvl index destroy -i <index_name> | -s <schema_path>

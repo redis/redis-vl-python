@@ -15,8 +15,8 @@ class BaseStorage:
     DEFAULT_WRITE_CONCURRENCY: int = 20
 
     def __init__(self, prefix: str, key_separator: str):
-        """
-        Initialize the BaseStorage with a specific prefix and key separator for Redis keys.
+        """Initialize the BaseStorage with a specific prefix and key separator
+        for Redis keys.
 
         Args:
             prefix (str): The prefix to prepend to each Redis key.
@@ -27,8 +27,8 @@ class BaseStorage:
 
     @staticmethod
     def _key(key_value: str, prefix: str, key_separator: str) -> str:
-        """
-        Create a Redis key using a combination of a prefix, separator, and the key value.
+        """Create a Redis key using a combination of a prefix, separator, and
+        the key value.
 
         Args:
             key_value (str): The unique identifier for the Redis entry.
@@ -44,8 +44,8 @@ class BaseStorage:
             return f"{prefix}{key_separator}{key_value}"
 
     def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
-        """
-        Construct a Redis key for a given object, optionally using a specified field from the object as the key.
+        """Construct a Redis key for a given object, optionally using a
+        specified field from the object as the key.
 
         Args:
             obj (Dict[str, Any]): The object from which to construct the key.
@@ -71,8 +71,7 @@ class BaseStorage:
 
     @staticmethod
     def _preprocess(obj: Any, preprocess: Optional[Callable] = None) -> Dict[str, Any]:
-        """
-        Apply a preprocessing function to the object if provided.
+        """Apply a preprocessing function to the object if provided.
 
         Args:
             preprocess (Optional[Callable]): Function to process the object.
@@ -90,8 +89,8 @@ class BaseStorage:
     async def _apreprocess(
         obj: Any, preprocess: Optional[Callable] = None
     ) -> Dict[str, Any]:
-        """
-        Asynchronously apply a preprocessing function to the object if provided.
+        """Asynchronously apply a preprocessing function to the object if
+        provided.
 
         Args:
             preprocess (Optional[Callable]): Async function to process the object.
@@ -106,8 +105,8 @@ class BaseStorage:
         return obj
 
     def _validate(self, obj: Dict[str, Any]):
-        """
-        Validate the object before writing to Redis. This method should be implemented by subclasses.
+        """Validate the object before writing to Redis. This method should be
+        implemented by subclasses.
 
         Args:
             obj (Dict[str, Any]): The object to validate.
@@ -116,8 +115,7 @@ class BaseStorage:
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):
-        """
-        Synchronously set the value in Redis for the given key.
+        """Synchronously set the value in Redis for the given key.
 
         Args:
             client (Redis): The Redis client instance.
@@ -128,8 +126,7 @@ class BaseStorage:
 
     @staticmethod
     async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
-        """
-        Asynchronously set the value in Redis for the given key.
+        """Asynchronously set the value in Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -140,8 +137,7 @@ class BaseStorage:
 
     @staticmethod
     def _get(client: Redis, key: str) -> Dict[str, Any]:
-        """
-        Synchronously get the value from Redis for the given key.
+        """Synchronously get the value from Redis for the given key.
 
         Args:
             client (Redis): The Redis client instance.
@@ -154,8 +150,7 @@ class BaseStorage:
 
     @staticmethod
     async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
-        """
-        Asynchronously get the value from Redis for the given key.
+        """Asynchronously get the value from Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -176,8 +171,7 @@ class BaseStorage:
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
     ):
-        """
-        Write a batch of objects to Redis as hash entries.
+        """Write a batch of objects to Redis as hash entries.
 
         Args:
             redis_client (Redis): A Redis client used for writing data.
@@ -230,8 +224,8 @@ class BaseStorage:
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
     ):
-        """
-        Asynchronously write objects to Redis as hash entries with concurrency control.
+        """Asynchronously write objects to Redis as hash entries with
+        concurrency control.
 
         Args:
             redis_client (AsyncRedis): An asynchronous Redis client used for writing data.
@@ -316,7 +310,8 @@ class BaseStorage:
         keys: Iterable[str],
         concurrency: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Asynchronously retrieve objects from Redis by keys, with concurrency control.
+        """Asynchronously retrieve objects from Redis by keys, with concurrency
+        control.
 
         Args:
             redis_client (AsyncRedis): Asynchronous Redis client.
@@ -360,8 +355,8 @@ class HashStorage(BaseStorage):
         super().__init__(prefix, key_separator)
 
     def _validate(self, obj: Dict[str, Any]):
-        """
-        Validate that the given object is a dictionary, suitable for storage as a Redis hash.
+        """Validate that the given object is a dictionary, suitable for storage
+        as a Redis hash.
 
         Args:
             obj (Dict[str, Any]): The object to validate.
@@ -374,8 +369,7 @@ class HashStorage(BaseStorage):
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):
-        """
-        Synchronously set a hash value in Redis for the given key.
+        """Synchronously set a hash value in Redis for the given key.
 
         Args:
             client (Redis): The Redis client instance.
@@ -386,8 +380,7 @@ class HashStorage(BaseStorage):
 
     @staticmethod
     async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
-        """
-        Asynchronously set a hash value in Redis for the given key.
+        """Asynchronously set a hash value in Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -398,8 +391,7 @@ class HashStorage(BaseStorage):
 
     @staticmethod
     def _get(client: Redis, key: str) -> Dict[str, Any]:
-        """
-        Synchronously retrieve a hash value from Redis for the given key.
+        """Synchronously retrieve a hash value from Redis for the given key.
 
         Args:
             client (Redis): The Redis client instance.
@@ -412,8 +404,7 @@ class HashStorage(BaseStorage):
 
     @staticmethod
     async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
-        """
-        Asynchronously retrieve a hash value from Redis for the given key.
+        """Asynchronously retrieve a hash value from Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -438,8 +429,8 @@ class JsonStorage(BaseStorage):
         super().__init__(prefix, key_separator)
 
     def _validate(self, obj: Dict[str, Any]):
-        """
-        Validate that the given object is a dictionary, suitable for JSON serialization.
+        """Validate that the given object is a dictionary, suitable for JSON
+        serialization.
 
         Args:
             obj (Dict[str, Any]): The object to validate.
@@ -452,8 +443,7 @@ class JsonStorage(BaseStorage):
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):
-        """
-        Synchronously set a JSON obj in Redis for the given key.
+        """Synchronously set a JSON obj in Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -464,8 +454,7 @@ class JsonStorage(BaseStorage):
 
     @staticmethod
     async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
-        """
-        Asynchronously set a JSON obj in Redis for the given key.
+        """Asynchronously set a JSON obj in Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -476,8 +465,7 @@ class JsonStorage(BaseStorage):
 
     @staticmethod
     def _get(client: Redis, key: str) -> Dict[str, Any]:
-        """
-        Synchronously retrieve a JSON obj from Redis for the given key.
+        """Synchronously retrieve a JSON obj from Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.
@@ -490,8 +478,7 @@ class JsonStorage(BaseStorage):
 
     @staticmethod
     async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
-        """
-        Asynchronously retrieve a JSON obj from Redis for the given key.
+        """Asynchronously retrieve a JSON obj from Redis for the given key.
 
         Args:
             client (AsyncRedis): The Redis client instance.

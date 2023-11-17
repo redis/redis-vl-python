@@ -24,8 +24,8 @@ from redisvl.utils.utils import check_redis_modules_exist, convert_bytes, make_d
 def process_results(
     results: "Result", query: BaseQuery, storage_type: StorageType
 ) -> List[Dict[str, Any]]:
-    """
-    Convert a list of search Result objects into a list of document dictionaries.
+    """Convert a list of search Result objects into a list of document
+    dictionaries.
 
     This function processes results from Redis, handling different storage types
     and query types. For JSON storage with empty return fields, it unpacks the JSON object
@@ -95,7 +95,8 @@ class SearchIndexBase:
         self._fields = fields
 
     def _create_storage(self) -> BaseStorage:
-        """Create and return a storage instance based on the provided storage type."""
+        """Create and return a storage instance based on the provided storage
+        type."""
         if self._index.storage_type == StorageType.HASH.value:
             return HashStorage(
                 prefix=self._index.prefix, key_separator=self._index.key_separator
@@ -119,17 +120,20 @@ class SearchIndexBase:
 
     @property
     def prefix(self) -> str:
-        """The optional key prefix that comes before a unique key value in forming a Redis key."""
+        """The optional key prefix that comes before a unique key value in
+        forming a Redis key."""
         return self._index.prefix
 
     @property
     def key_separator(self) -> str:
-        """The optional separator between a defined prefix and key value in forming a Redis key."""
+        """The optional separator between a defined prefix and key value in
+        forming a Redis key."""
         return self._index.key_separator
 
     @property
     def storage(self) -> BaseStorage:
-        """The Storage class that handles all upserts and reads to/from the Redis instances."""
+        """The Storage class that handles all upserts and reads to/from the
+        Redis instances."""
         return self._storage
 
     @property
@@ -197,10 +201,9 @@ class SearchIndexBase:
         return self
 
     def key(self, key_value: str) -> str:
-        """
-        Create a redis key as a combination of an index key prefix (optional) and specified key value.
-        The key value is typically a unique identifier, created at random, or derived from
-        some specified metadata.
+        """Create a redis key as a combination of an index key prefix (optional)
+        and specified key value. The key value is typically a unique identifier,
+        created at random, or derived from some specified metadata.
 
         Args:
             key_value (str): The specified unique identifier for a particular document
@@ -280,7 +283,6 @@ class SearchIndex(SearchIndexBase):
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
             ValueError: If the REDIS_URL env var is not set and url is not provided.
-
         """
         client = get_redis_connection(url, **kwargs)
         info = convert_bytes(client.ft(name).info())
@@ -313,8 +315,7 @@ class SearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     def create(self, overwrite: Optional[bool] = False) -> None:
-        """
-        Create an index in Redis from this SearchIndex object.
+        """Create an index in Redis from this SearchIndex object.
 
         Args:
             overwrite: Whether to overwrite the index if it already exists. Defaults to False.
@@ -371,8 +372,7 @@ class SearchIndex(SearchIndexBase):
         batch_size: Optional[int] = None,
         **kwargs,
     ):
-        """
-        Load a batch of objects to Redis.
+        """Load a batch of objects to Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -505,7 +505,6 @@ class AsyncSearchIndex(SearchIndexBase):
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
             ValueError: If the REDIS_URL env var is not set and url is not provided.
-
         """
         client = get_async_redis_connection(url, **kwargs)
         info = convert_bytes(await client.ft(name).info())
@@ -538,8 +537,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
     @check_connected("_redis_conn")
     async def create(self, overwrite: Optional[bool] = False) -> None:
-        """
-        Asynchronously create an index in Redis from this SearchIndex object.
+        """Asynchronously create an index in Redis from this SearchIndex object.
 
         Args:
             overwrite: Whether to overwrite the index if it already exists. Defaults to False.
@@ -594,8 +592,7 @@ class AsyncSearchIndex(SearchIndexBase):
         concurrency: Optional[int] = None,
         **kwargs,
     ):
-        """
-        Asynchronously load objects to Redis with concurrency control.
+        """Asynchronously load objects to Redis with concurrency control.
 
         Args:
             redis_client (AsyncRedis): An asynchronous Redis client used for writing data.

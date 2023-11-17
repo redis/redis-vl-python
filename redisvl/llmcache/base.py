@@ -26,7 +26,8 @@ class BaseLLMCache:
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
     ) -> None:
-        """Stores the specified key-value pair in the cache along with metadata."""
+        """Stores the specified key-value pair in the cache along with
+        metadata."""
         raise NotImplementedError
 
     def _refresh_ttl(self, key: str):

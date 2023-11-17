@@ -135,7 +135,7 @@ class SemanticCache(BaseLLMCache):
         self._threshold = float(threshold)
 
     def clear(self):
-        """Clear the LLMCache of all keys in the index"""
+        """Clear the LLMCache of all keys in the index."""
         client = self._index.client
         prefix = self._index.prefix
         if client:

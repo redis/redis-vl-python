@@ -56,7 +56,7 @@ class Stats:
             exit(0)
 
     def stats(self, args: Namespace):
-        """Obtain stats about an index
+        """Obtain stats about an index.
 
         Usage:
             rvl stats -i <index_name> | -s <schema_path>

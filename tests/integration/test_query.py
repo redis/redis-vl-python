@@ -211,7 +211,7 @@ def filter_test(
     location=None,
     distance_threshold=0.2,
 ):
-    """Utility function to test filters"""
+    """Utility function to test filters."""
 
     # set the new filter
     query.set_filter(_filter)

@@ -125,10 +125,8 @@ class StorageType(Enum):
 
 
 class IndexModel(BaseModel):
-    """
-    Represents the schema for an index, including its name,
-    optional prefix, and the storage type used.
-    """
+    """Represents the schema for an index, including its name, optional prefix,
+    and the storage type used."""
 
     name: str
     prefix: str
@@ -197,20 +195,11 @@ def read_schema(file_path: str):
 
 
 class MetadataSchemaGenerator:
-    """
-    A class to generate a schema for metadata, categorizing fields into text, numeric, and tag types.
-    """
+    """A class to generate a schema for metadata, categorizing fields into text,
+    numeric, and tag types."""
 
     def _test_numeric(self, value) -> bool:
-        """
-        Test if the given value can be represented as a numeric value.
-
-        Args:
-            value: The value to test.
-
-        Returns:
-            bool: True if the value can be converted to float, False otherwise.
-        """
+        """Test if a value is numeric."""
         try:
             float(value)
             return True
@@ -218,72 +207,40 @@ class MetadataSchemaGenerator:
             return False
 
     def _infer_type(self, value) -> Optional[str]:
-        """
-        Infer the type of the given value.
-
-        Args:
-            value: The value to infer the type of.
-
-        Returns:
-            Optional[str]: The inferred type of the value, or None if the type is unrecognized or the value is empty.
-        """
-        if value is None or value == "":
+        """Infer the type of a value."""
+        if value in [None, ""]:
             return None
-        elif self._test_numeric(value):
+        if self._test_numeric(value):
             return "numeric"
-        elif isinstance(value, (list, set, tuple)) and all(
-            isinstance(v, str) for v in value
-        ):
+        if isinstance(value, (list, set, tuple)) and all(
+           isinstance(v, str) for v in value):
             return "tag"
-        elif isinstance(value, str):
-            return "text"
-        else:
-            return "unknown"
+        return "text" if isinstance(value, str) else "unknown"
 
-    def generate(
-        self, metadata: Dict[str, Any], strict: Optional[bool] = False
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Generate a schema from the provided metadata.
-
-        This method categorizes each metadata field into text, numeric, or tag types based on the field values.
-        It also allows forcing strict type determination by raising an exception if a type cannot be inferred.
-
-        Args:
-            metadata: The metadata dictionary to generate the schema from.
-            strict: If True, the method will raise an exception for fields where the type cannot be determined.
-
-        Returns:
-            Dict[str, List[Dict[str, Any]]]: A dictionary with keys 'text', 'numeric', and 'tag', each mapping to a list of field schemas.
-
-        Raises:
-            ValueError: If the force parameter is True and a field's type cannot be determined.
-        """
-        result: Dict[str, List[Dict[str, Any]]] = {"text": [], "numeric": [], "tag": []}
+    def generate(self, metadata: Dict[str, Any],
+                 strict: Optional[bool] = False) -> Dict[str, List[Dict[str, Any]]]:
+        """Generate a schema from metadata."""
+        result = {"text": [], "numeric": [], "tag": []}
+        field_classes = {
+            "text": TextFieldSchema,
+            "tag": TagFieldSchema,
+            "numeric": NumericFieldSchema,
+        }
 
         for key, value in metadata.items():
             field_type = self._infer_type(value)
 
-            if field_type in ["unknown", None]:
+            if field_type in [None, "unknown"]:
                 if strict:
                     raise ValueError(
-                        f"Unable to determine field type for key '{key}' with value '{value}'"
-                    )
-                print(
-                    f"Warning: Unable to determine field type for key '{key}' with value '{value}'"
-                )
+                        f"Unable to determine field type for key '{key}' with"
+                        f" value '{value}'")
+                print(f"Warning: Unable to determine field type for key '{key}'"
+                      f" with value '{value}'")
                 continue
 
-            # Extract the field class with defaults
-            field_class = {
-                "text": TextFieldSchema,
-                "tag": TagFieldSchema,
-                "numeric": NumericFieldSchema,
-            }.get(
-                field_type  # type: ignore
-            )
-
+            field_class = field_classes.get(field_type)
             if field_class:
-                result[field_type].append(field_class(name=key).dict(exclude_none=True))  # type: ignore
+                result[field_type].append(field_class(name=key).dict(exclude_none=True))
 
         return result

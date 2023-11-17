@@ -210,7 +210,6 @@ class VectorQuery(BaseVectorQuery):
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-
         """
         super().__init__(
             vector,
@@ -290,7 +289,6 @@ class RangeQuery(BaseVectorQuery):
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-
         """
         super().__init__(
             vector,

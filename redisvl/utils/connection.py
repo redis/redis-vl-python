@@ -32,7 +32,7 @@ def get_async_redis_connection(url: Optional[str] = None, **kwargs):
 
 
 def get_address_from_env():
-    """Get a redis connection from environment variables
+    """Get a redis connection from environment variables.
 
     Returns:
         str: Redis URL
