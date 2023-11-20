@@ -43,6 +43,36 @@ def get_address_from_env():
     return addr
 
 
+def check_index_exists():
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if not self.exists():
+                raise ValueError(
+                    f"Index has not been created. Must be created before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+async def check_async_index_exists():
+    async def decorator(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            if not await self.exists():
+                raise ValueError(
+                    f"Index has not been created. Must be created before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def check_connected(client_variable_name: str):
     def decorator(func):
         @wraps(func)
