@@ -82,7 +82,9 @@ def check_modules_present(client_variable_name: str):
             client = getattr(self, client_variable_name)
             check_redis_modules_exist(client)
             return func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -93,7 +95,9 @@ def check_async_modules_present(client_variable_name: str):
             client = getattr(self, client_variable_name)
             await check_async_redis_modules_exist(client)
             return await func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -106,7 +110,9 @@ def check_index_exists():
                     f"Index has not been created. Must be created before calling {func.__name__}"
                 )
             return func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -119,7 +125,9 @@ def check_async_index_exists():
                     f"Index has not been created. Must be created before calling {func.__name__}"
                 )
             return await func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -132,7 +140,9 @@ def check_connected(client_variable_name: str):
                     f"SearchIndex.connect() must be called before calling {func.__name__}"
                 )
             return func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -145,7 +155,9 @@ def check_async_connected(client_variable_name: str):
                     f"SearchIndex.connect() must be called before calling {func.__name__}"
                 )
             return await func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -298,7 +310,7 @@ class SearchIndexBase:
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         raise NotImplementedError
 
-    def connect(self, url: str, **kwargs):
+    def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance."""
         raise NotImplementedError
 
@@ -413,8 +425,8 @@ class SearchIndex(SearchIndexBase):
         """Connect to a Redis instance.
 
         Args:
-            redis_url (str): Redis URL. REDIS_URL env var is used if not
-                provided.
+            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var is
+                used if not provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
@@ -471,7 +483,7 @@ class SearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
+        self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
@@ -568,7 +580,7 @@ class SearchIndex(SearchIndexBase):
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))
+        indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
         return self._name in indices
 
     @check_connected("_redis_conn")
@@ -643,8 +655,8 @@ class AsyncSearchIndex(SearchIndexBase):
         """Connect to a Redis instance.
 
         Args:
-            redis_url (str): Redis URL. REDIS_URL env var is used if not
-                provided.
+            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var is
+                used if not provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
@@ -699,7 +711,7 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
+        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
@@ -763,7 +775,7 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.ft(self._name).search(*args, **kwargs)
+        results = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
         return results
 
     @check_async_connected("_redis_conn")
