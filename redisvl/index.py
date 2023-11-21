@@ -98,39 +98,31 @@ class SearchIndexBase:
         storage_type: str = "hash",
         key_separator: str = ":",
         fields: Optional[List["Field"]] = None,
-        # TODO: discuss should we allow this?
-        schema: Optional[SchemaModel] = None,
         **kwargs,
     ):
-        """_summary_
+        """Initialize the RedisVL search index class.
 
         Args:
             name (str): Index name.
-            prefix (str, optional): Key prefix associated with the index. Defaults to "rvl".
-            storage_type (str, optional): Underlying Redis storage type (hash or json). Defaults to "hash".
+            prefix (str, optional): Key prefix associated with the index.
+                Defaults to "rvl".
+            storage_type (str, optional): Underlying Redis storage type (hash
+                or json). Defaults to "hash".
             key_separator (str, optional): : Separator character to combine
-                prefix and key value for constructing redis keys. Defaults to ":".
-            fields (Optional[List[Field]], optional): List of Redis fields to index. Defaults to None.
-            schema (Optional[SchemaModel], optional): The RedisVL schema to use for this index. Defaults to None.
+                prefix and key value for constructing redis keys.
+                Defaults to ":".
+            fields (Optional[List[Field]], optional): List of Redis fields to
+                index. Defaults to None.
         """
-        # configure index schema
-        if schema is not None and isinstance(schema, SchemaModel):
-            self._schema = schema
-        else:
-            self._schema = SchemaModel(
-                index=IndexModel(
-                    name=name,
-                    prefix=prefix,
-                    storage_type=storage_type,  # type: ignore
-                    key_separator=key_separator,
-                ),
-                fields=FieldsModel(
-                    # TODO... this could be tricky
-                ),
-            )
+        self._name = name
+        self._prefix = prefix
+        self._key_separator = key_separator
+        self._storage_type = storage_type
+        self._fields = fields
+
         # configure storage layer
-        self._storage = self.STORAGE_MAP[self._schema.index.storage_type](  # type: ignore
-            self._schema.index.prefix, self._schema.index.key_separator
+        self._storage = self.STORAGE_MAP[self._storage_type](  # type: ignore
+            self._prefix, self._key_separator
         )
 
         # init empty redis conn
@@ -139,37 +131,31 @@ class SearchIndexBase:
             redis_url = kwargs.pop("redis_url")
             self.connect(redis_url, **kwargs)
 
-    def set_client(self, client: redis.Redis):
+    def set_client(self, client: redis.Redis) -> None:
         """Set the Redis client object for the search index."""
         self._redis_conn = client
 
     @property
     def name(self) -> str:
         """The name of the Redis search index."""
-        return self._schema.index.name
+        return self._name
 
     @property
     def prefix(self) -> str:
         """The optional key prefix that comes before a unique key value in
         forming a Redis key."""
-        return self._schema.index.prefix
+        return self._prefix
 
     @property
     def key_separator(self) -> str:
         """The optional separator between a defined prefix and key value in
         forming a Redis key."""
-        return self._schema.index.key_separator
-
-    @property
-    def storage(self) -> BaseStorage:
-        """The Storage class that handles all upserts and reads to/from the
-        Redis instances."""
-        return self._storage
+        return self._key_separator
 
     @property
     def storage_type(self) -> StorageType:
         """The underlying storage type for the search index: hash or json."""
-        return self._schema.index.storage_type
+        return self._storage_type
 
     @property
     @check_connected("_redis_conn")
@@ -184,12 +170,17 @@ class SearchIndexBase:
         Args:
             schema_path (str): Path to the YAML schema file.
 
+        Example:
+            >>> from redisvl.index import SearchIndex
+            >>> index = SearchIndex.from_yaml("schema.yaml")
+            >>> index.connect("redis://localhost:6379")
+            >>> index.create(overwrite=True)
+
         Returns:
             SearchIndex: A SearchIndex object.
         """
         schema = read_schema(schema_path)
-        # TODO: discuss
-        return cls(schema=schema)
+        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
     def from_dict(cls, schema_dict: Dict[str, Any]):
@@ -198,12 +189,27 @@ class SearchIndexBase:
         Args:
             schema_dict (Dict[str, Any]): A dictionary containing the schema.
 
+        Example:
+            >>> from redisvl.index import SearchIndex
+            >>> index = SearchIndex.from_dict({
+            >>>     "index": {
+            >>>         "name": "my-index",
+            >>>         "prefix": "rvl",
+            >>>         "storage_type": "hash",
+            >>>         "key_separator": ":"
+            >>>     },
+            >>>     "fields": {
+            >>>         "tag": [{"name": "doc-id"}]
+            >>>     }
+            >>> })
+            >>> index.connect("redis://localhost:6379")
+            >>> index.create(overwrite=True)
+
         Returns:
             SearchIndex: A SearchIndex object.
         """
         schema = SchemaModel(**schema_dict)
-        # TODO: discuss
-        return cls(schema=schema)
+        return cls(fields=schema.index_fields, **schema.index.dict())
 
     @classmethod
     def from_existing(
@@ -214,7 +220,6 @@ class SearchIndexBase:
         fields: Optional[List["Field"]] = None,
         **kwargs,
     ):
-        # TODO: discuss
         raise NotImplementedError
 
     @check_connected("_redis_conn")
@@ -244,14 +249,14 @@ class SearchIndexBase:
         created at random, or derived from some specified metadata.
 
         Args:
-            key_value (str): The specified unique identifier for a particular document
-                             indexed in Redis.
+            key_value (str): The specified unique identifier for a particular
+                document indexed in Redis.
 
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
         return self._storage._key(
-            key_value, self._schema.index.prefix, self._schema.index.key_separator
+            key_value, self._prefix, self._key_separator
         )
 
     @check_connected("_redis_conn")
@@ -262,7 +267,7 @@ class SearchIndexBase:
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
-    def create(self, overwrite: Optional[bool] = False):
+    def create(self, overwrite: bool = False):
         raise NotImplementedError
 
     @check_connected("_redis_conn")
@@ -275,9 +280,12 @@ class SearchIndexBase:
     @check_modules_present("_redis_conn")
     def load(
         self,
-        data: Iterable[Dict[str, Any]],
+        data: Iterable[Any],
         key_field: Optional[str] = None,
+        keys: Optional[Iterable[str]] = None,
+        ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
+        concurrency: Optional[int] = None,
         **kwargs,
     ):
         raise NotImplementedError
@@ -292,6 +300,7 @@ class SearchIndex(SearchIndexBase):
     Example:
         >>> from redisvl.index import SearchIndex
         >>> index = SearchIndex.from_yaml("schema.yaml")
+        >>> index.connect("redis://localhost:6379")
         >>> index.create(overwrite=True)
         >>> index.load(data) # data is an iterable of dictionaries
     """
@@ -311,8 +320,8 @@ class SearchIndex(SearchIndexBase):
             name (str): Index name.
             redis_url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
-            key_separator (str, optional): Separator character to combine
-                prefix and key value for constructing redis keys. Defaults to ":".
+            key_separator (str, optional): Separator char to combine prefix and
+                key value for constructing redis keys. Defaults to ":".
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
 
@@ -321,7 +330,7 @@ class SearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_URL env var is not set and redis_url is not provided.
+            ValueError: If the redis url is not accessible.
         """
         client = get_redis_connection(redis_url, **kwargs)
         info = convert_bytes(client.ft(name).info())
@@ -342,30 +351,31 @@ class SearchIndex(SearchIndexBase):
         """Connect to a Redis instance.
 
         Args:
-            redis_url (str): Redis URL. REDIS_URL env var is used if not provided.
+            redis_url (str): Redis URL. REDIS_URL env var is used if not
+                provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If the REDIS_URL env var is not set and redis_url is not provided.
+            ValueError: If the redis url is not accessible.
         """
         self._redis_conn = get_redis_connection(redis_url, **kwargs)
         return self
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
-    def create(self, overwrite: Optional[bool] = False) -> None:
+    def create(self, overwrite: bool = False) -> None:
         """Create an index in Redis from this SearchIndex object.
 
         Args:
-            overwrite: Whether to overwrite the index if it already exists. Defaults to False.
+            overwrite (bool, optional): Whether to overwrite the index if it
+                already exists. Defaults to False.
 
         Raises:
             RuntimeError: If the index already exists and 'overwrite' is False.
             ValueError: If no fields are defined for the index.
         """
         # Check that fields are defined.
-        fields = self._schema.index_fields
-        if not fields:
+        if not self._fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
@@ -378,10 +388,10 @@ class SearchIndex(SearchIndexBase):
             self.delete()
 
         # Create the index with the specified fields and settings.
-        self._redis_conn.ft(self._schema.index.name).create_index(  # type: ignore
-            fields=fields,
+        self._redis_conn.ft(self._name).create_index(  # type: ignore
+            fields=self._fields,
             definition=IndexDefinition(
-                prefix=[self._schema.index.prefix], index_type=self._storage.type
+                prefix=[self._prefix], index_type=self._storage.type
             ),
         )
 
@@ -392,13 +402,14 @@ class SearchIndex(SearchIndexBase):
         """Delete the search index.
 
         Args:
-            drop (bool, optional): Delete the documents in the index. Defaults to True.
+            drop (bool, optional): Delete the documents in the index.
+                Defaults to True.
 
         raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        self._redis_conn.ft(self._schema.index.name).dropindex(delete_documents=drop)
+        self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
@@ -414,21 +425,29 @@ class SearchIndex(SearchIndexBase):
     ):
         """Load a batch of objects to Redis.
 
-        @tlyer: Wrap comments
         Args:
             data (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str]): Field used as the key for each object. Defaults to None.
-            keys (Optional[Iterable[str]]): Optional iterable of keys, must match the length of objects if provided.
-            ttl (Optional[int]): Time-to-live in seconds for each key. Defaults to None.
-            preprocess (Optional[Callable]): A function to preprocess objects before storage. Defaults to None.
-            batch_size (Optional[int]): Number of objects to write in a single Redis pipeline execution. Defaults to class's default batch size.
+            key_field (Optional[str], optional): Field used as the key for each
+                object. Defaults to None.
+            keys (Optional[Iterable[str]], optional): Optional iterable of keys.
+                Must match the length of objects if provided. Defaults to None.
+            ttl (Optional[int], optional): Time-to-live in seconds for each key.
+                Defaults to None.
+            preprocess (Optional[Callable], optional): A function to preprocess
+                objects before storage. Defaults to None.
+            batch_size (Optional[int], optional): Number of objects to write in
+                a single Redis pipeline execution. Defaults to class's
+                default batch size.
 
         Raises:
-            ValueError: If the length of provided keys does not match the length of objects.
+            ValueError: If the length of provided keys does not match the length
+                of objects.
 
         Example:
             >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> async def func(record: dict): record["new"] = "value"; return record
+            >>> def func(record: dict):
+            >>>     record["new"] = "value"
+            >>>     return record
             >>> index.load(data, preprocess=func)
         """
         self._storage.write(
@@ -454,7 +473,7 @@ class SearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = self._redis_conn.ft(self._schema.index.name).search(  # type: ignore
+        results = self._redis_conn.ft(self._name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -478,7 +497,7 @@ class SearchIndex(SearchIndexBase):
         results = self.search(query.query, query_params=query.params)
         # post process the results
         return process_results(
-            results, query=query, storage_type=self._schema.index.storage_type
+            results, query=query, storage_type=self._storage_type
         )
 
     @check_connected("_redis_conn")
@@ -489,8 +508,10 @@ class SearchIndex(SearchIndexBase):
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
-        return self._schema.index.name in indices
+        indices = convert_bytes(
+            self._redis_conn.execute_command("FT._LIST")
+        )
+        return self._name in indices
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
@@ -502,7 +523,7 @@ class SearchIndex(SearchIndexBase):
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            self._redis_conn.ft(self._schema.index.name).info()  # type: ignore
+            self._redis_conn.ft(self._name).info()  # type: ignore
         )
 
 
@@ -515,6 +536,7 @@ class AsyncSearchIndex(SearchIndexBase):
     Example:
         >>> from redisvl.index import AsyncSearchIndex
         >>> index = AsyncSearchIndex.from_yaml("schema.yaml")
+        >>> index.connect("redis://localhost:6379")
         >>> await index.create(overwrite=True)
         >>> await index.load(data) # data is an iterable of dictionaries
     """
@@ -534,8 +556,8 @@ class AsyncSearchIndex(SearchIndexBase):
             name (str): Index name.
             redis_url (Optional[str], optional): Redis URL. REDIS_URL env var
                 is used if not provided. Defaults to None.
-            key_separator (str, optional): Separator character to combine
-                prefix and key value for constructing redis keys. Defaults to ":".
+            key_separator (str, optional): Separator char to combine prefix and
+                key value for constructing redis keys. Defaults to ":".
             fields (Optional[List[Field]], optional): List of Redis search
                 fields to include in the schema. Defaults to None.
 
@@ -544,7 +566,7 @@ class AsyncSearchIndex(SearchIndexBase):
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the REDIS_URL env var is not set and redis_url is not provided.
+            ValueError: If the Redis URL is not accessible.
         """
         client = get_async_redis_connection(redis_url, **kwargs)
         info = convert_bytes(await client.ft(name).info())
@@ -565,28 +587,29 @@ class AsyncSearchIndex(SearchIndexBase):
         """Connect to a Redis instance.
 
         Args:
-            redis_url (str): Redis URL. REDIS_URL env var is used if not provided.
+            redis_url (str): Redis URL. REDIS_URL env var is used if not
+                provided.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If no Redis URL is provided and REDIS_URL env var is not set.
+            ValueError: If the Redis URL is not accessible.
         """
         self._redis_conn = get_async_redis_connection(redis_url, **kwargs)
         return self
 
     @check_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
-    async def create(self, overwrite: Optional[bool] = False) -> None:
+    async def create(self, overwrite: bool = False) -> None:
         """Asynchronously create an index in Redis from this SearchIndex object.
 
         Args:
-            overwrite: Whether to overwrite the index if it already exists. Defaults to False.
+            overwrite (bool, optional): Whether to overwrite the index if it
+                already exists. Defaults to False.
 
         Raises:
             RuntimeError: If the index already exists and 'overwrite' is False.
         """
-        fields = self._schema.index_fields
-        if not fields:
+        if not self._fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
@@ -599,10 +622,10 @@ class AsyncSearchIndex(SearchIndexBase):
             await self.delete()
 
         # Create Index with proper IndexType
-        await self._redis_conn.ft(self._schema.index.name).create_index(  # type: ignore
-            fields=fields,
+        await self._redis_conn.ft(self._name).create_index(  # type: ignore
+            fields=self._fields,
             definition=IndexDefinition(
-                prefix=[self._schema.index.prefix], index_type=self._storage.type
+                prefix=[self._prefix], index_type=self._storage.type
             ),
         )
 
@@ -613,15 +636,16 @@ class AsyncSearchIndex(SearchIndexBase):
         """Delete the search index.
 
         Args:
-            drop (bool, optional): Delete the documents in the index. Defaults to True.
+            drop (bool, optional): Delete the documents in the index.
+                Defaults to True.
 
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        await self._redis_conn.ft(self._schema.index.name).dropindex(
+        await self._redis_conn.ft(self._name).dropindex(
             delete_documents=drop
-        )  # type: ignore
+        )
 
     @check_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
@@ -638,20 +662,28 @@ class AsyncSearchIndex(SearchIndexBase):
         """Asynchronously load objects to Redis with concurrency control.
 
         Args:
-            redis_client (AsyncRedis): An asynchronous Redis client used for writing data.
-            objects (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str]): Field used as the key for each object. Defaults to None.
-            keys (Optional[Iterable[str]]): Optional iterable of keys, must match the length of objects if provided.
-            ttl (Optional[int]): Time-to-live in seconds for each key. Defaults to None.
-            preprocess (Optional[Callable]): An async function to preprocess objects before storage. Defaults to None.
-            concurrency (Optional[int]): The maximum number of concurrent write operations. Defaults to class's default concurrency level.
+            data (Iterable[Any]): An iterable of objects to store.
+            key_field (Optional[str], optional): Field used as the key for each
+                object. Defaults to None.
+            keys (Optional[Iterable[str]], optional): Optional iterable of keys.
+                Must match the length of objects if provided. Defaults to None.
+            ttl (Optional[int], optional): Time-to-live in seconds for each key.
+                Defaults to None.
+            preprocess (Optional[Callable], optional): An async function to
+                preprocess objects before storage. Defaults to None.
+            concurrency (Optional[int], optional): The maximum number of
+                concurrent write operations. Defaults to class's default
+                concurrency level.
 
         Raises:
-            ValueError: If the length of provided keys does not match the length of objects.
+            ValueError: If the length of provided keys does not match the
+                length of objects.
 
         Example:
             >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> async def func(record: dict): record["new"] = "value"; return record
+            >>> async def func(record: dict):
+            >>>     record["new"] = "value"
+            >>>     return record
             >>> await index.load(data, preprocess=func)
         """
         await self._storage.awrite(
@@ -677,9 +709,9 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.ft(self._schema.index.name).search(
+        results = await self._redis_conn.ft(self._name).search(
             *args, **kwargs
-        )  # type: ignore
+        )
         return results
 
     @check_connected("_redis_conn")
@@ -701,7 +733,7 @@ class AsyncSearchIndex(SearchIndexBase):
         results = await self.search(query.query, query_params=query.params)
         # post process the results
         return process_results(
-            results, query=query, storage_type=self._schema.index.storage_type
+            results, query=query, storage_type=self._storage_type
         )
 
     @check_connected("_redis_conn")
@@ -713,7 +745,7 @@ class AsyncSearchIndex(SearchIndexBase):
             bool: True if the index exists, False otherwise.
         """
         indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
-        return self._schema.index.name in convert_bytes(indices)
+        return self._name in convert_bytes(indices)
 
     @check_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
@@ -725,5 +757,5 @@ class AsyncSearchIndex(SearchIndexBase):
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            await self._redis_conn.ft(self._schema.index.name).info()  # type: ignore
+            await self._redis_conn.ft(self._name).info()  # type: ignore
         )

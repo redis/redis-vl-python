@@ -88,7 +88,7 @@ def check_modules_present(client_variable_name: str):
     return decorator
 
 
-async def check_async_modules_present(client_variable_name: str):
+def check_async_modules_present(client_variable_name: str):
     async def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):

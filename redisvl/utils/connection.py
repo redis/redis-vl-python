@@ -58,7 +58,7 @@ def check_index_exists():
     return decorator
 
 
-async def check_async_index_exists():
+def check_async_index_exists():
     async def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):

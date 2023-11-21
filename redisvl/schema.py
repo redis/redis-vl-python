@@ -6,6 +6,7 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, Field, validator
 from redis.commands.search.field import (
+    Field as RedisField,
     GeoField,
     NumericField,
     TagField,
@@ -140,6 +141,26 @@ class FieldsModel(BaseModel):
     numeric: Optional[List[NumericFieldSchema]] = None
     geo: Optional[List[GeoFieldSchema]] = None
     vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]] = None
+
+    @classmethod
+    def from_fields_list(cls, fields_list: Optional[List[RedisField]]):
+        fields = {"tag": [], "text": [], "numeric": [], "geo": [], "vector": []}
+        for field in fields_list:
+            field_args = field.dict()
+            if isinstance(field, GeoField):
+                fields["geo"].append(GeoFieldSchema(**field_args))
+            elif isinstance(field, TextField):
+                fields["text"].append(TextFieldSchema(**field_args))
+            elif isinstance(field, TagField):
+                fields["tag"].append(TagFieldSchema(**field_args))
+            elif isinstance(field, NumericField):
+                fields["numeric"].append(NumericFieldSchema(**field_args))
+            elif isinstance(field, VectorField):
+                if field_args.get("algorithm", "").lower() == "hnsw":
+                    fields["vector"].append(HNSWVectorField(**field_args))
+                elif field_args.get("algorithm", "").lower() == "flat":
+                    fields["vector"].append(FlatVectorField(**field_args))
+        return cls(**fields)
 
 
 class SchemaModel(BaseModel):
