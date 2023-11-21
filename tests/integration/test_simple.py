@@ -1,9 +1,12 @@
 from pprint import pprint
 
 import numpy as np
+import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
+from redisvl.schema import StorageType
+from redisvl.utils.utils import array_to_buffer
 
 data = [
     {
@@ -12,7 +15,7 @@ data = [
         "age": 1,
         "job": "engineer",
         "credit_score": "high",
-        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
+        "user_embedding": [0.1, 0.1, 0.5],
     },
     {
         "id": 2,
@@ -20,7 +23,7 @@ data = [
         "age": 2,
         "job": "doctor",
         "credit_score": "low",
-        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
+        "user_embedding": [0.1, 0.1, 0.5],
     },
     {
         "id": 3,
@@ -28,14 +31,14 @@ data = [
         "age": 3,
         "job": "dentist",
         "credit_score": "medium",
-        "user_embedding": np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
+        "user_embedding": [0.9, 0.9, 0.1],
     },
 ]
 
-schema = {
+hash_schema = {
     "index": {
-        "name": "user_index",
-        "prefix": "users",
+        "name": "user_index_hash",
+        "prefix": "users_hash",
         "storage_type": "hash",
     },
     "fields": {
@@ -54,16 +57,51 @@ schema = {
     },
 }
 
+json_schema = {
+    "index": {
+        "name": "user_index_json",
+        "prefix": "users_json",
+        "storage_type": "json",
+    },
+    "fields": {
+        "tag": [
+            {"name": "$.credit_score", "as_name": "credit_score"},
+            {"name": "$.user", "as_name": "user"},
+        ],
+        "text": [{"name": "$.job", "as_name": "job"}],
+        "numeric": [{"name": "$.age", "as_name": "age"}],
+        "vector": [
+            {
+                "name": "$.user_embedding",
+                "as_name": "user_embedding",
+                "dims": 3,
+                "distance_metric": "cosine",
+                "algorithm": "flat",
+                "datatype": "float32",
+            }
+        ],
+    },
+}
 
-def test_simple(client):
+
+@pytest.mark.parametrize("schema", [hash_schema, json_schema])
+def test_simple(client, schema):
     index = SearchIndex.from_dict(schema)
     # assign client (only for testing)
     index.set_client(client)
     # create the index
     index.create(overwrite=True)
 
-    # load data into the index in Redis
-    index.load(data)
+    # Prepare and load the data based on storage type
+    def hash_preprocess(item: dict) -> dict:
+        return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
+
+    if index.storage_type == StorageType.HASH:
+        index.load(data, preprocess=hash_preprocess)
+    else:
+        # Load the prepared data into the index
+        print("DATA", data, flush=True)
+        index.load(data)
 
     query = VectorQuery(
         vector=[0.1, 0.1, 0.5],
@@ -80,6 +118,7 @@ def test_simple(client):
     # users = list(results.docs)
     # print(len(users))
     users = [doc for doc in results.docs]
+    pprint(users)
     assert users[0].user in ["john", "mary"]
     assert users[1].user in ["john", "mary"]
 

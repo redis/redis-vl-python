@@ -95,7 +95,7 @@ class Tag(FilterField):
     SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
 
     def __init__(self, field: str):
-        """Create a Tag FilterField
+        """Create a Tag FilterField.
 
         Args:
             field (str): The name of the tag field in the index to be queried against
@@ -121,7 +121,7 @@ class Tag(FilterField):
 
     @check_operator_misuse
     def __eq__(self, other: Union[List[str], str]) -> "FilterExpression":
-        """Create a Tag equality filter expression
+        """Create a Tag equality filter expression.
 
         Args:
             other (Union[List[str], str]): The tag(s) to filter on.
@@ -135,7 +135,7 @@ class Tag(FilterField):
 
     @check_operator_misuse
     def __ne__(self, other) -> "FilterExpression":
-        """Create a Tag inequality filter expression
+        """Create a Tag inequality filter expression.
 
         Args:
             other (Union[List[str], str]): The tag(s) to filter on.
@@ -152,7 +152,7 @@ class Tag(FilterField):
         return "|".join([self.escaper.escape(tag) for tag in self._value])
 
     def __str__(self) -> str:
-        """Return the Redis Query syntax for a Tag filter expression"""
+        """Return the Redis Query syntax for a Tag filter expression."""
         if not self._value:
             return "*"
 
@@ -175,7 +175,7 @@ class GeoSpec:
 
 
 class GeoRadius(GeoSpec):
-    """A GeoRadius is a GeoSpec representing a geographic radius"""
+    """A GeoRadius is a GeoSpec representing a geographic radius."""
 
     def __init__(
         self,
@@ -194,7 +194,6 @@ class GeoRadius(GeoSpec):
 
         Raises:
             ValueError: If the unit is not one of "m", "km", "mi", or "ft".
-
         """
         super().__init__(longitude, latitude, unit)
         self._radius = radius
@@ -204,24 +203,22 @@ class GeoRadius(GeoSpec):
 
 
 class Geo(FilterField):
-    """A Geo is a FilterField representing a geographic (lat/lon)
-    field in a Redis index.
-
-    """
+    """A Geo is a FilterField representing a geographic (lat/lon) field in a
+    Redis index."""
 
     OPERATORS: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%f %f %i %s]",
-        FilterOperator.NE: "(-@%s:[%f %f %i %s])",
+        FilterOperator.EQ: "@%s:[%s %s %i %s]",
+        FilterOperator.NE: "(-@%s:[%s %s %i %s])",
     }
     SUPPORTED_VAL_TYPES = (GeoSpec, type(None))
 
     @check_operator_misuse
     def __eq__(self, other) -> "FilterExpression":
-        """Create a Geographic equality filter expression
+        """Create a Geographic equality filter expression.
 
         Args:
             other (GeoSpec): The geographic spec to filter on.
@@ -235,7 +232,7 @@ class Geo(FilterField):
 
     @check_operator_misuse
     def __ne__(self, other) -> "FilterExpression":
-        """Create a Geographic inequality filter expression
+        """Create a Geographic inequality filter expression.
 
         Args:
             other (GeoSpec): The geographic spec to filter on.
@@ -248,7 +245,7 @@ class Geo(FilterField):
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
-        """Return the Redis Query syntax for a Geographic filter expression"""
+        """Return the Redis Query syntax for a Geographic filter expression."""
         if not self._value:
             return "*"
 
@@ -270,17 +267,17 @@ class Num(FilterField):
         FilterOperator.GE: ">=",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
-        FilterOperator.EQ: "@%s:[%i %i]",
-        FilterOperator.NE: "(-@%s:[%i %i])",
-        FilterOperator.GT: "@%s:[(%i +inf]",
-        FilterOperator.LT: "@%s:[-inf (%i]",
-        FilterOperator.GE: "@%s:[%i +inf]",
-        FilterOperator.LE: "@%s:[-inf %i]",
+        FilterOperator.EQ: "@%s:[%s %s]",
+        FilterOperator.NE: "(-@%s:[%s %s])",
+        FilterOperator.GT: "@%s:[(%s +inf]",
+        FilterOperator.LT: "@%s:[-inf (%s]",
+        FilterOperator.GE: "@%s:[%s +inf]",
+        FilterOperator.LE: "@%s:[-inf %s]",
     }
     SUPPORTED_VAL_TYPES = (int, float, type(None))
 
     def __eq__(self, other: int) -> "FilterExpression":
-        """Create a Numeric equality filter expression
+        """Create a Numeric equality filter expression.
 
         Args:
             other (int): The value to filter on.
@@ -293,7 +290,7 @@ class Num(FilterField):
         return FilterExpression(str(self))
 
     def __ne__(self, other: int) -> "FilterExpression":
-        """Create a Numeric inequality filter expression
+        """Create a Numeric inequality filter expression.
 
         Args:
             other (int): The value to filter on.
@@ -306,7 +303,7 @@ class Num(FilterField):
         return FilterExpression(str(self))
 
     def __gt__(self, other: int) -> "FilterExpression":
-        """Create a Numeric greater than filter expression
+        """Create a Numeric greater than filter expression.
 
         Args:
             other (int): The value to filter on.
@@ -319,7 +316,7 @@ class Num(FilterField):
         return FilterExpression(str(self))
 
     def __lt__(self, other: int) -> "FilterExpression":
-        """Create a Numeric less than filter expression
+        """Create a Numeric less than filter expression.
 
         Args:
             other (int): The value to filter on.
@@ -332,7 +329,7 @@ class Num(FilterField):
         return FilterExpression(str(self))
 
     def __ge__(self, other: int) -> "FilterExpression":
-        """Create a Numeric greater than or equal to filter expression
+        """Create a Numeric greater than or equal to filter expression.
 
         Args:
             other (int): The value to filter on.
@@ -345,7 +342,7 @@ class Num(FilterField):
         return FilterExpression(str(self))
 
     def __le__(self, other: int) -> "FilterExpression":
-        """Create a Numeric less than or equal to filter expression
+        """Create a Numeric less than or equal to filter expression.
 
         Args:
             other (int): The value to filter on.
@@ -358,7 +355,7 @@ class Num(FilterField):
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
-        """Return the Redis Query syntax for a Numeric filter expression"""
+        """Return the Redis Query syntax for a Numeric filter expression."""
         if not self._value:
             return "*"
 
@@ -389,8 +386,8 @@ class Text(FilterField):
 
     @check_operator_misuse
     def __eq__(self, other: str) -> "FilterExpression":
-        """Create a Text equality filter expression. These expressions
-           yield filters that enforce an exact match on the supplied term(s).
+        """Create a Text equality filter expression. These expressions yield
+        filters that enforce an exact match on the supplied term(s).
 
         Args:
             other (str): The text value to filter on.
@@ -405,8 +402,8 @@ class Text(FilterField):
     @check_operator_misuse
     def __ne__(self, other: str) -> "FilterExpression":
         """Create a Text inequality filter expression. These expressions yield
-           negated filters on exact matches on the supplied term(s). Opposite of
-           an equality filter expression.
+        negated filters on exact matches on the supplied term(s). Opposite of an
+        equality filter expression.
 
         Args:
             other (str): The text value to filter on.
@@ -420,8 +417,9 @@ class Text(FilterField):
 
     def __mod__(self, other: str) -> "FilterExpression":
         """Create a Text "LIKE" filter expression. A flexible expression that
-           yields filters that can use a variety of additional operators like
-           wildcards (*), fuzzy matches (%%), or combinatorics (|) of the supplied term(s).
+        yields filters that can use a variety of additional operators like
+        wildcards (*), fuzzy matches (%%), or combinatorics (|) of the supplied
+        term(s).
 
         Args:
             other (str): The text value to filter on.

@@ -98,6 +98,9 @@ def test_numeric_filter():
     nf = Num("numeric_field") <= 5
     assert str(nf) == "@numeric_field:[-inf 5]"
 
+    nf = Num("numeric_field") > 5.5
+    assert str(nf) == "@numeric_field:[-inf 5.5]"
+
     nf = Num("numeric_field") <= None
     assert str(nf) == "*"
 
@@ -130,10 +133,10 @@ def test_text_filter():
 
 def test_geo_filter():
     geo_f = Geo("geo_field") == GeoRadius(1.0, 2.0, 3, "km")
-    assert str(geo_f) == "@geo_field:[1.000000 2.000000 3 km]"
+    assert str(geo_f) == "@geo_field:[1.0 2.0 3 km]"
 
     geo_f = Geo("geo_field") != GeoRadius(1.0, 2.0, 3, "km")
-    assert str(geo_f) != "(-@geo_field:[1.000000 2.000000 3 m])"
+    assert str(geo_f) != "(-@geo_field:[1.0 2.0 3 m])"
 
 
 @pytest.mark.parametrize(
@@ -215,8 +218,8 @@ def test_text_filter(operation, value, expected):
 @pytest.mark.parametrize(
     "operation, expected",
     [
-        ("__eq__", "@geo_field:[1.000000 2.000000 3 km]"),
-        ("__ne__", "(-@geo_field:[1.000000 2.000000 3 km])"),
+        ("__eq__", "@geo_field:[1.0 2.0 3 km]"),
+        ("__ne__", "(-@geo_field:[1.0 2.0 3 km])"),
     ],
     ids=["eq", "ne"],
 )

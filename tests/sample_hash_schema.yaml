@@ -1,8 +1,8 @@
 index:
-    name: providers
-    prefix: rvl
-    storage_type: hash
+    name: hash-test
+    prefix: hash
     key_separator: ':'
+    storage_type: hash
 
 fields:
     text:

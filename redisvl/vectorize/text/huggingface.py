@@ -61,8 +61,8 @@ class HFTextVectorizer(BaseVectorizer):
         batch_size: int = 1000,
         as_buffer: bool = False,
     ) -> List[List[float]]:
-        """Asynchronously embed many chunks of texts using the Hugging Face sentence
-        transformer.
+        """Asynchronously embed many chunks of texts using the Hugging Face
+        sentence transformer.
 
         Args:
             texts (List[str]): List of text chunks to embed.

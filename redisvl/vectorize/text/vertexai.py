@@ -7,10 +7,11 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class VertexAITextVectorizer(BaseVectorizer):
-    """VertexAI text vectorizer
+    """VertexAI text vectorizer.
 
-    This vectorizer uses the VertexAI Palm 2 embedding model API to create embeddings for text. It requires an
-    active GCP project, location, and application credentials.
+    This vectorizer uses the VertexAI Palm 2 embedding model API to create
+    embeddings for text. It requires an active GCP project, location, and
+    application credentials.
     """
 
     def __init__(

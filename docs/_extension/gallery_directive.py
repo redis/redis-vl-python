@@ -1,12 +1,12 @@
 """A directive to generate a gallery of images from structured data.
 
-Generating a gallery of images that are all the same size is a common
-pattern in documentation, and this can be cumbersome if the gallery is
-generated programmatically. This directive wraps this particular use-case
-in a helper-directive to generate it with a single YAML configuration file.
+Generating a gallery of images that are all the same size is a common pattern in
+documentation, and this can be cumbersome if the gallery is generated
+programmatically. This directive wraps this particular use-case in a helper-
+directive to generate it with a single YAML configuration file.
 
-It currently exists for maintainers of the pydata-sphinx-theme,
-but might be abstracted into a standalone package if it proves useful.
+It currently exists for maintainers of the pydata-sphinx-theme, but might be
+abstracted into a standalone package if it proves useful.
 """
 from pathlib import Path
 from typing import Any, Dict, List

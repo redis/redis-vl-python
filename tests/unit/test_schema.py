@@ -1,3 +1,5 @@
+import pathlib
+
 import pytest
 from pydantic import ValidationError
 from redis.commands.search.field import (
@@ -12,13 +14,19 @@ from redisvl.schema import (
     FlatVectorField,
     GeoFieldSchema,
     HNSWVectorField,
-    MetadataSchemaGenerator,
+    IndexModel,
     NumericFieldSchema,
+    SchemaGenerator,
     SchemaModel,
+    StorageType,
     TagFieldSchema,
     TextFieldSchema,
     read_schema,
 )
+
+
+def get_base_path():
+    return pathlib.Path(__file__).parent.resolve()
 
 
 # Utility functions to create schema instances with default values
@@ -143,15 +151,43 @@ def test_flat_vector_field_block_size_not_set():
     assert "INITIAL_CAP" not in field_exported.args
 
 
-# Test for schema model validation
-def test_schema_model_validation_success():
-    valid_index = {"name": "test_index", "storage_type": "hash"}
-    valid_fields = {"text": [create_text_field_schema()]}
-    schema_model = SchemaModel(index=valid_index, fields=valid_fields)
+# Tests for IndexModel
 
-    assert schema_model.index.name == "test_index"
-    assert schema_model.index.storage_type == "hash"
-    assert len(schema_model.fields.text) == 1
+
+def test_index_model_defaults():
+    index = IndexModel(name="test_index")
+    assert index.name == "test_index"
+    assert index.prefix == "rvl"
+    assert index.key_separator == ":"
+    assert index.storage_type == StorageType.HASH
+
+
+def test_index_model_custom_settings():
+    index = IndexModel(
+        name="test_index", prefix="custom", key_separator="_", storage_type="json"
+    )
+    assert index.name == "test_index"
+    assert index.prefix == "custom"
+    assert index.key_separator == "_"
+    assert index.storage_type == StorageType.JSON
+
+
+def test_index_model_validation_errors():
+    # Missing required field
+    with pytest.raises(ValueError):
+        IndexModel()
+
+    # Invalid type
+    with pytest.raises(ValidationError):
+        IndexModel(name="test_index", prefix=None)
+
+    # Invalid type
+    with pytest.raises(ValidationError):
+        IndexModel(name="test_index", key_separator=None)
+
+    # Invalid type
+    with pytest.raises(ValidationError):
+        IndexModel(name="test_index", storage_type=None)
 
 
 def test_schema_model_validation_failures():
@@ -165,6 +201,20 @@ def test_schema_model_validation_failures():
         SchemaModel(index={}, fields={})
 
 
+def test_read_hash_schema():
+    hash_schema = read_schema(
+        str(get_base_path().joinpath("../sample_hash_schema.yaml"))
+    )
+    assert hash_schema.index.name == "hash-test"
+
+
+def test_read_json_schema():
+    json_schema = read_schema(
+        str(get_base_path().joinpath("../sample_json_schema.yaml"))
+    )
+    assert json_schema.index.name == "json-test"
+
+
 def test_read_schema_file_not_found():
     with pytest.raises(FileNotFoundError):
         read_schema("non_existent_file.yaml")
@@ -173,7 +223,7 @@ def test_read_schema_file_not_found():
 # Fixture for the generator instance
 @pytest.fixture
 def schema_generator():
-    return MetadataSchemaGenerator()
+    return SchemaGenerator()
 
 
 # Test cases for _test_numeric

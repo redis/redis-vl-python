@@ -1,6 +1,6 @@
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from uuid import uuid4
 
 import yaml
 from pydantic import BaseModel, Field, validator
@@ -17,6 +17,7 @@ from typing_extensions import Literal
 class BaseField(BaseModel):
     name: str = Field(...)
     sortable: Optional[bool] = False
+    as_name: Optional[str] = None
 
 
 class TextFieldSchema(BaseField):
@@ -32,6 +33,7 @@ class TextFieldSchema(BaseField):
             no_stem=self.no_stem,
             phonetic_matcher=self.phonetic_matcher,
             sortable=self.sortable,
+            as_name=self.as_name,
         )
 
 
@@ -45,17 +47,18 @@ class TagFieldSchema(BaseField):
             separator=self.separator,
             case_sensitive=self.case_sensitive,
             sortable=self.sortable,
+            as_name=self.as_name,
         )
 
 
 class NumericFieldSchema(BaseField):
     def as_field(self):
-        return NumericField(self.name, sortable=self.sortable)
+        return NumericField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class GeoFieldSchema(BaseField):
     def as_field(self):
-        return GeoField(self.name, sortable=self.sortable)
+        return GeoField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class BaseVectorField(BaseModel):
@@ -65,6 +68,7 @@ class BaseVectorField(BaseModel):
     datatype: str = Field(default="FLOAT32")
     distance_metric: str = Field(default="COSINE")
     initial_cap: Optional[int] = None
+    as_name: Optional[str] = None
 
     @validator("algorithm", "datatype", "distance_metric", pre=True)
     def uppercase_strings(cls, v):
@@ -90,7 +94,7 @@ class FlatVectorField(BaseVectorField):
         field_data = super().as_field()
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
-        return VectorField(self.name, self.algorithm, field_data)
+        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
 
 
 class HNSWVectorField(BaseVectorField):
@@ -111,13 +115,22 @@ class HNSWVectorField(BaseVectorField):
                 "EPSILON": self.epsilon,
             }
         )
-        return VectorField(self.name, self.algorithm, field_data)
+        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+
+
+class StorageType(Enum):
+    HASH = "hash"
+    JSON = "json"
 
 
 class IndexModel(BaseModel):
-    name: str = Field(...)
-    prefix: Optional[str] = Field(default="")
-    storage_type: Optional[str] = Field(default="hash")
+    """Represents the schema for an index, including its name, optional prefix,
+    and the storage type used."""
+
+    name: str
+    prefix: str = "rvl"
+    key_separator: str = ":"
+    storage_type: StorageType = StorageType.HASH
 
 
 class FieldsModel(BaseModel):
@@ -131,12 +144,6 @@ class FieldsModel(BaseModel):
 class SchemaModel(BaseModel):
     index: IndexModel = Field(...)
     fields: FieldsModel = Field(...)
-
-    @validator("index")
-    def validate_index(cls, v):
-        if v.storage_type not in ["hash", "json"]:
-            raise ValueError(f"Storage type {v.storage_type} not supported")
-        return v
 
     @property
     def index_fields(self):
@@ -160,21 +167,12 @@ def read_schema(file_path: str):
     return SchemaModel(**schema)
 
 
-class MetadataSchemaGenerator:
-    """
-    A class to generate a schema for metadata, categorizing fields into text, numeric, and tag types.
-    """
+class SchemaGenerator:
+    """A class to generate a schema for metadata, categorizing fields into text,
+    numeric, and tag types."""
 
     def _test_numeric(self, value) -> bool:
-        """
-        Test if the given value can be represented as a numeric value.
-
-        Args:
-            value: The value to test.
-
-        Returns:
-            bool: True if the value can be converted to float, False otherwise.
-        """
+        """Test if a value is numeric."""
         try:
             float(value)
             return True
@@ -182,72 +180,62 @@ class MetadataSchemaGenerator:
             return False
 
     def _infer_type(self, value) -> Optional[str]:
-        """
-        Infer the type of the given value.
-
-        Args:
-            value: The value to infer the type of.
-
-        Returns:
-            Optional[str]: The inferred type of the value, or None if the type is unrecognized or the value is empty.
-        """
-        if value is None or value == "":
+        """Infer the type of a value."""
+        if value in [None, ""]:
             return None
-        elif self._test_numeric(value):
+        if self._test_numeric(value):
             return "numeric"
-        elif isinstance(value, (list, set, tuple)) and all(
+        if isinstance(value, (list, set, tuple)) and all(
             isinstance(v, str) for v in value
         ):
             return "tag"
-        elif isinstance(value, str):
-            return "text"
-        else:
-            return "unknown"
+        return "text" if isinstance(value, str) else "unknown"
 
     def generate(
-        self, metadata: Dict[str, Any], strict: Optional[bool] = False
+        self, metadata: Dict[str, Any], strict: bool = False
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Generate a schema from the provided metadata.
-
-        This method categorizes each metadata field into text, numeric, or tag types based on the field values.
-        It also allows forcing strict type determination by raising an exception if a type cannot be inferred.
+        """Generate a schema from metadata.
 
         Args:
-            metadata: The metadata dictionary to generate the schema from.
-            strict: If True, the method will raise an exception for fields where the type cannot be determined.
-
-        Returns:
-            Dict[str, List[Dict[str, Any]]]: A dictionary with keys 'text', 'numeric', and 'tag', each mapping to a list of field schemas.
+            metadata (Dict[str, Any]): Metadata object to validate and
+                generate schema.
+            strict (bool, optional): Whether to generate schema in strict
+                mode. Defaults to False.
 
         Raises:
-            ValueError: If the force parameter is True and a field's type cannot be determined.
+            ValueError: Unable to determine schema field type for a
+                key-value pair.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: Output metadata schema.
         """
         result: Dict[str, List[Dict[str, Any]]] = {"text": [], "numeric": [], "tag": []}
+        field_classes = {
+            "text": TextFieldSchema,
+            "tag": TagFieldSchema,
+            "numeric": NumericFieldSchema,
+        }
 
         for key, value in metadata.items():
             field_type = self._infer_type(value)
 
-            if field_type in ["unknown", None]:
+            if field_type is None or field_type == "unknown":
                 if strict:
                     raise ValueError(
-                        f"Unable to determine field type for key '{key}' with value '{value}'"
+                        f"Unable to determine field type for key '{key}' with"
+                        f" value '{value}'"
                     )
                 print(
-                    f"Warning: Unable to determine field type for key '{key}' with value '{value}'"
+                    f"Warning: Unable to determine field type for key '{key}'"
+                    f" with value '{value}'"
                 )
                 continue
 
-            # Extract the field class with defaults
-            field_class = {
-                "text": TextFieldSchema,
-                "tag": TagFieldSchema,
-                "numeric": NumericFieldSchema,
-            }.get(
-                field_type  # type: ignore
-            )
-
-            if field_class:
-                result[field_type].append(field_class(name=key).dict(exclude_none=True))  # type: ignore
+            if isinstance(field_type, str):
+                field_class = field_classes.get(field_type)
+                if field_class:
+                    result[field_type].append(
+                        field_class(name=key).dict(exclude_none=True)
+                    )
 
         return result

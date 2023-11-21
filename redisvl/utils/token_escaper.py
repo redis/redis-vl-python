@@ -3,8 +3,9 @@ from typing import Optional, Pattern
 
 
 class TokenEscaper:
-    """
-    Escape punctuation within an input string. Adapted from RedisOM Python.
+    """Escape punctuation within an input string.
+
+    Adapted from RedisOM Python.
     """
 
     # Characters that RediSearch requires us to escape during queries.

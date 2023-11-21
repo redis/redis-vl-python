@@ -10,10 +10,11 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class OpenAITextVectorizer(BaseVectorizer):
-    """OpenAI text vectorizer
+    """OpenAI text vectorizer.
 
-    This vectorizer uses the OpenAI API to create embeddings for text. It requires an
-    API key to be passed in the api_config dictionary. The API key can be obtained from
+    This vectorizer uses the OpenAI API to create embeddings for text. It
+    requires an API key to be passed in the api_config dictionary. The API key
+    can be obtained from
     https://api.openai.com/.
     """
 

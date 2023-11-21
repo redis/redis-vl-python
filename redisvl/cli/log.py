@@ -9,7 +9,7 @@ coloredlogs.DEFAULT_LOG_FORMAT = "%(asctime)s %(name)s %(levelname)s   %(message
 
 
 def get_logger(name, log_level="info", fmt=None):
-    """Return a logger instance"""
+    """Return a logger instance."""
 
     # Use file name if logger is in debug mode
     name = "RedisVL" if log_level == "debug" else name

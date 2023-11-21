@@ -11,18 +11,18 @@ fields = [TagField("test")]
 def test_search_index_get_key():
     si = SearchIndex("my_index", fields=fields)
     key = si.key("foo")
-    assert key.startswith(si._prefix)
+    assert key.startswith(si.prefix)
     assert "foo" in key
-    key = si._create_key({"id": "foo"})
-    assert key.startswith(si._prefix)
+    key = si._storage._create_key({"id": "foo"})
+    assert key.startswith(si.prefix)
     assert "foo" not in key
 
 
 def test_search_index_no_prefix():
     # specify None as the prefix...
-    si = SearchIndex("my_index", prefix=None, fields=fields)
+    si = SearchIndex("my_index", prefix="", fields=fields)
     key = si.key("foo")
-    assert not si._prefix
+    assert not si.prefix
     assert key == "foo"
 
 
@@ -40,7 +40,7 @@ def test_search_index_create(client, redis_url):
     assert si.exists()
     assert "my_index" in convert_bytes(si.client.execute_command("FT._LIST"))
 
-    s1_2 = SearchIndex.from_existing("my_index", url=redis_url)
+    s1_2 = SearchIndex.from_existing("my_index", redis_url=redis_url)
     assert s1_2.info()["index_name"] == si.info()["index_name"]
 
     si.create(overwrite=False)
@@ -133,7 +133,7 @@ async def test_async_search_index_load(async_client):
 def test_search_index_delete_nonexistent(client):
     si = SearchIndex("my_index", fields=fields)
     si.set_client(client)
-    with pytest.raises(redis.exceptions.ResponseError):
+    with pytest.raises(ValueError):
         si.delete()
 
 
@@ -141,7 +141,7 @@ def test_search_index_delete_nonexistent(client):
 async def test_async_search_index_delete_nonexistent(async_client):
     asi = AsyncSearchIndex("my_index", fields=fields)
     asi.set_client(async_client)
-    with pytest.raises(redis.exceptions.ResponseError):
+    with pytest.raises(ValueError):
         await asi.delete()
 
 

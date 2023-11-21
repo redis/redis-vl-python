@@ -63,7 +63,7 @@ class SemanticCache(BaseLLMCache):
                 index = SearchIndex(
                     name=index_name, prefix=prefix, fields=self._default_fields
                 )
-                index.connect(url=redis_url, **connection_args)
+                index.connect(redis_url=redis_url, **connection_args)
             else:
                 raise ValueError(
                     "Index name and prefix must be provided if not constructing from an existing index."
@@ -135,11 +135,12 @@ class SemanticCache(BaseLLMCache):
         self._threshold = float(threshold)
 
     def clear(self):
-        """Clear the LLMCache of all keys in the index"""
+        """Clear the LLMCache of all keys in the index."""
         client = self._index.client
+        prefix = self._index.prefix
         if client:
             with client.pipeline(transaction=False) as pipe:
-                for key in client.scan_iter(match=f"{self._index._prefix}:*"):
+                for key in client.scan_iter(match=f"{prefix}:*"):
                     pipe.delete(key)
                 pipe.execute()
         else:
