@@ -133,7 +133,7 @@ async def test_async_search_index_load(async_client):
 def test_search_index_delete_nonexistent(client):
     si = SearchIndex("my_index", fields=fields)
     si.set_client(client)
-    with pytest.raises(redis.exceptions.ResponseError):
+    with pytest.raises(ValueError):
         si.delete()
 
 
@@ -141,7 +141,7 @@ def test_search_index_delete_nonexistent(client):
 async def test_async_search_index_delete_nonexistent(async_client):
     asi = AsyncSearchIndex("my_index", fields=fields)
     asi.set_client(async_client)
-    with pytest.raises(redis.exceptions.ResponseError):
+    with pytest.raises(ValueError):
         await asi.delete()
 
 

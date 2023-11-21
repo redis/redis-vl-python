@@ -15,7 +15,7 @@ from redisvl.schema import (
     GeoFieldSchema,
     HNSWVectorField,
     IndexModel,
-    MetadataSchemaGenerator,
+    SchemaGenerator,
     NumericFieldSchema,
     SchemaModel,
     StorageType,
@@ -223,7 +223,7 @@ def test_read_schema_file_not_found():
 # Fixture for the generator instance
 @pytest.fixture
 def schema_generator():
-    return MetadataSchemaGenerator()
+    return SchemaGenerator()
 
 
 # Test cases for _test_numeric

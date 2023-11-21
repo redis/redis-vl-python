@@ -1,7 +1,6 @@
 import json
-
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 from functools import wraps
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
@@ -12,26 +11,15 @@ if TYPE_CHECKING:
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.query.query import (
-    BaseQuery,
-    CountQuery,
-    FilterQuery
-)
-from redisvl.schema import (
-    SchemaModel,
-    StorageType,
-    read_schema,
-)
+from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
+from redisvl.schema import SchemaModel, StorageType, read_schema
 from redisvl.storage import HashStorage, JsonStorage
-from redisvl.utils.connection import (
-    get_async_redis_connection,
-    get_redis_connection
-)
+from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
 from redisvl.utils.utils import (
+    check_async_redis_modules_exist,
+    check_redis_modules_exist,
     convert_bytes,
     make_dict,
-    check_redis_modules_exist,
-    check_async_redis_modules_exist
 )
 
 
@@ -77,9 +65,7 @@ def process_results(
                 json_data = json.loads(json_data)
             if isinstance(json_data, dict):
                 return {"id": doc_dict.get("id"), **json_data}
-            raise ValueError(
-                f"Unable to parse json data from Redis {json_data}"
-            )
+            raise ValueError(f"Unable to parse json data from Redis {json_data}")
 
         # Remove 'payload' if present
         doc_dict.pop("payload", None)
@@ -101,12 +87,12 @@ def check_modules_present(client_variable_name: str):
 
 
 def check_async_modules_present(client_variable_name: str):
-    async def decorator(func):
+    def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
             client = getattr(self, client_variable_name)
             await check_async_redis_modules_exist(client)
-            return func(self, *args, **kwargs)
+            return await func(self, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -125,14 +111,14 @@ def check_index_exists():
 
 
 def check_async_index_exists():
-    async def decorator(func):
+    def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
             if not await self.exists():
                 raise ValueError(
                     f"Index has not been created. Must be created before calling {func.__name__}"
                 )
-            return func(self, *args, **kwargs)
+            return await func(self, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -146,6 +132,19 @@ def check_connected(client_variable_name: str):
                     f"SearchIndex.connect() must be called before calling {func.__name__}"
                 )
             return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def check_async_connected(client_variable_name: str):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            if getattr(self, client_variable_name) is None:
+                raise ValueError(
+                    f"SearchIndex.connect() must be called before calling {func.__name__}"
+                )
+            return await func(self, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -182,7 +181,7 @@ class SearchIndexBase:
         self._name = name
         self._prefix = prefix
         self._key_separator = key_separator
-        self._storage_type = storage_type
+        self._storage_type = StorageType(storage_type)
         self._fields = fields
 
         # configure storage layer
@@ -320,9 +319,7 @@ class SearchIndexBase:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(
-            key_value, self._prefix, self._key_separator
-        )
+        return self._storage._key(key_value, self._prefix, self._key_separator)
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
@@ -561,9 +558,7 @@ class SearchIndex(SearchIndexBase):
         """
         results = self.search(query.query, query_params=query.params)
         # post process the results
-        return process_results(
-            results, query=query, storage_type=self._storage_type
-        )
+        return process_results(results, query=query, storage_type=self._storage_type)
 
     @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
@@ -573,9 +568,7 @@ class SearchIndex(SearchIndexBase):
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = convert_bytes(
-            self._redis_conn.execute_command("FT._LIST")
-        )
+        indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))
         return self._name in indices
 
     @check_connected("_redis_conn")
@@ -587,9 +580,7 @@ class SearchIndex(SearchIndexBase):
         Returns:
             dict: A dictionary containing the information about the index.
         """
-        return convert_bytes(
-            self._redis_conn.ft(self._name).info()  # type: ignore
-        )
+        return convert_bytes(self._redis_conn.ft(self._name).info())  # type: ignore
 
 
 class AsyncSearchIndex(SearchIndexBase):
@@ -662,7 +653,7 @@ class AsyncSearchIndex(SearchIndexBase):
         self._redis_conn = get_async_redis_connection(redis_url, **kwargs)
         return self
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     async def create(self, overwrite: bool = False) -> None:
         """Asynchronously create an index in Redis from this SearchIndex object.
@@ -694,7 +685,7 @@ class AsyncSearchIndex(SearchIndexBase):
             ),
         )
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def delete(self, drop: bool = True):
@@ -708,11 +699,9 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        await self._redis_conn.ft(self._name).dropindex(
-            delete_documents=drop
-        )
+        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     async def load(
         self,
@@ -761,7 +750,7 @@ class AsyncSearchIndex(SearchIndexBase):
             concurrency=concurrency,
         )
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def search(self, *args, **kwargs) -> Union["Result", Any]:
@@ -774,12 +763,10 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.ft(self._name).search(
-            *args, **kwargs
-        )
+        results = await self._redis_conn.ft(self._name).search(*args, **kwargs)
         return results
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -797,11 +784,9 @@ class AsyncSearchIndex(SearchIndexBase):
         """
         results = await self.search(query.query, query_params=query.params)
         # post process the results
-        return process_results(
-            results, query=query, storage_type=self._storage_type
-        )
+        return process_results(results, query=query, storage_type=self._storage_type)
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     async def exists(self) -> bool:
         """Check if the index exists in Redis.
@@ -812,7 +797,7 @@ class AsyncSearchIndex(SearchIndexBase):
         indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
         return self._name in convert_bytes(indices)
 
-    @check_connected("_redis_conn")
+    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def info(self) -> Dict[str, Any]:

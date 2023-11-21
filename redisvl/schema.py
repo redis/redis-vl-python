@@ -53,16 +53,12 @@ class TagFieldSchema(BaseField):
 
 class NumericFieldSchema(BaseField):
     def as_field(self):
-        return NumericField(
-            self.name, sortable=self.sortable, as_name=self.as_name
-        )
+        return NumericField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class GeoFieldSchema(BaseField):
     def as_field(self):
-        return GeoField(
-            self.name, sortable=self.sortable, as_name=self.as_name
-        )
+        return GeoField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class BaseVectorField(BaseModel):
@@ -98,9 +94,7 @@ class FlatVectorField(BaseVectorField):
         field_data = super().as_field()
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
-        return VectorField(
-            self.name, self.algorithm, field_data, as_name=self.as_name
-        )
+        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
 
 
 class HNSWVectorField(BaseVectorField):
@@ -121,9 +115,7 @@ class HNSWVectorField(BaseVectorField):
                 "EPSILON": self.epsilon,
             }
         )
-        return VectorField(
-            self.name, self.algorithm, field_data, as_name=self.as_name
-        )
+        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
 
 
 class StorageType(Enum):
@@ -134,6 +126,7 @@ class StorageType(Enum):
 class IndexModel(BaseModel):
     """Represents the schema for an index, including its name, optional prefix,
     and the storage type used."""
+
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
