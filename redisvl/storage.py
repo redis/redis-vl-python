@@ -45,7 +45,11 @@ class BaseStorage:
         else:
             return f"{prefix}{key_separator}{key_value}"
 
-    def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def _create_key(
+        self,
+        obj: Dict[str, Any],
+        key_field: Optional[str] = None
+    ) -> str:
         """Construct a Redis key for a given object, optionally using a
         specified field from the object as the key.
 
@@ -73,7 +77,9 @@ class BaseStorage:
         )
 
     @staticmethod
-    def _preprocess(obj: Any, preprocess: Optional[Callable] = None) -> Dict[str, Any]:
+    def _preprocess(
+        obj: Any, preprocess: Optional[Callable] = None
+    ) -> Dict[str, Any]:
         """Apply a preprocessing function to the object if provided.
 
         Args:
@@ -197,7 +203,9 @@ class BaseStorage:
                 length of objects.
         """
         if keys and len(keys) != len(objects):  # type: ignore
-            raise ValueError("Length of keys does not match the length of objects")
+            raise ValueError(
+                "Length of keys does not match the length of objects"
+            )
 
         if batch_size is None:
             batch_size = (
@@ -259,7 +267,9 @@ class BaseStorage:
                 length of objects.
         """
         if keys and len(keys) != len(objects):  # type: ignore
-            raise ValueError("Length of keys does not match the length of objects")
+            raise ValueError(
+                "Length of keys does not match the length of objects"
+            )
 
         if not concurrency:
             concurrency = self.DEFAULT_WRITE_CONCURRENCY
@@ -279,7 +289,8 @@ class BaseStorage:
 
         if keys_iterator:
             tasks = [
-                asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects
+                asyncio.create_task(
+                    _load(obj, next(keys_iterator))) for obj in objects
             ]
         else:
             tasks = [asyncio.create_task(_load(obj)) for obj in objects]
@@ -287,7 +298,10 @@ class BaseStorage:
         await asyncio.gather(*tasks)
 
     def get(
-        self, redis_client: Redis, keys: Iterable[str], batch_size: Optional[int] = None
+        self,
+        redis_client: Redis,
+        keys: Iterable[str],
+        batch_size: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Retrieve objects from Redis by keys.
 
