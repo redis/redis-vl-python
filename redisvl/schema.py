@@ -1,12 +1,10 @@
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from uuid import uuid4
 
 import yaml
 from pydantic import BaseModel, Field, validator
 from redis.commands.search.field import (
-    Field as RedisField,
     GeoField,
     NumericField,
     TagField,
@@ -55,12 +53,16 @@ class TagFieldSchema(BaseField):
 
 class NumericFieldSchema(BaseField):
     def as_field(self):
-        return NumericField(self.name, sortable=self.sortable, as_name=self.as_name)
+        return NumericField(
+            self.name, sortable=self.sortable, as_name=self.as_name
+        )
 
 
 class GeoFieldSchema(BaseField):
     def as_field(self):
-        return GeoField(self.name, sortable=self.sortable, as_name=self.as_name)
+        return GeoField(
+            self.name, sortable=self.sortable, as_name=self.as_name
+        )
 
 
 class BaseVectorField(BaseModel):
@@ -96,7 +98,9 @@ class FlatVectorField(BaseVectorField):
         field_data = super().as_field()
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
-        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+        return VectorField(
+            self.name, self.algorithm, field_data, as_name=self.as_name
+        )
 
 
 class HNSWVectorField(BaseVectorField):
@@ -117,7 +121,9 @@ class HNSWVectorField(BaseVectorField):
                 "EPSILON": self.epsilon,
             }
         )
-        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+        return VectorField(
+            self.name, self.algorithm, field_data, as_name=self.as_name
+        )
 
 
 class StorageType(Enum):
@@ -128,7 +134,6 @@ class StorageType(Enum):
 class IndexModel(BaseModel):
     """Represents the schema for an index, including its name, optional prefix,
     and the storage type used."""
-
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
@@ -141,26 +146,6 @@ class FieldsModel(BaseModel):
     numeric: Optional[List[NumericFieldSchema]] = None
     geo: Optional[List[GeoFieldSchema]] = None
     vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]] = None
-
-    @classmethod
-    def from_fields_list(cls, fields_list: Optional[List[RedisField]]):
-        fields = {"tag": [], "text": [], "numeric": [], "geo": [], "vector": []}
-        for field in fields_list:
-            field_args = field.dict()
-            if isinstance(field, GeoField):
-                fields["geo"].append(GeoFieldSchema(**field_args))
-            elif isinstance(field, TextField):
-                fields["text"].append(TextFieldSchema(**field_args))
-            elif isinstance(field, TagField):
-                fields["tag"].append(TagFieldSchema(**field_args))
-            elif isinstance(field, NumericField):
-                fields["numeric"].append(NumericFieldSchema(**field_args))
-            elif isinstance(field, VectorField):
-                if field_args.get("algorithm", "").lower() == "hnsw":
-                    fields["vector"].append(HNSWVectorField(**field_args))
-                elif field_args.get("algorithm", "").lower() == "flat":
-                    fields["vector"].append(FlatVectorField(**field_args))
-        return cls(**fields)
 
 
 class SchemaModel(BaseModel):
@@ -189,7 +174,7 @@ def read_schema(file_path: str):
     return SchemaModel(**schema)
 
 
-class MetadataSchemaGenerator:
+class SchemaGenerator:
     """A class to generate a schema for metadata, categorizing fields into text,
     numeric, and tag types."""
 
@@ -219,11 +204,14 @@ class MetadataSchemaGenerator:
         """Generate a schema from metadata.
 
         Args:
-            metadata (Dict[str, Any]): Metadata object to validate and generate schema.
-            strict (bool, optional): Whether to generate schema in strict mode. Defaults to False.
+            metadata (Dict[str, Any]): Metadata object to validate and
+                generate schema.
+            strict (bool, optional): Whether to generate schema in strict
+                mode. Defaults to False.
 
         Raises:
-            ValueError: Unable to determine schema field type for a key-value pair.
+            ValueError: Unable to determine schema field type for a
+                key-value pair.
 
         Returns:
             Dict[str, List[Dict[str, Any]]]: Output metadata schema.

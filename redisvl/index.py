@@ -1,5 +1,7 @@
 import json
+
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
+from functools import wraps
 
 if TYPE_CHECKING:
     from redis.commands.search.field import Field
@@ -10,27 +12,26 @@ if TYPE_CHECKING:
 import redis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
+from redisvl.query.query import (
+    BaseQuery,
+    CountQuery,
+    FilterQuery
+)
 from redisvl.schema import (
-    FieldsModel,
-    IndexModel,
     SchemaModel,
     StorageType,
     read_schema,
 )
-from redisvl.storage import BaseStorage, HashStorage, JsonStorage
+from redisvl.storage import HashStorage, JsonStorage
 from redisvl.utils.connection import (
-    check_async_index_exists,
-    check_connected,
-    check_index_exists,
     get_async_redis_connection,
-    get_redis_connection,
+    get_redis_connection
 )
 from redisvl.utils.utils import (
-    check_async_modules_present,
-    check_modules_present,
     convert_bytes,
     make_dict,
+    check_redis_modules_exist,
+    check_async_redis_modules_exist
 )
 
 
@@ -40,15 +41,16 @@ def process_results(
     """Convert a list of search Result objects into a list of document
     dictionaries.
 
-    This function processes results from Redis, handling different storage types
-    and query types. For JSON storage with empty return fields, it unpacks the JSON object
-    while retaining the document ID. The 'payload' field is also removed from all
-    documents for consistency.
+    This function processes results from Redis, handling different storage
+    types and query types. For JSON storage with empty return fields, it
+    unpacks the JSON object while retaining the document ID. The 'payload'
+    field is also removed from all resulting documents for consistency.
 
     Args:
         results (Result): The search results from Redis.
         query (BaseQuery): The query object used for the search.
-        storage_type (StorageType): The storage type of the search index (e.g., json or hash).
+        storage_type (StorageType): The storage type of the search
+            index (json or hash).
 
     Returns:
         List[Dict[str, Any]]: A list of processed document dictionaries.
@@ -75,7 +77,9 @@ def process_results(
                 json_data = json.loads(json_data)
             if isinstance(json_data, dict):
                 return {"id": doc_dict.get("id"), **json_data}
-            raise ValueError(f"Unable to parse json data from Redis {json_data}")
+            raise ValueError(
+                f"Unable to parse json data from Redis {json_data}"
+            )
 
         # Remove 'payload' if present
         doc_dict.pop("payload", None)
@@ -83,6 +87,67 @@ def process_results(
         return doc_dict
 
     return [_process(doc) for doc in results.docs]
+
+
+def check_modules_present(client_variable_name: str):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            client = getattr(self, client_variable_name)
+            check_redis_modules_exist(client)
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def check_async_modules_present(client_variable_name: str):
+    async def decorator(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            client = getattr(self, client_variable_name)
+            await check_async_redis_modules_exist(client)
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def check_index_exists():
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if not self.exists():
+                raise ValueError(
+                    f"Index has not been created. Must be created before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def check_async_index_exists():
+    async def decorator(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            if not await self.exists():
+                raise ValueError(
+                    f"Index has not been created. Must be created before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def check_connected(client_variable_name: str):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if getattr(self, client_variable_name) is None:
+                raise ValueError(
+                    f"SearchIndex.connect() must be called before calling {func.__name__}"
+                )
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class SearchIndexBase:
