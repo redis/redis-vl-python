@@ -67,7 +67,8 @@ html_theme = "pydata_sphinx_theme"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files=["css/custom.css"]
+html_css_files=["css/custom.css", "css/sidebar.css"]
+html_js_files=["js/sidebar.js"]
 html_title = "RedisVL"
 html_context = {
    "default_mode": "dark"
@@ -80,6 +81,8 @@ html_context = {
     "github_version": "main",
     "doc_path": "docs",
 }
+
+
 
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
@@ -95,7 +98,7 @@ html_theme_options = {
     "show_toc_level": 4,
     "show_nav_level": 3,
     "navigation_depth": 5,
-    "navbar_align": "left",  # [left, content, right] For testing that the navbar items align properly
+    "navbar_align": "content",  # [left, content, right] For testing that the navbar items align properly
     "secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
     "icon_links": [
         {
@@ -106,6 +109,11 @@ html_theme_options = {
         }
     ]
 }
+
+html_sidebars = {
+    "**": ["custom_sidebar.html"]
+}
+
 autoclass_content = 'both'
 add_module_names = False
 

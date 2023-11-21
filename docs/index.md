@@ -53,6 +53,4 @@ This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterpris
 User Guides <user_guide/index>
 Example Gallery <examples/index>
 API <api/index>
-Concepts Library <concepts/index>
-
 ```

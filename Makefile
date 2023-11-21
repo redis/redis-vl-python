@@ -65,6 +65,11 @@ mypy:
 docs:
 	@cd docs; make html
 
+# help: servedocs                      - Serve project documentation
+.PHONY: servedocs
+servedocs:
+	@cd docs/_build/html/; python -m http.server
+
 # help:
 # help: Test
 # help: -------
