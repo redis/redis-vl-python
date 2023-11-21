@@ -1,13 +1,18 @@
 from typing import List, Optional, Union
 
 from redis.commands.search.field import Field, VectorField
+from redis.exceptions import ResponseError
 
-from redisvl.index import SearchIndex
+from redisvl.index import SearchIndex, check_connected
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
+
+
+def similarity(vector_distance: float) -> float:
+    return 1 - float(vector_distance)
 
 
 class SemanticCache(BaseLLMCache):
@@ -25,7 +30,7 @@ class SemanticCache(BaseLLMCache):
 
     def __init__(
         self,
-        index_name: str = "cache",
+        name: str = "cache",
         prefix: str = "llmcache",
         threshold: float = 0.9,
         ttl: Optional[int] = None,
@@ -33,59 +38,70 @@ class SemanticCache(BaseLLMCache):
             "sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: str = "redis://localhost:6379",
-        connection_args: Optional[dict] = None,
-        index: Optional[SearchIndex] = None,
+        kwargs: Optional[dict] = None,
     ):
         """Semantic Cache for Large Language Models.
 
         Args:
-            index_name (str, optional): The name of the index. Defaults to "cache".
-            prefix (str, optional): The prefix for the index. Defaults to "llmcache".
-            threshold (float, optional): Semantic threshold for the cache. Defaults to 0.9.
-            ttl (Optional[int], optional): The TTL for the cache. Defaults to None.
+            name (str, optional): The name of the index. Defaults to "cache".
+            prefix (str, optional): The prefix for the index. Defaults to
+                "llmcache".
+            threshold (float, optional): Semantic threshold for the cache.
+                Defaults to 0.9.
+            ttl (Optional[int], optional): The TTL for the cache. Defaults to
+                None.
             vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
-                Defaults to HFTextVectorizer("sentence-transformers/all-mpnet-base-v2").
-            redis_url (str, optional): The redis url. Defaults to "redis://localhost:6379".
-            connection_args (Optional[dict], optional): The connection arguments for the redis client. Defaults to None.
-            index (Optional[SearchIndex], optional): The underlying search index to use for the semantic cache. Defaults to None.
+                Defaults to
+                HFTextVectorizer("sentence-transformers/all-mpnet-base-v2").
+            redis_url (str, optional): The redis url. Defaults to
+                "redis://localhost:6379".
+            kwargs (Optional[dict], optional): The connection arguments for the
+                redis client. Defaults to None.
 
         Raises:
+            TypeError: If an invalid vectorizer is passed in.
+            TypeError: If the non-null TTL value is not an int.
             ValueError: If the threshold is not between 0 and 1.
-            ValueError: If the index name or prefix is not supplied when constructing index manually.
+            ValueError: If the index name or prefix is not supplied when
+                constructing index manually.
         """
-        self._ttl = ttl
+        if "index_name" in kwargs:
+            name = kwargs.pop("index_name")
+            print("WARNING: index_name is deprecated in favor of name.")
+
+        if not isinstance(vectorizer, BaseVectorizer):
+            raise TypeError("Must provide a RedisVL vectorizer class.")
+
+        if ttl is not None and not isinstance(ttl, int):
+            raise TypeError("Must provide TTL as an integer.")
+
+        if name is None or prefix is None:
+            raise ValueError("Index name and prefix must be provided.")
+
+        # Create the underlying index
+        self._index = SearchIndex(
+            name=name, prefix=prefix, fields=self._default_fields
+        )
+        self._index.connect(redis_url=redis_url, **kwargs)
+        self._index.create(overwrite=False)
+
+        # Set other attributes
         self._vectorizer = vectorizer
+        self.set_ttl(ttl)
         self.set_threshold(threshold)
-        connection_args = connection_args or {}
 
-        if not index:
-            if index_name and prefix:
-                index = SearchIndex(
-                    name=index_name, prefix=prefix, fields=self._default_fields
-                )
-                index.connect(redis_url=redis_url, **connection_args)
-            else:
-                raise ValueError(
-                    "Index name and prefix must be provided if not constructing from an existing index."
-                )
+    # @classmethod
+    # def from_index(cls, index: SearchIndex, **kwargs):
+    #     """Create a SemanticCache from a pre-existing SearchIndex.
 
-        # create index if non-existent
-        if not index.exists():
-            index.create()
+    #     Args:
+    #         index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
 
-        self._index = index
-
-    @classmethod
-    def from_index(cls, index: SearchIndex, **kwargs):
-        """Create a SemanticCache from a pre-existing SearchIndex.
-
-        Args:
-            index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
-
-        Returns:
-            SemanticCache: A SemanticCache object.
-        """
-        return cls(index=index, **kwargs)
+    #     Returns:
+    #         SemanticCache: A SemanticCache object.
+    #     """
+    #     # TODO: discuss this use case
+    #     return cls(index=index, **kwargs)
 
     @property
     def ttl(self) -> Optional[int]:
@@ -134,6 +150,7 @@ class SemanticCache(BaseLLMCache):
             raise ValueError("Threshold must be between 0 and 1.")
         self._threshold = float(threshold)
 
+    @check_connected("_index.client")
     def clear(self):
         """Clear the LLMCache of all keys in the index."""
         client = self._index.client
@@ -146,12 +163,14 @@ class SemanticCache(BaseLLMCache):
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
 
+    @check_connected("_index.client")
     def check(
         self,
         prompt: Optional[str] = None,
         vector: Optional[List[float]] = None,
         num_results: int = 1,
-        fields: List[str] = ["response"],
+        return_fields: List[str] = ["response"],
+        **kwargs
     ) -> List[str]:
         """Checks whether the cache contains the specified prompt or vector.
 
@@ -159,7 +178,7 @@ class SemanticCache(BaseLLMCache):
             prompt (Optional[str], optional): The prompt to check. Defaults to None.
             vector (Optional[List[float]], optional): The vector to check. Defaults to None.
             num_results (int, optional): The number of results to return. Defaults to 1.
-            fields (List[str], optional): The fields to return. Defaults to ["response"].
+            return_fields (List[str], optional): The fields to return. Defaults to ["response"].
 
         Raises:
             ValueError: If neither prompt nor vector is specified.
@@ -167,31 +186,44 @@ class SemanticCache(BaseLLMCache):
         Returns:
             List[str]: The response(s) if the cache contains the prompt or vector.
         """
+        # handle backwards compatability
+        if "fields" in kwargs:
+            return_fields = kwargs.pop("fields")
+
         if not prompt and not vector:
             raise ValueError("Either prompt or vector must be specified.")
 
         if not vector:
             vector = self._vectorizer.embed(prompt)  # type: ignore
 
+        # define vector query for semantic cache lookup
         v = VectorQuery(
             vector=vector,
             vector_field_name=self._vector_field_name,
-            return_fields=fields,
+            return_fields=return_fields,
             num_results=num_results,
             return_score=True,
         )
 
         cache_hits: List[str] = []
-        results = self._index.search(v.query, query_params=v.params)
-        for result in results.docs:
-            sim = similarity(result["vector_distance"])
-            if sim > self.threshold:
+
+        results = self._index.query(v)
+        for result in results:
+            if similarity(result["vector_distance"]) > self.threshold:
                 self._refresh_ttl(result["id"])
-                cache_hits.append(
-                    result["response"]
-                )  # TODO - in the future what do we actually want to return here?
+                # TODO: discuss
+                # Allow for selecting return fields and yielding those objs
+                cache_hits.append({
+                    key: result[key] for key in return_fields
+                })
+
+        if cache_hits == []:
+            # TODO: do we need to catch this? An exception here feels noisy from a user perspective.
+            pass
+
         return cache_hits
 
+    @check_connected("_index.client")
     def store(
         self,
         prompt: str,
@@ -212,6 +244,7 @@ class SemanticCache(BaseLLMCache):
         """
         # TODO - foot gun for schema mismatch if user has a different index
         vector = vector or self._vectorizer.embed(prompt)
+
         payload = {
             "id": self.hash_input(prompt),
             "prompt": prompt,
@@ -222,8 +255,9 @@ class SemanticCache(BaseLLMCache):
             payload.update(metadata)
 
         # Load LLMCache entry with TTL
-        self._index.load([payload], ttl=self._ttl, key_field="id")
+        self._index.load(data=[payload], ttl=self._ttl, key_field="id")
 
+    @check_connected("_index.client")
     def _refresh_ttl(self, key: str):
         """Refreshes the TTL for the specified key."""
         client = self._index.client
@@ -232,7 +266,3 @@ class SemanticCache(BaseLLMCache):
                 client.expire(key, self.ttl)
         else:
             raise RuntimeError("LLMCache is not connected to a Redis instance.")
-
-
-def similarity(distance: Union[float, str]) -> float:
-    return 1 - float(distance)
