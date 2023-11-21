@@ -17,7 +17,6 @@ SearchIndex
     SearchIndex.name
     SearchIndex.prefix
     SearchIndex.key_separator
-    SearchIndex.storage
     SearchIndex.storage_type
     SearchIndex.from_yaml
     SearchIndex.from_dict
@@ -53,7 +52,6 @@ AsyncSearchIndex
     AsyncSearchIndex.name
     AsyncSearchIndex.prefix
     AsyncSearchIndex.key_separator
-    AsyncSearchIndex.storage
     AsyncSearchIndex.storage_type
     AsyncSearchIndex.from_yaml
     AsyncSearchIndex.from_dict
