@@ -20,7 +20,8 @@ class BaseStorage:
 
         Args:
             prefix (str): The prefix to prepend to each Redis key.
-            key_separator (str): The separator to use between the prefix and the key value.
+            key_separator (str): The separator to use between the prefix and
+                the key value.
         """
         self._prefix = prefix
         self._key_separator = key_separator
@@ -33,7 +34,8 @@ class BaseStorage:
         Args:
             key_value (str): The unique identifier for the Redis entry.
             prefix (str): A prefix to append before the key value.
-            key_separator (str): A separator to insert between prefix and key value.
+            key_separator (str): A separator to insert between prefix
+                and key value.
 
         Returns:
             str: The fully formed Redis key.
@@ -43,13 +45,18 @@ class BaseStorage:
         else:
             return f"{prefix}{key_separator}{key_value}"
 
-    def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def _create_key(
+        self,
+        obj: Dict[str, Any],
+        key_field: Optional[str] = None
+    ) -> str:
         """Construct a Redis key for a given object, optionally using a
         specified field from the object as the key.
 
         Args:
             obj (Dict[str, Any]): The object from which to construct the key.
-            key_field (Optional[str]): The field to use as the key, if provided.
+            key_field (Optional[str], optional): The field to use as the
+                key, if provided.
 
         Returns:
             str: The constructed Redis key for the object.
@@ -70,11 +77,14 @@ class BaseStorage:
         )
 
     @staticmethod
-    def _preprocess(obj: Any, preprocess: Optional[Callable] = None) -> Dict[str, Any]:
+    def _preprocess(
+        obj: Any, preprocess: Optional[Callable] = None
+    ) -> Dict[str, Any]:
         """Apply a preprocessing function to the object if provided.
 
         Args:
-            preprocess (Optional[Callable]): Function to process the object.
+            preprocess (Optional[Callable], optional): Function to
+                process the object.
             obj (Any): Object to preprocess.
 
         Returns:
@@ -93,7 +103,8 @@ class BaseStorage:
         provided.
 
         Args:
-            preprocess (Optional[Callable]): Async function to process the object.
+            preprocess (Optional[Callable], optional): Async function to
+                process the object.
             obj (Any): Object to preprocess.
 
         Returns:
@@ -176,17 +187,25 @@ class BaseStorage:
         Args:
             redis_client (Redis): A Redis client used for writing data.
             objects (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str]): Field used as the key for each object. Defaults to None.
-            keys (Optional[Iterable[str]]): Optional iterable of keys, must match the length of objects if provided.
-            ttl (Optional[int]): Time-to-live in seconds for each key. Defaults to None.
-            preprocess (Optional[Callable]): A function to preprocess objects before storage. Defaults to None.
-            batch_size (Optional[int]): Number of objects to write in a single Redis pipeline execution. Defaults to class's default batch size.
+            key_field (Optional[str], optional): Field used as the key for
+                each object. Defaults to None.
+            keys (Optional[Iterable[str]], optional): Optional iterable of
+                keys, must match the length of objects if provided.
+            ttl (Optional[int], optional): Time-to-live in seconds for each
+                key. Defaults to None.
+            preprocess (Optional[Callable], optional): A function to preprocess
+                objects before storage. Defaults to None.
+            batch_size (Optional[int], optional): Number of objects to write
+                in a single Redis pipeline execution.
 
         Raises:
-            ValueError: If the length of provided keys does not match the length of objects.
+            ValueError: If the length of provided keys does not match the
+                length of objects.
         """
         if keys and len(keys) != len(objects):  # type: ignore
-            raise ValueError("Length of keys does not match the length of objects")
+            raise ValueError(
+                "Length of keys does not match the length of objects"
+            )
 
         if batch_size is None:
             batch_size = (
@@ -204,7 +223,6 @@ class BaseStorage:
                 )
                 obj = self._preprocess(obj, preprocess)
                 self._validate(obj)
-                print("OBJ", obj, flush=True)
                 self._set(pipe, key, obj)
                 if ttl:
                     pipe.expire(key, ttl)  # Set TTL if provided
@@ -229,19 +247,29 @@ class BaseStorage:
         concurrency control.
 
         Args:
-            redis_client (AsyncRedis): An asynchronous Redis client used for writing data.
+            redis_client (AsyncRedis): An asynchronous Redis client used
+                for writing data.
             objects (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str]): Field used as the key for each object. Defaults to None.
-            keys (Optional[Iterable[str]]): Optional iterable of keys, must match the length of objects if provided.
-            ttl (Optional[int]): Time-to-live in seconds for each key. Defaults to None.
-            preprocess (Optional[Callable]): An async function to preprocess objects before storage. Defaults to None.
-            concurrency (Optional[int]): The maximum number of concurrent write operations. Defaults to class's default concurrency level.
+            key_field (Optional[str], optional): Field used as the key for each
+                object. Defaults to None.
+            keys (Optional[Iterable[str]], optional): Optional iterable of keys.
+                Must match the length of objects if provided.
+            ttl (Optional[int], optional): Time-to-live in seconds for each key.
+                Defaults to None.
+            preprocess (Optional[Callable], optional): An async function to
+                preprocess objects before storage. Defaults to None.
+            concurrency (Optional[int], optional): The maximum number of
+                concurrent write operations. Defaults to class's default
+                concurrency level.
 
         Raises:
-            ValueError: If the length of provided keys does not match the length of objects.
+            ValueError: If the length of provided keys does not match the
+                length of objects.
         """
         if keys and len(keys) != len(objects):  # type: ignore
-            raise ValueError("Length of keys does not match the length of objects")
+            raise ValueError(
+                "Length of keys does not match the length of objects"
+            )
 
         if not concurrency:
             concurrency = self.DEFAULT_WRITE_CONCURRENCY
@@ -261,7 +289,8 @@ class BaseStorage:
 
         if keys_iterator:
             tasks = [
-                asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects
+                asyncio.create_task(
+                    _load(obj, next(keys_iterator))) for obj in objects
             ]
         else:
             tasks = [asyncio.create_task(_load(obj)) for obj in objects]
@@ -269,13 +298,19 @@ class BaseStorage:
         await asyncio.gather(*tasks)
 
     def get(
-        self, redis_client: Redis, keys: Iterable[str], batch_size: Optional[int] = None
+        self,
+        redis_client: Redis,
+        keys: Iterable[str],
+        batch_size: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Retrieve objects from Redis by keys.
 
         Args:
             redis_client (Redis): Synchronous Redis client.
             keys (Iterable[str]): Keys to retrieve from Redis.
+            batch_size (Optional[int], optional): Number of objects to write
+                in a single Redis pipeline execution. Defaults to class's
+                default batch size.
 
         Returns:
             List[Dict[str, Any]]: List of objects pulled from redis.
@@ -317,10 +352,12 @@ class BaseStorage:
         Args:
             redis_client (AsyncRedis): Asynchronous Redis client.
             keys (Iterable[str]): Keys to retrieve from Redis.
-            concurrency (int): The number of concurrent requests to make.
+            concurrency (Optional[int], optional): The number of concurrent
+                requests to make.
 
         Returns:
-            Dict[str, Any]: Dictionary with keys and their corresponding objects.
+            Dict[str, Any]: Dictionary with keys and their corresponding
+                objects.
         """
         if not isinstance(keys, Iterable):  # type: ignore
             raise TypeError("Keys must be an iterable of strings")
@@ -345,15 +382,6 @@ class BaseStorage:
 
 class HashStorage(BaseStorage):
     type: IndexType = IndexType.HASH
-
-    def __init__(self, prefix: str, key_separator: str):
-        """Initialize the HashStorage.
-
-        Args:
-            prefix (str): The key prefix appended before the separator and value.
-            separator (str): The key separator used to join the prefix and value.
-        """
-        super().__init__(prefix, key_separator)
 
     def _validate(self, obj: Dict[str, Any]):
         """Validate that the given object is a dictionary, suitable for storage
@@ -419,15 +447,6 @@ class HashStorage(BaseStorage):
 
 class JsonStorage(BaseStorage):
     type: IndexType = IndexType.JSON
-
-    def __init__(self, prefix: str, key_separator: str):
-        """Initialize the JsonStorage.
-
-        Args:
-            prefix (str): The key prefix appended before the separator and value.
-            separator (str): The key separator used to join the prefix and value.
-        """
-        super().__init__(prefix, key_separator)
 
     def _validate(self, obj: Dict[str, Any]):
         """Validate that the given object is a dictionary, suitable for JSON

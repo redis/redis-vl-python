@@ -74,8 +74,6 @@ async def check_async_redis_modules_exist(client) -> None:
     raise ValueError(error_message)
 
 
-
-
 def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
     """Convert a list of floats into a numpy byte string."""
     return np.array(array).astype(dtype).tobytes()
