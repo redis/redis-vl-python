@@ -1,22 +1,48 @@
 import hashlib
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from redisvl.index import SearchIndex
 
 
 class BaseLLMCache:
-    verbose: bool = True
+    _ttl: Optional[int] = None
 
-    @classmethod
-    def from_index(cls, index: SearchIndex, **kwargs):
-        """Create a SemanticCache from a pre-existing SearchIndex."""
+    @property
+    def ttl(self) -> Optional[int]:
+        """Returns the TTL for the cache.
+
+        Returns:
+            Optional[int]: The TTL for the cache.
+        """
+        return self._ttl
+
+    def set_ttl(self, ttl: Optional[int] = None):
+        """Sets the TTL for the cache.
+
+        Args:
+            ttl (Optional[int], optional): The optional time-to-live expiration
+                for the cache.
+
+        Raises:
+            ValueError: If the time-to-live value is not an integer.
+        """
+        if ttl:
+            if not isinstance(ttl, int):
+                raise ValueError(f"TTL must be an integer value, got {ttl}")
+            self._ttl = int(ttl)
+
+    def clear(self) -> None:
+        """Clear the LLMCache of all keys in the index."""
         raise NotImplementedError
 
-    def clear(self):
-        """Clear the LLMCache and create a new underlying index."""
-        raise NotImplementedError
-
-    def check(self, prompt: str) -> Optional[List[str]]:
+    def check(
+        self,
+        prompt: Optional[str] = None,
+        vector: Optional[List[float]] = None,
+        num_results: int = 1,
+        return_fields: Optional[List[str]] = None,
+        **kwargs,
+    ) -> List[dict]:
         raise NotImplementedError
 
     def store(
@@ -26,12 +52,8 @@ class BaseLLMCache:
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
     ) -> None:
-        """Stores the specified key-value pair in the cache along with
-        metadata."""
-        raise NotImplementedError
-
-    def _refresh_ttl(self, key: str):
-        """Refreshes the TTL for the specified key."""
+        """Stores the specified key-value pair in the cache along
+        with metadata."""
         raise NotImplementedError
 
     def hash_input(self, prompt: str):

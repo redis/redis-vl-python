@@ -2,7 +2,35 @@ from time import sleep
 
 import pytest
 
-from redisvl.index import SearchIndex
+from redisvl.llmcache import SemanticCache
+from redisvl.vectorize.text import HFTextVectorizer
+
+
+@pytest.fixture
+def vectorizer():
+    return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
+
+
+@pytest.fixture
+def cache(vectorizer):
+    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
+    yield cache_instance
+    cache_instance.clear()  # Clear cache after each test
+    cache_instance._index.delete(True)  # Clean up index
+
+
+@pytest.fixture
+def cache_with_ttl(vectorizer):
+    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2, ttl=2)
+    yield cache_instance
+    cache_instance.clear()  # Clear cache after each test
+    cache_instance._index.delete(True)  # Clean up index
+
+
+from time import sleep
+
+import pytest
+
 from redisvl.llmcache.semantic import SemanticCache
 from redisvl.vectorize.text import HFTextVectorizer
 
@@ -14,103 +42,114 @@ def vectorizer():
 
 @pytest.fixture
 def cache(vectorizer):
-    return SemanticCache(vectorizer=vectorizer, threshold=0.8)
+    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
+    yield cache_instance
+    cache_instance.clear()
+    cache_instance._index.delete(True)
 
 
 @pytest.fixture
 def cache_with_ttl(vectorizer):
-    return SemanticCache(vectorizer=vectorizer, threshold=0.8, ttl=2)
+    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2, ttl=2)
+    yield cache_instance
+    cache_instance.clear()
+    cache_instance._index.delete(True)
 
 
-@pytest.fixture
-def vector(vectorizer):
-    return vectorizer.embed("This is a test sentence.")
-
-
-def test_store_and_check_and_clear(cache, vector):
-    # Check that we can store and retrieve a response
+# Test basic store and check functionality
+def test_store_and_check(cache, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
     cache.store(prompt, response, vector=vector)
     check_result = cache.check(vector=vector)
-    assert len(check_result) >= 1
-    assert response in check_result
-    cache.clear()
-    check_result = cache.check(vector=vector)
-    assert len(check_result) == 0
-    cache._index.delete(True)
+
+    assert len(check_result) == 1
+    assert response == check_result[0]["response"]
 
 
-def test_ttl(cache_with_ttl, vector):
-    # Check that TTL expiration kicks in after 2 seconds
+# Test clearing the cache
+def test_clear(cache, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
-    cache_with_ttl.store(prompt, response, vector=vector)
-    sleep(3)
-    check_result = cache_with_ttl.check(vector=vector)
-    assert len(check_result) == 0
-    cache_with_ttl._index.delete(True)
+    vector = vectorizer.embed(prompt)
 
-
-def test_check_no_match(cache, vector):
-    # Check behavior when there is no match in the cache
-    # In this case, we're using a vector, but the cache is empty
-    check_result = cache.check(vector=vector)
-    assert len(check_result) == 0
-    cache._index.delete(True)
-
-
-def test_check_failure(cache):
-    with pytest.raises(ValueError):
-        cache.check(num_results=1)
-
-
-def test_store_with_vector_and_metadata(cache, vector):
-    # Test storing a response with a vector and metadata
-    prompt = "This is another test prompt."
-    response = "This is another test response."
-    metadata = {"source": "test"}
-    cache.store(prompt, response, vector=vector, metadata=metadata)
-    check_result = cache.check(vector=vector)
-    assert len(check_result) >= 1
-    assert response in check_result
-    cache._index.delete(True)
-
-
-def test_set_threshold(cache):
-    # Test the getter and setter for the threshold
-    assert cache.threshold == 0.8
-    cache.set_threshold(0.9)
-    assert cache.threshold == 0.9
-    cache._index.delete(True)
-
-
-def test_from_index(client, vector):
-    # Create customer index
-    index = SearchIndex(name="test", fields=SemanticCache._default_fields)
-    index.set_client(client)
-    index.create(overwrite=True)
-
-    cache = SemanticCache.from_index(index)
-    assert cache._index == index
-
-    cache.store("test", "test", vector=vector)
-    check_result = cache.check(vector=vector)
-    assert len(check_result) >= 1
-
+    cache.store(prompt, response, vector=vector)
     cache.clear()
     check_result = cache.check(vector=vector)
+
     assert len(check_result) == 0
 
 
-def test_from_existing_cache(cache, vector, vectorizer):
+# Test TTL functionality
+def test_ttl_expiration(cache_with_ttl, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache_with_ttl.store(prompt, response, vector=vector)
+    sleep(3)
+
+    check_result = cache_with_ttl.check(vector=vector)
+    assert len(check_result) == 0
+
+
+# Test check behavior with no match
+def test_check_no_match(cache, vectorizer):
+    vector = vectorizer.embed("Some random sentence.")
+    check_result = cache.check(vector=vector)
+    assert len(check_result) == 0
+
+
+# Test handling invalid input for check method
+def test_check_invalid_input(cache):
+    with pytest.raises(ValueError):
+        cache.check()
+
+    with pytest.raises(TypeError):
+        cache.check(prompt="test", return_fields="bad value")
+
+
+# Test storing with metadata
+def test_store_with_metadata(cache, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
     metadata = {"source": "test"}
+    vector = vectorizer.embed(prompt)
+
     cache.store(prompt, response, vector=vector, metadata=metadata)
-    # connect from existing?
-    new_cache = SemanticCache(vectorizer=vectorizer, threshold=0.8)
-    check_result = new_cache.check(vector=vector)
-    assert len(check_result) >= 1
-    assert response in check_result
-    new_cache._index.delete(True)
+    check_result = cache.check(vector=vector, return_fields=["source", "response"])
+
+    assert len(check_result) == 1
+    assert response == check_result[0]["response"]
+    assert check_result[0]["source"] == "test"
+
+
+# Test setting and getting the distance threshold
+def test_distance_threshold(cache):
+    initial_threshold = cache.distance_threshold
+    new_threshold = 0.1
+
+    cache.set_threshold(new_threshold)
+    assert cache.distance_threshold == new_threshold
+    assert cache.distance_threshold != initial_threshold
+
+
+# Test storing and retrieving multiple items
+def test_multiple_items(cache, vectorizer):
+    prompts_responses = {
+        "prompt1": "response1",
+        "prompt2": "response2",
+        "prompt3": "response3",
+    }
+
+    for prompt, response in prompts_responses.items():
+        vector = vectorizer.embed(prompt)
+        cache.store(prompt, response, vector=vector)
+
+    for prompt, expected_response in prompts_responses.items():
+        vector = vectorizer.embed(prompt)
+        check_result = cache.check(vector=vector)
+        assert len(check_result) == 1
+        assert check_result[0]["response"] == expected_response
