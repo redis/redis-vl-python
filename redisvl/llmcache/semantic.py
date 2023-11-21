@@ -138,7 +138,7 @@ class SemanticCache(BaseLLMCache):
         self._distance_threshold = float(distance_threshold)
 
     def clear(self) -> None:
-        """Clear the LLMCache of all keys in the index."""
+        """Clear the cache of all keys while preserving the index"""
         with self._index.client.pipeline(transaction=False) as pipe:
             for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):
                 pipe.delete(key)
