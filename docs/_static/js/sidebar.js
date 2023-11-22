@@ -18,12 +18,7 @@ const toc = [
         { title: "Filter", path: "/api/filter.html" },
         { title: "Vectorizers", path: "/api/vectorizer.html" },
         { title: "LLMCache", path: "/api/cache.html" }
-    ]},
-//    { header: "Concepts", toc: [
-//        { title: "Vector Embeddings", path: "/concepts/vectors.html" },
-//        { title: "HNSW vs Flat", path: "/concepts/vector_index.html" },
-//        { title: "Distance Metrics", path: "/concepts/distance.html" }
-//]}
+    ]}
 ];
 
 document.addEventListener('DOMContentLoaded', function() {
