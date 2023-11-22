@@ -29,6 +29,11 @@ If you use ZSH, remember to escape the brackets:
 $ pip install redisvl\[all\]
 ```
 
+This library supports the use of hiredis, so you can also install by running:
+
+```bash
+pip install redisvl[hiredis]
+```
 
 ## Install RedisVL from Source
 
