@@ -30,7 +30,6 @@ class SemanticCache(BaseLLMCache):
         prefix: str = "llmcache",
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
-        # TODO: consider removing this ability until we support custom schema
         vectorizer: BaseVectorizer = HFTextVectorizer(
             "sentence-transformers/all-mpnet-base-v2"
         ),
@@ -73,13 +72,14 @@ class SemanticCache(BaseLLMCache):
         if "threshold" in kwargs:
             distance_threshold = 1 - kwargs.pop("threshold")
             warnings.warn(
-                message="threshold kwarg is deprecated in favor of distance_threshold.",
+                message="threshold kwarg is deprecated in favor of distance_threshold. "
+                + "Setting distance_threshold to 1 - threshold.",
                 category=DeprecationWarning,
                 stacklevel=2,
             )
 
         if not isinstance(vectorizer, BaseVectorizer):
-            raise TypeError("Must provide a valid RedisVL vectorizer class.")
+            raise TypeError("Must provide a valid redisvl.vectorizer class.")
 
         if name is None or prefix is None:
             raise ValueError("Index name and prefix must be provided.")
@@ -94,18 +94,19 @@ class SemanticCache(BaseLLMCache):
         self.set_ttl(ttl)
         self.set_threshold(distance_threshold)
 
-    # @classmethod
-    # def from_index(cls, index: SearchIndex, **kwargs):
-    #     """Create a SemanticCache from a pre-existing SearchIndex.
+    @classmethod
+    def from_index(cls, index: SearchIndex, **kwargs):
+        """Create a SemanticCache from a pre-existing SearchIndex.
 
-    #     Args:
-    #         index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
+        Args:
+            index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
 
-    #     Returns:
-    #         SemanticCache: A SemanticCache object.
-    #     """
-    #     # TODO: ok to remove for now??
-    #     return cls(index=index, **kwargs)
+        Returns:
+            SemanticCache: A SemanticCache object.
+        """
+        raise DeprecationWarning(
+            "This method is deprecated since 0.0.4. Use the constructor instead."
+        )
 
     @property
     def index(self) -> SearchIndex:
