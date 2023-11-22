@@ -2,10 +2,10 @@
 myst:
   html_meta:
     "description lang=en": |
-      Documentation for RedisVL users
+      User Guides for RedisVL users
 ---
 
-# User Guide
+# User Guides
 
 
 ```{toctree}

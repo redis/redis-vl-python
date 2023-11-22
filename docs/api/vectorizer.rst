@@ -44,7 +44,7 @@ OpenAITextVectorizer
 
 
 VertexAITextVectorizer
-================
+======================
 
 .. _vertexaitextvectorizer_api:
 

@@ -9,9 +9,7 @@ html_theme.sidebar_secondary.remove: false
 
 # Redis Vector Library (RedisVL)
 
-RedisVL provides a powerful Python client library for using Redis as a Vector Database.
-Leverage the speed and reliability of Redis along with vector-based semantic search capabilities
-to supercharge your application!
+RedisVL provides a powerful, dedicated Python client library for using Redis as a [Vector Database](https://redis.com/solutions/use-cases/vector-database). Leverage the speed and reliability of Redis along with vector-based semantic search capabilities to supercharge your application!
 
 ```{gallery-grid}
 :grid-columns: 1 2 2 3
@@ -33,7 +31,7 @@ to supercharge your application!
 
 ## Installation
 
-Install `redisvl` using `pip`:
+Install `redisvl` into your Python (>=3.8) environment using `pip`:
 
 ```bash
 pip install redisvl
@@ -52,7 +50,7 @@ This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterpris
 ```{toctree}
 :maxdepth: 2
 
-User Guide <user_guide/index>
+User Guides <user_guide/index>
 Example Gallery <examples/index>
 API <api/index>
 ```

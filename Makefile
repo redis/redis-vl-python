@@ -65,6 +65,11 @@ mypy:
 docs:
 	@cd docs; make html
 
+# help: servedocs                      - Serve project documentation
+.PHONY: servedocs
+servedocs:
+	@cd docs/_build/html/; python -m http.server
+
 # help:
 # help: Test
 # help: -------
@@ -89,3 +94,9 @@ test-cov:
 cov:
 	@coverage html
 	@echo if data was present, coverage report is in ./htmlcov/index.html
+
+
+# help: test-notebooks                 - Run all notebooks
+.PHONY: test-notebooks
+test-notebooks:
+	@cd docs/ && treon -v

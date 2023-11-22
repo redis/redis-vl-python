@@ -6,7 +6,7 @@ myst:
 ---
 
 
-# Examples
+# Example Gallery
 
 ```{note}
 If you are using RedisVL, please consider adding your example to this page by
