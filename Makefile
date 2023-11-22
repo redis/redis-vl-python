@@ -94,3 +94,9 @@ test-cov:
 cov:
 	@coverage html
 	@echo if data was present, coverage report is in ./htmlcov/index.html
+
+
+# help: test-notebooks                 - Run all notebooks
+.PHONY: test-notebooks
+test-notebooks:
+	@cd docs/ && treon -v

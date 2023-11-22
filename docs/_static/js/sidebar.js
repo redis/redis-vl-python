@@ -2,8 +2,7 @@ const toc = [
     { header: "Overview", toc: [
         { title: "RedisVL", path: "/index.html" },
         { title: "Install", path: "/overview/installation.html" },
-        { title: "Quickstart", path: "/overview/quickstart.html" },
-        { title: "CLI", path: "/overview/cli.html" },
+        { title: "CLI", path: "/user_guide/cli.html" },
     ]},
     { header: "User Guide", toc: [
         { title: "Getting Started", path: "/user_guide/getting_started_01.html" },
@@ -20,11 +19,11 @@ const toc = [
         { title: "Vectorizers", path: "/api/vectorizer.html" },
         { title: "LLMCache", path: "/api/cache.html" }
     ]},
-    { header: "Concepts", toc: [
-        { title: "Vector Embeddings", path: "/concepts/vectors.html" },
-        { title: "HNSW vs Flat", path: "/concepts/vector_index.html" },
-        { title: "Distance Metrics", path: "/concepts/distance.html" }
-]}
+//    { header: "Concepts", toc: [
+//        { title: "Vector Embeddings", path: "/concepts/vectors.html" },
+//        { title: "HNSW vs Flat", path: "/concepts/vector_index.html" },
+//        { title: "Distance Metrics", path: "/concepts/distance.html" }
+//]}
 ];
 
 document.addEventListener('DOMContentLoaded', function() {

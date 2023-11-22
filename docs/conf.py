@@ -82,8 +82,8 @@ html_context = {
     "doc_path": "docs",
 }
 
-
-
+import redisvl
+version = redisvl.__version__
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 3
@@ -100,6 +100,11 @@ html_theme_options = {
     "navigation_depth": 5,
     "navbar_align": "content",  # [left, content, right] For testing that the navbar items align properly
     "secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
+    "switcher": {
+        "json_url": "/_static/version_names.json",
+        "version_match": version,
+    },
+    "navbar_start": ["navbar-logo", "version-switcher"],
     "icon_links": [
         {
             "name": "GitHub",

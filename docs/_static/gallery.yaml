@@ -1,11 +1,10 @@
-# Metadata to create our example gallery. This YAML file does two things:
-#
-# 1. Used by `generate_gallery_images.py` to take snapshots of each item and place an image in `gallery`.
-# 2. Used by our Gallery Grid directive to create the grid on our `examples/gallery.md` page.
-#
-# This file should only be modified by maintainer, contributors should add their project
-# to the list of `gallery.md`.
 
+- title: Arxiv Paper Search
+  website: https://docsearch.redisventures.com
+  img-bottom: ../_static/gallery-images/arxiv-search.png
+- title: Real-Time Embeddings with Redis and Bytewax
+  website: https://github.com/awmatheson/real-time-embeddings
+  img-bottom: ../_static/gallery-images/bytewax-redis.png
 - title: Question and Answer with OpenAI
   website: https://www.redisvl.com/docs/html/examples/openai_qna.html
   img-bottom: ../_static/gallery-images/RedisOpenAI-QnA.png
