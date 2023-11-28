@@ -279,7 +279,6 @@ class SearchIndexBase:
             >>>         "name": "my-index",
             >>>         "prefix": "rvl",
             >>>         "storage_type": "hash",
-            >>>         "key_separator": ":"
             >>>     },
             >>>     "fields": {
             >>>         "tag": [{"name": "doc-id"}]
