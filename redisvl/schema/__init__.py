@@ -6,14 +6,16 @@ from redisvl.schema.fields import (
     NumericFieldSchema,
     BaseVectorField,
     HNSWVectorFieldSchema,
-    FlatVectorFieldSchema
+    FlatVectorFieldSchema,
 )
 from redisvl.schema.schema import (
     StorageType,
     IndexModel,
     FieldsModel,
     Schema,
-    SchemaGenerator
+    SchemaGenerator,
+    read_schema,
+    SchemaValidationError,
 )
 
 
@@ -30,5 +32,7 @@ __all__ = [
     "IndexModel",
     "FieldsModel",
     "Schema",
-    "SchemaGenerator"
+    "SchemaGenerator",
+    "read_schema",
+    "SchemaValidationError"
 ]

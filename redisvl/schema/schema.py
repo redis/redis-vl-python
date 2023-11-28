@@ -16,6 +16,11 @@ from redisvl.schema.fields import (
     GeoFieldSchema
 )
 
+from redisvl.utils.utils import (
+    convert_bytes,
+    make_dict,
+)
+
 
 class StorageType(Enum):
     HASH = "hash"
@@ -67,7 +72,7 @@ class Schema:
         except ValidationError as e:
             raise SchemaValidationError(f"Invalid index model: {e}.") from e
         except Exception as e:
-            raise SchemaValidationError("Failed to create schema.") from e
+            raise SchemaValidationError(f"Failed to create index model: {e}.") from e
 
     def _validate_fields_model(self, fields: Union[Dict[str, Any], FieldsModel]) -> FieldsModel:
         """
@@ -83,7 +88,7 @@ class Schema:
         except ValidationError as e:
             raise SchemaValidationError(f"Invalid fields model: {e}") from e
         except Exception as e:
-            raise SchemaValidationError("Failed to create schema.") from e
+            raise SchemaValidationError("Failed to create fields model.") from e
 
     @classmethod
     def from_params(
@@ -110,9 +115,31 @@ class Schema:
             "name": name,
             "prefix": prefix,
             "key_separator": key_separator,
-            "storage_type": StorageType(storage_type)
+            "storage_type": storage_type
         }
-        return cls(index=index, fields=fields)
+        return cls(index=index, fields=fields, **kwargs)
+
+    @classmethod
+    def from_db(cls, client, name: str, **kwargs):
+        # TODO - eventually load a full object from here???
+        # NOTE - eventually everything returned by redis ft.info output
+        # client = get_redis_connection(redis_url, **connection_args)
+        # TODO - does not handle sync/async yet...
+        info = convert_bytes(client.ft(name).info())
+        index_definition = make_dict(info["index_definition"])
+        storage_type = index_definition["key_type"].lower()
+        prefix = index_definition["prefixes"][0]
+        # TODO - we cant even get key_separator or fields here by default... maybe use kwargs?
+        key_separator = kwargs.pop("key_separator", ":")
+        fields = kwargs.pop("fields", {})
+        return cls.from_params(**{
+            "name": name,
+            "prefix": prefix,
+            "storage_type": storage_type,
+            "key_separator": key_separator,
+            "fields": fields,
+            **kwargs
+        })
 
     # @classmethod
     # def from_sample(cls, sample: Dict[str, Any]) -> None:
@@ -120,7 +147,7 @@ class Schema:
     #     generator = SchemaGenerator()
     #     schema = generator.generate(metadata=sample, strict=True)
     #     return cls(index = schema.index, fields = schema.fields)
-    # TODO can't implement this until we have extended the schema generator
+    # TODO can't use something like this until we have extended the schema generator
 
     @property
     def index_name(self) -> str:
@@ -160,13 +187,12 @@ class Schema:
             "fields": self._fields.dict()
         }
 
-    def write(self, path: Union[str, os.PathLike]) -> None:
+    def write_to_yaml(self, path: str) -> None:
         """
         Write the schema to a yaml file.
 
         Args:
-            path (Union[str, os.PathLike], optional): The yaml file path where
-                the schema will be written.
+            path (str): The yaml file path where the schema will be written.
 
         Raises:
             TypeError: If the provided file path is not a valid YAML file.
@@ -178,47 +204,29 @@ class Schema:
         with open(path, "w") as f:
             yaml.dump(schema, f)
 
-    def add_field(self, field) -> None:
-        """
-        Add a new field to the schema.
-        """
-        raise NotImplementedError
 
-    def remove_field(self, field_name) -> None:
-        """
-        Remove a field from the schema.
-        """
-        raise NotImplementedError
+def read_schema(file_path: str) -> Schema:
+    """
+    Create a Schema instance from a YAML file.
+    Args:
+        file_path: The path to the YAML file.
+    Returns:
+        A Schema instance.
+    Raises:
+        ValueError: If the file path is not a YAML file.
+        FileNotFoundError: If the YAML file does not exist.
+    """
+    if not file_path.endswith(".yaml"):
+        raise ValueError("Must provide a valid YAML file path")
 
-    def update_field(self, field) -> None:
-        """
-        Update an existing field in the schema.
-        """
-        raise NotImplementedError
+    fp = Path(file_path).resolve()
+    if not fp.exists():
+        raise FileNotFoundError(f"Schema file {file_path} does not exist")
 
+    with open(fp, "r") as f:
+        schema = yaml.safe_load(f)
 
-    def read_schema(file_path: str) -> Schema:
-        """
-        Create a Schema instance from a YAML file.
-        Args:
-            file_path: The path to the YAML file.
-        Returns:
-            A Schema instance.
-        Raises:
-            ValueError: If the file path is not a YAML file.
-            FileNotFoundError: If the YAML file does not exist.
-        """
-        if not file_path.endswith(".yaml"):
-            raise ValueError("Must provide a valid YAML file path")
-
-        fp = Path(file_path).resolve()
-        if not fp.exists():
-            raise FileNotFoundError(f"Schema file {file_path} does not exist")
-
-        with open(fp, "r") as f:
-            schema = yaml.safe_load(f)
-
-        return Schema(**schema)
+    return Schema(**schema)
 
 
 class SchemaGenerator:

@@ -11,17 +11,18 @@ from redis.commands.search.field import (
 )
 
 from redisvl.schema import (
-    FlatVectorField,
+    FlatVectorFieldSchema,
     GeoFieldSchema,
-    HNSWVectorField,
+    HNSWVectorFieldSchema,
     IndexModel,
     NumericFieldSchema,
     SchemaGenerator,
-    SchemaModel,
+    Schema,
     StorageType,
     TagFieldSchema,
     TextFieldSchema,
     read_schema,
+    SchemaValidationError,
 )
 
 
@@ -57,7 +58,7 @@ def create_geo_field_schema(**kwargs):
 def create_flat_vector_field(**kwargs):
     defaults = {"name": "example_flatvectorfield", "dims": 128, "algorithm": "FLAT"}
     defaults.update(kwargs)
-    return FlatVectorField(**defaults)
+    return FlatVectorFieldSchema(**defaults)
 
 
 def create_hnsw_vector_field(**kwargs):
@@ -71,7 +72,7 @@ def create_hnsw_vector_field(**kwargs):
         "epsilon": 0.01,
     }
     defaults.update(kwargs)
-    return HNSWVectorField(**defaults)
+    return HNSWVectorFieldSchema(**defaults)
 
 
 # Tests for field schema creation and validation
@@ -125,7 +126,7 @@ def test_vector_fields_with_optional_params(vector_schema_func, extra_params):
 
 def test_hnsw_vector_field_optional_params_not_set():
     # Create HNSW vector field without setting optional params
-    hnsw_field = HNSWVectorField(name="example_vector", dims=128, algorithm="HNSW")
+    hnsw_field = HNSWVectorFieldSchema(name="example_vector", dims=128, algorithm="HNSW")
 
     assert hnsw_field.m == 16  # default value
     assert hnsw_field.ef_construction == 200  # default value
@@ -143,7 +144,7 @@ def test_hnsw_vector_field_optional_params_not_set():
 
 def test_flat_vector_field_block_size_not_set():
     # Create Flat vector field without setting block_size
-    flat_field = FlatVectorField(name="example_vector", dims=128, algorithm="FLAT")
+    flat_field = FlatVectorFieldSchema(name="example_vector", dims=128, algorithm="FLAT")
     field_exported = flat_field.as_field()
 
     # block_size and initial_cap should not be in the exported field if it was not set
@@ -192,27 +193,31 @@ def test_index_model_validation_errors():
 
 def test_schema_model_validation_failures():
     # Invalid storage type
-    with pytest.raises(ValueError):
+    with pytest.raises(SchemaValidationError):
         invalid_index = {"name": "test_index", "storage_type": "unsupported"}
-        SchemaModel(index=invalid_index, fields={})
+        Schema(index=invalid_index, fields={})
 
     # Missing required field
-    with pytest.raises(ValidationError):
-        SchemaModel(index={}, fields={})
+    with pytest.raises(SchemaValidationError):
+        Schema(index={}, fields={})
+
+    # Invalid index
+    with pytest.raises(SchemaValidationError):
+        Schema(index=12, fields={})
 
 
 def test_read_hash_schema():
     hash_schema = read_schema(
         str(get_base_path().joinpath("../sample_hash_schema.yaml"))
     )
-    assert hash_schema.index.name == "hash-test"
+    assert hash_schema.index_name == hash_schema._index.name == "hash-test"
 
 
 def test_read_json_schema():
     json_schema = read_schema(
         str(get_base_path().joinpath("../sample_json_schema.yaml"))
     )
-    assert json_schema.index.name == "json-test"
+    assert json_schema.index_name == json_schema._index.name == "json-test"
 
 
 def test_read_schema_file_not_found():
