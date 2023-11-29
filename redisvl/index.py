@@ -130,35 +130,6 @@ def check_async_index_exists():
     return decorator
 
 
-def check_connected(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if getattr(self, client_variable_name) is None:
-                raise ValueError(
-                    f"SearchIndex.connect() must be called before calling {func.__name__}"
-                )
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def check_async_connected(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            if getattr(self, client_variable_name) is None:
-                raise ValueError(
-                    f"SearchIndex.connect() must be called before calling {func.__name__}"
-                )
-            return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
 
 class SearchIndexBase:
     STORAGE_MAP = {
@@ -168,48 +139,25 @@ class SearchIndexBase:
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        schema: Optional[Schema] = None,
+        schema: Schema,
         redis_url: Optional[str] = None,
         connection_args: Dict[str, Any] = {},
         **kwargs,
     ):
         """Initialize the RedisVL search index class with a schema,
            redis_url, connection_args, and other kwargs.
-
         """
-        # catch error case
-        if name is None and schema is None:
-            raise ValueError("Must provide either a schema or a name")
+        # final validation on schema object
+        if not schema or not isinstance(schema, Schema):
+            raise ValueError("Must provide a valid schema object")
 
         # establish Redis connection
-        self._redis_conn: Optional[redis.Redis] = None
-        if redis_url is not None:
-            self.connect(redis_url, **connection_args)
+        # assume user has either passed in redis_url OR has the right env var set
+        self._redis_conn: redis.Redis = None
+        self.connect(redis_url, **connection_args)
 
-        # "From Existing" Route
-        # client passes in a name and intends to build from an existing index
-        if schema is None and name and isinstance(name, str):
-            # catch case where client wants to go this route but has no redis connection...
-            if not self._redis_conn:
-                raise ValueError(
-                    "Unable to load schema from db without a provided redis_url."
-                )
-            # load schema from db
-            schema = Schema.from_db(
-                name=name,
-                client=self._redis_conn,
-                **kwargs
-            )
-
-        # final validation on schema
-        if schema and isinstance(schema, Schema):
-            # TODO - use kwargs anywhere?
-            self.schema = schema
-        else:
-            raise ValueError("Unable to prepare a valid schema.")
-
-        # configure storage layer
+        # set schema and storage
+        self.schema = schema
         self._storage = self.STORAGE_MAP[self.schema.storage_type](
             self.schema.index_prefix, self.schema.key_separator
         )
@@ -241,7 +189,6 @@ class SearchIndexBase:
         return self.schema.storage_type
 
     @property
-    @check_connected("_redis_conn")
     def client(self) -> redis.Redis:
         """The underlying redis-py client object."""
         return self._redis_conn  # type: ignore
@@ -293,13 +240,11 @@ class SearchIndexBase:
         schema = Schema(**schema_dict)
         return cls(schema=schema, **kwargs)
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def search(self, *args, **kwargs) -> Union["Result", Any]:
         raise NotImplementedError
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -328,24 +273,20 @@ class SearchIndexBase:
         """
         return self._storage._key(key_value, self.schema.index_prefix, self.schema.key_separator)
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def info(self) -> Dict[str, Any]:
         raise NotImplementedError
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False):
         raise NotImplementedError
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def delete(self, drop: bool = True):
         raise NotImplementedError
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def load(
         self,
@@ -388,7 +329,6 @@ class SearchIndex(SearchIndexBase):
         self._redis_conn = get_redis_connection(redis_url, **kwargs)
         return self
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
         """Create an index in Redis from this SearchIndex object.
@@ -423,7 +363,6 @@ class SearchIndex(SearchIndexBase):
             ),
         )
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def delete(self, drop: bool = True):
@@ -439,7 +378,6 @@ class SearchIndex(SearchIndexBase):
         # Delete the search index
         self._redis_conn.ft(self.schema.index_name).dropindex(delete_documents=drop)  # type: ignore
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def load(
         self,
@@ -488,7 +426,6 @@ class SearchIndex(SearchIndexBase):
             batch_size=batch_size,
         )
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def search(self, *args, **kwargs) -> Union["Result", Any]:
@@ -506,7 +443,6 @@ class SearchIndex(SearchIndexBase):
         )
         return results
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -526,7 +462,6 @@ class SearchIndex(SearchIndexBase):
         # post process the results
         return process_results(results, query=query, storage_type=self.schema.storage_type)
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def exists(self) -> bool:
         """Check if the index exists in Redis.
@@ -537,7 +472,6 @@ class SearchIndex(SearchIndexBase):
         indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
         return self.schema.index_name in indices
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def info(self) -> Dict[str, Any]:
@@ -577,7 +511,6 @@ class AsyncSearchIndex(SearchIndexBase):
         self._redis_conn = get_async_redis_connection(redis_url, **kwargs)
         return self
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     async def create(self, overwrite: bool = False) -> None:
         """Asynchronously create an index in Redis from this SearchIndex object.
@@ -610,7 +543,6 @@ class AsyncSearchIndex(SearchIndexBase):
             ),
         )
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def delete(self, drop: bool = True):
@@ -626,7 +558,6 @@ class AsyncSearchIndex(SearchIndexBase):
         # Delete the search index
         await self._redis_conn.ft(self.schema.index_name).dropindex(delete_documents=drop)  # type: ignore
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     async def load(
         self,
@@ -675,7 +606,6 @@ class AsyncSearchIndex(SearchIndexBase):
             concurrency=concurrency,
         )
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def search(self, *args, **kwargs) -> Union["Result", Any]:
@@ -691,7 +621,6 @@ class AsyncSearchIndex(SearchIndexBase):
         results = await self._redis_conn.ft(self.schema.index_name).search(*args, **kwargs)  # type: ignore
         return results
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -711,7 +640,6 @@ class AsyncSearchIndex(SearchIndexBase):
         # post process the results
         return process_results(results, query=query, storage_type=self._storage_type)
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     async def exists(self) -> bool:
         """Check if the index exists in Redis.
@@ -722,7 +650,6 @@ class AsyncSearchIndex(SearchIndexBase):
         indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
         return self.schema.index_name in convert_bytes(indices)
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def info(self) -> Dict[str, Any]:
