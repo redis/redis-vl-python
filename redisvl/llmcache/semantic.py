@@ -49,6 +49,8 @@ class SemanticCache(BaseLLMCache):
                 in Redis. Defaults to None.
             vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
+            custom_vector_field (Dict[str, str], optional): A custom-defined
+                vector field spec to use for the semantic cache. Defaults to {}.
             redis_url (str, optional): The redis url. Defaults to
                 "redis://localhost:6379".
             kwargs (Optional[dict], optional): The connection arguments for the
@@ -85,6 +87,7 @@ class SemanticCache(BaseLLMCache):
 
         # set cache attributes
         self._vector_field = custom_vector_field or self._default_vector_field
+        self._vector_field_name = custom_vector_field.get("name", self._default_vector_field_name)
         self.set_vectorizer(vectorizer)
         self.set_ttl(ttl)
         self.set_threshold(distance_threshold)
@@ -109,7 +112,7 @@ class SemanticCache(BaseLLMCache):
 
     @classmethod
     def from_index(cls, index: SearchIndex, **kwargs):
-        """Create a SemanticCache from a pre-existing SearchIndex.
+        """DEPRECATED: Create a SemanticCache from a pre-existing SearchIndex.
 
         Args:
             index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
@@ -120,7 +123,6 @@ class SemanticCache(BaseLLMCache):
         raise DeprecationWarning(
             "This method is deprecated since 0.0.4. Use the constructor instead."
         )
-        # TODO should we do these for the other methods in index.py that we removed?
 
     @property
     def index(self) -> SearchIndex:
@@ -265,8 +267,7 @@ class SemanticCache(BaseLLMCache):
         # Construct vector query for the cache
         query = VectorQuery(
             vector=vector,
-            # TODO how to handle the field name if they changed the schema?
-            vector_field_name=self._default_vector_field_name,
+            vector_field_name=self._vector_field_name,
             return_fields=return_fields,
             num_results=num_results,
             return_score=True,
