@@ -100,6 +100,32 @@ class Schema:
         except Exception as e:
             raise ValueError("Failed to create fields model.") from e
 
+    @property
+    def index_name(self) -> str:
+        return self._index.name
+
+    @property
+    def index_prefix(self) -> str:
+        return self._index.prefix
+
+    @property
+    def key_separator(self) -> str:
+        return self._index.key_separator
+
+    @property
+    def storage_type(self) -> str:
+        return self._index.storage_type
+
+    @property
+    def index_fields(self) -> list:
+        redis_fields = []
+        for field_name in self._fields.__fields__.keys():
+            field_group = getattr(self._fields, field_name)
+            if field_group is not None:
+                for field in field_group:
+                    redis_fields.append(field.as_field())
+        return redis_fields
+
     @classmethod
     def from_params(
         cls,
@@ -217,31 +243,6 @@ class Schema:
 
         return cls.from_params(fields=schema_fields, **kwargs)
 
-    @property
-    def index_name(self) -> str:
-        return self._index.name
-
-    @property
-    def index_prefix(self) -> str:
-        return self._index.prefix
-
-    @property
-    def key_separator(self) -> str:
-        return self._index.key_separator
-
-    @property
-    def storage_type(self) -> str:
-        return self._index.storage_type
-
-    @property
-    def index_fields(self):
-        redis_fields = []
-        for field_name in self._fields.__fields__.keys():
-            field_group = getattr(self._fields, field_name)
-            if field_group is not None:
-                for field in field_group:
-                    redis_fields.append(field.as_field())
-        return redis_fields
 
     def dump(self) -> Dict[str, Any]:
         """
