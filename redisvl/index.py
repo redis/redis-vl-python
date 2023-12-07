@@ -179,30 +179,9 @@ class SearchIndex:
         if redis_url is not None:
             self.connect(redis_url, **connection_args)
 
-        # "From Existing" Route
-        # client passes in a name and intends to build from an existing index
-        if schema is None and name and isinstance(name, str):
-            # catch case where client wants to go this route but has no redis connection...
-            if not self._redis_conn:
-                raise ValueError(
-                    "Unable to load schema from db without a provided redis_url."
-                )
-            # load schema from db
-            schema = Schema.from_db(
-                name=name,
-                client=self._redis_conn,
-                **kwargs
-            )
-
-        # final validation on schema
-        if schema and isinstance(schema, Schema):
-            # TODO - use kwargs anywhere?
-            self.schema = schema
-        else:
-            raise ValueError("Unable to prepare a valid schema.")
-
-        # configure storage layer
-        self._storage = self._STORAGE_MAP[self.schema.storage_type](
+        # set schema and storage
+        self.schema = schema
+        self._storage = self.STORAGE_MAP[self.schema.storage_type](
             self.schema.index_prefix, self.schema.key_separator
         )
 
