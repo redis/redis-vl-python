@@ -36,11 +36,26 @@ class IndexModel(BaseModel):
     storage_type: StorageType = StorageType.HASH
 
 class FieldsModel(BaseModel):
-    tag: Optional[List[TagField]] = None
-    text: Optional[List[TextField]] = None
-    numeric: Optional[List[NumericField]] = None
-    geo: Optional[List[GeoField]] = None
-    vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]] = None
+    tag: List[TagField] = []
+    text: List[TextField] = []
+    numeric: List[NumericField] = []
+    geo: List[GeoField] = []
+    vector: List[Union[FlatVectorField, HNSWVectorField]] = []
+
+    def add(self, field: Union[BaseField, BaseVectorField]):
+        if isinstance(field, TagField):
+            self.tag.append(field)
+        elif isinstance(field, TextField):
+            self.text.append(field)
+        elif isinstance(field, NumericField):
+            self.numeric.append(field)
+        elif isinstance(field, GeoField):
+            self.geo.append(field)
+        elif isinstance(field, BaseVectorField):
+            self.vector.append(field)
+        else:
+            raise TypeError(f"Must provide a valid field type, received {field}")
+        return self
 
 
 class Schema:
@@ -180,12 +195,6 @@ class Schema:
             Dict[str, List[Dict[str, Any]]]: Output metadata schema.
         """
         schema_fields = FieldsModel()
-        schema_fields_map: {
-            TagField: schema_fields.tag,
-            TextField: schema_fields.text,
-            NumericField: schema_fields.numeric
-            # TODO extend to Geo and Vector
-        }
 
         for key, value in data.items():
             field_class = self._infer_type(value)
@@ -203,9 +212,8 @@ class Schema:
                 continue
 
             # add the field to the schema fields object
-            schema_fields_map[field_class].append(
-                field_class(name=key).dict(exclude_none=True)
-            )
+            # TODO how to specify other params???
+            schema_fields.add(field_class(name=key))
 
         return cls.from_params(fields=schema_fields, **kwargs)
 
