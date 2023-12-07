@@ -217,7 +217,6 @@ class SearchIndex:
         return self._redis_conn.sync
 
     @property
-    @check_connected("_redis_conn")
     def aclient(self) -> aredis.Redis:
         """The underlying redis-py client object."""
         return self._redis_conn.a

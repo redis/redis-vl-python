@@ -3,11 +3,11 @@ from typing_extensions import Literal
 
 from pydantic import BaseModel, Field, validator
 from redis.commands.search.field import (
-    GeoField,
-    NumericField,
-    TagField,
-    TextField,
-    VectorField,
+    GeoField as RedisGeoField,
+    NumericField as RedisNumericField,
+    TagField as RedisTagField,
+    TextField as RedisTextField,
+    VectorField as RedisVectorField,
 )
 
 
@@ -17,14 +17,14 @@ class BaseField(BaseModel):
     as_name: Optional[str] = None
 
 
-class TextFieldSchema(BaseField):
+class TextField(BaseField):
     weight: Optional[float] = 1
     no_stem: Optional[bool] = False
     phonetic_matcher: Optional[str] = None
     withsuffixtrie: Optional[bool] = False
 
     def as_field(self):
-        return TextField(
+        return RedisTextField(
             self.name,
             weight=self.weight,
             no_stem=self.no_stem,
@@ -34,12 +34,12 @@ class TextFieldSchema(BaseField):
         )
 
 
-class TagFieldSchema(BaseField):
+class TagField(BaseField):
     separator: Optional[str] = ","
     case_sensitive: Optional[bool] = False
 
     def as_field(self):
-        return TagField(
+        return RedisTagField(
             self.name,
             separator=self.separator,
             case_sensitive=self.case_sensitive,
@@ -48,14 +48,14 @@ class TagFieldSchema(BaseField):
         )
 
 
-class NumericFieldSchema(BaseField):
+class NumericField(BaseField):
     def as_field(self):
-        return NumericField(self.name, sortable=self.sortable, as_name=self.as_name)
+        return RedisNumericField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
-class GeoFieldSchema(BaseField):
+class GeoField(BaseField):
     def as_field(self):
-        return GeoField(self.name, sortable=self.sortable, as_name=self.as_name)
+        return RedisGeoField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
 class BaseVectorField(BaseModel):
@@ -82,7 +82,7 @@ class BaseVectorField(BaseModel):
         return field_data
 
 
-class FlatVectorFieldSchema(BaseVectorField):
+class FlatVectorField(BaseVectorField):
     algorithm: Literal["FLAT"] = "FLAT"
     block_size: Optional[int] = None
 
@@ -91,10 +91,10 @@ class FlatVectorFieldSchema(BaseVectorField):
         field_data = super().as_field()
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
-        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+        return RedisVectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
 
 
-class HNSWVectorFieldSchema(BaseVectorField):
+class HNSWVectorField(BaseVectorField):
     algorithm: Literal["HNSW"] = "HNSW"
     m: int = Field(default=16)
     ef_construction: int = Field(default=200)
@@ -112,4 +112,4 @@ class HNSWVectorFieldSchema(BaseVectorField):
                 "EPSILON": self.epsilon,
             }
         )
-        return VectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+        return RedisVectorField(self.name, self.algorithm, field_data, as_name=self.as_name)

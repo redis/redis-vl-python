@@ -1,4 +1,3 @@
-import os
 import yaml
 
 from enum import Enum
@@ -8,14 +7,15 @@ from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, ValidationError
 
 from redisvl.schema.fields import (
-    TagFieldSchema,
-    TextFieldSchema,
-    NumericFieldSchema,
-    FlatVectorFieldSchema,
-    HNSWVectorFieldSchema,
-    GeoFieldSchema
+    BaseField,
+    BaseVectorField,
+    TagField,
+    TextField,
+    NumericField,
+    FlatVectorField,
+    HNSWVectorField,
+    GeoField
 )
-
 from redisvl.utils.utils import (
     convert_bytes,
     make_dict,
@@ -36,16 +36,11 @@ class IndexModel(BaseModel):
     storage_type: StorageType = StorageType.HASH
 
 class FieldsModel(BaseModel):
-    tag: Optional[List[TagFieldSchema]] = None
-    text: Optional[List[TextFieldSchema]] = None
-    numeric: Optional[List[NumericFieldSchema]] = None
-    geo: Optional[List[GeoFieldSchema]] = None
-    vector: Optional[List[Union[FlatVectorFieldSchema, HNSWVectorFieldSchema]]] = None
-
-
-class SchemaValidationError(Exception):
-    """Custom exception for schema validation errors."""
-    pass
+    tag: Optional[List[TagField]] = None
+    text: Optional[List[TextField]] = None
+    numeric: Optional[List[NumericField]] = None
+    geo: Optional[List[GeoField]] = None
+    vector: Optional[List[Union[FlatVectorField, HNSWVectorField]]] = None
 
 
 class Schema:
@@ -70,9 +65,9 @@ class Schema:
             else:
                 raise TypeError("Index must be an IndexModel instance or a dictionary.")
         except ValidationError as e:
-            raise SchemaValidationError(f"Invalid index model: {e}.") from e
+            raise ValueError(f"Invalid index model: {e}.") from e
         except Exception as e:
-            raise SchemaValidationError(f"Failed to create index model: {e}.") from e
+            raise ValueError(f"Failed to create index model: {e}.") from e
 
     def _validate_fields_model(self, fields: Union[Dict[str, Any], FieldsModel]) -> FieldsModel:
         """
@@ -86,9 +81,9 @@ class Schema:
             else:
                 raise TypeError("Fields must be a FieldsModel instance or a dictionary.")
         except ValidationError as e:
-            raise SchemaValidationError(f"Invalid fields model: {e}") from e
+            raise ValueError(f"Invalid fields model: {e}") from e
         except Exception as e:
-            raise SchemaValidationError("Failed to create fields model.") from e
+            raise ValueError("Failed to create fields model.") from e
 
     @classmethod
     def from_params(
@@ -97,7 +92,7 @@ class Schema:
         prefix: str = "rvl",
         key_separator: str = ":",
         storage_type: str = "hash",
-        fields: Dict[str, List[Any]] = {},
+        fields: Union[FieldsModel, Dict[str, List[Any]]] = {},
         **kwargs
     ):
         """
@@ -141,13 +136,78 @@ class Schema:
             **kwargs
         })
 
-    # @classmethod
-    # def from_sample(cls, sample: Dict[str, Any]) -> None:
-    #     """Construct a Schema from a sample of data."""
-    #     generator = SchemaGenerator()
-    #     schema = generator.generate(metadata=sample, strict=True)
-    #     return cls(index = schema.index, fields = schema.fields)
-    # TODO can't use something like this until we have extended the schema generator
+    def _test_numeric(self, value) -> bool:
+        """Test if a value is numeric."""
+        try:
+            float(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    def _infer_type(self, value) -> Optional[Union[BaseField, BaseVectorField]]:
+        """Infer the type of a value."""
+        if value in [None, ""]:
+            return None
+        if self._test_numeric(value):
+            return NumericField
+        if isinstance(value, (list, set, tuple)) and all(
+            isinstance(v, str) for v in value
+        ):
+            return TagField
+        if isinstance(value, str):
+            return TextField
+
+    @classmethod
+    def from_data(
+        cls,
+        data: Dict[str, Any],
+        strict: bool = False,
+        **kwargs,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Generate a RedisVL schema from data.
+
+        Args:
+            data (Dict[str, Any]): Metadata object to validate and
+                generate schema.
+            strict (bool, optional): Whether to generate schema in strict
+                mode. Defaults to False.
+
+        Raises:
+            ValueError: Unable to determine schema field type for a
+                key-value pair.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: Output metadata schema.
+        """
+        schema_fields = FieldsModel()
+        schema_fields_map: {
+            TagField: schema_fields.tag,
+            TextField: schema_fields.text,
+            NumericField: schema_fields.numeric
+            # TODO extend to Geo and Vector
+        }
+
+        for key, value in data.items():
+            field_class = self._infer_type(value)
+
+            if not field_class or not isinstance(field_class, (BaseField, BaseVectorField)):
+                if strict:
+                    raise ValueError(
+                        f"Unable to determine field type for key '{key}' with"
+                        f" value '{value}'"
+                    )
+                print(
+                    f"Warning: Unable to determine field type for key '{key}'"
+                    f" with value '{value}'"
+                )
+                continue
+
+            # add the field to the schema fields object
+            schema_fields_map[field_class].append(
+                field_class(name=key).dict(exclude_none=True)
+            )
+
+        return cls.from_params(fields=schema_fields, **kwargs)
 
     @property
     def index_name(self) -> str:
@@ -228,79 +288,3 @@ def read_schema(file_path: str) -> Schema:
 
     return Schema(**schema)
 
-
-class SchemaGenerator:
-    """A class to generate a schema for metadata, categorizing fields into text,
-    numeric, and tag types."""
-
-    def _test_numeric(self, value) -> bool:
-        """Test if a value is numeric."""
-        try:
-            float(value)
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def _infer_type(self, value) -> Optional[str]:
-        """Infer the type of a value."""
-        if value in [None, ""]:
-            return None
-        if self._test_numeric(value):
-            return "numeric"
-        if isinstance(value, (list, set, tuple)) and all(
-            isinstance(v, str) for v in value
-        ):
-            return "tag"
-        return "text" if isinstance(value, str) else "unknown"
-
-    def generate(
-        self,
-        metadata: Dict[str, Any],
-        strict: bool = False
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """Generate a RedisVL schema from metadata.
-
-        Args:
-            metadata (Dict[str, Any]): Metadata object to validate and
-                generate schema.
-            strict (bool, optional): Whether to generate schema in strict
-                mode. Defaults to False.
-
-        Raises:
-            ValueError: Unable to determine schema field type for a
-                key-value pair.
-
-        Returns:
-            Dict[str, List[Dict[str, Any]]]: Output metadata schema.
-        """
-        result: Dict[str, List[Dict[str, Any]]] = {"text": [], "numeric": [], "tag": []}
-        field_classes = {
-            "text": TextFieldSchema,
-            "tag": TagFieldSchema,
-            "numeric": NumericFieldSchema,
-            # TODO expand support for other metadata types including vector and geo
-        }
-
-        for key, value in metadata.items():
-            field_type = self._infer_type(value)
-
-            if field_type is None or field_type == "unknown":
-                if strict:
-                    raise ValueError(
-                        f"Unable to determine field type for key '{key}' with"
-                        f" value '{value}'"
-                    )
-                print(
-                    f"Warning: Unable to determine field type for key '{key}'"
-                    f" with value '{value}'"
-                )
-                continue
-
-            if isinstance(field_type, str):
-                field_class = field_classes.get(field_type)
-                if field_class:
-                    result[field_type].append(
-                        field_class(name=key).dict(exclude_none=True)
-                    )
-
-        return result

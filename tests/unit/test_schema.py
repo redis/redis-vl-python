@@ -2,27 +2,29 @@ import pathlib
 
 import pytest
 from pydantic import ValidationError
+
 from redis.commands.search.field import (
-    GeoField,
-    NumericField,
-    TagField,
-    TextField,
-    VectorField,
+    GeoField as RedisGeoField,
+    NumericField as RedisNumericField,
+    TagField as RedisTagField,
+    TextField as RedisTextField,
+    VectorField as RedisVectorField,
 )
 
-from redisvl.schema import (
-    FlatVectorFieldSchema,
-    GeoFieldSchema,
-    HNSWVectorFieldSchema,
+from redisvl.schema.fields import (
+    FlatVectorField,
+    GeoField,
+    HNSWVectorField,
+    TagField,
+    TextField,
+    NumericField,
+)
+
+from redisvl.schema.schema import (
     IndexModel,
-    NumericFieldSchema,
-    SchemaGenerator,
     Schema,
     StorageType,
-    TagFieldSchema,
-    TextFieldSchema,
     read_schema,
-    SchemaValidationError,
 )
 
 
@@ -34,31 +36,31 @@ def get_base_path():
 def create_text_field_schema(**kwargs):
     defaults = {"name": "example_textfield", "sortable": False, "weight": 1.0}
     defaults.update(kwargs)
-    return TextFieldSchema(**defaults)
+    return TextField(**defaults)
 
 
 def create_tag_field_schema(**kwargs):
     defaults = {"name": "example_tagfield", "sortable": False, "separator": ","}
     defaults.update(kwargs)
-    return TagFieldSchema(**defaults)
+    return TagField(**defaults)
 
 
 def create_numeric_field_schema(**kwargs):
     defaults = {"name": "example_numericfield", "sortable": False}
     defaults.update(kwargs)
-    return NumericFieldSchema(**defaults)
+    return NumericField(**defaults)
 
 
 def create_geo_field_schema(**kwargs):
     defaults = {"name": "example_geofield", "sortable": False}
     defaults.update(kwargs)
-    return GeoFieldSchema(**defaults)
+    return GeoField(**defaults)
 
 
 def create_flat_vector_field(**kwargs):
     defaults = {"name": "example_flatvectorfield", "dims": 128, "algorithm": "FLAT"}
     defaults.update(kwargs)
-    return FlatVectorFieldSchema(**defaults)
+    return FlatVectorField(**defaults)
 
 
 def create_hnsw_vector_field(**kwargs):
@@ -72,7 +74,7 @@ def create_hnsw_vector_field(**kwargs):
         "epsilon": 0.01,
     }
     defaults.update(kwargs)
-    return HNSWVectorFieldSchema(**defaults)
+    return HNSWVectorField(**defaults)
 
 
 # Tests for field schema creation and validation
@@ -95,12 +97,12 @@ def test_field_schema_as_field(schema_func, field_class):
 def test_vector_fields_as_field():
     flat_vector_schema = create_flat_vector_field()
     flat_vector_field = flat_vector_schema.as_field()
-    assert isinstance(flat_vector_field, VectorField)
+    assert isinstance(flat_vector_field, RedisVectorField)
     assert flat_vector_field.name == "example_flatvectorfield"
 
     hnsw_vector_schema = create_hnsw_vector_field()
     hnsw_vector_field = hnsw_vector_schema.as_field()
-    assert isinstance(hnsw_vector_field, VectorField)
+    assert isinstance(hnsw_vector_field, RedisVectorField)
     assert hnsw_vector_field.name == "example_hnswvectorfield"
 
 
@@ -117,7 +119,7 @@ def test_vector_fields_with_optional_params(vector_schema_func, extra_params):
     vector_field = vector_schema.as_field()
 
     # Assert that the field is correctly created and the optional parameters are set.
-    assert isinstance(vector_field, VectorField)
+    assert isinstance(vector_field, RedisVectorField)
     for param, value in extra_params.items():
         assert param.upper() in vector_field.args
         i = vector_field.args.index(param.upper())
@@ -126,7 +128,7 @@ def test_vector_fields_with_optional_params(vector_schema_func, extra_params):
 
 def test_hnsw_vector_field_optional_params_not_set():
     # Create HNSW vector field without setting optional params
-    hnsw_field = HNSWVectorFieldSchema(name="example_vector", dims=128, algorithm="HNSW")
+    hnsw_field = HNSWVectorField(name="example_vector", dims=128, algorithm="HNSW")
 
     assert hnsw_field.m == 16  # default value
     assert hnsw_field.ef_construction == 200  # default value
@@ -144,7 +146,7 @@ def test_hnsw_vector_field_optional_params_not_set():
 
 def test_flat_vector_field_block_size_not_set():
     # Create Flat vector field without setting block_size
-    flat_field = FlatVectorFieldSchema(name="example_vector", dims=128, algorithm="FLAT")
+    flat_field = FlatVectorField(name="example_vector", dims=128, algorithm="FLAT")
     field_exported = flat_field.as_field()
 
     # block_size and initial_cap should not be in the exported field if it was not set
@@ -193,16 +195,16 @@ def test_index_model_validation_errors():
 
 def test_schema_model_validation_failures():
     # Invalid storage type
-    with pytest.raises(SchemaValidationError):
+    with pytest.raises(ValueError):
         invalid_index = {"name": "test_index", "storage_type": "unsupported"}
         Schema(index=invalid_index, fields={})
 
     # Missing required field
-    with pytest.raises(SchemaValidationError):
+    with pytest.raises(ValueError):
         Schema(index={}, fields={})
 
     # Invalid index
-    with pytest.raises(SchemaValidationError):
+    with pytest.raises(ValueError):
         Schema(index=12, fields={})
 
 
@@ -224,70 +226,3 @@ def test_read_schema_file_not_found():
     with pytest.raises(FileNotFoundError):
         read_schema("non_existent_file.yaml")
 
-
-# Fixture for the generator instance
-@pytest.fixture
-def schema_generator():
-    return SchemaGenerator()
-
-
-# Test cases for _test_numeric
-@pytest.mark.parametrize(
-    "value, expected",
-    [
-        (123, True),
-        ("123", True),
-        ("123.45", True),
-        ("abc", False),
-        (None, False),
-        ("", False),
-    ],
-)
-def test_test_numeric(schema_generator, value, expected):
-    assert schema_generator._test_numeric(value) == expected
-
-
-# Test cases for _infer_type
-@pytest.mark.parametrize(
-    "value, expected",
-    [
-        (123, "numeric"),
-        ("123", "numeric"),
-        (["tag1", "tag2"], "tag"),
-        ("text", "text"),
-        (None, None),
-        ("", None),
-        ({"key": "value"}, "unknown"),
-    ],
-)
-def test_infer_type(schema_generator, value, expected):
-    assert schema_generator._infer_type(value) == expected
-
-
-# Test cases for generate
-@pytest.mark.parametrize(
-    "metadata, strict, expected",
-    [
-        (
-            {"name": "John", "age": 30, "tags": ["friend", "colleague"]},
-            False,
-            {
-                "text": [TextFieldSchema(name="name").dict(exclude_none=True)],
-                "numeric": [NumericFieldSchema(name="age").dict(exclude_none=True)],
-                "tag": [TagFieldSchema(name="tags").dict(exclude_none=True)],
-            },
-        ),
-        (
-            {"invalid": {"nested": "dict"}},
-            False,
-            {"text": [], "numeric": [], "tag": []},
-        ),
-        ({"invalid": {"nested": "dict"}}, True, pytest.raises(ValueError)),
-    ],
-)
-def test_generate(schema_generator, metadata, strict, expected):
-    if not isinstance(expected, dict):
-        with expected:
-            schema_generator.generate(metadata, strict)
-    else:
-        assert schema_generator.generate(metadata, strict) == expected
