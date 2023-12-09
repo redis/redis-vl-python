@@ -76,9 +76,7 @@ class Stats:
             exit(0)
 
         if args.index:
-            # TODO discuss
-            conn = get_redis_connection(url=redis_url)
-            schema = Schema.from_db(conn, name=args.index)
+            schema = Schema.from_params(name=args.index)
             index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)

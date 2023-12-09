@@ -20,7 +20,6 @@ SearchIndex
     SearchIndex.storage_type
     SearchIndex.from_yaml
     SearchIndex.from_dict
-    SearchIndex.from_existing
     SearchIndex.connect
     SearchIndex.create
     SearchIndex.load
@@ -55,7 +54,6 @@ AsyncSearchIndex
     AsyncSearchIndex.storage_type
     AsyncSearchIndex.from_yaml
     AsyncSearchIndex.from_dict
-    AsyncSearchIndex.from_existing
     AsyncSearchIndex.connect
     AsyncSearchIndex.create
     AsyncSearchIndex.load

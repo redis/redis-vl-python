@@ -7,6 +7,7 @@ from tabulate import tabulate
 from redisvl.cli.log import get_logger
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
+from redisvl.schema import Schema
 from redisvl.utils.connection import get_redis_connection
 from redisvl.utils.utils import convert_bytes, make_dict
 
@@ -116,7 +117,8 @@ class Index:
             exit(0)
 
         if args.index:
-            index = SearchIndex.from_existing(name=args.index, redis_url=redis_url)
+            schema = Schema.from_params(name=args.index)
+            index = SearchIndex(schema=schema), redis_url=redis_url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema)
             index.set_client(conn)

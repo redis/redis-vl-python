@@ -136,8 +136,9 @@ class RedisConnection:
 
     def __init__(self, redis_url: str, **kwargs):
         self._redis_url = redis_url
-        self.sync: redis.Redis = get_redis_connection(redis_url, **kwargs)
-        self.a: aredis.Redis = get_async_redis_connection(redis_url, **kwargs)
+        self._kwargs = kwargs
+        self.sync: redis.Redis = get_redis_connection(self._redis_url, **self._kwargs)
+        self.a: aredis.Redis = get_async_redis_connection(self._redis_url, **self._kwargs)
 
 
 class SearchIndex:
@@ -177,8 +178,8 @@ class SearchIndex:
         if redis_url is not None:
             self.connect(redis_url, **connection_args)
 
-        # set schema and storage
         self.schema = schema
+
         self._storage = self._STORAGE_MAP[self.schema.storage_type](
             self.schema.index_prefix, self.schema.key_separator
         )
@@ -247,7 +248,7 @@ class SearchIndex:
 
     @classmethod
     def from_dict(
-        cls, 
+        cls,
         schema_dict: Dict[str, Any],
         connection_args: Dict[str, Any] = {},
         **kwargs
