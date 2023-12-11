@@ -73,11 +73,11 @@ class Schema(BaseModel):
         with open(fp, "r") as f:
             yaml_data = yaml.safe_load(f)
 
-        return cls.parse_yaml_data(yaml_data)
+        return cls.from_dict(yaml_data)
 
-    @staticmethod
-    def parse_yaml_data(data: Dict[str, Any]) -> "Schema":
-        schema = Schema(**data['index'])
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        schema = cls(**data['index'])
         for field_type, field_list in data['fields'].items():
             for field_data in field_list:
                 # make use of our add field method!

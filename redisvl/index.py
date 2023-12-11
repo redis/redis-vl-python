@@ -285,7 +285,7 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = Schema.parse_yaml_data(**schema_dict)
+        schema = Schema.from_dict(**schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):
