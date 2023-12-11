@@ -14,7 +14,7 @@ import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
-from redisvl.schema import Schema, StorageType, read_schema
+from redisvl.schema import Schema, StorageType
 from redisvl.storage import HashStorage, JsonStorage
 from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
 from redisvl.utils.utils import (
@@ -175,6 +175,7 @@ class SearchIndex:
 
         # establish Redis connection
         self._redis_conn: Optional[RedisConnection] = None
+        # only set if Redis URL is passed in...
         if redis_url is not None:
             self.connect(redis_url, **connection_args)
 
@@ -191,13 +192,13 @@ class SearchIndex:
     @property
     def name(self) -> str:
         """The name of the Redis search index."""
-        return self.schema.index_name
+        return self.schema.name
 
     @property
     def prefix(self) -> str:
         """The optional key prefix that comes before a unique key value in
            forming a Redis key."""
-        return self.schema.index_prefix
+        return self.schema.prefix
 
     @property
     def key_separator(self) -> str:
@@ -219,6 +220,12 @@ class SearchIndex:
     def aclient(self) -> aredis.Redis:
         """The underlying redis-py client object."""
         return self._redis_conn.a
+
+    @classmethod
+    def from_existing(cls):
+        raise DeprecationWarning(
+            "This method is deprecated since 0.0.5. Use the from_yaml or from_dict constructors instead."
+        )
 
     @classmethod
     def from_yaml(
@@ -243,7 +250,7 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = read_schema(schema_path)
+        schema = Schema.from_yaml(schema_path)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     @classmethod
@@ -278,7 +285,7 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = Schema(**schema_dict)
+        schema = Schema.parse_yaml_data(**schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):

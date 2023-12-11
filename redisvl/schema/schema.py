@@ -4,7 +4,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from redisvl.schema.fields import (
     BaseField,
@@ -24,121 +24,104 @@ class StorageType(Enum):
     JSON = "json"
 
 
-class IndexModel(BaseModel):
+def create_vector_field(data: Dict[str, Any]) -> Union[FlatVectorField, HNSWVectorField]:
+    vector_field_classes = {
+        'flat': FlatVectorField,
+        'hnsw': HNSWVectorField
+    }
+    algorithm = data.get('algorithm', '').lower()
+    field_class = vector_field_classes.get(algorithm)
+    if field_class is None:
+        raise ValueError(f"Unknown vector field algorithm: {algorithm}")
+    return field_class(**data)
+
+
+class Schema(BaseModel):
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
     storage_type: StorageType = StorageType.HASH
-
-
-class FieldsModel(BaseModel):
-    tag: List[TagField] = []
-    text: List[TextField] = []
-    numeric: List[NumericField] = []
-    geo: List[GeoField] = []
-    vector: List[Union[FlatVectorField, HNSWVectorField]] = []
+    fields: Dict[str, List[BaseField]] = {}
 
     _FIELD_TYPE_MAP = {
-        TagField: 'tag',
-        TextField: 'text',
-        NumericField: 'numeric',
-        GeoField: 'geo',
-        BaseVectorField: 'vector'
+        "tag": TagField,
+        "text": TextField,
+        "numeric": NumericField,
+        "geo": GeoField,
+        "vector": create_vector_field
     }
 
-    def add(self, field: Union[BaseField, BaseVectorField]):
+    @classmethod
+    def from_yaml(cls, file_path: str):
         """
-        Add a field to the schema. The field is appended to the list corresponding to its type.
-
+        Create a Schema instance from a YAML file.
         Args:
-            field (Union[BaseField, BaseVectorField]): An instance of a field type to be added.
-
+            file_path: The path to the YAML file.
+        Returns:
+            A Schema instance.
         Raises:
-            TypeError: If the field type is not supported.
+            ValueError: If the file path is not a YAML file.
+            FileNotFoundError: If the YAML file does not exist.
         """
-        field_list_name = self._FIELD_TYPE_MAP.get(type(field))
-        if field_list_name:
-            getattr(self, field_list_name).append(field)
+        if not file_path.endswith(".yaml"):
+            raise ValueError("Must provide a valid YAML file path")
+
+        fp = Path(file_path).resolve()
+        if not fp.exists():
+            raise FileNotFoundError(f"Schema file {file_path} does not exist")
+
+        with open(fp, "r") as f:
+            yaml_data = yaml.safe_load(f)
+
+        return cls.parse_yaml_data(yaml_data)
+
+    @staticmethod
+    def parse_yaml_data(data: Dict[str, Any]) -> "Schema":
+        schema = Schema(**data['index'])
+        for field_type, field_list in data['fields'].items():
+            for field_data in field_list:
+                # make use of our add field method!
+                schema.add_field(field_type, **field_data)
+        return schema
+
+    def _get_field_class(self, field_type: str) -> Type[BaseField]:
+        return self._FIELD_TYPE_MAP.get(field_type)
+
+    def add_field(self, field_type: str, **kwargs):
+        if field_type == 'vector':
+            # Ensure a vector field of the same name isn't already added
+            existing_fields = self.fields.get(field_type, [])
+            if any(field.name == kwargs.get('name') for field in existing_fields):
+                raise ValueError(f"Field with name '{kwargs.get('name')}' already exists in vector fields.")
+
+            field = create_vector_field(kwargs)
         else:
-            raise TypeError(f"Invalid field type: {type(field).__name__}. Expected one of TagField, TextField, NumericField, GeoField, or BaseVectorField.")
-        return self
+            field_class = self._get_field_class(field_type)
+            try:
+                field = field_class(**kwargs)
+            except ValidationError as e:
+                raise ValueError(f"Error adding field: {e}")
 
-    def remove(self, field_type: Type[Union[BaseField, BaseVectorField]], field_name: str):
-        """
-        Remove a field from the schema based on its type and name.
+            # Ensure a field of the same name isn't already added
+            existing_fields = self.fields.get(field_type, [])
+            if any(field.name == kwargs.get('name') for field in existing_fields):
+                raise ValueError(f"Field with name '{kwargs.get('name')}' already exists in {field_type} fields.")
 
-        Args:
-            field_type (Type[Union[BaseField, BaseVectorField]]): The type of
-                the field to remove.
-            field_name (str): The name of the field to remove.
+        self.fields.setdefault(field_type, []).append(field)
 
-        Raises:
-           ValueError: If the field type is not found in the model.
-        """
-        field_list_name = self._FIELD_TYPE_MAP.get(field_type)
-        if field_list_name:
-            field_list = getattr(self, field_list_name)
-            field_list[:] = [field for field in field_list if field.name != field_name]
-        else:
-            raise ValueError(f"No field list found for type {field_type.__name__}")
-        return self
-
-
-class Schema(BaseModel):
-
-    index: IndexModel
-    fields: FieldsModel = FieldsModel()
-
-    @property
-    def index_name(self) -> str:
-        return self.index.name
-
-    @property
-    def index_prefix(self) -> str:
-        return self.index.prefix
-
-    @property
-    def key_separator(self) -> str:
-        return self.index.key_separator
-
-    @property
-    def storage_type(self) -> StorageType:
-        return self.index.storage_type
+    def remove_field(self, field_type: str, field_name: str):
+        if field_type in self.fields:
+            self.fields[field_type] = [
+                field for field in self.fields[field_type] if field.name != field_name]
 
     @property
     def index_fields(self) -> list:
         redis_fields = []
-        for field_name in self.fields.__fields__.keys():
-            field_type = getattr(self.fields, field_name)
-            if field_type:
+        for field_name in self.fields:
+            if field_type := getattr(self.fields, field_name):
                 for field in field_type:
                     redis_fields.append(field.as_field())
         return redis_fields
-
-    @classmethod
-    def from_params(
-        cls,
-        name: str,
-        prefix: str = "rvl",
-        key_separator: str = ":",
-        storage_type: StorageType = StorageType.HASH,
-        fields: Dict[str, List[Dict[str, Any]]] = {},
-    ):
-        """
-        Create a Schema instance from provided parameters.
-
-        Returns:
-            A Schema instance.
-        """
-        # TODO how else should we shape this constructor???
-        index = IndexModel(
-            name=name,
-            prefix=prefix,
-            key_separator=key_separator,
-            storage_type=storage_type
-        )
-        fields = FieldsModel(**fields)
-        return cls(**index, fields=fields)
 
     def _test_numeric(self, value) -> bool:
         """Test if a value is numeric."""
@@ -148,27 +131,27 @@ class Schema(BaseModel):
         except (ValueError, TypeError):
             return False
 
-    def _infer_type(self, value) -> Optional[Union[BaseField, BaseVectorField]]:
+    def _infer_type(self, value) -> Optional[str]:
         """Infer the type of a value."""
         if value in [None, ""]:
             return None
         if self._test_numeric(value):
-            return NumericField
+            return "numeric"
         if isinstance(value, (list, set, tuple)) and all(
             isinstance(v, str) for v in value
         ):
-            return TagField
+            return "tag"
         if isinstance(value, str):
-            return TextField
+            return "text"
         # Check if JSON or HASH
         if self.storage_type == StorageType.JSON and isinstance(value, list) and all(
             self._test_numeric(v) for v in value
         ):
             # return vector field
-            pass
+            return "vector"
         if self.storage_type == StorageType.JSON and isinstance(value, bytes):
             # return vector field
-            pass
+            return "vector"
         # TODO - how to determine Flat or HNSW?
         # TODO - do we convert the vector to a bytes array if it's a list for hash structure???
         # TODO - geo????
@@ -180,14 +163,14 @@ class Schema(BaseModel):
         strict: bool = False,
         ignore_fields: List[str] = [],
         field_args: Dict[str, Dict[str, Any]] = {}
-    ) -> FieldsModel:
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Generate a new FieldsModel from sample data, with options for strict
         type checking, ignoring specific fields, and additional field arguments.
 
         Args:
             data (Dict[str, Any]): Sample data used to infer field types.
-            strict (bool, optional): If True, raises an error when a field type 
+            strict (bool, optional): If True, raises an error when a field type
                 can't be inferred. Defaults to False.
             ignore_fields (List[str], optional): List of field names to ignore.
                 Defaults to [].
@@ -201,7 +184,7 @@ class Schema(BaseModel):
             FieldsModel: A new FieldsModel instance populated with inferred
                 fields.
         """
-        fields = FieldsModel()
+        fields: Dict[str, List[Dict[str, Any]]] = {}
 
         for field_name, value in data.items():
             # skip field if ignored
@@ -225,58 +208,44 @@ class Schema(BaseModel):
                 field_kwargs["as_name"] = field_name
                 field_kwargs["name"] = f"$.{field_name.replace(' ', '')}"
 
-            fields.add(field_type(**field_kwargs))
+            field_class = self._get_field_class(field_type)
+            fields.setdefault(field_type, []).append(field_class(**field_kwargs))
 
         return fields
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, *args, **kwargs) -> Dict[str, Any]:
         """
         Dump the RedisVL schema to a dictionary.
 
         Returns:
             The RedisVL schema as a dictionary.
         """
-        schema = self.dict()
-        return schema
+        index_data = {
+            'name': self.name,
+            'prefix': self.prefix,
+            'key_separator': self.key_separator,
+            'storage_type': self.storage_type.value
+        }
+        formatted_fields = {}
+        for field_type, fields in self.fields.items():
+            formatted_fields[field_type] = [field.dict(exclude_unset=True) for field in fields]
+        return {'index': index_data, 'fields': formatted_fields}
 
-    def to_yaml(self, path: str) -> None:
+    def to_yaml(self, file_path: str) -> None:
         """
         Write the schema to a yaml file.
 
         Args:
-            path (str): The yaml file path where the RedisVL schema is written.
+            file_path (str): The yaml file path where the RedisVL schema is written.
 
         Raises:
             TypeError: If the provided file path is not a valid YAML file.
         """
-        if not path.endswith(".yaml"):
+        if not file_path.endswith(".yaml"):
             raise TypeError("Invalid file path. Must be a YAML file.")
 
-        schema = self.dump()
-        with open(path, "w") as f:
-            yaml.dump(schema, f)
+        schema = self.to_dict()
+        with open(file_path, "w") as f:
+            yaml.dump(schema, sort_keys=False)
 
-
-def read_schema(file_path: str) -> Schema:
-    """
-    Create a Schema instance from a YAML file.
-    Args:
-        file_path: The path to the YAML file.
-    Returns:
-        A Schema instance.
-    Raises:
-        ValueError: If the file path is not a YAML file.
-        FileNotFoundError: If the YAML file does not exist.
-    """
-    if not file_path.endswith(".yaml"):
-        raise ValueError("Must provide a valid YAML file path")
-
-    fp = Path(file_path).resolve()
-    if not fp.exists():
-        raise FileNotFoundError(f"Schema file {file_path} does not exist")
-
-    with open(fp, "r") as f:
-        schema = yaml.safe_load(f)
-
-    return Schema(**schema)
 
