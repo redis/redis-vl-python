@@ -11,18 +11,38 @@ from redisvl.schema import Schema
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
+class LLMCacheSchema(Schema):
+    """Schema for the LLMCache."""
+    prompt_field_name: str = "prompt"
+    vector_field_name: str = "prompt_vector"
+    response_field_name: str = "response"
+
+    def __init__(
+        self,
+        name: str = "cache",
+        prefix: str = "llmcache",
+        key_separator: str = ":",
+        storage_type: str = "hash",
+        **data,
+    ):
+        super.__init__(**data)
+        self.add_field("text", name=prompt_field_name)
+        self.add_field("response", name=vector_field_name)
+        self.add_field("vector",
+            name=vector_field_name,
+            dims=768,
+            datatype="float32",
+            distance_metric="cosine",
+            algorithm="flat"
+        )
+
+        class Config:
+            # ignore extra fields passed in kwargs
+            ignore_extra = True
+
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
-
-    _default_vector_field_name: str = "prompt_vector"
-    _default_vector_field: Dict[str, str] = {
-        "name": _default_vector_field_name,
-        "dims": 768,
-        "datatype": "float32",
-        "distance_metric": "cosine",
-        "algorithm": "flat"
-    }
 
     def __init__(
         self,
@@ -33,8 +53,8 @@ class SemanticCache(BaseLLMCache):
         vectorizer: BaseVectorizer = HFTextVectorizer(
             "sentence-transformers/all-mpnet-base-v2"
         ),
-        custom_vector_field: Dict[str, str] = {},
         redis_url: str = "redis://localhost:6379",
+        connection_args: Optional[dict] = None,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -49,11 +69,9 @@ class SemanticCache(BaseLLMCache):
                 in Redis. Defaults to None.
             vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
-            custom_vector_field (Dict[str, str], optional): A custom-defined
-                vector field spec to use for the semantic cache. Defaults to {}.
             redis_url (str, optional): The redis url. Defaults to
                 "redis://localhost:6379".
-            kwargs (Optional[dict], optional): The connection arguments for the
+            connection_args (Optional[dict], optional): The connection arguments for the
                 redis client. Defaults to None.
 
         Raises:
@@ -85,27 +103,15 @@ class SemanticCache(BaseLLMCache):
         if name is None or prefix is None:
             raise ValueError("Index name and prefix must be provided.")
 
-        # set cache attributes
-        self._vector_field = custom_vector_field or self._default_vector_field
-        self._vector_field_name = custom_vector_field.get("name", self._default_vector_field_name)
+        self._schema = LLMCacheSchema(**kwargs)
         self.set_vectorizer(vectorizer)
         self.set_ttl(ttl)
         self.set_threshold(distance_threshold)
 
-        # create the underlying index
-        llm_cache_index_schema = Schema(**{
-            "index": {
-                "name": name,
-                "prefix": prefix,
-            },
-            "fields": {
-                "vector": [self._vector_field]
-            }
-        })
         self._index = SearchIndex(
-            schema=llm_cache_index_schema,
+            schema=self._schema,
             redis_url=redis_url,
-            **kwargs
+            connection_args = connection_args
         )
         self._index.create(overwrite=False)
 

@@ -1,5 +1,6 @@
+import re
 import yaml
-
+import numpy as np
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Type
@@ -18,23 +19,24 @@ from redisvl.schema.fields import (
 )
 
 
-
 class StorageType(Enum):
     HASH = "hash"
     JSON = "json"
 
 
-def create_vector_field(data: Dict[str, Any]) -> Union[FlatVectorField, HNSWVectorField]:
+def get_vector_type(**field_data: Dict[str, Any]) -> Union[FlatVectorField, HNSWVectorField]:
+    """Get the vector field type from the field data."""
+
     vector_field_classes = {
         'flat': FlatVectorField,
         'hnsw': HNSWVectorField
     }
-    algorithm = data.get('algorithm', '').lower()
-    field_class = vector_field_classes.get(algorithm)
-    if field_class is None:
+    algorithm = field_data.get('algorithm', '').lower()
+    if algorithm not in vector_field_classes.keys():
         raise ValueError(f"Unknown vector field algorithm: {algorithm}")
-    return field_class(**data)
 
+    # default to FLAT
+    return vector_field_classes.get(algorithm, FlatVectorField)(**field_data)
 
 class Schema(BaseModel):
     name: str
@@ -48,11 +50,88 @@ class Schema(BaseModel):
         "text": TextField,
         "numeric": NumericField,
         "geo": GeoField,
-        "vector": create_vector_field
+        "vector": get_vector_type
     }
 
+    @property
+    def index_fields(self) -> list:
+        # TODO @tyler: Should this not return BaseFields?
+        redis_fields = []
+        for field_name in self.fields:
+            if field_type := getattr(self.fields, field_name):
+                for field in field_type:
+                    redis_fields.append(field.as_field())
+        return redis_fields
+
+    def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
+        for field_type, field_list in fields.items():
+            for field_data in field_list:
+                self.add_field(field_type, **field_data)
+
+    def add_field(self, field_type: str, **kwargs):
+        """Add a field to the schema.
+
+        Args:
+            field_type: The type of field to add.
+            kwargs: The keyword arguments for the field.
+
+        Raises:
+            ValueError: If the field name already exists.
+        """
+        name = kwargs.get('name')
+        if not name:
+            raise ValueError("Field name must be provided.")
+        try:
+            new_field = self._FIELD_TYPE_MAP[field_type](**kwargs)
+        except KeyError:
+            raise ValueError(f"Unknown field type: {field_type}")
+        except ValidationError as e:
+            raise ValueError(f"Error adding field with type {field_type}") from e
+
+        # Ensure a field of the same name isn't already added
+        existing_fields = self.fields.get(field_type, [])
+        if any(field.name == name for field in existing_fields):
+            raise ValueError(
+                f"Field with name '{name}' already exists in {field_type} fields."
+            )
+
+        self.fields.setdefault(field_type, []).append(new_field)
+
+    def remove_field(self, field_type: str, field_name: str):
+        if field_type in self.fields:
+            self.fields[field_type] = [
+                field for field in self.fields[field_type] if field.name != field_name]
+
     @classmethod
-    def from_yaml(cls, file_path: str):
+    def from_dict(cls, data: Dict[str, Any]):
+        schema = cls(**data['index'])
+        for field_type, field_list in data['fields'].items():
+            for field_data in field_list:
+                # make use of our add field method!
+                schema.add_field(field_type, **field_data)
+        return schema
+
+    def to_dict(self, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Dump the RedisVL schema to a dictionary.
+
+        Returns:
+            The RedisVL schema as a dictionary.
+        """
+        index_data = {
+            'name': self.name,
+            'prefix': self.prefix,
+            'key_separator': self.key_separator,
+            'storage_type': self.storage_type.value
+        }
+        formatted_fields = {}
+        for field_type, fields in self.fields.items():
+            formatted_fields[field_type] = [field.dict(exclude_unset=True) for field in fields]
+        return {'index': index_data, 'fields': formatted_fields}
+
+
+    @classmethod
+    def from_yaml(cls, file_path: str) -> "Schema":
         """
         Create a Schema instance from a YAML file.
         Args:
@@ -75,87 +154,21 @@ class Schema(BaseModel):
 
         return cls.from_dict(yaml_data)
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        schema = cls(**data['index'])
-        for field_type, field_list in data['fields'].items():
-            for field_data in field_list:
-                # make use of our add field method!
-                schema.add_field(field_type, **field_data)
-        return schema
+    def to_yaml(self, file_path: str) -> None:
+        """
+        Write the schema to a yaml file.
 
-    def _get_field_class(self, field_type: str) -> Type[BaseField]:
-        return self._FIELD_TYPE_MAP.get(field_type)
+        Args:
+            file_path (str): The yaml file path where the RedisVL schema is written.
 
-    def add_field(self, field_type: str, **kwargs):
-        if field_type == 'vector':
-            # Ensure a vector field of the same name isn't already added
-            existing_fields = self.fields.get(field_type, [])
-            if any(field.name == kwargs.get('name') for field in existing_fields):
-                raise ValueError(f"Field with name '{kwargs.get('name')}' already exists in vector fields.")
+        """
+        # TODO
+        # - Ovewrite
+        # - error if file exists
 
-            field = create_vector_field(kwargs)
-        else:
-            field_class = self._get_field_class(field_type)
-            try:
-                field = field_class(**kwargs)
-            except ValidationError as e:
-                raise ValueError(f"Error adding field: {e}")
-
-            # Ensure a field of the same name isn't already added
-            existing_fields = self.fields.get(field_type, [])
-            if any(field.name == kwargs.get('name') for field in existing_fields):
-                raise ValueError(f"Field with name '{kwargs.get('name')}' already exists in {field_type} fields.")
-
-        self.fields.setdefault(field_type, []).append(field)
-
-    def remove_field(self, field_type: str, field_name: str):
-        if field_type in self.fields:
-            self.fields[field_type] = [
-                field for field in self.fields[field_type] if field.name != field_name]
-
-    @property
-    def index_fields(self) -> list:
-        redis_fields = []
-        for field_name in self.fields:
-            if field_type := getattr(self.fields, field_name):
-                for field in field_type:
-                    redis_fields.append(field.as_field())
-        return redis_fields
-
-    def _test_numeric(self, value) -> bool:
-        """Test if a value is numeric."""
-        try:
-            float(value)
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def _infer_type(self, value) -> Optional[str]:
-        """Infer the type of a value."""
-        if value in [None, ""]:
-            return None
-        if self._test_numeric(value):
-            return "numeric"
-        if isinstance(value, (list, set, tuple)) and all(
-            isinstance(v, str) for v in value
-        ):
-            return "tag"
-        if isinstance(value, str):
-            return "text"
-        # Check if JSON or HASH
-        if self.storage_type == StorageType.JSON and isinstance(value, list) and all(
-            self._test_numeric(v) for v in value
-        ):
-            # return vector field
-            return "vector"
-        if self.storage_type == StorageType.JSON and isinstance(value, bytes):
-            # return vector field
-            return "vector"
-        # TODO - how to determine Flat or HNSW?
-        # TODO - do we convert the vector to a bytes array if it's a list for hash structure???
-        # TODO - geo????
-
+        schema = self.to_dict()
+        with open(file_path, "w+") as f:
+            f.write(yaml.dump(schema, sort_keys=False))
 
     def generate_fields(
         self,
@@ -164,88 +177,80 @@ class Schema(BaseModel):
         ignore_fields: List[str] = [],
         field_args: Dict[str, Dict[str, Any]] = {}
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Generate a new FieldsModel from sample data, with options for strict
-        type checking, ignoring specific fields, and additional field arguments.
 
-        Args:
-            data (Dict[str, Any]): Sample data used to infer field types.
-            strict (bool, optional): If True, raises an error when a field type
-                can't be inferred. Defaults to False.
-            ignore_fields (List[str], optional): List of field names to ignore.
-                Defaults to [].
-            field_args (Dict[str, Dict[str, Any]], optional): Additional
-                arguments for each field. Defaults to {}.
-
-        Raises:
-            ValueError: If strict is True and a field type cannot be inferred.
-
-        Returns:
-            FieldsModel: A new FieldsModel instance populated with inferred
-                fields.
-        """
-        fields: Dict[str, List[Dict[str, Any]]] = {}
-
+        fields = {}
         for field_name, value in data.items():
-            # skip field if ignored
+            field_kwargs = {"name": field_name, **field_args.get(field_name, {})}
+
+            # ignore this field
             if field_name in ignore_fields:
                 continue
 
-            field_type = self._infer_type(value)
-            if not field_type:
-                warning_message = f"Warning: Unable to determine field type for '{field_name}' with value '{value}'"
+            # infer the field type and get field class
+            try:
+                field_type = TypeInferrer.infer(value)
+                field_class = self._FIELD_TYPE_MAP[field_type]
+            except ValueError as e:
                 if strict:
-                    raise ValueError(warning_message)
-                print(warning_message)
-                continue
+                    raise
+                else:
+                    print(e.message)
+                    continue
 
-            # build field kwargs from defaults and then overriding with field_args supplied into function
-            field_kwargs = {"name": field_name}
-            field_kwargs.update(field_args.get(field_name, {}))
+            # check for JSON usage
+            #if self.storage_type == "JSON":
+            #    field_kwargs["as_name"] = field_name
+            #    field_kwargs["name"] = f"$.{field_name.replace(' ', '')}"
 
-            if self.storage_type == StorageType.JSON:
-                # make JSON specific schema modifications
-                field_kwargs["as_name"] = field_name
-                field_kwargs["name"] = f"$.{field_name.replace(' ', '')}"
+            # run pydantic validation
+            field_instance = field_class(**field_kwargs)
 
-            field_class = self._get_field_class(field_type)
-            fields.setdefault(field_type, []).append(field_class(**field_kwargs))
+            # add new field
+            fields.setdefault(field_type, []).append(
+                field_instance.dict(exclude_unset=True)
+            )
 
         return fields
 
-    def to_dict(self, *args, **kwargs) -> Dict[str, Any]:
-        """
-        Dump the RedisVL schema to a dictionary.
 
-        Returns:
-            The RedisVL schema as a dictionary.
-        """
-        index_data = {
-            'name': self.name,
-            'prefix': self.prefix,
-            'key_separator': self.key_separator,
-            'storage_type': self.storage_type.value
-        }
-        formatted_fields = {}
-        for field_type, fields in self.fields.items():
-            formatted_fields[field_type] = [field.dict(exclude_unset=True) for field in fields]
-        return {'index': index_data, 'fields': formatted_fields}
+class TypeInferrer:
 
-    def to_yaml(self, file_path: str) -> None:
-        """
-        Write the schema to a yaml file.
+    GEO_PATTERN = r"^\s*[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)\s*$"
 
-        Args:
-            file_path (str): The yaml file path where the RedisVL schema is written.
+    TYPE_METHOD_MAP = {
+        "numeric": "_is_numeric",
+        "geo": "_is_geographic",
+        "tag": "_is_tag",
+        "text": "_is_text",
+    }
 
-        Raises:
-            TypeError: If the provided file path is not a valid YAML file.
-        """
-        if not file_path.endswith(".yaml"):
-            raise TypeError("Invalid file path. Must be a YAML file.")
+    @classmethod
+    def infer(cls, value) -> str:
+        for type_name, method_name in cls.TYPE_METHOD_MAP.items():
+            method = getattr(cls, method_name)
+            if method(value):
+                return type_name
+        raise ValueError(f"Unable to infer type for value: {value}")
 
-        schema = self.to_dict()
-        with open(file_path, "w") as f:
-            yaml.dump(schema, sort_keys=False)
+    @classmethod
+    def _is_numeric(cls, value) -> bool:
+        try:
+            float(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    @classmethod
+    def _is_tag(cls, value) -> bool:
+        return isinstance(value, (list, set, tuple)) and all(isinstance(v, str) for v in value)
+
+    @classmethod
+    def _is_text(cls, value) -> bool:
+        return isinstance(value, str)
+
+    @classmethod
+    def _is_geographic(cls, value) -> bool:
+        if isinstance(value, str):
+            return bool(re.match(cls.GEO_PATTERN, value))
 
 
