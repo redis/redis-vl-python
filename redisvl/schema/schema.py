@@ -2,7 +2,7 @@ import re
 import yaml
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Union, Tuple, Optional
+from typing import Any, Dict, List, Union, Tuple, Optional, Type
 
 from pydantic import BaseModel, ValidationError
 
@@ -64,7 +64,7 @@ class IndexSchema(BaseModel):
     }
 
     @property
-    def index_fields(self) -> list:
+    def redis_fields(self) -> list:
         """Returns a list of index fields in the Redis database."""
         redis_fields = []
         for field_list in self.fields.values():
@@ -76,6 +76,10 @@ class IndexSchema(BaseModel):
         for field_type, field_list in fields.items():
             for field_data in field_list:
                 self.add_field(field_type, **field_data)
+
+    def _get_field_class(self, field_type: str) -> Type[BaseField]:
+        """Return a field class given the named type"""
+        return self._FIELD_TYPE_MAP.get(field_type)
 
     def _create_field_instance(
         self,
@@ -166,16 +170,25 @@ class IndexSchema(BaseModel):
         ignore_fields: List[str] = [],
         field_args: Dict[str, Dict[str, Any]] = {}
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """_summary_
+        """Generate metadata fields for an index schema by inferring types from
+           a sample of provided data. Fields can be ignored with ignore_fields
+           and customized with field_args. Error handling behavior can be
+           enforced with the strict flag.
 
         Args:
-            data (Dict[str, Any]): _description_
-            strict (bool, optional): _description_. Defaults to False.
-            ignore_fields (List[str], optional): _description_. Defaults to [].
-            field_args (Dict[str, Dict[str, Any]], optional): _description_. Defaults to {}.
+            data (Dict[str, Any]): Sample data used to infer field types.
+            strict (bool, optional): If True, raises an error when a field type
+                can't be inferred. Defaults to False.
+            ignore_fields (List[str], optional): List of field names to ignore.
+                Defaults to [].
+            field_args (Dict[str, Dict[str, Any]], optional): Additional
+                arguments for each field. Defaults to {}.
+
+       Raises:
+            ValueError: If strict is True and a field type cannot be inferred.
 
         Returns:
-            Dict[str, List[Dict[str, Any]]]: _description_
+            Dict[str, List[Dict[str, Any]]]: A dictionary of fields.
         """
         fields = {}
         for field_name, value in data.items():
@@ -261,7 +274,7 @@ class IndexSchema(BaseModel):
             FileNotFoundError: If the YAML file does not exist.
         """
         # Check file path
-        fp = cls._check_yaml_path(file_path)
+        fp = cls._check_yaml_path(cls, file_path)
         if not fp.exists():
             raise FileNotFoundError(f"Schema file {file_path} does not exist")
 
@@ -291,14 +304,6 @@ class IndexSchema(BaseModel):
         """Ignore a specified field?"""
         return field_name in ignore_fields
 
-
-
-
-
-
-
-import re
-from typing import Any
 
 class TypeInferrer:
     """

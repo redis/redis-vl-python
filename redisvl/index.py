@@ -14,7 +14,7 @@ import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
-from redisvl.schema import Schema, StorageType
+from redisvl.schema import IndexSchema, StorageType
 from redisvl.storage import HashStorage, JsonStorage
 from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
 from redisvl.utils.utils import (
@@ -161,7 +161,7 @@ class SearchIndex:
 
     def __init__(
         self,
-        schema: Schema,
+        schema: IndexSchema,
         redis_url: Optional[str] = None,
         connection_args: Dict[str, Any] = {},
         **kwargs,
@@ -170,7 +170,7 @@ class SearchIndex:
            redis_url, connection_args, and other kwargs.
         """
         # final validation on schema object
-        if not schema or not isinstance(schema, Schema):
+        if not schema or not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid schema object")
 
         # establish Redis connection
@@ -182,7 +182,7 @@ class SearchIndex:
         self.schema = schema
 
         self._storage = self._STORAGE_MAP[self.schema.storage_type](
-            self.schema.index_prefix, self.schema.key_separator
+            self.schema.prefix, self.schema.key_separator
         )
 
     def set_client(self, client: redis.Redis) -> None:
@@ -250,7 +250,7 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = Schema.from_yaml(schema_path)
+        schema = IndexSchema.from_yaml(schema_path)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     @classmethod
@@ -285,7 +285,7 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = Schema.from_dict(**schema_dict)
+        schema = IndexSchema.from_dict(**schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):
@@ -319,7 +319,7 @@ class SearchIndex:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(key_value, self.schema.index_prefix, self.schema.key_separator)
+        return self._storage._key(key_value, self.schema.prefix, self.schema.key_separator)
 
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
@@ -334,8 +334,8 @@ class SearchIndex:
             ValueError: If no fields are defined for the index.
         """
         # Check that fields are defined.
-        index_fields = self.schema.index_fields
-        if not index_fields:
+        redis_fields = self.schema.redis_fields
+        if not redis_fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
@@ -349,7 +349,7 @@ class SearchIndex:
 
         # Create the index with the specified fields and settings.
         self._redis_conn.sync.ft(self.name).create_index(  # type: ignore
-            fields=index_fields,
+            fields=redis_fields,
             definition=IndexDefinition(
                 prefix=[self.prefix], index_type=self._storage.type
             ),
@@ -487,8 +487,8 @@ class SearchIndex:
         Raises:
             RuntimeError: If the index already exists and 'overwrite' is False.
         """
-        index_fields = self.schema.index_fields
-        if not index_fields:
+        redis_fields = self.schema.redis_fields
+        if not redis_fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
@@ -502,7 +502,7 @@ class SearchIndex:
 
         # Create Index with proper IndexType
         await self._redis_conn.a.ft(self.name).create_index(  # type: ignore
-            fields=index_fields,
+            fields=redis_fields,
             definition=IndexDefinition(
                 prefix=[self.prefix], index_type=self._storage.type
             ),

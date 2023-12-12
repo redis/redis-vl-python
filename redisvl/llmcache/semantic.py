@@ -1,19 +1,19 @@
 import warnings
-from typing import Any, Dict, List, Optional
 
-from redis.commands.search.field import Field, VectorField
+from typing import Any, Dict, List, Optional
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
 from redisvl.utils.utils import array_to_buffer
-from redisvl.schema import Schema
+from redisvl.schema import IndexSchema, StorageType
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
 
-class LLMCacheSchema(Schema):
-    """Schema for the LLMCache."""
+class LLMCacheSchema(IndexSchema):
+    """RedisVL index schema for the LLMCache."""
+    # User should not be able to change these for the default LLMCache
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
     response_field_name: str = "response"
@@ -22,25 +22,36 @@ class LLMCacheSchema(Schema):
         self,
         name: str = "cache",
         prefix: str = "llmcache",
-        key_separator: str = ":",
-        storage_type: str = "hash",
-        **data,
+        vector_dims: int = 768,
+        **kwargs,
     ):
-        super.__init__(**data)
+        # Construct the base base index schema
+        super().__init__(
+            name=name,
+            prefix=prefix,
+            **kwargs
+        )
+        # other schema kwargs will get consumed here
+        # otherwise fall back to index schema defaults
+
+        # Add fields specific to the LLMCacheSchema
         self.add_field("text", name=self.prompt_field_name)
-        self.add_field("response", name=self.vector_field_name)
+        self.add_field("text", name=self.response_field_name)
         self.add_field("vector",
             name=self.vector_field_name,
-            dims=768,
+            dims=vector_dims,
             datatype="float32",
             distance_metric="cosine",
             algorithm="flat"
         )
 
         class Config:
-            # ignore extra fields passed in kwargs
+            # Ignore extra fields passed in kwargs
             ignore_extra = True
 
+    @property
+    def vector_field(self) -> Dict[str, Any]:
+        return self.fields["vector"][0]
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
@@ -55,7 +66,7 @@ class SemanticCache(BaseLLMCache):
             "sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: str = "redis://localhost:6379",
-        connection_args: Optional[dict] = None,
+        connection_args: Optional[dict] = {},
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -100,22 +111,28 @@ class SemanticCache(BaseLLMCache):
                 stacklevel=2,
             )
 
+        if not isinstance(name, str) or not isinstance(prefix, str):
+            raise ValueError("A valid index name and prefix must be provided.")
 
-        if name is None or prefix is None:
-            raise ValueError("Index name and prefix must be provided.")
+        self._schema = LLMCacheSchema(
+            name=name,
+            prefix=prefix,
+            vector_dims=vectorizer.dims,
+            **kwargs
+        )
 
-        self._schema = LLMCacheSchema(**kwargs)
+        # set other components
         self.set_vectorizer(vectorizer)
         self.set_ttl(ttl)
         self.set_threshold(distance_threshold)
 
+        # build search index
         self._index = SearchIndex(
             schema=self._schema,
             redis_url=redis_url,
-            connection_args = connection_args
+            connection_args=connection_args
         )
         self._index.create(overwrite=False)
-
 
     @classmethod
     def from_index(cls, index: SearchIndex, **kwargs):
@@ -177,11 +194,13 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(vectorizer, BaseVectorizer):
             raise TypeError("Must provide a valid redisvl.vectorizer class.")
 
-        if self._vector_field.get("dims") != vectorizer.dims:
+        schema_vector_dims = self._schema.vector_field.dims
+
+        if schema_vector_dims != vectorizer.dims:
             raise ValueError(
-                "Invalid vector dimensions!"
+                "Invalid vector dimensions! "
                 f"Vectorizer has dims defined as {vectorizer.dims}",
-                f"Vector field has dims defined as {self._vector_field.get('dims')}"
+                f"Vector field has dims defined as {schema_vector_dims}"
             )
 
         self._vectorizer = vectorizer

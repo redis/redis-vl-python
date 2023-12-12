@@ -1,6 +1,6 @@
 from redisvl.schema.schema import (
     StorageType,
-    Schema,
+    IndexSchema,
 )
 
 
