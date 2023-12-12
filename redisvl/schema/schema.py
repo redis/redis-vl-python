@@ -1,15 +1,13 @@
 import re
 import yaml
-import numpy as np
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Type
+from typing import Any, Dict, List, Union, Tuple, Optional
 
 from pydantic import BaseModel, ValidationError
 
 from redisvl.schema.fields import (
     BaseField,
-    BaseVectorField,
     TagField,
     TextField,
     NumericField,
@@ -38,7 +36,19 @@ def get_vector_type(**field_data: Dict[str, Any]) -> Union[FlatVectorField, HNSW
     # default to FLAT
     return vector_field_classes.get(algorithm, FlatVectorField)(**field_data)
 
-class Schema(BaseModel):
+
+class IndexSchema(BaseModel):
+    """
+    RedisVL index schema for stroring and indexing vectors and metadata
+    fields in Redis.
+
+    Attributes:
+        name (str): The name of the index.
+        prefix (str): The key prefix used in the Redis database keys.
+        key_separator (str): The key separator used in the Redis database keys.
+        storage_type (StorageType): The Redis storage type for underlying data.
+        fields (Dict[str, List[BaseField]]): The defined index fields.
+    """
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
@@ -55,18 +65,73 @@ class Schema(BaseModel):
 
     @property
     def index_fields(self) -> list:
-        # TODO @tyler: Should this not return BaseFields?
+        """Returns a list of index fields in the Redis database."""
         redis_fields = []
-        for field_name in self.fields:
-            if field_type := getattr(self.fields, field_name):
-                for field in field_type:
-                    redis_fields.append(field.as_field())
+        for field_list in self.fields.values():
+            redis_fields.extend(field.as_field() for field in field_list)
         return redis_fields
 
     def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
+        """Adds multiple fields to the index schema."""
         for field_type, field_list in fields.items():
             for field_data in field_list:
                 self.add_field(field_type, **field_data)
+
+    def _create_field_instance(
+        self,
+        field_name: str,
+        value: Optional[Any] = None,
+        field_type: Optional[str] = None,
+        field_args: Dict[str, Dict[str, Any]] = {}
+    ) -> Tuple[str, BaseField]:
+        """
+        Creates an instance of a field. This method can create a field instance
+        based on either a specified field type or by inferring the type from a
+        provided value.
+
+        Args:
+            field_name (str): The name of the field.
+            value (Optional[Any], optional): The value used for type inference.
+                Optional if field_type is specified. Defaults to None.
+            field_type (Optional[str], optional): The type of the field. Optional
+                if value is provided for type inference. Defaults to None.
+            field_args: Additional arguments for the field creation.
+
+        Returns:
+            A tuple containing the field type and the field instance.
+
+        Raises:
+            ValueError: If neither value nor field_type is provided, or if the
+                field type is unknown or non-inferrable.
+        """
+        if field_type is None and value is not None:
+            # Infer type from value
+            field_type = TypeInferrer.infer(value)
+
+        if field_type is None:
+            raise ValueError("Either field_type must be provided or value must be non-null for type inference.")
+
+        # extract any custom field args
+        field_kwargs = {"name": field_name, **field_args.get(field_name, {})}
+
+        # TODO - Handle specific storage type logic?
+        # if self.storage_type == StorageType.JSON:
+        #     field_kwargs["as_name"] = field_name
+        #     field_kwargs["name"] = f"$.{field_name.replace(' ', '')}"
+
+        # Getting field class from type map
+        field_class = self._get_field_class(field_type)
+
+        # Creating field instance
+        try:
+            return field_type, field_class(**field_kwargs)
+        except ValidationError as e:
+            raise ValueError(f"Error creating field instance: {e}") from e
+
+    def _ensure_unique_field_name(self, field_type: str, name: str):
+        """Ensures the field name is unique within its type."""
+        if any(field.name == name for field in self.fields.get(field_type, [])):
+            raise ValueError(f"Field with name '{name}' already exists in {field_type} fields.")
 
     def add_field(self, field_type: str, **kwargs):
         """Add a field to the schema.
@@ -76,34 +141,82 @@ class Schema(BaseModel):
             kwargs: The keyword arguments for the field.
 
         Raises:
-            ValueError: If the field name already exists.
+            ValueError: If the field name is not provided or already exists.
+            ValueError: If there is a field validation error.
+            ValueError: If an unknown field type is provided.
         """
         name = kwargs.get('name')
         if not name:
-            raise ValueError("Field name must be provided.")
-        try:
-            new_field = self._FIELD_TYPE_MAP[field_type](**kwargs)
-        except KeyError:
-            raise ValueError(f"Unknown field type: {field_type}")
-        except ValidationError as e:
-            raise ValueError(f"Error adding field with type {field_type}") from e
+            raise ValueError(f"Field name must be provided. Received: {name}")
 
-        # Ensure a field of the same name isn't already added
-        existing_fields = self.fields.get(field_type, [])
-        if any(field.name == name for field in existing_fields):
-            raise ValueError(
-                f"Field with name '{name}' already exists in {field_type} fields."
-            )
-
+        # construct a new field instance from name, type, and kwargs
+        _, new_field = self._create_field_instance(
+            field_name=name,
+            field_type=field_type,
+            field_args={name: kwargs}
+        )
+        # final check and add to index schema
+        self._ensure_unique_field_name(field_type, name)
         self.fields.setdefault(field_type, []).append(new_field)
 
+    def generate_fields(
+        self,
+        data: Dict[str, Any],
+        strict: bool = False,
+        ignore_fields: List[str] = [],
+        field_args: Dict[str, Dict[str, Any]] = {}
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """_summary_
+
+        Args:
+            data (Dict[str, Any]): _description_
+            strict (bool, optional): _description_. Defaults to False.
+            ignore_fields (List[str], optional): _description_. Defaults to [].
+            field_args (Dict[str, Dict[str, Any]], optional): _description_. Defaults to {}.
+
+        Returns:
+            Dict[str, List[Dict[str, Any]]]: _description_
+        """
+        fields = {}
+        for field_name, value in data.items():
+            if self._should_ignore_field(field_name, ignore_fields):
+                # ignore if specified
+                continue
+            try:
+                field_type, new_field = self._create_field_instance(
+                    field_name=field_name,
+                    value=value,
+                    field_args=field_args
+                )
+                fields.setdefault(field_type, []).append(new_field.dict(exclude_unset=True))
+            except ValueError as e:
+                if strict:
+                    raise
+                else:
+                    print(f"Error inferring field type for {field_name}: {e}")
+        return fields
+
     def remove_field(self, field_type: str, field_name: str):
+        """Remove a field from the schema.
+
+        Args:
+            field_type (str): The type of field to add.
+            field_name (str): The name of the field to add.
+        """
         if field_type in self.fields:
             self.fields[field_type] = [
                 field for field in self.fields[field_type] if field.name != field_name]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
+    def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
+        """Generate an index schema object from a dictionary representation
+
+        Args:
+            data (Dict[str, Any]): Data to use building the index schema.
+
+        Returns:
+            A Schema instance.
+        """
         schema = cls(**data['index'])
         for field_type, field_list in data['fields'].items():
             for field_data in field_list:
@@ -129,9 +242,14 @@ class Schema(BaseModel):
             formatted_fields[field_type] = [field.dict(exclude_unset=True) for field in fields]
         return {'index': index_data, 'fields': formatted_fields}
 
+    def _check_yaml_path(self, file_path: str) -> Path:
+        if not file_path.endswith(".yaml"):
+            raise ValueError("Must provide a valid YAML file path")
+
+        return Path(file_path).resolve()
 
     @classmethod
-    def from_yaml(cls, file_path: str) -> "Schema":
+    def from_yaml(cls, file_path: str) -> "IndexSchema":
         """
         Create a Schema instance from a YAML file.
         Args:
@@ -142,10 +260,8 @@ class Schema(BaseModel):
             ValueError: If the file path is not a YAML file.
             FileNotFoundError: If the YAML file does not exist.
         """
-        if not file_path.endswith(".yaml"):
-            raise ValueError("Must provide a valid YAML file path")
-
-        fp = Path(file_path).resolve()
+        # Check file path
+        fp = cls._check_yaml_path(file_path)
         if not fp.exists():
             raise FileNotFoundError(f"Schema file {file_path} does not exist")
 
@@ -154,7 +270,7 @@ class Schema(BaseModel):
 
         return cls.from_dict(yaml_data)
 
-    def to_yaml(self, file_path: str) -> None:
+    def to_yaml(self, file_path: str, overwrite: bool = True) -> None:
         """
         Write the schema to a yaml file.
 
@@ -162,55 +278,23 @@ class Schema(BaseModel):
             file_path (str): The yaml file path where the RedisVL schema is written.
 
         """
-        # TODO
-        # - Ovewrite
-        # - error if file exists
+        # Check filepath
+        fp = self._check_yaml_path(file_path)
+        if fp.exists() and overwrite == False:
+            raise FileExistsError(f"Schema file {file_path} already exists.")
 
         schema = self.to_dict()
         with open(file_path, "w+") as f:
             f.write(yaml.dump(schema, sort_keys=False))
 
-    def generate_fields(
-        self,
-        data: Dict[str, Any],
-        strict: bool = False,
-        ignore_fields: List[str] = [],
-        field_args: Dict[str, Dict[str, Any]] = {}
-    ) -> Dict[str, List[Dict[str, Any]]]:
+    def _should_ignore_field(self, field_name: str, ignore_fields: List[str]) -> bool:
+        """Ignore a specified field?"""
+        return field_name in ignore_fields
 
-        fields = {}
-        for field_name, value in data.items():
-            field_kwargs = {"name": field_name, **field_args.get(field_name, {})}
 
-            # ignore this field
-            if field_name in ignore_fields:
-                continue
 
-            # infer the field type and get field class
-            try:
-                field_type = TypeInferrer.infer(value)
-                field_class = self._FIELD_TYPE_MAP[field_type]
-            except ValueError as e:
-                if strict:
-                    raise
-                else:
-                    print(e.message)
-                    continue
 
-            # check for JSON usage
-            #if self.storage_type == "JSON":
-            #    field_kwargs["as_name"] = field_name
-            #    field_kwargs["name"] = f"$.{field_name.replace(' ', '')}"
 
-            # run pydantic validation
-            field_instance = field_class(**field_kwargs)
-
-            # add new field
-            fields.setdefault(field_type, []).append(
-                field_instance.dict(exclude_unset=True)
-            )
-
-        return fields
 
 
 class TypeInferrer:
@@ -225,10 +309,10 @@ class TypeInferrer:
     }
 
     @classmethod
-    def infer(cls, value) -> str:
-        for type_name, method_name in cls.TYPE_METHOD_MAP.items():
-            method = getattr(cls, method_name)
-            if method(value):
+    def infer(cls, value: Any) -> str:
+        for type_name, type_check_method_name in cls.TYPE_METHOD_MAP.items():
+            type_check_method = getattr(cls, type_check_method_name)
+            if type_check_method(value):
                 return type_name
         raise ValueError(f"Unable to infer type for value: {value}")
 
@@ -252,5 +336,3 @@ class TypeInferrer:
     def _is_geographic(cls, value) -> bool:
         if isinstance(value, str):
             return bool(re.match(cls.GEO_PATTERN, value))
-
-

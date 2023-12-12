@@ -11,6 +11,7 @@ from redisvl.schema import Schema
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
+
 class LLMCacheSchema(Schema):
     """Schema for the LLMCache."""
     prompt_field_name: str = "prompt"
@@ -26,10 +27,10 @@ class LLMCacheSchema(Schema):
         **data,
     ):
         super.__init__(**data)
-        self.add_field("text", name=prompt_field_name)
-        self.add_field("response", name=vector_field_name)
+        self.add_field("text", name=self.prompt_field_name)
+        self.add_field("response", name=self.vector_field_name)
         self.add_field("vector",
-            name=vector_field_name,
+            name=self.vector_field_name,
             dims=768,
             datatype="float32",
             distance_metric="cosine",
