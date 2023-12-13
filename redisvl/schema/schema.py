@@ -36,10 +36,28 @@ def get_vector_type(**field_data: Dict[str, Any]) -> Union[FlatVectorField, HNSW
     # default to FLAT
     return vector_field_classes.get(algorithm, FlatVectorField)(**field_data)
 
+class FieldFactory:
+    FIELD_TYPE_MAP = {
+        "tag": TagField,
+        "text": TextField,
+        "numeric": NumericField,
+        "geo": GeoField,
+        "vector": get_vector_type
+    }
+
+    @staticmethod
+    def create_field(field_type: str, name: str, **kwargs) -> BaseField:
+        field_class = FieldFactory.FIELD_TYPE_MAP.get(field_type)
+        if not field_class:
+            raise ValueError(f"Unknown field type: {field_type}")
+        return field_class(name=name, **kwargs)
+
+
+
 
 class IndexSchema(BaseModel):
     """
-    RedisVL index schema for stroring and indexing vectors and metadata
+    RedisVL index schema for storing and indexing vectors and metadata
     fields in Redis.
 
     Attributes:
@@ -55,14 +73,6 @@ class IndexSchema(BaseModel):
     storage_type: StorageType = StorageType.HASH
     fields: Dict[str, List[BaseField]] = {}
 
-    _FIELD_TYPE_MAP = {
-        "tag": TagField,
-        "text": TextField,
-        "numeric": NumericField,
-        "geo": GeoField,
-        "vector": get_vector_type
-    }
-
     @property
     def redis_fields(self) -> list:
         """Returns a list of index fields in the Redis database."""
@@ -72,134 +82,100 @@ class IndexSchema(BaseModel):
         return redis_fields
 
     def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
-        """Adds multiple fields to the index schema."""
+        """Add fields to the index schema.
+
+        Args:
+            fields (Dict[str, List[Dict[str, Any]]]): The fields to
+                add to the index schema.
+
+        Raises:
+            ValueError: If a field with the same name already exists.
+        """
         for field_type, field_list in fields.items():
             for field_data in field_list:
                 self.add_field(field_type, **field_data)
 
-    def _get_field_class(self, field_type: str) -> Type[BaseField]:
-        """Return a field class given the named type"""
-        return self._FIELD_TYPE_MAP.get(field_type)
-
-    def _create_field_instance(
-        self,
-        field_name: str,
-        value: Optional[Any] = None,
-        field_type: Optional[str] = None,
-        field_args: Dict[str, Dict[str, Any]] = {}
-    ) -> Tuple[str, BaseField]:
-        """
-        Creates an instance of a field. This method can create a field instance
-        based on either a specified field type or by inferring the type from a
-        provided value.
-
-        Args:
-            field_name (str): The name of the field.
-            value (Optional[Any], optional): The value used for type inference.
-                Optional if field_type is specified. Defaults to None.
-            field_type (Optional[str], optional): The type of the field. Optional
-                if value is provided for type inference. Defaults to None.
-            field_args: Additional arguments for the field creation.
-
-        Returns:
-            A tuple containing the field type and the field instance.
-
-        Raises:
-            ValueError: If neither value nor field_type is provided, or if the
-                field type is unknown or non-inferrable.
-        """
-        if field_type is None and value is not None:
-            # Infer type from value
-            field_type = TypeInferrer.infer(value)
-
-        if field_type is None:
-            raise ValueError("Either field_type must be provided or value must be non-null for type inference.")
-
-        # extract any custom field args
-        field_kwargs = {"name": field_name, **field_args.get(field_name, {})}
-
-        # TODO - Handle specific storage type logic?
-        # if self.storage_type == StorageType.JSON:
-        #     field_kwargs["as_name"] = field_name
-        #     field_kwargs["name"] = f"$.{field_name.replace(' ', '')}"
-
-        # Getting field class from type map
-        field_class = self._get_field_class(field_type)
-
-        # Creating field instance
-        try:
-            return field_type, field_class(**field_kwargs)
-        except ValidationError as e:
-            raise ValueError(f"Error creating field instance: {e}") from e
-
-    def _ensure_unique_field_name(self, field_type: str, name: str):
-        """Ensures the field name is unique within its type."""
-        if any(field.name == name for field in self.fields.get(field_type, [])):
-            raise ValueError(f"Field with name '{name}' already exists in {field_type} fields.")
-
     def add_field(self, field_type: str, **kwargs):
-        """Add a field to the schema.
+        """Add a field to the index schema.
 
         Args:
-            field_type: The type of field to add.
-            kwargs: The keyword arguments for the field.
+            field_type (str): The field type.
+            name (str): The field name.
+            **kwargs: Additional keyword arguments for the field.
 
         Raises:
-            ValueError: If the field name is not provided or already exists.
-            ValueError: If there is a field validation error.
-            ValueError: If an unknown field type is provided.
+            ValueError: If a field with the same name already exists.
         """
-        name = kwargs.get('name')
-        if not name:
-            raise ValueError(f"Field name must be provided. Received: {name}")
+        name = kwargs.get('name', None)
+        if name is None:
+            raise ValueError("Field name is required.")
+        new_field = FieldFactory.create_field(field_type, **kwargs)
+        if any(field.name == name for field in self.fields.get(field_type, [])):
+            raise ValueError(
+                f"Field with name '{name}' already exists in {field_type} fields."
+            )
 
-        # construct a new field instance from name, type, and kwargs
-        _, new_field = self._create_field_instance(
-            field_name=name,
-            field_type=field_type,
-            field_args={name: kwargs}
-        )
-        # final check and add to index schema
-        self._ensure_unique_field_name(field_type, name)
         self.fields.setdefault(field_type, []).append(new_field)
+
+    def remove_field(self, field_type: str, field_name: str):
+        """Remove a field from the index schema.
+
+        Args:
+            field_type (str): The field type (e.g. 'text', 'tag', 'numeric')
+            field_name (str): The field name
+
+        Raises:
+            ValueError: If the field type or field name does not exist.
+        """
+        fields = self.fields.get(field_type)
+
+        if fields is None:
+            raise ValueError(f"Field type '{field_type}' does not exist.")
+
+        filtered_fields = [field for field in fields if field.name != field_name]
+
+        if len(filtered_fields) == len(fields):
+            # field not found, raise Error
+            raise ValueError(
+                f"Field '{field_name}' does not exist in {field_type} fields."
+            )
+        self.fields[field_type] = filtered_fields
 
     def generate_fields(
         self,
         data: Dict[str, Any],
         strict: bool = False,
         ignore_fields: List[str] = [],
-        field_args: Dict[str, Dict[str, Any]] = {}
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """Generate metadata fields for an index schema by inferring types from
-           a sample of provided data. Fields can be ignored with ignore_fields
-           and customized with field_args. Error handling behavior can be
-           enforced with the strict flag.
+        """Generate fields from a sample of data.
+
+        This method is commonly used to generated schema fields
+        from metadata. For some datasets, there are a number of fields
+        which makes it tedious to manually define each field. This method
+        can be used to automatically generate fields from a sample of data.
+
+        Note: Vector fields are not generated by this method
+        Note: This method is a hueristic and may not always generate the
+            correct field type.
 
         Args:
-            data (Dict[str, Any]): Sample data used to infer field types.
-            strict (bool, optional): If True, raises an error when a field type
-                can't be inferred. Defaults to False.
-            ignore_fields (List[str], optional): List of field names to ignore.
-                Defaults to [].
-            field_args (Dict[str, Dict[str, Any]], optional): Additional
-                arguments for each field. Defaults to {}.
-
-       Raises:
-            ValueError: If strict is True and a field type cannot be inferred.
+            data (Dict[str, Any]): The sample data to generate fields from.
+            strict (bool): Whether to raise an error if a field type cannot be inferred.
+            ignore_fields (List[str]): A list of field names to ignore.
 
         Returns:
             Dict[str, List[Dict[str, Any]]]: A dictionary of fields.
         """
+
         fields = {}
         for field_name, value in data.items():
-            if self._should_ignore_field(field_name, ignore_fields):
-                # ignore if specified
+            if field_name in ignore_fields:
                 continue
             try:
-                field_type, new_field = self._create_field_instance(
-                    field_name=field_name,
-                    value=value,
-                    field_args=field_args
+                field_type = TypeInferrer.infer(value)
+                new_field = FieldFactory.create_field(
+                    field_type,
+                    field_name,
                 )
                 fields.setdefault(field_type, []).append(new_field.dict(exclude_unset=True))
             except ValueError as e:
@@ -209,40 +185,28 @@ class IndexSchema(BaseModel):
                     print(f"Error inferring field type for {field_name}: {e}")
         return fields
 
-    def remove_field(self, field_type: str, field_name: str):
-        """Remove a field from the schema.
-
-        Args:
-            field_type (str): The type of field to add.
-            field_name (str): The name of the field to add.
-        """
-        if field_type in self.fields:
-            self.fields[field_type] = [
-                field for field in self.fields[field_type] if field.name != field_name]
-
+    # Class methods for serialization/deserialization
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
-        """Generate an index schema object from a dictionary representation
+        """Create an IndexSchema from a dictionary.
 
         Args:
-            data (Dict[str, Any]): Data to use building the index schema.
+            data (Dict[str, Any]): The index schema data.
 
         Returns:
-            A Schema instance.
+            IndexSchema: The index schema.
         """
         schema = cls(**data['index'])
         for field_type, field_list in data['fields'].items():
             for field_data in field_list:
-                # make use of our add field method!
                 schema.add_field(field_type, **field_data)
         return schema
 
-    def to_dict(self, *args, **kwargs) -> Dict[str, Any]:
-        """
-        Dump the RedisVL schema to a dictionary.
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the index schema to a dictionary.
 
         Returns:
-            The RedisVL schema as a dictionary.
+            Dict[str, Any]: The index schema as a dictionary.
         """
         index_data = {
             'name': self.name,
@@ -252,57 +216,51 @@ class IndexSchema(BaseModel):
         }
         formatted_fields = {}
         for field_type, fields in self.fields.items():
-            formatted_fields[field_type] = [field.dict(exclude_unset=True) for field in fields]
+            formatted_fields[field_type] = [
+                field.dict(exclude_unset=True) for field in fields
+            ]
         return {'index': index_data, 'fields': formatted_fields}
-
-    def _check_yaml_path(self, file_path: str) -> Path:
-        if not file_path.endswith(".yaml"):
-            raise ValueError("Must provide a valid YAML file path")
-
-        return Path(file_path).resolve()
 
     @classmethod
     def from_yaml(cls, file_path: str) -> "IndexSchema":
-        """
-        Create a Schema instance from a YAML file.
+        """Create an IndexSchema from a YAML file.
+
         Args:
-            file_path: The path to the YAML file.
+            file_path (str): The path to the YAML file.
+
         Returns:
-            A Schema instance.
-        Raises:
-            ValueError: If the file path is not a YAML file.
-            FileNotFoundError: If the YAML file does not exist.
+            IndexSchema: The index schema.
         """
-        # Check file path
-        fp = cls._check_yaml_path(cls, file_path)
+        try:
+            fp = Path(file_path).resolve()
+        except OSError as e:
+            raise ValueError(f"Invalid file path: {file_path}") from e
+
         if not fp.exists():
             raise FileNotFoundError(f"Schema file {file_path} does not exist")
 
         with open(fp, "r") as f:
             yaml_data = yaml.safe_load(f)
-
-        return cls.from_dict(yaml_data)
+            return cls.from_dict(yaml_data)
 
     def to_yaml(self, file_path: str, overwrite: bool = True) -> None:
-        """
-        Write the schema to a yaml file.
+        """Write the index schema to a YAML file.
 
         Args:
-            file_path (str): The yaml file path where the RedisVL schema is written.
+            file_path (str): The path to the YAML file.
+            overwrite (bool): Whether to overwrite the file if it already exists.
 
+        Raises:
+            FileExistsError: If the file already exists and overwrite is False.
         """
-        # Check filepath
-        fp = self._check_yaml_path(file_path)
-        if fp.exists() and overwrite == False:
+        fp = Path(file_path).resolve()
+        if fp.exists() and not overwrite:
             raise FileExistsError(f"Schema file {file_path} already exists.")
 
-        schema = self.to_dict()
-        with open(file_path, "w+") as f:
-            f.write(yaml.dump(schema, sort_keys=False))
+        with open(fp, "w") as f:
+            yaml_data = self.to_dict()
+            yaml.dump(yaml_data, f, sort_keys=False)
 
-    def _should_ignore_field(self, field_name: str, ignore_fields: List[str]) -> bool:
-        """Ignore a specified field?"""
-        return field_name in ignore_fields
 
 
 class TypeInferrer:
