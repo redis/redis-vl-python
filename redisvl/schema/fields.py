@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from typing_extensions import Literal
 
 from pydantic import BaseModel, Field, validator
@@ -113,3 +113,43 @@ class HNSWVectorField(BaseVectorField):
             }
         )
         return RedisVectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+
+
+class FieldFactory:
+    """
+    Factory class to create fields from client data and kwargs.
+    """
+    FIELD_TYPE_MAP = {
+        "tag": TagField,
+        "text": TextField,
+        "numeric": NumericField,
+        "geo": GeoField,
+    }
+
+    VECTOR_FIELD_TYPE_MAP = {
+        'flat': FlatVectorField,
+        'hnsw': HNSWVectorField,
+    }
+
+    @classmethod
+    def _get_vector_type(cls, **field_data: Dict[str, Any]) -> Union[FlatVectorField, HNSWVectorField]:
+        """Get the vector field type from the field data."""
+        algorithm = field_data.get('algorithm', '').lower()
+        if algorithm not in cls.VECTOR_FIELD_TYPE_MAP:
+            raise ValueError(f"Unknown vector field algorithm: {algorithm}")
+
+        # default to FLAT
+        return cls.VECTOR_FIELD_TYPE_MAP.get(algorithm, FlatVectorField)(**field_data)
+
+    @classmethod
+    def create_field(cls, field_type: str, name: str, **kwargs) -> BaseField:
+        """Create a field of a given type with provided attributes."""
+
+        if field_type == 'vector':
+            return cls._get_vector_type(name=name, **kwargs)
+
+        if field_type not in cls.FIELD_TYPE_MAP:
+            raise ValueError(f"Unknown field type: {field_type}")
+
+        field_class = cls.FIELD_TYPE_MAP[field_type]
+        return field_class(name=name, **kwargs)
