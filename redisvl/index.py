@@ -121,7 +121,7 @@ def check_async_index_exists():
     def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
-            if not await self.exists():
+            if not await self.aexists():
                 raise ValueError(
                     f"Index has not been created. Must be created before calling {func.__name__}"
                 )
@@ -133,13 +133,24 @@ def check_async_index_exists():
 
 
 class RedisConnection:
-    # TODO: improve this connection wrapper implementation
+    _redis_url = None
+    _kwargs = None
+    sync = None
+    a = None
 
-    def __init__(self, redis_url: str, **kwargs):
+    def connect(self, redis_url: str, **kwargs):
         self._redis_url = redis_url
         self._kwargs = kwargs
-        self.sync: redis.Redis = get_redis_connection(self._redis_url, **self._kwargs)
-        self.a: aredis.Redis = get_async_redis_connection(self._redis_url, **self._kwargs)
+        self.sync = get_redis_connection(self._redis_url, **self._kwargs)
+        self.a = get_async_redis_connection(self._redis_url, **self._kwargs)
+
+    def set_client(self, client: Union[redis.Redis, aredis.Redis]):
+        if isinstance(client, redis.Redis):
+            self.sync = client
+        elif isinstance(client, aredis.Redis):
+            self.a = client
+        else:
+            raise TypeError("Must provide a valid Redis client instance")
 
 
 class SearchIndex:
@@ -160,6 +171,8 @@ class SearchIndex:
         StorageType.JSON: JsonStorage,
     }
 
+    _redis_conn = RedisConnection()
+
     def __init__(
         self,
         schema: IndexSchema,
@@ -174,8 +187,7 @@ class SearchIndex:
         if not schema or not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid schema object")
 
-        # establish Redis connection
-        self._redis_conn: Optional[RedisConnection] = None
+
         # only set if Redis URL is passed in...
         if redis_url is not None:
             self.connect(redis_url, **connection_args)
@@ -185,10 +197,6 @@ class SearchIndex:
         self._storage = self._STORAGE_MAP[self.schema.storage_type](
             self.schema.prefix, self.schema.key_separator
         )
-
-    def set_client(self, client: redis.Redis) -> None:
-        """Set the Redis client object for the search index."""
-        self._redis_conn = client
 
     @property
     def name(self) -> str:
@@ -300,12 +308,17 @@ class SearchIndex:
             redis.exceptions.ConnectionError: If the connection to Redis fails.
             ValueError: If the redis url is not accessible.
         """
-        self._redis_conn = RedisConnection(redis_url=redis_url, **kwargs)
+        self._redis_conn.connect(redis_url, **kwargs)
         return self
 
     def disconnect(self):
         """Disconnect from the Redis instance."""
-        self._redis_conn = None
+        self._redis_conn = RedisConnection()
+        return self
+
+    def set_client(self, client: Union[redis.Redis, aredis.Redis]) -> None:
+        """Set the Redis client object for the search index."""
+        self._redis_conn.set_client(client)
         return self
 
     def key(self, key_value: str) -> str:
@@ -494,12 +507,12 @@ class SearchIndex:
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
 
-        if await self.exists():
+        if await self.aexists():
             if not overwrite:
                 print("Index already exists, not overwriting.")
                 return None
             print("Index already exists, overwriting.")
-            await self.delete()
+            await self.adelete()
 
         # Create Index with proper IndexType
         await self._redis_conn.a.ft(self.name).create_index(  # type: ignore
