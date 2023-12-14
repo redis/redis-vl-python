@@ -133,6 +133,7 @@ def check_async_index_exists():
 
 
 class RedisConnection:
+    # TODO: improve this connection wrapper implementation
 
     def __init__(self, redis_url: str, **kwargs):
         self._redis_url = redis_url

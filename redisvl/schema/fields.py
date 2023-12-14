@@ -134,7 +134,13 @@ class FieldFactory:
     @classmethod
     def _get_vector_type(cls, **field_data: Dict[str, Any]) -> Union[FlatVectorField, HNSWVectorField]:
         """Get the vector field type from the field data."""
-        algorithm = field_data.get('algorithm', '').lower()
+        if 'algorithm' not in field_data:
+            raise ValueError("Must provide algorithm param for the vector field.")
+
+        if 'dims' not in field_data:
+            raise ValueError("Must provide dims param for the vector field.")
+
+        algorithm = field_data['algorithm'].lower()
         if algorithm not in cls.VECTOR_FIELD_TYPE_MAP:
             raise ValueError(f"Unknown vector field algorithm: {algorithm}")
 
