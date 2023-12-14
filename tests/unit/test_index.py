@@ -37,12 +37,13 @@ def test_search_index_no_prefix(index_schema):
     assert key == "foo"
 
 
-def test_search_index_client(client, index):
-    si = index
+def test_search_index_client(client, index_schema):
+    si = index_schema.prefix = ""
+    si = SearchIndex(schema=index_schema)
     si.set_client(client)
 
     assert si.client == client
-    assert si.aclient == None
+    assert si.aclient == client
 
 
 def test_search_index_create(client, index, index_schema):

@@ -294,7 +294,7 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = IndexSchema.from_dict(**schema_dict)
+        schema = IndexSchema.from_dict(schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):
@@ -617,9 +617,9 @@ class SearchIndex:
         Returns:
             List[Result]: A list of search results.
         """
-        results = await self.search(query.query, query_params=query.params)
+        results = await self.asearch(query.query, query_params=query.params)
         # post process the results
-        return process_results(results, query=query, storage_type=self._storage_type)
+        return process_results(results, query=query, storage_type=self.schema.storage_type)
 
     @check_async_modules_present("_redis_conn")
     async def aexists(self) -> bool:

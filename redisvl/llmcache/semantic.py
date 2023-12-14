@@ -293,7 +293,7 @@ class SemanticCache(BaseLLMCache):
         # Construct vector query for the cache
         query = VectorQuery(
             vector=vector,
-            vector_field_name=self._vector_field_name,
+            vector_field_name=self._schema.vector_field_name,
             return_fields=return_fields,
             num_results=num_results,
             return_score=True,
@@ -332,9 +332,9 @@ class SemanticCache(BaseLLMCache):
         # TODO should we work to make this flexible?
         payload = {
             "id": self.hash_input(prompt),
-            "prompt": prompt,
-            "response": response,
-            self._vector_field_name: array_to_buffer(vector),
+            self._schema.prompt_field_name: prompt,
+            self._schema.response_field_name: response,
+            self._schema.vector_field_name: array_to_buffer(vector),
         }
         if metadata:
             payload.update(metadata)
