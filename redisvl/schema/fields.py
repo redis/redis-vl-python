@@ -27,7 +27,7 @@ class TextField(BaseField):
             self.name,
             weight=self.weight,  # type: ignore
             no_stem=self.no_stem,  # type: ignore
-            phonetic_matcher=self.phonetic_matcher,
+            phonetic_matcher=self.phonetic_matcher, # type: ignore
             sortable=self.sortable,
             as_name=self.as_name,
         )
