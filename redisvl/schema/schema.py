@@ -28,7 +28,6 @@ class IndexSchema(BaseModel):
         fields (Dict[str, List[Union[BaseField, BaseVectorField]]}): The defined
             index fields.
     """
-
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"

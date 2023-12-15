@@ -13,62 +13,32 @@ SearchIndex
 .. autosummary::
 
     SearchIndex.__init__
+    SearchIndex.from_yaml
+    SearchIndex.from_dict
     SearchIndex.client
     SearchIndex.name
     SearchIndex.prefix
     SearchIndex.key_separator
     SearchIndex.storage_type
-    SearchIndex.from_yaml
-    SearchIndex.from_dict
     SearchIndex.connect
-    SearchIndex.create
-    SearchIndex.load
-    SearchIndex.search
-    SearchIndex.query
-    SearchIndex.delete
-    SearchIndex.info
     SearchIndex.disconnect
-
-
+    SearchIndex.set_client
+    SearchIndex.create
+    SearchIndex.acreate
+    SearchIndex.exists
+    SearchIndex.aexists
+    SearchIndex.load
+    SearchIndex.aload
+    SearchIndex.search
+    SearchIndex.asearch
+    SearchIndex.query
+    SearchIndex.aquery
+    SearchIndex.delete
+    SearchIndex.adelete
+    SearchIndex.info
+    SearchIndex.ainfo
 
 .. autoclass:: SearchIndex
    :show-inheritance:
    :inherited-members:
    :members:
-
-
-AsyncSearchIndex
-================
-
-.. _asyncsearchindex_api:
-
-.. currentmodule:: redisvl.index
-
-.. autosummary::
-
-    AsyncSearchIndex.__init__
-    AsyncSearchIndex.client
-    AsyncSearchIndex.name
-    AsyncSearchIndex.prefix
-    AsyncSearchIndex.key_separator
-    AsyncSearchIndex.storage_type
-    AsyncSearchIndex.from_yaml
-    AsyncSearchIndex.from_dict
-    AsyncSearchIndex.connect
-    AsyncSearchIndex.create
-    AsyncSearchIndex.load
-    AsyncSearchIndex.search
-    AsyncSearchIndex.query
-    AsyncSearchIndex.delete
-    AsyncSearchIndex.info
-    AsyncSearchIndex.disconnect
-
-
-
-.. autoclass:: AsyncSearchIndex
-   :show-inheritance:
-   :inherited-members:
-   :members:
-
-
-
