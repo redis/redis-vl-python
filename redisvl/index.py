@@ -139,16 +139,19 @@ class RedisConnection:
     a = None
 
     def connect(self, redis_url: str, **kwargs):
+        print("CONNECT CALL", flush=True)
         self._redis_url = redis_url
         self._kwargs = kwargs
         self.sync = get_redis_connection(self._redis_url, **self._kwargs)
         self.a = get_async_redis_connection(self._redis_url, **self._kwargs)
 
     def set_client(self, client: Union[redis.Redis, aredis.Redis]):
-        if isinstance(client, redis.Redis):
-            self.sync = client
-        elif isinstance(client, aredis.Redis):
+        if isinstance(client, aredis.Redis):
+            print("SETTING ASYNC", flush=True)
             self.a = client
+        elif isinstance(client, redis.Redis):
+            print("SETTING SYNC", flush=True)
+            self.sync = client
         else:
             raise TypeError("Must provide a valid Redis client instance")
 
@@ -318,6 +321,7 @@ class SearchIndex:
 
     def set_client(self, client: Union[redis.Redis, aredis.Redis]) -> None:
         """Set the Redis client object for the search index."""
+        print("SETTING CLIENT", flush=True)
         self._redis_conn.set_client(client)
         return self
 
