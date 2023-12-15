@@ -118,7 +118,7 @@ class Index:
 
         if args.index:
             schema = Schema.from_params(name=args.index)
-            index = SearchIndex(schema=schema), redis_url=redis_url)
+            index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema)
             index.set_client(conn)

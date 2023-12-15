@@ -1,25 +1,21 @@
 import pytest
 from pydantic import ValidationError
-
-from redis.commands.search.field import (
-    GeoField as RedisGeoField,
-    NumericField as RedisNumericField,
-    TagField as RedisTagField,
-    TextField as RedisTextField,
-    VectorField as RedisVectorField,
-)
+from redis.commands.search.field import GeoField as RedisGeoField
+from redis.commands.search.field import NumericField as RedisNumericField
+from redis.commands.search.field import TagField as RedisTagField
+from redis.commands.search.field import TextField as RedisTextField
+from redis.commands.search.field import VectorField as RedisVectorField
 
 from redisvl.schema.fields import (
     BaseField,
+    FieldFactory,
     FlatVectorField,
     GeoField,
     HNSWVectorField,
+    NumericField,
     TagField,
     TextField,
-    NumericField,
-    FieldFactory
 )
-
 
 
 # Utility functions to create schema instances with default values
@@ -145,32 +141,45 @@ def test_flat_vector_field_block_size_not_set():
 
 
 # Tests for standard field creation
-@pytest.mark.parametrize("field_type, expected_class", [
-    ("tag", TagField),
-    ("text", TextField),
-    ("numeric", NumericField),
-    ("geo", GeoField),
-])
+@pytest.mark.parametrize(
+    "field_type, expected_class",
+    [
+        ("tag", TagField),
+        ("text", TextField),
+        ("numeric", NumericField),
+        ("geo", GeoField),
+    ],
+)
 def test_create_standard_field(field_type, expected_class):
     field = FieldFactory.create_field(field_type, "example_field")
     assert isinstance(field, expected_class)
     assert field.name == "example_field"
 
+
 # Tests for vector field creation
-@pytest.mark.parametrize("algorithm, expected_class", [
-    ("flat", FlatVectorField),
-    ("hnsw", HNSWVectorField),
-])
+@pytest.mark.parametrize(
+    "algorithm, expected_class",
+    [
+        ("flat", FlatVectorField),
+        ("hnsw", HNSWVectorField),
+    ],
+)
 def test_create_vector_field(algorithm, expected_class):
-    field = FieldFactory.create_field("vector", "example_vector_field", algorithm=algorithm, dims=128)
+    field = FieldFactory.create_field(
+        "vector", "example_vector_field", algorithm=algorithm, dims=128
+    )
     assert isinstance(field, expected_class)
     assert field.name == "example_vector_field"
+
 
 def test_create_vector_field_with_unknown_algorithm():
     """Test for unknown vector field algorithm."""
     with pytest.raises(ValueError) as e:
-        FieldFactory.create_field("vector", "example_vector_field", algorithm="unknown", dims=128)
+        FieldFactory.create_field(
+            "vector", "example_vector_field", algorithm="unknown", dims=128
+        )
     assert "Unknown vector field algorithm" in str(e.value)
+
 
 def test_missing_vector_field_algorithm():
     """Test for missing vector field algorithm."""
@@ -178,15 +187,16 @@ def test_missing_vector_field_algorithm():
         FieldFactory.create_field("vector", "example_vector_field", dims=128)
     assert "Must provide algorithm param" in str(e.value)
 
+
 def test_missing_vector_field_dims():
     """Test for missing vector field algorithm."""
     with pytest.raises(ValueError) as e:
         FieldFactory.create_field("vector", "example_vector_field", algorithm="flat")
     assert "Must provide dims param" in str(e.value)
 
+
 def test_create_unknown_field_type():
     """Test for unknown field type."""
     with pytest.raises(ValueError) as excinfo:
         FieldFactory.create_field("unknown", "example_field")
     assert "Unknown field type: unknown" in str(excinfo.value)
-

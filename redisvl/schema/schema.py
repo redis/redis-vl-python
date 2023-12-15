@@ -1,9 +1,9 @@
 import re
-import yaml
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List
 
+import yaml
 from pydantic import BaseModel, ValidationError
 
 from redisvl.schema.fields import BaseField, FieldFactory
@@ -26,6 +26,7 @@ class IndexSchema(BaseModel):
         storage_type (StorageType): The Redis storage type for underlying data.
         fields (Dict[str, List[BaseField]]): The defined index fields.
     """
+
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
@@ -65,7 +66,7 @@ class IndexSchema(BaseModel):
         Raises:
             ValueError: If a field with the same name already exists.
         """
-        name = kwargs.get('name', None)
+        name = kwargs.get("name", None)
         if name is None:
             raise ValueError("Field name is required.")
 
@@ -139,7 +140,9 @@ class IndexSchema(BaseModel):
                     field_type,
                     field_name,
                 )
-                fields.setdefault(field_type, []).append(new_field.dict(exclude_unset=True))
+                fields.setdefault(field_type, []).append(
+                    new_field.dict(exclude_unset=True)
+                )
             except ValueError as e:
                 if strict:
                     raise
@@ -158,8 +161,8 @@ class IndexSchema(BaseModel):
         Returns:
             IndexSchema: The index schema.
         """
-        schema = cls(**data['index'])
-        for field_type, field_list in data['fields'].items():
+        schema = cls(**data["index"])
+        for field_type, field_list in data["fields"].items():
             for field_data in field_list:
                 schema.add_field(field_type, **field_data)
         return schema
@@ -171,17 +174,17 @@ class IndexSchema(BaseModel):
             Dict[str, Any]: The index schema as a dictionary.
         """
         index_data = {
-            'name': self.name,
-            'prefix': self.prefix,
-            'key_separator': self.key_separator,
-            'storage_type': self.storage_type.value
+            "name": self.name,
+            "prefix": self.prefix,
+            "key_separator": self.key_separator,
+            "storage_type": self.storage_type.value,
         }
         formatted_fields = {}
         for field_type, fields in self.fields.items():
             formatted_fields[field_type] = [
                 field.dict(exclude_unset=True) for field in fields
             ]
-        return {'index': index_data, 'fields': formatted_fields}
+        return {"index": index_data, "fields": formatted_fields}
 
     @classmethod
     def from_yaml(cls, file_path: str) -> "IndexSchema":
@@ -222,7 +225,6 @@ class IndexSchema(BaseModel):
         with open(fp, "w") as f:
             yaml_data = self.to_dict()
             yaml.dump(yaml_data, f, sort_keys=False)
-
 
 
 class TypeInferrer:
@@ -274,7 +276,9 @@ class TypeInferrer:
     @classmethod
     def _is_tag(cls, value: Any) -> bool:
         """Check if the value is a tag."""
-        return isinstance(value, (list, set, tuple)) and all(isinstance(v, str) for v in value)
+        return isinstance(value, (list, set, tuple)) and all(
+            isinstance(v, str) for v in value
+        )
 
     @classmethod
     def _is_text(cls, value: Any) -> bool:

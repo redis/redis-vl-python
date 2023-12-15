@@ -1,14 +1,12 @@
 from typing import Any, Dict, Optional, Union
-from typing_extensions import Literal
 
 from pydantic import BaseModel, Field, validator
-from redis.commands.search.field import (
-    GeoField as RedisGeoField,
-    NumericField as RedisNumericField,
-    TagField as RedisTagField,
-    TextField as RedisTextField,
-    VectorField as RedisVectorField,
-)
+from redis.commands.search.field import GeoField as RedisGeoField
+from redis.commands.search.field import NumericField as RedisNumericField
+from redis.commands.search.field import TagField as RedisTagField
+from redis.commands.search.field import TextField as RedisTextField
+from redis.commands.search.field import VectorField as RedisVectorField
+from typing_extensions import Literal
 
 
 class BaseField(BaseModel):
@@ -50,7 +48,9 @@ class TagField(BaseField):
 
 class NumericField(BaseField):
     def as_field(self):
-        return RedisNumericField(self.name, sortable=self.sortable, as_name=self.as_name)
+        return RedisNumericField(
+            self.name, sortable=self.sortable, as_name=self.as_name
+        )
 
 
 class GeoField(BaseField):
@@ -91,7 +91,9 @@ class FlatVectorField(BaseVectorField):
         field_data = super().as_field()
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
-        return RedisVectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+        return RedisVectorField(
+            self.name, self.algorithm, field_data, as_name=self.as_name
+        )
 
 
 class HNSWVectorField(BaseVectorField):
@@ -112,13 +114,16 @@ class HNSWVectorField(BaseVectorField):
                 "EPSILON": self.epsilon,
             }
         )
-        return RedisVectorField(self.name, self.algorithm, field_data, as_name=self.as_name)
+        return RedisVectorField(
+            self.name, self.algorithm, field_data, as_name=self.as_name
+        )
 
 
 class FieldFactory:
     """
     Factory class to create fields from client data and kwargs.
     """
+
     FIELD_TYPE_MAP = {
         "tag": TagField,
         "text": TextField,
@@ -127,20 +132,22 @@ class FieldFactory:
     }
 
     VECTOR_FIELD_TYPE_MAP = {
-        'flat': FlatVectorField,
-        'hnsw': HNSWVectorField,
+        "flat": FlatVectorField,
+        "hnsw": HNSWVectorField,
     }
 
     @classmethod
-    def _get_vector_type(cls, **field_data: Dict[str, Any]) -> Union[FlatVectorField, HNSWVectorField]:
+    def _get_vector_type(
+        cls, **field_data: Dict[str, Any]
+    ) -> Union[FlatVectorField, HNSWVectorField]:
         """Get the vector field type from the field data."""
-        if 'algorithm' not in field_data:
+        if "algorithm" not in field_data:
             raise ValueError("Must provide algorithm param for the vector field.")
 
-        if 'dims' not in field_data:
+        if "dims" not in field_data:
             raise ValueError("Must provide dims param for the vector field.")
 
-        algorithm = field_data['algorithm'].lower()
+        algorithm = field_data["algorithm"].lower()
         if algorithm not in cls.VECTOR_FIELD_TYPE_MAP:
             raise ValueError(f"Unknown vector field algorithm: {algorithm}")
 
@@ -151,7 +158,7 @@ class FieldFactory:
     def create_field(cls, field_type: str, name: str, **kwargs) -> BaseField:
         """Create a field of a given type with provided attributes."""
 
-        if field_type == 'vector':
+        if field_type == "vector":
             return cls._get_vector_type(name=name, **kwargs)
 
         if field_type not in cls.FIELD_TYPE_MAP:

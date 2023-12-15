@@ -5,13 +5,13 @@ from redisvl.schema import IndexSchema
 from redisvl.schema.fields import TagField
 from redisvl.utils.utils import convert_bytes
 
-
 fields = {"tag": [TagField(name="test")]}
 
 
 @pytest.fixture
 def index_schema():
     return IndexSchema(name="my_index", fields=fields)
+
 
 @pytest.fixture
 def index(index_schema):
@@ -41,14 +41,8 @@ def test_search_index_client(client, index_schema):
     si = index_schema.prefix = ""
     si = SearchIndex(schema=index_schema)
 
-    assert si.client == None
-    assert si.aclient== None
-
     si.set_client(client)
-
-    assert si.client == client
-    assert si.aclient == None
-
+    assert si.client == client == si._redis_conn.client
 
 
 def test_search_index_create(client, index, index_schema):
@@ -109,7 +103,7 @@ async def test_async_search_index_creation(async_client, index):
     asi = index
     asi.set_client(async_client)
 
-    assert asi.aclient == async_client
+    assert asi.client == async_client
 
 
 @pytest.mark.asyncio
@@ -118,7 +112,7 @@ async def test_async_search_index_create(async_client, index):
     asi.set_client(async_client)
     await asi.acreate(overwrite=True)
 
-    indices = await asi.aclient.execute_command("FT._LIST")
+    indices = await asi.client.execute_command("FT._LIST")
     assert "my_index" in convert_bytes(indices)
 
 
@@ -129,7 +123,7 @@ async def test_async_search_index_delete(async_client, index):
     await asi.acreate(overwrite=True)
     await asi.adelete()
 
-    indices = await asi.aclient.execute_command("FT._LIST")
+    indices = await asi.client.execute_command("FT._LIST")
     assert "my_index" not in convert_bytes(indices)
 
 

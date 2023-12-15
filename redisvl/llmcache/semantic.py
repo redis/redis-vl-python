@@ -1,18 +1,18 @@
 import warnings
-
 from typing import Any, Dict, List, Optional
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
-from redisvl.utils.utils import array_to_buffer
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
 
 class LLMCacheSchema(IndexSchema):
     """RedisVL index schema for the LLMCache."""
+
     # User should not be able to change these for the default LLMCache
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
@@ -26,23 +26,20 @@ class LLMCacheSchema(IndexSchema):
         **kwargs,
     ):
         # Construct the base base index schema
-        super().__init__(
-            name=name,
-            prefix=prefix,
-            **kwargs
-        )
+        super().__init__(name=name, prefix=prefix, **kwargs)
         # other schema kwargs will get consumed here
         # otherwise fall back to index schema defaults
 
         # Add fields specific to the LLMCacheSchema
         self.add_field("text", name=self.prompt_field_name)
         self.add_field("text", name=self.response_field_name)
-        self.add_field("vector",
+        self.add_field(
+            "vector",
             name=self.vector_field_name,
             dims=vector_dims,
             datatype="float32",
             distance_metric="cosine",
-            algorithm="flat"
+            algorithm="flat",
         )
 
         class Config:
@@ -52,6 +49,7 @@ class LLMCacheSchema(IndexSchema):
     @property
     def vector_field(self) -> Dict[str, Any]:
         return self.fields["vector"][0]
+
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
@@ -115,10 +113,7 @@ class SemanticCache(BaseLLMCache):
             raise ValueError("A valid index name and prefix must be provided.")
 
         self._schema = LLMCacheSchema(
-            name=name,
-            prefix=prefix,
-            vector_dims=vectorizer.dims,
-            **kwargs
+            name=name, prefix=prefix, vector_dims=vectorizer.dims, **kwargs
         )
 
         # set other components
@@ -128,9 +123,7 @@ class SemanticCache(BaseLLMCache):
 
         # build search index
         self._index = SearchIndex(
-            schema=self._schema,
-            redis_url=redis_url,
-            connection_args=connection_args
+            schema=self._schema, redis_url=redis_url, connection_args=connection_args
         )
         self._index.create(overwrite=False)
 
@@ -200,7 +193,7 @@ class SemanticCache(BaseLLMCache):
             raise ValueError(
                 "Invalid vector dimensions! "
                 f"Vectorizer has dims defined as {vectorizer.dims}",
-                f"Vector field has dims defined as {schema_vector_dims}"
+                f"Vector field has dims defined as {schema_vector_dims}",
             )
 
         self._vectorizer = vectorizer

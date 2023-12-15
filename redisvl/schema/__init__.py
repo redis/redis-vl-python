@@ -1,8 +1,4 @@
-from redisvl.schema.schema import (
-    StorageType,
-    IndexSchema,
-)
-
+from redisvl.schema.schema import IndexSchema, StorageType
 
 __all__ = [
     "StorageType",
