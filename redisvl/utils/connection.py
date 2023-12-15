@@ -22,9 +22,11 @@ def get_address_from_env():
 class RedisConnection:
     _redis_url = None
     _kwargs = None
-    client = None
+    client: Optional[Union[Redis, ARedis]] = None
 
-    def connect(self, redis_url: str, use_async: bool = False, **kwargs):
+    def connect(
+        self, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
+    ):
         print("CONNECT CALL", flush=True)
         self._redis_url = redis_url
         self._kwargs = kwargs

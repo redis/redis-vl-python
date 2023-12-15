@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, Field, validator
+from redis.commands.search.field import Field as RedisField
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
 from redis.commands.search.field import TagField as RedisTagField
@@ -21,11 +22,11 @@ class TextField(BaseField):
     phonetic_matcher: Optional[str] = None
     withsuffixtrie: Optional[bool] = False
 
-    def as_field(self):
+    def as_field(self) -> RedisField:
         return RedisTextField(
             self.name,
-            weight=self.weight,
-            no_stem=self.no_stem,
+            weight=self.weight,  # type: ignore
+            no_stem=self.no_stem,  # type: ignore
             phonetic_matcher=self.phonetic_matcher,
             sortable=self.sortable,
             as_name=self.as_name,
@@ -36,25 +37,25 @@ class TagField(BaseField):
     separator: Optional[str] = ","
     case_sensitive: Optional[bool] = False
 
-    def as_field(self):
+    def as_field(self) -> RedisField:
         return RedisTagField(
             self.name,
-            separator=self.separator,
-            case_sensitive=self.case_sensitive,
+            separator=self.separator,  # type: ignore
+            case_sensitive=self.case_sensitive,  # type: ignore
             sortable=self.sortable,
             as_name=self.as_name,
         )
 
 
 class NumericField(BaseField):
-    def as_field(self):
+    def as_field(self) -> RedisField:
         return RedisNumericField(
             self.name, sortable=self.sortable, as_name=self.as_name
         )
 
 
 class GeoField(BaseField):
-    def as_field(self):
+    def as_field(self) -> RedisField:
         return RedisGeoField(self.name, sortable=self.sortable, as_name=self.as_name)
 
 
@@ -71,7 +72,8 @@ class BaseVectorField(BaseModel):
     def uppercase_strings(cls, v):
         return v.upper()
 
-    def as_field(self) -> Dict[str, Any]:
+    @property
+    def field_data(self) -> Dict[str, Any]:
         field_data = {
             "TYPE": self.datatype,
             "DIM": self.dims,
@@ -86,9 +88,9 @@ class FlatVectorField(BaseVectorField):
     algorithm: Literal["FLAT"] = "FLAT"
     block_size: Optional[int] = None
 
-    def as_field(self):
+    def as_field(self) -> RedisField:
         # grab base field params and augment with flat-specific fields
-        field_data = super().as_field()
+        field_data = super().field_data
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
         return RedisVectorField(
@@ -103,9 +105,9 @@ class HNSWVectorField(BaseVectorField):
     ef_runtime: int = Field(default=10)
     epsilon: float = Field(default=0.01)
 
-    def as_field(self):
+    def as_field(self) -> RedisField:
         # grab base field params and augment with hnsw-specific fields
-        field_data = super().as_field()
+        field_data = super().field_data
         field_data.update(
             {
                 "M": self.m,
@@ -137,9 +139,7 @@ class FieldFactory:
     }
 
     @classmethod
-    def _get_vector_type(
-        cls, **field_data: Dict[str, Any]
-    ) -> Union[FlatVectorField, HNSWVectorField]:
+    def _get_vector_type(cls, **field_data) -> BaseVectorField:
         """Get the vector field type from the field data."""
         if "algorithm" not in field_data:
             raise ValueError("Must provide algorithm param for the vector field.")
@@ -155,7 +155,9 @@ class FieldFactory:
         return cls.VECTOR_FIELD_TYPE_MAP.get(algorithm, FlatVectorField)(**field_data)
 
     @classmethod
-    def create_field(cls, field_type: str, name: str, **kwargs) -> BaseField:
+    def create_field(
+        cls, field_type: str, name: str, **kwargs
+    ) -> Union[BaseField, BaseVectorField]:
         """Create a field of a given type with provided attributes."""
 
         if field_type == "vector":

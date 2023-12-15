@@ -1,10 +1,11 @@
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import VectorQuery
-from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema import IndexSchema
+from redisvl.schema.fields import BaseField, BaseVectorField
 from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
@@ -22,9 +23,12 @@ class LLMCacheSchema(IndexSchema):
         self,
         name: str = "cache",
         prefix: str = "llmcache",
-        vector_dims: int = 768,
+        vector_dims: Optional[int] = 768,
         **kwargs,
     ):
+        if not vector_dims:
+            raise ValueError("Must provide vectorizer dimensions")
+
         # Construct the base base index schema
         super().__init__(name=name, prefix=prefix, **kwargs)
         # other schema kwargs will get consumed here
@@ -47,8 +51,8 @@ class LLMCacheSchema(IndexSchema):
             ignore_extra = True
 
     @property
-    def vector_field(self) -> Dict[str, Any]:
-        return self.fields["vector"][0]
+    def vector_field(self) -> BaseVectorField:
+        return self.fields["vector"][0]  # type: ignore
 
 
 class SemanticCache(BaseLLMCache):
@@ -64,7 +68,7 @@ class SemanticCache(BaseLLMCache):
             "sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: str = "redis://localhost:6379",
-        connection_args: Optional[dict] = {},
+        connection_args: Dict[str, Any] = {},
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -81,8 +85,8 @@ class SemanticCache(BaseLLMCache):
                 Defaults to HFTextVectorizer.
             redis_url (str, optional): The redis url. Defaults to
                 "redis://localhost:6379".
-            connection_args (Optional[dict], optional): The connection arguments for the
-                redis client. Defaults to None.
+            connection_args (Dict[str, Any], optional): The connection arguments
+                for the redis client. Defaults to None.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
@@ -200,8 +204,8 @@ class SemanticCache(BaseLLMCache):
 
     def clear(self) -> None:
         """Clear the cache of all keys while preserving the index"""
-        with self._index.client.pipeline(transaction=False) as pipe:
-            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):
+        with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
+            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):  # type: ignore
                 pipe.delete(key)
             pipe.execute()
 
@@ -338,4 +342,4 @@ class SemanticCache(BaseLLMCache):
     def _refresh_ttl(self, key: str) -> None:
         """Refreshes the time-to-live for the specified key."""
         if self.ttl:
-            self._index.client.expire(key, self.ttl)
+            self._index.client.expire(key, self.ttl)  # type: ignore

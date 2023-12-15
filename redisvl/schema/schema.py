@@ -1,12 +1,13 @@
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 import yaml
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
+from redis.commands.search.field import Field as RedisField
 
-from redisvl.schema.fields import BaseField, FieldFactory
+from redisvl.schema.fields import BaseField, BaseVectorField, FieldFactory
 
 
 class StorageType(Enum):
@@ -24,21 +25,22 @@ class IndexSchema(BaseModel):
         prefix (str): The key prefix used in the Redis database keys.
         key_separator (str): The key separator used in the Redis database keys.
         storage_type (StorageType): The Redis storage type for underlying data.
-        fields (Dict[str, List[BaseField]]): The defined index fields.
+        fields (Dict[str, List[Union[BaseField, BaseVectorField]]}): The defined
+            index fields.
     """
 
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
     storage_type: StorageType = StorageType.HASH
-    fields: Dict[str, List[BaseField]] = {}
+    fields: Dict[str, List[Union[BaseField, BaseVectorField]]] = {}
 
     @property
-    def redis_fields(self) -> list:
+    def redis_fields(self) -> List[RedisField]:
         """Returns a list of index fields in the Redis database."""
-        redis_fields = []
+        redis_fields: List[RedisField] = []
         for field_list in self.fields.values():
-            redis_fields.extend(field.as_field() for field in field_list)
+            redis_fields.extend(field.as_field() for field in field_list)  # type: ignore
         return redis_fields
 
     def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
@@ -129,8 +131,7 @@ class IndexSchema(BaseModel):
         Returns:
             Dict[str, List[Dict[str, Any]]]: A dictionary of fields.
         """
-
-        fields = {}
+        fields: Dict[str, List[Dict[str, Any]]] = {}
         for field_name, value in data.items():
             if field_name in ignore_fields:
                 continue

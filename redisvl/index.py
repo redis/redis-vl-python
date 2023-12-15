@@ -3,7 +3,6 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 if TYPE_CHECKING:
-    # from redis.commands.search.field import Field
     from redis.commands.search.document import Document
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
@@ -200,7 +199,7 @@ class SearchIndex:
         return self.schema.storage_type
 
     @property
-    def client(self) -> Union[redis.Redis, aredis.Redis]:
+    def client(self) -> Optional[Union[redis.Redis, aredis.Redis]]:
         """The underlying redis-py client object."""
         return self._redis_conn.client
 
@@ -284,7 +283,7 @@ class SearchIndex:
         self._redis_conn = RedisConnection()
         return self
 
-    def set_client(self, client: Union[redis.Redis, aredis.Redis]) -> None:
+    def set_client(self, client: Union[redis.Redis, aredis.Redis]):
         """Set the Redis client object for the search index."""
         print("SETTING CLIENT", flush=True)
         self._redis_conn.set_client(client)
@@ -394,7 +393,7 @@ class SearchIndex:
             >>> index.load(data, preprocess=func)
         """
         self._storage.write(
-            self._redis_conn.client,
+            self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
             keys=keys,
@@ -549,7 +548,7 @@ class SearchIndex:
             >>> await index.load(data, preprocess=func)
         """
         await self._storage.awrite(
-            self._redis_conn.client,
+            self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
             keys=keys,
