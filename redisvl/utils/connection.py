@@ -25,9 +25,11 @@ class RedisConnection:
     client: Optional[Union[Redis, ARedis]] = None
 
     def connect(
-        self, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
+        self,
+        redis_url: Optional[str] = None,
+        use_async: bool = False,
+        **kwargs
     ):
-        print("CONNECT CALL", flush=True)
         self._redis_url = redis_url
         self._kwargs = kwargs
         if not use_async:

@@ -168,7 +168,7 @@ class SearchIndex:
         if redis_client is not None:
             self.set_client(redis_client)
         elif redis_url is not None:
-            self.connect(redis_url, **connection_args)
+            self.connect(redis_url, **kwargs, **connection_args)
 
         self.schema = schema
 
@@ -285,7 +285,6 @@ class SearchIndex:
 
     def set_client(self, client: Union[redis.Redis, aredis.Redis]):
         """Set the Redis client object for the search index."""
-        print("SETTING CLIENT", flush=True)
         self._redis_conn.set_client(client)
         return self
 
