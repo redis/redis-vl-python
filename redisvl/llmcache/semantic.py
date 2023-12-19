@@ -11,8 +11,8 @@ from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
 
-class LLMCacheSchema(IndexSchema):
-    """RedisVL index schema for the LLMCache."""
+class SemanticCacheSchema(IndexSchema):
+    """RedisVL index schema for the SemanticCache."""
 
     # User should not be able to change these for the default LLMCache
     prompt_field_name: str = "prompt"
@@ -116,7 +116,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(name, str) or not isinstance(prefix, str):
             raise ValueError("A valid index name and prefix must be provided.")
 
-        self._schema = LLMCacheSchema(
+        self._schema = SemanticCacheSchema(
             name=name, prefix=prefix, vector_dims=vectorizer.dims, **kwargs
         )
 

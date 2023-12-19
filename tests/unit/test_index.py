@@ -52,7 +52,7 @@ def test_search_index_create(client, index, index_schema):
     assert si.exists()
     assert "my_index" in convert_bytes(si.client.execute_command("FT._LIST"))
 
-    s1_2 = SearchIndex(schema=index_schema)
+    s1_2 = SearchIndex(schema=index_schema).set_client(client)
     assert s1_2.info()["index_name"] == si.info()["index_name"]
 
     si.create(overwrite=False)

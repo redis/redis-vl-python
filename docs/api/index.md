@@ -11,6 +11,7 @@ myst:
 :caption: RedisVL
 :maxdepth: 2
 
+indexschema
 searchindex
 query
 filter

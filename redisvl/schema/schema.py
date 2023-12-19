@@ -17,17 +17,26 @@ class StorageType(Enum):
 
 class IndexSchema(BaseModel):
     """
-    RedisVL index schema for storing and indexing vectors and metadata
-    fields in Redis.
+    Represents a schema definition for an index in Redis, used in RedisVL for
+    organizing and querying vector and metadata fields.
+
+    This schema defines the structure of data stored in Redis, including
+    information about the storage type, field definitions, and key formatting
+    conventions used in the Redis database. Use the convenience class
+    constructor methods `from_dict` and `from_yaml` to load and create an index
+    schema from your definitions.
 
     Attributes:
-        name (str): The name of the index.
-        prefix (str): The key prefix used in the Redis database keys.
-        key_separator (str): The key separator used in the Redis database keys.
-        storage_type (StorageType): The Redis storage type for underlying data.
-        fields (Dict[str, List[Union[BaseField, BaseVectorField]]}): The defined
-            index fields.
+        name (str): Unique name of the index.
+        prefix (str): Prefix used for Redis keys. Defaults to "rvl".
+        key_separator (str): Separator character used in Redis keys. Defaults
+            to ":".
+        storage_type (StorageType): Enum representing the underlying Redis data
+            structure (e.g. hash or json). Defaults to hash.
+        fields (Dict[str, List[Union[BaseField, BaseVectorField]]]): A dict
+            mapping field types to lists of redisvl field definitions.
     """
+
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
@@ -36,36 +45,59 @@ class IndexSchema(BaseModel):
 
     @property
     def redis_fields(self) -> List[RedisField]:
-        """Returns a list of index fields in the Redis database."""
+        """
+        Provides a list of base redis-py field definitions based on the current
+        schema fields.
+
+        Converts field definitions into a format suitable for use with
+        redis-py, facilitating the creation and management of index structures in
+        the Redis database.
+
+        Returns:
+            List[RedisField]: A list of redis-py field definitions.
+        """
         redis_fields: List[RedisField] = []
         for field_list in self.fields.values():
             redis_fields.extend(field.as_field() for field in field_list)  # type: ignore
         return redis_fields
 
     def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
-        """Add fields to the index schema.
+        """
+        Extends the schema with additional fields.
+
+        This method allows dynamically adding new fields to the index schema. It
+        processes a dictionary where each key represents a field type, and the
+        corresponding value is a list of field definitions to add.
 
         Args:
-            fields (Dict[str, List[Dict[str, Any]]]): The fields to
-                add to the index schema.
+            fields (Dict[str, List[Dict[str, Any]]]): A dictionary mapping field
+                types to lists of field attributes.
 
         Raises:
-            ValueError: If a field with the same name already exists.
+            ValueError: If a field with the same name already exists in the
+                schema.
         """
         for field_type, field_list in fields.items():
             for field_data in field_list:
                 self.add_field(field_type, **field_data)
 
     def add_field(self, field_type: str, **kwargs):
-        """Add a field to the index schema.
+        """
+        Adds a single field to the index schema based on the specified field
+        type and attributes.
+
+        This method allows for the addition of individual fields to the schema,
+        providing flexibility in defining the structure of the index.
 
         Args:
-            field_type (str): The field type.
-            name (str): The field name.
-            **kwargs: Additional keyword arguments for the field.
+            field_type (str): Type of the field to be added
+                (e.g., 'text', 'numeric', 'tag', 'vector', 'geo').
+            **kwargs: A dictionary of attributes for the field, including the
+                required 'name'.
 
         Raises:
-            ValueError: If a field with the same name already exists.
+            ValueError: If the field name is not provided or a field with the
+                same name already exists in the specified field type.
         """
         name = kwargs.get("name", None)
         if name is None:
@@ -80,14 +112,20 @@ class IndexSchema(BaseModel):
         self.fields.setdefault(field_type, []).append(new_field)
 
     def remove_field(self, field_type: str, field_name: str):
-        """Remove a field from the index schema.
+        """
+        Removes a field from the schema based on the specified field type and
+        name.
+
+        This method is useful for dynamically altering the schema by removing
+        existing fields.
 
         Args:
-            field_type (str): The field type (e.g. 'text', 'tag', 'numeric')
-            field_name (str): The field name
+            field_type (str): The type of the field to be removed.
+            field_name (str): The name of the field to be removed.
 
         Raises:
-            ValueError: If the field type or field name does not exist.
+            ValueError: If the field type or the specified field name does not
+                exist in the schema.
         """
         fields = self.fields.get(field_type)
 
@@ -109,26 +147,29 @@ class IndexSchema(BaseModel):
         strict: bool = False,
         ignore_fields: List[str] = [],
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """Generate fields from a sample of data.
+        """
+        Generates a set of field definitions from a sample data dictionary.
 
-        This method is commonly used to generated schema fields
-        from metadata. For some datasets, there are a number of fields
-        which makes it tedious to manually define each field. This method
-        can be used to automatically generate fields from a sample of data.
-
-        Note: Vector fields are not generated by this method.
-        Note: This method is a heuristic and may not always generate the
-            correct field type.
+        This method simplifies the process of creating a schema by inferring
+        field types and attributes from sample data. It's particularly useful
+        during the development process while dealing with datasets containing
+        numerous fields, reducing the need for manual specification.
 
         Args:
-            data (Dict[str, Any]): The sample data to generate fields from.
-            strict (bool, optional): Whether to raise an error if a field type
-                cannot be inferred. Defaults to False.
+            data (Dict[str, Any]): Sample data used to infer field definitions.
+            strict (bool, optional): If True, raises an error on failing to
+                infer a field type. Defaults to False.
             ignore_fields (List[str], optional): A list of field names to
-                ignore. Defaults to [].
+                exclude from processing. Defaults to an empty list.
 
         Returns:
-            Dict[str, List[Dict[str, Any]]]: A dictionary of fields.
+            Dict[str, List[Dict[str, Any]]]: A dictionary with inferred field
+                types and attributes.
+
+        Notes:
+            - Vector fields are not generated by this method.
+            - This method employs heuristics and may not always correctly infer
+                field types.
         """
         fields: Dict[str, List[Dict[str, Any]]] = {}
         for field_name, value in data.items():

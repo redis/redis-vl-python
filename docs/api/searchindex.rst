@@ -1,6 +1,5 @@
-
 *****
-Index
+SearchIndex
 *****
 
 SearchIndex

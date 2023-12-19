@@ -148,8 +148,6 @@ class SearchIndex:
         StorageType.JSON: JsonStorage,
     }
 
-    _redis_conn = RedisConnection()
-
     def __init__(
         self,
         schema: IndexSchema,
@@ -165,6 +163,8 @@ class SearchIndex:
         if not schema or not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid schema object")
 
+        # set up redis connection
+        self._redis_conn = RedisConnection()
         if redis_client is not None:
             self.set_client(redis_client)
         elif redis_url is not None:
