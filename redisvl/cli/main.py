@@ -29,11 +29,13 @@ class RedisVlCLI:
         parser.add_argument("command", help="Subcommand to run")
 
         if len(sys.argv) < 2:
+            logger.info("line32")
             parser.print_help()
             exit(0)
 
         args = parser.parse_args(sys.argv[1:2])
         if not hasattr(self, args.command):
+            logger.info("line37")
             parser.print_help()
             exit(0)
         getattr(self, args.command)()
