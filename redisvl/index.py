@@ -268,10 +268,7 @@ class SearchIndex:
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     def connect(
-        self,
-        redis_url: Optional[str] = None,
-        use_async: bool = False,
-        **kwargs
+        self, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
     ):
         """Connect to a Redis instance.
 

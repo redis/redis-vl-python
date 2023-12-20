@@ -57,20 +57,21 @@ class IndexSchema(BaseModel):
         >>>     }
         >>> })
     """
+
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
     storage_type: StorageType = StorageType.HASH
     fields: Dict[str, List[Union[BaseField, BaseVectorField]]] = {}
 
-    @validator('fields', pre=True)
+    @validator("fields", pre=True)
     def check_unique_field_names(cls, fields):
         """Validate that field names are all unique"""
         all_names = cls._get_field_names(fields)
         print(all_names, flush=True)
         if len(set(all_names)) != len(all_names):
             raise ValueError(
-                f'Field names {all_names} must be unique across all fields.'
+                f"Field names {all_names} must be unique across all fields."
             )
         return fields
 

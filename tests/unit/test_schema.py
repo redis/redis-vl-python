@@ -1,4 +1,5 @@
 import pathlib
+
 import pytest
 
 from redisvl.schema.fields import NumericField, TextField
@@ -55,10 +56,9 @@ def test_add_field():
 def test_add_fields():
     """Test multiple field addition."""
     index_schema = create_sample_index_schema()
-    index_schema.add_fields({
-        "text": [{"name": "new_text_field"}],
-        "tag": [{"name": "new_tag_field"}]
-    })
+    index_schema.add_fields(
+        {"text": [{"name": "new_text_field"}], "tag": [{"name": "new_tag_field"}]}
+    )
     assert "new_text_field" in index_schema.field_names
     assert "new_tag_field" in index_schema.field_names
 
@@ -88,10 +88,12 @@ def test_schema_compare():
     """Test schema comparisons."""
     schema_1 = IndexSchema(name="test")
     # manually add the same fields as the helper method provides below
-    schema_1.add_fields({
-        "text": [{"name": "example_text", "sortable": False}],
-        "numeric": [{"name": "example_numeric", "sortable": True}]
-    })
+    schema_1.add_fields(
+        {
+            "text": [{"name": "example_text", "sortable": False}],
+            "numeric": [{"name": "example_numeric", "sortable": True}],
+        }
+    )
     assert "example_text" in schema_1.field_names
     assert "example_numeric" in schema_1.field_names
 
