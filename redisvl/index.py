@@ -141,6 +141,11 @@ class SearchIndex:
         >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
         >>> index.create(overwrite=True)
         >>> index.load(data) # data is an iterable of dictionaries
+        >>>
+        >>> # Use an async connection
+        >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
+        >>> await index.acreate(overwrite=True)
+        >>> await index.aload(data)
     """
 
     _STORAGE_MAP = {
@@ -206,7 +211,7 @@ class SearchIndex:
     @classmethod
     def from_existing(cls):
         raise DeprecationWarning(
-            "This method is deprecated since 0.0.5. Use the from_yaml or from_dict constructors instead."
+            "This method is deprecated since 0.0.5. Use the from_yaml or from_dict constructors with an IndexSchema instead."
         )
 
     @classmethod
@@ -222,8 +227,7 @@ class SearchIndex:
 
         Example:
             >>> from redisvl.index import SearchIndex
-            >>> index = SearchIndex.from_yaml("schema.yaml")
-            >>> index.connect("redis://localhost:6379")
+            >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
             >>> index.create(overwrite=True)
 
         Returns:
@@ -254,8 +258,7 @@ class SearchIndex:
             >>>     "fields": {
             >>>         "tag": [{"name": "doc-id"}]
             >>>     }
-            >>> })
-            >>> index.connect("redis://localhost:6379")
+            >>> }, redis_url="redis://localhost:6379")
             >>> index.create(overwrite=True)
 
         Returns:
@@ -264,27 +267,74 @@ class SearchIndex:
         schema = IndexSchema.from_dict(schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
 
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
+    def connect(
+        self,
+        redis_url: Optional[str] = None,
+        use_async: bool = False,
+        **kwargs
+    ):
         """Connect to a Redis instance.
 
+        This method establishes a connection to a Redis server. If `redis_url`
+        is provided, it will be used as the connection endpoint. Otherwise, the
+        method attempts to use the `REDIS_URL` environment variable as the
+        connection URL. The `use_async` parameter determines whether the
+        connection should be asynchronous.
+
+        Note: Additional keyword arguments (`**kwargs`) can be used to provide
+        extra options specific to the Redis connection.
+
         Args:
-            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var is
-                used if not provided.
+            redis_url (Optional[str], optional): The URL of the Redis server to
+                connect to. If not provided, the method defaults to using the
+                `REDIS_URL` environment variable.
+            use_async (bool): If `True`, establishes a connection with an async
+                Redis client. Defaults to `False`.
+
+        Example:
+            >>> # standard sync Redis connection
+            >>> index.connect(redis_url="redis://localhost:6379")
+            >>> # async Redis connection
+            >>> index.connect(redis_url="redis://localhost:6379", use_async=True)
 
         Raises:
-            redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If the redis url is not accessible.
+            redis.exceptions.ConnectionError: If the connection to the Redis
+                server fails.
+            ValueError: If the Redis URL is not provided nor accessible
+                through the `REDIS_URL` environment variable.
         """
-        self._redis_conn.connect(redis_url, **kwargs)
+        self._redis_conn.connect(redis_url, use_async, **kwargs)
         return self
 
     def disconnect(self):
-        """Disconnect from the Redis instance."""
+        """Reset the Redis connection."""
         self._redis_conn = RedisConnection()
         return self
 
     def set_client(self, client: Union[redis.Redis, aredis.Redis]):
-        """Set the Redis client object for the search index."""
+        """Manually set the Redis client to use with the search index.
+
+        This method configures the search index to use a specific Redis or
+        Async Redis client. It is useful for cases where an external,
+        custom-configured client is preferred instead of creating a new one.
+
+        Args:
+            client (Union[redis.Redis, aredis.Redis]): A Redis or Async Redis
+                client instance to be used for the connection.
+
+        Example:
+            >>> import redis
+            >>> r = redis.Redis.from_url("redis://localhost:6379")
+            >>> index.set_client(r)
+            >>> # async Redis client
+            >>> import redis.asyncio as aredis
+            >>> r = aredis.Redis.from_url("redis://localhost:6379")
+            >>> index.set_client(r)
+
+
+        Raises:
+            TypeError: If the provided client is not valid.
+        """
         self._redis_conn.set_client(client)
         return self
 
