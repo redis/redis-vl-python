@@ -2,7 +2,6 @@ index:
     name: providers
     prefix: rvl
     storage_type: hash
-    key_separator: ':'
 
 fields:
     text:

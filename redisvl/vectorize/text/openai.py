@@ -40,6 +40,7 @@ class OpenAITextVectorizer(BaseVectorizer):
                 "OpenAI vectorizer requires the openai library. Please install with `pip install openai`"
             )
 
+        # TODO: should read this from environment to prevent verbose UX
         if not api_config or "api_key" not in api_config:
             raise ValueError("OpenAI API key is required in api_config")
 

@@ -3,23 +3,22 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 if TYPE_CHECKING:
-    from redis.commands.search.field import Field
     from redis.commands.search.document import Document
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
 
 import redis
+import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
-from redisvl.schema import SchemaModel, StorageType, read_schema
+from redisvl.schema import IndexSchema, StorageType
 from redisvl.storage import HashStorage, JsonStorage
-from redisvl.utils.connection import get_async_redis_connection, get_redis_connection
+from redisvl.utils.connection import RedisConnection
 from redisvl.utils.utils import (
     check_async_redis_modules_exist,
     check_redis_modules_exist,
     convert_bytes,
-    make_dict,
 )
 
 
@@ -79,8 +78,8 @@ def check_modules_present(client_variable_name: str):
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            client = getattr(self, client_variable_name)
-            check_redis_modules_exist(client)
+            _redis_conn = getattr(self, client_variable_name)
+            check_redis_modules_exist(_redis_conn.client)
             return func(self, *args, **kwargs)
 
         return wrapper
@@ -92,8 +91,8 @@ def check_async_modules_present(client_variable_name: str):
     def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
-            client = getattr(self, client_variable_name)
-            await check_async_redis_modules_exist(client)
+            _redis_conn = getattr(self, client_variable_name)
+            await check_async_redis_modules_exist(_redis_conn.client)
             return await func(self, *args, **kwargs)
 
         return wrapper
@@ -120,7 +119,7 @@ def check_async_index_exists():
     def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
-            if not await self.exists():
+            if not await self.aexists():
                 raise ValueError(
                     f"Index has not been created. Must be created before calling {func.__name__}"
                 )
@@ -131,139 +130,122 @@ def check_async_index_exists():
     return decorator
 
 
-def check_connected(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if getattr(self, client_variable_name) is None:
-                raise ValueError(
-                    f"SearchIndex.connect() must be called before calling {func.__name__}"
-                )
-            return func(self, *args, **kwargs)
+class SearchIndex:
+    """A class for interacting with Redis as a vector database.
 
-        return wrapper
+    This class is a wrapper around the redis-py client that provides
+    purpose-built methods for interacting with Redis as a vector database.
 
-    return decorator
+    Example:
+        >>> from redisvl.index import SearchIndex
+        >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
+        >>> index.create(overwrite=True)
+        >>> index.load(data) # data is an iterable of dictionaries
+        >>>
+        >>> # Use an async connection
+        >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
+        >>> await index.acreate(overwrite=True)
+        >>> await index.aload(data)
+    """
 
-
-def check_async_connected(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            if getattr(self, client_variable_name) is None:
-                raise ValueError(
-                    f"SearchIndex.connect() must be called before calling {func.__name__}"
-                )
-            return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-class SearchIndexBase:
-    STORAGE_MAP = {
+    _STORAGE_MAP = {
         StorageType.HASH: HashStorage,
         StorageType.JSON: JsonStorage,
     }
 
     def __init__(
         self,
-        name: str,
-        prefix: str = "rvl",
-        storage_type: str = "hash",
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
+        schema: IndexSchema,
+        redis_url: Optional[str] = None,
+        redis_client: Optional[Union[redis.Redis, aredis.Redis]] = None,
+        connection_args: Dict[str, Any] = {},
         **kwargs,
     ):
-        """Initialize the RedisVL search index class.
-
-        Args:
-            name (str): Index name.
-            prefix (str, optional): Key prefix associated with the index.
-                Defaults to "rvl".
-            storage_type (str, optional): Underlying Redis storage type (hash
-                or json). Defaults to "hash".
-            key_separator (str, optional): : Separator character to combine
-                prefix and key value for constructing redis keys.
-                Defaults to ":".
-            fields (Optional[List[Field]], optional): List of Redis fields to
-                index. Defaults to None.
+        """Initialize the RedisVL search index class with a schema,
+        redis_url, connection_args, and other kwargs.
         """
-        self._name = name
-        self._prefix = prefix
-        self._key_separator = key_separator
-        self._storage_type = StorageType(storage_type)
-        self._fields = fields
+        # final validation on schema object
+        if not schema or not isinstance(schema, IndexSchema):
+            raise ValueError("Must provide a valid schema object")
 
-        # configure storage layer
-        self._storage = self.STORAGE_MAP[self._storage_type](  # type: ignore
-            self._prefix, self._key_separator
+        # set up redis connection
+        self._redis_conn = RedisConnection()
+        if redis_client is not None:
+            self.set_client(redis_client)
+        elif redis_url is not None:
+            self.connect(redis_url, **kwargs, **connection_args)
+
+        self.schema = schema
+
+        self._storage = self._STORAGE_MAP[self.schema.storage_type](
+            self.schema.prefix, self.schema.key_separator
         )
-
-        # init empty redis conn
-        self._redis_conn: Optional[redis.Redis] = None
-        if "redis_url" in kwargs:
-            redis_url = kwargs.pop("redis_url")
-            self.connect(redis_url, **kwargs)
-
-    def set_client(self, client: redis.Redis) -> None:
-        """Set the Redis client object for the search index."""
-        self._redis_conn = client
 
     @property
     def name(self) -> str:
         """The name of the Redis search index."""
-        return self._name
+        return self.schema.name
 
     @property
     def prefix(self) -> str:
         """The optional key prefix that comes before a unique key value in
         forming a Redis key."""
-        return self._prefix
+        return self.schema.prefix
 
     @property
     def key_separator(self) -> str:
         """The optional separator between a defined prefix and key value in
         forming a Redis key."""
-        return self._key_separator
+        return self.schema.key_separator
 
     @property
     def storage_type(self) -> StorageType:
         """The underlying storage type for the search index: hash or json."""
-        return self._storage_type
+        return self.schema.storage_type
 
     @property
-    @check_connected("_redis_conn")
-    def client(self) -> redis.Redis:
+    def client(self) -> Optional[Union[redis.Redis, aredis.Redis]]:
         """The underlying redis-py client object."""
-        return self._redis_conn  # type: ignore
+        return self._redis_conn.client
 
     @classmethod
-    def from_yaml(cls, schema_path: str):
+    def from_existing(cls):
+        raise DeprecationWarning(
+            "This method is deprecated since 0.0.5. Use the from_yaml or from_dict constructors with an IndexSchema instead."
+        )
+
+    @classmethod
+    def from_yaml(
+        cls, schema_path: str, connection_args: Dict[str, Any] = {}, **kwargs
+    ):
         """Create a SearchIndex from a YAML schema file.
 
         Args:
             schema_path (str): Path to the YAML schema file.
+            connection_args (Dict[str, Any], optional): Redis client connection
+                args.
 
         Example:
             >>> from redisvl.index import SearchIndex
-            >>> index = SearchIndex.from_yaml("schema.yaml")
-            >>> index.connect("redis://localhost:6379")
+            >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
             >>> index.create(overwrite=True)
 
         Returns:
-            SearchIndex: A SearchIndex object.
+            SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = read_schema(schema_path)
-        return cls(fields=schema.index_fields, **schema.index.dict())
+        schema = IndexSchema.from_yaml(schema_path)
+        return cls(schema=schema, connection_args=connection_args, **kwargs)
 
     @classmethod
-    def from_dict(cls, schema_dict: Dict[str, Any]):
+    def from_dict(
+        cls, schema_dict: Dict[str, Any], connection_args: Dict[str, Any] = {}, **kwargs
+    ):
         """Create a SearchIndex from a dictionary.
 
         Args:
             schema_dict (Dict[str, Any]): A dictionary containing the schema.
+            connection_args (Dict[str, Any], optional): Redis client connection
+                args.
 
         Example:
             >>> from redisvl.index import SearchIndex
@@ -272,51 +254,85 @@ class SearchIndexBase:
             >>>         "name": "my-index",
             >>>         "prefix": "rvl",
             >>>         "storage_type": "hash",
-            >>>         "key_separator": ":"
             >>>     },
             >>>     "fields": {
             >>>         "tag": [{"name": "doc-id"}]
             >>>     }
-            >>> })
-            >>> index.connect("redis://localhost:6379")
+            >>> }, redis_url="redis://localhost:6379")
             >>> index.create(overwrite=True)
 
         Returns:
-            SearchIndex: A SearchIndex object.
+            SearchIndex: A RedisVL SearchIndex object.
         """
-        schema = SchemaModel(**schema_dict)
-        return cls(fields=schema.index_fields, **schema.index.dict())
+        schema = IndexSchema.from_dict(schema_dict)
+        return cls(schema=schema, connection_args=connection_args, **kwargs)
 
-    @classmethod
-    def from_existing(
-        cls,
-        name: str,
-        redis_url: Optional[str] = None,
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
-        **kwargs,
+    def connect(
+        self, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
     ):
-        raise NotImplementedError
+        """Connect to a Redis instance.
 
-    @check_connected("_redis_conn")
-    @check_modules_present("_redis_conn")
-    @check_index_exists()
-    def search(self, *args, **kwargs) -> Union["Result", Any]:
-        raise NotImplementedError
+        This method establishes a connection to a Redis server. If `redis_url`
+        is provided, it will be used as the connection endpoint. Otherwise, the
+        method attempts to use the `REDIS_URL` environment variable as the
+        connection URL. The `use_async` parameter determines whether the
+        connection should be asynchronous.
 
-    @check_connected("_redis_conn")
-    @check_modules_present("_redis_conn")
-    @check_index_exists()
-    def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
-        raise NotImplementedError
+        Note: Additional keyword arguments (`**kwargs`) can be used to provide
+        extra options specific to the Redis connection.
 
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
-        """Connect to a Redis instance."""
-        raise NotImplementedError
+        Args:
+            redis_url (Optional[str], optional): The URL of the Redis server to
+                connect to. If not provided, the method defaults to using the
+                `REDIS_URL` environment variable.
+            use_async (bool): If `True`, establishes a connection with an async
+                Redis client. Defaults to `False`.
+
+        Example:
+            >>> # standard sync Redis connection
+            >>> index.connect(redis_url="redis://localhost:6379")
+            >>> # async Redis connection
+            >>> index.connect(redis_url="redis://localhost:6379", use_async=True)
+
+        Raises:
+            redis.exceptions.ConnectionError: If the connection to the Redis
+                server fails.
+            ValueError: If the Redis URL is not provided nor accessible
+                through the `REDIS_URL` environment variable.
+        """
+        self._redis_conn.connect(redis_url, use_async, **kwargs)
+        return self
 
     def disconnect(self):
-        """Disconnect from the Redis instance."""
-        self._redis_conn = None
+        """Reset the Redis connection."""
+        self._redis_conn = RedisConnection()
+        return self
+
+    def set_client(self, client: Union[redis.Redis, aredis.Redis]):
+        """Manually set the Redis client to use with the search index.
+
+        This method configures the search index to use a specific Redis or
+        Async Redis client. It is useful for cases where an external,
+        custom-configured client is preferred instead of creating a new one.
+
+        Args:
+            client (Union[redis.Redis, aredis.Redis]): A Redis or Async Redis
+                client instance to be used for the connection.
+
+        Example:
+            >>> import redis
+            >>> r = redis.Redis.from_url("redis://localhost:6379")
+            >>> index.set_client(r)
+            >>> # async Redis client
+            >>> import redis.asyncio as aredis
+            >>> r = aredis.Redis.from_url("redis://localhost:6379")
+            >>> index.set_client(r)
+
+
+        Raises:
+            TypeError: If the provided client is not valid.
+        """
+        self._redis_conn.set_client(client)
         return self
 
     def key(self, key_value: str) -> str:
@@ -331,111 +347,10 @@ class SearchIndexBase:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(key_value, self._prefix, self._key_separator)
-
-    @check_connected("_redis_conn")
-    @check_modules_present("_redis_conn")
-    @check_index_exists()
-    def info(self) -> Dict[str, Any]:
-        raise NotImplementedError
-
-    @check_connected("_redis_conn")
-    @check_modules_present("_redis_conn")
-    def create(self, overwrite: bool = False):
-        raise NotImplementedError
-
-    @check_connected("_redis_conn")
-    @check_modules_present("_redis_conn")
-    @check_index_exists()
-    def delete(self, drop: bool = True):
-        raise NotImplementedError
-
-    @check_connected("_redis_conn")
-    @check_modules_present("_redis_conn")
-    def load(
-        self,
-        data: Iterable[Any],
-        key_field: Optional[str] = None,
-        keys: Optional[Iterable[str]] = None,
-        ttl: Optional[int] = None,
-        preprocess: Optional[Callable] = None,
-        concurrency: Optional[int] = None,
-        **kwargs,
-    ):
-        raise NotImplementedError
-
-
-class SearchIndex(SearchIndexBase):
-    """A class for interacting with Redis as a vector database.
-
-    This class is a wrapper around the redis-py client that provides
-    purpose-built methods for interacting with Redis as a vector database.
-
-    Example:
-        >>> from redisvl.index import SearchIndex
-        >>> index = SearchIndex.from_yaml("schema.yaml")
-        >>> index.connect("redis://localhost:6379")
-        >>> index.create(overwrite=True)
-        >>> index.load(data) # data is an iterable of dictionaries
-    """
-
-    @classmethod
-    def from_existing(
-        cls,
-        name: str,
-        redis_url: Optional[str] = None,
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
-        **kwargs,
-    ):
-        """Create a SearchIndex from an existing index in Redis.
-
-        Args:
-            name (str): Index name.
-            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var
-                is used if not provided. Defaults to None.
-            key_separator (str, optional): Separator char to combine prefix and
-                key value for constructing redis keys. Defaults to ":".
-            fields (Optional[List[Field]], optional): List of Redis search
-                fields to include in the schema. Defaults to None.
-
-        Returns:
-            SearchIndex: A SearchIndex object.
-
-        Raises:
-            redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the redis url is not accessible.
-        """
-        client = get_redis_connection(redis_url, **kwargs)
-        info = convert_bytes(client.ft(name).info())
-        index_definition = make_dict(info["index_definition"])
-        storage_type = index_definition["key_type"].lower()
-        prefix = index_definition["prefixes"][0]
-        instance = cls(
-            name=name,
-            storage_type=storage_type,
-            prefix=prefix,
-            key_separator=key_separator,
-            fields=fields,
+        return self._storage._key(
+            key_value, self.schema.prefix, self.schema.key_separator
         )
-        instance.set_client(client)
-        return instance
 
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
-        """Connect to a Redis instance.
-
-        Args:
-            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var is
-                used if not provided.
-
-        Raises:
-            redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If the redis url is not accessible.
-        """
-        self._redis_conn = get_redis_connection(redis_url, **kwargs)
-        return self
-
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
         """Create an index in Redis from this SearchIndex object.
@@ -449,7 +364,8 @@ class SearchIndex(SearchIndexBase):
             ValueError: If no fields are defined for the index.
         """
         # Check that fields are defined.
-        if not self._fields:
+        redis_fields = self.schema.redis_fields
+        if not redis_fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
@@ -462,14 +378,13 @@ class SearchIndex(SearchIndexBase):
             self.delete()
 
         # Create the index with the specified fields and settings.
-        self._redis_conn.ft(self._name).create_index(  # type: ignore
-            fields=self._fields,
+        self._redis_conn.client.ft(self.name).create_index(  # type: ignore
+            fields=redis_fields,
             definition=IndexDefinition(
-                prefix=[self._prefix], index_type=self._storage.type
+                prefix=[self.prefix], index_type=self._storage.type
             ),
         )
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def delete(self, drop: bool = True):
@@ -483,9 +398,8 @@ class SearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
+        self._redis_conn.client.ft(self.name).dropindex(delete_documents=drop)  # type: ignore
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def load(
         self,
@@ -525,7 +439,7 @@ class SearchIndex(SearchIndexBase):
             >>> index.load(data, preprocess=func)
         """
         self._storage.write(
-            self.client,
+            self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
             keys=keys,
@@ -534,7 +448,6 @@ class SearchIndex(SearchIndexBase):
             batch_size=batch_size,
         )
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def search(self, *args, **kwargs) -> Union["Result", Any]:
@@ -547,12 +460,11 @@ class SearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = self._redis_conn.ft(self._name).search(  # type: ignore
+        results = self._redis_conn.client.ft(self.name).search(  # type: ignore
             *args, **kwargs
         )
         return results
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
@@ -570,9 +482,10 @@ class SearchIndex(SearchIndexBase):
         """
         results = self.search(query.query, query_params=query.params)
         # post process the results
-        return process_results(results, query=query, storage_type=self._storage_type)
+        return process_results(
+            results, query=query, storage_type=self.schema.storage_type
+        )
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     def exists(self) -> bool:
         """Check if the index exists in Redis.
@@ -580,10 +493,9 @@ class SearchIndex(SearchIndexBase):
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = convert_bytes(self._redis_conn.execute_command("FT._LIST"))  # type: ignore
-        return self._name in indices
+        indices = convert_bytes(self._redis_conn.client.execute_command("FT._LIST"))  # type: ignore
+        return self.name in indices
 
-    @check_connected("_redis_conn")
     @check_modules_present("_redis_conn")
     @check_index_exists()
     def info(self) -> Dict[str, Any]:
@@ -592,82 +504,12 @@ class SearchIndex(SearchIndexBase):
         Returns:
             dict: A dictionary containing the information about the index.
         """
-        return convert_bytes(self._redis_conn.ft(self._name).info())  # type: ignore
-
-
-class AsyncSearchIndex(SearchIndexBase):
-    """A class for interacting with Redis as a vector database asynchronously.
-
-    This class is a wrapper around the redis-py client that provides
-    purpose-built methods for interacting with Redis as a vector database.
-
-    Example:
-        >>> from redisvl.index import AsyncSearchIndex
-        >>> index = AsyncSearchIndex.from_yaml("schema.yaml")
-        >>> index.connect("redis://localhost:6379")
-        >>> await index.create(overwrite=True)
-        >>> await index.load(data) # data is an iterable of dictionaries
-    """
-
-    @classmethod
-    async def from_existing(
-        cls,
-        name: str,
-        redis_url: Optional[str] = None,
-        key_separator: str = ":",
-        fields: Optional[List["Field"]] = None,
-        **kwargs,
-    ):
-        """Create a SearchIndex from an existing index in Redis.
-
-        Args:
-            name (str): Index name.
-            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var
-                is used if not provided. Defaults to None.
-            key_separator (str, optional): Separator char to combine prefix and
-                key value for constructing redis keys. Defaults to ":".
-            fields (Optional[List[Field]], optional): List of Redis search
-                fields to include in the schema. Defaults to None.
-
-        Returns:
-            AsyncSearchIndex: An AsyncSearchIndex object.
-
-        Raises:
-            redis.exceptions.ResponseError: If the index does not exist.
-            ValueError: If the Redis URL is not accessible.
-        """
-        client = get_async_redis_connection(redis_url, **kwargs)
-        info = convert_bytes(await client.ft(name).info())
-        index_definition = make_dict(info["index_definition"])
-        storage_type = index_definition["key_type"].lower()
-        prefix = index_definition["prefixes"][0]
-        instance = cls(
-            name=name,
-            storage_type=storage_type,
-            prefix=prefix,
-            key_separator=key_separator,
-            fields=fields,
+        return convert_bytes(
+            self._redis_conn.client.ft(self.name).info()  # type: ignore
         )
-        instance.set_client(client)
-        return instance
 
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
-        """Connect to a Redis instance.
-
-        Args:
-            redis_url (Optional[str], optional): Redis URL. REDIS_URL env var is
-                used if not provided.
-
-        Raises:
-            redis.exceptions.ConnectionError: If the connection to Redis fails.
-            ValueError: If the Redis URL is not accessible.
-        """
-        self._redis_conn = get_async_redis_connection(redis_url, **kwargs)
-        return self
-
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
-    async def create(self, overwrite: bool = False) -> None:
+    async def acreate(self, overwrite: bool = False) -> None:
         """Asynchronously create an index in Redis from this SearchIndex object.
 
         Args:
@@ -677,30 +519,30 @@ class AsyncSearchIndex(SearchIndexBase):
         Raises:
             RuntimeError: If the index already exists and 'overwrite' is False.
         """
-        if not self._fields:
+        redis_fields = self.schema.redis_fields
+        if not redis_fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
 
-        if await self.exists():
+        if await self.aexists():
             if not overwrite:
                 print("Index already exists, not overwriting.")
                 return None
             print("Index already exists, overwriting.")
-            await self.delete()
+            await self.adelete()
 
         # Create Index with proper IndexType
-        await self._redis_conn.ft(self._name).create_index(  # type: ignore
-            fields=self._fields,
+        await self._redis_conn.client.ft(self.name).create_index(  # type: ignore
+            fields=redis_fields,
             definition=IndexDefinition(
-                prefix=[self._prefix], index_type=self._storage.type
+                prefix=[self.prefix], index_type=self._storage.type
             ),
         )
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
-    async def delete(self, drop: bool = True):
+    async def adelete(self, drop: bool = True):
         """Delete the search index.
 
         Args:
@@ -711,11 +553,10 @@ class AsyncSearchIndex(SearchIndexBase):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        await self._redis_conn.ft(self._name).dropindex(delete_documents=drop)  # type: ignore
+        await self._redis_conn.client.ft(self.name).dropindex(delete_documents=drop)  # type: ignore
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
-    async def load(
+    async def aload(
         self,
         data: Iterable[Any],
         key_field: Optional[str] = None,
@@ -753,7 +594,7 @@ class AsyncSearchIndex(SearchIndexBase):
             >>> await index.load(data, preprocess=func)
         """
         await self._storage.awrite(
-            self.client,
+            self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
             keys=keys,
@@ -762,10 +603,9 @@ class AsyncSearchIndex(SearchIndexBase):
             concurrency=concurrency,
         )
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
-    async def search(self, *args, **kwargs) -> Union["Result", Any]:
+    async def asearch(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
 
         Wrapper around redis.search.Search that adds the index name
@@ -775,13 +615,14 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.ft(self._name).search(*args, **kwargs)  # type: ignore
+        results = await self._redis_conn.client.ft(self.name).search(  # type: ignore
+            *args, **kwargs
+        )
         return results
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
-    async def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
+    async def aquery(self, query: "BaseQuery") -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -794,30 +635,30 @@ class AsyncSearchIndex(SearchIndexBase):
         Returns:
             List[Result]: A list of search results.
         """
-        results = await self.search(query.query, query_params=query.params)
+        results = await self.asearch(query.query, query_params=query.params)
         # post process the results
-        return process_results(results, query=query, storage_type=self._storage_type)
+        return process_results(
+            results, query=query, storage_type=self.schema.storage_type
+        )
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
-    async def exists(self) -> bool:
+    async def aexists(self) -> bool:
         """Check if the index exists in Redis.
 
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = await self._redis_conn.execute_command("FT._LIST")  # type: ignore
-        return self._name in convert_bytes(indices)
+        indices = await self._redis_conn.client.execute_command("FT._LIST")  # type: ignore
+        return self.name in convert_bytes(indices)
 
-    @check_async_connected("_redis_conn")
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
-    async def info(self) -> Dict[str, Any]:
+    async def ainfo(self) -> Dict[str, Any]:
         """Get information about the index.
 
         Returns:
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            await self._redis_conn.ft(self._name).info()  # type: ignore
+            await self._redis_conn.client.ft(self.name).info()  # type: ignore
         )

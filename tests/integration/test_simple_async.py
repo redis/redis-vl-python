@@ -4,7 +4,7 @@ from pprint import pprint
 import numpy as np
 import pytest
 
-from redisvl.index import AsyncSearchIndex
+from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 
 data = [
@@ -60,14 +60,14 @@ schema = {
 
 @pytest.mark.asyncio
 async def test_simple(async_client):
-    index = AsyncSearchIndex.from_dict(schema)
+    index = SearchIndex.from_dict(schema)
     # assign client (only for testing)
     index.set_client(async_client)
     # create the index
-    await index.create(overwrite=True)
+    await index.acreate(overwrite=True)
 
     # load data into the index in Redis
-    await index.load(data)
+    await index.aload(data)
 
     # wait for async index to create
     time.sleep(1)
@@ -79,8 +79,8 @@ async def test_simple(async_client):
         num_results=3,
     )
 
-    results = await index.search(query.query, query_params=query.params)
-    results_2 = await index.query(query)
+    results = await index.asearch(query.query, query_params=query.params)
+    results_2 = await index.aquery(query)
     assert len(results.docs) == len(results_2)
 
     # make sure correct users returned
@@ -102,4 +102,4 @@ async def test_simple(async_client):
         print("Score:", doc.vector_distance)
         pprint(doc)
 
-    await index.delete()
+    await index.adelete()

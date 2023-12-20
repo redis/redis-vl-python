@@ -27,35 +27,6 @@ def cache_with_ttl(vectorizer):
     cache_instance._index.delete(True)  # Clean up index
 
 
-from time import sleep
-
-import pytest
-
-from redisvl.llmcache.semantic import SemanticCache
-from redisvl.vectorize.text import HFTextVectorizer
-
-
-@pytest.fixture
-def vectorizer():
-    return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
-
-
-@pytest.fixture
-def cache(vectorizer):
-    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
-    yield cache_instance
-    cache_instance.clear()
-    cache_instance._index.delete(True)
-
-
-@pytest.fixture
-def cache_with_ttl(vectorizer):
-    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2, ttl=2)
-    yield cache_instance
-    cache_instance.clear()
-    cache_instance._index.delete(True)
-
-
 # Test basic store and check functionality
 def test_store_and_check(cache, vectorizer):
     prompt = "This is a test prompt."
