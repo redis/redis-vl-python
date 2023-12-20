@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, BaseVectorField, FieldFactory
@@ -26,6 +26,8 @@ class IndexSchema(BaseModel):
     constructor methods `from_dict` and `from_yaml` to load and create an index
     schema from your definitions.
 
+    Note: All field names MUST be unique in the index schema.
+
     Attributes:
         name (str): Unique name of the index.
         prefix (str): Prefix used for Redis keys. Defaults to "rvl".
@@ -35,18 +37,73 @@ class IndexSchema(BaseModel):
             structure (e.g. hash or json). Defaults to hash.
         fields (Dict[str, List[Union[BaseField, BaseVectorField]]]): A dict
             mapping field types to lists of redisvl field definitions.
-    """
 
+    Example:
+        >>> from redisvl.schema import IndexSchema
+        >>> # From YAML
+        >>> schema = IndexSchema.from_yaml("schema.yaml")
+        >>> # From Dict
+        >>> schema = IndexSchema.from_dict({
+        >>>     "index": {
+        >>>         "name": "my-index",
+        >>>         "prefix": "docs",
+        >>>         "storage_type": "hash",
+        >>>     },
+        >>>     "fields": {
+        >>>         "tag": [{"name": "doc-id"}],
+        >>>         "vector": [
+        >>>             {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
+        >>>         ]
+        >>>     }
+        >>> })
+    """
     name: str
     prefix: str = "rvl"
     key_separator: str = ":"
     storage_type: StorageType = StorageType.HASH
     fields: Dict[str, List[Union[BaseField, BaseVectorField]]] = {}
 
+    @validator('fields', pre=True)
+    def check_unique_field_names(cls, fields):
+        """Validate that field names are all unique"""
+        all_names = cls._get_field_names(fields)
+        print(all_names, flush=True)
+        if len(set(all_names)) != len(all_names):
+            raise ValueError(
+                f'Field names {all_names} must be unique across all fields.'
+            )
+        return fields
+
+    @staticmethod
+    def _get_field_names(
+        fields: Dict[str, List[Union[BaseField, BaseVectorField]]]
+    ) -> List[str]:
+        """
+        Returns a list of field names from a fields object.
+
+        Returns:
+            List[str]: A list of field names from the fields object.
+        """
+        all_names: List[str] = []
+        for field_list in fields.values():
+            for field in field_list:
+                all_names.append(field.name)
+        return all_names
+
+    @property
+    def field_names(self) -> List[str]:
+        """
+        Returns a list of field names associated with the index schema.
+
+        Returns:
+            List[str]: A list of field names from the schema.
+        """
+        return self._get_field_names(self.fields)
+
     @property
     def redis_fields(self) -> List[RedisField]:
         """
-        Provides a list of base redis-py field definitions based on the current
+        Returns a list of core redis-py field definitions based on the current
         schema fields.
 
         Converts field definitions into a format suitable for use with
@@ -73,6 +130,12 @@ class IndexSchema(BaseModel):
             fields (Dict[str, List[Dict[str, Any]]]): A dictionary mapping field
                 types to lists of field attributes.
 
+        Example:
+            >>> schema.add_fields({})
+            >>> # From Dict
+            >>> schema = IndexSchema.from_dict({
+
+
         Raises:
             ValueError: If a field with the same name already exists in the
                 schema.
@@ -96,17 +159,17 @@ class IndexSchema(BaseModel):
                 required 'name'.
 
         Raises:
-            ValueError: If the field name is not provided or a field with the
-                same name already exists in the specified field type.
+            ValueError: If the field name is either not provided or already
+                exists within the schema.
         """
         name = kwargs.get("name", None)
         if name is None:
             raise ValueError("Field name is required.")
 
         new_field = FieldFactory.create_field(field_type, **kwargs)
-        if any(field.name == name for field in self.fields.get(field_type, [])):
+        if name in self.field_names:
             raise ValueError(
-                f"Field with name '{name}' already exists in {field_type} fields."
+                f"Duplicate field '{name}' already present in index schema."
             )
 
         self.fields.setdefault(field_type, []).append(new_field)
@@ -191,13 +254,28 @@ class IndexSchema(BaseModel):
                     print(f"Error inferring field type for {field_name}: {e}")
         return fields
 
-    # Class methods for serialization/deserialization
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
         """Create an IndexSchema from a dictionary.
 
         Args:
             data (Dict[str, Any]): The index schema data.
+
+        Example:
+            >>> from redisvl.schema import IndexSchema
+            >>> schema = IndexSchema.from_dict({
+            >>>     "index": {
+            >>>         "name": "my-index",
+            >>>         "prefix": "docs",
+            >>>         "storage_type": "hash",
+            >>>     },
+            >>>     "fields": {
+            >>>         "tag": [{"name": "doc-id"}],
+            >>>         "vector": [
+            >>>             {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
+            >>>         ]
+            >>>     }
+            >>> })
 
         Returns:
             IndexSchema: The index schema.
@@ -233,6 +311,10 @@ class IndexSchema(BaseModel):
 
         Args:
             file_path (str): The path to the YAML file.
+
+        Example:
+            >>> from redisvl.schema import IndexSchema
+            >>> schema = IndexSchema.from_yaml("schema.yaml")
 
         Returns:
             IndexSchema: The index schema.

@@ -1,7 +1,5 @@
 import pathlib
-
 import pytest
-from pydantic import ValidationError
 
 from redisvl.schema.fields import NumericField, TextField
 from redisvl.schema.schema import IndexSchema, StorageType
@@ -17,7 +15,7 @@ def create_sample_index_schema():
         "text": [TextField(name="example_text", sortable=False)],
         "numeric": [NumericField(name="example_numeric", sortable=True)],
     }
-    return IndexSchema(name="test-index", fields=sample_fields)
+    return IndexSchema(name="test", fields=sample_fields)
 
 
 # Tests for IndexSchema
@@ -51,7 +49,18 @@ def test_add_field():
     """Test field addition."""
     index_schema = create_sample_index_schema()
     index_schema.add_field("text", name="new_text_field")
-    assert "new_text_field" in [field.name for field in index_schema.fields["text"]]
+    assert "new_text_field" in index_schema.field_names
+
+
+def test_add_fields():
+    """Test multiple field addition."""
+    index_schema = create_sample_index_schema()
+    index_schema.add_fields({
+        "text": [{"name": "new_text_field"}],
+        "tag": [{"name": "new_tag_field"}]
+    })
+    assert "new_text_field" in index_schema.field_names
+    assert "new_tag_field" in index_schema.field_names
 
 
 def test_add_duplicate_field():
@@ -65,7 +74,7 @@ def test_remove_field():
     """Test field removal."""
     index_schema = create_sample_index_schema()
     index_schema.remove_field("text", "example_text")
-    assert "example_text" not in [field.name for field in index_schema.fields["text"]]
+    assert "example_text" not in index_schema.field_names
 
 
 def test_remove_nonexistent_field():
@@ -73,6 +82,23 @@ def test_remove_nonexistent_field():
     index_schema = create_sample_index_schema()
     with pytest.raises(ValueError):
         index_schema.remove_field("text", "nonexistent")
+
+
+def test_schema_compare():
+    """Test schema comparisons."""
+    schema_1 = IndexSchema(name="test")
+    # manually add the same fields as the helper method provides below
+    schema_1.add_fields({
+        "text": [{"name": "example_text", "sortable": False}],
+        "numeric": [{"name": "example_numeric", "sortable": True}]
+    })
+    assert "example_text" in schema_1.field_names
+    assert "example_numeric" in schema_1.field_names
+
+    schema_2 = create_sample_index_schema()
+    assert schema_1.field_names == schema_2.field_names
+    assert schema_1.name == schema_2.name
+    assert schema_1.to_dict() == schema_2.to_dict()
 
 
 def test_generate_fields():
@@ -89,7 +115,7 @@ def test_to_dict():
     """Test schema to dict serialization"""
     index_schema = create_sample_index_schema()
     index_dict = index_schema.to_dict()
-    assert index_dict["index"]["name"] == "test-index"
+    assert index_dict["index"]["name"] == "test"
 
 
 def test_from_dict():
