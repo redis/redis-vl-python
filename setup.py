@@ -32,7 +32,7 @@ setup(
     zip_safe=False,
     entry_points={
         "console_scripts": [
-            "rvl = redisvl.cli.__init__:main"
+            "rvl = redisvl.cli.runner:main"
         ]
     }
 )

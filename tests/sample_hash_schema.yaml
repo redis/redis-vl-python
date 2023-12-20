@@ -1,7 +1,6 @@
 index:
     name: hash-test
     prefix: hash
-    key_separator: ':'
     storage_type: hash
 
 fields:
