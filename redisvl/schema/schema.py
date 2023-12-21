@@ -39,23 +39,23 @@ class IndexSchema(BaseModel):
             mapping field types to lists of redisvl field definitions.
 
     Example:
-        >>> from redisvl.schema import IndexSchema
-        >>> # From YAML
-        >>> schema = IndexSchema.from_yaml("schema.yaml")
-        >>> # From Dict
-        >>> schema = IndexSchema.from_dict({
-        >>>     "index": {
-        >>>         "name": "my-index",
-        >>>         "prefix": "docs",
-        >>>         "storage_type": "hash",
-        >>>     },
-        >>>     "fields": {
-        >>>         "tag": [{"name": "doc-id"}],
-        >>>         "vector": [
-        >>>             {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
-        >>>         ]
-        >>>     }
-        >>> })
+        from redisvl.schema import IndexSchema
+        # From YAML
+        schema = IndexSchema.from_yaml("schema.yaml")
+        # From Dict
+        schema = IndexSchema.from_dict({
+            "index": {
+                "name": "my-index",
+                "prefix": "docs",
+                "storage_type": "hash",
+            },
+            "fields": {
+                "tag": [{"name": "doc-id"}],
+                "vector": [
+                    {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
+                ]
+            }
+        })
     """
 
     name: str
@@ -132,9 +132,9 @@ class IndexSchema(BaseModel):
                 types to lists of field attributes.
 
         Example:
-            >>> schema.add_fields({})
-            >>> # From Dict
-            >>> schema = IndexSchema.from_dict({
+            schema.add_fields({})
+            # From Dict
+            schema = IndexSchema.from_dict({
 
 
         Raises:
@@ -263,20 +263,20 @@ class IndexSchema(BaseModel):
             data (Dict[str, Any]): The index schema data.
 
         Example:
-            >>> from redisvl.schema import IndexSchema
-            >>> schema = IndexSchema.from_dict({
-            >>>     "index": {
-            >>>         "name": "my-index",
-            >>>         "prefix": "docs",
-            >>>         "storage_type": "hash",
-            >>>     },
-            >>>     "fields": {
-            >>>         "tag": [{"name": "doc-id"}],
-            >>>         "vector": [
-            >>>             {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
-            >>>         ]
-            >>>     }
-            >>> })
+            from redisvl.schema import IndexSchema
+            schema = IndexSchema.from_dict({
+                "index": {
+                    "name": "my-index",
+                    "prefix": "docs",
+                    "storage_type": "hash",
+                },
+                "fields": {
+                    "tag": [{"name": "doc-id"}],
+                    "vector": [
+                        {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
+                    ]
+                }
+            })
 
         Returns:
             IndexSchema: The index schema.
@@ -314,8 +314,8 @@ class IndexSchema(BaseModel):
             file_path (str): The path to the YAML file.
 
         Example:
-            >>> from redisvl.schema import IndexSchema
-            >>> schema = IndexSchema.from_yaml("schema.yaml")
+            from redisvl.schema import IndexSchema
+            schema = IndexSchema.from_yaml("schema.yaml")
 
         Returns:
             IndexSchema: The index schema.

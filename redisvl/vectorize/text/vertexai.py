@@ -10,12 +10,33 @@ from redisvl.vectorize.base import BaseVectorizer
 
 class VertexAITextVectorizer(BaseVectorizer):
     """
-    VertexAI text vectorizer.
+    The VertexAITextVectorizer uses Google's VertexAI Palm 2 embedding model
+    API to create text embeddings. This vectorizer is tailored for use in
+    environments where integration with Google Cloud Platform (GCP) services
+    is a key requirement.
 
-    This vectorizer uses the VertexAI Palm 2 embedding model API to create
-    embeddings for text. It requires an active GCP project, location, and
-    application credentials, which can be provided  in the `api_config`
-    dictionary or set as environment variables.
+    Utilizing this vectorizer requires an active GCP project and location
+    (region), along with appropriate application credentials. These can be
+    provided through the `api_config` dictionary or by setting the corresponding
+    environment variables. Additionally, the vertexai python client must be
+    installed with `pip install google-cloud-aiplatform>=1.26`.
+
+    Example:
+        # Synchronous embedding of a single text
+        vectorizer = VertexAITextVectorizer(
+            model="textembedding-gecko",
+            api_config={
+                "project_id": "your_gcp_project_id",
+                "location": "your_gcp_location",
+                "google_application_credentials": "path_to_your_creds"
+            })
+        embedding = vectorizer.embed("Hello, world!")
+
+        # Asynchronous batch embedding of multiple texts
+        embeddings = await vectorizer.embed_many(
+            ["Hello, world!", "Goodbye, world!"],
+            batch_size=2
+        )
     """
     def __init__(
         self,

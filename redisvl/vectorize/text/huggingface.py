@@ -5,11 +5,26 @@ from redisvl.vectorize.base import BaseVectorizer
 
 class HFTextVectorizer(BaseVectorizer):
     """
-    Hugging Face text vectorizer.
+    The HFTextVectorizer class is designed to leverage the power of
+    Hugging Face's Sentence Transformers for generating text embeddings.
+    This vectorizer is particularly useful in scenarios where advanced
+    natural language processing and understanding are required, and ideal for
+    running on your own hardware (for free).
 
-    This vectorizer uses Hugging Face's Sentence Transformers to create
-    embeddings for text. It requires the specification of a pre-trained model
-    available to download.
+    Utilizing this vectorizer involves specifying a pre-trained model from
+    Hugging Face's vast collection of Sentence Transformers. These models are
+    trained on a variety of datasets and tasks, ensuring versatility and
+    robust performance across different text embedding needs. Additionally,
+    make sure the `sentence-transformers` library is installed with
+    `pip install sentence-transformers==2.2.2`.
+
+    Example Usage:
+        # Embedding a single text
+        vectorizer = HFTextVectorizer(model="sentence-transformers/all-mpnet-base-v2")
+        embedding = vectorizer.embed("Hello, world!")
+
+        # Embedding a batch of texts
+        embeddings = vectorizer.embed_many(["Hello, world!", "How are you?"], batch_size=2)
     """
     def __init__(self, model: str = "sentence-transformers/all-mpnet-base-v2", **kwargs):
         """

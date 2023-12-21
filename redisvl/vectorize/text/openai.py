@@ -11,12 +11,35 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class OpenAITextVectorizer(BaseVectorizer):
-    """OpenAI text vectorizer.
+    """
+    The OpenAITextVectorizer class utilizes OpenAI's API to generate embeddings
+    for text data.
 
-    This vectorizer uses the OpenAI API to create embeddings for text.
-    The API key can be provided either through the `api_config` dictionary
-    or as an environment variable `OPENAI_API_KEY`. The API key can be obtained
-    from the OpenAI website: https://api.openai.com/.
+    This vectorizer is designed to interact with OpenAI's embeddings API,
+    requiring an API key for authentication. The key can be provided directly
+    in the `api_config` dictionary or through the `OPENAI_API_KEY` environment
+    variable. Users must obtain an API key from OpenAI's website
+    (https://api.openai.com/). Additionally, the `openai` python client must be
+    installed with `pip install openai==0.28.1`.
+
+    The vectorizer supports both synchronous and asynchronous operations,
+    allowing for batch processing of texts and flexibility in handling
+    preprocessing tasks.
+
+    Example Usage:
+        # Synchronous embedding of a single text
+        vectorizer = OpenAITextVectorizer(
+            model="text-embedding-ada-002",
+            api_config={"api_key": "your_api_key"}
+        )
+        embedding = vectorizer.embed("Hello, world!")
+
+        # Asynchronous batch embedding of multiple texts
+        embeddings = await vectorizer.aembed_many(
+            ["Hello, world!", "How are you?"],
+            batch_size=2
+        )
+
     """
     def __init__(
         self,
@@ -87,8 +110,8 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         Args:
             texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
+            preprocess (Optional[Callable], optional): Optional preprocessing
+                callable to perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
             as_buffer (bool, optional): Whether to convert the raw embedding
