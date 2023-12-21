@@ -499,6 +499,28 @@ class SearchIndex:
         )
 
     @check_modules_present("_redis_conn")
+    @check_index_exists()
+    def query_all(self, query: "BaseQuery", batch_size: int = 100):
+        """Fetch all results for a given query in batches.
+
+        Args:
+            query (BaseQuery): The query to run.
+            batch_size (int): Batch size for fetching results.
+
+        Yields:
+            List[Dict[str, Any]]: A batch of search results.
+        """
+        first = 0
+        while True:
+            query.set_paging(first, batch_size)
+            batch_results = self.query(query)
+            if not batch_results:
+                break
+            yield batch_results
+            # increment the pagination tracker
+            first += batch_size
+
+    @check_modules_present("_redis_conn")
     def exists(self) -> bool:
         """Check if the index exists in Redis.
 
