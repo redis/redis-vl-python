@@ -409,9 +409,10 @@ class SearchIndex:
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
-        **kwargs,
-    ):
-        """Load a batch of objects to Redis.
+    ) -> List[str]:
+        """
+        Load a batch of objects to Redis. Returns the list of keys loaded
+        to Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -427,18 +428,17 @@ class SearchIndex:
                 a single Redis pipeline execution. Defaults to class's
                 default batch size.
 
+        Returns:
+            List[str]: List of keys loaded to Redis.
+
         Raises:
             ValueError: If the length of provided keys does not match the length
                 of objects.
 
         Example:
-            >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> def func(record: dict):
-            >>>     record["new"] = "value"
-            >>>     return record
-            >>> index.load(data, preprocess=func)
+            >>> keys = index.load([{"test": "foo"}, {"test": "bar"}])
         """
-        self._storage.write(
+        return self._storage.write(
             self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
@@ -564,9 +564,10 @@ class SearchIndex:
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
-        **kwargs,
-    ):
-        """Asynchronously load objects to Redis with concurrency control.
+    ) -> List[str]:
+        """
+        Asynchronously load objects to Redis with concurrency control. Returns
+        the list of keys loaded to Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -582,18 +583,17 @@ class SearchIndex:
                 concurrent write operations. Defaults to class's default
                 concurrency level.
 
+        Returns:
+            List[str]: List of keys loaded to Redis.
+
         Raises:
             ValueError: If the length of provided keys does not match the
                 length of objects.
 
         Example:
-            >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> async def func(record: dict):
-            >>>     record["new"] = "value"
-            >>>     return record
-            >>> await index.load(data, preprocess=func)
+            >>> keys = await index.aload([{"test": "foo"}, {"test": "bar"}])
         """
-        await self._storage.awrite(
+        return await self._storage.awrite(
             self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,

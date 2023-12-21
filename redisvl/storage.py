@@ -175,8 +175,10 @@ class BaseStorage:
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
-    ):
-        """Write a batch of objects to Redis as hash entries.
+    ) -> List[str]:
+        """
+        Write a batch of objects to Redis as hash entries. This method
+        returns a list of Redis keys written to the database.
 
         Args:
             redis_client (Redis): A Redis client used for writing data.
@@ -200,14 +202,15 @@ class BaseStorage:
             raise ValueError("Length of keys does not match the length of objects")
 
         if batch_size is None:
-            batch_size = (
-                self.DEFAULT_BATCH_SIZE
-            )  # Use default or calculate based on the input data
+            # Use default or calculate based on the input data
+            batch_size = self.DEFAULT_BATCH_SIZE
 
         keys_iterator = iter(keys) if keys else None
+        added_keys: List[str] = []
 
         with redis_client.pipeline(transaction=False) as pipe:
             for i, obj in enumerate(objects, start=1):
+                # Construct key, validate, and write
                 key = (
                     next(keys_iterator)
                     if keys_iterator
@@ -216,14 +219,18 @@ class BaseStorage:
                 obj = self._preprocess(obj, preprocess)
                 self._validate(obj)
                 self._set(pipe, key, obj)
+                # Set TTL if provided
                 if ttl:
-                    pipe.expire(key, ttl)  # Set TTL if provided
-                # execute mini batch
+                    pipe.expire(key, ttl)
+                # Execute mini batch
                 if i % batch_size == 0:
                     pipe.execute()
-            # clean up batches if needed
+                added_keys.append(key)
+            # Clean up batches if needed
             if i % batch_size != 0:
                 pipe.execute()
+
+        return added_keys
 
     async def awrite(
         self,
@@ -234,9 +241,11 @@ class BaseStorage:
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
-    ):
-        """Asynchronously write objects to Redis as hash entries with
-        concurrency control.
+    ) -> List[str]:
+        """
+        Asynchronously write objects to Redis as hash entries with
+        concurrency control. The method returns a list of keys written to the
+        database.
 
         Args:
             redis_client (AsyncRedis): An asynchronous Redis client used
@@ -254,6 +263,9 @@ class BaseStorage:
                 concurrent write operations. Defaults to class's default
                 concurrency level.
 
+        Returns:
+            List[str]: List of Redis keys loaded to the databases.
+
         Raises:
             ValueError: If the length of provided keys does not match the
                 length of objects.
@@ -267,7 +279,7 @@ class BaseStorage:
         semaphore = asyncio.Semaphore(concurrency)
         keys_iterator = iter(keys) if keys else None
 
-        async def _load(obj: Dict[str, Any], key: Optional[str] = None) -> None:
+        async def _load(obj: Dict[str, Any], key: Optional[str] = None) -> str:
             async with semaphore:
                 if key is None:
                     key = self._create_key(obj, key_field)
@@ -276,15 +288,18 @@ class BaseStorage:
                 await self._aset(redis_client, key, obj)
                 if ttl:
                     await redis_client.expire(key, ttl)
+                return key
 
         if keys_iterator:
             tasks = [
                 asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects
             ]
         else:
-            tasks = [asyncio.create_task(_load(obj)) for obj in objects]
+            tasks = [
+                asyncio.create_task(_load(obj)) for obj in objects
+            ]
 
-        await asyncio.gather(*tasks)
+        return await asyncio.gather(*tasks)
 
     def get(
         self, redis_client: Redis, keys: Iterable[str], batch_size: Optional[int] = None
