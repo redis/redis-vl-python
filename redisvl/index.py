@@ -335,21 +335,20 @@ class SearchIndex:
         self._redis_conn.set_client(client)
         return self
 
-    def key(self, key_value: str) -> str:
+    def key(self, id: str) -> str:
         """Create a redis key as a combination of an index key prefix (optional)
-        and specified key value. The key value is typically a unique identifier,
-        created at random, or derived from some specified metadata.
+        and specified id. The id is typically either a unique identifier, or
+        derived from some domain-specific metadata combination (like a document
+        id or chunk id).
 
         Args:
-            key_value (str): The specified unique identifier for a particular
+            id (str): The specified unique identifier for a particular
                 document indexed in Redis.
 
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(
-            key_value, self.schema.prefix, self.schema.key_separator
-        )
+        return self._storage._key(id, self.schema.prefix, self.schema.key_separator)
 
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
@@ -447,6 +446,21 @@ class SearchIndex:
             preprocess=preprocess,
             batch_size=batch_size,
         )
+
+    def fetch(self, id: str) -> Dict[str, Any]:
+        """
+        Fetch an object from Redis by id. The id is typically either a
+        unique identifier, or derived from some domain-specific metadata
+        combination (like a document id or chunk id).
+
+        Args:
+            id (str): The specified unique identifier for a particular
+                document indexed in Redis.
+
+        Returns:
+            Dict[str, Any]: The fetched object.
+        """
+        return convert_bytes(self._redis_conn.client.hgetall(self.key(id)))  # type: ignore
 
     @check_modules_present("_redis_conn")
     @check_index_exists()
@@ -602,6 +616,22 @@ class SearchIndex:
             preprocess=preprocess,
             concurrency=concurrency,
         )
+
+    async def afetch(self, id: str) -> Dict[str, Any]:
+        """
+        Asynchronously etch an object from Redis by id. The id is typically
+        either a unique identifier, or derived from some domain-specific
+        metadata
+        combination (like a document id or chunk id).
+
+        Args:
+            id (str): The specified unique identifier for a particular
+                document indexed in Redis.
+
+        Returns:
+            Dict[str, Any]: The fetched object.
+        """
+        return convert_bytes(await self._redis_conn.client.hgetall(self.key(id)))  # type: ignore
 
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
