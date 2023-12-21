@@ -2,7 +2,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index import process_results
-from redisvl.query import CountQuery, FilterQuery, VectorQuery, RangeQuery
+from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
 from redisvl.query.filter import Tag
 
 # Sample data for testing
@@ -10,6 +10,7 @@ sample_vector = [0.1, 0.2, 0.3, 0.4]
 
 
 # Test Cases
+
 
 def test_count_query():
     # Create a filter expression
@@ -25,7 +26,6 @@ def test_count_query():
     new_filter_expression = Tag("category") == "Sportswear"
     count_query.set_filter(new_filter_expression)
     assert count_query.get_filter() == new_filter_expression
-
 
     fake_result = Result([2], "")
     assert process_results(fake_result, count_query, "json") == 2
@@ -59,7 +59,9 @@ def test_filter_query():
 
 def test_vector_query():
     # Create a vector query
-    vector_query = VectorQuery(sample_vector, "vector_field", ["field1", "field2"], dialect=3)
+    vector_query = VectorQuery(
+        sample_vector, "vector_field", ["field1", "field2"], dialect=3
+    )
 
     # Check properties
     assert vector_query._vector == sample_vector
@@ -79,6 +81,7 @@ def test_vector_query():
     vector_query.set_paging(5, 15)
     assert vector_query._first == 5
     assert vector_query._limit == 15
+
 
 def test_range_query():
     # Create a filter expression

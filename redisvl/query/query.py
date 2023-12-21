@@ -40,7 +40,9 @@ class BaseQuery:
         elif isinstance(filter_expression, FilterExpression):
             self._filter = filter_expression
         else:
-            raise TypeError("filter_expression must be of type FilterExpression or None")
+            raise TypeError(
+                "filter_expression must be of type FilterExpression or None"
+            )
 
     def get_filter(self) -> FilterExpression:
         """Get the filter for the query.
@@ -114,12 +116,7 @@ class CountQuery(BaseQuery):
             redis.commands.search.query.Query: The query object.
         """
         base_query = str(self._filter)
-        query = (
-            Query(base_query)
-            .no_content()
-            .paging(0, 0)
-            .dialect(self._dialect)
-        )
+        query = Query(base_query).no_content().paging(0, 0).dialect(self._dialect)
         return query
 
     @property
@@ -277,9 +274,7 @@ class VectorQuery(BaseVectorQuery):
         if isinstance(self._vector, bytes):
             vector_param = self._vector
         else:
-            vector_param = array_to_buffer(
-                self._vector, dtype=self.DTYPES[self._dtype]
-            )
+            vector_param = array_to_buffer(self._vector, dtype=self.DTYPES[self._dtype])
 
         return {self.VECTOR_PARAM: vector_param}
 
@@ -363,7 +358,9 @@ class RangeQuery(BaseVectorQuery):
         _filter = str(self._filter)
 
         if _filter != "*":
-            base_query = f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {_filter})"
+            base_query = (
+                f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {_filter})"
+            )
         else:
             base_query = f"{base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}}"
 
@@ -386,11 +383,9 @@ class RangeQuery(BaseVectorQuery):
         if isinstance(self._vector, bytes):
             vector_param = self._vector
         else:
-            vector_param = array_to_buffer(
-                self._vector, dtype=self.DTYPES[self._dtype]
-            )
+            vector_param = array_to_buffer(self._vector, dtype=self.DTYPES[self._dtype])
 
         return {
             self.VECTOR_PARAM: vector_param,
-            self.DISTANCE_THRESHOLD_PARAM: self._distance_threshold
+            self.DISTANCE_THRESHOLD_PARAM: self._distance_threshold,
         }
