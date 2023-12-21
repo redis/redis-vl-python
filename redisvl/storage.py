@@ -295,9 +295,7 @@ class BaseStorage:
                 asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects
             ]
         else:
-            tasks = [
-                asyncio.create_task(_load(obj)) for obj in objects
-            ]
+            tasks = [asyncio.create_task(_load(obj)) for obj in objects]
 
         return await asyncio.gather(*tasks)
 
