@@ -481,7 +481,7 @@ class SearchIndex:
 
     @check_modules_present("_redis_conn")
     @check_index_exists()
-    def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
+    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -502,7 +502,7 @@ class SearchIndex:
 
     @check_modules_present("_redis_conn")
     @check_index_exists()
-    def query_all(self, query: "BaseQuery", batch_size: int = 100):
+    def query_all(self, query: BaseQuery, batch_size: int = 100):
         """Fetch all results for a given query in batches.
 
         Args:
@@ -674,7 +674,7 @@ class SearchIndex:
 
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
-    async def aquery(self, query: "BaseQuery") -> List[Dict[str, Any]]:
+    async def aquery(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Run a query on this index.
 
         This is similar to the search method, but takes a BaseQuery
@@ -692,6 +692,28 @@ class SearchIndex:
         return process_results(
             results, query=query, storage_type=self.schema.storage_type
         )
+
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
+    async def aquery_all(self, query: BaseQuery, batch_size: int = 100):
+        """Asynchronously fetch all results for a given query in batches.
+
+        Args:
+            query (BaseQuery): The query to run.
+            batch_size (int): Batch size for fetching results.
+
+        Yields:
+            List[Dict[str, Any]]: A batch of search results.
+        """
+        first = 0
+        while True:
+            query.set_paging(first, batch_size)
+            batch_results = await self.aquery(query)
+            if not batch_results:
+                break
+            yield batch_results
+            # increment the pagination tracker
+            first += batch_size
 
     @check_async_modules_present("_redis_conn")
     async def aexists(self) -> bool:

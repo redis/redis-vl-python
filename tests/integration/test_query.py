@@ -197,12 +197,14 @@ def vector_query():
         return_fields=["user", "credit_score", "age", "job", "location"],
     )
 
+
 @pytest.fixture
 def filter_query():
     return FilterQuery(
         return_fields=["user", "credit_score", "age", "job", "location"],
         filter_expression=Tag("credit_score") == "high",
     )
+
 
 @pytest.fixture
 def range_query():
@@ -360,9 +362,7 @@ def test_filter_combinations(index, query):
     n = (Num("age") >= 18) & (Num("age") < 100)
     t = Text("job") != "engineer"
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    search(
-        query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749"
-    )
+    search(query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749")
 
 
 def test_query_all_vector_query(index, vector_query):
@@ -404,4 +404,3 @@ def test_query_all_range_query(index, range_query):
     assert len(all_results) == expected_count
     assert i == expected_iterations
     assert all(float(item["vector_distance"]) <= 0.2 for item in all_results)
-
