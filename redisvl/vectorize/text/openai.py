@@ -26,7 +26,7 @@ class OpenAITextVectorizer(BaseVectorizer):
     allowing for batch processing of texts and flexibility in handling
     preprocessing tasks.
 
-    Example Usage:
+    Example:
         # Synchronous embedding of a single text
         vectorizer = OpenAITextVectorizer(
             model="text-embedding-ada-002",

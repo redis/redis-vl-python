@@ -18,7 +18,7 @@ class HFTextVectorizer(BaseVectorizer):
     make sure the `sentence-transformers` library is installed with
     `pip install sentence-transformers==2.2.2`.
 
-    Example Usage:
+    Example:
         # Embedding a single text
         vectorizer = HFTextVectorizer(model="sentence-transformers/all-mpnet-base-v2")
         embedding = vectorizer.embed("Hello, world!")
