@@ -12,35 +12,25 @@ from redisvl.vectorize.text import (
 @pytest.fixture
 def skip_vectorizer() -> bool:
     # os.getenv returns a string
-    return os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
+    v = os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
+    print(v, flush=True)
+    return v
 
 
-skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
+skip_vectorizer_test = lambda: False#pytest.config.getfixturevalue("skip_vectorizer")
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
-def vectorizer(request, openai_key, gcp_location, gcp_project_id):
-    # if skip_vectorizer:
-    #     pytest.skip("Skipping vectorizer tests")
-    # Here we use actual models for integration test
+def vectorizer(request):
     if request.param == HFTextVectorizer:
-        return request.param(model="sentence-transformers/all-mpnet-base-v2")
+        return request.param()
     elif request.param == OpenAITextVectorizer:
-        return request.param(
-            model="text-embedding-ada-002", api_config={"api_key": openai_key}
-        )
+        return request.param()
     elif request.param == VertexAITextVectorizer:
-        # also need to set GOOGLE_APPLICATION_CREDENTIALS env var
-        return request.param(
-            model="textembedding-gecko",
-            api_config={
-                "location": gcp_location,
-                "project_id": gcp_project_id,
-            },
-        )
+        return request.param()
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     embedding = vectorizer.embed(text)
@@ -49,7 +39,7 @@ def test_vectorizer_embed(vectorizer):
     assert len(embedding) == vectorizer.dims
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+##@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     embeddings = vectorizer.embed_many(texts)
@@ -61,7 +51,7 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_bad_input(vectorizer):
     with pytest.raises(TypeError):
         vectorizer.embed(1)
@@ -77,12 +67,10 @@ def test_vectorizer_bad_input(vectorizer):
 def avectorizer(request, openai_key):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
-        return request.param(
-            model="text-embedding-ada-002", api_config={"api_key": openai_key}
-        )
+        return request.param()
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
@@ -92,7 +80,7 @@ async def test_vectorizer_aembed(avectorizer):
     assert len(embedding) == avectorizer.dims
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
@@ -105,7 +93,7 @@ async def test_vectorizer_aembed_many(avectorizer):
     )
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_avectorizer_bad_input(avectorizer):
     with pytest.raises(TypeError):

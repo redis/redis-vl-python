@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -12,23 +13,27 @@ from redisvl.vectorize.base import BaseVectorizer
 class OpenAITextVectorizer(BaseVectorizer):
     """OpenAI text vectorizer.
 
-    This vectorizer uses the OpenAI API to create embeddings for text. It
-    requires an API key to be passed in the api_config dictionary. The API key
-    can be obtained from
-    https://api.openai.com/.
+    This vectorizer uses the OpenAI API to create embeddings for text.
+    The API key can be provided either through the `api_config` dictionary
+    or as an environment variable `OPENAI_API_KEY`. The API key can be obtained
+    from the OpenAI website: https://api.openai.com/.
     """
-
-    def __init__(self, model: str, api_config: Optional[Dict] = None):
+    def __init__(
+        self,
+        model: str = "text-embedding-ada-002",
+        api_config: Optional[Dict] = None
+    ):
         """Initialize the OpenAI vectorizer.
 
         Args:
-            model (str): Model to use for embedding.
-            api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+            model (str): Model to use for embedding. Defaults to
+                'text-embedding-ada-002'.
+            api_config (Optional[Dict], optional): Dictionary containing the
+                API key. Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
-            ValueError: If the API key is not provided.
+            ValueError: If the OpenAI API key is not provided.
         """
         super().__init__(model)
         # Dynamic import of the openai module
@@ -40,11 +45,15 @@ class OpenAITextVectorizer(BaseVectorizer):
                 "OpenAI vectorizer requires the openai library. Please install with `pip install openai`"
             )
 
-        # TODO: should read this from environment to prevent verbose UX
-        if not api_config or "api_key" not in api_config:
-            raise ValueError("OpenAI API key is required in api_config")
+        # Fetch the API key from api_config or environment variable
+        api_key = api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OpenAI API key is required."
+                "Provide it in api_config or set the OPENAI_API_KEY environment variable."
+            )
 
-        openai.api_key = api_config["api_key"]
+        openai.api_key = api_key
         self._model_client = openai.Embedding
         self._dims = self._set_model_dims()
 

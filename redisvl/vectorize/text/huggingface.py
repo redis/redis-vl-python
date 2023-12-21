@@ -4,22 +4,44 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class HFTextVectorizer(BaseVectorizer):
-    # TODO - add docstring
-    def __init__(self, model: str, api_config: Optional[Dict] = None):
+    """
+    Hugging Face text vectorizer.
+
+    This vectorizer uses Hugging Face's Sentence Transformers to create
+    embeddings for text. It requires the specification of a pre-trained model
+    available to download.
+    """
+    def __init__(self, model: str = "sentence-transformers/all-mpnet-base-v2", **kwargs):
+        """
+        Initialize the Hugging Face text vectorizer.
+
+        Args:
+            model (str): The pre-trained model from Hugging Face's Sentence
+                Transformers to be used for embedding. Defaults to
+                'sentence-transformers/all-mpnet-base-v2'.
+
+        Raises:
+            ImportError: If the sentence-transformers library is not installed.
+            ValueError: If there is an error setting the embedding model dimensions.
+        """
         super().__init__(model)
+
+        # Load the SentenceTransformer model
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
             raise ImportError(
-                "HFTextVectorizer requires sentence-transformers library. Please install with pip install sentence-transformers"
+                "HFTextVectorizer requires the sentence-transformers library."
+                "Please install with `pip install sentence-transformers`"
             )
 
-        self._model_client = SentenceTransformer(self._model)
+        self._model_client = SentenceTransformer(model)
 
+        # Initialize model dimensions
         try:
             self._dims = self._set_model_dims()
-        except:
-            raise ValueError("Error setting embedding model dimensions")
+        except Exception as e:
+            raise ValueError(f"Error setting embedding model dimensions: {e}")
 
     def _set_model_dims(self):
         embedding = self._model_client.encode(["dimension check"])[0]
@@ -31,12 +53,13 @@ class HFTextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
     ) -> List[float]:
-        """Embed a chunk of text using the Hugging Face sentence transformer.
+        """
+        Embed a chunk of text using the Hugging Face sentence transformer.
 
         Args:
             text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
+            preprocess (Optional[Callable], optional): Optional preprocessing
+                callable to perform before vectorization. Defaults to None.
             as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
@@ -61,13 +84,14 @@ class HFTextVectorizer(BaseVectorizer):
         batch_size: int = 1000,
         as_buffer: bool = False,
     ) -> List[List[float]]:
-        """Asynchronously embed many chunks of texts using the Hugging Face
+        """
+        Asynchronously embed many chunks of texts using the Hugging Face
         sentence transformer.
 
         Args:
             texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
+            preprocess (Optional[Callable], optional): Optional preprocessing
+                callable to perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
             as_buffer (bool, optional): Whether to convert the raw embedding
