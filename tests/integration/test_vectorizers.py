@@ -17,7 +17,7 @@ def skip_vectorizer() -> bool:
     return v
 
 
-skip_vectorizer_test = lambda: False#pytest.config.getfixturevalue("skip_vectorizer")
+skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
@@ -30,7 +30,7 @@ def vectorizer(request):
         return request.param()
 
 
-#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     embedding = vectorizer.embed(text)
@@ -39,7 +39,7 @@ def test_vectorizer_embed(vectorizer):
     assert len(embedding) == vectorizer.dims
 
 
-##@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     embeddings = vectorizer.embed_many(texts)
@@ -51,7 +51,7 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
-#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_bad_input(vectorizer):
     with pytest.raises(TypeError):
         vectorizer.embed(1)
@@ -70,7 +70,7 @@ def avectorizer(request, openai_key):
         return request.param()
 
 
-#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
@@ -80,7 +80,7 @@ async def test_vectorizer_aembed(avectorizer):
     assert len(embedding) == avectorizer.dims
 
 
-#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
@@ -93,7 +93,7 @@ async def test_vectorizer_aembed_many(avectorizer):
     )
 
 
-#@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_avectorizer_bad_input(avectorizer):
     with pytest.raises(TypeError):
