@@ -46,7 +46,7 @@ class HFTextVectorizer(BaseVectorizer):
             from sentence_transformers import SentenceTransformer
         except ImportError:
             raise ImportError(
-                "HFTextVectorizer requires the sentence-transformers library."
+                "HFTextVectorizer requires the sentence-transformers library. "
                 "Please install with `pip install sentence-transformers`"
             )
 

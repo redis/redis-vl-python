@@ -72,7 +72,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         api_key = api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError(
-                "OpenAI API key is required."
+                "OpenAI API key is required. "
                 "Provide it in api_config or set the OPENAI_API_KEY environment variable."
             )
 

@@ -63,15 +63,15 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         if not project_id:
             raise ValueError(
-                "Missing project_id"
-                "Provide the id in the api_config with key 'project_id'"
+                "Missing project_id. "
+                "Provide the id in the api_config with key 'project_id' "
                 "or set the GCP_PROJECT_ID environment variable."
             )
 
         if not location:
             raise ValueError(
-                "Missing location."
-                "Provide the location (region) in the api_config with key 'location'"
+                "Missing location. "
+                "Provide the location (region) in the api_config with key 'location' "
                 "or set the GCP_LOCATION environment variable."
             )
 
@@ -82,8 +82,8 @@ class VertexAITextVectorizer(BaseVectorizer):
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
             else:
                 raise ValueError(
-                    "Missing Google Application Credentials."
-                    "Provide the path to the credentials JSON file in the api_config with key 'google_application_credentials'"
+                    "Missing Google Application Credentials. "
+                    "Provide the path to the credentials JSON file in the api_config with key 'google_application_credentials' "
                     "or set the GOOGLE_APPLICATION_CREDENTIALS environment variable."
                 )
         try:
@@ -93,7 +93,7 @@ class VertexAITextVectorizer(BaseVectorizer):
             vertexai.init(project=project_id, location=location)
         except ImportError:
             raise ImportError(
-                "VertexAI vectorizer requires the google-cloud-aiplatform library."
+                "VertexAI vectorizer requires the google-cloud-aiplatform library. "
                 "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
 
