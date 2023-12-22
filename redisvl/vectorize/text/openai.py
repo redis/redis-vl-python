@@ -41,10 +41,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         )
 
     """
+
     def __init__(
-        self,
-        model: str = "text-embedding-ada-002",
-        api_config: Optional[Dict] = None
+        self, model: str = "text-embedding-ada-002", api_config: Optional[Dict] = None
     ):
         """Initialize the OpenAI vectorizer.
 
@@ -69,7 +68,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             )
 
         # Fetch the API key from api_config or environment variable
-        api_key = api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+        api_key = (
+            api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+        )
         if not api_key:
             raise ValueError(
                 "OpenAI API key is required. "

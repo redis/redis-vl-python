@@ -1,5 +1,4 @@
 import os
-
 from typing import Callable, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -38,10 +37,9 @@ class VertexAITextVectorizer(BaseVectorizer):
             batch_size=2
         )
     """
+
     def __init__(
-        self,
-        model: str = "textembedding-gecko",
-        api_config: Optional[Dict] = None
+        self, model: str = "textembedding-gecko", api_config: Optional[Dict] = None
     ):
         """Initialize the VertexAI vectorizer.
 
@@ -58,8 +56,12 @@ class VertexAITextVectorizer(BaseVectorizer):
         super().__init__(model)
 
         # Fetch the project_id and location from api_config or environment variables
-        project_id = api_config.get("project_id") if api_config else os.getenv("GCP_PROJECT_ID")
-        location = api_config.get("location") if api_config else os.getenv("GCP_LOCATION")
+        project_id = (
+            api_config.get("project_id") if api_config else os.getenv("GCP_PROJECT_ID")
+        )
+        location = (
+            api_config.get("location") if api_config else os.getenv("GCP_LOCATION")
+        )
 
         if not project_id:
             raise ValueError(
@@ -77,7 +79,9 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         # Check for Google Application Credentials
         if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
-            creds_path = api_config.get("google_application_credentials") if api_config else None
+            creds_path = (
+                api_config.get("google_application_credentials") if api_config else None
+            )
             if creds_path:
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
             else:

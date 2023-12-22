@@ -26,7 +26,10 @@ class HFTextVectorizer(BaseVectorizer):
         # Embedding a batch of texts
         embeddings = vectorizer.embed_many(["Hello, world!", "How are you?"], batch_size=2)
     """
-    def __init__(self, model: str = "sentence-transformers/all-mpnet-base-v2", **kwargs):
+
+    def __init__(
+        self, model: str = "sentence-transformers/all-mpnet-base-v2", **kwargs
+    ):
         """
         Initialize the Hugging Face text vectorizer.
 
