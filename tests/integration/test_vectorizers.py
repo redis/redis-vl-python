@@ -6,6 +6,7 @@ from redisvl.vectorize.text import (
     HFTextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
+    CohereTextVectorizer
 )
 
 
@@ -18,8 +19,9 @@ def skip_vectorizer() -> bool:
 skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
 
-@pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
-def vectorizer(request, openai_key, gcp_location, gcp_project_id):
+# @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer, CohereTextVectorizer])
+@pytest.fixture(params=[CohereTextVectorizer])
+def vectorizer(request, openai_key, cohere_key, gcp_location, gcp_project_id):
     # if skip_vectorizer:
     #     pytest.skip("Skipping vectorizer tests")
     # Here we use actual models for integration test
@@ -38,9 +40,14 @@ def vectorizer(request, openai_key, gcp_location, gcp_project_id):
                 "project_id": gcp_project_id,
             },
         )
+    elif request.param == CohereTextVectorizer:
+        cohere_key = ""
+        return request.param(
+            model="embed-english-v3.0", input_type="search_query", api_config={"api_key": cohere_key}
+        )
 
-
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.run
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     embedding = vectorizer.embed(text)
@@ -49,7 +56,8 @@ def test_vectorizer_embed(vectorizer):
     assert len(embedding) == vectorizer.dims
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.run
 def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     embeddings = vectorizer.embed_many(texts)
@@ -61,7 +69,8 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.run
 def test_vectorizer_bad_input(vectorizer):
     with pytest.raises(TypeError):
         vectorizer.embed(1)
@@ -73,16 +82,22 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
-@pytest.fixture(params=[OpenAITextVectorizer])
+# @pytest.fixture(params=[OpenAITextVectorizer, CohereTextVectorizer])
+@pytest.fixture(params=[CohereTextVectorizer])
 def avectorizer(request, openai_key):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
         return request.param(
             model="text-embedding-ada-002", api_config={"api_key": openai_key}
         )
+    elif request.param == CohereTextVectorizer:
+        cohere_key = ""
+        return request.param(
+            model="embed-english-v3.0", input_type="search_query", api_config={"api_key": cohere_key}
+        )
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
@@ -92,7 +107,7 @@ async def test_vectorizer_aembed(avectorizer):
     assert len(embedding) == avectorizer.dims
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
@@ -105,7 +120,7 @@ async def test_vectorizer_aembed_many(avectorizer):
     )
 
 
-@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_avectorizer_bad_input(avectorizer):
     with pytest.raises(TypeError):

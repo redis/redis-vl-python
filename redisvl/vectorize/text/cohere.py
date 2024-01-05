@@ -136,7 +136,7 @@ class CohereTextVectorizer(BaseVectorizer):
             preprocess: Optional[Callable] = None,
             as_buffer: bool = False,
         ) -> List[float]:
-            """Asynchronously embed a chunk of text using the OpenAI API.
+            """Asynchronously embed a chunk of text using the Cohere API.
 
             Args:
                 text (str): Chunk of text to embed.
