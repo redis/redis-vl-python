@@ -63,11 +63,11 @@ class CountQuery(BaseQuery):
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
         Examples:
-            >>> from redisvl.query import CountQuery
-            >>> from redisvl.query.filter import Tag
-            >>> t = Tag("brand") == "Nike"
-            >>> q = CountQuery(filter_expression=t)
-            >>> count = index.query(q)
+            from redisvl.query import CountQuery
+            from redisvl.query.filter import Tag
+            t = Tag("brand") == "Nike"
+            q = CountQuery(filter_expression=t)
+            count = index.query(q)
         """
         self.set_filter(filter_expression)
         self._params = params
@@ -115,10 +115,10 @@ class FilterQuery(BaseQuery):
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
         Examples:
-            >>> from redisvl.query import FilterQuery
-            >>> from redisvl.query.filter import Tag
-            >>> t = Tag("brand") == "Nike"
-            >>> q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
+            from redisvl.query import FilterQuery
+            from redisvl.query.filter import Tag
+            t = Tag("brand") == "Nike"
+            q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
         """
 
         super().__init__(return_fields, num_results)
