@@ -52,20 +52,22 @@ def test_filter_query():
     assert filter_query.get_filter() == new_filter_expression
 
     # Test set_paging functionality
-    filter_query.set_paging(5, 15)
+    filter_query.set_paging(5, 7)
     assert filter_query._first == 5
-    assert filter_query._limit == 15
+    assert filter_query._limit == 7
+    assert filter_query._num_results == 10
 
 
 def test_vector_query():
     # Create a vector query
     vector_query = VectorQuery(
-        sample_vector, "vector_field", ["field1", "field2"], dialect=3
+        sample_vector, "vector_field", ["field1", "field2"], dialect=3, num_results=10
     )
 
     # Check properties
     assert vector_query._vector == sample_vector
     assert vector_query._field == "vector_field"
+    assert vector_query._num_results == 10
     assert "field1" in vector_query._return_fields
     assert isinstance(vector_query.query, Query)
     assert isinstance(vector_query.params, dict)
@@ -78,9 +80,10 @@ def test_vector_query():
     assert vector_query.get_filter() == new_filter_expression
 
     # Test set_paging functionality
-    vector_query.set_paging(5, 15)
+    vector_query.set_paging(5, 7)
     assert vector_query._first == 5
-    assert vector_query._limit == 15
+    assert vector_query._limit == 7
+    assert vector_query._num_results == 10
 
 
 def test_range_query():
@@ -89,12 +92,13 @@ def test_range_query():
 
     # Create a RangeQuery instance
     range_query = RangeQuery(
-        sample_vector, "vector_field", ["field1"], filter_expression
+        sample_vector, "vector_field", ["field1"], filter_expression, num_results=10
     )
 
     # Check properties
     assert range_query._vector == sample_vector
     assert range_query._field == "vector_field"
+    assert range_query._num_results == 10
     assert range_query.distance_threshold == 0.2
     assert "field1" in range_query._return_fields
     assert isinstance(range_query.query, Query)
@@ -107,6 +111,7 @@ def test_range_query():
     assert range_query.get_filter() == new_filter_expression
 
     # Test set_paging functionality
-    range_query.set_paging(5, 15)
+    range_query.set_paging(5, 7)
     assert range_query._first == 5
-    assert range_query._limit == 15
+    assert range_query._limit == 7
+    assert range_query._num_results == 10

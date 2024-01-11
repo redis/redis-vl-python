@@ -1,5 +1,3 @@
-from pprint import pprint
-
 import numpy as np
 import pytest
 from redis.commands.search.result import Result
@@ -135,26 +133,6 @@ def test_search_and_query(index):
     result = results.docs[0].__dict__
     result.pop("payload")
     assert processed_results[0] == results.docs[0].__dict__
-
-
-# def test_search_query(index):
-#     # *=>[KNN 7 @user_embedding $vector AS vector_distance]
-#     v = VectorQuery(
-#         [0.1, 0.1, 0.5],
-#         "user_embedding",
-#         return_fields=["user", "credit_score", "age", "job"],
-#         num_results=7,
-#     )
-#     results = index.search(v.query, query_params=v.params)
-#     assert isinstance(results, Result)
-#     assert len(results.docs) == 7
-
-#     processed_results = index.query(v)
-#     assert len(processed_results) == 7
-#     assert isinstance(processed_results[0], dict)
-#     result = results.docs[0].__dict__
-#     result.pop("payload")
-#     assert processed_results[0] == results.docs[0].__dict__
 
 
 def test_range_query(index):
@@ -365,10 +343,10 @@ def test_filter_combinations(index, query):
     search(query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749")
 
 
-def test_query_all_vector_query(index, vector_query):
+def test_query_batch_vector_query(index, vector_query):
     batch_size = 2
     all_results = []
-    for i, batch in enumerate(index.query_all(vector_query, batch_size), start=1):
+    for i, batch in enumerate(index.query_batch(vector_query, batch_size), start=1):
         all_results.extend(batch)
         assert len(batch) <= batch_size
 
@@ -378,10 +356,10 @@ def test_query_all_vector_query(index, vector_query):
     assert i == expected_iterations
 
 
-def test_query_all_filter_query(index, filter_query):
+def test_query_batch_filter_query(index, filter_query):
     batch_size = 3
     all_results = []
-    for i, batch in enumerate(index.query_all(filter_query, batch_size), start=1):
+    for i, batch in enumerate(index.query_batch(filter_query, batch_size), start=1):
         all_results.extend(batch)
         assert len(batch) <= batch_size
 
@@ -392,10 +370,10 @@ def test_query_all_filter_query(index, filter_query):
     assert all(item["credit_score"] == "high" for item in all_results)
 
 
-def test_query_all_range_query(index, range_query):
+def test_query_batch_range_query(index, range_query):
     batch_size = 1
     all_results = []
-    for i, batch in enumerate(index.query_all(range_query, batch_size), start=1):
+    for i, batch in enumerate(index.query_batch(range_query, batch_size), start=1):
         all_results.extend(batch)
         assert len(batch) <= batch_size
 
