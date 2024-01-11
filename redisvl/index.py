@@ -1,6 +1,17 @@
 import json
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Union,
+)
 
 if TYPE_CHECKING:
     from redis.commands.search.document import Document
@@ -477,26 +488,81 @@ class SearchIndex:
         )
         return results
 
+    def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+        """Execute a query and process results."""
+        results = self.search(query.query, query_params=query.params)
+        # post process the results
+        return process_results(
+            results, query=query, storage_type=self.schema.storage_type
+        )
+
     @check_modules_present("_redis_conn")
     @check_index_exists()
-    def query(self, query: "BaseQuery") -> List[Dict[str, Any]]:
-        """Run a query on this index.
+    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+        """Execute a query on the index.
 
-        This is similar to the search method, but takes a BaseQuery
-        object directly (does not allow for the usage of a raw
-        redis query string) and post-processes results of the search.
+        This method takes a BaseQuery object directly, runs the search, and
+        handles post-processing of the search.
 
         Args:
             query (BaseQuery): The query to run.
 
         Returns:
             List[Result]: A list of search results.
+
+        Example:
+            results = index.query(query)
         """
-        results = self.search(query.query, query_params=query.params)
-        # post process the results
-        return process_results(
-            results, query=query, storage_type=self.schema.storage_type
-        )
+        return self._query(query)
+
+    @check_modules_present("_redis_conn")
+    @check_index_exists()
+    def query_batch(self, query: BaseQuery, batch_size: int = 30) -> Generator:
+        """Execute a query on the index with batching.
+
+        This method takes a BaseQuery object directly, handles optional paging
+        support, and post-processing of the search results.
+
+        Args:
+            query (BaseQuery): The query to run.
+            batch_size (int): The size of batches to return on each iteration.
+
+        Returns:
+            List[Result]: A list of search results.
+
+        Raises:
+            TypeError: If the batch size is not an integer
+            ValueError: If the batch size is less than or equal to zero.
+
+        Example:
+            for batch in index.query_batch(query, batch_size=10):
+                # process batched results
+                pass
+        """
+        if not isinstance(batch_size, int):
+            raise TypeError("batch_size must be an integer")
+
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0")
+
+        first = 0
+        while True:
+            query.set_paging(first, batch_size)
+            batch_results = self._query(query)
+            if not batch_results:
+                break
+            yield batch_results
+            # increment the pagination tracker
+            first += batch_size
+
+    @check_modules_present("_redis_conn")
+    def listall(self) -> List[str]:
+        """List all search indices in Redis database.
+
+        Returns:
+            List[str]: The list of indices in the database.
+        """
+        return convert_bytes(self._redis_conn.client.execute_command("FT._LIST"))  # type: ignore
 
     @check_modules_present("_redis_conn")
     def exists(self) -> bool:
@@ -505,8 +571,7 @@ class SearchIndex:
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = convert_bytes(self._redis_conn.client.execute_command("FT._LIST"))  # type: ignore
-        return self.name in indices
+        return self.name in self.listall()
 
     @check_modules_present("_redis_conn")
     @check_index_exists()
@@ -648,25 +713,84 @@ class SearchIndex:
         )
         return results
 
+    async def _aquery(self, query: BaseQuery) -> List[Dict[str, Any]]:
+        """Asynchronously execute a query and process results."""
+        results = await self.asearch(query.query, query_params=query.params)
+        # post process the results
+        return process_results(
+            results, query=query, storage_type=self.schema.storage_type
+        )
+
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
-    async def aquery(self, query: "BaseQuery") -> List[Dict[str, Any]]:
-        """Run a query on this index.
+    async def aquery(self, query: BaseQuery) -> List[Dict[str, Any]]:
+        """Asynchronously execute a query on the index.
 
-        This is similar to the search method, but takes a BaseQuery
-        object directly (does not allow for the usage of a raw
-        redis query string) and post-processes results of the search.
+        This method takes a BaseQuery object directly, runs the search, and
+        handles post-processing of the search.
 
         Args:
             query (BaseQuery): The query to run.
 
         Returns:
             List[Result]: A list of search results.
+
+        Example:
+            results = await aindex.query(query)
         """
-        results = await self.asearch(query.query, query_params=query.params)
-        # post process the results
-        return process_results(
-            results, query=query, storage_type=self.schema.storage_type
+        return await self._aquery(query)
+
+    @check_async_modules_present("_redis_conn")
+    @check_async_index_exists()
+    async def aquery_batch(
+        self, query: BaseQuery, batch_size: int = 30
+    ) -> AsyncGenerator:
+        """Execute a query on the index with batching.
+
+        This method takes a BaseQuery object directly, handles optional paging
+        support, and post-processing of the search results.
+
+        Args:
+            query (BaseQuery): The query to run.
+            batch_size (int): The size of batches to return on each iteration.
+
+        Returns:
+            List[Result]: A list of search results.
+
+        Raises:
+            TypeError: If the batch size is not an integer
+            ValueError: If the batch size is less than or equal to zero.
+
+        Example:
+            async for batch in index.aquery_batch(query, batch_size=10):
+                # process batched results
+                pass
+        """
+        if not isinstance(batch_size, int):
+            raise TypeError("batch_size must be an integer")
+
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0")
+
+        first = 0
+        while True:
+            query.set_paging(first, batch_size)
+            batch_results = await self._aquery(query)
+            if not batch_results:
+                break
+            yield batch_results
+            # increment the pagination tracker
+            first += batch_size
+
+    @check_async_modules_present("_redis_conn")
+    async def alistall(self) -> List[str]:
+        """List all search indices in Redis database.
+
+        Returns:
+            List[str]: The list of indices in the database.
+        """
+        return convert_bytes(
+            await self._redis_conn.client.execute_command("FT._LIST")  # type: ignore
         )
 
     @check_async_modules_present("_redis_conn")
@@ -676,8 +800,7 @@ class SearchIndex:
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        indices = await self._redis_conn.client.execute_command("FT._LIST")  # type: ignore
-        return self.name in convert_bytes(indices)
+        return self.name in await self.alistall()
 
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
