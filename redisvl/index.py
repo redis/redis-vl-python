@@ -333,21 +333,20 @@ class SearchIndex:
         self._redis_conn.set_client(client)
         return self
 
-    def key(self, key_value: str) -> str:
+    def key(self, id: str) -> str:
         """Create a redis key as a combination of an index key prefix (optional)
-        and specified key value. The key value is typically a unique identifier,
-        created at random, or derived from some specified metadata.
+        and specified id. The id is typically either a unique identifier, or
+        derived from some domain-specific metadata combination (like a document
+        id or chunk id).
 
         Args:
-            key_value (str): The specified unique identifier for a particular
+            id (str): The specified unique identifier for a particular
                 document indexed in Redis.
 
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(
-            key_value, self.schema.prefix, self.schema.key_separator
-        )
+        return self._storage._key(id, self.schema.prefix, self.schema.key_separator)
 
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
@@ -407,9 +406,10 @@ class SearchIndex:
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
-        **kwargs,
-    ):
-        """Load a batch of objects to Redis.
+    ) -> List[str]:
+        """
+        Load a batch of objects to Redis. Returns the list of keys loaded
+        to Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -425,18 +425,17 @@ class SearchIndex:
                 a single Redis pipeline execution. Defaults to class's
                 default batch size.
 
+        Returns:
+            List[str]: List of keys loaded to Redis.
+
         Raises:
             ValueError: If the length of provided keys does not match the length
                 of objects.
 
         Example:
-            data = [{"foo": "bar"}, {"test": "values"}]
-            def func(record: dict):
-                record["new"] = "value"
-                return record
-            index.load(data, preprocess=func)
+            keys = index.load([{"test": "foo"}, {"test": "bar"}])
         """
-        self._storage.write(
+        return self._storage.write(
             self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
@@ -445,6 +444,21 @@ class SearchIndex:
             preprocess=preprocess,
             batch_size=batch_size,
         )
+
+    def fetch(self, id: str) -> Dict[str, Any]:
+        """
+        Fetch an object from Redis by id. The id is typically either a
+        unique identifier, or derived from some domain-specific metadata
+        combination (like a document id or chunk id).
+
+        Args:
+            id (str): The specified unique identifier for a particular
+                document indexed in Redis.
+
+        Returns:
+            Dict[str, Any]: The fetched object.
+        """
+        return convert_bytes(self._redis_conn.client.hgetall(self.key(id)))  # type: ignore
 
     @check_modules_present("_redis_conn")
     @check_index_exists()
@@ -562,9 +576,10 @@ class SearchIndex:
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
-        **kwargs,
-    ):
-        """Asynchronously load objects to Redis with concurrency control.
+    ) -> List[str]:
+        """
+        Asynchronously load objects to Redis with concurrency control. Returns
+        the list of keys loaded to Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -580,18 +595,17 @@ class SearchIndex:
                 concurrent write operations. Defaults to class's default
                 concurrency level.
 
+        Returns:
+            List[str]: List of keys loaded to Redis.
+
         Raises:
             ValueError: If the length of provided keys does not match the
                 length of objects.
 
         Example:
-            data = [{"foo": "bar"}, {"test": "values"}]
-            async def func(record: dict):
-                record["new"] = "value"
-                return record
-            await index.load(data, preprocess=func)
+            keys = await index.aload([{"test": "foo"}, {"test": "bar"}])
         """
-        await self._storage.awrite(
+        return await self._storage.awrite(
             self._redis_conn.client,  # type: ignore
             objects=data,
             key_field=key_field,
@@ -600,6 +614,22 @@ class SearchIndex:
             preprocess=preprocess,
             concurrency=concurrency,
         )
+
+    async def afetch(self, id: str) -> Dict[str, Any]:
+        """
+        Asynchronously etch an object from Redis by id. The id is typically
+        either a unique identifier, or derived from some domain-specific
+        metadata
+        combination (like a document id or chunk id).
+
+        Args:
+            id (str): The specified unique identifier for a particular
+                document indexed in Redis.
+
+        Returns:
+            Dict[str, Any]: The fetched object.
+        """
+        return convert_bytes(await self._redis_conn.client.hgetall(self.key(id)))  # type: ignore
 
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()

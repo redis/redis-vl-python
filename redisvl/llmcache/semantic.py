@@ -15,6 +15,7 @@ class SemanticCacheSchema(IndexSchema):
     """RedisVL index schema for the SemanticCache."""
 
     # User should not be able to change these for the default LLMCache
+    entry_id_field_name: str = "id"
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
     response_field_name: str = "response"
@@ -302,7 +303,7 @@ class SemanticCache(BaseLLMCache):
         for result in results:
             # Check against semantic distance threshold
             if float(result["vector_distance"]) < self._distance_threshold:
-                self._refresh_ttl(result["id"])
+                self._refresh_ttl(result[self._schema.entry_id_field_name])
                 cache_hits.append({key: result[key] for key in return_fields})
         return cache_hits
 
@@ -328,7 +329,7 @@ class SemanticCache(BaseLLMCache):
         vector = vector or self._vectorize_prompt(prompt)
         # TODO should we work to make this flexible?
         payload = {
-            "id": self.hash_input(prompt),
+            self._schema.entry_id_field_name: self.hash_input(prompt),
             self._schema.prompt_field_name: prompt,
             self._schema.response_field_name: response,
             self._schema.vector_field_name: array_to_buffer(vector),
@@ -337,7 +338,9 @@ class SemanticCache(BaseLLMCache):
             payload.update(metadata)
 
         # Load LLMCache entry with TTL
-        self._index.load(data=[payload], ttl=self._ttl, key_field="id")
+        _ = self._index.load(
+            data=[payload], ttl=self._ttl, key_field=self._schema.entry_id_field_name
+        )
 
     def _refresh_ttl(self, key: str) -> None:
         """Refreshes the time-to-live for the specified key."""
