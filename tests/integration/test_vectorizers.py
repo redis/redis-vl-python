@@ -12,32 +12,22 @@ from redisvl.vectorize.text import (
 @pytest.fixture
 def skip_vectorizer() -> bool:
     # os.getenv returns a string
-    return os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
+    v = os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
+    print(v, flush=True)
+    return v
 
 
 skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
 
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
-def vectorizer(request, openai_key, gcp_location, gcp_project_id):
-    # if skip_vectorizer:
-    #     pytest.skip("Skipping vectorizer tests")
-    # Here we use actual models for integration test
+def vectorizer(request):
     if request.param == HFTextVectorizer:
-        return request.param(model="sentence-transformers/all-mpnet-base-v2")
+        return request.param()
     elif request.param == OpenAITextVectorizer:
-        return request.param(
-            model="text-embedding-ada-002", api_config={"api_key": openai_key}
-        )
+        return request.param()
     elif request.param == VertexAITextVectorizer:
-        # also need to set GOOGLE_APPLICATION_CREDENTIALS env var
-        return request.param(
-            model="textembedding-gecko",
-            api_config={
-                "location": gcp_location,
-                "project_id": gcp_project_id,
-            },
-        )
+        return request.param()
 
 
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
@@ -77,9 +67,7 @@ def test_vectorizer_bad_input(vectorizer):
 def avectorizer(request, openai_key):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
-        return request.param(
-            model="text-embedding-ada-002", api_config={"api_key": openai_key}
-        )
+        return request.param()
 
 
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")

@@ -137,15 +137,14 @@ class SearchIndex:
     purpose-built methods for interacting with Redis as a vector database.
 
     Example:
-        >>> from redisvl.index import SearchIndex
-        >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
-        >>> index.create(overwrite=True)
-        >>> index.load(data) # data is an iterable of dictionaries
-        >>>
-        >>> # Use an async connection
-        >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
-        >>> await index.acreate(overwrite=True)
-        >>> await index.aload(data)
+        from redisvl.index import SearchIndex
+        index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
+        index.create(overwrite=True)
+        index.load(data) # data is an iterable of dictionaries
+        # Use an async connection
+        index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
+        await index.acreate(overwrite=True)
+        await index.aload(data)
     """
 
     _STORAGE_MAP = {
@@ -226,9 +225,9 @@ class SearchIndex:
                 args.
 
         Example:
-            >>> from redisvl.index import SearchIndex
-            >>> index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
-            >>> index.create(overwrite=True)
+            from redisvl.index import SearchIndex
+            index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
+            index.create(overwrite=True)
 
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
@@ -248,18 +247,18 @@ class SearchIndex:
                 args.
 
         Example:
-            >>> from redisvl.index import SearchIndex
-            >>> index = SearchIndex.from_dict({
-            >>>     "index": {
-            >>>         "name": "my-index",
-            >>>         "prefix": "rvl",
-            >>>         "storage_type": "hash",
-            >>>     },
-            >>>     "fields": {
-            >>>         "tag": [{"name": "doc-id"}]
-            >>>     }
-            >>> }, redis_url="redis://localhost:6379")
-            >>> index.create(overwrite=True)
+            from redisvl.index import SearchIndex
+            index = SearchIndex.from_dict({
+                "index": {
+                    "name": "my-index",
+                    "prefix": "rvl",
+                    "storage_type": "hash",
+                },
+                "fields": {
+                    "tag": [{"name": "doc-id"}]
+                }
+            }, redis_url="redis://localhost:6379")
+            index.create(overwrite=True)
 
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
@@ -289,10 +288,10 @@ class SearchIndex:
                 Redis client. Defaults to `False`.
 
         Example:
-            >>> # standard sync Redis connection
-            >>> index.connect(redis_url="redis://localhost:6379")
-            >>> # async Redis connection
-            >>> index.connect(redis_url="redis://localhost:6379", use_async=True)
+            # standard sync Redis connection
+            index.connect(redis_url="redis://localhost:6379")
+            # async Redis connection
+            index.connect(redis_url="redis://localhost:6379", use_async=True)
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to the Redis
@@ -320,14 +319,13 @@ class SearchIndex:
                 client instance to be used for the connection.
 
         Example:
-            >>> import redis
-            >>> r = redis.Redis.from_url("redis://localhost:6379")
-            >>> index.set_client(r)
-            >>> # async Redis client
-            >>> import redis.asyncio as aredis
-            >>> r = aredis.Redis.from_url("redis://localhost:6379")
-            >>> index.set_client(r)
-
+            import redis
+            r = redis.Redis.from_url("redis://localhost:6379")
+            index.set_client(r)
+            # async Redis client
+            import redis.asyncio as aredis
+            r = aredis.Redis.from_url("redis://localhost:6379")
+            index.set_client(r)
 
         Raises:
             TypeError: If the provided client is not valid.
@@ -432,11 +430,11 @@ class SearchIndex:
                 of objects.
 
         Example:
-            >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> def func(record: dict):
-            >>>     record["new"] = "value"
-            >>>     return record
-            >>> index.load(data, preprocess=func)
+            data = [{"foo": "bar"}, {"test": "values"}]
+            def func(record: dict):
+                record["new"] = "value"
+                return record
+            index.load(data, preprocess=func)
         """
         self._storage.write(
             self._redis_conn.client,  # type: ignore
@@ -587,11 +585,11 @@ class SearchIndex:
                 length of objects.
 
         Example:
-            >>> data = [{"foo": "bar"}, {"test": "values"}]
-            >>> async def func(record: dict):
-            >>>     record["new"] = "value"
-            >>>     return record
-            >>> await index.load(data, preprocess=func)
+            data = [{"foo": "bar"}, {"test": "values"}]
+            async def func(record: dict):
+                record["new"] = "value"
+                return record
+            await index.load(data, preprocess=func)
         """
         await self._storage.awrite(
             self._redis_conn.client,  # type: ignore
