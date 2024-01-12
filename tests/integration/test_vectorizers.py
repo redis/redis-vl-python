@@ -32,7 +32,6 @@ def vectorizer(request):
         return request.param()
 
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
-@pytest.mark.run
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     if isinstance(vectorizer, CohereTextVectorizer):
@@ -77,7 +76,7 @@ def avectorizer(request, openai_key):
     if request.param == OpenAITextVectorizer:
         return request.param()
 
-# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
@@ -87,7 +86,7 @@ async def test_vectorizer_aembed(avectorizer):
     assert len(embedding) == avectorizer.dims
 
 
-# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
@@ -100,7 +99,7 @@ async def test_vectorizer_aembed_many(avectorizer):
     )
 
 
-# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
 async def test_avectorizer_bad_input(avectorizer):
     with pytest.raises(TypeError):
