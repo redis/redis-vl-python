@@ -61,3 +61,22 @@ VertexAITextVectorizer
    :inherited-members:
    :members:
 
+
+CohereTextVectorizer
+======================
+
+.. _coheretextvectorizer_api:
+
+.. currentmodule:: redisvl.vectorize.text.cohere
+
+.. autosummary::
+
+    CohereTextVectorizer.__init__
+    CohereTextVectorizer.embed
+    CohereTextVectorizer.embed_many
+
+.. autoclass:: CohereTextVectorizer
+   :show-inheritance:
+   :inherited-members:
+   :members:
+
