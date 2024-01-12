@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -7,11 +8,34 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class VertexAITextVectorizer(BaseVectorizer):
-    """VertexAI text vectorizer.
+    """
+    The VertexAITextVectorizer uses Google's VertexAI Palm 2 embedding model
+    API to create text embeddings. This vectorizer is tailored for use in
+    environments where integration with Google Cloud Platform (GCP) services
+    is a key requirement.
 
-    This vectorizer uses the VertexAI Palm 2 embedding model API to create
-    embeddings for text. It requires an active GCP project, location, and
-    application credentials.
+    Utilizing this vectorizer requires an active GCP project and location
+    (region), along with appropriate application credentials. These can be
+    provided through the `api_config` dictionary or by setting the corresponding
+    environment variables. Additionally, the vertexai python client must be
+    installed with `pip install google-cloud-aiplatform>=1.26`.
+
+    Example:
+        # Synchronous embedding of a single text
+        vectorizer = VertexAITextVectorizer(
+            model="textembedding-gecko",
+            api_config={
+                "project_id": "your_gcp_project_id",
+                "location": "your_gcp_location",
+                "google_application_credentials": "path_to_your_creds"
+            })
+        embedding = vectorizer.embed("Hello, world!")
+
+        # Asynchronous batch embedding of multiple texts
+        embeddings = await vectorizer.embed_many(
+            ["Hello, world!", "Goodbye, world!"],
+            batch_size=2
+        )
     """
 
     def __init__(
@@ -20,9 +44,10 @@ class VertexAITextVectorizer(BaseVectorizer):
         """Initialize the VertexAI vectorizer.
 
         Args:
-            model (str): Model to use for embedding.
-            api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+            model (str): Model to use for embedding. Defaults to
+                'textembedding-gecko'.
+            api_config (Optional[Dict], optional): Dictionary containing the
+                API key. Defaults to None.
 
         Raises:
             ImportError: If the google-cloud-aiplatform library is not installed.
@@ -30,25 +55,49 @@ class VertexAITextVectorizer(BaseVectorizer):
         """
         super().__init__(model)
 
-        if (
-            not api_config
-            or "project_id" not in api_config
-            or "location" not in api_config
-        ):
+        # Fetch the project_id and location from api_config or environment variables
+        project_id = (
+            api_config.get("project_id") if api_config else os.getenv("GCP_PROJECT_ID")
+        )
+        location = (
+            api_config.get("location") if api_config else os.getenv("GCP_LOCATION")
+        )
+
+        if not project_id:
             raise ValueError(
-                "GCP project id and valid location are required in the api_config"
+                "Missing project_id. "
+                "Provide the id in the api_config with key 'project_id' "
+                "or set the GCP_PROJECT_ID environment variable."
             )
 
+        if not location:
+            raise ValueError(
+                "Missing location. "
+                "Provide the location (region) in the api_config with key 'location' "
+                "or set the GCP_LOCATION environment variable."
+            )
+
+        # Check for Google Application Credentials
+        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
+            creds_path = (
+                api_config.get("google_application_credentials") if api_config else None
+            )
+            if creds_path:
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+            else:
+                raise ValueError(
+                    "Missing Google Application Credentials. "
+                    "Provide the path to the credentials JSON file in the api_config with key 'google_application_credentials' "
+                    "or set the GOOGLE_APPLICATION_CREDENTIALS environment variable."
+                )
         try:
             import vertexai
             from vertexai.preview.language_models import TextEmbeddingModel
 
-            vertexai.init(
-                project=api_config["project_id"], location=api_config["location"]
-            )
+            vertexai.init(project=project_id, location=location)
         except ImportError:
             raise ImportError(
-                "VertexAI vectorizer requires the google-cloud-aiplatform library."
+                "VertexAI vectorizer requires the google-cloud-aiplatform library. "
                 "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
 

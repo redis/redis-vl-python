@@ -127,8 +127,8 @@ class Tag(FilterField):
             other (Union[List[str], str]): The tag(s) to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Tag
-            >>> filter = Tag("brand") == "nike"
+            from redisvl.query.filter import Tag
+            filter = Tag("brand") == "nike"
         """
         self._set_tag_value(other, FilterOperator.EQ)
         return FilterExpression(str(self))
@@ -141,8 +141,8 @@ class Tag(FilterField):
             other (Union[List[str], str]): The tag(s) to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Tag
-            >>> filter = Tag("brand") != "nike"
+            from redisvl.query.filter import Tag
+            filter = Tag("brand") != "nike"
         """
         self._set_tag_value(other, FilterOperator.NE)
         return FilterExpression(str(self))
@@ -224,8 +224,8 @@ class Geo(FilterField):
             other (GeoSpec): The geographic spec to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Geo, GeoRadius
-            >>> filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
+            from redisvl.query.filter import Geo, GeoRadius
+            filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)  # type: ignore
         return FilterExpression(str(self))
@@ -238,8 +238,8 @@ class Geo(FilterField):
             other (GeoSpec): The geographic spec to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Geo, GeoRadius
-            >>> filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
+            from redisvl.query.filter import Geo, GeoRadius
+            filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)  # type: ignore
         return FilterExpression(str(self))
@@ -283,8 +283,8 @@ class Num(FilterField):
             other (int): The value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("zipcode") == 90210
+            from redisvl.query.filter import Num
+            filter = Num("zipcode") == 90210
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
@@ -296,8 +296,8 @@ class Num(FilterField):
             other (int): The value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("zipcode") != 90210
+            from redisvl.query.filter import Num
+            filter = Num("zipcode") != 90210
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
@@ -309,8 +309,8 @@ class Num(FilterField):
             other (int): The value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") > 18
+            from redisvl.query.filter import Num
+            filter = Num("age") > 18
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
@@ -322,8 +322,8 @@ class Num(FilterField):
             other (int): The value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") < 18
+            from redisvl.query.filter import Num
+            filter = Num("age") < 18
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
         return FilterExpression(str(self))
@@ -335,8 +335,8 @@ class Num(FilterField):
             other (int): The value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") >= 18
+            from redisvl.query.filter import Num
+            filter = Num("age") >= 18
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
         return FilterExpression(str(self))
@@ -348,8 +348,8 @@ class Num(FilterField):
             other (int): The value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Num
-            >>> filter = Num("age") <= 18
+            from redisvl.query.filter import Num
+            filter = Num("age") <= 18
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
@@ -393,8 +393,8 @@ class Text(FilterField):
             other (str): The text value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Text
-            >>> filter = Text("job") == "engineer"
+            from redisvl.query.filter import Text
+            filter = Text("job") == "engineer"
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
@@ -409,8 +409,8 @@ class Text(FilterField):
             other (str): The text value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Text
-            >>> filter = Text("job") != "engineer"
+            from redisvl.query.filter import Text
+            filter = Text("job") != "engineer"
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
@@ -425,11 +425,11 @@ class Text(FilterField):
             other (str): The text value to filter on.
 
         Example:
-            >>> from redisvl.query.filter import Text
-            >>> filter = Text("job") % "engine*"         # suffix wild card match
-            >>> filter = Text("job") % "%%engine%%"      # fuzzy match w/ Levenshtein Distance
-            >>> filter = Text("job") % "engineer|doctor" # contains either term in field
-            >>> filter = Text("job") % "engineer doctor" # contains both terms in field
+            from redisvl.query.filter import Text
+            filter = Text("job") % "engine*"         # suffix wild card match
+            filter = Text("job") % "%%engine%%"      # fuzzy match w/ Levenshtein Distance
+            filter = Text("job") % "engineer|doctor" # contains either term in field
+            filter = Text("job") % "engineer doctor" # contains both terms in field
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
@@ -458,17 +458,17 @@ class FilterExpression:
 
     Examples:
 
-        >>> from redisvl.query.filter import Tag, Num
-        >>> brand_is_nike = Tag("brand") == "nike"
-        >>> price_is_over_100 = Num("price") < 100
-        >>> filter = brand_is_nike & price_is_over_100
-        >>> print(str(filter))
+        from redisvl.query.filter import Tag, Num
+        brand_is_nike = Tag("brand") == "nike"
+        price_is_over_100 = Num("price") < 100
+        filter = brand_is_nike & price_is_over_100
+        print(str(filter))
         (@brand:{nike} @price:[-inf (100)])
 
     This can be combined with the VectorQuery class to create a query:
 
-        >>> from redisvl.query import VectorQuery
-        >>> v = VectorQuery(
+        from redisvl.query import VectorQuery
+        v = VectorQuery(
         ...     vector=[0.1, 0.1, 0.5, ...],
         ...     vector_field_name="product_embedding",
         ...     return_fields=["product_id", "brand", "price"],

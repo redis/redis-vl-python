@@ -2,7 +2,7 @@
 myst:
   html_meta:
     "description lang=en": |
-      User Guides for RedisVL users
+      User Guides for RedisVL
 ---
 
 # User Guides
