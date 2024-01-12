@@ -41,26 +41,30 @@ def vectorizer(request, openai_key, cohere_key, gcp_location, gcp_project_id):
             },
         )
     elif request.param == CohereTextVectorizer:
-        cohere_key = ""
         return request.param(
-            model="embed-english-v3.0", input_type="search_query", api_config={"api_key": cohere_key}
+            model="embed-english-v3.0", api_config={"api_key": cohere_key}
         )
 
 # @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.run
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
-    embedding = vectorizer.embed(text)
+    if isinstance(vectorizer, CohereTextVectorizer):
+        embedding = vectorizer.embed(text, input_type="search_document")
+    else:
+        embedding = vectorizer.embed(text)
 
     assert isinstance(embedding, list)
     assert len(embedding) == vectorizer.dims
 
 
-# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
-@pytest.mark.run
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
-    embeddings = vectorizer.embed_many(texts)
+    if isinstance(vectorizer, CohereTextVectorizer):
+        embeddings = vectorizer.embed_many(texts, input_type="search_document")
+    else:
+        embeddings = vectorizer.embed_many(texts)
 
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)
@@ -69,8 +73,7 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
-# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
-@pytest.mark.run
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_bad_input(vectorizer):
     with pytest.raises(TypeError):
         vectorizer.embed(1)
@@ -82,20 +85,13 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
-# @pytest.fixture(params=[OpenAITextVectorizer, CohereTextVectorizer])
-@pytest.fixture(params=[CohereTextVectorizer])
+@pytest.fixture(params=[OpenAITextVectorizer])
 def avectorizer(request, openai_key):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
         return request.param(
             model="text-embedding-ada-002", api_config={"api_key": openai_key}
         )
-    elif request.param == CohereTextVectorizer:
-        cohere_key = ""
-        return request.param(
-            model="embed-english-v3.0", input_type="search_query", api_config={"api_key": cohere_key}
-        )
-
 
 # @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio

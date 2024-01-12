@@ -12,12 +12,11 @@ class CohereTextVectorizer(BaseVectorizer):
     can be obtained from <PUT URL HERE>
     """
 
-    def __init__(self, model: str, input_type: str, truncate: Optional[str] = 'NONE', api_config: Optional[Dict] = None):
+    def __init__(self, model: str, truncate: Optional[str] = 'NONE', api_config: Optional[Dict] = None):
         """Initialize the Cohere vectorizer. Visit https://cohere.ai/embed to learn about embeddings.
 
         Args:
             model (str): Model to use for embedding.
-            input_type (str): Type of input to the model. One of "classification", "clustering", "search_query" or "search_document".
             kwargs  (Dict): Additional arguments to pass to the Cohere API.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
@@ -40,16 +39,14 @@ class CohereTextVectorizer(BaseVectorizer):
             raise ValueError("Cohere API key is required in api_config")
 
         self._model = model
-        self._input_type = input_type
         self.truncate = truncate
         self._model_client = cohere.Client(api_config["api_key"])
-        self._amodel_client = cohere.AsyncClient(api_config["api_key"])
         self._dims = self._set_model_dims()
     
     def _set_model_dims(self) -> int:
         try:
             embedding = self._model_client.embed(
-                texts=["dimension test"], model=self._model, input_type=self._input_type
+                texts=["dimension test"], model=self._model, input_type="search_document",
             ).embeddings[0]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the Cohere API: {str(ke)}")
@@ -61,6 +58,7 @@ class CohereTextVectorizer(BaseVectorizer):
     def embed(
         self,
         text: str,
+        input_type: str, 
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
     ) -> List[float]:
@@ -68,6 +66,9 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Args:
             text (str): Chunk of text to embed.
+            input_type (str): Specifies the type of input you're giving to the model. 
+                Not required for older versions of the embedding models (i.e. anything lower than v3), but is required 
+                for more recent versions (i.e. anything bigger than v2).
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
             as_buffer (bool, optional): Whether to convert the raw embedding
@@ -81,10 +82,11 @@ class CohereTextVectorizer(BaseVectorizer):
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
-
+        if not isinstance(input_type, str):
+            raise TypeError("Must pass in a str value for input_type. See https://docs.cohere.com/reference/embed.")
         if preprocess:
             text = preprocess(text)
-        embedding = self._model_client.embed(texts=[text], model=self._model, input_type=self._input_type, truncate=self.truncate).embeddings[0]
+        embedding = self._model_client.embed(texts=[text], model=self._model, input_type=input_type, truncate=self.truncate).embeddings[0]
         return self._process_embedding(embedding, as_buffer)
 
     @retry(
@@ -95,6 +97,7 @@ class CohereTextVectorizer(BaseVectorizer):
     def embed_many(
         self,
         texts: List[str],
+        input_type: str, 
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
@@ -103,6 +106,9 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Args:
             texts (List[str]): List of text chunks to embed.
+            input_type (str): Specifies the type of input you're giving to the model. 
+                Not required for older versions of the embedding models (i.e. anything lower than v3), but is required 
+                for more recent versions (i.e. anything bigger than v2).            
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
@@ -120,47 +126,13 @@ class CohereTextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-
+        if not isinstance(input_type, str):
+            raise TypeError("Must pass in a str value for input_type. See https://docs.cohere.com/reference/embed.")
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._model_client.embed(texts=batch, model=self._model, input_type=self._input_type)
+            response = self._model_client.embed(texts=batch, model=self._model, input_type=input_type)
             embeddings += [
                 self._process_embedding(embedding, as_buffer)
                 for embedding in response.embeddings
             ]
         return embeddings
-
-    async def aembed(
-            self,
-            text: str,
-            preprocess: Optional[Callable] = None,
-            as_buffer: bool = False,
-        ) -> List[float]:
-            """Asynchronously embed a chunk of text using the Cohere API.
-
-            Args:
-                text (str): Chunk of text to embed.
-                preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                    perform before vectorization. Defaults to None.
-                as_buffer (bool, optional): Whether to convert the raw embedding
-                    to a byte string. Defaults to False.
-
-            Returns:
-                List[float]: Embedding.
-
-            Raises:
-                TypeError: If the wrong input type is passed in for the test.
-            """
-            if not isinstance(text, str):
-                raise TypeError("Must pass in a str value to embed.")
-
-            if preprocess:
-                text = preprocess(text)
-            
-            response = await self._amodel_client.embed(texts=[text], model=self._model, input_type=self._input_type)
-            embedding = response.embeddings[0]
-            print(embedding)
-            print(type(embedding))
-            print('=========')
-            return self._process_embedding(embedding, as_buffer)
-
