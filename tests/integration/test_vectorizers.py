@@ -3,10 +3,10 @@ import os
 import pytest
 
 from redisvl.vectorize.text import (
+    CohereTextVectorizer,
     HFTextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
-    CohereTextVectorizer
 )
 
 
@@ -20,7 +20,15 @@ def skip_vectorizer() -> bool:
 
 skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
-@pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer, CohereTextVectorizer])
+
+@pytest.fixture(
+    params=[
+        HFTextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        CohereTextVectorizer,
+    ]
+)
 def vectorizer(request):
     if request.param == HFTextVectorizer:
         return request.param()
@@ -30,6 +38,7 @@ def vectorizer(request):
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
+
 
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed(vectorizer):
@@ -75,6 +84,7 @@ def avectorizer(request, openai_key):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
         return request.param()
+
 
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.asyncio
