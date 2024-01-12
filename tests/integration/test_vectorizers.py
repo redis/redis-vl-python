@@ -20,7 +20,6 @@ def skip_vectorizer() -> bool:
 
 skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
-
 @pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer, CohereTextVectorizer])
 def vectorizer(request):
     if request.param == HFTextVectorizer:
@@ -30,11 +29,9 @@ def vectorizer(request):
     elif request.param == VertexAITextVectorizer:
         return request.param()
     elif request.param == CohereTextVectorizer:
-        return request.param(
-            model="embed-english-v3.0", api_config={"api_key": cohere_key}
-        )
+        return request.param()
 
-# @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
+@pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 @pytest.mark.run
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."

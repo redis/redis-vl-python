@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
@@ -5,19 +6,24 @@ from tenacity.retry import retry_if_not_exception_type
 from redisvl.vectorize.base import BaseVectorizer
 
 class CohereTextVectorizer(BaseVectorizer):
-    """Cohere text vectorizer.
+    """
+    The CohereTextVectorizer class utilizes Cohere's API to generate embeddings
+    for text data.
 
-    This vectorizer uses the Cohere API to create embeddings for text. It
-    requires an API key to be passed to the initialization. The API key
-    can be obtained from <PUT URL HERE>
+    This vectorizer is designed to interact with Cohere's /embed API, requiring an API key for authentication. The key 
+    can be provided directly in the `api_config` dictionary or through the `COHERE_API_KEY` environment variable. Users 
+    must obtain an API key from Cohere's website (https://dashboard.cohere.com/). Additionally, the `cohere` python 
+    client must be installed with `pip install cohere`.
+
+    The vectorizer supports only synchronous operations, allows for batch processing of texts and flexibility in 
+    handling preprocessing tasks.
     """
 
-    def __init__(self, model: str, truncate: Optional[str] = 'NONE', api_config: Optional[Dict] = None):
+    def __init__(self, model: str = 'embed-english-v3.0', api_config: Optional[Dict] = None):
         """Initialize the Cohere vectorizer. Visit https://cohere.ai/embed to learn about embeddings.
 
         Args:
-            model (str): Model to use for embedding.
-            kwargs  (Dict): Additional arguments to pass to the Cohere API.
+            model (str): Model to use for embedding. Defaults to 'embed-english-v3.0'.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
 
@@ -34,13 +40,19 @@ class CohereTextVectorizer(BaseVectorizer):
             raise ImportError(
                 "Cohere vectorizer requires the cohere library. Please install with `pip install cohere`"
             )
-
-        if not api_config or "api_key" not in api_config:
-            raise ValueError("Cohere API key is required in api_config")
-
+    
+        # Fetch the API key from api_config or environment variable
+        api_key = (
+            api_config.get("api_key") if api_config else os.getenv("COHERE_API_KEY")
+        )
+        if not api_key:
+            raise ValueError(
+                "Cohere API key is required. "
+                "Provide it in api_config or set the COHERE_API_KEY environment variable."
+            )
+        
         self._model = model
-        self.truncate = truncate
-        self._model_client = cohere.Client(api_config["api_key"])
+        self._model_client = cohere.Client(api_key)
         self._dims = self._set_model_dims()
     
     def _set_model_dims(self) -> int:
@@ -86,7 +98,7 @@ class CohereTextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a str value for input_type. See https://docs.cohere.com/reference/embed.")
         if preprocess:
             text = preprocess(text)
-        embedding = self._model_client.embed(texts=[text], model=self._model, input_type=input_type, truncate=self.truncate).embeddings[0]
+        embedding = self._model_client.embed(texts=[text], model=self._model, input_type=input_type).embeddings[0]
         return self._process_embedding(embedding, as_buffer)
 
     @retry(
