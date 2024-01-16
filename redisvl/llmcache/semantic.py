@@ -1,11 +1,12 @@
 import warnings
-from typing import Any, Dict, List, Optional, Union
+
+from typing import Any, Dict, List, Optional
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
-from redisvl.query import VectorQuery
+from redisvl.query import RangeQuery
 from redisvl.schema import IndexSchema
-from redisvl.schema.fields import BaseField, BaseVectorField
+from redisvl.schema.fields import BaseVectorField
 from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
@@ -19,6 +20,7 @@ class SemanticCacheSchema(IndexSchema):
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
     response_field_name: str = "response"
+    metadata_field_name: str = "metadata"
 
     def __init__(
         self,
@@ -117,6 +119,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(name, str) or not isinstance(prefix, str):
             raise ValueError("A valid index name and prefix must be provided.")
 
+        # build schema
         self._schema = SemanticCacheSchema(
             name=name, prefix=prefix, vector_dims=vectorizer.dims, **kwargs
         )
@@ -126,7 +129,16 @@ class SemanticCache(BaseLLMCache):
         self.set_ttl(ttl)
         self.set_threshold(distance_threshold)
 
-        # build search index
+        # add default return fields
+        self.default_return_fields = [
+            self._schema.entry_id_field_name,
+            self._schema.prompt_field_name,
+            self._schema.response_field_name,
+            self._schema.vector_field_name,
+            self._schema.metadata_field_name,
+        ]
+
+        # build underlying search index
         self._index = SearchIndex(
             schema=self._schema, redis_url=redis_url, connection_args=connection_args
         )
@@ -210,6 +222,52 @@ class SemanticCache(BaseLLMCache):
                 pipe.delete(key)
             pipe.execute()
 
+    def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
+        """Converts a text prompt to its vector representation using the
+        configured vectorizer."""
+        if not isinstance(prompt, str):
+            raise TypeError("Prompt must be a string.")
+        return self._vectorizer.embed(prompt)
+
+    def _search_cache(
+        self,
+        vector: List[float],
+        return_fields: List[str],
+        num_results: int
+    ) -> List[Dict[str, Any]]:
+        """Searches the cache for similar vectors and returns the specified
+        fields for each hit."""
+        # Setup and type checks
+        if not isinstance(vector, list):
+            raise TypeError("Vector must be a list of floats")
+
+        return_fields = return_fields or self.default_return_fields
+
+        if not isinstance(return_fields, list):
+            raise TypeError("return_fields must be a list of field names")
+
+        # Construct vector RangeQuery for the cache check
+        query = RangeQuery(
+            vector=vector,
+            vector_field_name=self._schema.vector_field_name,
+            return_fields=return_fields,
+            distance_threshold=self._distance_threshold,
+            num_results=num_results,
+            return_score=True,
+        )
+
+        # Gather and return the cache hits
+        cache_hits: List[Dict[str, Any]] = self._index.query(query)
+        # Process cache hits
+        for hit in cache_hits:
+            self._refresh_ttl(hit[self._schema.entry_id_field_name])
+            # Check for metadata and deserialize
+            if self._schema.metadata_field_name in hit:
+                hit[self._schema.metadata_field_name] = self.deserialize(
+                    hit[self._schema.metadata_field_name]
+                )
+        return cache_hits
+
     def check(
         self,
         prompt: Optional[str] = None,
@@ -233,7 +291,7 @@ class SemanticCache(BaseLLMCache):
             num_results (int, optional): The number of similar results to
                 return.
             return_fields (Optional[List[str]], optional): The fields to include
-                in each returned result. If None, defaults to ['response'].
+                in each returned result. If None, defaults to all fields.
 
         Raises:
             ValueError: If neither a prompt nor a vector is specified.
@@ -252,12 +310,6 @@ class SemanticCache(BaseLLMCache):
                 stacklevel=2,
             )
 
-        if return_fields is None:
-            return_fields = ["response"]
-
-        if not isinstance(return_fields, list):
-            raise TypeError("return_fields must be a list of field names")
-
         if not (prompt or vector):
             raise ValueError("Either prompt or vector must be specified.")
 
@@ -266,45 +318,6 @@ class SemanticCache(BaseLLMCache):
 
         # Check for cache hits by searching the cache
         cache_hits = self._search_cache(vector, return_fields, num_results)
-
-        if cache_hits == []:
-            # TODO: I think an exception here is too chatty from a user perspective. Let's just return empty?
-            pass
-
-        return cache_hits
-
-    def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
-        """Converts a text prompt to its vector representation using the
-        configured vectorizer."""
-        if not isinstance(prompt, str):
-            raise TypeError("Prompt must be a string.")
-        return self._vectorizer.embed(prompt)
-
-    def _search_cache(
-        self, vector: List[float], return_fields: List[str], num_results: int
-    ) -> List[Dict[str, Any]]:
-        """Searches the cache for similar vectors and returns the specified
-        fields for each hit."""
-        if not isinstance(vector, list):
-            raise TypeError("Vector must be a list of floats")
-
-        # Construct vector query for the cache
-        query = VectorQuery(
-            vector=vector,
-            vector_field_name=self._schema.vector_field_name,
-            return_fields=return_fields,
-            num_results=num_results,
-            return_score=True,
-        )
-
-        # Gather and return the cache hits
-        cache_hits: List[Dict[str, Any]] = []
-        results = self._index.query(query)
-        for result in results:
-            # Check against semantic distance threshold
-            if float(result["vector_distance"]) < self._distance_threshold:
-                self._refresh_ttl(result[self._schema.entry_id_field_name])
-                cache_hits.append({key: result[key] for key in return_fields})
         return cache_hits
 
     def store(
@@ -327,7 +340,7 @@ class SemanticCache(BaseLLMCache):
         """
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
-        # TODO should we work to make this flexible?
+        # TODO should we make this customizable?
         payload = {
             self._schema.entry_id_field_name: self.hash_input(prompt),
             self._schema.prompt_field_name: prompt,
@@ -335,7 +348,7 @@ class SemanticCache(BaseLLMCache):
             self._schema.vector_field_name: array_to_buffer(vector),
         }
         if metadata:
-            payload.update(metadata)
+            payload[self._schema.metadata_field_name] = self.serialize(metadata)
 
         # Load LLMCache entry with TTL
         _ = self._index.load(

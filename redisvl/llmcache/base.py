@@ -1,7 +1,7 @@
 import hashlib
-from typing import List, Optional
+import json
 
-from redisvl.index import SearchIndex
+from typing import List, Optional, Dict, Any
 
 
 class BaseLLMCache:
@@ -59,3 +59,9 @@ class BaseLLMCache:
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
         return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+    def serialize(self, metadata: Dict[str, Any]) -> str:
+        return json.dumps(metadata)
+
+    def deserialize(self, metadata: str) -> Dict[str, Any]:
+        return json.loads(metadata)
