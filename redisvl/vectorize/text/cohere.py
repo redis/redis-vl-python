@@ -6,6 +6,9 @@ from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.vectorize.base import BaseVectorizer
 
+# ignore that cohere isn't imported
+# mypy: disable-error-code="name-defined"
+
 
 class CohereTextVectorizer(BaseVectorizer):
     """
@@ -20,6 +23,9 @@ class CohereTextVectorizer(BaseVectorizer):
     The vectorizer supports only synchronous operations, allows for batch processing of texts and flexibility in
     handling preprocessing tasks.
     """
+
+    # See https://docs.cohere.com/reference/embed for more options
+    DEFAULT_INPUT_TYPE: str = "search_document"
 
     def __init__(
         self, model: str = "embed-english-v3.0", api_config: Optional[Dict] = None
@@ -76,17 +82,21 @@ class CohereTextVectorizer(BaseVectorizer):
     def embed(
         self,
         text: str,
-        input_type: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
-        """Embed a chunk of text using the Cohere API.
+        """
+        Embed a chunk of text using the Cohere Embeddings API.
+
+        Optionally, provide a desired `input_type` as a `kwarg` to this method
+        that specifies the type of input you're giving to the model. Note this
+        is not required for older versions of the embedding models
+        (i.e. anything lower than v3), but is required for more recent
+        versions (i.e. anything bigger than v2).
 
         Args:
             text (str): Chunk of text to embed.
-            input_type (str): Specifies the type of input you're giving to the model.
-                Not required for older versions of the embedding models (i.e. anything lower than v3), but is required
-                for more recent versions (i.e. anything bigger than v2).
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
             as_buffer (bool, optional): Whether to convert the raw embedding
@@ -98,6 +108,8 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             TypeError: If the wrong input type is passed in for the text.
         """
+        input_type = kwargs.get("input_type", self.DEFAULT_INPUT_TYPE)
+
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
         if not isinstance(input_type, str):
@@ -119,18 +131,22 @@ class CohereTextVectorizer(BaseVectorizer):
     def embed_many(
         self,
         texts: List[str],
-        input_type: str,
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
-        """Embed many chunks of texts using the Cohere API.
+        """
+        Embed many chunks of text using the Cohere Embeddings API.
+
+        Optionally, provide a desired `input_type` as a `kwarg` to this method
+        that specifies the type of input you're giving to the model. Note this
+        is not required for older versions of the embedding models
+        (i.e. anything lower than v3), but is required for more recent
+        versions (i.e. anything bigger than v2).
 
         Args:
             texts (List[str]): List of text chunks to embed.
-            input_type (str): Specifies the type of input you're giving to the model.
-                Not required for older versions of the embedding models (i.e. anything lower than v3), but is required
-                for more recent versions (i.e. anything bigger than v2).
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
@@ -144,6 +160,8 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             TypeError: If the wrong input type is passed in for the test.
         """
+        input_type = kwargs.get("input_type", self.DEFAULT_INPUT_TYPE)
+
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):

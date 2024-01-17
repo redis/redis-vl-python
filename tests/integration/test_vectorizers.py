@@ -43,10 +43,7 @@ def vectorizer(request):
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
-    if isinstance(vectorizer, CohereTextVectorizer):
-        embedding = vectorizer.embed(text, input_type="search_document")
-    else:
-        embedding = vectorizer.embed(text)
+    embedding = vectorizer.embed(text)
 
     assert isinstance(embedding, list)
     assert len(embedding) == vectorizer.dims

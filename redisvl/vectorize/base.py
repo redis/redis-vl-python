@@ -28,6 +28,7 @@ class BaseVectorizer:
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         raise NotImplementedError
 
@@ -36,6 +37,7 @@ class BaseVectorizer:
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         raise NotImplementedError
 
@@ -45,6 +47,7 @@ class BaseVectorizer:
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         raise NotImplementedError
 
@@ -53,6 +56,7 @@ class BaseVectorizer:
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         raise NotImplementedError
 

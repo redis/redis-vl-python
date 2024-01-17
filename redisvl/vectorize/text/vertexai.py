@@ -125,6 +125,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """Embed many chunks of texts using the VertexAI API.
 
@@ -166,6 +167,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """Embed a chunk of text using the VertexAI API.
 
