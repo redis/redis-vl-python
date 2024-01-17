@@ -1,27 +1,24 @@
 import hashlib
 import json
-
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 
 class BaseLLMCache:
-    _ttl: Optional[int] = None
+    def __init__(self, ttl: Optional[int] = None):
+        self._ttl: Optional[int] = None
+        self.set_ttl(ttl)
 
     @property
     def ttl(self) -> Optional[int]:
-        """Returns the TTL for the cache.
-
-        Returns:
-            Optional[int]: The TTL for the cache.
-        """
+        """The default TTL, in seconds, for entries in the cache."""
         return self._ttl
 
     def set_ttl(self, ttl: Optional[int] = None):
-        """Sets the TTL for the cache.
+        """Set the default TTL, in seconds, for entries in the cache.
 
         Args:
             ttl (Optional[int], optional): The optional time-to-live expiration
-                for the cache.
+                for the cache, in seconds.
 
         Raises:
             ValueError: If the time-to-live value is not an integer.
@@ -41,7 +38,6 @@ class BaseLLMCache:
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
-        **kwargs,
     ) -> List[dict]:
         raise NotImplementedError
 
@@ -51,7 +47,7 @@ class BaseLLMCache:
         response: str,
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
-    ) -> None:
+    ) -> str:
         """Stores the specified key-value pair in the cache along
         with metadata."""
         raise NotImplementedError
@@ -61,7 +57,9 @@ class BaseLLMCache:
         return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
     def serialize(self, metadata: Dict[str, Any]) -> str:
+        """Serlize the input into a string."""
         return json.dumps(metadata)
 
     def deserialize(self, metadata: str) -> Dict[str, Any]:
+        """Deserialize the input from a string."""
         return json.loads(metadata)

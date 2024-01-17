@@ -235,13 +235,13 @@ class SearchIndex:
             connection_args (Dict[str, Any], optional): Redis client connection
                 args.
 
+        Returns:
+            SearchIndex: A RedisVL SearchIndex object.
+
         Example:
             from redisvl.index import SearchIndex
             index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
             index.create(overwrite=True)
-
-        Returns:
-            SearchIndex: A RedisVL SearchIndex object.
         """
         schema = IndexSchema.from_yaml(schema_path)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
@@ -257,6 +257,9 @@ class SearchIndex:
             connection_args (Dict[str, Any], optional): Redis client connection
                 args.
 
+        Returns:
+            SearchIndex: A RedisVL SearchIndex object.
+
         Example:
             from redisvl.index import SearchIndex
             index = SearchIndex.from_dict({
@@ -270,9 +273,6 @@ class SearchIndex:
                 }
             }, redis_url="redis://localhost:6379")
             index.create(overwrite=True)
-
-        Returns:
-            SearchIndex: A RedisVL SearchIndex object.
         """
         schema = IndexSchema.from_dict(schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
@@ -298,17 +298,17 @@ class SearchIndex:
             use_async (bool): If `True`, establishes a connection with an async
                 Redis client. Defaults to `False`.
 
-        Example:
-            # standard sync Redis connection
-            index.connect(redis_url="redis://localhost:6379")
-            # async Redis connection
-            index.connect(redis_url="redis://localhost:6379", use_async=True)
-
         Raises:
             redis.exceptions.ConnectionError: If the connection to the Redis
                 server fails.
             ValueError: If the Redis URL is not provided nor accessible
                 through the `REDIS_URL` environment variable.
+
+        Example:
+            # standard sync Redis connection
+            index.connect(redis_url="redis://localhost:6379")
+            # async Redis connection
+            index.connect(redis_url="redis://localhost:6379", use_async=True)
         """
         self._redis_conn.connect(redis_url, use_async, **kwargs)
         return self
@@ -329,17 +329,20 @@ class SearchIndex:
             client (Union[redis.Redis, aredis.Redis]): A Redis or Async Redis
                 client instance to be used for the connection.
 
-        Example:
-            import redis
-            r = redis.Redis.from_url("redis://localhost:6379")
-            index.set_client(r)
-            # async Redis client
-            import redis.asyncio as aredis
-            r = aredis.Redis.from_url("redis://localhost:6379")
-            index.set_client(r)
-
         Raises:
             TypeError: If the provided client is not valid.
+
+        Example:
+            import redis
+
+            r = redis.Redis.from_url("redis://localhost:6379")
+            index.set_client(r)
+
+            # async Redis client
+            import redis.asyncio as aredis
+
+            r = aredis.Redis.from_url("redis://localhost:6379")
+            index.set_client(r)
         """
         self._redis_conn.set_client(client)
         return self

@@ -1,5 +1,4 @@
 import warnings
-
 from typing import Any, Dict, List, Optional
 
 from redisvl.index import SearchIndex
@@ -63,8 +62,8 @@ class SemanticCache(BaseLLMCache):
 
     def __init__(
         self,
-        name: str = "cache",
-        prefix: str = "llmcache",
+        name: str = "llmcache",
+        prefix: Optional[str] = None,
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
         vectorizer: BaseVectorizer = HFTextVectorizer(
@@ -77,9 +76,11 @@ class SemanticCache(BaseLLMCache):
         """Semantic Cache for Large Language Models.
 
         Args:
-            name (str, optional): The name of the index. Defaults to "cache".
-            prefix (str, optional): The prefix for Redis keys associated with
-                the semantic cache search index. Defaults to "llmcache".
+            name (str, optional): The name of the semantic cache search index.
+                Defaults to "llmcache".
+            prefix (Optional[str], optional): The prefix for Redis keys
+                associated with the semantic cache search index. Defaults to
+                None, and the index name will be used as the key prefix.
             distance_threshold (float, optional): Semantic threshold for the
                 cache. Defaults to 0.1.
             ttl (Optional[int], optional): The time-to-live for records cached
@@ -95,8 +96,10 @@ class SemanticCache(BaseLLMCache):
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 1.
-            ValueError: If the index name or prefix is not provided
+            ValueError: If the index name is not provided
         """
+        super().__init__(ttl)
+
         # Check for index_name in kwargs
         if "index_name" in kwargs:
             name = kwargs.pop("index_name")
@@ -116,20 +119,19 @@ class SemanticCache(BaseLLMCache):
                 stacklevel=2,
             )
 
-        if not isinstance(name, str) or not isinstance(prefix, str):
-            raise ValueError("A valid index name and prefix must be provided.")
+        if not isinstance(name, str):
+            raise ValueError("A valid index name must be provided.")
 
-        # build schema
+        # use the index name as the key prefix by default
+        if prefix is None:
+            prefix = name
+
+        # build cache index schema
         self._schema = SemanticCacheSchema(
             name=name, prefix=prefix, vector_dims=vectorizer.dims, **kwargs
         )
 
-        # set other components
-        self.set_vectorizer(vectorizer)
-        self.set_ttl(ttl)
-        self.set_threshold(distance_threshold)
-
-        # add default return fields
+        # initialize other components
         self.default_return_fields = [
             self._schema.entry_id_field_name,
             self._schema.prompt_field_name,
@@ -137,39 +139,31 @@ class SemanticCache(BaseLLMCache):
             self._schema.vector_field_name,
             self._schema.metadata_field_name,
         ]
+        self.set_vectorizer(vectorizer)
+        self.set_threshold(distance_threshold)
 
-        # build underlying search index
+        # build search index
         self._index = SearchIndex(
             schema=self._schema, redis_url=redis_url, connection_args=connection_args
         )
         self._index.create(overwrite=False)
 
-    @classmethod
-    def from_index(cls, index: SearchIndex, **kwargs):
-        """DEPRECATED: Create a SemanticCache from a pre-existing SearchIndex.
-
-        Args:
-            index (SearchIndex): The SearchIndex object to use as the backbone of the cache.
-
-        Returns:
-            SemanticCache: A SemanticCache object.
-        """
-        raise DeprecationWarning(
-            "This method is deprecated since 0.0.4. Use the constructor instead."
-        )
-
     @property
     def index(self) -> SearchIndex:
-        """Returns the index for the cache.
+        """The underlying SearchIndex for the cache.
 
         Returns:
-            SearchIndex: The index for the cache.
+            SearchIndex: The search index.
         """
         return self._index
 
     @property
     def distance_threshold(self) -> float:
-        """Returns the semantic distance threshold for the cache."""
+        """The semantic distance threshold for the cache.
+
+        Returns:
+            float: The semantic distance threshold.
+        """
         return self._distance_threshold
 
     def set_threshold(self, distance_threshold: float) -> None:
@@ -222,6 +216,15 @@ class SemanticCache(BaseLLMCache):
                 pipe.delete(key)
             pipe.execute()
 
+    def delete(self) -> None:
+        """Clear the semantic cache of all keys and remove the underlying search index."""
+        self._index.delete(drop=True)
+
+    def _refresh_ttl(self, key: str) -> None:
+        """Refresh the time-to-live for the specified key."""
+        if self.ttl:
+            self._index.client.expire(key, self.ttl)  # type: ignore
+
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
         configured vectorizer."""
@@ -230,13 +233,10 @@ class SemanticCache(BaseLLMCache):
         return self._vectorizer.embed(prompt)
 
     def _search_cache(
-        self,
-        vector: List[float],
-        return_fields: List[str],
-        num_results: int
+        self, vector: List[float], num_results: int, return_fields: Optional[List[str]]
     ) -> List[Dict[str, Any]]:
-        """Searches the cache for similar vectors and returns the specified
-        fields for each hit."""
+        """Searches the semantic cache for similar prompt vectors and returns
+        the specified return fields for each cache hit."""
         # Setup and type checks
         if not isinstance(vector, list):
             raise TypeError("Vector must be a list of floats")
@@ -274,42 +274,40 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
-        **kwargs,
     ) -> List[Dict[str, Any]]:
         """
-        Checks the cache for results similar to the specified prompt or vector.
+        Checks the semantic cache for results similar to the specified prompt or
+        vector.
 
-        This method searches the semantic cache using either a raw text prompt
-        or a precomputed vector, and retrieves cached responses based on
-        semantic similarity.
+        This method searches the cache using vector similarity with
+        either a raw text prompt (converted to a vector) or a provided vector as
+        input. It checks for semantically similar prompts and fetches the cached
+        LLM responses.
 
         Args:
             prompt (Optional[str], optional): The text prompt to search for in
                 the cache.
             vector (Optional[List[float]], optional): The vector representation
                 of the prompt to search for in the cache.
-            num_results (int, optional): The number of similar results to
-                return.
+            num_results (int, optional): The number of cached results to return.
+                Defaults to 1.
             return_fields (Optional[List[str]], optional): The fields to include
-                in each returned result. If None, defaults to all fields.
-
-        Raises:
-            ValueError: If neither a prompt nor a vector is specified.
-            TypeError: If 'return_fields' is not a list when provided.
+                in each returned result. If None, defaults to all available
+                fields in the cached entry.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
                 return fields for each similar cached response.
-        """
-        # Handle deprecated keyword argument 'fields'
-        if "fields" in kwargs:
-            return_fields = kwargs.pop("fields")
-            warnings.warn(
-                message="The 'fields' keyword argument is now deprecated; use 'return_fields' instead.",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
 
+        Raises:
+            ValueError: If neither a `prompt` nor a `vector` is specified.
+            TypeError: If `return_fields` is not a list when provided.
+
+        Example:
+            response = cache.check(
+                prompt="What is the captial city of France?"
+            )
+        """
         if not (prompt or vector):
             raise ValueError("Either prompt or vector must be specified.")
 
@@ -317,7 +315,7 @@ class SemanticCache(BaseLLMCache):
         vector = vector or self._vectorize_prompt(prompt)
 
         # Check for cache hits by searching the cache
-        cache_hits = self._search_cache(vector, return_fields, num_results)
+        cache_hits = self._search_cache(vector, num_results, return_fields)
         return cache_hits
 
     def store(
@@ -325,37 +323,49 @@ class SemanticCache(BaseLLMCache):
         prompt: str,
         response: str,
         vector: Optional[List[float]] = None,
-        metadata: Optional[dict] = {},
-    ) -> None:
+        metadata: Optional[dict] = None,
+    ) -> str:
         """Stores the specified key-value pair in the cache along with metadata.
 
         Args:
-            prompt (str): The prompt to store.
-            response (str): The response to store.
-            vector (Optional[List[float]], optional): The vector to store. Defaults to None.
-            metadata (Optional[dict], optional): The metadata to store. Defaults to {}.
+            prompt (str): The user prompt to cache.
+            response (str): The LLM response to cache.
+            vector (Optional[List[float]], optional): The prompt vector to
+                cache. Defaults to None, and the prompt vector is generated on
+                demand.
+            metadata (Optional[dict], optional): The optional metadata to cache
+                alongside the prompt and response. Defaults to None.
+
+        Returns:
+            str: The Redis key for the entries added to the semantic cache.
 
         Raises:
             ValueError: If neither prompt nor vector is specified.
+            TypeError: If provided metadata is not a dictionary.
+
+        Example:
+            key = cache.store(
+                prompt="What is the captial city of France?",
+                response="Paris",
+                metadata={"city": "Paris", "country": "Fance"}
+            )
         """
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
-        # TODO should we make this customizable?
+        # Construct semantic cache payload
+        id_field = self._schema.entry_id_field_name
         payload = {
-            self._schema.entry_id_field_name: self.hash_input(prompt),
+            id_field: self.hash_input(prompt),
             self._schema.prompt_field_name: prompt,
             self._schema.response_field_name: response,
             self._schema.vector_field_name: array_to_buffer(vector),
         }
-        if metadata:
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise TypeError("If specified, cached metadata must be a dictionary.")
+            # Serialize the metadata dict and add to cache payload
             payload[self._schema.metadata_field_name] = self.serialize(metadata)
 
         # Load LLMCache entry with TTL
-        _ = self._index.load(
-            data=[payload], ttl=self._ttl, key_field=self._schema.entry_id_field_name
-        )
-
-    def _refresh_ttl(self, key: str) -> None:
-        """Refreshes the time-to-live for the specified key."""
-        if self.ttl:
-            self._index.client.expire(key, self.ttl)  # type: ignore
+        keys = self._index.load(data=[payload], ttl=self._ttl, key_field=id_field)
+        return keys[0]
