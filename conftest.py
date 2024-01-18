@@ -27,6 +27,10 @@ def openai_key():
     return os.getenv("OPENAI_API_KEY")
 
 @pytest.fixture
+def cohere_key():
+    return os.getenv("COHERE_API_KEY")
+
+@pytest.fixture
 def gcp_location():
     return os.getenv("GCP_LOCATION")
 

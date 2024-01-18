@@ -70,6 +70,7 @@ class HFTextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """
         Embed a chunk of text using the Hugging Face sentence transformer.
@@ -101,6 +102,7 @@ class HFTextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """
         Asynchronously embed many chunks of texts using the Hugging Face

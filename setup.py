@@ -15,7 +15,8 @@ extras_require = {
     "all": [
         "openai==0.28.1",
         "sentence-transformers>=2.2.2",
-        "google-cloud-aiplatform>=1.26"
+        "google-cloud-aiplatform>=1.26",
+        "cohere==4.44"
     ],
     "dev": read_dev_requirements()
 }
