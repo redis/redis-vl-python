@@ -26,7 +26,7 @@ def test_create_key(storage_instance):
     key_field = "id"
     obj = {key_field: "1234"}
     expected_key = (
-        f"{storage_instance._prefix}{storage_instance._key_separator}{obj[key_field]}"
+        f"{storage_instance.prefix}{storage_instance.key_separator}{obj[key_field]}"
     )
     generated_key = storage_instance._create_key(obj, key_field)
     assert (

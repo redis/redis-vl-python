@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from pydantic import BaseModel
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from redis import Redis
@@ -9,22 +10,18 @@ from redis.commands.search.indexDefinition import IndexType
 from redisvl.utils.utils import convert_bytes
 
 
-class BaseStorage:
-    type: IndexType
-    DEFAULT_BATCH_SIZE: int = 200
-    DEFAULT_WRITE_CONCURRENCY: int = 20
+class BaseStorage(BaseModel):
+    """
+    Base class for internal storage handling in Redis.
 
-    def __init__(self, prefix: str, key_separator: str):
-        """Initialize the BaseStorage with a specific prefix and key separator
-        for Redis keys.
-
-        Args:
-            prefix (str): The prefix to prepend to each Redis key.
-            key_separator (str): The separator to use between the prefix and
-                the key value.
-        """
-        self._prefix = prefix
-        self._key_separator = key_separator
+    Provides foundational methods for key management, data preprocessing,
+    validation, and basic read/write operations (both sync and async).
+    """
+    type: IndexType  # Type of index used in storage
+    prefix: str  # Prefix for Redis keys
+    key_separator: str  # Separator between prefix and key value
+    default_batch_size: int = 200  # Default size for batch operations
+    default_write_concurrency: int = 20  # Default concurrency for async ops
 
     @staticmethod
     def _key(key_value: str, prefix: str, key_separator: str) -> str:
@@ -69,7 +66,7 @@ class BaseStorage:
                 raise ValueError(f"Key field {key_field} not found in record {obj}")
 
         return self._key(
-            key_value, prefix=self._prefix, key_separator=self._key_separator
+            key_value, prefix=self.prefix, key_separator=self.key_separator
         )
 
     @staticmethod
@@ -202,7 +199,7 @@ class BaseStorage:
 
         if batch_size is None:
             # Use default or calculate based on the input data
-            batch_size = self.DEFAULT_BATCH_SIZE
+            batch_size = self.default_batch_size
 
         keys_iterator = iter(keys) if keys else None
         added_keys: List[str] = []
@@ -272,7 +269,7 @@ class BaseStorage:
             raise ValueError("Length of keys does not match the length of objects")
 
         if not concurrency:
-            concurrency = self.DEFAULT_WRITE_CONCURRENCY
+            concurrency = self.default_write_concurrency
 
         semaphore = asyncio.Semaphore(concurrency)
         keys_iterator = iter(keys) if keys else None
@@ -322,7 +319,7 @@ class BaseStorage:
 
         if batch_size is None:
             batch_size = (
-                self.DEFAULT_BATCH_SIZE
+                self.default_batch_size
             )  # Use default or calculate based on the input data
 
         # Use a pipeline to batch the retrieval
@@ -363,7 +360,7 @@ class BaseStorage:
             return []
 
         if not concurrency:
-            concurrency = self.DEFAULT_WRITE_CONCURRENCY
+            concurrency = self.default_write_concurrency
 
         semaphore = asyncio.Semaphore(concurrency)
 
@@ -378,6 +375,12 @@ class BaseStorage:
 
 
 class HashStorage(BaseStorage):
+    """
+    Internal subclass of BaseStorage for the Redis hash data type.
+
+    Implements hash-specific logic for validation and read/write operations
+    (both sync and async) in Redis.
+    """
     type: IndexType = IndexType.HASH
 
     def _validate(self, obj: Dict[str, Any]):
@@ -443,6 +446,12 @@ class HashStorage(BaseStorage):
 
 
 class JsonStorage(BaseStorage):
+    """
+    Internal subclass of BaseStorage for the Redis JSON data type.
+
+    Implements json-specific logic for validation and read/write operations
+    (both sync and async) in Redis.
+    """
     type: IndexType = IndexType.JSON
 
     def _validate(self, obj: Dict[str, Any]):

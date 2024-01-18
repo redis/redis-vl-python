@@ -196,7 +196,8 @@ class SearchIndex:
         self.schema = schema
 
         self._storage = self._STORAGE_MAP[self.schema.storage_type](
-            self.schema.prefix, self.schema.key_separator
+            prefix=self.schema.prefix,
+            key_separator=self.schema.key_separator
         )
 
     @property

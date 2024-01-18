@@ -67,7 +67,7 @@ class SemanticCache(BaseLLMCache):
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
         vectorizer: BaseVectorizer = HFTextVectorizer(
-            "sentence-transformers/all-mpnet-base-v2"
+            model="sentence-transformers/all-mpnet-base-v2"
         ),
         redis_url: str = "redis://localhost:6379",
         connection_args: Dict[str, Any] = {},

@@ -41,7 +41,6 @@ class VertexAITextVectorizer(BaseVectorizer):
         )
 
     """
-
     def __init__(
         self, model: str = "textembedding-gecko", api_config: Optional[Dict] = None
     ):
@@ -57,8 +56,6 @@ class VertexAITextVectorizer(BaseVectorizer):
             ImportError: If the google-cloud-aiplatform library is not installed.
             ValueError: If the API key is not provided.
         """
-        super().__init__(model)
-
         # Fetch the project_id and location from api_config or environment variables
         project_id = (
             api_config.get("project_id") if api_config else os.getenv("GCP_PROJECT_ID")
@@ -106,12 +103,13 @@ class VertexAITextVectorizer(BaseVectorizer):
                 "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
 
-        self._model_client = TextEmbeddingModel.from_pretrained(model)
-        self._dims = self._set_model_dims()
+        client = TextEmbeddingModel.from_pretrained(model)
+        dims = self._set_model_dims()
+        super().__init__(model=model, dims=dims, client=client)
 
-    def _set_model_dims(self) -> int:
+    def _set_model_dims(client) -> int:
         try:
-            embedding = self._model_client.get_embeddings(["dimension test"])[0].values
+            embedding = self.client.get_embeddings(["dimension test"])[0].values
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -156,7 +154,7 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._model_client.get_embeddings(batch)
+            response = self.client.get_embeddings(batch)
             embeddings += [
                 self._process_embedding(r.values, as_buffer) for r in response
             ]
@@ -194,5 +192,5 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = self._model_client.get_embeddings([text])
+        result = self.client.get_embeddings([text])
         return self._process_embedding(result[0].values, as_buffer)
