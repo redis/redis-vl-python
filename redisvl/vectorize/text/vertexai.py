@@ -105,9 +105,10 @@ class VertexAITextVectorizer(BaseVectorizer):
             )
 
         client = TextEmbeddingModel.from_pretrained(model)
-        dims = self._set_model_dims()
+        dims = self._set_model_dims(client)
         super().__init__(model=model, dims=dims, client=client)
 
+    @staticmethod
     def _set_model_dims(client) -> int:
         try:
             embedding = client.get_embeddings(["dimension test"])[0].values
