@@ -37,7 +37,9 @@ def test_store_and_check(cache, vectorizer):
     check_result = cache.check(vector=vector)
 
     assert len(check_result) == 1
+    print(check_result, flush=True)
     assert response == check_result[0]["response"]
+    assert "metadata" not in check_result[0]
 
 
 # Test clearing the cache
@@ -90,11 +92,13 @@ def test_store_with_metadata(cache, vectorizer):
     vector = vectorizer.embed(prompt)
 
     cache.store(prompt, response, vector=vector, metadata=metadata)
-    check_result = cache.check(vector=vector, return_fields=["source", "response"])
+    check_result = cache.check(vector=vector, num_results=1)
 
     assert len(check_result) == 1
-    assert response == check_result[0]["response"]
-    assert check_result[0]["source"] == "test"
+    print(check_result, flush=True)
+    assert check_result[0]["response"] == response
+    assert check_result[0]["metadata"] == metadata
+    assert check_result[0]["prompt"] == prompt
 
 
 # Test setting and getting the distance threshold
@@ -123,4 +127,6 @@ def test_multiple_items(cache, vectorizer):
         vector = vectorizer.embed(prompt)
         check_result = cache.check(vector=vector)
         assert len(check_result) == 1
+        print(check_result, flush=True)
         assert check_result[0]["response"] == expected_response
+        assert "metadata" not in check_result[0]

@@ -15,9 +15,10 @@ SemanticCache
     SemanticCache.__init__
     SemanticCache.check
     SemanticCache.store
-    SemanticCache.set_threshold
+    SemanticCache.clear
+    SemanticCache.delete
     SemanticCache.distance_threshold
-    SemanticCache.index
+    SemanticCache.set_threshold
     SemanticCache.ttl
     SemanticCache.set_ttl
 
