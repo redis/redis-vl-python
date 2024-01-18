@@ -102,10 +102,19 @@ class CohereTextVectorizer(BaseVectorizer):
         Embed a chunk of text using the Cohere Embeddings API.
 
         Must provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. Note this
-        is not required for older versions of the embedding models
-        (i.e. anything lower than v3, but is required for more recent
-        versions (i.e. anything bigger than v2).
+        that specifies the type of input you're giving to the model. Supported
+        input types below:
+            - "search_document": Used for embeddings stored in a vector database for search use-cases.
+            - "search_query": Used for embeddings of search queries run against a vector DB to find relevant documents.
+            - "classification": Used for embeddings passed through a text classifier.
+            - "clustering": Used for the embeddings run through a clustering algorithm.
+
+        When hydrating your Redis DB, the documents you want to search over
+        should be embedded with input_type= "search_document" and when you are
+        querying the database, you should set the input_type = "search query".
+        If you want to use the embeddings for a classification or clustering
+        task downstream, you should set input_type= "classification" or
+        "clustering".
 
         Args:
             text (str): Chunk of text to embed.
@@ -113,12 +122,14 @@ class CohereTextVectorizer(BaseVectorizer):
                 perform before vectorization. Defaults to None.
             as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
+            input_type (str): Specifies the type of input passed to the model.
+                Required for embedding models v3 and higher.
 
         Returns:
             List[float]: Embedding.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the text.
+            TypeError: In an invalid input_type is provided.
         """
         input_type = kwargs.get("input_type")
 
@@ -152,10 +163,19 @@ class CohereTextVectorizer(BaseVectorizer):
         Embed many chunks of text using the Cohere Embeddings API.
 
         Must provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. Note this
-        is not required for older versions of the embedding models
-        (i.e. anything lower than v3, but is required for more recent
-        versions (i.e. anything bigger than v2).
+        that specifies the type of input you're giving to the model. Supported
+        input types below:
+            - "search_document": Used for embeddings stored in a vector database for search use-cases.
+            - "search_query": Used for embeddings of search queries run against a vector DB to find relevant documents.
+            - "classification": Used for embeddings passed through a text classifier.
+            - "clustering": Used for the embeddings run through a clustering algorithm.
+
+        When hydrating your Redis DB, the documents you want to search over
+        should be embedded with input_type= "search_document" and when you are
+        querying the database, you should set the input_type = "search query".
+        If you want to use the embeddings for a classification or clustering
+        task downstream, you should set input_type= "classification" or
+        "clustering".
 
         Args:
             texts (List[str]): List of text chunks to embed.
@@ -165,12 +185,14 @@ class CohereTextVectorizer(BaseVectorizer):
                 embeddings. Defaults to 10.
             as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
+            input_type (str): Specifies the type of input passed to the model.
+                Required for embedding models v3 and higher.
 
         Returns:
             List[List[float]]: List of embeddings.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: In an invalid input_type is provided.
         """
         input_type = kwargs.get("input_type")
 
