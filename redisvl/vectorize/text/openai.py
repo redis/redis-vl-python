@@ -30,7 +30,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         # Synchronous embedding of a single text
         vectorizer = OpenAITextVectorizer(
             model="text-embedding-ada-002",
-            api_config={"api_key": "your_api_key"}
+            api_config={"api_key": "your_api_key"} # OR set OPENAI_API_KEY in your env
         )
         embedding = vectorizer.embed("Hello, world!")
 
@@ -60,7 +60,6 @@ class OpenAITextVectorizer(BaseVectorizer):
         super().__init__(model)
         # Dynamic import of the openai module
         try:
-            global openai
             import openai
         except ImportError:
             raise ImportError(
@@ -88,8 +87,6 @@ class OpenAITextVectorizer(BaseVectorizer):
             )["data"][0]["embedding"]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
-        except openai.error.AuthenticationError as ae:
-            raise ValueError(f"Error authenticating with the OpenAI API: {str(ae)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
@@ -106,6 +103,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """Embed many chunks of texts using the OpenAI API.
 
@@ -148,6 +146,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """Embed a chunk of text using the OpenAI API.
 
@@ -183,6 +182,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """Asynchronously embed many chunks of texts using the OpenAI API.
 
@@ -225,6 +225,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """Asynchronously embed a chunk of text using the OpenAI API.
 

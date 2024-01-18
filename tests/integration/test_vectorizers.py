@@ -3,6 +3,7 @@ import os
 import pytest
 
 from redisvl.vectorize.text import (
+    CohereTextVectorizer,
     HFTextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
@@ -20,13 +21,22 @@ def skip_vectorizer() -> bool:
 skip_vectorizer_test = lambda: pytest.config.getfixturevalue("skip_vectorizer")
 
 
-@pytest.fixture(params=[HFTextVectorizer, OpenAITextVectorizer, VertexAITextVectorizer])
+@pytest.fixture(
+    params=[
+        HFTextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        CohereTextVectorizer,
+    ]
+)
 def vectorizer(request):
     if request.param == HFTextVectorizer:
         return request.param()
     elif request.param == OpenAITextVectorizer:
         return request.param()
     elif request.param == VertexAITextVectorizer:
+        return request.param()
+    elif request.param == CohereTextVectorizer:
         return request.param()
 
 
@@ -42,7 +52,10 @@ def test_vectorizer_embed(vectorizer):
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
-    embeddings = vectorizer.embed_many(texts)
+    if isinstance(vectorizer, CohereTextVectorizer):
+        embeddings = vectorizer.embed_many(texts, input_type="search_document")
+    else:
+        embeddings = vectorizer.embed_many(texts)
 
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)

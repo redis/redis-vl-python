@@ -25,9 +25,9 @@ class VertexAITextVectorizer(BaseVectorizer):
         vectorizer = VertexAITextVectorizer(
             model="textembedding-gecko",
             api_config={
-                "project_id": "your_gcp_project_id",
-                "location": "your_gcp_location",
-                "google_application_credentials": "path_to_your_creds"
+                "project_id": "your_gcp_project_id",    # OR set GCP_PROJECT_ID in your env
+                "location": "your_gcp_location",        # OR set GCP_LOCATION in your env
+                "google_application_credentials": "path_to_your_creds"    # OR set GOOGLE_APPLICATION_CREDENTIALS in your env
             })
         embedding = vectorizer.embed("Hello, world!")
 
@@ -125,6 +125,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """Embed many chunks of texts using the VertexAI API.
 
@@ -166,6 +167,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """Embed a chunk of text using the VertexAI API.
 
