@@ -25,9 +25,9 @@ class VertexAITextVectorizer(BaseVectorizer):
         vectorizer = VertexAITextVectorizer(
             model="textembedding-gecko",
             api_config={
-                "project_id": "your_gcp_project_id",
-                "location": "your_gcp_location",
-                "google_application_credentials": "path_to_your_creds"
+                "project_id": "your_gcp_project_id",    # OR set GCP_PROJECT_ID in your env
+                "location": "your_gcp_location",        # OR set GCP_LOCATION in your env
+                "google_application_credentials": "path_to_your_creds"    # OR set GOOGLE_APPLICATION_CREDENTIALS in your env
             })
         embedding = vectorizer.embed("Hello, world!")
 

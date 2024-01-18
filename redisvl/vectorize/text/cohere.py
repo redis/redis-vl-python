@@ -22,10 +22,23 @@ class CohereTextVectorizer(BaseVectorizer):
 
     The vectorizer supports only synchronous operations, allows for batch processing of texts and flexibility in
     handling preprocessing tasks.
-    """
 
-    # See https://docs.cohere.com/reference/embed for more options
-    DEFAULT_INPUT_TYPE: str = "search_document"
+    Example:
+        from redisvl.vectorize.text import CohereTextVectorizer
+
+        vectorizer = CohereTextVectorizer(
+            model="embed-english-v3.0",
+            api_config={"api_key": "your-cohere-api-key"} # OR set COHERE_API_KEY in your env
+        )
+        query_embedding = vectorizer.embed(
+            text="your input query text here",
+            input_type="search_query"
+        )
+        doc_embeddings = cohere.embed_many(
+            texts=["your document text", "more document text"],
+            input_type="search_documents"
+        )
+    """
 
     def __init__(
         self, model: str = "embed-english-v3.0", api_config: Optional[Dict] = None
@@ -44,7 +57,6 @@ class CohereTextVectorizer(BaseVectorizer):
         super().__init__(model)
         # Dynamic import of the cohere module
         try:
-            global cohere
             import cohere
         except ImportError:
             raise ImportError(
@@ -89,10 +101,10 @@ class CohereTextVectorizer(BaseVectorizer):
         """
         Embed a chunk of text using the Cohere Embeddings API.
 
-        Optionally, provide a desired `input_type` as a `kwarg` to this method
+        Must provide the embedding `input_type` as a `kwarg` to this method
         that specifies the type of input you're giving to the model. Note this
         is not required for older versions of the embedding models
-        (i.e. anything lower than v3), but is required for more recent
+        (i.e. anything lower than v3, but is required for more recent
         versions (i.e. anything bigger than v2).
 
         Args:
@@ -108,13 +120,13 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             TypeError: If the wrong input type is passed in for the text.
         """
-        input_type = kwargs.get("input_type", self.DEFAULT_INPUT_TYPE)
+        input_type = kwargs.get("input_type")
 
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
         if not isinstance(input_type, str):
             raise TypeError(
-                "Must pass in a str value for input_type. See https://docs.cohere.com/reference/embed."
+                "Must pass in a str value for cohere embedding input_type. See https://docs.cohere.com/reference/embed."
             )
         if preprocess:
             text = preprocess(text)
@@ -139,10 +151,10 @@ class CohereTextVectorizer(BaseVectorizer):
         """
         Embed many chunks of text using the Cohere Embeddings API.
 
-        Optionally, provide a desired `input_type` as a `kwarg` to this method
+        Must provide the embedding `input_type` as a `kwarg` to this method
         that specifies the type of input you're giving to the model. Note this
         is not required for older versions of the embedding models
-        (i.e. anything lower than v3), but is required for more recent
+        (i.e. anything lower than v3, but is required for more recent
         versions (i.e. anything bigger than v2).
 
         Args:
@@ -160,7 +172,7 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             TypeError: If the wrong input type is passed in for the test.
         """
-        input_type = kwargs.get("input_type", self.DEFAULT_INPUT_TYPE)
+        input_type = kwargs.get("input_type")
 
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -168,8 +180,9 @@ class CohereTextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if not isinstance(input_type, str):
             raise TypeError(
-                "Must pass in a str value for input_type. See https://docs.cohere.com/reference/embed."
+                "Must pass in a str value for cohere embedding input_type. See https://docs.cohere.com/reference/embed."
             )
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._model_client.embed(
