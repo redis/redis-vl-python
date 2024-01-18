@@ -41,6 +41,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         )
 
     """
+
     def __init__(
         self, model: str = "textembedding-gecko", api_config: Optional[Dict] = None
     ):
@@ -109,7 +110,7 @@ class VertexAITextVectorizer(BaseVectorizer):
 
     def _set_model_dims(client) -> int:
         try:
-            embedding = self.client.get_embeddings(["dimension test"])[0].values
+            embedding = client.get_embeddings(["dimension test"])[0].values
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except

@@ -41,6 +41,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         )
 
     """
+
     def __init__(
         self, model: str = "text-embedding-ada-002", api_config: Optional[Dict] = None
     ):
@@ -84,9 +85,9 @@ class OpenAITextVectorizer(BaseVectorizer):
     @staticmethod
     def _set_model_dims(client) -> int:
         try:
-            embedding = client.create(
-                input=["dimension test"], engine=self.model
-            )["data"][0]["embedding"]
+            embedding = client.create(input=["dimension test"], engine=self.model)[
+                "data"
+            ][0]["embedding"]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except

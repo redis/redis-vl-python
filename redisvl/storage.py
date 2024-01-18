@@ -1,8 +1,8 @@
 import asyncio
 import uuid
-from pydantic import BaseModel
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from pydantic import BaseModel
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
@@ -17,6 +17,7 @@ class BaseStorage(BaseModel):
     Provides foundational methods for key management, data preprocessing,
     validation, and basic read/write operations (both sync and async).
     """
+
     type: IndexType  # Type of index used in storage
     prefix: str  # Prefix for Redis keys
     key_separator: str  # Separator between prefix and key value
@@ -381,6 +382,7 @@ class HashStorage(BaseStorage):
     Implements hash-specific logic for validation and read/write operations
     (both sync and async) in Redis.
     """
+
     type: IndexType = IndexType.HASH
 
     def _validate(self, obj: Dict[str, Any]):
@@ -452,6 +454,7 @@ class JsonStorage(BaseStorage):
     Implements json-specific logic for validation and read/write operations
     (both sync and async) in Redis.
     """
+
     type: IndexType = IndexType.JSON
 
     def _validate(self, obj: Dict[str, Any]):
