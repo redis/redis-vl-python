@@ -16,8 +16,7 @@ class StorageType(Enum):
 
 
 class IndexSchema(BaseModel):
-    """
-    Represents a schema definition for an index in Redis, used in RedisVL for
+    """Represents a schema definition for an index in Redis, used in RedisVL for
     organizing and querying vector and metadata fields.
 
     This schema defines the structure of data stored in Redis, including
@@ -38,7 +37,8 @@ class IndexSchema(BaseModel):
         fields (Dict[str, List[Union[BaseField, BaseVectorField]]]): A dict
             mapping field types to lists of redisvl field definitions.
 
-    Example:
+    .. code-block:: python
+
         from redisvl.schema import IndexSchema
         # From YAML
         schema = IndexSchema.from_yaml("schema.yaml")
@@ -56,6 +56,7 @@ class IndexSchema(BaseModel):
                 ]
             }
         })
+
     """
 
     name: str
@@ -66,7 +67,7 @@ class IndexSchema(BaseModel):
 
     @validator("fields", pre=True)
     def check_unique_field_names(cls, fields):
-        """Validate that field names are all unique"""
+        """Validate that field names are all unique."""
         all_names = cls._get_field_names(fields)
         print(all_names, flush=True)
         if len(set(all_names)) != len(all_names):
@@ -79,8 +80,7 @@ class IndexSchema(BaseModel):
     def _get_field_names(
         fields: Dict[str, List[Union[BaseField, BaseVectorField]]]
     ) -> List[str]:
-        """
-        Returns a list of field names from a fields object.
+        """Returns a list of field names from a fields object.
 
         Returns:
             List[str]: A list of field names from the fields object.
@@ -93,8 +93,7 @@ class IndexSchema(BaseModel):
 
     @property
     def field_names(self) -> List[str]:
-        """
-        Returns a list of field names associated with the index schema.
+        """Returns a list of field names associated with the index schema.
 
         Returns:
             List[str]: A list of field names from the schema.
@@ -103,9 +102,8 @@ class IndexSchema(BaseModel):
 
     @property
     def redis_fields(self) -> List[RedisField]:
-        """
-        Returns a list of core redis-py field definitions based on the current
-        schema fields.
+        """Returns a list of core redis-py field definitions based on the
+        current schema fields.
 
         Converts field definitions into a format suitable for use with
         redis-py, facilitating the creation and management of index structures in
@@ -120,8 +118,7 @@ class IndexSchema(BaseModel):
         return redis_fields
 
     def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
-        """
-        Extends the schema with additional fields.
+        """Extends the schema with additional fields.
 
         This method allows dynamically adding new fields to the index schema. It
         processes a dictionary where each key represents a field type, and the
@@ -131,7 +128,8 @@ class IndexSchema(BaseModel):
             fields (Dict[str, List[Dict[str, Any]]]): A dictionary mapping field
                 types to lists of field attributes.
 
-        Example:
+        .. code-block:: python
+
             schema.add_fields({})
             # From Dict
             schema = IndexSchema.from_dict({
@@ -146,8 +144,7 @@ class IndexSchema(BaseModel):
                 self.add_field(field_type, **field_data)
 
     def add_field(self, field_type: str, **kwargs):
-        """
-        Adds a single field to the index schema based on the specified field
+        """Adds a single field to the index schema based on the specified field
         type and attributes.
 
         This method allows for the addition of individual fields to the schema,
@@ -176,8 +173,7 @@ class IndexSchema(BaseModel):
         self.fields.setdefault(field_type, []).append(new_field)
 
     def remove_field(self, field_type: str, field_name: str):
-        """
-        Removes a field from the schema based on the specified field type and
+        """Removes a field from the schema based on the specified field type and
         name.
 
         This method is useful for dynamically altering the schema by removing
@@ -211,8 +207,7 @@ class IndexSchema(BaseModel):
         strict: bool = False,
         ignore_fields: List[str] = [],
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Generates a set of field definitions from a sample data dictionary.
+        """Generates a set of field definitions from a sample data dictionary.
 
         This method simplifies the process of creating a schema by inferring
         field types and attributes from sample data. It's particularly useful
@@ -262,7 +257,12 @@ class IndexSchema(BaseModel):
         Args:
             data (Dict[str, Any]): The index schema data.
 
-        Example:
+        Returns:
+            IndexSchema: The index schema.
+
+
+        .. code-block:: python
+
             from redisvl.schema import IndexSchema
             schema = IndexSchema.from_dict({
                 "index": {
@@ -278,8 +278,6 @@ class IndexSchema(BaseModel):
                 }
             })
 
-        Returns:
-            IndexSchema: The index schema.
         """
         schema = cls(**data["index"])
         for field_type, field_list in data["fields"].items():
@@ -313,12 +311,14 @@ class IndexSchema(BaseModel):
         Args:
             file_path (str): The path to the YAML file.
 
-        Example:
+        Returns:
+            IndexSchema: The index schema.
+
+        .. code-block:: python
+
             from redisvl.schema import IndexSchema
             schema = IndexSchema.from_yaml("schema.yaml")
 
-        Returns:
-            IndexSchema: The index schema.
         """
         try:
             fp = Path(file_path).resolve()
@@ -352,9 +352,7 @@ class IndexSchema(BaseModel):
 
 
 class TypeInferrer:
-    """
-    Infers the type of a field based on its value.
-    """
+    """Infers the type of a field based on its value."""
 
     GEO_PATTERN = re.compile(
         r"^\s*[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)\s*$"
@@ -369,8 +367,7 @@ class TypeInferrer:
 
     @classmethod
     def infer(cls, value: Any) -> str:
-        """
-        Infers the field type for a given value.
+        """Infers the field type for a given value.
 
         Args:
             value: The value to infer the type of.

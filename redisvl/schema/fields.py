@@ -122,9 +122,7 @@ class HNSWVectorField(BaseVectorField):
 
 
 class FieldFactory:
-    """
-    Factory class to create fields from client data and kwargs.
-    """
+    """Factory class to create fields from client data and kwargs."""
 
     FIELD_TYPE_MAP = {
         "tag": TagField,

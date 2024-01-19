@@ -53,8 +53,7 @@ class BaseQuery:
         return self._filter
 
     def set_paging(self, first: int, limit: int):
-        """
-        Set the paging parameters for the query to limit the results between
+        """Set the paging parameters for the query to limit the results between
         fist and num_results.
 
         Args:
@@ -97,7 +96,8 @@ class CountQuery(BaseQuery):
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
-        Examples:
+        .. code-block:: python
+
             from redisvl.query import CountQuery
             from redisvl.query.filter import Tag
             t = Tag("brand") == "Nike"
@@ -152,11 +152,14 @@ class FilterQuery(BaseQuery):
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
-        Examples:
+        .. code-block:: python
+
+
             from redisvl.query import FilterQuery
             from redisvl.query.filter import Tag
             t = Tag("brand") == "Nike"
             q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
+
         """
         super().__init__(return_fields, num_results, dialect)
         self.set_filter(filter_expression)

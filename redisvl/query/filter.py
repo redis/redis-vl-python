@@ -126,7 +126,8 @@ class Tag(FilterField):
         Args:
             other (Union[List[str], str]): The tag(s) to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Tag
             filter = Tag("brand") == "nike"
         """
@@ -140,9 +141,11 @@ class Tag(FilterField):
         Args:
             other (Union[List[str], str]): The tag(s) to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Tag
             filter = Tag("brand") != "nike"
+
         """
         self._set_tag_value(other, FilterOperator.NE)
         return FilterExpression(str(self))
@@ -223,9 +226,11 @@ class Geo(FilterField):
         Args:
             other (GeoSpec): The geographic spec to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Geo, GeoRadius
             filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)  # type: ignore
         return FilterExpression(str(self))
@@ -237,9 +242,11 @@ class Geo(FilterField):
         Args:
             other (GeoSpec): The geographic spec to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Geo, GeoRadius
             filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)  # type: ignore
         return FilterExpression(str(self))
@@ -282,9 +289,11 @@ class Num(FilterField):
         Args:
             other (int): The value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Num
             filter = Num("zipcode") == 90210
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
@@ -295,9 +304,11 @@ class Num(FilterField):
         Args:
             other (int): The value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Num
             filter = Num("zipcode") != 90210
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
@@ -308,9 +319,11 @@ class Num(FilterField):
         Args:
             other (int): The value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Num
             filter = Num("age") > 18
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
@@ -321,9 +334,11 @@ class Num(FilterField):
         Args:
             other (int): The value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Num
             filter = Num("age") < 18
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
         return FilterExpression(str(self))
@@ -334,9 +349,11 @@ class Num(FilterField):
         Args:
             other (int): The value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Num
             filter = Num("age") >= 18
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
         return FilterExpression(str(self))
@@ -347,9 +364,11 @@ class Num(FilterField):
         Args:
             other (int): The value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Num
             filter = Num("age") <= 18
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
@@ -392,9 +411,11 @@ class Text(FilterField):
         Args:
             other (str): The text value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Text
             filter = Text("job") == "engineer"
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
@@ -408,9 +429,11 @@ class Text(FilterField):
         Args:
             other (str): The text value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Text
             filter = Text("job") != "engineer"
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
@@ -424,12 +447,14 @@ class Text(FilterField):
         Args:
             other (str): The text value to filter on.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.query.filter import Text
             filter = Text("job") % "engine*"         # suffix wild card match
             filter = Text("job") % "%%engine%%"      # fuzzy match w/ Levenshtein Distance
             filter = Text("job") % "engineer|doctor" # contains either term in field
             filter = Text("job") % "engineer doctor" # contains both terms in field
+
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
@@ -456,7 +481,7 @@ class FilterExpression:
     Filter expressions are not created directly. Instead they are built
     by combining FilterFields using the & and | operators.
 
-    Examples:
+    .. code-block:: python
 
         from redisvl.query.filter import Tag, Num
         brand_is_nike = Tag("brand") == "nike"
@@ -467,6 +492,8 @@ class FilterExpression:
 
     This can be combined with the VectorQuery class to create a query:
 
+    .. code-block:: python
+
         from redisvl.query import VectorQuery
         v = VectorQuery(
         ...     vector=[0.1, 0.1, 0.5, ...],
@@ -474,6 +501,7 @@ class FilterExpression:
         ...     return_fields=["product_id", "brand", "price"],
         ...     filter_expression=filter,
         ... )
+
     """
 
     def __init__(

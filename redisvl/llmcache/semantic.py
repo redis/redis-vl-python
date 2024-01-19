@@ -183,9 +183,10 @@ class SemanticCache(BaseLLMCache):
         self._distance_threshold = float(distance_threshold)
 
     def set_vectorizer(self, vectorizer: BaseVectorizer) -> None:
-        """Sets the vectorizer for the LLM cache. Must be a valid subclass of
-           BaseVectorizer and have equivalent dimensions to the vector field
-           defined int he schema.
+        """Sets the vectorizer for the LLM cache.
+
+        Must be a valid subclass of BaseVectorizer and have equivalent
+        dimensions to the vector field defined in the schema.
 
         Args:
             vectorizer (BaseVectorizer): The RedisVL vectorizer to use for
@@ -210,14 +211,15 @@ class SemanticCache(BaseLLMCache):
         self._vectorizer = vectorizer
 
     def clear(self) -> None:
-        """Clear the cache of all keys while preserving the index"""
+        """Clear the cache of all keys while preserving the index."""
         with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
             for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):  # type: ignore
                 pipe.delete(key)
             pipe.execute()
 
     def delete(self) -> None:
-        """Clear the semantic cache of all keys and remove the underlying search index."""
+        """Clear the semantic cache of all keys and remove the underlying search
+        index."""
         self._index.delete(drop=True)
 
     def _refresh_ttl(self, key: str) -> None:
@@ -275,9 +277,8 @@ class SemanticCache(BaseLLMCache):
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Checks the semantic cache for results similar to the specified prompt or
-        vector.
+        """Checks the semantic cache for results similar to the specified prompt
+        or vector.
 
         This method searches the cache using vector similarity with
         either a raw text prompt (converted to a vector) or a provided vector as
@@ -303,7 +304,8 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither a `prompt` nor a `vector` is specified.
             TypeError: If `return_fields` is not a list when provided.
 
-        Example:
+        .. code-block:: python
+
             response = cache.check(
                 prompt="What is the captial city of France?"
             )
@@ -343,7 +345,8 @@ class SemanticCache(BaseLLMCache):
             ValueError: If neither prompt nor vector is specified.
             TypeError: If provided metadata is not a dictionary.
 
-        Example:
+        .. code-block:: python
+
             key = cache.store(
                 prompt="What is the captial city of France?",
                 response="Paris",
