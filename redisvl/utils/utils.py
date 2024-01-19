@@ -1,6 +1,6 @@
-import numpy as np
 from typing import Any, List
 
+import numpy as np
 
 # required modules
 REDIS_REQUIRED_MODULES = [

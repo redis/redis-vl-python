@@ -17,9 +17,9 @@ sys.path.insert(0, os.path.abspath('.'))
 # -- Project information -----------------------------------------------------
 
 project = 'RedisVL'
-copyright = '2023, Redis Inc.'
+copyright = '2024, Redis Inc.'
 author = 'RedisVentures'
-version = "0.1.0"
+version = "0.0.7"
 
 # The full version, including alpha/beta/rc tags
 release = version
@@ -101,7 +101,7 @@ html_theme_options = {
     "navbar_align": "content",  # [left, content, right] For testing that the navbar items align properly
     "secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
     "switcher": {
-        "json_url": "/_static/version_names.json",
+        "json_url": "_static/version_names.json",
         "version_match": version,
     },
     "navbar_start": ["navbar-logo", "version-switcher"],
