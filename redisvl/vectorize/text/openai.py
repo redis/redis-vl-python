@@ -62,10 +62,8 @@ class OpenAITextVectorizer(BaseVectorizer):
         try:
             import openai
         except ImportError:
-            raise ImportError(
-                "OpenAI vectorizer requires the openai library. \
-                    Please install with `pip install openai`"
-            )
+            raise ImportError("OpenAI vectorizer requires the openai library. \
+                    Please install with `pip install openai`")
 
         # Fetch the API key from api_config or environment variable
         api_key = (

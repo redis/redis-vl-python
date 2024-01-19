@@ -65,10 +65,8 @@ class CohereTextVectorizer(BaseVectorizer):
         try:
             import cohere
         except ImportError:
-            raise ImportError(
-                "Cohere vectorizer requires the cohere library. \
-                    Please install with `pip install cohere`"
-            )
+            raise ImportError("Cohere vectorizer requires the cohere library. \
+                    Please install with `pip install cohere`")
 
         # Fetch the API key from api_config or environment variable
         api_key = (
@@ -144,10 +142,8 @@ class CohereTextVectorizer(BaseVectorizer):
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
         if not isinstance(input_type, str):
-            raise TypeError(
-                "Must pass in a str value for cohere embedding input_type. \
-                    See https://docs.cohere.com/reference/embed."
-            )
+            raise TypeError("Must pass in a str value for cohere embedding input_type. \
+                    See https://docs.cohere.com/reference/embed.")
         if preprocess:
             text = preprocess(text)
         embedding = self._model_client.embed(
@@ -212,10 +208,8 @@ class CohereTextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
         if not isinstance(input_type, str):
-            raise TypeError(
-                "Must pass in a str value for cohere embedding input_type.\
-                    See https://docs.cohere.com/reference/embed."
-            )
+            raise TypeError("Must pass in a str value for cohere embedding input_type.\
+                    See https://docs.cohere.com/reference/embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
