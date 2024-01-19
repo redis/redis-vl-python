@@ -20,8 +20,7 @@ def get_address_from_env():
 
 
 class RedisConnection:
-    """
-    Manages connections to a Redis database, supporting both synchronous and
+    """Manages connections to a Redis database, supporting both synchronous and
     asynchronous clients.
 
     This class allows for establishing and handling Redis connections using
@@ -37,8 +36,7 @@ class RedisConnection:
     def connect(
         self, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
     ) -> None:
-        """
-        Establishes a connection to the Redis database.
+        """Establishes a connection to the Redis database.
 
         This method sets up either a synchronous or asynchronous Redis client
         based on the provided parameters.
@@ -65,8 +63,7 @@ class RedisConnection:
             self.client = self.get_redis_connection(self._redis_url, **self._kwargs)
 
     def set_client(self, client: Union[Redis, ARedis]) -> None:
-        """
-        Sets the Redis client instance for the connection.
+        """Sets the Redis client instance for the connection.
 
         This method allows setting a pre-configured Redis client, either
         synchronous or asynchronous.
@@ -84,8 +81,7 @@ class RedisConnection:
 
     @staticmethod
     def get_redis_connection(url: Optional[str] = None, **kwargs) -> Redis:
-        """
-        Creates and returns a synchronous Redis client.
+        """Creates and returns a synchronous Redis client.
 
         Args:
             url (Optional[str]): The URL of the Redis server. If not provided,
@@ -111,8 +107,7 @@ class RedisConnection:
 
     @staticmethod
     def get_async_redis_connection(url: Optional[str] = None, **kwargs) -> ARedis:
-        """
-        Creates and returns an asynchronous Redis client.
+        """Creates and returns an asynchronous Redis client.
 
         Args:
             url (Optional[str]): The URL of the Redis server. If not provided,

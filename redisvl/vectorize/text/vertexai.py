@@ -8,11 +8,12 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class VertexAITextVectorizer(BaseVectorizer):
-    """
-    The VertexAITextVectorizer uses Google's VertexAI Palm 2 embedding model
-    API to create text embeddings. This vectorizer is tailored for use in
-    environments where integration with Google Cloud Platform (GCP) services
-    is a key requirement.
+    """The VertexAITextVectorizer uses Google's VertexAI Palm 2 embedding model
+    API to create text embeddings.
+
+    This vectorizer is tailored for use in
+    environments where integration with Google Cloud Platform (GCP) services is
+    a key requirement.
 
     Utilizing this vectorizer requires an active GCP project and location
     (region), along with appropriate application credentials. These can be
@@ -20,14 +21,16 @@ class VertexAITextVectorizer(BaseVectorizer):
     environment variables. Additionally, the vertexai python client must be
     installed with `pip install google-cloud-aiplatform>=1.26`.
 
-    Example:
+    .. code-block:: python
+
         # Synchronous embedding of a single text
         vectorizer = VertexAITextVectorizer(
             model="textembedding-gecko",
             api_config={
-                "project_id": "your_gcp_project_id",    # OR set GCP_PROJECT_ID in your env
-                "location": "your_gcp_location",        # OR set GCP_LOCATION in your env
-                "google_application_credentials": "path_to_your_creds"    # OR set GOOGLE_APPLICATION_CREDENTIALS in your env
+                "project_id": "your_gcp_project_id", # OR set GCP_PROJECT_ID
+                "location": "your_gcp_location",     # OR set GCP_LOCATION
+                "google_application_credentials": "path_to_your_creds"
+                # OR set GOOGLE_APPLICATION_CREDENTIALS
             })
         embedding = vectorizer.embed("Hello, world!")
 
@@ -36,6 +39,7 @@ class VertexAITextVectorizer(BaseVectorizer):
             ["Hello, world!", "Goodbye, world!"],
             batch_size=2
         )
+
     """
 
     def __init__(
@@ -87,8 +91,9 @@ class VertexAITextVectorizer(BaseVectorizer):
             else:
                 raise ValueError(
                     "Missing Google Application Credentials. "
-                    "Provide the path to the credentials JSON file in the api_config with key 'google_application_credentials' "
-                    "or set the GOOGLE_APPLICATION_CREDENTIALS environment variable."
+                    "Provide the path to the credentials JSON file in the api_config with\
+                        key 'google_application_credentials' or set the \
+                            GOOGLE_APPLICATION_CREDENTIALS environment variable."
                 )
         try:
             import vertexai

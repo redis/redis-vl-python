@@ -176,8 +176,7 @@ class BaseStorage:
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
     ) -> List[str]:
-        """
-        Write a batch of objects to Redis as hash entries. This method
+        """Write a batch of objects to Redis as hash entries. This method
         returns a list of Redis keys written to the database.
 
         Args:
@@ -242,8 +241,7 @@ class BaseStorage:
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
     ) -> List[str]:
-        """
-        Asynchronously write objects to Redis as hash entries with
+        """Asynchronously write objects to Redis as hash entries with
         concurrency control. The method returns a list of keys written to the
         database.
 

@@ -1,7 +1,7 @@
 
-*****
+***********
 IndexSchema
-*****
+***********
 
 IndexSchema
 ===========
@@ -19,10 +19,10 @@ IndexSchema
     IndexSchema.storage_type
     IndexSchema.fields
     IndexSchema.redis_fields
-    SearchIndex.add_field
-    SearchIndex.add_fields
-    SearchIndex.remove_field
-    SearchIndex.generate_fields
+    IndexSchema.add_field
+    IndexSchema.add_fields
+    IndexSchema.remove_field
+    IndexSchema.generate_fields
     IndexSchema.from_yaml
     IndexSchema.to_yaml
     IndexSchema.from_dict

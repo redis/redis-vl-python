@@ -11,19 +11,21 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class CohereTextVectorizer(BaseVectorizer):
-    """
-    The CohereTextVectorizer class utilizes Cohere's API to generate embeddings
-    for text data.
+    """The CohereTextVectorizer class utilizes Cohere's API to generate
+    embeddings for text data.
 
-    This vectorizer is designed to interact with Cohere's /embed API, requiring an API key for authentication. The key
-    can be provided directly in the `api_config` dictionary or through the `COHERE_API_KEY` environment variable. Users
-    must obtain an API key from Cohere's website (https://dashboard.cohere.com/). Additionally, the `cohere` python
+    This vectorizer is designed to interact with Cohere's /embed API,
+    requiring an API key for authentication. The key can be provided
+    directly in the `api_config` dictionary or through the `COHERE_API_KEY`
+    environment variable. User must obtain an API key from Cohere's website
+    (https://dashboard.cohere.com/). Additionally, the `cohere` python
     client must be installed with `pip install cohere`.
 
-    The vectorizer supports only synchronous operations, allows for batch processing of texts and flexibility in
-    handling preprocessing tasks.
+    The vectorizer supports only synchronous operations, allows for batch
+    processing of texts and flexibility in handling preprocessing tasks.
 
-    Example:
+    .. code-block:: python
+
         from redisvl.vectorize.text import CohereTextVectorizer
 
         vectorizer = CohereTextVectorizer(
@@ -38,12 +40,15 @@ class CohereTextVectorizer(BaseVectorizer):
             texts=["your document text", "more document text"],
             input_type="search_documents"
         )
+
     """
 
     def __init__(
         self, model: str = "embed-english-v3.0", api_config: Optional[Dict] = None
     ):
-        """Initialize the Cohere vectorizer. Visit https://cohere.ai/embed to learn about embeddings.
+        """Initialize the Cohere vectorizer.
+
+        Visit https://cohere.ai/embed to learn about embeddings.
 
         Args:
             model (str): Model to use for embedding. Defaults to 'embed-english-v3.0'.
@@ -53,15 +58,15 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             ImportError: If the cohere library is not installed.
             ValueError: If the API key is not provided.
+
         """
         super().__init__(model)
         # Dynamic import of the cohere module
         try:
             import cohere
         except ImportError:
-            raise ImportError(
-                "Cohere vectorizer requires the cohere library. Please install with `pip install cohere`"
-            )
+            raise ImportError("Cohere vectorizer requires the cohere library. \
+                    Please install with `pip install cohere`")
 
         # Fetch the API key from api_config or environment variable
         api_key = (
@@ -98,16 +103,16 @@ class CohereTextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[float]:
-        """
-        Embed a chunk of text using the Cohere Embeddings API.
+        """Embed a chunk of text using the Cohere Embeddings API.
 
         Must provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. Supported
-        input types below:
-            - "search_document": Used for embeddings stored in a vector database for search use-cases.
-            - "search_query": Used for embeddings of search queries run against a vector DB to find relevant documents.
-            - "classification": Used for embeddings passed through a text classifier.
-            - "clustering": Used for the embeddings run through a clustering algorithm.
+        that specifies the type of input you're giving to the model.
+
+        Supported input types:
+            - ``search_document``: Used for embeddings stored in a vector database for search use-cases.
+            - ``search_query``: Used for embeddings of search queries run against a vector DB to find relevant documents.
+            - ``classification``: Used for embeddings passed through a text classifier
+            - ``clustering``: Used for the embeddings run through a clustering algorithm.
 
         When hydrating your Redis DB, the documents you want to search over
         should be embedded with input_type= "search_document" and when you are
@@ -130,15 +135,15 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Raises:
             TypeError: In an invalid input_type is provided.
+
         """
         input_type = kwargs.get("input_type")
 
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
         if not isinstance(input_type, str):
-            raise TypeError(
-                "Must pass in a str value for cohere embedding input_type. See https://docs.cohere.com/reference/embed."
-            )
+            raise TypeError("Must pass in a str value for cohere embedding input_type. \
+                    See https://docs.cohere.com/reference/embed.")
         if preprocess:
             text = preprocess(text)
         embedding = self._model_client.embed(
@@ -159,16 +164,17 @@ class CohereTextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
-        """
-        Embed many chunks of text using the Cohere Embeddings API.
+        """Embed many chunks of text using the Cohere Embeddings API.
 
         Must provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. Supported
-        input types below:
-            - "search_document": Used for embeddings stored in a vector database for search use-cases.
-            - "search_query": Used for embeddings of search queries run against a vector DB to find relevant documents.
-            - "classification": Used for embeddings passed through a text classifier.
-            - "clustering": Used for the embeddings run through a clustering algorithm.
+        that specifies the type of input you're giving to the model.
+
+        Supported input types:
+            - ``search_document``: Used for embeddings stored in a vector database for search use-cases.
+            - ``search_query``: Used for embeddings of search queries run against a vector DB to find relevant documents.
+            - ``classification``: Used for embeddings passed through a text classifier
+            - ``clustering``: Used for the embeddings run through a clustering algorithm.
+
 
         When hydrating your Redis DB, the documents you want to search over
         should be embedded with input_type= "search_document" and when you are
@@ -193,6 +199,7 @@ class CohereTextVectorizer(BaseVectorizer):
 
         Raises:
             TypeError: In an invalid input_type is provided.
+
         """
         input_type = kwargs.get("input_type")
 
@@ -201,9 +208,8 @@ class CohereTextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
         if not isinstance(input_type, str):
-            raise TypeError(
-                "Must pass in a str value for cohere embedding input_type. See https://docs.cohere.com/reference/embed."
-            )
+            raise TypeError("Must pass in a str value for cohere embedding input_type.\
+                    See https://docs.cohere.com/reference/embed.")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

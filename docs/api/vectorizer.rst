@@ -63,7 +63,7 @@ VertexAITextVectorizer
 
 
 CohereTextVectorizer
-======================
+====================
 
 .. _coheretextvectorizer_api:
 

@@ -147,15 +147,24 @@ class SearchIndex:
     This class is a wrapper around the redis-py client that provides
     purpose-built methods for interacting with Redis as a vector database.
 
-    Example:
+    .. code-block:: python
+
         from redisvl.index import SearchIndex
+
+        # initialize the index object with schema from file
         index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
+
+        # create the index
         index.create(overwrite=True)
-        index.load(data) # data is an iterable of dictionaries
-        # Use an async connection
+
+        # data is an iterable of dictionaries
+        index.load(data)
+
+        # Do the same with an an async connection
         index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
         await index.acreate(overwrite=True)
         await index.aload(data)
+
     """
 
     _STORAGE_MAP = {
@@ -171,9 +180,8 @@ class SearchIndex:
         connection_args: Dict[str, Any] = {},
         **kwargs,
     ):
-        """Initialize the RedisVL search index class with a schema,
-        redis_url, connection_args, and other kwargs.
-        """
+        """Initialize the RedisVL search index class with a schema, redis_url,
+        connection_args, and other kwargs."""
         # final validation on schema object
         if not schema or not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid schema object")
@@ -221,7 +229,8 @@ class SearchIndex:
     @classmethod
     def from_existing(cls):
         raise DeprecationWarning(
-            "This method is deprecated since 0.0.5. Use the from_yaml or from_dict constructors with an IndexSchema instead."
+            "This method is deprecated since 0.0.5. Use the from_yaml or\
+                from_dict constructors with an IndexSchema instead."
         )
 
     @classmethod
@@ -238,7 +247,8 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.index import SearchIndex
             index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
             index.create(overwrite=True)
@@ -260,7 +270,8 @@ class SearchIndex:
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
 
-        Example:
+        .. code-block:: python
+
             from redisvl.index import SearchIndex
             index = SearchIndex.from_dict({
                 "index": {
@@ -273,6 +284,7 @@ class SearchIndex:
                 }
             }, redis_url="redis://localhost:6379")
             index.create(overwrite=True)
+
         """
         schema = IndexSchema.from_dict(schema_dict)
         return cls(schema=schema, connection_args=connection_args, **kwargs)
@@ -304,11 +316,13 @@ class SearchIndex:
             ValueError: If the Redis URL is not provided nor accessible
                 through the `REDIS_URL` environment variable.
 
-        Example:
+        .. code-block:: python
+
             # standard sync Redis connection
             index.connect(redis_url="redis://localhost:6379")
             # async Redis connection
             index.connect(redis_url="redis://localhost:6379", use_async=True)
+
         """
         self._redis_conn.connect(redis_url, use_async, **kwargs)
         return self
@@ -332,8 +346,7 @@ class SearchIndex:
         Raises:
             TypeError: If the provided client is not valid.
 
-        Example:
-            import redis
+        .. code-block:: python
 
             r = redis.Redis.from_url("redis://localhost:6379")
             index.set_client(r)
@@ -343,6 +356,7 @@ class SearchIndex:
 
             r = aredis.Redis.from_url("redis://localhost:6379")
             index.set_client(r)
+
         """
         self._redis_conn.set_client(client)
         return self
@@ -421,9 +435,8 @@ class SearchIndex:
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
     ) -> List[str]:
-        """
-        Load a batch of objects to Redis. Returns the list of keys loaded
-        to Redis.
+        """Load a batch of objects to Redis. Returns the list of keys loaded to
+        Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -446,7 +459,8 @@ class SearchIndex:
             ValueError: If the length of provided keys does not match the length
                 of objects.
 
-        Example:
+        .. code-block:: python
+
             keys = index.load([{"test": "foo"}, {"test": "bar"}])
         """
         return self._storage.write(
@@ -460,10 +474,11 @@ class SearchIndex:
         )
 
     def fetch(self, id: str) -> Dict[str, Any]:
-        """
-        Fetch an object from Redis by id. The id is typically either a
-        unique identifier, or derived from some domain-specific metadata
-        combination (like a document id or chunk id).
+        """Fetch an object from Redis by id.
+
+        The id is typically either a unique identifier,
+        or derived from some domain-specific metadata combination
+        (like a document id or chunk id).
 
         Args:
             id (str): The specified unique identifier for a particular
@@ -513,8 +528,10 @@ class SearchIndex:
         Returns:
             List[Result]: A list of search results.
 
-        Example:
+        .. code-block:: python
+
             results = index.query(query)
+
         """
         return self._query(query)
 
@@ -537,10 +554,12 @@ class SearchIndex:
             TypeError: If the batch size is not an integer
             ValueError: If the batch size is less than or equal to zero.
 
-        Example:
+        .. code-block:: python
+
             for batch in index.query_batch(query, batch_size=10):
                 # process batched results
                 pass
+
         """
         if not isinstance(batch_size, int):
             raise TypeError("batch_size must be an integer")
@@ -645,9 +664,8 @@ class SearchIndex:
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
     ) -> List[str]:
-        """
-        Asynchronously load objects to Redis with concurrency control. Returns
-        the list of keys loaded to Redis.
+        """Asynchronously load objects to Redis with concurrency control.
+        Returns the list of keys loaded to Redis.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -670,8 +688,10 @@ class SearchIndex:
             ValueError: If the length of provided keys does not match the
                 length of objects.
 
-        Example:
+        .. code-block:: python
+
             keys = await index.aload([{"test": "foo"}, {"test": "bar"}])
+
         """
         return await self._storage.awrite(
             self._redis_conn.client,  # type: ignore
@@ -684,11 +704,9 @@ class SearchIndex:
         )
 
     async def afetch(self, id: str) -> Dict[str, Any]:
-        """
-        Asynchronously etch an object from Redis by id. The id is typically
+        """Asynchronously etch an object from Redis by id. The id is typically
         either a unique identifier, or derived from some domain-specific
-        metadata
-        combination (like a document id or chunk id).
+        metadata combination (like a document id or chunk id).
 
         Args:
             id (str): The specified unique identifier for a particular
@@ -738,7 +756,8 @@ class SearchIndex:
         Returns:
             List[Result]: A list of search results.
 
-        Example:
+        .. code-block:: python
+
             results = await aindex.query(query)
         """
         return await self._aquery(query)
@@ -764,7 +783,8 @@ class SearchIndex:
             TypeError: If the batch size is not an integer
             ValueError: If the batch size is less than or equal to zero.
 
-        Example:
+        .. code-block:: python
+
             async for batch in index.aquery_batch(query, batch_size=10):
                 # process batched results
                 pass
