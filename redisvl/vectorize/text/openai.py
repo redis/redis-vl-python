@@ -11,9 +11,8 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class OpenAITextVectorizer(BaseVectorizer):
-    """
-    The OpenAITextVectorizer class utilizes OpenAI's API to generate embeddings
-    for text data.
+    """The OpenAITextVectorizer class utilizes OpenAI's API to generate
+    embeddings for text data.
 
     This vectorizer is designed to interact with OpenAI's embeddings API,
     requiring an API key for authentication. The key can be provided directly
@@ -26,7 +25,8 @@ class OpenAITextVectorizer(BaseVectorizer):
     allowing for batch processing of texts and flexibility in handling
     preprocessing tasks.
 
-    Example:
+    .. code-block:: python
+
         # Synchronous embedding of a single text
         vectorizer = OpenAITextVectorizer(
             model="text-embedding-ada-002",
@@ -62,9 +62,8 @@ class OpenAITextVectorizer(BaseVectorizer):
         try:
             import openai
         except ImportError:
-            raise ImportError(
-                "OpenAI vectorizer requires the openai library. Please install with `pip install openai`"
-            )
+            raise ImportError("OpenAI vectorizer requires the openai library. \
+                    Please install with `pip install openai`")
 
         # Fetch the API key from api_config or environment variable
         api_key = (
@@ -73,7 +72,8 @@ class OpenAITextVectorizer(BaseVectorizer):
         if not api_key:
             raise ValueError(
                 "OpenAI API key is required. "
-                "Provide it in api_config or set the OPENAI_API_KEY environment variable."
+                "Provide it in api_config or set the OPENAI_API_KEY\
+                    environment variable."
             )
 
         openai.api_key = api_key

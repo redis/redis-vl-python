@@ -48,8 +48,8 @@ class BaseLLMCache:
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
     ) -> str:
-        """Stores the specified key-value pair in the cache along
-        with metadata."""
+        """Stores the specified key-value pair in the cache along with
+        metadata."""
         raise NotImplementedError
 
     def hash_input(self, prompt: str):

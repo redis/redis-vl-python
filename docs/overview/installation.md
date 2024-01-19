@@ -5,7 +5,7 @@ myst:
       Installation instructions for RedisVL
 ---
 
-## Install RedisVL
+# Install RedisVL
 
 There are a few ways to install RedisVL. The easiest way is to use pip.
 

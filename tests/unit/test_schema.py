@@ -114,14 +114,14 @@ def test_generate_fields():
 
 
 def test_to_dict():
-    """Test schema to dict serialization"""
+    """Test schema to dict serialization."""
     index_schema = create_sample_index_schema()
     index_dict = index_schema.to_dict()
     assert index_dict["index"]["name"] == "test"
 
 
 def test_from_dict():
-    """Test loading schema from a dictionary"""
+    """Test loading schema from a dictionary."""
     sample_fields = {
         "text": [{"name": "example_text", "sortable": False}],
         "numeric": [{"name": "example_numeric", "sortable": True}],
@@ -145,7 +145,7 @@ def test_from_dict():
 
 
 def test_from_yaml():
-    """Test loading from yaml"""
+    """Test loading from yaml."""
     index_schema = IndexSchema.from_yaml(
         str(get_base_path().joinpath("../sample_hash_schema.yaml"))
     )
@@ -158,6 +158,6 @@ def test_from_yaml():
 
 
 def test_from_yaml_file_not_found():
-    """Test loading from yaml with file not found"""
+    """Test loading from yaml with file not found."""
     with pytest.raises(FileNotFoundError):
         IndexSchema.from_yaml("nonexistent_file")
