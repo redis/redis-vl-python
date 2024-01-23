@@ -60,7 +60,6 @@ class CohereTextVectorizer(BaseVectorizer):
             ValueError: If the API key is not provided.
 
         """
-        super().__init__(model)
         # Dynamic import of the cohere module
         try:
             import cohere
@@ -80,15 +79,16 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
 
-        self._model = model
-        self._model_client = cohere.Client(api_key)
-        self._dims = self._set_model_dims()
+        client = cohere.Client(api_key)
+        dims = self._set_model_dims(client, model)
+        super().__init__(model=model, dims=dims, client=client)
 
-    def _set_model_dims(self) -> int:
+    @staticmethod
+    def _set_model_dims(client, model) -> int:
         try:
-            embedding = self._model_client.embed(
+            embedding = client.embed(
                 texts=["dimension test"],
-                model=self._model,
+                model=model,
                 input_type="search_document",
             ).embeddings[0]
         except (KeyError, IndexError) as ke:
@@ -150,8 +150,8 @@ class CohereTextVectorizer(BaseVectorizer):
             )
         if preprocess:
             text = preprocess(text)
-        embedding = self._model_client.embed(
-            texts=[text], model=self._model, input_type=input_type
+        embedding = self.client.embed(
+            texts=[text], model=self.model, input_type=input_type
         ).embeddings[0]
         return self._process_embedding(embedding, as_buffer)
 
@@ -219,8 +219,8 @@ class CohereTextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._model_client.embed(
-                texts=batch, model=self._model, input_type=input_type
+            response = self.client.embed(
+                texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
                 self._process_embedding(embedding, as_buffer)

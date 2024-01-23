@@ -1,6 +1,6 @@
 from typing import Any, Callable, List, Optional
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 from redisvl.utils.utils import array_to_buffer
 
@@ -10,7 +10,8 @@ class BaseVectorizer(BaseModel):
     dims: int
     client: Any
 
-    @validator("dims")
+    @field_validator("dims", mode="before")
+    @classmethod
     def check_dims(cls, v):
         if v <= 0:
             raise ValueError("Dimension must be a positive integer")

@@ -79,15 +79,15 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         openai.api_key = api_key
         client = openai.Embedding
-        dims = self._set_model_dims(client)
+        dims = self._set_model_dims(client, model)
         super().__init__(model=model, dims=dims, client=client)
 
     @staticmethod
-    def _set_model_dims(client) -> int:
+    def _set_model_dims(client, model) -> int:
         try:
-            embedding = client.create(input=["dimension test"], engine=self.model)[
-                "data"
-            ][0]["embedding"]
+            embedding = client.create(input=["dimension test"], engine=model)["data"][
+                0
+            ]["embedding"]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except

@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from redis.commands.search.field import Field as RedisField
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
@@ -68,7 +68,8 @@ class BaseVectorField(BaseModel):
     initial_cap: Optional[int] = None
     as_name: Optional[str] = None
 
-    @validator("algorithm", "datatype", "distance_metric", pre=True)
+    @field_validator("algorithm", "datatype", "distance_metric", mode="before")
+    @classmethod
     def uppercase_strings(cls, v):
         return v.upper()
 
