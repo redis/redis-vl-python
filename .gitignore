@@ -7,3 +7,4 @@ scratch
 *.csv
 wiki_schema.yaml
 docs/_build/
+.venv
