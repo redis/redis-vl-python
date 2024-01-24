@@ -15,6 +15,13 @@ class StorageType(Enum):
     JSON = "json"
 
 
+class IndexInfo(BaseModel):
+    name: str
+    prefix: str = "rvl"
+    key_separator: str = ":"
+    storage_type: StorageType = StorageType.HASH
+
+
 class IndexSchema(BaseModel):
     """Represents a schema definition for an index in Redis, used in RedisVL for
     organizing and querying vector and metadata fields.
@@ -58,11 +65,8 @@ class IndexSchema(BaseModel):
         })
 
     """
-
-    name: str
-    prefix: str = "rvl"
-    key_separator: str = ":"
-    storage_type: StorageType = StorageType.HASH
+    version: str = "0.1"
+    index: IndexInfo
     fields: Dict[str, List[Union[BaseField, BaseVectorField]]] = {}
 
     @validator("fields", pre=True)
@@ -115,7 +119,7 @@ class IndexSchema(BaseModel):
         """
         redis_fields: List[RedisField] = []
         for field_list in self.fields.values():
-            redis_fields.extend(field.as_field() for field in field_list)  # type: ignore
+            redis_fields.extend(field.as_redis_field() for field in field_list)  # type: ignore
         return redis_fields
 
     def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):

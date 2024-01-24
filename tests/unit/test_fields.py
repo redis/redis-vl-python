@@ -73,19 +73,19 @@ def create_hnsw_vector_field(**kwargs):
 )
 def test_field_schema_as_field(schema_func, field_class):
     schema = schema_func()
-    field = schema.as_field()
+    field = schema.as_redis_field()
     assert isinstance(field, field_class)
     assert field.name == f"example_{field_class.__name__.lower()}"
 
 
 def test_vector_fields_as_field():
     flat_vector_schema = create_flat_vector_field()
-    flat_vector_field = flat_vector_schema.as_field()
+    flat_vector_field = flat_vector_schema.as_redis_field()
     assert isinstance(flat_vector_field, RedisVectorField)
     assert flat_vector_field.name == "example_flatvectorfield"
 
     hnsw_vector_schema = create_hnsw_vector_field()
-    hnsw_vector_field = hnsw_vector_schema.as_field()
+    hnsw_vector_field = hnsw_vector_schema.as_redis_field()
     assert isinstance(hnsw_vector_field, RedisVectorField)
     assert hnsw_vector_field.name == "example_hnswvectorfield"
 
@@ -100,7 +100,7 @@ def test_vector_fields_as_field():
 def test_vector_fields_with_optional_params(vector_schema_func, extra_params):
     # Create a vector schema with additional parameters set.
     vector_schema = vector_schema_func(**extra_params)
-    vector_field = vector_schema.as_field()
+    vector_field = vector_schema.as_redis_field()
 
     # Assert that the field is correctly created and the optional parameters are set.
     assert isinstance(vector_field, RedisVectorField)
@@ -119,7 +119,7 @@ def test_hnsw_vector_field_optional_params_not_set():
     assert hnsw_field.ef_runtime == 10  # default value
     assert hnsw_field.epsilon == 0.01  # default value
 
-    field_exported = hnsw_field.as_field()
+    field_exported = hnsw_field.as_redis_field()
 
     # Check the default values are correctly applied in the exported object
     assert field_exported.args[field_exported.args.index("M") + 1] == 16
@@ -131,7 +131,7 @@ def test_hnsw_vector_field_optional_params_not_set():
 def test_flat_vector_field_block_size_not_set():
     # Create Flat vector field without setting block_size
     flat_field = FlatVectorField(name="example_vector", dims=128, algorithm="FLAT")
-    field_exported = flat_field.as_field()
+    field_exported = flat_field.as_redis_field()
 
     # block_size and initial_cap should not be in the exported field if it was not set
     assert "BLOCK_SIZE" not in field_exported.args

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from pydantic.v1 import BaseModel, Field, validator
 from redis.commands.search.field import Field as RedisField
@@ -12,8 +12,15 @@ from typing_extensions import Literal
 
 class BaseField(BaseModel):
     name: str = Field(...)
-    sortable: Optional[bool] = False
-    as_name: Optional[str] = None
+    path: Optional[str] = None
+
+    def _handle_path_name(self) -> Tuple[str, str]:
+        # In the case of JSON path / objects
+        # We pass the path as the name field in the Redis API
+        # We pass the true name as the as_name (alias) in the Redis API
+        if self.path:
+            return self.path, self.name
+        return self.name, self.path
 
 
 class TextField(BaseField):
@@ -21,52 +28,66 @@ class TextField(BaseField):
     no_stem: Optional[bool] = False
     phonetic_matcher: Optional[str] = None
     withsuffixtrie: Optional[bool] = False
+    sortable: Optional[bool] = False
 
-    def as_field(self) -> RedisField:
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_path_name()
         return RedisTextField(
-            self.name,
+            name,
+            as_name=as_name,
             weight=self.weight,  # type: ignore
             no_stem=self.no_stem,  # type: ignore
             phonetic_matcher=self.phonetic_matcher,  # type: ignore
             sortable=self.sortable,
-            as_name=self.as_name,
         )
 
 
 class TagField(BaseField):
     separator: Optional[str] = ","
     case_sensitive: Optional[bool] = False
+    sortable: Optional[bool] = False
 
-    def as_field(self) -> RedisField:
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_path_name()
         return RedisTagField(
-            self.name,
+            name,
+            as_name=as_name,
             separator=self.separator,  # type: ignore
             case_sensitive=self.case_sensitive,  # type: ignore
             sortable=self.sortable,
-            as_name=self.as_name,
         )
 
 
 class NumericField(BaseField):
-    def as_field(self) -> RedisField:
+    sortable: Optional[bool] = False
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_path_name()
         return RedisNumericField(
-            self.name, sortable=self.sortable, as_name=self.as_name
+            name,
+            as_name=as_name,
+            sortable=self.sortable,
         )
 
 
 class GeoField(BaseField):
-    def as_field(self) -> RedisField:
-        return RedisGeoField(self.name, sortable=self.sortable, as_name=self.as_name)
+    sortable: Optional[bool] = False
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_path_name()
+        return RedisGeoField(
+            name,
+            as_name=as_name,
+            sortable=self.sortable,
+        )
 
 
-class BaseVectorField(BaseModel):
-    name: str = Field(...)
+class BaseVectorField(BaseField):
     dims: int = Field(...)
     algorithm: object = Field(...)
     datatype: str = Field(default="FLOAT32")
     distance_metric: str = Field(default="COSINE")
     initial_cap: Optional[int] = None
-    as_name: Optional[str] = None
 
     @validator("algorithm", "datatype", "distance_metric", pre=True)
     @classmethod
@@ -89,13 +110,17 @@ class FlatVectorField(BaseVectorField):
     algorithm: Literal["FLAT"] = "FLAT"
     block_size: Optional[int] = None
 
-    def as_field(self) -> RedisField:
+    def as_redis_field(self) -> RedisField:
         # grab base field params and augment with flat-specific fields
+        name, as_name = self._handle_path_name()
         field_data = super().field_data
         if self.block_size is not None:
             field_data["BLOCK_SIZE"] = self.block_size
         return RedisVectorField(
-            self.name, self.algorithm, field_data, as_name=self.as_name
+            name,
+            self.algorithm,
+            field_data,
+            as_name=as_name
         )
 
 
@@ -106,8 +131,9 @@ class HNSWVectorField(BaseVectorField):
     ef_runtime: int = Field(default=10)
     epsilon: float = Field(default=0.01)
 
-    def as_field(self) -> RedisField:
+    def as_redis_field(self) -> RedisField:
         # grab base field params and augment with hnsw-specific fields
+        name, as_name = self._handle_path_name()
         field_data = super().field_data
         field_data.update(
             {
@@ -118,7 +144,10 @@ class HNSWVectorField(BaseVectorField):
             }
         )
         return RedisVectorField(
-            self.name, self.algorithm, field_data, as_name=self.as_name
+            name,
+            self.algorithm,
+            field_data,
+            as_name=as_name
         )
 
 
