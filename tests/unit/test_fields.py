@@ -1,5 +1,5 @@
 import pytest
-from pydantic import ValidationError
+
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
 from redis.commands.search.field import TagField as RedisTagField
@@ -7,7 +7,6 @@ from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
 from redisvl.schema.fields import (
-    BaseField,
     FieldFactory,
     FlatVectorField,
     GeoField,

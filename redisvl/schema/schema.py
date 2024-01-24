@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic.v1 import BaseModel, validator
 from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, BaseVectorField, FieldFactory
@@ -65,7 +65,7 @@ class IndexSchema(BaseModel):
     storage_type: StorageType = StorageType.HASH
     fields: Dict[str, List[Union[BaseField, BaseVectorField]]] = {}
 
-    @field_validator("fields", mode="before")
+    @validator("fields", pre=True)
     @classmethod
     def check_unique_field_names(cls, fields):
         """Validate that field names are all unique."""

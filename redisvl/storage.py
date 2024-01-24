@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
