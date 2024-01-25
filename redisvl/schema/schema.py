@@ -242,7 +242,7 @@ class IndexSchema(BaseModel):
                     field_name,
                 )
                 fields.setdefault(field_type, []).append(
-                    new_field.model_dump(exclude_unset=True)
+                    new_field.dict(exclude_unset=True)
                 )
             except ValueError as e:
                 if strict:
@@ -301,7 +301,7 @@ class IndexSchema(BaseModel):
         formatted_fields = {}
         for field_type, fields in self.fields.items():
             formatted_fields[field_type] = [
-                field.model_dump(exclude_unset=True) for field in fields
+                field.dict(exclude_unset=True) for field in fields
             ]
         return {"index": index_data, "fields": formatted_fields}
 

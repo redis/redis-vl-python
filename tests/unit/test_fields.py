@@ -1,5 +1,4 @@
 import pytest
-
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
 from redis.commands.search.field import TagField as RedisTagField
