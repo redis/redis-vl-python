@@ -1,0 +1,40 @@
+# NEW: add version.. ideally this will mirror the version of redisvl (0.1.0 for example) for change management
+version: '0.1.0'
+
+index:
+  name: user-index-v1
+  prefix: user
+  key_separator: ':'
+  storage_type: json
+
+fields:
+
+    - name: user
+      type: tag
+      path: '$.user'
+
+    - name: credit_score
+      type: tag
+      path: '$.credit_score'
+
+    - name: embedding
+      type: vector
+      path: '$.embedding'
+      attrs:
+        - algorithm: flat
+          dims: 3
+          distance_metric: cosine
+          datatype: float32
+
+
+
+# To discuss
+# - fields list
+# - versioning...?
+# - backwards compat
+# - text/str data
+
+
+
+
+

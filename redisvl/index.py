@@ -180,8 +180,19 @@ class SearchIndex:
         connection_args: Dict[str, Any] = {},
         **kwargs,
     ):
-        """Initialize the RedisVL search index class with a schema, redis_url,
-        connection_args, and other kwargs."""
+        """Initialize the RedisVL search index with a schema, Redis client
+        (or URL string with other connection args), connection_args, and other
+        kwargs.
+
+        Args:
+            schema (IndexSchema): Index schema object.
+            redis_url (str, optional): The URL of the Redis server to
+                connect to.
+            redis_client(Union[redis.Redis, aredis.Redis], optional): An
+                instantiated redis client.
+            connection_args (Dict[str, Any], optional): Redis client connection
+                args.
+        """
         # final validation on schema object
         if not schema or not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid schema object")

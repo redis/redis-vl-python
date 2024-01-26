@@ -4,7 +4,7 @@ from argparse import Namespace
 
 from tabulate import tabulate
 
-from redisvl.cli.log import get_logger
+from redisvl.utils.log import get_logger
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.schema import IndexSchema

@@ -1,100 +1,211 @@
 import re
+
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic.v1 import BaseModel, validator
+from pydantic.v1 import BaseModel, root_validator
 from redis.commands.search.field import Field as RedisField
 
-from redisvl.schema.fields import BaseField, BaseVectorField, FieldFactory
+from redisvl.schema.fields import BaseField, FieldFactory
+from redisvl.utils.log import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class StorageType(Enum):
+    """
+    Enumeration for the storage types supported in Redis.
+
+    Attributes:
+        HASH (str): Represents the 'hash' storage type in Redis.
+        JSON (str): Represents the 'json' storage type in Redis.
+    """
     HASH = "hash"
     JSON = "json"
 
 
 class IndexInfo(BaseModel):
+    """
+    Represents the basic configuration information for an index in Redis.
+
+    This class includes the essential details required to define an index, such as
+    its name, prefix, key separator, and storage type.
+    """
     name: str
+    """The unique name of the index."""
     prefix: str = "rvl"
+    """The prefix used for Redis keys associated with this index."""
     key_separator: str = ":"
+    """The separator character used in Redis keys."""
     storage_type: StorageType = StorageType.HASH
+    """The storage type used in Redis (e.g., 'hash' or 'json')."""
 
 
 class IndexSchema(BaseModel):
-    """Represents a schema definition for an index in Redis, used in RedisVL for
-    organizing and querying vector and metadata fields.
+    """Represents a schema definition for a search index in Redis, primarily
+    used in RedisVL for organizing and querying vector and metadata fields.
 
-    This schema defines the structure of data stored in Redis, including
-    information about the storage type, field definitions, and key formatting
-    conventions used in the Redis database. Use the convenience class
-    constructor methods `from_dict` and `from_yaml` to load and create an index
-    schema from your definitions.
+    This schema provides a structured format to define the layout and types of
+    fields stored in Redis, including details such as storage type, field
+    definitions, and key formatting conventions.
 
-    Note: All field names MUST be unique in the index schema.
-
-    Attributes:
-        name (str): Unique name of the index.
-        prefix (str): Prefix used for Redis keys. Defaults to "rvl".
-        key_separator (str): Separator character used in Redis keys. Defaults
-            to ":".
-        storage_type (StorageType): Enum representing the underlying Redis data
-            structure (e.g. hash or json). Defaults to hash.
-        fields (Dict[str, List[Union[BaseField, BaseVectorField]]]): A dict
-            mapping field types to lists of redisvl field definitions.
+    The class offers methods to create an index schema from a YAML file or a
+    Python dictionary, supporting flexible schema definitions and easy
+    integration into various workflows.
 
     .. code-block:: python
 
         from redisvl.schema import IndexSchema
+
         # From YAML
         schema = IndexSchema.from_yaml("schema.yaml")
+
         # From Dict
         schema = IndexSchema.from_dict({
             "index": {
-                "name": "my-index",
+                "name": "docs-index",
                 "prefix": "docs",
                 "storage_type": "hash",
             },
-            "fields": {
-                "tag": [{"name": "doc-id"}],
-                "vector": [
-                    {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
-                ]
-            }
+            "fields": [
+                {
+                    "name": "doc-id",
+                    "type": "tag"
+                },
+                {
+                    "name": "doc-embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": 1536
+                    }
+                }
+            ]
         })
 
+    Note:
+        The `fields` attribute in the schema must contain unique field names to ensure
+        correct and unambiguous field references.
+
     """
-    version: str = "0.1"
     index: IndexInfo
-    fields: Dict[str, List[Union[BaseField, BaseVectorField]]] = {}
+    """Details of the basic index configurations."""
+    fields: Dict[str, BaseField] = {}
+    """Fields associated with the search index and their properties"""
+    version: str = "0.1.0"
+    """Version of the underlying index schema."""
 
-    @validator("fields", pre=True)
-    @classmethod
-    def check_unique_field_names(cls, fields):
-        """Validate that field names are all unique."""
-        all_names = cls._get_field_names(fields)
-        print(all_names, flush=True)
-        if len(set(all_names)) != len(all_names):
-            raise ValueError(
-                f"Field names {all_names} must be unique across all fields."
+    def _make_field(self, **field_inputs) -> BaseField:
+        """
+        Parse raw field inputs derived from YAML or dict.
+
+        Validates and sets the 'path' attribute for fields when using JSON storage type.
+        """
+        # Parse raw field inputs
+        field_name = field_inputs.get("name")
+        field_type = field_inputs.get("type")
+        field_attrs = field_inputs.get("attrs", {})
+        field_path = field_inputs.get("path")
+
+        if not field_name or not field_type:
+            raise ValueError("Fields must include a 'type' and 'name'.")
+
+        if storage_type == StorageType.JSON:
+            field_path = field_path if field_path else f"$.{field_name}"
+        # Otherwise we are using HASH
+        if path is not None:
+            logger.warning(
+                f"Path attribute for field '{field_name}' will be ignored for HASH storage type."
             )
-        return fields
 
-    @staticmethod
-    def _get_field_names(
-        fields: Dict[str, List[Union[BaseField, BaseVectorField]]]
-    ) -> List[str]:
-        """Returns a list of field names from a fields object.
+        return FieldFactory.create_field(field_type, name=field_name, **field_attrs)
+
+    @root_validator(pre=True)
+    def validate_and_create_fields(cls, values):
+        """
+        Validate uniqueness of field names and create valid field instances.
+        """
+        raw_fields = values.get('fields', [])
+        field_definitions = {}
+
+        for field_input in raw_fields:
+            field = cls._make_field(**field_input)
+            if field.name in field_definitions:
+                raise ValueError(
+                    f"Duplicate field name: {field.name}. Field names must be unique across all fields."
+                )
+            field_definitions[field.name] = field
+
+        values['fields'] = field_definitions
+        return values
+
+    @classmethod
+    def from_yaml(cls, file_path: str) -> "IndexSchema":
+        """Create an IndexSchema from a YAML file.
+
+        Args:
+            file_path (str): The path to the YAML file.
 
         Returns:
-            List[str]: A list of field names from the fields object.
+            IndexSchema: The index schema.
+
+        .. code-block:: python
+
+            from redisvl.schema import IndexSchema
+            schema = IndexSchema.from_yaml("schema.yaml")
         """
-        all_names: List[str] = []
-        for field_list in fields.values():
-            for field in field_list:
-                all_names.append(field.name)
-        return all_names
+        try:
+            fp = Path(file_path).resolve()
+        except OSError as e:
+            raise ValueError(f"Invalid file path: {file_path}") from e
+
+        if not fp.exists():
+            raise FileNotFoundError(f"Schema file {file_path} does not exist")
+
+        with open(fp, "r") as f:
+            yaml_data = yaml.safe_load(f)
+            return cls(**yaml_data)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
+        """Create an IndexSchema from a dictionary.
+
+        Args:
+            data (Dict[str, Any]): The index schema data.
+
+        Returns:
+            IndexSchema: The index schema.
+
+        .. code-block:: python
+
+            from redisvl.schema import IndexSchema
+
+            schema = IndexSchema.from_dict({
+                "index": {
+                    "name": "docs-index",
+                    "prefix": "docs",
+                    "storage_type": "hash",
+                },
+                "fields": [
+                    {
+                        "name": "doc-id",
+                        "type": "tag"
+                    },
+                    {
+                        "name": "doc-embedding",
+                        "type": "vector",
+                        "attrs": {
+                            "algorithm": "flat",
+                            "dims": 1536
+                        }
+                    }
+                ]
+            })
+        """
+        return cls(**data)
 
     @property
     def field_names(self) -> List[str]:
@@ -103,7 +214,7 @@ class IndexSchema(BaseModel):
         Returns:
             List[str]: A list of field names from the schema.
         """
-        return self._get_field_names(self.fields)
+        return list(self.fields.keys())
 
     @property
     def redis_fields(self) -> List[RedisField]:
@@ -117,38 +228,12 @@ class IndexSchema(BaseModel):
         Returns:
             List[RedisField]: A list of redis-py field definitions.
         """
-        redis_fields: List[RedisField] = []
-        for field_list in self.fields.values():
-            redis_fields.extend(field.as_redis_field() for field in field_list)  # type: ignore
+        redis_fields: List[RedisField] = [
+            field.as_redis_field() for _, field in self.fields.items()
+        ]
         return redis_fields
 
-    def add_fields(self, fields: Dict[str, List[Dict[str, Any]]]):
-        """Extends the schema with additional fields.
-
-        This method allows dynamically adding new fields to the index schema. It
-        processes a dictionary where each key represents a field type, and the
-        corresponding value is a list of field definitions to add.
-
-        Args:
-            fields (Dict[str, List[Dict[str, Any]]]): A dictionary mapping field
-                types to lists of field attributes.
-
-        .. code-block:: python
-
-            schema.add_fields({})
-            # From Dict
-            schema = IndexSchema.from_dict({
-
-
-        Raises:
-            ValueError: If a field with the same name already exists in the
-                schema.
-        """
-        for field_type, field_list in fields.items():
-            for field_data in field_list:
-                self.add_field(field_type, **field_data)
-
-    def add_field(self, field_type: str, **kwargs):
+    def add_field(self, field_inputs: Dict[str, Any]):
         """Adds a single field to the index schema based on the specified field
         type and attributes.
 
@@ -156,55 +241,83 @@ class IndexSchema(BaseModel):
         providing flexibility in defining the structure of the index.
 
         Args:
-            field_type (str): Type of the field to be added
-                (e.g., 'text', 'numeric', 'tag', 'vector', 'geo').
-            **kwargs: A dictionary of attributes for the field, including the
-                required 'name'.
+            field_inputs (Dict[str, Any]): A field to add.
 
         Raises:
-            ValueError: If the field name is either not provided or already
-                exists within the schema.
+            ValueError: If the field name or type are not provided or if the name
+                already exists within the schema.
+
+        .. code-block:: python
+
+            # Add a tag field
+            schema.add_field({"name": "user", "type": "tag})
+
+            # Add a vector field
+            schema.add_field({
+                "name": "user-embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 1024,
+                    "algorithm": "flat",
+                    "datatype": "float32"
+                }
+            })
         """
-        name = kwargs.get("name", None)
-        if name is None:
-            raise ValueError("Field name is required.")
-
-        new_field = FieldFactory.create_field(field_type, **kwargs)
-        if name in self.field_names:
+        # Parse field inputs
+        field = self._make_field(**field_inputs)
+        # Check for duplicates
+        if field.name in self.fields:
             raise ValueError(
-                f"Duplicate field '{name}' already present in index schema."
+                f"Duplicate field name: {field.name}. Field names must be unique across all fields for this index."
             )
+        # Add field
+        self.fields[field.name] = field
 
-        self.fields.setdefault(field_type, []).append(new_field)
+    def add_fields(self, fields: List[Dict[str, Any]]):
+        """Extends the schema with additional fields.
 
-    def remove_field(self, field_type: str, field_name: str):
-        """Removes a field from the schema based on the specified field type and
-        name.
+        This method allows dynamically adding new fields to the index schema. It
+        processes a list of field definitions.
+
+        Args:
+            fields (List[Dict[str, Any]]): A list of fields to add.
+
+        Raises:
+            ValueError: If a field with the same name already exists in the
+                schema.
+
+        .. code-block:: python
+
+            schema.add_fields([
+                {"name": "user", "type": "tag"},
+                {"name": "bio", "type": "text"},
+                {
+                    "name": "user-embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 1024,
+                        "algorithm": "flat",
+                        "datatype": "float32"
+                    }
+                }
+            ])
+        """
+        for field in fields:
+            self.add_field(**field)
+
+    def remove_field(self, field_name: str):
+        """Removes a field from the schema based on the specified name.
 
         This method is useful for dynamically altering the schema by removing
         existing fields.
 
         Args:
-            field_type (str): The type of the field to be removed.
             field_name (str): The name of the field to be removed.
-
-        Raises:
-            ValueError: If the field type or the specified field name does not
-                exist in the schema.
         """
-        fields = self.fields.get(field_type)
-
-        if fields is None:
-            raise ValueError(f"Field type '{field_type}' does not exist.")
-
-        filtered_fields = [field for field in fields if field.name != field_name]
-
-        if len(filtered_fields) == len(fields):
-            # field not found, raise Error
-            raise ValueError(
-                f"Field '{field_name}' does not exist in {field_type} fields."
-            )
-        self.fields[field_type] = filtered_fields
+        if field_name not in self.fields:
+            logger.warning(f"Field '{field_name}' does not exist in the schema")
+            return
+        del self.fields[field_name]
 
     def generate_fields(
         self,
@@ -235,60 +348,25 @@ class IndexSchema(BaseModel):
             - This method employs heuristics and may not always correctly infer
                 field types.
         """
-        fields: Dict[str, List[Dict[str, Any]]] = {}
+        fields: List[Dict[str, Any]]
         for field_name, value in data.items():
             if field_name in ignore_fields:
                 continue
             try:
                 field_type = TypeInferrer.infer(value)
-                new_field = FieldFactory.create_field(
-                    field_type,
-                    field_name,
-                )
-                fields.setdefault(field_type, []).append(
-                    new_field.dict(exclude_unset=True)
-                )
+                fields.append({
+                    "type": field_type,
+                    "attrs": FieldFactory.create_field(
+                        field_type,
+                        field_name,
+                    ).dict(exclude_unset=True)
+                })
             except ValueError as e:
                 if strict:
                     raise
                 else:
-                    print(f"Error inferring field type for {field_name}: {e}")
+                    logger.warning(f"Error inferring field type for {field_name}: {e}")
         return fields
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
-        """Create an IndexSchema from a dictionary.
-
-        Args:
-            data (Dict[str, Any]): The index schema data.
-
-        Returns:
-            IndexSchema: The index schema.
-
-
-        .. code-block:: python
-
-            from redisvl.schema import IndexSchema
-            schema = IndexSchema.from_dict({
-                "index": {
-                    "name": "my-index",
-                    "prefix": "docs",
-                    "storage_type": "hash",
-                },
-                "fields": {
-                    "tag": [{"name": "doc-id"}],
-                    "vector": [
-                        {"name": "doc-embedding", "algorithm": "flat", "dims": 1536}
-                    ]
-                }
-            })
-
-        """
-        schema = cls(**data["index"])
-        for field_type, field_list in data["fields"].items():
-            for field_data in field_list:
-                schema.add_field(field_type, **field_data)
-        return schema
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the index schema to a dictionary.
@@ -296,46 +374,7 @@ class IndexSchema(BaseModel):
         Returns:
             Dict[str, Any]: The index schema as a dictionary.
         """
-        index_data = {
-            "name": self.name,
-            "prefix": self.prefix,
-            "key_separator": self.key_separator,
-            "storage_type": self.storage_type.value,
-        }
-        formatted_fields = {}
-        for field_type, fields in self.fields.items():
-            formatted_fields[field_type] = [
-                field.dict(exclude_unset=True) for field in fields
-            ]
-        return {"index": index_data, "fields": formatted_fields}
-
-    @classmethod
-    def from_yaml(cls, file_path: str) -> "IndexSchema":
-        """Create an IndexSchema from a YAML file.
-
-        Args:
-            file_path (str): The path to the YAML file.
-
-        Returns:
-            IndexSchema: The index schema.
-
-        .. code-block:: python
-
-            from redisvl.schema import IndexSchema
-            schema = IndexSchema.from_yaml("schema.yaml")
-
-        """
-        try:
-            fp = Path(file_path).resolve()
-        except OSError as e:
-            raise ValueError(f"Invalid file path: {file_path}") from e
-
-        if not fp.exists():
-            raise FileNotFoundError(f"Schema file {file_path} does not exist")
-
-        with open(fp, "r") as f:
-            yaml_data = yaml.safe_load(f)
-            return cls.from_dict(yaml_data)
+        return self.dict(exclude_unset=True)
 
     def to_yaml(self, file_path: str, overwrite: bool = True) -> None:
         """Write the index schema to a YAML file.
