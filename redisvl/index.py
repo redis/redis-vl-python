@@ -175,8 +175,8 @@ class SearchIndex:
     def __init__(
         self,
         schema: IndexSchema,
-        redis_url: Optional[str] = None,
         redis_client: Optional[Union[redis.Redis, aredis.Redis]] = None,
+        redis_url: Optional[str] = None,
         connection_args: Dict[str, Any] = {},
         **kwargs,
     ):
@@ -186,10 +186,10 @@ class SearchIndex:
 
         Args:
             schema (IndexSchema): Index schema object.
-            redis_url (str, optional): The URL of the Redis server to
-                connect to.
             redis_client(Union[redis.Redis, aredis.Redis], optional): An
                 instantiated redis client.
+            redis_url (str, optional): The URL of the Redis server to
+                connect to.
             connection_args (Dict[str, Any], optional): Redis client connection
                 args.
         """
@@ -206,31 +206,31 @@ class SearchIndex:
 
         self.schema = schema
 
-        self._storage = self._STORAGE_MAP[self.schema.storage_type](
-            prefix=self.schema.prefix, key_separator=self.schema.key_separator
+        self._storage = self._STORAGE_MAP[self.schema.index.storage_type](
+            prefix=self.schema.index.prefix, key_separator=self.schema.index.key_separator
         )
 
     @property
     def name(self) -> str:
         """The name of the Redis search index."""
-        return self.schema.name
+        return self.schema.index.name
 
     @property
     def prefix(self) -> str:
         """The optional key prefix that comes before a unique key value in
         forming a Redis key."""
-        return self.schema.prefix
+        return self.schema.index.prefix
 
     @property
     def key_separator(self) -> str:
         """The optional separator between a defined prefix and key value in
         forming a Redis key."""
-        return self.schema.key_separator
+        return self.schema.index.key_separator
 
     @property
     def storage_type(self) -> StorageType:
         """The underlying storage type for the search index: hash or json."""
-        return self.schema.storage_type
+        return self.schema.index.storage_type
 
     @property
     def client(self) -> Optional[Union[redis.Redis, aredis.Redis]]:
@@ -385,7 +385,7 @@ class SearchIndex:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(id, self.schema.prefix, self.schema.key_separator)
+        return self._storage._key(id, self.schema.index.prefix, self.schema.index.key_separator)
 
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
@@ -417,7 +417,7 @@ class SearchIndex:
         self._redis_conn.client.ft(self.name).create_index(  # type: ignore
             fields=redis_fields,
             definition=IndexDefinition(
-                prefix=[self.prefix], index_type=self._storage.type
+                prefix=[self.schema.index.prefix], index_type=self._storage.type
             ),
         )
 
@@ -434,7 +434,7 @@ class SearchIndex:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        self._redis_conn.client.ft(self.name).dropindex(delete_documents=drop)  # type: ignore
+        self._redis_conn.client.ft(self.schema.index.name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_modules_present("_redis_conn")
     def load(
@@ -512,7 +512,7 @@ class SearchIndex:
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = self._redis_conn.client.ft(self.name).search(  # type: ignore
+        results = self._redis_conn.client.ft(self.schema.index.name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -522,7 +522,7 @@ class SearchIndex:
         results = self.search(query.query, query_params=query.params)
         # post process the results
         return process_results(
-            results, query=query, storage_type=self.schema.storage_type
+            results, query=query, storage_type=self.schema.index.storage_type
         )
 
     @check_modules_present("_redis_conn")
@@ -604,7 +604,7 @@ class SearchIndex:
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        return self.name in self.listall()
+        return self.schema.index.name in self.listall()
 
     @check_modules_present("_redis_conn")
     @check_index_exists()
@@ -615,7 +615,7 @@ class SearchIndex:
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            self._redis_conn.client.ft(self.name).info()  # type: ignore
+            self._redis_conn.client.ft(self.schema.index.name).info()  # type: ignore
         )
 
     @check_async_modules_present("_redis_conn")
@@ -643,10 +643,10 @@ class SearchIndex:
             await self.adelete()
 
         # Create Index with proper IndexType
-        await self._redis_conn.client.ft(self.name).create_index(  # type: ignore
+        await self._redis_conn.client.ft(self.schema.index.name).create_index(  # type: ignore
             fields=redis_fields,
             definition=IndexDefinition(
-                prefix=[self.prefix], index_type=self._storage.type
+                prefix=[self.schema.index.prefix], index_type=self._storage.type
             ),
         )
 
@@ -663,7 +663,7 @@ class SearchIndex:
             redis.exceptions.ResponseError: If the index does not exist.
         """
         # Delete the search index
-        await self._redis_conn.client.ft(self.name).dropindex(delete_documents=drop)  # type: ignore
+        await self._redis_conn.client.ft(self.schema.index.name).dropindex(delete_documents=drop)  # type: ignore
 
     @check_async_modules_present("_redis_conn")
     async def aload(
@@ -740,7 +740,7 @@ class SearchIndex:
         Returns:
             Union["Result", Any]: Search results.
         """
-        results = await self._redis_conn.client.ft(self.name).search(  # type: ignore
+        results = await self._redis_conn.client.ft(self.schema.index.name).search(  # type: ignore
             *args, **kwargs
         )
         return results
@@ -750,7 +750,7 @@ class SearchIndex:
         results = await self.asearch(query.query, query_params=query.params)
         # post process the results
         return process_results(
-            results, query=query, storage_type=self.schema.storage_type
+            results, query=query, storage_type=self.schema.index.storage_type
         )
 
     @check_async_modules_present("_redis_conn")
@@ -834,7 +834,7 @@ class SearchIndex:
         Returns:
             bool: True if the index exists, False otherwise.
         """
-        return self.name in await self.alistall()
+        return self.schema.index.name in await self.alistall()
 
     @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
@@ -845,5 +845,5 @@ class SearchIndex:
             dict: A dictionary containing the information about the index.
         """
         return convert_bytes(
-            await self._redis_conn.client.ft(self.name).info()  # type: ignore
+            await self._redis_conn.client.ft(self.schema.index.name).info()  # type: ignore
         )

@@ -2,10 +2,10 @@ import re
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
-from pydantic.v1 import BaseModel, root_validator
+from pydantic.v1 import BaseModel, root_validator, validator
 from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, FieldFactory
@@ -13,6 +13,7 @@ from redisvl.utils.log import get_logger
 
 
 logger = get_logger(__name__)
+SCHEMA_VERSION = "0.1.0"
 
 
 class StorageType(Enum):
@@ -95,10 +96,11 @@ class IndexSchema(BaseModel):
     """Details of the basic index configurations."""
     fields: Dict[str, BaseField] = {}
     """Fields associated with the search index and their properties"""
-    version: str = "0.1.0"
+    version: str = SCHEMA_VERSION
     """Version of the underlying index schema."""
 
-    def _make_field(self, **field_inputs) -> BaseField:
+    @staticmethod
+    def _make_field(storage_type, **field_inputs) -> BaseField:
         """
         Parse raw field inputs derived from YAML or dict.
 
@@ -113,34 +115,81 @@ class IndexSchema(BaseModel):
         if not field_name or not field_type:
             raise ValueError("Fields must include a 'type' and 'name'.")
 
+        # Handle field path and storage type
         if storage_type == StorageType.JSON:
             field_path = field_path if field_path else f"$.{field_name}"
-        # Otherwise we are using HASH
-        if path is not None:
-            logger.warning(
-                f"Path attribute for field '{field_name}' will be ignored for HASH storage type."
-            )
+        else:
+            if field_path is not None:
+                logger.warning(
+                    f"Path attribute for field '{field_name}' will be ignored for HASH storage type."
+                )
+            field_path = None
 
-        return FieldFactory.create_field(field_type, name=field_name, **field_attrs)
+        # Update attrs and create field instance
+        field_attrs.update({
+            "name": field_name,
+            "path": field_path
+        })
+        return FieldFactory.create_field(field_type=field_type, **field_attrs)
+
+    @staticmethod
+    def _convert_old_format(storage_type: StorageType, raw_fields: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        updated_fields: List[Dict[str, Any]] = []
+        for field_type, fields_list in raw_fields.items():
+            for field in fields_list:
+                if storage_type == StorageType.HASH:
+                    field.pop("path", None)
+                    updated_fields.append({
+                        "name": field.pop("name", None),
+                        "path": None,
+                        "type": field_type,
+                        "attrs": field
+                    })
+                else:
+                   updated_fields.append({
+                        "name": field.pop("as_name", None),
+                        "path": field.pop("path", field.pop("name", None)),
+                        "type": field_type,
+                        "attrs": field
+                    })
+        return updated_fields
 
     @root_validator(pre=True)
+    @classmethod
     def validate_and_create_fields(cls, values):
         """
         Validate uniqueness of field names and create valid field instances.
         """
+        index = IndexInfo(**values.get('index'))
         raw_fields = values.get('fields', [])
-        field_definitions = {}
-
+        prepared_fields: Dict[str, BaseField] = {}
+        # Process raw fields
+        if isinstance(raw_fields, dict):
+            # Need to handle backwards compat for the moment
+            # TODO -- will remove this when 0.1.0 lands
+            logger.warning("New schema format introduced; please update schema specs prior to 0.1.0")
+            raw_fields = cls._convert_old_format(index.storage_type, raw_fields)
         for field_input in raw_fields:
-            field = cls._make_field(**field_input)
-            if field.name in field_definitions:
+            field = cls._make_field(index.storage_type, **field_input)
+            if field.name in prepared_fields:
                 raise ValueError(
                     f"Duplicate field name: {field.name}. Field names must be unique across all fields."
                 )
-            field_definitions[field.name] = field
+            prepared_fields[field.name] = field
 
-        values['fields'] = field_definitions
+        values['fields'] = prepared_fields
+        values['index'] = index
         return values
+
+    @validator("version", pre=True)
+    @classmethod
+    def validate_version(cls, version: str):
+        """Validate IndexSchema version."""
+        if version != SCHEMA_VERSION:
+            raise ValueError(
+                f"RedisVL IndexSchema version must be {SCHEMA_VERSION} but got {version}"
+            )
+        return version
 
     @classmethod
     def from_yaml(cls, file_path: str) -> "IndexSchema":
@@ -264,7 +313,7 @@ class IndexSchema(BaseModel):
             })
         """
         # Parse field inputs
-        field = self._make_field(**field_inputs)
+        field = self._make_field(self.index.storage_type, **field_inputs)
         # Check for duplicates
         if field.name in self.fields:
             raise ValueError(
@@ -355,6 +404,7 @@ class IndexSchema(BaseModel):
             try:
                 field_type = TypeInferrer.infer(value)
                 fields.append({
+                    "name": field_name,
                     "type": field_type,
                     "attrs": FieldFactory.create_field(
                         field_type,
