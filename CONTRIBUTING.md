@@ -44,14 +44,12 @@ source deactivate
 
 ### Linting and Tests
 
-Formatting and linting checks:
+Check formatting, linting, and typing:
 ```bash
-make format
-make sort-imports
-make mypy
+make check
 ```
 
-Tests with vectorizers:
+Tests (with vectorizers):
 ```bash
 make test-cov
 ```
@@ -62,6 +60,7 @@ SKIP_VECTORIZERS=true make test-cov
 ```
 
 > Dev requirements are needed here to be able to run tests and linting.
+> See other commands in the [Makefile](Makefile)
 
 ### Docker Tips
 
