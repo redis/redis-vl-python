@@ -2,14 +2,12 @@ import os
 import pytest
 import asyncio
 
-from redisvl.utils.connection import (
-    get_async_redis_connection,
-    get_redis_connection
-)
+from redisvl.utils.connection import RedisConnection
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-aredis = get_async_redis_connection(REDIS_URL)
-redis = get_redis_connection(REDIS_URL)
+aredis = RedisConnection.get_async_redis_connection(REDIS_URL)
+redis = RedisConnection.get_redis_connection(REDIS_URL)
 
 @pytest.fixture()
 def redis_url():
@@ -28,6 +26,17 @@ def client():
 def openai_key():
     return os.getenv("OPENAI_API_KEY")
 
+@pytest.fixture
+def cohere_key():
+    return os.getenv("COHERE_API_KEY")
+
+@pytest.fixture
+def gcp_location():
+    return os.getenv("GCP_LOCATION")
+
+@pytest.fixture
+def gcp_project_id():
+    return os.getenv("GCP_PROJECT_ID")
 
 @pytest.fixture(scope="session")
 def event_loop():

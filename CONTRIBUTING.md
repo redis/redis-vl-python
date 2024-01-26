@@ -15,28 +15,37 @@ helpful contributions that mean less work for you.
 
 ## Your First Contribution
 
-Unsure where to begin contributing? You can start by looking through some of our issues [listed here](https://github.com/RedisVentures/data-loader/issues).
+Unsure where to begin contributing? You can start by looking through some of our issues [listed here](https://github.com/RedisVentures/redisvl/issues).
 
 ## Getting Started
 
 Here's how to get started with your code contribution:
 
 1.  Create your own fork of this repo
-2.  Apply the changes in your fork
-3.  _We're still working on a development environment setup -- so stay tuned_
-4.  If you like the change and think the project could use it, send a
+2.  Set up your developer environment
+2.  Apply the changes in your forked codebase / environment
+4.  If you like the change and think the project could use it, send us a
     pull request.
+
+### Dev Environment
+There is a provided `requirements.txt` and `requirements-dev.txt` file you can use to install required libraries with `pip` into your virtual environment.
 
 ### Docker Tips
 
->COMING SOON
+Make sure to have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
+
+```bash
+docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+```
+
+This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/) at `http://localhost:8001`.
 
 ## How to Report a Bug
 
 ### Security Vulnerabilities
 
 **NOTE**: If you find a security vulnerability, do NOT open an issue.
-Email [Tyler Hutcherson (<tyler.hutcherson@redis.com>)](mailto:tyler.hutcherson@redis.com) instead.
+Email [Redis OSS (<oss@redis.com>)](mailto:oss@redis.com) instead.
 
 In order to determine whether you are dealing with a security issue, ask
 yourself these two questions:
@@ -55,7 +64,7 @@ issue, so if you're unsure, just email us.
 When filing an issue, make sure to answer these five questions:
 
 1.  What version of python are you using?
-2.  What version of redis are you using?
+2.  What version of `redis` and `redisvl` are you using?
 3.  What did you do?
 4.  What did you expect to see?
 5.  What did you see instead?

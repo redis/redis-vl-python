@@ -2,10 +2,10 @@
 myst:
   html_meta:
     "description lang=en": |
-      Documentation for RedisVL users
+      User Guides for RedisVL
 ---
 
-# User Guide
+# User Guides
 
 
 ```{toctree}
@@ -13,7 +13,8 @@ myst:
 
 getting_started_01
 hybrid_queries_02
-vectorizers_03
 llmcache_03
+vectorizers_04
+hash_vs_json_05
 ```
 

@@ -2,49 +2,82 @@ name: Test Suite
 
 on:
   pull_request:
+
   push:
     branches:
       - main
 
 jobs:
   test:
-    name: Test on ${{ matrix.python-version }} - ${{ matrix.os }}
+    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis-stack ${{matrix.redis-stack-version}}]
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         python-version: [3.8, 3.9, '3.10', 3.11]
+        connection: ['hiredis', 'plain']
+        redis-stack-version: ['6.2.6-v9', 'latest']
 
     services:
       redis:
-        image: redis/redis-stack-server:latest
+        image: redis/redis-stack-server:${{matrix.redis-stack-version}}
         ports:
           - 6379:6379
 
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install .[dev,all]
+
+    - name: Install hiredis if needed
+      if: matrix.connection == 'hiredis'
+      run: |
+        pip install hiredis
+
     - name: Start Redis
       run: |
         REDIS_URL=redis://localhost:6379
         echo REDIS_URL=$REDIS_URL >> $GITHUB_ENV
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
     - name: Run tests
+      if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
       run: |
         make test-cov
+
+    - name: Run tests
+      if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
+      run: |
+        SKIP_VECTORIZERS=True make test-cov
+
     - name: Run notebooks
+      if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
       run: |
         cd docs/ && treon -v --exclude="./examples/openai_qna.ipynb"
+
     - name: Publish coverage results
       uses: codecov/codecov-action@v2
       with:

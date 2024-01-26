@@ -1,0 +1,23 @@
+.custom_sidebar {
+    width: auto;
+    background-color: inherit;
+
+}
+
+
+/* Style the sidebar links */
+.custom_sidebar ul {
+    list-style-type: none;
+    padding: 6px;
+}
+
+/* Style the sidebar links */
+.custom_sidebar li {
+    list-style-type: none;
+    padding: 5px;
+}
+
+.custom_sidebar a {
+    text-decoration: none; /* Removes underline */
+}
+

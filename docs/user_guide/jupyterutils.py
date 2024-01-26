@@ -1,5 +1,6 @@
-from IPython.display import display, HTML
+from IPython.display import HTML, display
 from redis.commands.search.result import Result
+
 
 def table_print(dict_list):
     # If there's nothing in the list, there's nothing to print
@@ -10,18 +11,18 @@ def table_print(dict_list):
     columns = dict_list[0].keys()
 
     # HTML table header
-    html = '<table><tr><th>'
-    html += '</th><th>'.join(columns)
-    html += '</th></tr>'
+    html = "<table><tr><th>"
+    html += "</th><th>".join(columns)
+    html += "</th></tr>"
 
     # HTML table content
     for dictionary in dict_list:
-        html += '<tr><td>'
-        html += '</td><td>'.join(str(dictionary[column]) for column in columns)
-        html += '</td></tr>'
+        html += "<tr><td>"
+        html += "</td><td>".join(str(dictionary[column]) for column in columns)
+        html += "</td></tr>"
 
     # HTML table footer
-    html += '</table>'
+    html += "</table>"
 
     # Displaying the table
     display(HTML(html))

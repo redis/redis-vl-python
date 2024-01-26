@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -10,39 +11,72 @@ from redisvl.vectorize.base import BaseVectorizer
 
 
 class OpenAITextVectorizer(BaseVectorizer):
-    """OpenAI text vectorizer
+    """The OpenAITextVectorizer class utilizes OpenAI's API to generate
+    embeddings for text data.
 
-    This vectorizer uses the OpenAI API to create embeddings for text. It requires an
-    API key to be passed in the api_config dictionary. The API key can be obtained from
-    https://api.openai.com/.
+    This vectorizer is designed to interact with OpenAI's embeddings API,
+    requiring an API key for authentication. The key can be provided directly
+    in the `api_config` dictionary or through the `OPENAI_API_KEY` environment
+    variable. Users must obtain an API key from OpenAI's website
+    (https://api.openai.com/). Additionally, the `openai` python client must be
+    installed with `pip install openai==0.28.1`.
+
+    The vectorizer supports both synchronous and asynchronous operations,
+    allowing for batch processing of texts and flexibility in handling
+    preprocessing tasks.
+
+    .. code-block:: python
+
+        # Synchronous embedding of a single text
+        vectorizer = OpenAITextVectorizer(
+            model="text-embedding-ada-002",
+            api_config={"api_key": "your_api_key"} # OR set OPENAI_API_KEY in your env
+        )
+        embedding = vectorizer.embed("Hello, world!")
+
+        # Asynchronous batch embedding of multiple texts
+        embeddings = await vectorizer.aembed_many(
+            ["Hello, world!", "How are you?"],
+            batch_size=2
+        )
+
     """
 
-    def __init__(self, model: str, api_config: Optional[Dict] = None):
+    def __init__(
+        self, model: str = "text-embedding-ada-002", api_config: Optional[Dict] = None
+    ):
         """Initialize the OpenAI vectorizer.
 
         Args:
-            model (str): Model to use for embedding.
-            api_config (Optional[Dict], optional): Dictionary containing the API key.
-                Defaults to None.
+            model (str): Model to use for embedding. Defaults to
+                'text-embedding-ada-002'.
+            api_config (Optional[Dict], optional): Dictionary containing the
+                API key. Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
-            ValueError: If the API key is not provided.
+            ValueError: If the OpenAI API key is not provided.
         """
         super().__init__(model)
         # Dynamic import of the openai module
         try:
-            global openai
             import openai
         except ImportError:
-            raise ImportError(
-                "OpenAI vectorizer requires the openai library. Please install with pip install openai"
+            raise ImportError("OpenAI vectorizer requires the openai library. \
+                    Please install with `pip install openai`")
+
+        # Fetch the API key from api_config or environment variable
+        api_key = (
+            api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+        )
+        if not api_key:
+            raise ValueError(
+                "OpenAI API key is required. "
+                "Provide it in api_config or set the OPENAI_API_KEY\
+                    environment variable."
             )
 
-        if not api_config or "api_key" not in api_config:
-            raise ValueError("OpenAI API key is required in api_config")
-
-        openai.api_key = api_config["api_key"]
+        openai.api_key = api_key
         self._model_client = openai.Embedding
         self._dims = self._set_model_dims()
 
@@ -53,8 +87,6 @@ class OpenAITextVectorizer(BaseVectorizer):
             )["data"][0]["embedding"]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
-        except openai.error.AuthenticationError as ae:
-            raise ValueError(f"Error authenticating with the OpenAI API: {str(ae)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
@@ -71,16 +103,17 @@ class OpenAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """Embed many chunks of texts using the OpenAI API.
 
         Args:
             texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
+            preprocess (Optional[Callable], optional): Optional preprocessing
+                callable to perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
                 embeddings. Defaults to 10.
-            as_buffer (Optional[float], optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
@@ -113,6 +146,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """Embed a chunk of text using the OpenAI API.
 
@@ -148,6 +182,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         batch_size: int = 1000,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[List[float]]:
         """Asynchronously embed many chunks of texts using the OpenAI API.
 
@@ -190,6 +225,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
+        **kwargs,
     ) -> List[float]:
         """Asynchronously embed a chunk of text using the OpenAI API.
 
@@ -197,7 +233,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             text (str): Chunk of text to embed.
             preprocess (Optional[Callable], optional): Optional preprocessing callable to
                 perform before vectorization. Defaults to None.
-            as_buffer (float, optional): Whether to convert the raw embedding
+            as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:

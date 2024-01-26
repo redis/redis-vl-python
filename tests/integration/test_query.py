@@ -1,12 +1,10 @@
-from pprint import pprint
-
 import numpy as np
 import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery, RangeQuery, VectorQuery
-from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
+from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
+from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 
 data = [
     {
@@ -67,34 +65,34 @@ data = [
     },
 ]
 
-schema = {
-    "index": {
-        "name": "user_index",
-        "prefix": "v1",
-        "storage_type": "hash",
-    },
-    "fields": {
-        "tag": [{"name": "credit_score"}],
-        "text": [{"name": "job"}],
-        "numeric": [{"name": "age"}],
-        "geo": [{"name": "location"}],
-        "vector": [
-            {
-                "name": "user_embedding",
-                "dims": 3,
-                "distance_metric": "cosine",
-                "algorithm": "flat",
-                "datatype": "float32",
-            }
-        ],
-    },
-}
-
 
 @pytest.fixture(scope="module")
 def index():
     # construct a search index from the schema
-    index = SearchIndex.from_dict(schema)
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": {
+                "tag": [{"name": "credit_score"}],
+                "text": [{"name": "job"}],
+                "numeric": [{"name": "age"}],
+                "geo": [{"name": "location"}],
+                "vector": [
+                    {
+                        "name": "user_embedding",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    }
+                ],
+            },
+        }
+    )
 
     # connect to local redis instance
     index.connect("redis://localhost:6379")
@@ -108,10 +106,10 @@ def index():
     yield index
 
     # clean up
-    index.delete()
+    index.delete(drop=True)
 
 
-def test_simple(index):
+def test_search_and_query(index):
     # *=>[KNN 7 @user_embedding $vector AS vector_distance]
     v = VectorQuery(
         [0.1, 0.1, 0.5],
@@ -120,6 +118,7 @@ def test_simple(index):
         num_results=7,
     )
     results = index.search(v.query, query_params=v.params)
+    assert isinstance(results, Result)
     assert len(results.docs) == 7
     for doc in results.docs:
         # ensure all return fields present
@@ -127,19 +126,6 @@ def test_simple(index):
         assert int(doc.age) in [18, 14, 94, 100, 12, 15, 35]
         assert doc.job in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
         assert doc.credit_score in ["high", "low", "medium"]
-
-
-def test_search_query(index):
-    # *=>[KNN 7 @user_embedding $vector AS vector_distance]
-    v = VectorQuery(
-        [0.1, 0.1, 0.5],
-        "user_embedding",
-        return_fields=["user", "credit_score", "age", "job"],
-        num_results=7,
-    )
-    results = index.search(v.query, query_params=v.params)
-    assert isinstance(results, Result)
-    assert len(results.docs) == 7
 
     processed_results = index.query(v)
     assert len(processed_results) == 7
@@ -151,8 +137,8 @@ def test_search_query(index):
 
 def test_range_query(index):
     r = RangeQuery(
-        [0.1, 0.1, 0.5],
-        "user_embedding",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job"],
         distance_threshold=0.2,
         num_results=7,
@@ -171,27 +157,44 @@ def test_range_query(index):
     assert len(results) == 2
 
 
-vector_query = VectorQuery(
-    vector=[0.1, 0.1, 0.5],
-    vector_field_name="user_embedding",
-    return_fields=["user", "credit_score", "age", "job", "location"],
-)
+def test_count_query(index):
+    c = CountQuery(FilterExpression("*"))
+    results = index.query(c)
+    assert results == len(data)
 
-filter_query = FilterQuery(
-    return_fields=["user", "credit_score", "age", "job", "location"],
-    # this will get set everytime
-    filter_expression=Tag("credit_score") == "high",
-)
-
-range_query = RangeQuery(
-    vector=[0.1, 0.1, 0.5],
-    vector_field_name="user_embedding",
-    return_fields=["user", "credit_score", "age", "job", "location"],
-    distance_threshold=0.2,
-)
+    c = CountQuery(Tag("credit_score") == "high")
+    results = index.query(c)
+    assert results == 4
 
 
-def filter_test(
+@pytest.fixture
+def vector_query():
+    return VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+    )
+
+
+@pytest.fixture
+def filter_query():
+    return FilterQuery(
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        filter_expression=Tag("credit_score") == "high",
+    )
+
+
+@pytest.fixture
+def range_query():
+    return RangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        distance_threshold=0.2,
+    )
+
+
+def search(
     query,
     index,
     _filter,
@@ -201,13 +204,12 @@ def filter_test(
     location=None,
     distance_threshold=0.2,
 ):
-    """Utility function to test filters"""
+    """Utility function to test filters."""
 
     # set the new filter
     query.set_filter(_filter)
     print(str(query))
 
-    # print(str(v) + "\n") # to print the query
     results = index.search(query.query, query_params=query.params)
 
     # check for tag filter correctness
@@ -242,49 +244,70 @@ def filter_test(
 
 
 @pytest.fixture(
-    params=[vector_query, filter_query, range_query],
+    params=["vector_query", "filter_query", "range_query"],
     ids=["VectorQuery", "FilterQuery", "RangeQuery"],
 )
 def query(request):
-    return request.param
+    return request.getfixturevalue(request.param)
 
 
 def test_filters(index, query):
     # Simple Tag Filter
     t = Tag("credit_score") == "high"
-    filter_test(query, index, t, 4, credit_check="high")
+    search(query, index, t, 4, credit_check="high")
+
+    # Multiple Tags
+    t = Tag("credit_score") == ["high", "low"]
+    search(query, index, t, 6)
+
+    # Empty tag filter
+    t = Tag("credit_score") == []
+    search(query, index, t, 7)
 
     # Simple Numeric Filter
     n1 = Num("age") >= 18
-    filter_test(query, index, n1, 4, age_range=(18, 100))
+    search(query, index, n1, 4, age_range=(18, 100))
 
     # intersection of rules
     n2 = (Num("age") >= 18) & (Num("age") < 100)
-    filter_test(query, index, n2, 3, age_range=(18, 99))
+    search(query, index, n2, 3, age_range=(18, 99))
 
     # union
     n3 = (Num("age") < 18) | (Num("age") > 94)
-    filter_test(query, index, n3, 4, age_range=(95, 17))
+    search(query, index, n3, 4, age_range=(95, 17))
 
     n4 = Num("age") != 18
-    filter_test(query, index, n4, 6, age_range=(0, 0, 18))
+    search(query, index, n4, 6, age_range=(0, 0, 18))
 
     # Geographic filters
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    filter_test(query, index, g, 3, location="-122.4194,37.7749")
+    search(query, index, g, 3, location="-122.4194,37.7749")
 
     g = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    filter_test(query, index, g, 4, location="-110.0839,37.3861")
+    search(query, index, g, 4, location="-110.0839,37.3861")
 
     # Text filters
     t = Text("job") == "engineer"
-    filter_test(query, index, t, 2)
+    search(query, index, t, 2)
 
     t = Text("job") != "engineer"
-    filter_test(query, index, t, 5)
+    search(query, index, t, 5)
 
     t = Text("job") % "enginee*"
-    filter_test(query, index, t, 2)
+    search(query, index, t, 2)
+
+    t = Text("job") % "engine*|doctor"
+    search(query, index, t, 4)
+
+    t = Text("job") % "%%engine%%"
+    search(query, index, t, 2)
+
+    # Test empty filters
+    t = Text("job") % ""
+    search(query, index, t, 7)
+
+    t = Text("job") % None
+    search(query, index, t, 7)
 
 
 def test_filter_combinations(index, query):
@@ -292,31 +315,70 @@ def test_filter_combinations(index, query):
     # intersection
     t = Tag("credit_score") == "high"
     text = Text("job") == "engineer"
-    filter_test(query, index, t & text, 2, credit_check="high")
+    search(query, index, t & text, 2, credit_check="high")
 
     # union
     t = Tag("credit_score") == "high"
     text = Text("job") == "engineer"
-    filter_test(query, index, t | text, 4, credit_check="high")
+    search(query, index, t | text, 4, credit_check="high")
 
     # union of negated expressions
     _filter = (Tag("credit_score") != "high") & (Text("job") != "engineer")
-    filter_test(query, index, _filter, 3)
+    search(query, index, _filter, 3)
 
     # geo + text
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
     text = Text("job") == "engineer"
-    filter_test(query, index, g & text, 1, location="-122.4194,37.7749")
+    search(query, index, g & text, 1, location="-122.4194,37.7749")
 
     # geo + text
     g = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
     text = Text("job") == "engineer"
-    filter_test(query, index, g & text, 1, location="-110.0839,37.3861")
+    search(query, index, g & text, 1, location="-110.0839,37.3861")
 
     # num + text + geo
     n = (Num("age") >= 18) & (Num("age") < 100)
     t = Text("job") != "engineer"
     g = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
-    filter_test(
-        query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749"
-    )
+    search(query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749")
+
+
+def test_query_batch_vector_query(index, vector_query):
+    batch_size = 2
+    all_results = []
+    for i, batch in enumerate(index.query_batch(vector_query, batch_size), start=1):
+        all_results.extend(batch)
+        assert len(batch) <= batch_size
+
+    expected_total_results = len(data)
+    expected_iterations = -(-expected_total_results // batch_size)  # Ceiling division
+    assert len(all_results) == expected_total_results
+    assert i == expected_iterations
+
+
+def test_query_batch_filter_query(index, filter_query):
+    batch_size = 3
+    all_results = []
+    for i, batch in enumerate(index.query_batch(filter_query, batch_size), start=1):
+        all_results.extend(batch)
+        assert len(batch) <= batch_size
+
+    expected_count = 4  # Adjust based on your filter
+    expected_iterations = -(-expected_count // batch_size)  # Ceiling division
+    assert len(all_results) == expected_count
+    assert i == expected_iterations
+    assert all(item["credit_score"] == "high" for item in all_results)
+
+
+def test_query_batch_range_query(index, range_query):
+    batch_size = 1
+    all_results = []
+    for i, batch in enumerate(index.query_batch(range_query, batch_size), start=1):
+        all_results.extend(batch)
+        assert len(batch) <= batch_size
+
+    expected_count = 4  # Adjust based on your range query
+    expected_iterations = -(-expected_count // batch_size)  # Ceiling division
+    assert len(all_results) == expected_count
+    assert i == expected_iterations
+    assert all(float(item["vector_distance"]) <= 0.2 for item in all_results)

@@ -43,4 +43,40 @@ OpenAITextVectorizer
    :members:
 
 
+VertexAITextVectorizer
+======================
+
+.. _vertexaitextvectorizer_api:
+
+.. currentmodule:: redisvl.vectorize.text.vertexai
+
+.. autosummary::
+
+    VertexAITextVectorizer.__init__
+    VertexAITextVectorizer.embed
+    VertexAITextVectorizer.embed_many
+
+.. autoclass:: VertexAITextVectorizer
+   :show-inheritance:
+   :inherited-members:
+   :members:
+
+
+CohereTextVectorizer
+====================
+
+.. _coheretextvectorizer_api:
+
+.. currentmodule:: redisvl.vectorize.text.cohere
+
+.. autosummary::
+
+    CohereTextVectorizer.__init__
+    CohereTextVectorizer.embed
+    CohereTextVectorizer.embed_many
+
+.. autoclass:: CohereTextVectorizer
+   :show-inheritance:
+   :inherited-members:
+   :members:
 

@@ -1,0 +1,15 @@
+index:
+    name: json-test
+    prefix: json
+    storage_type: json
+
+fields:
+    text:
+        - name: '$.sentence'
+          as_name: sentence
+    vector:
+        - name: '$.embedding'
+          as_name: embedding
+          dims: 768
+          algorithm: flat
+          distance_metric: cosine

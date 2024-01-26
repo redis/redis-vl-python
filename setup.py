@@ -13,8 +13,10 @@ def read_dev_requirements():
 
 extras_require = {
     "all": [
-        "openai>=0.26.4",
-        "sentence-transformers>=2.2.2"
+        "openai==0.28.1",
+        "sentence-transformers>=2.2.2",
+        "google-cloud-aiplatform>=1.26",
+        "cohere==4.44"
     ],
     "dev": read_dev_requirements()
 }
@@ -22,7 +24,7 @@ extras_require = {
 
 setup(
     name="redisvl",
-    version="0.0.3",
+    version="0.0.7",
     python_requires=">=3.7",
     install_requires=read_requirements(),
     extras_require=extras_require,
@@ -31,7 +33,7 @@ setup(
     zip_safe=False,
     entry_points={
         "console_scripts": [
-            "rvl = redisvl.cli.__init__:main"
+            "rvl = redisvl.cli.runner:main"
         ]
     }
 )

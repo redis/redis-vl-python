@@ -7,7 +7,7 @@ from tabulate import tabulate
 from redisvl.cli.log import get_logger
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
-from redisvl.utils.connection import get_redis_connection
+from redisvl.schema import IndexSchema
 
 logger = get_logger("[RedisVL]")
 
@@ -56,7 +56,7 @@ class Stats:
             exit(0)
 
     def stats(self, args: Namespace):
-        """Obtain stats about an index
+        """Obtain stats about an index.
 
         Usage:
             rvl stats -i <index_name> | -s <schema_path>
@@ -67,8 +67,7 @@ class Stats:
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
         try:
-            url = create_redis_url(args)
-            conn = get_redis_connection(url=url)
+            redis_url = create_redis_url(args)
         except ValueError:
             logger.error(
                 "Must set REDIS_ADDRESS environment variable or provide host and port"
@@ -76,10 +75,10 @@ class Stats:
             exit(0)
 
         if args.index:
-            index = SearchIndex.from_existing(name=args.index, url=url)
+            schema = IndexSchema(name=args.index)
+            index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
-            index = SearchIndex.from_yaml(args.schema)
-            index.set_client(conn)
+            index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
         else:
             logger.error("Index name or schema must be provided")
             exit(0)
