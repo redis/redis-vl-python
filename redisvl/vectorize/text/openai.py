@@ -57,7 +57,6 @@ class OpenAITextVectorizer(BaseVectorizer):
             ImportError: If the openai library is not installed.
             ValueError: If the OpenAI API key is not provided.
         """
-        super().__init__(model)
         # Dynamic import of the openai module
         try:
             import openai
@@ -79,14 +78,16 @@ class OpenAITextVectorizer(BaseVectorizer):
             )
 
         openai.api_key = api_key
-        self._model_client = openai.Embedding
-        self._dims = self._set_model_dims()
+        client = openai.Embedding
+        dims = self._set_model_dims(client, model)
+        super().__init__(model=model, dims=dims, client=client)
 
-    def _set_model_dims(self) -> int:
+    @staticmethod
+    def _set_model_dims(client, model) -> int:
         try:
-            embedding = self._model_client.create(
-                input=["dimension test"], engine=self._model
-            )["data"][0]["embedding"]
+            embedding = client.create(input=["dimension test"], engine=model)["data"][
+                0
+            ]["embedding"]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -131,7 +132,7 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._model_client.create(input=batch, engine=self._model)
+            response = self.client.create(input=batch, engine=self.model)
             embeddings += [
                 self._process_embedding(r["embedding"], as_buffer)
                 for r in response["data"]
@@ -170,7 +171,7 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = self._model_client.create(input=[text], engine=self._model)
+        result = self.client.create(input=[text], engine=self.model)
         return self._process_embedding(result["data"][0]["embedding"], as_buffer)
 
     @retry(
@@ -210,7 +211,7 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self._model_client.acreate(input=batch, engine=self._model)
+            response = await self.client.acreate(input=batch, engine=self.model)
             embeddings += [
                 self._process_embedding(r["embedding"], as_buffer)
                 for r in response["data"]
@@ -249,5 +250,5 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = await self._model_client.acreate(input=[text], engine=self._model)
+        result = await self.client.acreate(input=[text], engine=self.model)
         return self._process_embedding(result["data"][0]["embedding"], as_buffer)

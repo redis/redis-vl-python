@@ -1,26 +1,21 @@
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
+
+from pydantic.v1 import BaseModel, validator
 
 from redisvl.utils.utils import array_to_buffer
 
 
-class BaseVectorizer:
-    _dims = None
+class BaseVectorizer(BaseModel):
+    model: str
+    dims: int
+    client: Any
 
-    def __init__(self, model: str):
-        self._model = model
-
-    @property
-    def model(self) -> str:
-        return self._model
-
-    @property
-    def dims(self) -> Optional[int]:
-        return self._dims
-
-    def set_model(self, model: str, dims: Optional[int] = None) -> None:
-        self._model = model
-        if dims is not None:
-            self._dims = dims
+    @validator("dims", pre=True)
+    @classmethod
+    def check_dims(cls, v):
+        if v <= 0:
+            raise ValueError("Dimension must be a positive integer")
+        return v
 
     def embed_many(
         self,

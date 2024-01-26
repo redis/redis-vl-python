@@ -42,8 +42,6 @@ class HFTextVectorizer(BaseVectorizer):
             ImportError: If the sentence-transformers library is not installed.
             ValueError: If there is an error setting the embedding model dimensions.
         """
-        super().__init__(model)
-
         # Load the SentenceTransformer model
         try:
             from sentence_transformers import SentenceTransformer
@@ -53,16 +51,19 @@ class HFTextVectorizer(BaseVectorizer):
                 "Please install with `pip install sentence-transformers`"
             )
 
-        self._model_client = SentenceTransformer(model)
+        client = SentenceTransformer(model)
+        dims = self._set_model_dims(client)
+        super().__init__(model=model, dims=dims, client=client)
 
-        # Initialize model dimensions
+    @staticmethod
+    def _set_model_dims(client):
         try:
-            self._dims = self._set_model_dims()
-        except Exception as e:
-            raise ValueError(f"Error setting embedding model dimensions: {e}")
-
-    def _set_model_dims(self):
-        embedding = self._model_client.encode(["dimension check"])[0]
+            embedding = client.encode(["dimension check"])[0]
+        except (KeyError, IndexError) as ke:
+            raise ValueError(f"Empty response from the embedding model: {str(ke)}")
+        except Exception as e:  # pylint: disable=broad-except
+            # fall back (TODO get more specific)
+            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
     def embed(
@@ -92,7 +93,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        embedding = self._model_client.encode([text])[0]
+        embedding = self.client.encode([text])[0]
         return self._process_embedding(embedding.tolist(), as_buffer)
 
     def embed_many(
@@ -128,7 +129,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            batch_embeddings = self._model_client.encode(batch)
+            batch_embeddings = self.client.encode(batch)
             embeddings.extend(
                 [
                     self._process_embedding(embedding.tolist(), as_buffer)
