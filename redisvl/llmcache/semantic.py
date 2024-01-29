@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import RangeQuery
-from redisvl.schema import IndexSchema
-from redisvl.schema.fields import BaseVectorField
+from redisvl.schema.fields import BaseField
+from redisvl.schema.schema import IndexInfo, IndexSchema
 from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
@@ -32,20 +32,26 @@ class SemanticCacheSchema(IndexSchema):
             raise ValueError("Must provide vectorizer dimensions")
 
         # Construct the base base index schema
-        super().__init__(name=name, prefix=prefix, **kwargs)
+        super().__init__(index={"name": name, "prefix": prefix})
         # other schema kwargs will get consumed here
         # otherwise fall back to index schema defaults
 
         # Add fields specific to the LLMCacheSchema
-        self.add_field("text", name=self.prompt_field_name)
-        self.add_field("text", name=self.response_field_name)
-        self.add_field(
-            "vector",
-            name=self.vector_field_name,
-            dims=vector_dims,
-            datatype="float32",
-            distance_metric="cosine",
-            algorithm="flat",
+        self.add_fields(
+            [
+                {"name": self.prompt_field_name, "type": "text"},
+                {"name": self.response_field_name, "type": "text"},
+                {
+                    "name": self.vector_field_name,
+                    "type": "vector",
+                    "attrs": {
+                        "dims": vector_dims,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                    },
+                },
+            ]
         )
 
         class Config:
@@ -53,8 +59,8 @@ class SemanticCacheSchema(IndexSchema):
             ignore_extra = True
 
     @property
-    def vector_field(self) -> BaseVectorField:
-        return self.fields["vector"][0]  # type: ignore
+    def vector_field(self) -> BaseField:
+        return self.fields[self.vector_field_name]
 
 
 class SemanticCache(BaseLLMCache):
@@ -199,7 +205,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(vectorizer, BaseVectorizer):
             raise TypeError("Must provide a valid redisvl.vectorizer class.")
 
-        schema_vector_dims = self._schema.vector_field.dims
+        schema_vector_dims = self._schema.vector_field.attrs.dims
 
         if schema_vector_dims != vectorizer.dims:
             raise ValueError(

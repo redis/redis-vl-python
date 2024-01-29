@@ -207,7 +207,8 @@ class SearchIndex:
         self.schema = schema
 
         self._storage = self._STORAGE_MAP[self.schema.index.storage_type](
-            prefix=self.schema.index.prefix, key_separator=self.schema.index.key_separator
+            prefix=self.schema.index.prefix,
+            key_separator=self.schema.index.key_separator,
         )
 
     @property
@@ -385,7 +386,9 @@ class SearchIndex:
         Returns:
             str: The full Redis key including key prefix and value as a string.
         """
-        return self._storage._key(id, self.schema.index.prefix, self.schema.index.key_separator)
+        return self._storage._key(
+            id, self.schema.index.prefix, self.schema.index.key_separator
+        )
 
     @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:

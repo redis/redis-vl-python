@@ -10,79 +10,31 @@ from redis.commands.search.field import VectorField as RedisVectorField
 from typing_extensions import Literal
 
 
-class BaseField(BaseModel):
-    name: str = Field(...)
-    path: Optional[str] = None
-
-    def _handle_path_name(self) -> Tuple[str, str]:
-        # In the case of JSON path / objects
-        # We pass the path as the name field in the Redis API
-        # We pass the true name as the as_name (alias) in the Redis API
-        if self.path:
-            return self.path, self.name
-        return self.name, self.path
+class BaseFieldAttributes(BaseModel):
+    sortable: Optional[bool] = False
 
 
-class TextField(BaseField):
+class TextFieldAttributes(BaseFieldAttributes):
     weight: Optional[float] = 1
     no_stem: Optional[bool] = False
     phonetic_matcher: Optional[str] = None
     withsuffixtrie: Optional[bool] = False
-    sortable: Optional[bool] = False
-
-    def as_redis_field(self) -> RedisField:
-        name, as_name = self._handle_path_name()
-        return RedisTextField(
-            name,
-            as_name=as_name,
-            weight=self.weight,  # type: ignore
-            no_stem=self.no_stem,  # type: ignore
-            phonetic_matcher=self.phonetic_matcher,  # type: ignore
-            sortable=self.sortable,
-        )
 
 
-class TagField(BaseField):
+class TagFieldAttributes(BaseFieldAttributes):
     separator: Optional[str] = ","
     case_sensitive: Optional[bool] = False
-    sortable: Optional[bool] = False
-
-    def as_redis_field(self) -> RedisField:
-        name, as_name = self._handle_path_name()
-        return RedisTagField(
-            name,
-            as_name=as_name,
-            separator=self.separator,  # type: ignore
-            case_sensitive=self.case_sensitive,  # type: ignore
-            sortable=self.sortable,
-        )
 
 
-class NumericField(BaseField):
-    sortable: Optional[bool] = False
-
-    def as_redis_field(self) -> RedisField:
-        name, as_name = self._handle_path_name()
-        return RedisNumericField(
-            name,
-            as_name=as_name,
-            sortable=self.sortable,
-        )
+class NumericFieldAttributes(BaseFieldAttributes):
+    pass
 
 
-class GeoField(BaseField):
-    sortable: Optional[bool] = False
-
-    def as_redis_field(self) -> RedisField:
-        name, as_name = self._handle_path_name()
-        return RedisGeoField(
-            name,
-            as_name=as_name,
-            sortable=self.sortable,
-        )
+class GeoFieldAttributes(BaseFieldAttributes):
+    pass
 
 
-class BaseVectorField(BaseField):
+class BaseVectorFieldAttributes(BaseModel):
     dims: int = Field(...)
     algorithm: object = Field(...)
     datatype: str = Field(default="FLOAT32")
@@ -106,49 +58,127 @@ class BaseVectorField(BaseField):
         return field_data
 
 
-class FlatVectorField(BaseVectorField):
-    algorithm: Literal["FLAT"] = "FLAT"
-    block_size: Optional[int] = None
-
-    def as_redis_field(self) -> RedisField:
-        # grab base field params and augment with flat-specific fields
-        name, as_name = self._handle_path_name()
-        field_data = super().field_data
-        if self.block_size is not None:
-            field_data["BLOCK_SIZE"] = self.block_size
-        return RedisVectorField(
-            name,
-            self.algorithm,
-            field_data,
-            as_name=as_name
-        )
-
-
-class HNSWVectorField(BaseVectorField):
+class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     algorithm: Literal["HNSW"] = "HNSW"
     m: int = Field(default=16)
     ef_construction: int = Field(default=200)
     ef_runtime: int = Field(default=10)
     epsilon: float = Field(default=0.01)
 
+
+class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
+    algorithm: Literal["FLAT"] = "FLAT"
+    block_size: Optional[int] = None
+
+
+### Field Classes ###
+
+
+class BaseField(BaseModel):
+    name: str
+    type: str
+    path: Optional[str] = None
+    attrs: Optional[Union[BaseFieldAttributes, BaseVectorFieldAttributes]] = None
+
+    def _handle_names(self) -> Tuple[str, Optional[str]]:
+        if self.path:
+            return self.path, self.name
+        return self.name, None
+
+
+class TextField(BaseField):
+    type: str = Field(default="text", const=True)
+    attrs: Optional[TextFieldAttributes] = Field(default_factory=TextFieldAttributes)
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_names()
+        return RedisTextField(
+            name,
+            as_name=as_name,
+            weight=self.attrs.weight,  # type: ignore
+            no_stem=self.attrs.no_stem,  # type: ignore
+            phonetic_matcher=self.attrs.phonetic_matcher,  # type: ignore
+            sortable=self.attrs.sortable,
+        )
+
+
+class TagField(BaseField):
+    type: str = Field(default="tag", const=True)
+    attrs: Optional[TagFieldAttributes] = Field(default_factory=TagFieldAttributes)
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_names()
+        return RedisTagField(
+            name,
+            as_name=as_name,
+            separator=self.attrs.separator,  # type: ignore
+            case_sensitive=self.attrs.case_sensitive,  # type: ignore
+            sortable=self.attrs.sortable,
+        )
+
+
+class NumericField(BaseField):
+    type: str = Field(default="numeric", const=True)
+    attrs: Optional[NumericFieldAttributes] = Field(
+        default_factory=NumericFieldAttributes
+    )
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_names()
+        return RedisNumericField(
+            name,
+            as_name=as_name,
+            sortable=self.attrs.sortable,
+        )
+
+
+class GeoField(BaseField):
+    type: str = Field(default="geo", const=True)
+    attrs: Optional[GeoFieldAttributes] = Field(default_factory=GeoFieldAttributes)
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_names()
+        return RedisGeoField(
+            name,
+            as_name=as_name,
+            sortable=self.attrs.sortable,
+        )
+
+
+class FlatVectorField(BaseField):
+    type: str = Field(default="vector", const=True)
+    attrs: Optional[FlatVectorFieldAttributes] = Field(
+        default_factory=FlatVectorFieldAttributes
+    )
+
+    def as_redis_field(self) -> RedisField:
+        # grab base field params and augment with flat-specific fields
+        name, as_name = self._handle_names()
+        field_data = self.attrs.field_data
+        if self.attrs.block_size is not None:
+            field_data["BLOCK_SIZE"] = self.attrs.block_size
+        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+
+
+class HNSWVectorField(BaseField):
+    type: str = Field(default="vector", const=True)
+    attrs: Optional[HNSWVectorFieldAttributes] = Field(
+        default_factory=HNSWVectorFieldAttributes
+    )
+
     def as_redis_field(self) -> RedisField:
         # grab base field params and augment with hnsw-specific fields
-        name, as_name = self._handle_path_name()
-        field_data = super().field_data
+        name, as_name = self._handle_names()
+        field_data = self.attrs.field_data
         field_data.update(
             {
-                "M": self.m,
-                "EF_CONSTRUCTION": self.ef_construction,
-                "EF_RUNTIME": self.ef_runtime,
-                "EPSILON": self.epsilon,
+                "M": self.attrs.m,
+                "EF_CONSTRUCTION": self.attrs.ef_construction,
+                "EF_RUNTIME": self.attrs.ef_runtime,
+                "EPSILON": self.attrs.epsilon,
             }
         )
-        return RedisVectorField(
-            name,
-            self.algorithm,
-            field_data,
-            as_name=as_name
-        )
+        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
 
 
 class FieldFactory:
@@ -167,32 +197,35 @@ class FieldFactory:
     }
 
     @classmethod
-    def _get_vector_type(cls, **field_data) -> BaseVectorField:
+    def pick_vector_field_type(cls, attrs: Dict[str, Any]) -> BaseField:
         """Get the vector field type from the field data."""
-        if "algorithm" not in field_data:
+        if "algorithm" not in attrs:
             raise ValueError("Must provide algorithm param for the vector field.")
 
-        if "dims" not in field_data:
+        if "dims" not in attrs:
             raise ValueError("Must provide dims param for the vector field.")
 
-        algorithm = field_data["algorithm"].lower()
+        algorithm = attrs["algorithm"].lower()
         if algorithm not in cls.VECTOR_FIELD_TYPE_MAP:
             raise ValueError(f"Unknown vector field algorithm: {algorithm}")
 
-        # default to FLAT
-        return cls.VECTOR_FIELD_TYPE_MAP.get(algorithm, FlatVectorField)(**field_data)
+        return cls.VECTOR_FIELD_TYPE_MAP[algorithm]
 
     @classmethod
     def create_field(
-        cls, field_type: str, name: str, **kwargs
-    ) -> Union[BaseField, BaseVectorField]:
+        cls,
+        type: str,
+        name: str,
+        attrs: Dict[str, Any] = {},
+        path: Optional[str] = None,
+    ) -> BaseField:
         """Create a field of a given type with provided attributes."""
 
-        if field_type == "vector":
-            return cls._get_vector_type(name=name, **kwargs)
+        if type == "vector":
+            field_class = cls.pick_vector_field_type(attrs)
+        else:
+            if type not in cls.FIELD_TYPE_MAP:
+                raise ValueError(f"Unknown field type: {type}")
+            field_class = cls.FIELD_TYPE_MAP[type]
 
-        if field_type not in cls.FIELD_TYPE_MAP:
-            raise ValueError(f"Unknown field type: {field_type}")
-
-        field_class = cls.FIELD_TYPE_MAP[field_type]
-        return field_class(name=name, **kwargs)
+        return field_class(name=name, path=path, attrs=attrs)

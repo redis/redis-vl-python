@@ -4,11 +4,11 @@ from argparse import Namespace
 
 from tabulate import tabulate
 
-from redisvl.utils.log import get_logger
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.schema import IndexSchema
 from redisvl.utils.connection import RedisConnection
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import convert_bytes, make_dict
 
 logger = get_logger("[RedisVL]")

@@ -1,3 +1,4 @@
+version: '0.1.0'
 
 index:
   name: user-index-v1
@@ -9,7 +10,6 @@ fields:
   - name: user
     type: tag
     path: '.user'
-    other: test
   - name: credit_score
     type: tag
     path: '$.credit_score'
