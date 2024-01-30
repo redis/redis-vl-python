@@ -1,6 +1,6 @@
 
 ***********
-IndexSchema
+Schema
 ***********
 
 IndexSchema
@@ -32,7 +32,7 @@ IndexSchema
 
 
 IndexInfo
-===========
+=========
 
 .. currentmodule:: redisvl.schema
 

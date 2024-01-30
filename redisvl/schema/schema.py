@@ -40,7 +40,7 @@ class IndexInfo(BaseModel):
     prefix: str = "rvl"
     """The prefix used for Redis keys associated with this index."""
     key_separator: str = ":"
-    """The separator character used in Redis keys."""
+    """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
 
@@ -65,6 +65,32 @@ class IndexSchema(BaseModel):
     Python dictionary, supporting flexible schema definitions and easy
     integration into various workflows.
 
+    An example `schema.yaml` file might look like this:
+
+    .. code-block:: yaml
+
+        version: '0.1.0'
+
+        index:
+            name: user-index
+            prefix: user
+            storage_type: json
+
+        fields:
+            - name: user
+              type: tag
+            - name: credit_score
+              type: tag
+            - name: embedding
+              type: vector
+              attrs:
+                algorithm: flat
+                dims: 3
+                distance_metric: cosine
+                datatype: float32
+
+    Loading the schema with RedisVL using yaml or dict format:
+
     .. code-block:: python
 
         from redisvl.schema import IndexSchema
@@ -75,21 +101,21 @@ class IndexSchema(BaseModel):
         # From Dict
         schema = IndexSchema.from_dict({
             "index": {
-                "name": "docs-index",
-                "prefix": "docs",
-                "storage_type": "hash",
+                "name": "user-index",
+                "prefix": "user",
+                "storage_type": "json",
             },
             "fields": [
+                {"name": "user", "type": "tag"},
+                {"name": "credit_score", "type": "tag"},
                 {
-                    "name": "doc-id",
-                    "type": "tag"
-                },
-                {
-                    "name": "doc-embedding",
+                    "name": "embedding",
                     "type": "vector",
                     "attrs": {
                         "algorithm": "flat",
-                        "dims": 1536
+                        "dims": 3,
+                        "distance_metrics": "cosine",
+                        "datatype": "float32"
                     }
                 }
             ]

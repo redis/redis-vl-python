@@ -1,7 +1,3 @@
-from redisvl.schema.schema import IndexSchema, IndexInfo, StorageType
+from redisvl.schema.schema import IndexInfo, IndexSchema, StorageType
 
-__all__ = [
-    "StorageType",
-    "IndexSchema",
-    "IndexInfo"
-]
+__all__ = ["StorageType", "IndexSchema", "IndexInfo"]

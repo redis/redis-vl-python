@@ -75,7 +75,7 @@ class Stats:
             exit(0)
 
         if args.index:
-            schema = IndexSchema(index={"name": args.index})
+            schema = IndexSchema.from_dict({"index": {"name": args.index}})
             index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)

@@ -11,7 +11,6 @@ SearchIndex
 
 .. autosummary::
 
-    SearchIndex.__init__
     SearchIndex.from_yaml
     SearchIndex.from_dict
     SearchIndex.client
