@@ -21,16 +21,20 @@ if TYPE_CHECKING:
 import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
+from redis.exceptions import ResponseError
 
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.storage import HashStorage, JsonStorage
+from redisvl.index.storage import HashStorage, JsonStorage
 from redisvl.utils.connection import RedisConnection
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
     check_async_redis_modules_exist,
     check_redis_modules_exist,
     convert_bytes,
 )
+
+logger = get_logger(__name__)
 
 
 def process_results(
@@ -85,32 +89,6 @@ def process_results(
     return [_process(doc) for doc in results.docs]
 
 
-def check_modules_present(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            _redis_conn = getattr(self, client_variable_name)
-            check_redis_modules_exist(_redis_conn.client)
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def check_async_modules_present(client_variable_name: str):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            _redis_conn = getattr(self, client_variable_name)
-            await check_async_redis_modules_exist(_redis_conn.client)
-            return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 def check_index_exists():
     def decorator(func):
         @wraps(func)
@@ -152,7 +130,7 @@ class SearchIndex:
         from redisvl.index import SearchIndex
 
         # initialize the index object with schema from file
-        index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
+        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
 
         # create the index
         index.create(overwrite=True)
@@ -164,7 +142,7 @@ class SearchIndex:
         index.delete(drop=True)
 
         # Do the same with an an async connection
-        index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
+        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379", use_async=True)
         await index.acreate(overwrite=True)
         await index.aload(data)
 
@@ -393,7 +371,6 @@ class SearchIndex:
             id, self.schema.index.prefix, self.schema.index.key_separator
         )
 
-    @check_modules_present("_redis_conn")
     def create(self, overwrite: bool = False) -> None:
         """Create an index in Redis from this SearchIndex object.
 
@@ -414,9 +391,9 @@ class SearchIndex:
 
         if self.exists():
             if not overwrite:
-                print("Index already exists, not overwriting.")
+                logger.info("Index already exists, not overwriting.")
                 return None
-            print("Index already exists, overwriting.")
+            logger.info("Index already exists, overwriting.")
             self.delete()
 
         # Create the index with the specified fields and settings.
@@ -427,7 +404,6 @@ class SearchIndex:
             ),
         )
 
-    @check_modules_present("_redis_conn")
     @check_index_exists()
     def delete(self, drop: bool = True):
         """Delete the search index.
@@ -442,7 +418,6 @@ class SearchIndex:
         # Delete the search index
         self._redis_conn.client.ft(self.schema.index.name).dropindex(delete_documents=drop)  # type: ignore
 
-    @check_modules_present("_redis_conn")
     def load(
         self,
         data: Iterable[Any],
@@ -506,7 +481,6 @@ class SearchIndex:
         """
         return convert_bytes(self._redis_conn.client.hgetall(self.key(id)))  # type: ignore
 
-    @check_modules_present("_redis_conn")
     @check_index_exists()
     def search(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
@@ -531,7 +505,6 @@ class SearchIndex:
             results, query=query, storage_type=self.schema.index.storage_type
         )
 
-    @check_modules_present("_redis_conn")
     @check_index_exists()
     def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query on the index.
@@ -552,7 +525,6 @@ class SearchIndex:
         """
         return self._query(query)
 
-    @check_modules_present("_redis_conn")
     @check_index_exists()
     def query_batch(self, query: BaseQuery, batch_size: int = 30) -> Generator:
         """Execute a query on the index with batching.
@@ -594,7 +566,6 @@ class SearchIndex:
             # increment the pagination tracker
             first += batch_size
 
-    @check_modules_present("_redis_conn")
     def listall(self) -> List[str]:
         """List all search indices in Redis database.
 
@@ -603,7 +574,6 @@ class SearchIndex:
         """
         return convert_bytes(self._redis_conn.client.execute_command("FT._LIST"))  # type: ignore
 
-    @check_modules_present("_redis_conn")
     def exists(self) -> bool:
         """Check if the index exists in Redis.
 
@@ -612,7 +582,6 @@ class SearchIndex:
         """
         return self.schema.index.name in self.listall()
 
-    @check_modules_present("_redis_conn")
     @check_index_exists()
     def info(self) -> Dict[str, Any]:
         """Get information about the index.
@@ -624,7 +593,6 @@ class SearchIndex:
             self._redis_conn.client.ft(self.schema.index.name).info()  # type: ignore
         )
 
-    @check_async_modules_present("_redis_conn")
     async def acreate(self, overwrite: bool = False) -> None:
         """Asynchronously create an index in Redis from this SearchIndex object.
 
@@ -643,9 +611,9 @@ class SearchIndex:
 
         if await self.aexists():
             if not overwrite:
-                print("Index already exists, not overwriting.")
+                logger.info("Index already exists, not overwriting.")
                 return None
-            print("Index already exists, overwriting.")
+            logger.info("Index already exists, overwriting.")
             await self.adelete()
 
         # Create Index with proper IndexType
@@ -656,7 +624,6 @@ class SearchIndex:
             ),
         )
 
-    @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def adelete(self, drop: bool = True):
         """Delete the search index.
@@ -671,7 +638,6 @@ class SearchIndex:
         # Delete the search index
         await self._redis_conn.client.ft(self.schema.index.name).dropindex(delete_documents=drop)  # type: ignore
 
-    @check_async_modules_present("_redis_conn")
     async def aload(
         self,
         data: Iterable[Any],
@@ -734,7 +700,6 @@ class SearchIndex:
         """
         return convert_bytes(await self._redis_conn.client.hgetall(self.key(id)))  # type: ignore
 
-    @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def asearch(self, *args, **kwargs) -> Union["Result", Any]:
         """Perform a search on this index.
@@ -759,7 +724,6 @@ class SearchIndex:
             results, query=query, storage_type=self.schema.index.storage_type
         )
 
-    @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def aquery(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
@@ -779,7 +743,6 @@ class SearchIndex:
         """
         return await self._aquery(query)
 
-    @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def aquery_batch(
         self, query: BaseQuery, batch_size: int = 30
@@ -822,7 +785,6 @@ class SearchIndex:
             # increment the pagination tracker
             first += batch_size
 
-    @check_async_modules_present("_redis_conn")
     async def alistall(self) -> List[str]:
         """List all search indices in Redis database.
 
@@ -833,7 +795,6 @@ class SearchIndex:
             await self._redis_conn.client.execute_command("FT._LIST")  # type: ignore
         )
 
-    @check_async_modules_present("_redis_conn")
     async def aexists(self) -> bool:
         """Check if the index exists in Redis.
 
@@ -842,7 +803,6 @@ class SearchIndex:
         """
         return self.schema.index.name in await self.alistall()
 
-    @check_async_modules_present("_redis_conn")
     @check_async_index_exists()
     async def ainfo(self) -> Dict[str, Any]:
         """Get information about the index.

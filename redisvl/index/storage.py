@@ -18,11 +18,16 @@ class BaseStorage(BaseModel):
     validation, and basic read/write operations (both sync and async).
     """
 
-    type: IndexType  # Type of index used in storage
-    prefix: str  # Prefix for Redis keys
-    key_separator: str  # Separator between prefix and key value
-    default_batch_size: int = 200  # Default size for batch operations
-    default_write_concurrency: int = 20  # Default concurrency for async ops
+    type: IndexType
+    """Type of index used in storage"""
+    prefix: str
+    """Prefix for Redis keys"""
+    key_separator: str
+    """Separator between prefix and key value"""
+    default_batch_size: int = 200
+    """Default size for batch operations"""
+    default_write_concurrency: int = 20
+    """Default concurrency for async ops"""
 
     @staticmethod
     def _key(key_value: str, prefix: str, key_separator: str) -> str:
@@ -384,6 +389,7 @@ class HashStorage(BaseStorage):
     """
 
     type: IndexType = IndexType.HASH
+    """Hash data type for the index"""
 
     def _validate(self, obj: Dict[str, Any]):
         """Validate that the given object is a dictionary, suitable for storage
@@ -456,6 +462,7 @@ class JsonStorage(BaseStorage):
     """
 
     type: IndexType = IndexType.JSON
+    """JSON data type for the index"""
 
     def _validate(self, obj: Dict[str, Any]):
         """Validate that the given object is a dictionary, suitable for JSON
