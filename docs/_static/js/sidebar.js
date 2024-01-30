@@ -18,7 +18,7 @@ const toc = [
         { title: "Query", path: "/api/query.html" },
         { title: "Filter", path: "/api/filter.html" },
         { title: "Vectorizers", path: "/api/vectorizer.html" },
-        { title: "SemanticCache", path: "/api/cache.html" }
+        { title: "LLMCache", path: "/api/cache.html" }
     ]}
 ];
 

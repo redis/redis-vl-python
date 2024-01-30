@@ -12,7 +12,7 @@ IndexSchema
 
 .. autosummary::
 
-    IndexSchema.__init__
+    IndexSchema.index
     IndexSchema.fields
     IndexSchema.version
     IndexSchema.field_names
@@ -26,6 +26,25 @@ IndexSchema
     IndexSchema.to_dict
 
 .. autoclass:: IndexSchema
+   :show-inheritance:
+   :inherited-members:
+   :members:
+
+
+IndexInfo
+===========
+
+.. currentmodule:: redisvl.schema
+
+.. autosummary::
+
+    IndexInfo.name
+    IndexInfo.prefix
+    IndexInfo.key_separator
+    IndexInfo.storage_type
+
+
+.. autoclass:: IndexInfo
    :show-inheritance:
    :inherited-members:
    :members:
