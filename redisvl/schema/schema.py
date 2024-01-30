@@ -1,5 +1,4 @@
 import re
-import warnings
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List
@@ -9,8 +8,12 @@ from pydantic.v1 import BaseModel, Field, root_validator
 from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, FieldFactory
+from redisvl.utils.log import get_logger
 
+
+logger = get_logger(__name__)
 SCHEMA_VERSION = "0.1.0"
+
 
 
 class StorageType(Enum):
@@ -147,8 +150,8 @@ class IndexSchema(BaseModel):
             field.path = field.path if field.path else f"$.{field.name}"
         else:
             if field.path is not None:
-                warnings.warn(
-                    message=f"Path attribute for field '{field.name}' will be ignored for HASH storage type."
+                logger.warning(
+                    f"Path attribute for field '{field.name}' will be ignored for HASH storage type."
                 )
             field.path = None
         return field
@@ -351,7 +354,9 @@ class IndexSchema(BaseModel):
             field_name (str): The name of the field to be removed.
         """
         if field_name not in self.fields:
-            warnings.warn(message=f"Field '{field_name}' does not exist in the schema")
+            logger.warning(
+                f"Field '{field_name}' does not exist in the schema"
+            )
             return
         del self.fields[field_name]
 
@@ -400,7 +405,7 @@ class IndexSchema(BaseModel):
                 if strict:
                     raise
                 else:
-                    warnings.warn(
+                    logger.warn(
                         message=f"Error inferring field type for {field_name}: {e}"
                     )
         return fields
