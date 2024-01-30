@@ -160,6 +160,9 @@ class SearchIndex:
         # data is an iterable of dictionaries
         index.load(data)
 
+        # delete index and data
+        index.delete(drop=True)
+
         # Do the same with an an async connection
         index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379", use_async=True)
         await index.acreate(overwrite=True)
@@ -291,9 +294,9 @@ class SearchIndex:
                     "prefix": "rvl",
                     "storage_type": "hash",
                 },
-                "fields": {
-                    "tag": [{"name": "doc-id"}]
-                }
+                "fields": [
+                    {"name": "doc-id", "type": "tag"}
+                ]
             }, redis_url="redis://localhost:6379")
             index.create(overwrite=True)
 

@@ -7,7 +7,7 @@ const toc = [
     { header: "User Guides", toc: [
         { title: "Getting Started", path: "/user_guide/getting_started_01.html" },
         { title: "Query and Filter", path: "/user_guide/hybrid_queries_02.html" },
-        { title: "Customizable Storage (JSON and Hash)", path: "/user_guide/hash_vs_json_05.html" },
+        { title: "JSON vs Hash Storage", path: "/user_guide/hash_vs_json_05.html" },
         { title: "Vectorizers", path: "/user_guide/vectorizers_04.html" },
         { title: "Semantic Caching", path: "/user_guide/llmcache_03.html" },
 

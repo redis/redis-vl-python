@@ -75,10 +75,15 @@ class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
 
 
 class BaseField(BaseModel):
+    """Base field"""
     name: str
+    """Field name"""
     type: str
+    """Field type"""
     path: Optional[str] = None
+    """Field path (within JSON object)"""
     attrs: Optional[Union[BaseFieldAttributes, BaseVectorFieldAttributes]] = None
+    """Specified field attributes"""
 
     def _handle_names(self) -> Tuple[str, Optional[str]]:
         if self.path:
@@ -90,6 +95,7 @@ class BaseField(BaseModel):
 
 
 class TextField(BaseField):
+    """Text field supporting a full text search index"""
     type: str = Field(default="text", const=True)
     attrs: TextFieldAttributes = Field(default_factory=TextFieldAttributes)
 
@@ -106,6 +112,7 @@ class TextField(BaseField):
 
 
 class TagField(BaseField):
+    """Tag field for simple boolean filtering"""
     type: str = Field(default="tag", const=True)
     attrs: TagFieldAttributes = Field(default_factory=TagFieldAttributes)
 
@@ -121,6 +128,7 @@ class TagField(BaseField):
 
 
 class NumericField(BaseField):
+    """Numeric field for numeric range filtering"""
     type: str = Field(default="numeric", const=True)
     attrs: NumericFieldAttributes = Field(default_factory=NumericFieldAttributes)
 
@@ -134,6 +142,7 @@ class NumericField(BaseField):
 
 
 class GeoField(BaseField):
+    """Geo field with a geo-spatial index for location based search"""
     type: str = Field(default="geo", const=True)
     attrs: GeoFieldAttributes = Field(default_factory=GeoFieldAttributes)
 
@@ -147,6 +156,7 @@ class GeoField(BaseField):
 
 
 class FlatVectorField(BaseField):
+    "Vector field with a FLAT index (brute force nearest neighbors search)"
     type: str = Field(default="vector", const=True)
     attrs: FlatVectorFieldAttributes
 
@@ -160,6 +170,7 @@ class FlatVectorField(BaseField):
 
 
 class HNSWVectorField(BaseField):
+    """Vector field with an HNSW index (approximate nearest neighbors search)"""
     type: str = Field(default="vector", const=True)
     attrs: HNSWVectorFieldAttributes
 
