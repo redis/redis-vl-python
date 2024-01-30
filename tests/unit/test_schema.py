@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import pytest
@@ -124,7 +125,7 @@ def test_to_dict():
     index_schema = create_sample_index_schema()
     index_dict = index_schema.to_dict()
     assert index_dict["index"]["name"] == "test"
-    assert isinstance(index_dict["fields"], dict)
+    assert isinstance(index_dict["fields"], list)
     assert len(index_dict["fields"]) == 2 == len(index_schema.fields)
 
 
@@ -162,6 +163,7 @@ def test_hash_index_from_yaml():
     assert index_schema.index.storage_type == StorageType.HASH
     assert len(index_schema.fields) == 2
 
+
 def test_json_index_from_yaml():
     """Test loading from yaml."""
     index_schema = IndexSchema.from_yaml(
@@ -171,6 +173,20 @@ def test_json_index_from_yaml():
     assert index_schema.index.prefix == "json"
     assert index_schema.index.storage_type == StorageType.JSON
     assert len(index_schema.fields) == 2
+
+
+def test_to_yaml_and_reload():
+    index_schema = create_sample_index_schema()
+    index_schema.to_yaml("temp_test.yaml")
+
+    assert os.path.exists("temp_test.yaml")
+
+    new_schema = IndexSchema.from_yaml("temp_test.yaml")
+    assert new_schema == index_schema
+    assert new_schema.to_dict() == index_schema.to_dict()
+
+    os.remove("temp_test.yaml")
+
 
 def test_from_yaml_file_not_found():
     """Test loading from yaml with file not found."""

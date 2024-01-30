@@ -1,5 +1,6 @@
 import warnings
 from typing import Any, Dict, List, Optional
+from redis import Redis
 
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
@@ -13,6 +14,7 @@ from redisvl.vectorize.text import HFTextVectorizer
 
 class SemanticCacheSchema(IndexSchema):
     """RedisVL index schema for the SemanticCache."""
+    # TODO - refactor this to be somewhat flexible to the client user
 
     # User should not be able to change these for the default LLMCache
     entry_id_field_name: str = "id"
@@ -23,8 +25,8 @@ class SemanticCacheSchema(IndexSchema):
 
     def __init__(
         self,
-        name: str = "cache",
-        prefix: str = "llmcache",
+        name: str,
+        prefix: str,
         vector_dims: Optional[int] = 768,
         **kwargs,
     ):
@@ -33,12 +35,8 @@ class SemanticCacheSchema(IndexSchema):
 
         # Construct the base base index schema
         super().__init__(index={"name": name, "prefix": prefix})
-        # other schema kwargs will get consumed here
-        # otherwise fall back to index schema defaults
 
-        # Add fields specific to the LLMCacheSchema
-        self.add_fields(
-            [
+        self.add_fields([
                 {"name": self.prompt_field_name, "type": "text"},
                 {"name": self.response_field_name, "type": "text"},
                 {
@@ -53,10 +51,6 @@ class SemanticCacheSchema(IndexSchema):
                 },
             ]
         )
-
-        class Config:
-            # Ignore extra fields passed in kwargs
-            ignore_extra = True
 
     @property
     def vector_field(self) -> BaseField:
@@ -75,6 +69,7 @@ class SemanticCache(BaseLLMCache):
         vectorizer: BaseVectorizer = HFTextVectorizer(
             model="sentence-transformers/all-mpnet-base-v2"
         ),
+        redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_args: Dict[str, Any] = {},
         **kwargs,
@@ -93,6 +88,8 @@ class SemanticCache(BaseLLMCache):
                 in Redis. Defaults to None.
             vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
+            redis_client(Redis, optional): A redis client connection instance.
+                Defaults to None.
             redis_url (str, optional): The redis url. Defaults to
                 "redis://localhost:6379".
             connection_args (Dict[str, Any], optional): The connection arguments
@@ -133,25 +130,31 @@ class SemanticCache(BaseLLMCache):
             prefix = name
 
         # build cache index schema
-        self._schema = SemanticCacheSchema(
-            name=name, prefix=prefix, vector_dims=vectorizer.dims, **kwargs
+        schema = SemanticCacheSchema(
+            name=name,
+            prefix=prefix,
+            vector_dims=vectorizer.dims,
+            **kwargs,
         )
+
+        # build search index and connect
+        self._index = SearchIndex(schema=schema)
+        if redis_client:
+            self._index.set_client(redis_client)
+        else:
+            self._index.connect(redis_url=redis_url, **connection_args)
 
         # initialize other components
         self.default_return_fields = [
-            self._schema.entry_id_field_name,
-            self._schema.prompt_field_name,
-            self._schema.response_field_name,
-            self._schema.vector_field_name,
-            self._schema.metadata_field_name,
+            schema.entry_id_field_name,
+            schema.prompt_field_name,
+            schema.response_field_name,
+            schema.vector_field_name,
+            schema.metadata_field_name,
         ]
         self.set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
 
-        # build search index
-        self._index = SearchIndex(
-            schema=self._schema, redis_url=redis_url, connection_args=connection_args
-        )
         self._index.create(overwrite=False)
 
     @property
@@ -205,7 +208,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(vectorizer, BaseVectorizer):
             raise TypeError("Must provide a valid redisvl.vectorizer class.")
 
-        schema_vector_dims = self._schema.vector_field.attrs.dims
+        schema_vector_dims = self._index.schema.vector_field.attrs.dims  # type: ignore
 
         if schema_vector_dims != vectorizer.dims:
             raise ValueError(
@@ -257,7 +260,7 @@ class SemanticCache(BaseLLMCache):
         # Construct vector RangeQuery for the cache check
         query = RangeQuery(
             vector=vector,
-            vector_field_name=self._schema.vector_field_name,
+            vector_field_name=self._index.schema.vector_field_name,
             return_fields=return_fields,
             distance_threshold=self._distance_threshold,
             num_results=num_results,
@@ -268,11 +271,11 @@ class SemanticCache(BaseLLMCache):
         cache_hits: List[Dict[str, Any]] = self._index.query(query)
         # Process cache hits
         for hit in cache_hits:
-            self._refresh_ttl(hit[self._schema.entry_id_field_name])
+            self._refresh_ttl(hit[self._index.schema.entry_id_field_name])
             # Check for metadata and deserialize
-            if self._schema.metadata_field_name in hit:
-                hit[self._schema.metadata_field_name] = self.deserialize(
-                    hit[self._schema.metadata_field_name]
+            if self._index.schema.metadata_field_name in hit:
+                hit[self._index.schema.metadata_field_name] = self.deserialize(
+                    hit[self._index.schema.metadata_field_name]
                 )
         return cache_hits
 
@@ -362,18 +365,18 @@ class SemanticCache(BaseLLMCache):
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
         # Construct semantic cache payload
-        id_field = self._schema.entry_id_field_name
+        id_field = self._index.schema.entry_id_field_name
         payload = {
             id_field: self.hash_input(prompt),
-            self._schema.prompt_field_name: prompt,
-            self._schema.response_field_name: response,
-            self._schema.vector_field_name: array_to_buffer(vector),
+            self._index.schema.prompt_field_name: prompt,
+            self._index.schema.response_field_name: response,
+            self._index.schema.vector_field_name: array_to_buffer(vector),
         }
         if metadata is not None:
             if not isinstance(metadata, dict):
                 raise TypeError("If specified, cached metadata must be a dictionary.")
             # Serialize the metadata dict and add to cache payload
-            payload[self._schema.metadata_field_name] = self.serialize(metadata)
+            payload[self._index.schema.metadata_field_name] = self.serialize(metadata)
 
         # Load LLMCache entry with TTL
         keys = self._index.load(data=[payload], ttl=self._ttl, key_field=id_field)

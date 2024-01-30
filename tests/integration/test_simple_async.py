@@ -33,34 +33,39 @@ data = [
         "user_embedding": np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
     },
 ]
+
 query_vector = np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes()
 
-schema = {
+fields_spec = [
+    {"name": "credit_score", "type": "tag"},
+    {"name": "user", "type": "tag"},
+    {"name": "job", "type": "text"},
+    {"name": "age", "type": "numeric"},
+    {
+        "name": "user_embedding",
+        "type": "vector",
+        "attrs": {
+            "dims": 3,
+            "distance_metric": "cosine",
+            "algorithm": "flat",
+            "datatype": "float32",
+        },
+    },
+]
+
+hash_schema = {
     "index": {
         "name": "user_index",
         "prefix": "users",
         "storage_type": "hash",
     },
-    "fields": {
-        "tag": [{"name": "credit_score"}],
-        "text": [{"name": "job"}],
-        "numeric": [{"name": "age"}],
-        "vector": [
-            {
-                "name": "user_embedding",
-                "dims": 3,
-                "distance_metric": "cosine",
-                "algorithm": "flat",
-                "datatype": "float32",
-            }
-        ],
-    },
+    "fields": fields_spec,
 }
 
 
 @pytest.mark.asyncio
 async def test_simple(async_client):
-    index = SearchIndex.from_dict(schema)
+    index = SearchIndex.from_dict(hash_schema)
     # assign client (only for testing)
     index.set_client(async_client)
     # create the index

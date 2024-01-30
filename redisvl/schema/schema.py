@@ -44,6 +44,14 @@ class IndexInfo(BaseModel):
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
 
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "prefix": self.prefix,
+            "key_separator": self.key_separator,
+            "storage_type": self.storage_type.value,
+        }
+
 
 class IndexSchema(BaseModel):
     """Represents a schema definition for a search index in Redis, primarily
@@ -327,8 +335,8 @@ class IndexSchema(BaseModel):
         data: Dict[str, Any],
         strict: bool = False,
         ignore_fields: List[str] = [],
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """Generates a set of field definitions from a sample data dictionary.
+    ) -> List[Dict[str, Any]]:
+        """Generates a list of extracted field specs from a sample data point.
 
         This method simplifies the process of creating a schema by inferring
         field types and attributes from sample data. It's particularly useful
@@ -376,7 +384,12 @@ class IndexSchema(BaseModel):
         Returns:
             Dict[str, Any]: The index schema as a dictionary.
         """
-        return self.dict(exclude_unset=True)
+        dict_schema = self.dict(exclude_none=True)
+        # cast fields back to a pure list
+        dict_schema["fields"] = [
+            field for field_name, field in dict_schema["fields"].items()
+        ]
+        return dict_schema
 
     def to_yaml(self, file_path: str, overwrite: bool = True) -> None:
         """Write the index schema to a YAML file.

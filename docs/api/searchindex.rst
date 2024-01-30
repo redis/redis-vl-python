@@ -32,6 +32,8 @@ SearchIndex
     SearchIndex.asearch
     SearchIndex.query
     SearchIndex.aquery
+    SearchIndex.query_batch
+    SearchIndex.aquery_batch
     SearchIndex.delete
     SearchIndex.adelete
     SearchIndex.info
