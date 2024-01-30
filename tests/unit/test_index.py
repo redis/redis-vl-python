@@ -2,7 +2,6 @@ import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.schema import IndexSchema
-from redisvl.schema.fields import TagField
 from redisvl.utils.utils import convert_bytes
 
 fields = [{"name": "test", "type": "tag"}]

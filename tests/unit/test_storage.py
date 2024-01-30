@@ -1,6 +1,6 @@
 import pytest
 
-from redisvl.storage import BaseStorage, HashStorage, JsonStorage
+from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 
 
 @pytest.fixture(params=[JsonStorage, HashStorage])

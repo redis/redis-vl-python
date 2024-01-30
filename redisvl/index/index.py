@@ -23,16 +23,12 @@ import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 from redis.exceptions import ResponseError
 
+from redisvl.index.storage import HashStorage, JsonStorage
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.index.storage import HashStorage, JsonStorage
-from redisvl.utils.connection import RedisConnection
+from redisvl.redis.connection import RedisConnection
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import (
-    check_async_redis_modules_exist,
-    check_redis_modules_exist,
-    convert_bytes,
-)
+from redisvl.utils.utils import convert_bytes
 
 logger = get_logger(__name__)
 

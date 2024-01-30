@@ -2,7 +2,7 @@ import os
 import pytest
 import asyncio
 
-from redisvl.utils.connection import RedisConnection
+from redisvl.redis.connection import RedisConnection
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
@@ -38,14 +38,19 @@ def gcp_location():
 def gcp_project_id():
     return os.getenv("GCP_PROJECT_ID")
 
-@pytest.fixture(scope="session")
-def event_loop():
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+# @pytest.fixture(scope="session")
+# def event_loop():
+#     try:
+#         loop = asyncio.get_running_loop()
+#     except RuntimeError:
+#         loop = asyncio.new_event_loop()
+#     yield loop
+#     loop.close()
+
+# @pytest.fixture(scope="session")
+# def event_loop():
+#     loop = asyncio.new_event_loop()
+#     yield loop
 
 @pytest.fixture
 def clear_db():

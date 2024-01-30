@@ -10,10 +10,8 @@ from redis.commands.search.field import Field as RedisField
 from redisvl.schema.fields import BaseField, FieldFactory
 from redisvl.utils.log import get_logger
 
-
 logger = get_logger(__name__)
 SCHEMA_VERSION = "0.1.0"
-
 
 
 class StorageType(Enum):
@@ -354,9 +352,7 @@ class IndexSchema(BaseModel):
             field_name (str): The name of the field to be removed.
         """
         if field_name not in self.fields:
-            logger.warning(
-                f"Field '{field_name}' does not exist in the schema"
-            )
+            logger.warning(f"Field '{field_name}' does not exist in the schema")
             return
         del self.fields[field_name]
 
