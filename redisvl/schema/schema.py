@@ -1,16 +1,14 @@
 import re
 import warnings
-import yaml
-
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List
 
+import yaml
 from pydantic.v1 import BaseModel, Field, root_validator
 from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, FieldFactory
-
 
 SCHEMA_VERSION = "0.1.0"
 
@@ -402,7 +400,9 @@ class IndexSchema(BaseModel):
                 if strict:
                     raise
                 else:
-                    warnings.warn(message=f"Error inferring field type for {field_name}: {e}")
+                    warnings.warn(
+                        message=f"Error inferring field type for {field_name}: {e}"
+                    )
         return fields
 
     def to_dict(self) -> Dict[str, Any]:
