@@ -7,7 +7,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
 
-from redisvl.utils.utils import convert_bytes
+from redisvl.redis.utls import convert_bytes
 
 
 class BaseStorage(BaseModel):
@@ -30,12 +30,12 @@ class BaseStorage(BaseModel):
     """Default concurrency for async ops"""
 
     @staticmethod
-    def _key(key_value: str, prefix: str, key_separator: str) -> str:
+    def _key(id: str, prefix: str, key_separator: str) -> str:
         """Create a Redis key using a combination of a prefix, separator, and
-        the key value.
+        the identifider.
 
         Args:
-            key_value (str): The unique identifier for the Redis entry.
+            id (str): The unique identifier for the Redis entry.
             prefix (str): A prefix to append before the key value.
             key_separator (str): A separator to insert between prefix
                 and key value.
@@ -44,9 +44,9 @@ class BaseStorage(BaseModel):
             str: The fully formed Redis key.
         """
         if not prefix:
-            return key_value
+            return id
         else:
-            return f"{prefix}{key_separator}{key_value}"
+            return f"{prefix}{key_separator}{id}"
 
     def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
         """Construct a Redis key for a given object, optionally using a
