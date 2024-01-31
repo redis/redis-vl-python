@@ -22,12 +22,12 @@ import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.storage import HashStorage, JsonStorage
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.storage import HashStorage, JsonStorage
 from redisvl.utils.log import get_logger
-from redisvl.redis.utls import convert_bytes
 
 logger = get_logger(__name__)
 
@@ -176,6 +176,7 @@ class BaseSearchIndex:
         self.schema = schema
 
         # set up redis connection
+        self._redis_client: Optional[Union[redis.Redis, aredis.Redis]] = None
         if redis_client is not None:
             self.set_client(redis_client)
         elif redis_url is not None:
@@ -324,7 +325,6 @@ class SearchIndex(BaseSearchIndex):
 
     """
 
-    @check_modules_present()
     def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
         back to the `REDIS_URL` environment variable (if available).
@@ -348,10 +348,8 @@ class SearchIndex(BaseSearchIndex):
             index.connect(redis_url="redis://localhost:6379")
 
         """
-        self._redis_client = RedisConnectionFactory.connect(
-            redis_url, use_async=False, **kwargs
-        )
-        return self
+        client = RedisConnectionFactory.connect(redis_url, use_async=False, **kwargs)
+        return self.set_client(client)
 
     @check_modules_present()
     def set_client(self, client: redis.Redis):
@@ -369,6 +367,7 @@ class SearchIndex(BaseSearchIndex):
             TypeError: If the provided client is not valid.
 
         .. code-block:: python
+
             import redis
             from redisvl.index import SearchIndex
 
@@ -431,6 +430,7 @@ class SearchIndex(BaseSearchIndex):
             )
         except:
             logger.exception("Error while trying to create the index")
+            raise
 
     @check_index_exists()
     def delete(self, drop: bool = True):
@@ -445,9 +445,9 @@ class SearchIndex(BaseSearchIndex):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         try:
-            self._redis_client.ft(self.schema.index.name).dropindex(
+            self._redis_client.ft(self.schema.index.name).dropindex(  # type: ignore
                 delete_documents=drop
-            )  # type: ignore
+            )
         except:
             logger.exception("Error while deleting index")
 
@@ -500,6 +500,7 @@ class SearchIndex(BaseSearchIndex):
             )
         except:
             logger.exception("Error while loading data to Redis")
+            raise
 
     def fetch(self, id: str) -> Dict[str, Any]:
         """Fetch an object from Redis by id.
@@ -534,6 +535,7 @@ class SearchIndex(BaseSearchIndex):
             )
         except:
             logger.exception("Error while searching")
+            raise
 
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
@@ -632,6 +634,7 @@ class SearchIndex(BaseSearchIndex):
             logger.exception(
                 f"Error while fetching {self.schema.index.name} index info"
             )
+            raise
 
 
 class AsyncSearchIndex(BaseSearchIndex):
@@ -659,7 +662,6 @@ class AsyncSearchIndex(BaseSearchIndex):
 
     """
 
-    @check_async_modules_present()
     def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
         back to the `REDIS_URL` environment variable (if available).
@@ -683,10 +685,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             index.connect(redis_url="redis://localhost:6379")
 
         """
-        self._redis_client = RedisConnectionFactory.connect(
-            redis_url, use_async=True, **kwargs
-        )
-        return self
+        client = RedisConnectionFactory.connect(redis_url, use_async=True, **kwargs)
+        return self.set_client(client)
 
     @check_async_modules_present()
     def set_client(self, client: aredis.Redis):
@@ -704,6 +704,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             TypeError: If the provided client is not valid.
 
         .. code-block:: python
+
             import redis.asyncio as aredis
             from redisvl.index import AsyncSearchIndex
 
@@ -767,6 +768,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
         except:
             logger.exception("Error while trying to create the index")
+            raise
 
     @check_async_index_exists()
     async def delete(self, drop: bool = True):
@@ -780,11 +782,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         try:
-            await self._redis_client.ft(self.schema.index.name).dropindex(
+            await self._redis_client.ft(self.schema.index.name).dropindex(  # type: ignore
                 delete_documents=drop
-            )  # type: ignore
+            )
         except:
             logger.exception("Error while deleting index")
+            raise
 
     async def load(
         self,
@@ -836,6 +839,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
         except:
             logger.exception("Error while loading data to Redis")
+            raise
 
     async def fetch(self, id: str) -> Dict[str, Any]:
         """Asynchronously etch an object from Redis by id. The id is typically
@@ -868,6 +872,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
         except:
             logger.exception("Error while searching")
+            raise
 
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""
@@ -876,7 +881,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             results, query=query, storage_type=self.schema.index.storage_type
         )
 
-    async def aquery(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
         This method takes a BaseQuery object directly, runs the search, and
@@ -915,7 +920,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            async for batch in index.aquery_batch(query, batch_size=10):
+            async for batch in index.query_batch(query, batch_size=10):
                 # process batched results
                 pass
         """
@@ -968,3 +973,4 @@ class AsyncSearchIndex(BaseSearchIndex):
             logger.exception(
                 f"Error while fetching {self.schema.index.name} index info"
             )
+            raise

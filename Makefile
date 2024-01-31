@@ -77,17 +77,17 @@ servedocs:
 # help: test                           - Run all tests
 .PHONY: test
 test:
-	@python -m pytest
+	@python -m pytest --log-level=CRITICAL
 
 # help: test-verbose                   - Run all tests verbosely
 .PHONY: test-verbose
 test-verbose:
-	@python -m pytest -vv -s
+	@python -m pytest -vv -s --log-level=CRITICAL
 
 # help: test-cov                       - Run all tests with coverage
 .PHONY: test-cov
 test-cov:
-	@python -m pytest -vv --cov=./redisvl
+	@python -m pytest -vv --cov=./redisvl --log-level=CRITICAL
 
 # help: cov                            - generate html coverage report
 .PHONY: cov

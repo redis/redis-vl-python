@@ -5,8 +5,8 @@ from redis import Redis
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import RangeQuery
+from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
@@ -68,9 +68,7 @@ class SemanticCache(BaseLLMCache):
             prefix = name
 
         # build cache index schema
-        schema = IndexSchema.from_dict(
-            {"index": {"name": name, "prefix": prefix}}
-        )
+        schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
         # add fields
         schema.add_fields(
             [

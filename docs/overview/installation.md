@@ -9,6 +9,8 @@ myst:
 
 There are a few ways to install RedisVL. The easiest way is to use pip.
 
+## Install RedisVL with Pip
+
 Install `redisvl` into your Python (>=3.8) environment using `pip`:
 
 ```bash

@@ -2,7 +2,7 @@ const toc = [
     { header: "Overview", toc: [
         { title: "RedisVL", path: "/index.html" },
         { title: "Install", path: "/overview/installation.html" },
-        { title: "CLI", path: "/user_guide/cli.html" },
+        { title: "CLI", path: "/overview/cli.html" },
     ]},
     { header: "User Guides", toc: [
         { title: "Getting Started", path: "/user_guide/getting_started_01.html" },
@@ -10,11 +10,10 @@ const toc = [
         { title: "JSON vs Hash Storage", path: "/user_guide/hash_vs_json_05.html" },
         { title: "Vectorizers", path: "/user_guide/vectorizers_04.html" },
         { title: "Semantic Caching", path: "/user_guide/llmcache_03.html" },
-
     ]},
     { header: "API", toc: [
-        { title: "Schema", path: "/api/indexschema.html"},
-        { title: "Index", path: "/api/searchindex.html" },
+        { title: "Schema", path: "/api/schema.html"},
+        { title: "Search Index", path: "/api/searchindex.html" },
         { title: "Query", path: "/api/query.html" },
         { title: "Filter", path: "/api/filter.html" },
         { title: "Vectorizers", path: "/api/vectorizer.html" },

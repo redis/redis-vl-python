@@ -1,13 +1,11 @@
-import asyncio
 import os
-from threading import Thread
-from typing import Optional, Union
+from typing import Optional
 
-from redis import Redis
+from redis import ConnectionPool, Redis
 from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.utils.utils import convert_bytes
 from redisvl.redis.constants import REDIS_REQUIRED_MODULES
+from redisvl.redis.utils import convert_bytes
 
 
 def get_address_from_env() -> str:
@@ -21,18 +19,8 @@ def get_address_from_env() -> str:
     return os.environ["REDIS_URL"]
 
 
-def run_async(coroutine):
-    # def run():
-    #     asyncio.run(coroutine)
-
-    # thread = Thread(target=run)
-    # thread.start()
-    # thread.join()
-    asyncio.run(coroutine)
-
-
-class RedisConnection:
-    """Manages connections to a Redis database, supporting both synchronous and
+class RedisConnectionFactory:
+    """Builds connections to a Redis database, supporting both synchronous and
     asynchronous clients.
 
     This class allows for establishing and handling Redis connections using
@@ -40,15 +28,12 @@ class RedisConnection:
     configuration.
     """
 
-    def __init__(self):
-        self._redis_url = None
-        self._kwargs = None
-        self.client: Optional[Union[Redis, AsyncRedis]] = None
-
+    @classmethod
     def connect(
-        self, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
+        cls, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
     ) -> None:
-        """Establishes a connection to the Redis database.
+        """Create a connection to the Redis database based on a URL and some
+        connection kwargs.
 
         This method sets up either a synchronous or asynchronous Redis client
         based on the provided parameters.
@@ -65,43 +50,11 @@ class RedisConnection:
             ValueError: If redis_url is not provided and REDIS_URL environment
                 variable is not set.
         """
-        self._redis_url = redis_url or get_address_from_env()
-        self._kwargs = kwargs
+        redis_url = redis_url or get_address_from_env()
         connection_func = (
-            self.get_async_redis_connection if use_async else self.get_redis_connection
+            cls.get_async_redis_connection if use_async else cls.get_redis_connection
         )
-        self.client = connection_func(self._redis_url, **self._kwargs)  # type: ignore
-
-        # Check for required modules
-        if use_async:
-            assert isinstance(self.client, AsyncRedis)
-            run_async(self.check_async_redis_modules_exist(self.client))
-        else:
-            assert isinstance(self.client, Redis)
-            self.check_redis_modules_exist(self.client)
-
-    def set_client(self, client: Union[Redis, AsyncRedis]) -> None:
-        """Sets the Redis client instance for the connection.
-
-        This method allows setting a pre-configured Redis client, either
-        synchronous or asynchronous.
-
-        Args:
-            client (Union[Redis, AsyncRedis]): The Redis client instance to be set.
-
-        Raises:
-            TypeError: If the provided client is not a valid Redis client
-                instance.
-        """
-        self.client = client
-
-        # Check for required modules
-        if isinstance(client, AsyncRedis):
-            run_async(self.check_async_redis_modules_exist(self.client))  # type: ignore
-        elif isinstance(client, Redis):
-            self.check_redis_modules_exist(self.client)  # type: ignore
-        else:
-            raise TypeError("Invalid Redis client instance")
+        return connection_func(redis_url, **kwargs)  # type: ignore
 
     @staticmethod
     def get_redis_connection(url: Optional[str] = None, **kwargs) -> Redis:
@@ -148,7 +101,7 @@ class RedisConnection:
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
-    def check_redis_modules_exist(client: Redis) -> None:
+    def validate_redis_modules(client: Redis) -> None:
         """Validates if the required Redis modules are installed.
 
         Args:
@@ -157,10 +110,12 @@ class RedisConnection:
         Raises:
             ValueError: If required Redis modules are not installed.
         """
-        RedisConnection._validate_redis_modules(convert_bytes(client.module_list()))
+        RedisConnectionFactory._validate_redis_modules(
+            convert_bytes(client.module_list())
+        )
 
     @staticmethod
-    async def check_async_redis_modules_exist(client: AsyncRedis) -> None:
+    def validate_async_redis_modules(client: AsyncRedis) -> None:
         """
         Validates if the required Redis modules are installed.
 
@@ -170,8 +125,10 @@ class RedisConnection:
         Raises:
             ValueError: If required Redis modules are not installed.
         """
-        installed_modules = await client.module_list()
-        RedisConnection._validate_redis_modules(convert_bytes(installed_modules))
+        temp_client = Redis(
+            connection_pool=ConnectionPool(**client.connection_pool.connection_kwargs)
+        )
+        RedisConnectionFactory.validate_redis_modules(temp_client)
 
     @staticmethod
     def _validate_redis_modules(installed_modules) -> None:

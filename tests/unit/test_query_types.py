@@ -1,7 +1,7 @@
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
-from redisvl.index.index import process_results
+from redisvl.index import process_results
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
 from redisvl.query.filter import Tag
 

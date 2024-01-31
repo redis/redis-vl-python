@@ -7,7 +7,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
 
-from redisvl.redis.utls import convert_bytes
+from redisvl.redis.utils import convert_bytes
 
 
 class BaseStorage(BaseModel):

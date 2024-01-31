@@ -1,6 +1,17 @@
-***********
-SearchIndex
-***********
+********************
+Search Index Classes
+********************
+
+.. list-table::
+   :widths: 25 75
+   :header-rows: 1
+
+   * - Class
+     - Description
+   * - `SearchIndex <#searchindex_api>`_
+     - Primary class to write, read, and search across data structures in Redis.
+   * - `AsyncSearchIndex <#asyncsearchindex_api>`_
+     - Async version of the SearchIndex to write, read, and search across data structures in Redis.
 
 SearchIndex
 ===========
@@ -9,36 +20,19 @@ SearchIndex
 
 .. currentmodule:: redisvl.index
 
-.. autosummary::
-
-    SearchIndex.from_yaml
-    SearchIndex.from_dict
-    SearchIndex.client
-    SearchIndex.name
-    SearchIndex.prefix
-    SearchIndex.key_separator
-    SearchIndex.storage_type
-    SearchIndex.connect
-    SearchIndex.disconnect
-    SearchIndex.set_client
-    SearchIndex.create
-    SearchIndex.acreate
-    SearchIndex.exists
-    SearchIndex.aexists
-    SearchIndex.load
-    SearchIndex.aload
-    SearchIndex.search
-    SearchIndex.asearch
-    SearchIndex.query
-    SearchIndex.aquery
-    SearchIndex.query_batch
-    SearchIndex.aquery_batch
-    SearchIndex.delete
-    SearchIndex.adelete
-    SearchIndex.info
-    SearchIndex.ainfo
-
 .. autoclass:: SearchIndex
+   :show-inheritance:
+   :inherited-members:
+   :members:
+
+AsyncSearchIndex
+================
+
+.. _asyncsearchindex_api:
+
+.. currentmodule:: redisvl.index
+
+.. autoclass:: AsyncSearchIndex
    :show-inheritance:
    :inherited-members:
    :members:

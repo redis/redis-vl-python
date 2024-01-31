@@ -1,38 +1,9 @@
-from pprint import pprint
-
 import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
+from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import StorageType
-from redisvl.utils.utils import array_to_buffer
-
-data = [
-    {
-        "id": 1,
-        "user": "john",
-        "age": 1,
-        "job": "engineer",
-        "credit_score": "high",
-        "user_embedding": [0.1, 0.1, 0.5],
-    },
-    {
-        "id": 2,
-        "user": "mary",
-        "age": 2,
-        "job": "doctor",
-        "credit_score": "low",
-        "user_embedding": [0.1, 0.1, 0.5],
-    },
-    {
-        "id": 3,
-        "user": "joe",
-        "age": 3,
-        "job": "dentist",
-        "credit_score": "medium",
-        "user_embedding": [0.9, 0.9, 0.1],
-    },
-]
 
 fields_spec = [
     {"name": "credit_score", "type": "tag"},
@@ -50,7 +21,6 @@ fields_spec = [
         },
     },
 ]
-
 
 hash_schema = {
     "index": {
@@ -72,28 +42,27 @@ json_schema = {
 
 
 @pytest.mark.parametrize("schema", [hash_schema, json_schema])
-def test_simple(client, schema):
+def test_simple(client, schema, sample_data):
     index = SearchIndex.from_dict(schema)
     # assign client (only for testing)
     index.set_client(client)
     # create the index
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     # Prepare and load the data based on storage type
     def hash_preprocess(item: dict) -> dict:
         return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
 
     if index.storage_type == StorageType.HASH:
-        index.load(data, preprocess=hash_preprocess)
+        index.load(sample_data, preprocess=hash_preprocess)
     else:
-        # Load the prepared data into the index
-        print("DATA", data, flush=True)
-        index.load(data)
+        index.load(sample_data)
 
+    return_fields = ["user", "age", "job", "credit_score"]
     query = VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
-        return_fields=["user", "age", "job", "credit_score"],
+        return_fields=return_fields,
         num_results=3,
     )
 
@@ -105,7 +74,6 @@ def test_simple(client, schema):
     # users = list(results.docs)
     # print(len(users))
     users = [doc for doc in results.docs]
-    pprint(users)
     assert users[0].user in ["john", "mary"]
     assert users[1].user in ["john", "mary"]
 
@@ -116,9 +84,8 @@ def test_simple(client, schema):
     assert float(users[1].vector_distance) == 0.0
     assert float(users[2].vector_distance) > 0
 
-    print()
-    for doc in results.docs:
-        print("Score:", doc.vector_distance)
-        pprint(doc)
+    for doc1, doc2 in zip(results.docs, results_2):
+        for field in return_fields:
+            assert getattr(doc1, field) == doc2[field]
 
     index.delete()

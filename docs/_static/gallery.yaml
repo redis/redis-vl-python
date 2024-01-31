@@ -1,6 +1,6 @@
 
 - title: Arxiv Paper Search
-  website: https://docsearch.redisventures.com
+  website: https://docsearch.redisvl.com
   img-bottom: ../_static/gallery-images/arxiv-search.png
 - title: Real-Time Embeddings with Redis and Bytewax
   website: https://github.com/awmatheson/real-time-embeddings

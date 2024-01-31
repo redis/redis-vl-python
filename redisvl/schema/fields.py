@@ -4,6 +4,7 @@ RedisVL Fields, FieldAttributes, and Enums
 Reference Redis search source documentation as needed: https://redis.io/commands/ft.create/
 Reference Redis vector search documentation as needed: https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/
 """
+
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
@@ -15,18 +16,19 @@ from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
-
-
 ### Attribute Enums ###
+
 
 class VectorDistanceMetric(str, Enum):
     COSINE = "COSINE"
     L2 = "L2"
     IP = "IP"
 
+
 class VectorDataType(str, Enum):
     FLOAT32 = "FLOAT32"
     FLOAT64 = "FLOAT64"
+
 
 class VectorIndexAlgorithm(str, Enum):
     FLAT = "FLAT"
@@ -35,14 +37,17 @@ class VectorIndexAlgorithm(str, Enum):
 
 ### Field Attributes ###
 
+
 class BaseFieldAttributes(BaseModel):
     """Base field attributes shared by other lexical fields"""
+
     sortable: bool = Field(default=False)
     """Enable faster result sorting on the field at runtime"""
 
 
 class TextFieldAttributes(BaseFieldAttributes):
     """Full text field attributes"""
+
     weight: float = Field(default=1)
     """Declares the importance of this field when calculating results"""
     no_stem: bool = Field(default=False)
@@ -55,6 +60,7 @@ class TextFieldAttributes(BaseFieldAttributes):
 
 class TagFieldAttributes(BaseFieldAttributes):
     """Tag field attributes"""
+
     separator: str = Field(default=",")
     """Indicates how the text in the original attribute is split into individual tags"""
     case_sensitive: bool = Field(default=False)
@@ -63,19 +69,21 @@ class TagFieldAttributes(BaseFieldAttributes):
     """Keep a suffix trie with all terms which match the suffix to optimize certain queries"""
 
 
-
 class NumericFieldAttributes(BaseFieldAttributes):
     """Numeric field attributes"""
+
     pass
 
 
 class GeoFieldAttributes(BaseFieldAttributes):
     """Numeric field attributes"""
+
     pass
 
 
 class BaseVectorFieldAttributes(BaseModel):
     """Base vector field attributes shared by both FLAT and HNSW fields"""
+
     dims: int
     """Dimensionality of the vector embeddings field"""
     algorithm: VectorIndexAlgorithm
@@ -108,7 +116,10 @@ class BaseVectorFieldAttributes(BaseModel):
 
 class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
     """FLAT vector field attributes"""
-    algorithm: VectorIndexAlgorithm = Field(default=VectorIndexAlgorithm.FLAT, const=True)
+
+    algorithm: VectorIndexAlgorithm = Field(
+        default=VectorIndexAlgorithm.FLAT, const=True
+    )
     """The indexing algorithm for the vector field"""
     block_size: Optional[int] = None
     """Block size to hold amount of vectors in a contiguous array. This is useful when the index is dynamic with respect to addition and deletion"""
@@ -116,7 +127,10 @@ class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
 
 class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     """HNSW vector field attributes"""
-    algorithm: VectorIndexAlgorithm = Field(default=VectorIndexAlgorithm.HNSW, const=True)
+
+    algorithm: VectorIndexAlgorithm = Field(
+        default=VectorIndexAlgorithm.HNSW, const=True
+    )
     """The indexing algorithm for the vector field"""
     m: int = Field(default=16)
     """Number of max outgoing edges for each graph node in each layer"""
@@ -126,8 +140,6 @@ class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     """Number of maximum top candidates to hold during KNN search"""
     epsilon: float = Field(default=0.01)
     """Relative factor that sets the boundaries in which a range query may search for candidates"""
-
-
 
 
 ### Field Classes ###
