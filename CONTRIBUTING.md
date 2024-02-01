@@ -34,7 +34,7 @@ Or use the local package editable install method:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[all,dev]
+pip install -e '.[all,dev]'
 ```
 
 Then to deactivate the env:
@@ -53,6 +53,8 @@ Tests (with vectorizers):
 ```bash
 make test-cov
 ```
+
+**NOTE**: Some tests require the `REDIS_URL` environment variable to be set (e.g. `export REDIS_URL=redis://localhost:6379`).
 
 Tests w/out vectorizers:
 ```bash
