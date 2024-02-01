@@ -1,11 +1,12 @@
-# RedisVL
-
 <div align="center">
-<div display="inline-block">
-  <b>🔥 Redis Vector Library: the AI-native Redis Python client</b>&nbsp;&nbsp;&nbsp;
-  </div>
+    <div style="display: inline-block; text-align: center; margin-bottom: 10px;">
+        <span style="font-size: larger;"><b>🔥 Redis Vector Library:</b></span>
+        <br />
+        <span style="font-size: smaller;">the AI-native Redis Python client</span>
+    </div>
     <br />
 </div>
+
 
 
 <div align="center">
@@ -30,29 +31,29 @@
 </div>
 
 
-## Introduction
+# Introduction
 
 `redisvl` is a Python client library, tailor-made for AI applications leveraging [Redis](https://redis.com). It's designed for use in:
 
-- Information retrieval & semantic search apps
+- Information retrieval & vector similarity search
 - Real-time RAG pipelines
 - Recommendation engines
 
 Enhance your AI applications with Redis's **speed**, **flexibility**, and **reliability**, incorporating capabilities like vector-based semantic search, full-text search, and geo-spatial search.
 
-## 🚀 Why RedisVL?
+# 🚀 Why RedisVL?
 
-The emergence of the modern GenAI stack, including **vector databases** and **LLMs**, has become increasingly popular due to accelerated innovation & research in information retrieval, the ubiquity of tools & frameworks (e.g. [LangChain](), [LlamaIndex](), [EmbedChain]()), and the never-ending stream of business problems addressable by AI.
+The emergence of the modern GenAI stack, including **vector databases** and **LLMs**, has become increasingly popular due to accelerated innovation & research in information retrieval, the ubiquity of tools & frameworks (e.g. [LangChain](https://github.com/langchain-ai/langchain), [LlamaIndex](https://www.llamaindex.ai/), [EmbedChain](https://github.com/embedchain/embedchain)), and the never-ending stream of business problems addressable by AI.
 
-However, organizations struggle with delivering reliable solutions **quickly** (*time to value*) at **scale** (*beyond a demo*).
+However, organizations still struggle with delivering reliable solutions **quickly** (*time to value*) at **scale** (*beyond a demo*).
 
-[Redis](https://redis.io) has been a staple for over a decade in the NoSQL world, and boasts a number of flexible [data structures]() and [processing engines]() to handle realtime application workloads like [caching](), [session management](), [job queueing]() and [search]().
+[Redis](https://redis.io) has been a staple for over a decade in the NoSQL world, and boasts a number of flexible [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/) to handle realtime application workloads like caching, session management, and search. Most notably, Redis has been used as a vector database for RAG, LLM cache, and chat session memory store for conversational AI applications
 
-`redisvl` bridges the gap between the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](), it extends the core features of Redis into a grammar that is more aligned to the needs of today's AI/ML engineers or scientists.
+`redisvl` **bridges the gap between** the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](https://github.com/redis/redis-py/tree/master), it extends the core caching and search features of Redis into a grammar that is more aligned to the needs of today's AI/ML engineers or scientists.
 
-## 💪 Getting Started
+# 💪 Getting Started
 
-### Installation
+## Installation
 
 Install `redisvl` into your Python (>=3.8) environment using `pip`:
 
@@ -61,7 +62,7 @@ pip install redisvl
 ```
 > For more instructions, visit the `redisvl` [installation guide](https://www.redisvl.com/overview/installation.html).
 
-### Setting up Redis
+## Setting up Redis
 
 Choose from multiple Redis deployment options:
 
@@ -76,30 +77,53 @@ Choose from multiple Redis deployment options:
 > Enhance your experience and obersvability with the free [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/).
 
 
-## Features and Usage
+## What's included?
 
 
-### 🗃️ Index Management
-1. [Design an `IndexSchema`](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis [data structures](https://www.redisvl.com/user_guide/hash_vs_json_05.html) (*Hash or JSON*) and indexable fields (*e.g. text, tags, numerics, geo, and vectors*). [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from YAML file or from a Python dictionary:
+### 🗃️ Redis Index Management
+1. [Design an `IndexSchema`](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis [data structures](https://www.redisvl.com/user_guide/hash_vs_json_05.html) (*Hash or JSON*) and indexable fields (*e.g. text, tags, numerics, geo, and vectors*).
 
+    [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a [YAML file](schemas/schema.yaml):
+    ```yaml
+    version: '0.1.0'
+
+    index:
+        name: user-index-v1
+        prefix: user
+        key_separator: ':'
+        storage_type: json
+
+    fields:
+      - name: user
+        type: tag
+      - name: credit_score
+        type: tag
+      - name: embedding
+        type: vector
+        attrs:
+          algorithm: flat
+          dims: 3
+          distance_metric: cosine
+          datatype: float32
+    ```
     ```python
     from redisvl.schema import IndexSchema
-    ```
-    Load schema from a [YAML file](schemas/schema.yaml):
-    ```python
+
     schema = IndexSchema.from_yaml("schemas/schema.yaml")
     ```
     Or load directly from a Python dictionary:
     ```python
     schema = IndexSchema.from_dict({
         "index": {
-            "name": "my-index",
-            "prefix": "docs",
+            "name": "user-index-v1",
+            "prefix": "user",
+            "storage_type": "json"
         },
         "fields": [
-            {"name": "content", "type": "text"},
+            {"name": "user", "type": "tag"},
+            {"name": "credit_score", "type": "tag"},
             {
-                "name": "content-embedding",
+                "name": "embedding",
                 "type": "vector",
                 "attrs": {
                     "algorithm": "flat",
@@ -124,6 +148,19 @@ Choose from multiple Redis deployment options:
     # Create the index in Redis
     index.create()
     ```
+    > Async-compliant search index class also available: `AsyncSearchIndex`
+
+3. [Load](https://www.redisvl.com/user_guide/getting_started_01.html#load-data-to-searchindex)
+and [fetch](https://www.redisvl.com/user_guide/getting_started_01.html#fetch-an-object-from-redis) data to/from your Redis instance:
+    ```python
+    data = {"user": "john", "credit_score": "high", "embedding": [0.23, 0.49, -0.18, 0.95]}
+
+    # load list of dictionaries, specify the id-field
+    index.load([data], id_field="user")
+
+    # fetch
+    john = index.fetch("john")
+    ```
 
 ### 🔍 Realtime Search
 
@@ -136,7 +173,7 @@ Define queries and perform advanced searches over your indices, including the co
 
     query = VectorQuery(
       vector=[0.16, -0.34, 0.98, 0.23],
-      vector_field_name="content-embedding",
+      vector_field_name="embedding",
       num_results=3
     )
 
@@ -145,15 +182,15 @@ Define queries and perform advanced searches over your indices, including the co
 
     Incorporate complex metadata filters on your queries:
     ```python
-    from redisvl.query.filter import Text
+    from redisvl.query.filter import Tag
 
-    # define a text filter
-    text_filter = Text("content") % "foo"
+    # define a tag match filter
+    tag_filter = Tag("user") == "john"
 
     # update query definition
-    query.set_filter(text_filter)
+    query.set_filter(tag_filter)
 
-    # execute
+    # execute query
     results = index.query(query)
     ```
 
@@ -188,7 +225,7 @@ Integrate with popular embedding models and providers to greatly simplify the pr
 - [GCP VertexAI](https://www.redisvl.com/api/vectorizer.html#vertexaitextvectorizer)
 
 ```python
-from redisvl.vectorize import CohereTextVectorizer
+from redisvl.utils.vectorize import CohereTextVectorizer
 
 # set COHERE_API_KEY in your environment
 co = CohereTextVectorizer()
@@ -209,12 +246,12 @@ embeddings = co.embed_many(
 ### 💫 Beyond Vector Search
 Modern GenAI applications require much more than RAG-style vector search in order
 to perform well in production. `redisvl` provides some common extensions that
-improve applications working with LLMs:
+aim to improve applications working with LLMs:
 
 - **LLM Semantic Caching** is designed to increase the request QPS, reduce the cost of using LLM models in production, and drive towards more compliant + consistent responses, robust to nuanced input.
 
     ```python
-    from redisvl.llmcache import SemanticCache
+    from redisvl.extensions.llmcache import SemanticCache
 
     # init cache with TTL (expiration) policy and semantic distance threshhold
     llmcache = SemanticCache(
@@ -241,9 +278,7 @@ improve applications working with LLMs:
 
     > Learn more about Semantic Caching in `redisvl` [here](https://www.redisvl.com/user_guide/llmcache_03.html).
 
-- **LLM Session Management**
-COMING SOON
-
+- **LLM Session Management** COMING SOON
 - **LLM Contextual Access Control** COMING SOON
 
 
