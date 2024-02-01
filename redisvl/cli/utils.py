@@ -1,7 +1,7 @@
 import os
 from argparse import ArgumentParser, Namespace
 
-from redisvl.cli.log import get_logger
+from redisvl.utils.log import get_logger
 
 logger = get_logger("[RedisVL]")
 

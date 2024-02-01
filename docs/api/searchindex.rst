@@ -11,7 +11,6 @@ SearchIndex
 
 .. autosummary::
 
-    SearchIndex.__init__
     SearchIndex.from_yaml
     SearchIndex.from_dict
     SearchIndex.client
@@ -32,6 +31,8 @@ SearchIndex
     SearchIndex.asearch
     SearchIndex.query
     SearchIndex.aquery
+    SearchIndex.query_batch
+    SearchIndex.aquery_batch
     SearchIndex.delete
     SearchIndex.adelete
     SearchIndex.info

@@ -4,10 +4,10 @@ from argparse import Namespace
 
 from tabulate import tabulate
 
-from redisvl.cli.log import get_logger
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
-from redisvl.schema import IndexSchema
+from redisvl.schema.schema import IndexSchema
+from redisvl.utils.log import get_logger
 
 logger = get_logger("[RedisVL]")
 
@@ -75,7 +75,7 @@ class Stats:
             exit(0)
 
         if args.index:
-            schema = IndexSchema(name=args.index)
+            schema = IndexSchema.from_dict({"index": {"name": args.index}})
             index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)

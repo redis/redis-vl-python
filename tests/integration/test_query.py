@@ -76,21 +76,22 @@ def index():
                 "prefix": "v1",
                 "storage_type": "hash",
             },
-            "fields": {
-                "tag": [{"name": "credit_score"}],
-                "text": [{"name": "job"}],
-                "numeric": [{"name": "age"}],
-                "geo": [{"name": "location"}],
-                "vector": [
-                    {
-                        "name": "user_embedding",
+            "fields": [
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
                         "dims": 3,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
                         "datatype": "float32",
-                    }
-                ],
-            },
+                    },
+                },
+            ],
         }
     )
 

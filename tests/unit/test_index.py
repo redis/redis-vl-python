@@ -5,12 +5,12 @@ from redisvl.schema import IndexSchema
 from redisvl.schema.fields import TagField
 from redisvl.utils.utils import convert_bytes
 
-fields = {"tag": [TagField(name="test")]}
+fields = [{"name": "test", "type": "tag"}]
 
 
 @pytest.fixture
 def index_schema():
-    return IndexSchema(name="my_index", fields=fields)
+    return IndexSchema.from_dict({"index": {"name": "my_index"}, "fields": fields})
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def test_search_index_get_key(index):
 
 def test_search_index_no_prefix(index_schema):
     # specify None as the prefix...
-    si = index_schema.prefix = ""
+    si = index_schema.index.prefix = ""
     si = SearchIndex(schema=index_schema)
     key = si.key("foo")
     assert not si.prefix
@@ -38,7 +38,7 @@ def test_search_index_no_prefix(index_schema):
 
 
 def test_search_index_client(client, index_schema):
-    si = index_schema.prefix = ""
+    si = index_schema.index.prefix = ""
     si = SearchIndex(schema=index_schema)
 
     si.set_client(client)

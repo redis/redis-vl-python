@@ -1,6 +1,5 @@
 from pprint import pprint
 
-import numpy as np
 import pytest
 
 from redisvl.index import SearchIndex
@@ -35,26 +34,31 @@ data = [
     },
 ]
 
+fields_spec = [
+    {"name": "credit_score", "type": "tag"},
+    {"name": "user", "type": "tag"},
+    {"name": "job", "type": "text"},
+    {"name": "age", "type": "numeric"},
+    {
+        "name": "user_embedding",
+        "type": "vector",
+        "attrs": {
+            "dims": 3,
+            "distance_metric": "cosine",
+            "algorithm": "flat",
+            "datatype": "float32",
+        },
+    },
+]
+
+
 hash_schema = {
     "index": {
         "name": "user_index_hash",
         "prefix": "users_hash",
         "storage_type": "hash",
     },
-    "fields": {
-        "tag": [{"name": "credit_score"}],
-        "text": [{"name": "job"}],
-        "numeric": [{"name": "age"}],
-        "vector": [
-            {
-                "name": "user_embedding",
-                "dims": 3,
-                "distance_metric": "cosine",
-                "algorithm": "flat",
-                "datatype": "float32",
-            }
-        ],
-    },
+    "fields": fields_spec,
 }
 
 json_schema = {
@@ -63,24 +67,7 @@ json_schema = {
         "prefix": "users_json",
         "storage_type": "json",
     },
-    "fields": {
-        "tag": [
-            {"name": "$.credit_score", "as_name": "credit_score"},
-            {"name": "$.user", "as_name": "user"},
-        ],
-        "text": [{"name": "$.job", "as_name": "job"}],
-        "numeric": [{"name": "$.age", "as_name": "age"}],
-        "vector": [
-            {
-                "name": "$.user_embedding",
-                "as_name": "user_embedding",
-                "dims": 3,
-                "distance_metric": "cosine",
-                "algorithm": "flat",
-                "datatype": "float32",
-            }
-        ],
-    },
+    "fields": fields_spec,
 }
 
 

@@ -3,7 +3,7 @@ import sys
 from argparse import Namespace
 
 from redisvl import __version__
-from redisvl.cli.log import get_logger
+from redisvl.utils.log import get_logger
 
 logger = get_logger("[RedisVL]")
 
