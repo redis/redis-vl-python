@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, Dict, List, Optional
 
 from redis import Redis
@@ -6,8 +5,8 @@ from redis import Redis
 from redisvl.index import SearchIndex
 from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import RangeQuery
+from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.utils import array_to_buffer
 from redisvl.vectorize.base import BaseVectorizer
 from redisvl.vectorize.text import HFTextVectorizer
 
@@ -64,29 +63,7 @@ class SemanticCache(BaseLLMCache):
         """
         super().__init__(ttl)
 
-        # Check for index_name in kwargs
-        if "index_name" in kwargs:
-            name = kwargs.pop("index_name")
-            warnings.warn(
-                message="index_name kwarg is deprecated in favor of name.",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-
-        # Check for threshold in kwargs
-        if "threshold" in kwargs:
-            distance_threshold = 1 - kwargs.pop("threshold")
-            warnings.warn(
-                message="threshold kwarg is deprecated in favor of distance_threshold. "
-                + "Setting distance_threshold to 1 - threshold.",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-
-        if not isinstance(name, str):
-            raise ValueError("A valid index name must be provided.")
-
-        # use the index name as the key prefix by default
+        # Use the index name as the key prefix by default
         if prefix is None:
             prefix = name
 
@@ -110,8 +87,10 @@ class SemanticCache(BaseLLMCache):
             ]
         )
 
-        # build search index and connect
+        # build search index
         self._index = SearchIndex(schema=schema)
+
+        # handle redis connection
         if redis_client:
             self._index.set_client(redis_client)
         else:

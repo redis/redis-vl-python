@@ -4,7 +4,7 @@ import numpy as np
 from redis.commands.search.query import Query
 
 from redisvl.query.filter import FilterExpression
-from redisvl.utils.utils import array_to_buffer
+from redisvl.redis.utils import array_to_buffer
 
 
 class BaseQuery:

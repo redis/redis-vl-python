@@ -2,7 +2,7 @@ from typing import Any, Callable, List, Optional
 
 from pydantic.v1 import BaseModel, validator
 
-from redisvl.utils.utils import array_to_buffer
+from redisvl.redis.utils import array_to_buffer
 
 
 class BaseVectorizer(BaseModel):

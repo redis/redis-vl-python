@@ -1,73 +1,43 @@
-import numpy as np
 import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
 from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
+from redisvl.redis.utils import array_to_buffer
 
-data = [
-    {
-        "user": "john",
-        "age": 18,
-        "job": "engineer",
-        "credit_score": "high",
-        "location": "-122.4194,37.7749",
-        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "user": "derrick",
-        "age": 14,
-        "job": "doctor",
-        "credit_score": "low",
-        "location": "-122.4194,37.7749",
-        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "user": "nancy",
-        "age": 94,
-        "job": "doctor",
-        "credit_score": "high",
-        "location": "-122.4194,37.7749",
-        "user_embedding": np.array([0.7, 0.1, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "user": "tyler",
-        "age": 100,
-        "job": "engineer",
-        "credit_score": "high",
-        "location": "-110.0839,37.3861",
-        "user_embedding": np.array([0.1, 0.4, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "user": "tim",
-        "age": 12,
-        "job": "dermatologist",
-        "credit_score": "high",
-        "location": "-110.0839,37.3861",
-        "user_embedding": np.array([0.4, 0.4, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "user": "taimur",
-        "age": 15,
-        "job": "CEO",
-        "credit_score": "low",
-        "location": "-110.0839,37.3861",
-        "user_embedding": np.array([0.6, 0.1, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "user": "joe",
-        "age": 35,
-        "job": "dentist",
-        "credit_score": "medium",
-        "location": "-110.0839,37.3861",
-        "user_embedding": np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
-    },
-]
+# TODO expand to multiple schema types and sync + async
 
 
-@pytest.fixture(scope="module")
-def index():
+@pytest.fixture
+def vector_query():
+    return VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+    )
+
+
+@pytest.fixture
+def filter_query():
+    return FilterQuery(
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        filter_expression=Tag("credit_score") == "high",
+    )
+
+
+@pytest.fixture
+def range_query():
+    return RangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        distance_threshold=0.2,
+    )
+
+
+@pytest.fixture
+def index(sample_data):
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
@@ -101,7 +71,11 @@ def index():
     # create the index (no data yet)
     index.create(overwrite=True)
 
-    index.load(data)
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
+
+    index.load(sample_data, preprocess=hash_preprocess)
 
     # run the test
     yield index
@@ -123,7 +97,16 @@ def test_search_and_query(index):
     assert len(results.docs) == 7
     for doc in results.docs:
         # ensure all return fields present
-        assert doc.user in ["john", "derrick", "nancy", "tyler", "tim", "taimur", "joe"]
+        assert doc.user in [
+            "john",
+            "derrick",
+            "nancy",
+            "tyler",
+            "tim",
+            "taimur",
+            "joe",
+            "mary",
+        ]
         assert int(doc.age) in [18, 14, 94, 100, 12, 15, 35]
         assert doc.job in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
         assert doc.credit_score in ["high", "low", "medium"]
@@ -158,41 +141,14 @@ def test_range_query(index):
     assert len(results) == 2
 
 
-def test_count_query(index):
+def test_count_query(index, sample_data):
     c = CountQuery(FilterExpression("*"))
     results = index.query(c)
-    assert results == len(data)
+    assert results == len(sample_data)
 
     c = CountQuery(Tag("credit_score") == "high")
     results = index.query(c)
     assert results == 4
-
-
-@pytest.fixture
-def vector_query():
-    return VectorQuery(
-        vector=[0.1, 0.1, 0.5],
-        vector_field_name="user_embedding",
-        return_fields=["user", "credit_score", "age", "job", "location"],
-    )
-
-
-@pytest.fixture
-def filter_query():
-    return FilterQuery(
-        return_fields=["user", "credit_score", "age", "job", "location"],
-        filter_expression=Tag("credit_score") == "high",
-    )
-
-
-@pytest.fixture
-def range_query():
-    return RangeQuery(
-        vector=[0.1, 0.1, 0.5],
-        vector_field_name="user_embedding",
-        return_fields=["user", "credit_score", "age", "job", "location"],
-        distance_threshold=0.2,
-    )
 
 
 def search(
@@ -344,14 +300,14 @@ def test_filter_combinations(index, query):
     search(query, index, n & t & g, 1, age_range=(18, 99), location="-122.4194,37.7749")
 
 
-def test_query_batch_vector_query(index, vector_query):
+def test_query_batch_vector_query(index, vector_query, sample_data):
     batch_size = 2
     all_results = []
     for i, batch in enumerate(index.query_batch(vector_query, batch_size), start=1):
         all_results.extend(batch)
         assert len(batch) <= batch_size
 
-    expected_total_results = len(data)
+    expected_total_results = len(sample_data)
     expected_iterations = -(-expected_total_results // batch_size)  # Ceiling division
     assert len(all_results) == expected_total_results
     assert i == expected_iterations

@@ -1,3 +1,11 @@
+"""
+RedisVL Fields, FieldAttributes, and Enums
+
+Reference Redis search source documentation as needed: https://redis.io/commands/ft.create/
+Reference Redis vector search documentation as needed: https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/
+"""
+
+from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from pydantic.v1 import BaseModel, Field, validator
@@ -7,47 +15,95 @@ from redis.commands.search.field import NumericField as RedisNumericField
 from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
-from typing_extensions import Literal
+
+### Attribute Enums ###
+
+
+class VectorDistanceMetric(str, Enum):
+    COSINE = "COSINE"
+    L2 = "L2"
+    IP = "IP"
+
+
+class VectorDataType(str, Enum):
+    FLOAT32 = "FLOAT32"
+    FLOAT64 = "FLOAT64"
+
+
+class VectorIndexAlgorithm(str, Enum):
+    FLAT = "FLAT"
+    HNSW = "HNSW"
+
+
+### Field Attributes ###
 
 
 class BaseFieldAttributes(BaseModel):
-    sortable: Optional[bool] = False
+    """Base field attributes shared by other lexical fields"""
+
+    sortable: bool = Field(default=False)
+    """Enable faster result sorting on the field at runtime"""
 
 
 class TextFieldAttributes(BaseFieldAttributes):
-    weight: Optional[float] = 1
-    no_stem: Optional[bool] = False
+    """Full text field attributes"""
+
+    weight: float = Field(default=1)
+    """Declares the importance of this field when calculating results"""
+    no_stem: bool = Field(default=False)
+    """Disable stemming on the text field during indexing"""
+    withsuffixtrie: bool = Field(default=False)
+    """Keep a suffix trie with all terms which match the suffix to optimize certain queries"""
     phonetic_matcher: Optional[str] = None
-    withsuffixtrie: Optional[bool] = False
+    """Used to perform phonetic matching during search"""
 
 
 class TagFieldAttributes(BaseFieldAttributes):
-    separator: Optional[str] = ","
-    case_sensitive: Optional[bool] = False
+    """Tag field attributes"""
+
+    separator: str = Field(default=",")
+    """Indicates how the text in the original attribute is split into individual tags"""
+    case_sensitive: bool = Field(default=False)
+    """Treat text as case sensitive or not. By default, tag characters are converted to lowercase"""
+    withsuffixtrie: bool = Field(default=False)
+    """Keep a suffix trie with all terms which match the suffix to optimize certain queries"""
 
 
 class NumericFieldAttributes(BaseFieldAttributes):
+    """Numeric field attributes"""
+
     pass
 
 
 class GeoFieldAttributes(BaseFieldAttributes):
+    """Numeric field attributes"""
+
     pass
 
 
 class BaseVectorFieldAttributes(BaseModel):
-    dims: int = Field(...)
-    algorithm: object = Field(...)
-    datatype: str = Field(default="FLOAT32")
-    distance_metric: str = Field(default="COSINE")
+    """Base vector field attributes shared by both FLAT and HNSW fields"""
+
+    dims: int
+    """Dimensionality of the vector embeddings field"""
+    algorithm: VectorIndexAlgorithm
+    """The indexing algorithm for the field: HNSW or FLAT"""
+    datatype: VectorDataType = Field(default=VectorDataType.FLOAT32)
+    """The float datatype for the vector embeddings"""
+    distance_metric: VectorDistanceMetric = Field(default=VectorDistanceMetric.COSINE)
+    """The distance metric used to measure query relevance"""
     initial_cap: Optional[int] = None
+    """Initial vector capacity in the index affecting memory allocation size of the index"""
 
     @validator("algorithm", "datatype", "distance_metric", pre=True)
     @classmethod
     def uppercase_strings(cls, v):
+        """Validate that provided values are cast to uppercase"""
         return v.upper()
 
     @property
     def field_data(self) -> Dict[str, Any]:
+        """Select attributes required by the Redis API"""
         field_data = {
             "TYPE": self.datatype,
             "DIM": self.dims,
@@ -58,17 +114,32 @@ class BaseVectorFieldAttributes(BaseModel):
         return field_data
 
 
-class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
-    algorithm: Literal["HNSW"] = "HNSW"
-    m: int = Field(default=16)
-    ef_construction: int = Field(default=200)
-    ef_runtime: int = Field(default=10)
-    epsilon: float = Field(default=0.01)
-
-
 class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
-    algorithm: Literal["FLAT"] = "FLAT"
+    """FLAT vector field attributes"""
+
+    algorithm: VectorIndexAlgorithm = Field(
+        default=VectorIndexAlgorithm.FLAT, const=True
+    )
+    """The indexing algorithm for the vector field"""
     block_size: Optional[int] = None
+    """Block size to hold amount of vectors in a contiguous array. This is useful when the index is dynamic with respect to addition and deletion"""
+
+
+class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
+    """HNSW vector field attributes"""
+
+    algorithm: VectorIndexAlgorithm = Field(
+        default=VectorIndexAlgorithm.HNSW, const=True
+    )
+    """The indexing algorithm for the vector field"""
+    m: int = Field(default=16)
+    """Number of max outgoing edges for each graph node in each layer"""
+    ef_construction: int = Field(default=200)
+    """Number of max allowed potential outgoing edges candidates for each node in the graph during build time"""
+    ef_runtime: int = Field(default=10)
+    """Number of maximum top candidates to hold during KNN search"""
+    epsilon: float = Field(default=0.01)
+    """Relative factor that sets the boundaries in which a range query may search for candidates"""
 
 
 ### Field Classes ###
@@ -114,7 +185,7 @@ class TextField(BaseField):
 
 
 class TagField(BaseField):
-    """Tag field for simple boolean filtering"""
+    """Tag field for simple boolean-style filtering"""
 
     type: str = Field(default="tag", const=True)
     attrs: TagFieldAttributes = Field(default_factory=TagFieldAttributes)

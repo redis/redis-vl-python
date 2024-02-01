@@ -6,10 +6,10 @@ from tabulate import tabulate
 
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
+from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.schema.schema import IndexSchema
-from redisvl.utils.connection import RedisConnection
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import convert_bytes, make_dict
 
 logger = get_logger("[RedisVL]")
 
@@ -81,7 +81,7 @@ class Index:
             rvl index listall
         """
         redis_url = create_redis_url(args)
-        conn = RedisConnection.get_redis_connection(redis_url)
+        conn = RedisConnectionFactory.get_redis_connection(redis_url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
         logger.info("Indices:")
         for i, index in enumerate(indices):
@@ -109,7 +109,7 @@ class Index:
         # connect to redis
         try:
             redis_url = create_redis_url(args)
-            conn = RedisConnection.get_redis_connection(url=redis_url)
+            conn = RedisConnectionFactory.get_redis_connection(url=redis_url)
         except ValueError:
             logger.error(
                 "Must set REDIS_URL environment variable or provide host and port"

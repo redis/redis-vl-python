@@ -5,16 +5,13 @@ myst:
       User Guides for RedisVL
 ---
 
-# User Guides
+# Overview
 
 
 ```{toctree}
 :maxdepth: 2
 
-getting_started_01
-hybrid_queries_02
-llmcache_03
-vectorizers_04
-hash_vs_json_05
+installation
+cli
 ```
 

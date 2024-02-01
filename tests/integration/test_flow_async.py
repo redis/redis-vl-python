@@ -1,40 +1,11 @@
 import time
-from pprint import pprint
 
-import numpy as np
 import pytest
 
-from redisvl.index import SearchIndex
+from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
-
-data = [
-    {
-        "id": 1,
-        "user": "john",
-        "age": 1,
-        "job": "engineer",
-        "credit_score": "high",
-        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "id": 2,
-        "user": "mary",
-        "age": 2,
-        "job": "doctor",
-        "credit_score": "low",
-        "user_embedding": np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes(),
-    },
-    {
-        "id": 3,
-        "user": "joe",
-        "age": 3,
-        "job": "dentist",
-        "credit_score": "medium",
-        "user_embedding": np.array([0.9, 0.9, 0.1], dtype=np.float32).tobytes(),
-    },
-]
-
-query_vector = np.array([0.1, 0.1, 0.5], dtype=np.float32).tobytes()
+from redisvl.redis.utils import array_to_buffer
+from redisvl.schema import StorageType
 
 fields_spec = [
     {"name": "credit_score", "type": "tag"},
@@ -55,37 +26,54 @@ fields_spec = [
 
 hash_schema = {
     "index": {
-        "name": "user_index",
-        "prefix": "users",
+        "name": "user_index_hash",
+        "prefix": "users_hash",
         "storage_type": "hash",
+    },
+    "fields": fields_spec,
+}
+
+json_schema = {
+    "index": {
+        "name": "user_index_json",
+        "prefix": "users_json",
+        "storage_type": "json",
     },
     "fields": fields_spec,
 }
 
 
 @pytest.mark.asyncio
-async def test_simple(async_client):
-    index = SearchIndex.from_dict(hash_schema)
+@pytest.mark.parametrize("schema", [hash_schema, json_schema])
+async def test_simple(async_client, schema, sample_data):
+    index = AsyncSearchIndex.from_dict(schema)
     # assign client (only for testing)
     index.set_client(async_client)
     # create the index
-    await index.acreate(overwrite=True)
+    await index.create(overwrite=True, drop=True)
 
-    # load data into the index in Redis
-    await index.aload(data)
+    # Prepare and load the data based on storage type
+    async def hash_preprocess(item: dict) -> dict:
+        return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
+
+    if index.storage_type == StorageType.HASH:
+        await index.load(sample_data, preprocess=hash_preprocess)
+    else:
+        await index.load(sample_data)
 
     # wait for async index to create
     time.sleep(1)
 
+    return_fields = ["user", "age", "job", "credit_score"]
     query = VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
-        return_fields=["user", "age", "job", "credit_score"],
+        return_fields=return_fields,
         num_results=3,
     )
 
-    results = await index.asearch(query.query, query_params=query.params)
-    results_2 = await index.aquery(query)
+    results = await index.search(query.query, query_params=query.params)
+    results_2 = await index.query(query)
     assert len(results.docs) == len(results_2)
 
     # make sure correct users returned
@@ -102,9 +90,8 @@ async def test_simple(async_client):
     assert float(users[1].vector_distance) == 0.0
     assert float(users[2].vector_distance) > 0
 
-    print()
-    for doc in results.docs:
-        print("Score:", doc.vector_distance)
-        pprint(doc)
+    for doc1, doc2 in zip(results.docs, results_2):
+        for field in return_fields:
+            assert getattr(doc1, field) == doc2[field]
 
-    await index.adelete()
+    await index.delete()
