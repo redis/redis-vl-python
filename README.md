@@ -39,7 +39,7 @@
 - Real-time RAG pipelines
 - Recommendation engines
 
-Enhance your AI applications with Redis's **speed**, **flexibility**, and **reliability**, incorporating capabilities like vector-based semantic search, full-text search, and geo-spatial search.
+Enhance your AI applications with Redis' **speed**, **flexibility**, and **reliability**, incorporating capabilities like vector-based semantic search, full-text search, and geo-spatial search.
 
 # 🚀 Why RedisVL?
 
@@ -296,4 +296,4 @@ To get started with `redisvl`, check out:
 Please help us by contributing PRs, opening GitHub issues for bugs or new feature ideas, improving documentation, or increasing test coverage. [Read more about how to contribute to RedisVL!](CONTRIBUTING.md)
 
 ## 🚧 Maintenance
-**Note**: This project is supported by [Redis, Inc.](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/RedisVentures/redisvl/issues).
+RedisVL is supported by [Redis, Inc](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/RedisVentures/redisvl/issues).
