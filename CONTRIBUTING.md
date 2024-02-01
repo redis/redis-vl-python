@@ -54,6 +54,8 @@ Tests (with vectorizers):
 make test-cov
 ```
 
+**NOTE**: Some tests require the `REDIS_URL` environment variable to be set (e.g. `export REDIS_URL=redis://localhost:6379`).
+
 Tests w/out vectorizers:
 ```bash
 SKIP_VECTORIZERS=true make test-cov
