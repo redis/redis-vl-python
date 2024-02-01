@@ -47,9 +47,9 @@ The emergence of the modern GenAI stack, including **vector databases** and **LL
 
 However, organizations still struggle with delivering reliable solutions **quickly** (*time to value*) at **scale** (*beyond a demo*).
 
-[Redis](https://redis.io) has been a staple for over a decade in the NoSQL world, and boasts a number of flexible [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/) to handle realtime application workloads like caching, session management, and search. Most notably, Redis has been used as a vector database for RAG, LLM cache, and chat session memory store for conversational AI applications
+[Redis](https://redis.io) has been a staple for over a decade in the NoSQL world, and boasts a number of flexible [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/) to handle realtime application workloads like caching, session management, and search. Most notably, Redis has been used as a vector database for RAG, as an LLM cache, and chat session memory store for conversational AI applications.
 
-`redisvl` **bridges the gap between** the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](https://github.com/redis/redis-py/tree/master), it extends the core caching and search features of Redis into a grammar that is more aligned to the needs of today's AI/ML engineers or scientists.
+`redisvl` **bridges the gap between** the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](https://github.com/redis/redis-py/tree/master), it extends the core caching and search features of Redis into a grammar that is more aligned to the needs of today's AI/ML Engineers or Data Scientists.
 
 # 💪 Getting Started
 
