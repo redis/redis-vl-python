@@ -34,7 +34,7 @@ Or use the local package editable install method:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[all,dev]
+pip install -e '.[all,dev]'
 ```
 
 Then to deactivate the env:
