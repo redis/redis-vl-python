@@ -2,8 +2,8 @@ from time import sleep
 
 import pytest
 
-from redisvl.llmcache import SemanticCache
-from redisvl.vectorize.text import HFTextVectorizer
+from redisvl.extensions.llmcache import SemanticCache
+from redisvl.utils.vectorize import HFTextVectorizer
 
 
 @pytest.fixture

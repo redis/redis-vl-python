@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
-from redisvl.vectorize.base import BaseVectorizer
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class VertexAITextVectorizer(BaseVectorizer):

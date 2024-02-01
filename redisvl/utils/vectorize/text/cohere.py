@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
-from redisvl.vectorize.base import BaseVectorizer
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that cohere isn't imported
 # mypy: disable-error-code="name-defined"
@@ -26,7 +26,7 @@ class CohereTextVectorizer(BaseVectorizer):
 
     .. code-block:: python
 
-        from redisvl.vectorize.text import CohereTextVectorizer
+        from redisvl.utils.vectorize import CohereTextVectorizer
 
         vectorizer = CohereTextVectorizer(
             model="embed-english-v3.0",

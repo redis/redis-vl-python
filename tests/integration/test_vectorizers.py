@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from redisvl.vectorize.text import (
+from redisvl.utils.vectorize import (
     CohereTextVectorizer,
     HFTextVectorizer,
     OpenAITextVectorizer,
