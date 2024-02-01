@@ -330,5 +330,5 @@ class SemanticCache(BaseLLMCache):
             payload[self.metadata_field_name] = self.serialize(metadata)
 
         # Load LLMCache entry with TTL
-        keys = self._index.load(data=[payload], ttl=self._ttl, key_field=id_field)
+        keys = self._index.load(data=[payload], ttl=self._ttl, id_field=id_field)
         return keys[0]

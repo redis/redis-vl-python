@@ -80,7 +80,7 @@ def test_search_index_load_and_fetch(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
-    index.load(data, key_field="id")
+    index.load(data, id_field="id")
 
     res = index.fetch("1")
     assert res["test"] == convert_bytes(client.hget("rvl:1", "test")) == "foo"
@@ -99,7 +99,7 @@ def test_search_index_load_preprocess(client, index):
         record["test"] = "bar"
         return record
 
-    index.load(data, key_field="id", preprocess=preprocess)
+    index.load(data, id_field="id", preprocess=preprocess)
     res = index.fetch("1")
     assert res["test"] == convert_bytes(client.hget("rvl:1", "test")) == "bar"
 
@@ -107,14 +107,14 @@ def test_search_index_load_preprocess(client, index):
         return 1
 
     with pytest.raises(TypeError):
-        index.load(data, key_field="id", preprocess=bad_preprocess)
+        index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
-def test_no_key_field(client, index):
+def test_no_id_field(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
-    # catch missing / invalid key_field
+    # catch missing / invalid id_field
     with pytest.raises(ValueError):
-        index.load(bad_data, key_field="key")
+        index.load(bad_data, id_field="key")
