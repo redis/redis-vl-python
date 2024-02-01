@@ -22,11 +22,11 @@ import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
+from redisvl.index.storage import HashStorage, JsonStorage
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.storage import HashStorage, JsonStorage
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -454,7 +454,7 @@ class SearchIndex(BaseSearchIndex):
     def load(
         self,
         data: Iterable[Any],
-        key_field: Optional[str] = None,
+        id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
@@ -465,7 +465,8 @@ class SearchIndex(BaseSearchIndex):
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str], optional): Field used as the key for each
+            id_field (Optional[str], optional): Specified field used as the id
+                portion of the redis key (after the prefix) for each
                 object. Defaults to None.
             keys (Optional[Iterable[str]], optional): Optional iterable of keys.
                 Must match the length of objects if provided. Defaults to None.
@@ -492,7 +493,7 @@ class SearchIndex(BaseSearchIndex):
             return self._storage.write(
                 self._redis_client,  # type: ignore
                 objects=data,
-                key_field=key_field,
+                id_field=id_field,
                 keys=keys,
                 ttl=ttl,
                 preprocess=preprocess,
@@ -792,7 +793,7 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def load(
         self,
         data: Iterable[Any],
-        key_field: Optional[str] = None,
+        id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
@@ -803,7 +804,8 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str], optional): Field used as the key for each
+            id_field (Optional[str], optional): Specified field used as the id
+                portion of the redis key (after the prefix) for each
                 object. Defaults to None.
             keys (Optional[Iterable[str]], optional): Optional iterable of keys.
                 Must match the length of objects if provided. Defaults to None.
@@ -831,7 +833,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             return await self._storage.awrite(
                 self._redis_client,  # type: ignore
                 objects=data,
-                key_field=key_field,
+                id_field=id_field,
                 keys=keys,
                 ttl=ttl,
                 preprocess=preprocess,

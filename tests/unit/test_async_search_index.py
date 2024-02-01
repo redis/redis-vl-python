@@ -89,7 +89,7 @@ async def test_search_index_load_and_fetch(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
-    await async_index.load(data, key_field="id")
+    await async_index.load(data, id_field="id")
 
     res = await async_index.fetch("1")
     assert (
@@ -113,7 +113,7 @@ async def test_search_index_load_preprocess(async_client, async_index):
         record["test"] = "bar"
         return record
 
-    await async_index.load(data, key_field="id", preprocess=preprocess)
+    await async_index.load(data, id_field="id", preprocess=preprocess)
     res = await async_index.fetch("1")
     assert (
         res["test"]
@@ -125,15 +125,15 @@ async def test_search_index_load_preprocess(async_client, async_index):
         return 1
 
     with pytest.raises(TypeError):
-        await async_index.load(data, key_field="id", preprocess=bad_preprocess)
+        await async_index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
 @pytest.mark.asyncio
-async def test_no_key_field(async_client, async_index):
+async def test_no_id_field(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
-    # catch missing / invalid key_field
+    # catch missing / invalid id_field
     with pytest.raises(ValueError):
-        await async_index.load(bad_data, key_field="key")
+        await async_index.load(bad_data, id_field="key")

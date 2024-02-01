@@ -1,6 +1,6 @@
 from typing import Callable, Dict, List, Optional
 
-from redisvl.vectorize.base import BaseVectorizer
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class HFTextVectorizer(BaseVectorizer):

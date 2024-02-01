@@ -1,6 +1,6 @@
 import pytest
 
-from redisvl.storage import BaseStorage, HashStorage, JsonStorage
+from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 
 
 @pytest.fixture(params=[JsonStorage, HashStorage])
@@ -23,12 +23,12 @@ def test_key_formatting(storage_instance):
 
 
 def test_create_key(storage_instance):
-    key_field = "id"
-    obj = {key_field: "1234"}
+    id_field = "id"
+    obj = {id_field: "1234"}
     expected_key = (
-        f"{storage_instance.prefix}{storage_instance.key_separator}{obj[key_field]}"
+        f"{storage_instance.prefix}{storage_instance.key_separator}{obj[id_field]}"
     )
-    generated_key = storage_instance._create_key(obj, key_field)
+    generated_key = storage_instance._create_key(obj, id_field)
     assert (
         generated_key == expected_key
     ), "The generated key does not match the expected format."

@@ -48,28 +48,28 @@ class BaseStorage(BaseModel):
         else:
             return f"{prefix}{key_separator}{id}"
 
-    def _create_key(self, obj: Dict[str, Any], key_field: Optional[str] = None) -> str:
+    def _create_key(self, obj: Dict[str, Any], id_field: Optional[str] = None) -> str:
         """Construct a Redis key for a given object, optionally using a
         specified field from the object as the key.
 
         Args:
             obj (Dict[str, Any]): The object from which to construct the key.
-            key_field (Optional[str], optional): The field to use as the
+            id_field (Optional[str], optional): The field to use as the
                 key, if provided.
 
         Returns:
             str: The constructed Redis key for the object.
 
         Raises:
-            ValueError: If the key_field is not found in the object.
+            ValueError: If the id_field is not found in the object.
         """
-        if key_field is None:
+        if id_field is None:
             key_value = uuid.uuid4().hex
         else:
             try:
-                key_value = obj[key_field]  # type: ignore
+                key_value = obj[id_field]  # type: ignore
             except KeyError:
-                raise ValueError(f"Key field {key_field} not found in record {obj}")
+                raise ValueError(f"Key field {id_field} not found in record {obj}")
 
         return self._key(
             key_value, prefix=self.prefix, key_separator=self.key_separator
@@ -173,7 +173,7 @@ class BaseStorage(BaseModel):
         self,
         redis_client: Redis,
         objects: Iterable[Any],
-        key_field: Optional[str] = None,
+        id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
@@ -185,7 +185,7 @@ class BaseStorage(BaseModel):
         Args:
             redis_client (Redis): A Redis client used for writing data.
             objects (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str], optional): Field used as the key for
+            id_field (Optional[str], optional): Field used as the key for
                 each object. Defaults to None.
             keys (Optional[Iterable[str]], optional): Optional iterable of
                 keys, must match the length of objects if provided.
@@ -216,7 +216,7 @@ class BaseStorage(BaseModel):
                 key = (
                     next(keys_iterator)
                     if keys_iterator
-                    else self._create_key(obj, key_field)
+                    else self._create_key(obj, id_field)
                 )
                 obj = self._preprocess(obj, preprocess)
                 self._validate(obj)
@@ -238,7 +238,7 @@ class BaseStorage(BaseModel):
         self,
         redis_client: AsyncRedis,
         objects: Iterable[Any],
-        key_field: Optional[str] = None,
+        id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
@@ -252,7 +252,7 @@ class BaseStorage(BaseModel):
             redis_client (AsyncRedis): An asynchronous Redis client used
                 for writing data.
             objects (Iterable[Any]): An iterable of objects to store.
-            key_field (Optional[str], optional): Field used as the key for each
+            id_field (Optional[str], optional): Field used as the key for each
                 object. Defaults to None.
             keys (Optional[Iterable[str]], optional): Optional iterable of keys.
                 Must match the length of objects if provided.
@@ -283,7 +283,7 @@ class BaseStorage(BaseModel):
         async def _load(obj: Dict[str, Any], key: Optional[str] = None) -> str:
             async with semaphore:
                 if key is None:
-                    key = self._create_key(obj, key_field)
+                    key = self._create_key(obj, id_field)
                 obj = await self._apreprocess(obj, preprocess)
                 self._validate(obj)
                 await self._aset(redis_client, key, obj)

@@ -2,13 +2,12 @@ from typing import Any, Dict, List, Optional
 
 from redis import Redis
 
+from redisvl.extensions.llmcache.base import BaseLLMCache
 from redisvl.index import SearchIndex
-from redisvl.llmcache.base import BaseLLMCache
 from redisvl.query import RangeQuery
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import IndexSchema
-from redisvl.vectorize.base import BaseVectorizer
-from redisvl.vectorize.text import HFTextVectorizer
+from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticCache(BaseLLMCache):
@@ -331,5 +330,5 @@ class SemanticCache(BaseLLMCache):
             payload[self.metadata_field_name] = self.serialize(metadata)
 
         # Load LLMCache entry with TTL
-        keys = self._index.load(data=[payload], ttl=self._ttl, key_field=id_field)
+        keys = self._index.load(data=[payload], ttl=self._ttl, id_field=id_field)
         return keys[0]
