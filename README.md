@@ -74,7 +74,7 @@ Choose from multiple Redis deployment options:
     ```
 3. [Redis Enterprise](https://redis.com/redis-enterprise/): Commercial, self-hosted database
 
-> Enhance your experience and obersvability with the free [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/).
+> Enhance your experience and observability with the free [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/).
 
 
 ## What's included?
