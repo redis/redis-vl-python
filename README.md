@@ -1,6 +1,6 @@
 <div align="center">
     <div style="display: inline-block; text-align: center; margin-bottom: 10px;">
-        <span style="font-size: x-large;"><b>🔥 Redis Vector Library</b></span>
+        <span style="font-size: 36px;"><b>🔥 Redis Vector Library</b></span>
         <br />
         <span style="font-size: smaller;">the AI-native Redis Python client</span>
     </div>
