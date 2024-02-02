@@ -3,6 +3,7 @@ import pytest
 from redisvl.index import SearchIndex
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.query import VectorQuery
 
 fields = [{"name": "test", "type": "tag"}]
 
@@ -118,3 +119,32 @@ def test_no_id_field(client, index):
     # catch missing / invalid id_field
     with pytest.raises(ValueError):
         index.load(bad_data, id_field="key")
+
+def test_check_index_exists_before_delete(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    index.delete(drop=True)
+    with pytest.raises(ValueError):
+        index.delete()
+
+def test_check_index_exists_before_search(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    index.delete(drop=True)
+
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+    )
+    with pytest.raises(ValueError):
+        index.search(query.query, query_params=query.params)
+
+def test_check_index_exists_before_info(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    index.delete(drop=True)
+
+    with pytest.raises(ValueError):
+        index.info()
