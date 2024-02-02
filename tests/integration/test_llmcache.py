@@ -19,6 +19,10 @@ def cache(vectorizer):
     cache_instance.clear()  # Clear cache after each test
     cache_instance._index.delete(True)  # Clean up index
 
+@pytest.fixture
+def cache_no_cleanup(vectorizer):
+    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
+    yield cache_instance
 
 @pytest.fixture
 def cache_with_ttl(vectorizer):
@@ -174,3 +178,8 @@ def test_store_and_check_with_provided_client(cache_with_redis_client, vectorize
     print(check_result, flush=True)
     assert response == check_result[0]["response"]
     assert "metadata" not in check_result[0]
+
+# Test deleting the cache
+def test_delete(cache_no_cleanup, vectorizer):
+    cache_no_cleanup.delete()
+    assert not cache_no_cleanup.index.exists()
