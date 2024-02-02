@@ -83,6 +83,10 @@ def test_check_invalid_input(cache):
     with pytest.raises(TypeError):
         cache.check(prompt="test", return_fields="bad value")
 
+# Test handling invalid input for check method
+def test_bad_ttl(cache):
+    with pytest.raises(ValueError):
+        cache.set_ttl(2.5)
 
 # Test storing with metadata
 def test_store_with_metadata(cache, vectorizer):
