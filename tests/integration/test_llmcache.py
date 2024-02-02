@@ -120,6 +120,11 @@ def test_distance_threshold(cache):
     assert cache.distance_threshold == new_threshold
     assert cache.distance_threshold != initial_threshold
 
+# Test out of range distance threshold
+def test_distance_threshold_out_of_range(cache):
+    out_of_range_threshold = -1
+    with pytest.raises(ValueError):
+        cache.set_threshold(out_of_range_threshold)
 
 # Test storing and retrieving multiple items
 def test_multiple_items(cache, vectorizer):
