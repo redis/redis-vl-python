@@ -26,6 +26,12 @@ def cache_with_ttl(vectorizer):
     cache_instance.clear()  # Clear cache after each test
     cache_instance._index.delete(True)  # Clean up index
 
+@pytest.fixture
+def cache_with_redis_client(vectorizer, client):
+    cache_instance = SemanticCache(vectorizer=vectorizer, redis_client=client, distance_threshold=0.2)
+    yield cache_instance
+    cache_instance.clear()  # Clear cache after each test
+    cache_instance._index.delete(True)  # Clean up index
 
 # Test basic store and check functionality
 def test_store_and_check(cache, vectorizer):
@@ -134,3 +140,17 @@ def test_multiple_items(cache, vectorizer):
         print(check_result, flush=True)
         assert check_result[0]["response"] == expected_response
         assert "metadata" not in check_result[0]
+
+# Test basic functionality with cache created with user-provided Redis client
+def test_store_and_check_with_provided_client(cache_with_redis_client, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache_with_redis_client.store(prompt, response, vector=vector)
+    check_result = cache_with_redis_client.check(vector=vector)
+
+    assert len(check_result) == 1
+    print(check_result, flush=True)
+    assert response == check_result[0]["response"]
+    assert "metadata" not in check_result[0]
