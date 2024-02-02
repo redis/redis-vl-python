@@ -4,7 +4,7 @@ import pytest
 
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.utils.vectorize import HFTextVectorizer
-
+from redisvl.index.index import SearchIndex
 
 @pytest.fixture
 def vectorizer():
@@ -140,6 +140,10 @@ def test_multiple_items(cache, vectorizer):
         print(check_result, flush=True)
         assert check_result[0]["response"] == expected_response
         assert "metadata" not in check_result[0]
+
+# Test retrieving underlying SearchIndex for the cache.
+def test_get_index(cache):
+    assert isinstance(cache.index, SearchIndex)
 
 # Test basic functionality with cache created with user-provided Redis client
 def test_store_and_check_with_provided_client(cache_with_redis_client, vectorizer):
