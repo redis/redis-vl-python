@@ -5,6 +5,7 @@ import pytest
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.utils.vectorize import HFTextVectorizer
 from redisvl.index.index import SearchIndex
+from collections import namedtuple
 
 @pytest.fixture
 def vectorizer():
@@ -110,6 +111,16 @@ def test_store_with_metadata(cache, vectorizer):
     assert check_result[0]["metadata"] == metadata
     assert check_result[0]["prompt"] == prompt
 
+# Test storing with invalid metadata
+def test_store_with_invalid_metadata(cache, vectorizer):
+    prompt = "This is another test prompt."
+    response = "This is another test response."
+    metadata = namedtuple('metadata', 'source')(**{'source': 'test'})
+
+    vector = vectorizer.embed(prompt)
+
+    with pytest.raises(TypeError, match=r"If specified, cached metadata must be a dictionary."):
+        cache.store(prompt, response, vector=vector, metadata=metadata)
 
 # Test setting and getting the distance threshold
 def test_distance_threshold(cache):
