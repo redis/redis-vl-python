@@ -148,3 +148,7 @@ def test_check_index_exists_before_info(client, index):
 
     with pytest.raises(ValueError):
         index.info()
+
+def test_index_needs_valid_schema():
+    with pytest.raises(ValueError, match=r"Must provide a valid IndexSchema object"):
+        index = SearchIndex(schema="Not A Valid Schema")
