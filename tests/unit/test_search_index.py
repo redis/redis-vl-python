@@ -12,11 +12,13 @@ fields = [{"name": "test", "type": "tag"}]
 def index_schema():
     return IndexSchema.from_dict({"index": {"name": "my_index"}, "fields": fields})
 
-
 @pytest.fixture
 def index(index_schema):
     return SearchIndex(schema=index_schema)
 
+@pytest.fixture
+def index_from_yaml():
+    return SearchIndex.from_yaml("schemas/test_json_schema.yaml")
 
 def test_search_index_properties(index_schema, index):
     assert index.schema == index_schema
@@ -29,6 +31,13 @@ def test_search_index_properties(index_schema, index):
     assert index.storage_type == index_schema.index.storage_type == StorageType.HASH
     assert index.key("foo").startswith(index.prefix)
 
+def test_search_index_from_yaml(index_from_yaml):
+    assert index_from_yaml.name == "json-test"
+    assert index_from_yaml.client == None
+    assert index_from_yaml.prefix == "json"
+    assert index_from_yaml.key_separator == ":"
+    assert index_from_yaml.storage_type == StorageType.JSON
+    assert index_from_yaml.key("foo").startswith(index_from_yaml.prefix)
 
 def test_search_index_no_prefix(index_schema):
     # specify an explicitly empty prefix...
