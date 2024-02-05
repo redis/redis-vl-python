@@ -21,11 +21,11 @@ def convert_bytes(data: Any) -> Any:
         except:
             return data
     if isinstance(data, dict):
-        return dict(map(convert_bytes, data.items()))
+        return {convert_bytes(key): convert_bytes(value) for key, value in data.items()}
     if isinstance(data, list):
-        return list(map(convert_bytes, data))
+        return [convert_bytes(item) for item in data]
     if isinstance(data, tuple):
-        return map(convert_bytes, data)
+        return tuple(convert_bytes(item) for item in data)
     return data
 
 
