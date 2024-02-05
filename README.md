@@ -148,17 +148,17 @@ Choose from multiple Redis deployment options:
     # Create the index in Redis
     index.create()
     ```
-    > Async-compliant search index class also available: `AsyncSearchIndex`
+    > Async compliant search index class also available: `AsyncSearchIndex`
 
 3. [Load](https://www.redisvl.com/user_guide/getting_started_01.html#load-data-to-searchindex)
 and [fetch](https://www.redisvl.com/user_guide/getting_started_01.html#fetch-an-object-from-redis) data to/from your Redis instance:
     ```python
     data = {"user": "john", "credit_score": "high", "embedding": [0.23, 0.49, -0.18, 0.95]}
 
-    # load list of dictionaries, specify the id-field
+    # load list of dictionaries, specify the "id" field
     index.load([data], id_field="user")
 
-    # fetch
+    # fetch by "id"
     john = index.fetch("john")
     ```
 
@@ -176,7 +176,7 @@ Define queries and perform advanced searches over your indices, including the co
       vector_field_name="embedding",
       num_results=3
     )
-
+    # run the vector search query against the embedding field
     results = index.query(query)
     ```
 
@@ -198,7 +198,7 @@ Define queries and perform advanced searches over your indices, including the co
 - [FilterQuery](https://www.redisvl.com/api/query.html#filterquery) - Standard search using filters and the full-text search
 - [CountQuery](https://www.redisvl.com/api/query.html#countquery) - Count the number of indexed records given attributes
 
-> Read more about building advanced queries [here](https://www.redisvl.com/user_guide/hybrid_queries_02.html).
+> Read more about building advanced Redis queries [here](https://www.redisvl.com/user_guide/hybrid_queries_02.html).
 
 
 ### 🖥️ Command Line Interface
@@ -244,11 +244,10 @@ embeddings = co.embed_many(
 > Learn more about using `redisvl` Vectorizers in your workflows [here](https://www.redisvl.com/user_guide/vectorizers_04.html).
 
 ### 💫 Beyond Vector Search
-Modern GenAI applications require much more than RAG-style vector search in order
-to perform well in production. `redisvl` provides some common extensions that
+In order to perform well in production, modern GenAI applications require much more than vector search for retrieval. `redisvl` provides some common extensions that
 aim to improve applications working with LLMs:
 
-- **LLM Semantic Caching** is designed to increase the request QPS, reduce the cost of using LLM models in production, and drive towards more compliant + consistent responses, robust to nuanced input.
+- **LLM Semantic Caching** is designed to increase application throughput and reduce the cost of using LLM models in production by leveraging previously generated knowledge.
 
     ```python
     from redisvl.extensions.llmcache import SemanticCache
@@ -256,7 +255,7 @@ aim to improve applications working with LLMs:
     # init cache with TTL (expiration) policy and semantic distance threshhold
     llmcache = SemanticCache(
         name="llmcache",
-        ttl=360, 
+        ttl=360,
         redis_url="redis://localhost:6379"
     )
     llmcache.set_threshold(0.2) # can be changed on-demand
@@ -278,8 +277,8 @@ aim to improve applications working with LLMs:
 
     > Learn more about Semantic Caching in `redisvl` [here](https://www.redisvl.com/user_guide/llmcache_03.html).
 
-- **LLM Session Management** COMING SOON
-- **LLM Contextual Access Control** COMING SOON
+- **LLM Session Management (COMING SOON)** aims to improve personalization and accuracy of the LLM application by providing user chat session information and conversational memory.
+- **LLM Contextual Access Control (COMING SOON)** aims to improve security concerns by preventing malicious, irrelevant, or problematic user input from reaching LLMs and infrastructure.
 
 
 ## Helpful Links
