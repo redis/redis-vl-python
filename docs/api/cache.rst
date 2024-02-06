@@ -8,7 +8,7 @@ SemanticCache
 
 .. _semantic_cache_api:
 
-.. currentmodule:: redisvl.llmcache.semantic
+.. currentmodule:: redisvl.extensions.llmcache
 
 .. autosummary::
 

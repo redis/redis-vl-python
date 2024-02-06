@@ -3,48 +3,49 @@
 Schema
 ***********
 
+Schema in RedisVL provides a structured format to define index settings and
+field configurations using the following three components:
+
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
+
+   * - Component
+     - Description
+   * - `version`
+     - The version of the schema spec. Current supported version is `0.1.0`.
+   * - `index`
+     - Index specific settings like name, key prefix, key separator, and storage type.
+   * - `fields`
+     - Subset of fields within your data to include in the index and any custom settings.
+
 IndexSchema
 ===========
 
-.. _searchindex_api:
+.. _indexschema_api:
 
 .. currentmodule:: redisvl.schema
-
-.. autosummary::
-
-    IndexSchema.index
-    IndexSchema.fields
-    IndexSchema.version
-    IndexSchema.field_names
-    IndexSchema.redis_fields
-    IndexSchema.add_field
-    IndexSchema.add_fields
-    IndexSchema.remove_field
-    IndexSchema.from_yaml
-    IndexSchema.to_yaml
-    IndexSchema.from_dict
-    IndexSchema.to_dict
 
 .. autoclass:: IndexSchema
-   :show-inheritance:
-   :inherited-members:
    :members:
+   :exclude-members: generate_fields,validate_and_create_fields
 
+Supported Field Types
+=====================
 
-IndexInfo
-=========
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
 
-.. currentmodule:: redisvl.schema
-
-.. autosummary::
-
-    IndexInfo.name
-    IndexInfo.prefix
-    IndexInfo.key_separator
-    IndexInfo.storage_type
-
-
-.. autoclass:: IndexInfo
-   :show-inheritance:
-   :inherited-members:
-   :members:
+   * - Field Type
+     - Description
+   * - `vector`
+     - Vector embeddings data typically generated from another AI/ML model to represent unstructured data.
+   * - `text`
+     - Full text data that enable full text search and filtering operations.
+   * - `tag`
+     - Label-like fields that are used for exact matches and filtering operations.
+   * - `numeric`
+     - Numeric fields used for range filters.
+   * - `geo`
+     - Geographic coordinates used for geo search.

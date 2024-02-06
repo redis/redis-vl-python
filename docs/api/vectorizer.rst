@@ -8,7 +8,7 @@ HFTextVectorizer
 
 .. _hftextvectorizer_api:
 
-.. currentmodule:: redisvl.vectorize.text.huggingface
+.. currentmodule:: redisvl.utils.vectorize.text.huggingface
 
 .. autosummary::
 
@@ -27,7 +27,7 @@ OpenAITextVectorizer
 
 .. _openaitextvectorizer_api:
 
-.. currentmodule:: redisvl.vectorize.text.openai
+.. currentmodule:: redisvl.utils.vectorize.text.openai
 
 .. autosummary::
 
@@ -48,7 +48,7 @@ VertexAITextVectorizer
 
 .. _vertexaitextvectorizer_api:
 
-.. currentmodule:: redisvl.vectorize.text.vertexai
+.. currentmodule:: redisvl.utils.vectorize.text.vertexai
 
 .. autosummary::
 
@@ -67,7 +67,7 @@ CohereTextVectorizer
 
 .. _coheretextvectorizer_api:
 
-.. currentmodule:: redisvl.vectorize.text.cohere
+.. currentmodule:: redisvl.utils.vectorize.text.cohere
 
 .. autosummary::
 

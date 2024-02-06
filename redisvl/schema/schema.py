@@ -28,11 +28,30 @@ class StorageType(Enum):
 
 
 class IndexInfo(BaseModel):
-    """
-    Represents the basic configuration information for an index in Redis.
+    """Index info includes the essential details regarding index settings,
+    such as its name, prefix, key separator, and storage type in Redis.
 
-    This class includes the essential details required to define an index, such as
-    its name, prefix, key separator, and storage type.
+    In yaml format, the index info section looks like:
+
+    .. code-block:: yaml
+
+        index:
+            name: user-index
+            prefix: user
+            key_separtor: ':'
+            storage_type: json
+
+    In dict format, the index info section looks like:
+
+    .. code-block:: python
+
+        {"index": {
+            "name": "user-index",
+            "prefix": "user",
+            "key_separator": ":",
+            "storage_type": "json"
+        }}
+
     """
 
     name: str
@@ -54,12 +73,8 @@ class IndexInfo(BaseModel):
 
 
 class IndexSchema(BaseModel):
-    """Represents a schema definition for a search index in Redis, primarily
-    used in RedisVL for organizing and querying vector and metadata fields.
-
-    This schema provides a structured format to define the layout and types of
-    fields stored in Redis, including details such as storage type, field
-    definitions, and key formatting conventions.
+    """A schema definition for a search index in Redis, used in RedisVL for
+    configuring index settings and organizing vector and metadata fields.
 
     The class offers methods to create an index schema from a YAML file or a
     Python dictionary, supporting flexible schema definitions and easy
@@ -74,6 +89,7 @@ class IndexSchema(BaseModel):
         index:
             name: user-index
             prefix: user
+            key_separator: ":"
             storage_type: json
 
         fields:
@@ -89,20 +105,25 @@ class IndexSchema(BaseModel):
                 distance_metric: cosine
                 datatype: float32
 
-    Loading the schema with RedisVL using yaml or dict format:
+    Loading the schema for RedisVL from yaml is as simple as:
 
     .. code-block:: python
 
         from redisvl.schema import IndexSchema
 
-        # From YAML
         schema = IndexSchema.from_yaml("schema.yaml")
 
-        # From Dict
+    Loading the schema for RedisVL from dict is as simple as:
+
+    .. code-block:: python
+
+        from redisvl.schema import IndexSchema
+
         schema = IndexSchema.from_dict({
             "index": {
                 "name": "user-index",
                 "prefix": "user",
+                "key_separator": ":",
                 "storage_type": "json",
             },
             "fields": [

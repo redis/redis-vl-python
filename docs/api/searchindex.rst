@@ -21,7 +21,6 @@ SearchIndex
 .. currentmodule:: redisvl.index
 
 .. autoclass:: SearchIndex
-   :show-inheritance:
    :inherited-members:
    :members:
 
@@ -33,6 +32,5 @@ AsyncSearchIndex
 .. currentmodule:: redisvl.index
 
 .. autoclass:: AsyncSearchIndex
-   :show-inheritance:
    :inherited-members:
    :members:

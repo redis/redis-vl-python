@@ -207,7 +207,8 @@ class BaseSearchIndex:
 
     @property
     def storage_type(self) -> StorageType:
-        """The underlying storage type for the search index: hash or json."""
+        """The underlying storage type for the search index; either
+        hash or json."""
         return self.schema.index.storage_type
 
     @property
@@ -228,8 +229,8 @@ class BaseSearchIndex:
         .. code-block:: python
 
             from redisvl.index import SearchIndex
+
             index = SearchIndex.from_yaml("schemas/schema.yaml")
-            index.connect(redis_url="redis://localhost:6379")
         """
         schema = IndexSchema.from_yaml(schema_path)
         return cls(schema=schema, **kwargs)
@@ -249,6 +250,7 @@ class BaseSearchIndex:
         .. code-block:: python
 
             from redisvl.index import SearchIndex
+
             index = SearchIndex.from_dict({
                 "index": {
                     "name": "my-index",
@@ -259,7 +261,6 @@ class BaseSearchIndex:
                     {"name": "doc-id", "type": "tag"}
                 ]
             })
-            index.connect(redis_url="redis://localhost:6379")
 
         """
         schema = IndexSchema.from_dict(schema_dict)
@@ -274,12 +275,12 @@ class BaseSearchIndex:
         raise NotImplementedError
 
     def disconnect(self):
-        """Reset the Redis connection."""
+        """Disconnect from the Redis database."""
         self._redis_client = None
         return self
 
     def key(self, id: str) -> str:
-        """Create a redis key as a combination of an index key prefix (optional)
+        """Construct a redis key as a combination of an index key prefix (optional)
         and specified id.
 
         The id is typically either a unique identifier, or
@@ -301,10 +302,11 @@ class BaseSearchIndex:
 
 
 class SearchIndex(BaseSearchIndex):
-    """A class for interacting with Redis as a vector database.
+    """A search index class for interacting with Redis as a vector database.
 
-    This class is a wrapper around the redis-py client that provides
-    purpose-built methods for interacting with Redis as a vector database.
+    The SearchIndex is instantiated with a reference to a Redis database and an
+    IndexSchema (YAML path or dictionary object) that describes the various
+    settings and field configurations.
 
     .. code-block:: python
 
@@ -384,7 +386,7 @@ class SearchIndex(BaseSearchIndex):
         return self
 
     def create(self, overwrite: bool = False, drop: bool = False) -> None:
-        """Create an index in Redis with the given schema and properties.
+        """Create an index in Redis with the current schema and properties.
 
         Args:
             overwrite (bool, optional): Whether to overwrite the index if it
@@ -460,8 +462,12 @@ class SearchIndex(BaseSearchIndex):
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
     ) -> List[str]:
-        """Load a batch of objects to Redis. Returns the list of keys loaded to
-        Redis.
+        """Load objects to the Redis database. Returns the list of keys loaded
+        to Redis.
+
+        RedisVL automatically handles constructing the object keys, batching,
+        optional preprocessing steps, and setting optional expiration
+        (TTL policies) on keys.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -487,7 +493,22 @@ class SearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            keys = index.load([{"test": "foo"}, {"test": "bar"}])
+            data = [{"test": "foo"}, {"test": "bar"}]
+
+            # simple case
+            keys = index.load(data)
+
+            # set 360 second ttl policy on data
+            keys = index.load(data, ttl=360)
+
+            # load data with predefined keys
+            keys = index.load(data, keys=["rvl:foo", "rvl:bar"])
+
+            # load data with preprocessing step
+            def add_field(d):
+                d["new_field"] = 123
+                return d
+            keys = index.load(data, preprocess=add_field)
         """
         try:
             return self._storage.write(
@@ -558,6 +579,14 @@ class SearchIndex(BaseSearchIndex):
             List[Result]: A list of search results.
 
         .. code-block:: python
+
+            from redisvl.query import VectorQuery
+
+            query = VectorQuery(
+                vector=[0.16, -0.34, 0.98, 0.23],
+                vector_field_name="embedding",
+                num_results=3
+            )
 
             results = index.query(query)
 
@@ -639,10 +668,12 @@ class SearchIndex(BaseSearchIndex):
 
 
 class AsyncSearchIndex(BaseSearchIndex):
-    """A class for interacting with Redis as a vector database in async mode.
+    """A search index class for interacting with Redis as a vector database in 
+    async-mode.
 
-    This class is a wrapper around the redis-py async client that provides
-    purpose-built methods for interacting with Redis as a vector database.
+    The AsyncSearchIndex is instantiated with a reference to a Redis database
+    and an IndexSchema (YAML path or dictionary object) that describes the
+    various settings and field configurations.
 
     .. code-block:: python
 
@@ -653,7 +684,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         index.connect(redis_url="redis://localhost:6379")
 
         # create the index
-       await index.create(overwrite=True)
+        await index.create(overwrite=True)
 
         # data is an iterable of dictionaries
         await index.load(data)
@@ -723,7 +754,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         return self
 
     async def create(self, overwrite: bool = False, drop: bool = False) -> None:
-        """Asynchronously create an index in Redis with the given schema
+        """Asynchronously create an index in Redis with the current schema
             and properties.
 
         Args:
@@ -802,6 +833,10 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Asynchronously load objects to Redis with concurrency control.
         Returns the list of keys loaded to Redis.
 
+        RedisVL automatically handles constructing the object keys, batching,
+        optional preprocessing steps, and setting optional expiration
+        (TTL policies) on keys.
+
         Args:
             data (Iterable[Any]): An iterable of objects to store.
             id_field (Optional[str], optional): Specified field used as the id
@@ -826,7 +861,22 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            keys = await index.aload([{"test": "foo"}, {"test": "bar"}])
+            data = [{"test": "foo"}, {"test": "bar"}]
+
+            # simple case
+            keys = await index.load(data)
+
+            # set 360 second ttl policy on data
+            keys = await index.load(data, ttl=360)
+
+            # load data with predefined keys
+            keys = await index.load(data, keys=["rvl:foo", "rvl:bar"])
+
+            # load data with preprocessing step
+            async def add_field(d):
+                d["new_field"] = 123
+                return d
+            keys = await index.load(data, preprocess=add_field)
 
         """
         try:
@@ -897,7 +947,15 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            results = await aindex.query(query)
+            from redisvl.query import VectorQuery
+
+            query = VectorQuery(
+                vector=[0.16, -0.34, 0.98, 0.23],
+                vector_field_name="embedding",
+                num_results=3
+            )
+
+            results = await index.query(query)
         """
         return await self._query(query)
 
