@@ -668,7 +668,7 @@ class SearchIndex(BaseSearchIndex):
 
 
 class AsyncSearchIndex(BaseSearchIndex):
-    """A search index class for interacting with Redis as a vector database in 
+    """A search index class for interacting with Redis as a vector database in
     async-mode.
 
     The AsyncSearchIndex is instantiated with a reference to a Redis database

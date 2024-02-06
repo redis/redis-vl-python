@@ -1,9 +1,9 @@
 import pytest
 
 from redisvl.index import AsyncSearchIndex
+from redisvl.query import VectorQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.query import VectorQuery
 
 fields = [{"name": "test", "type": "tag"}]
 
@@ -148,6 +148,7 @@ async def test_check_index_exists_before_delete(async_client, async_index):
     with pytest.raises(ValueError):
         await async_index.delete()
 
+
 @pytest.mark.asyncio
 async def test_check_index_exists_before_search(async_client, async_index):
     async_index.set_client(async_client)
@@ -162,6 +163,7 @@ async def test_check_index_exists_before_search(async_client, async_index):
     )
     with pytest.raises(ValueError):
         await async_index.search(query.query, query_params=query.params)
+
 
 @pytest.mark.asyncio
 async def test_check_index_exists_before_info(async_client, async_index):

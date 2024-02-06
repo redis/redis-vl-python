@@ -4,12 +4,14 @@ from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery
 from redisvl.query.filter import Tag
 
+
 @pytest.fixture
 def filter_query():
     return FilterQuery(
         return_fields=None,
         filter_expression=Tag("credit_score") == "high",
     )
+
 
 @pytest.fixture
 def index(sample_data):
@@ -56,6 +58,7 @@ def index(sample_data):
 
     # clean up
     index.delete(drop=True)
+
 
 def test_process_results_unpacks_json_properly(index, filter_query):
     results = index.query(filter_query)
