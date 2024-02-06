@@ -1,7 +1,7 @@
 
-**********
-Vectorizer
-**********
+***********
+Vectorizers
+***********
 
 HFTextVectorizer
 ================
@@ -10,15 +10,8 @@ HFTextVectorizer
 
 .. currentmodule:: redisvl.utils.vectorize.text.huggingface
 
-.. autosummary::
-
-    HFTextVectorizer.__init__
-    HFTextVectorizer.embed
-    HFTextVectorizer.embed_many
-
 .. autoclass:: HFTextVectorizer
    :show-inheritance:
-   :inherited-members:
    :members:
 
 
@@ -29,17 +22,8 @@ OpenAITextVectorizer
 
 .. currentmodule:: redisvl.utils.vectorize.text.openai
 
-.. autosummary::
-
-    OpenAITextVectorizer.__init__
-    OpenAITextVectorizer.embed
-    OpenAITextVectorizer.embed_many
-    OpenAITextVectorizer.aembed
-    OpenAITextVectorizer.aembed_many
-
 .. autoclass:: OpenAITextVectorizer
    :show-inheritance:
-   :inherited-members:
    :members:
 
 
@@ -50,15 +34,8 @@ VertexAITextVectorizer
 
 .. currentmodule:: redisvl.utils.vectorize.text.vertexai
 
-.. autosummary::
-
-    VertexAITextVectorizer.__init__
-    VertexAITextVectorizer.embed
-    VertexAITextVectorizer.embed_many
-
 .. autoclass:: VertexAITextVectorizer
    :show-inheritance:
-   :inherited-members:
    :members:
 
 
@@ -69,14 +46,7 @@ CohereTextVectorizer
 
 .. currentmodule:: redisvl.utils.vectorize.text.cohere
 
-.. autosummary::
-
-    CohereTextVectorizer.__init__
-    CohereTextVectorizer.embed
-    CohereTextVectorizer.embed_many
-
 .. autoclass:: CohereTextVectorizer
    :show-inheritance:
-   :inherited-members:
    :members:
 

@@ -1,4 +1,3 @@
-
 ***********
 Schema
 ***********
@@ -19,6 +18,7 @@ field configurations using the following three components:
    * - `fields`
      - Subset of fields within your data to include in the index and any custom settings.
 
+
 IndexSchema
 ===========
 
@@ -28,24 +28,75 @@ IndexSchema
 
 .. autoclass:: IndexSchema
    :members:
-   :exclude-members: generate_fields,validate_and_create_fields
+   :exclude-members: generate_fields,validate_and_create_fields,redis_fields
 
-Supported Field Types
-=====================
 
-.. list-table::
-   :widths: 20 80
-   :header-rows: 1
+Defining Fields
+===============
 
-   * - Field Type
-     - Description
-   * - `vector`
-     - Vector embeddings data typically generated from another AI/ML model to represent unstructured data.
-   * - `text`
-     - Full text data that enable full text search and filtering operations.
-   * - `tag`
-     - Label-like fields that are used for exact matches and filtering operations.
-   * - `numeric`
-     - Numeric fields used for range filters.
-   * - `geo`
-     - Geographic coordinates used for geo search.
+Fields in the schema can be defined in YAML format or as a Python dictionary, specifying a name, type, an optional path, and attributes for customization.
+
+**YAML Example**:
+
+.. code-block:: yaml
+
+    - name: title
+      type: text
+      path: $.document.title
+      attrs:
+        weight: 1.0
+        no_stem: false
+        withsuffixtrie: true
+
+**Python Dictionary Example**:
+
+.. code-block:: python
+
+    {
+        "name": "location",
+        "type": "geo",
+        "attrs": {
+            "sortable": true
+        }
+    }
+
+Supported Field Types and Attributes
+====================================
+
+Each field type supports specific attributes that customize its behavior. Below are the field types and their available attributes:
+
+**Text Field Attributes**:
+
+- `weight`: Importance of the field in result calculation.
+- `no_stem`: Disables stemming during indexing.
+- `withsuffixtrie`: Optimizes queries by maintaining a suffix trie.
+- `phonetic_matcher`: Enables phonetic matching.
+- `sortable`: Allows sorting on this field.
+
+**Tag Field Attributes**:
+
+- `separator`: Character for splitting text into individual tags.
+- `case_sensitive`: Case sensitivity in tag matching.
+- `withsuffixtrie`: Suffix trie optimization for queries.
+- `sortable`: Enables sorting based on the tag field.
+
+**Numeric and Geo Field Attributes**:
+
+- Both numeric and geo fields support the `sortable` attribute, enabling sorting on these fields.
+
+**Common Vector Field Attributes**:
+
+- `dims`: Dimensionality of the vector.
+- `algorithm`: Indexing algorithm (`flat` or `hnsw`).
+- `datatype`: Float datatype of the vector (`float32` or `float64`).
+- `distance_metric`: Metric for measuring query relevance (`COSINE`, `L2`, `IP`).
+
+**HNSW Vector Field Specific Attributes**:
+
+- `m`: Max outgoing edges per node in each layer.
+- `ef_construction`: Max edge candidates during build time.
+- `ef_runtime`: Max top candidates during search.
+- `epsilon`: Range search boundary factor.
+
+Note:
+    See fully documented Redis-supported fields and options here: https://redis.io/commands/ft.create/
