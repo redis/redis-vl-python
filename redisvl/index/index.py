@@ -593,45 +593,53 @@ class SearchIndex(BaseSearchIndex):
         """
         return self._query(query)
 
-    def query_batch(self, query: BaseQuery, batch_size: int = 30) -> Generator:
-        """Execute a query on the index while batching results.
+    def paginate(self, query: BaseQuery, page_size: int = 30) -> Generator:
+        """Execute a given query against the index and return results in
+        paginated batches.
 
-        This method takes a BaseQuery object directly, handles optional paging
-        support, and post-processing of the search results.
+        This method accepts a RedisVL query instance, enabling pagination of
+        results which allows for subsequent processing over each batch with a
+        generator.
 
         Args:
-            query (BaseQuery): The query to run.
-            batch_size (int): The size of batches to return on each iteration.
+            query (BaseQuery): The search query to be executed.
+            page_size (int, optional): The number of results to return in each
+                batch. Defaults to 30.
 
-        Returns:
-            List[Result]: A list of search results.
+        Yields:
+            A generator yielding batches of search results.
 
         Raises:
-            TypeError: If the batch size is not an integer
-            ValueError: If the batch size is less than or equal to zero.
+            TypeError: If the page_size argument is not of type int.
+            ValueError: If the page_size argument is less than or equal to zero.
 
-        .. code-block:: python
-
-            for batch in index.query_batch(query, batch_size=10):
-                # process batched results
+        Example:
+            # Iterate over paginated search results in batches of 10
+            for result_batch in index.paginate(query, page_size=10):
+                # Process each batch of results
                 pass
 
+        Note:
+            The page_size parameter controls the number of items each result
+            batch contains. Adjust this value based on performance
+            considerations and the expected volume of search results.
+
         """
-        if not isinstance(batch_size, int):
-            raise TypeError("batch_size must be an integer")
+        if not isinstance(page_size, int):
+            raise TypeError("page_size must be an integer")
 
-        if batch_size <= 0:
-            raise ValueError("batch_size must be greater than 0")
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than 0")
 
-        first = 0
+        offset = 0
         while True:
-            query.set_paging(first, batch_size)
-            batch_results = self._query(query)
-            if not batch_results:
+            query.set_paging(offset, page_size)
+            results = self._query(query)
+            if not results:
                 break
-            yield batch_results
-            # increment the pagination tracker
-            first += batch_size
+            yield results
+            # Increment the offset for the next batch of pagination
+            offset += page_size
 
     def listall(self) -> List[str]:
         """List all search indices in Redis database.
@@ -959,46 +967,53 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         return await self._query(query)
 
-    async def query_batch(
-        self, query: BaseQuery, batch_size: int = 30
-    ) -> AsyncGenerator:
-        """Execute a query on the index with batching.
+    async def paginate(self, query: BaseQuery, page_size: int = 30) -> AsyncGenerator:
+        """Execute a given query against the index and return results in
+        paginated batches.
 
-        This method takes a BaseQuery object directly, handles optional paging
-        support, and post-processing of the search results.
+        This method accepts a RedisVL query instance, enabling async pagination
+        of results which allows for subsequent processing over each batch with a
+        generator.
 
         Args:
-            query (BaseQuery): The query to run.
-            batch_size (int): The size of batches to return on each iteration.
+            query (BaseQuery): The search query to be executed.
+            page_size (int, optional): The number of results to return in each
+                batch. Defaults to 30.
 
-        Returns:
-            List[Result]: A list of search results.
+        Yields:
+            An async generator yielding batches of search results.
 
         Raises:
-            TypeError: If the batch size is not an integer
-            ValueError: If the batch size is less than or equal to zero.
+            TypeError: If the page_size argument is not of type int.
+            ValueError: If the page_size argument is less than or equal to zero.
 
-        .. code-block:: python
-
-            async for batch in index.query_batch(query, batch_size=10):
-                # process batched results
+        Example:
+            # Iterate over paginated search results in batches of 10
+            async for result_batch in index.paginate(query, page_size=10):
+                # Process each batch of results
                 pass
-        """
-        if not isinstance(batch_size, int):
-            raise TypeError("batch_size must be an integer")
 
-        if batch_size <= 0:
-            raise ValueError("batch_size must be greater than 0")
+        Note:
+            The page_size parameter controls the number of items each result
+            batch contains. Adjust this value based on performance
+            considerations and the expected volume of search results.
+
+        """
+        if not isinstance(page_size, int):
+            raise TypeError("page_size must be an integer")
+
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than 0")
 
         first = 0
         while True:
-            query.set_paging(first, batch_size)
-            batch_results = await self._query(query)
-            if not batch_results:
+            query.set_paging(first, page_size)
+            results = await self._query(query)
+            if not results:
                 break
-            yield batch_results
+            yield results
             # increment the pagination tracker
-            first += batch_size
+            first += page_size
 
     async def listall(self) -> List[str]:
         """List all search indices in Redis database.
