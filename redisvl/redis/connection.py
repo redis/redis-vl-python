@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from redis import ConnectionPool, Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -101,7 +101,10 @@ class RedisConnectionFactory:
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
-    def validate_redis_modules(client: Redis) -> None:
+    def validate_redis_modules(
+        client: Redis,
+        redis_required_modules: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
         """Validates if the required Redis modules are installed.
 
         Args:
@@ -111,11 +114,14 @@ class RedisConnectionFactory:
             ValueError: If required Redis modules are not installed.
         """
         RedisConnectionFactory._validate_redis_modules(
-            convert_bytes(client.module_list())
+            convert_bytes(client.module_list()), redis_required_modules
         )
 
     @staticmethod
-    def validate_async_redis_modules(client: AsyncRedis) -> None:
+    def validate_async_redis_modules(
+        client: AsyncRedis,
+        redis_required_modules: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
         """
         Validates if the required Redis modules are installed.
 
@@ -128,21 +134,29 @@ class RedisConnectionFactory:
         temp_client = Redis(
             connection_pool=ConnectionPool(**client.connection_pool.connection_kwargs)
         )
-        RedisConnectionFactory.validate_redis_modules(temp_client)
+        RedisConnectionFactory.validate_redis_modules(
+            temp_client, redis_required_modules
+        )
 
     @staticmethod
-    def _validate_redis_modules(installed_modules) -> None:
+    def _validate_redis_modules(
+        installed_modules,
+        redis_required_modules: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
         """
         Validates if required Redis modules are installed.
 
         Args:
             installed_modules: List of installed modules.
+            redis_required_modules: List of required modules.
 
         Raises:
             ValueError: If required Redis modules are not installed.
         """
         installed_modules = {module["name"]: module for module in installed_modules}
-        for required_module in REDIS_REQUIRED_MODULES:
+        redis_required_modules = redis_required_modules or REDIS_REQUIRED_MODULES
+
+        for required_module in redis_required_modules:
             if required_module["name"] in installed_modules:
                 installed_version = installed_modules[required_module["name"]]["ver"]
                 if int(installed_version) >= int(required_module["ver"]):  # type: ignore

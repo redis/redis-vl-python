@@ -310,7 +310,7 @@ class SemanticCache(BaseLLMCache):
             key = cache.store(
                 prompt="What is the captial city of France?",
                 response="Paris",
-                metadata={"city": "Paris", "country": "Fance"}
+                metadata={"city": "Paris", "country": "France"}
             )
         """
         # Vectorize prompt if necessary and create cache payload
