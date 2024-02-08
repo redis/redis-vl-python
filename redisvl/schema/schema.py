@@ -135,7 +135,7 @@ class IndexSchema(BaseModel):
                     "attrs": {
                         "algorithm": "flat",
                         "dims": 3,
-                        "distance_metrics": "cosine",
+                        "distance_metric": "cosine",
                         "datatype": "float32"
                     }
                 }
