@@ -1,15 +1,8 @@
+<h1 align="center">🔥 Redis Vector Library</h1>
+
 <div align="center">
-    <div style="display: inline-block; text-align: center; margin-bottom: 10px;">
-        <span style="font-size: 36px;"><b>🔥 Redis Vector Library</b></span>
-        <br />
         <span style="font-size: smaller;">the AI-native Redis Python client</span>
-    </div>
-    <br />
-</div>
-
-
-
-<div align="center">
+        <br />
 
 [![Codecov](https://img.shields.io/codecov/c/github/RedisVentures/RedisVL/dev?label=Codecov&logo=codecov&token=E30WxqBeJJ)](https://codecov.io/gh/RedisVentures/RedisVL)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -33,13 +26,15 @@
 
 # Introduction
 
-`redisvl` is a Python client library, tailor-made for AI applications leveraging [Redis](https://redis.com). It's designed for use in:
+The Python Redis Vector Library (RedisVL) is a tailor-made client for AI applications leveraging [Redis](https://redis.com).
+
+It's specifically designed for:
 
 - Information retrieval & vector similarity search
 - Real-time RAG pipelines
 - Recommendation engines
 
-Enhance your AI applications with Redis' **speed**, **flexibility**, and **reliability**, incorporating capabilities like vector-based semantic search, full-text search, and geo-spatial search.
+Enhance your applications with Redis' **speed**, **flexibility**, and **reliability**, incorporating capabilities like vector-based semantic search, full-text search, and geo-spatial search.
 
 # 🚀 Why RedisVL?
 
@@ -49,7 +44,7 @@ However, organizations still struggle with delivering reliable solutions **quick
 
 [Redis](https://redis.io) has been a staple for over a decade in the NoSQL world, and boasts a number of flexible [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/) to handle realtime application workloads like caching, session management, and search. Most notably, Redis has been used as a vector database for RAG, as an LLM cache, and chat session memory store for conversational AI applications.
 
-`redisvl` **bridges the gap between** the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](https://github.com/redis/redis-py/tree/master), it extends the core caching and search features of Redis into a grammar that is more aligned to the needs of today's AI/ML Engineers or Data Scientists.
+The vector library **bridges the gap between** the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](https://github.com/redis/redis-py/tree/master), it abstracts the features Redis into a grammar that is more aligned to the needs of today's AI/ML Engineers or Data Scientists.
 
 # 💪 Getting Started
 
@@ -90,7 +85,6 @@ Choose from multiple Redis deployment options:
     index:
         name: user-index-v1
         prefix: user
-        key_separator: ':'
         storage_type: json
 
     fields:
@@ -275,7 +269,7 @@ aim to improve applications working with LLMs:
     >>> "Paris"
     ```
 
-    > Learn more about Semantic Caching in `redisvl` [here](https://www.redisvl.com/user_guide/llmcache_03.html).
+    > Learn more about Semantic Caching [here](https://www.redisvl.com/user_guide/llmcache_03.html).
 
 - **LLM Session Management (COMING SOON)** aims to improve personalization and accuracy of the LLM application by providing user chat session information and conversational memory.
 - **LLM Contextual Access Control (COMING SOON)** aims to improve security concerns by preventing malicious, irrelevant, or problematic user input from reaching LLMs and infrastructure.
@@ -283,7 +277,7 @@ aim to improve applications working with LLMs:
 
 ## Helpful Links
 
-To get started with `redisvl`, check out:
+To get started, check out the following guides:
  - [Getting Started Guide](https://www.redisvl.com/user_guide/getting_started_01.html)
  - [API Reference](https://www.redisvl.com/api/index.html)
  - [Example Gallery](https://www.redisvl.com/examples/index.html)
@@ -292,7 +286,7 @@ To get started with `redisvl`, check out:
 
 ## 🫱🏼‍🫲🏽 Contributing
 
-Please help us by contributing PRs, opening GitHub issues for bugs or new feature ideas, improving documentation, or increasing test coverage. [Read more about how to contribute to RedisVL!](CONTRIBUTING.md)
+Please help us by contributing PRs, opening GitHub issues for bugs or new feature ideas, improving documentation, or increasing test coverage. [Read more about how to contribute!](CONTRIBUTING.md)
 
 ## 🚧 Maintenance
-RedisVL is supported by [Redis, Inc](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/RedisVentures/redisvl/issues).
+This project is supported by [Redis, Inc](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/RedisVentures/redisvl/issues).
