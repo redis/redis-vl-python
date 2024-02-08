@@ -24,7 +24,7 @@ extras_require = {
 
 setup(
     name="redisvl",
-    version="0.0.7",
+    version="0.1.0",
     python_requires=">=3.7",
     install_requires=read_requirements(),
     extras_require=extras_require,

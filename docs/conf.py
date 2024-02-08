@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath('.'))
 project = 'RedisVL'
 copyright = '2024, Redis Inc.'
 author = 'RedisVentures'
-version = "0.0.7"
+version = "0.1.0"
 
 # The full version, including alpha/beta/rc tags
 release = version
