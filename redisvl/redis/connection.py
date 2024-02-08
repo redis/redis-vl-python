@@ -102,8 +102,7 @@ class RedisConnectionFactory:
 
     @staticmethod
     def validate_redis_modules(
-        client: Redis,
-        redis_required_modules: Optional[List[Dict[str, Any]]] = None
+        client: Redis, redis_required_modules: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """Validates if the required Redis modules are installed.
 
@@ -120,7 +119,7 @@ class RedisConnectionFactory:
     @staticmethod
     def validate_async_redis_modules(
         client: AsyncRedis,
-        redis_required_modules: Optional[List[Dict[str, Any]]] = None
+        redis_required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         Validates if the required Redis modules are installed.
@@ -140,8 +139,7 @@ class RedisConnectionFactory:
 
     @staticmethod
     def _validate_redis_modules(
-        installed_modules,
-        redis_required_modules: Optional[List[Dict[str, Any]]] = None
+        installed_modules, redis_required_modules: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """
         Validates if required Redis modules are installed.
