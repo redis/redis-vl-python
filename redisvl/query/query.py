@@ -25,7 +25,7 @@ class BaseQuery:
         return " ".join([str(x) for x in self.query.get_args()])
 
     def set_filter(self, filter_expression: Optional[FilterExpression] = None):
-        """Set the filter for the query.
+        """Set the filter expression for the query.
 
         Args:
             filter_expression (Optional[FilterExpression], optional): The filter
@@ -45,7 +45,7 @@ class BaseQuery:
             )
 
     def get_filter(self) -> FilterExpression:
-        """Get the filter for the query.
+        """Get the filter expression for the query.
 
         Returns:
             FilterExpression: The filter for the query.
@@ -53,21 +53,19 @@ class BaseQuery:
         return self._filter
 
     def set_paging(self, first: int, limit: int):
-        """Set the paging parameters for the query to limit the results between
-        fist and num_results.
+        """Set the paging parameters for the query to limit the number of
+        results.
 
         Args:
             first (int): The zero-indexed offset for which to fetch query results
-            limit (int): _description_
+            limit (int): The max number of results to include including the offset
 
         Raises:
-            TypeError: _description_
-            TypeError: _description_
+            TypeError: If first or limit are NOT integers.
         """
-        if not isinstance(first, int):
-            raise TypeError("first must be of type int")
-        if not isinstance(limit, int):
-            raise TypeError("limit must be of type int")
+        if not isinstance(first, int) or not isinstance(limit, int):
+            raise TypeError("Paging params must both be integers")
+
         self._first = first
         self._limit = limit
 
@@ -87,7 +85,7 @@ class CountQuery(BaseQuery):
         dialect: int = 2,
         params: Optional[Dict[str, Any]] = None,
     ):
-        """Query for a simple count operation provided some filter expression.
+        """A query for a simple count operation provided some filter expression.
 
         Args:
             filter_expression (FilterExpression): The filter expression to query for.
@@ -100,9 +98,11 @@ class CountQuery(BaseQuery):
 
             from redisvl.query import CountQuery
             from redisvl.query.filter import Tag
+
             t = Tag("brand") == "Nike"
-            q = CountQuery(filter_expression=t)
-            count = index.query(q)
+            query = CountQuery(filter_expression=t)
+
+            count = index.query(query)
         """
         super().__init__(num_results=0, dialect=dialect)
         self.set_filter(filter_expression)
@@ -113,7 +113,7 @@ class CountQuery(BaseQuery):
         """The loaded Redis-Py query.
 
         Returns:
-            redis.commands.search.query.Query: The query object.
+            redis.commands.search.query.Query: The Redis-Py query object.
         """
         base_query = str(self._filter)
         query = Query(base_query).no_content().paging(0, 0).dialect(self._dialect)
@@ -138,7 +138,7 @@ class FilterQuery(BaseQuery):
         dialect: int = 2,
         params: Optional[Dict[str, Any]] = None,
     ):
-        """Query for a filter expression.
+        """A query for a running a filtered search with a filter expression.
 
         Args:
             filter_expression (FilterExpression): The filter expression to
@@ -157,6 +157,7 @@ class FilterQuery(BaseQuery):
 
             from redisvl.query import FilterQuery
             from redisvl.query.filter import Tag
+
             t = Tag("brand") == "Nike"
             q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
 
@@ -170,7 +171,7 @@ class FilterQuery(BaseQuery):
         """Return a Redis-Py Query object representing the query.
 
         Returns:
-            redis.commands.search.query.Query: The query object.
+            redis.commands.search.query.Query: The Redis-Py query object.
         """
         base_query = str(self._filter)
         query = (
@@ -223,21 +224,31 @@ class VectorQuery(BaseVectorQuery):
         return_score: bool = True,
         dialect: int = 2,
     ):
-        """Query for vector fields.
-
-        Read more: https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search
+        """A query for running a vector search along with an optional filter
+        expression.
 
         Args:
-            vector (List[float]): The vector to query for.
-            vector_field_name (str): The name of the vector field.
-            return_fields (List[str]): The fields to return.
-            filter_expression (FilterExpression, optional): A filter to apply to the query. Defaults to None.
-            dtype (str, optional): The dtype of the vector. Defaults to "float32".
-            num_results (Optional[int], optional): The number of results to return. Defaults to 10.
-            return_score (bool, optional): Whether to return the score. Defaults to True.
+            vector (List[float]): The vector to perform the vector search with.
+            vector_field_name (str): The name of the vector field to search
+                against in the database.
+            return_fields (List[str]): The declared fields to return with search
+                results.
+            filter_expression (FilterExpression, optional): A filter to apply
+                along with the vector search. Defaults to None.
+            dtype (str, optional): The dtype of the vector. Defaults to
+                "float32".
+            num_results (int, optional): The top k results to return from the
+                vector search. Defaults to 10.
+            return_score (bool, optional): Whether to return the vector
+                distance. Defaults to True.
+            dialect (int, optional): The RediSearch query dialect.
+                Defaults to 2.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        Note:
+            Learn more about vector queries in Redis: https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search
         """
         super().__init__(
             vector,
@@ -255,7 +266,7 @@ class VectorQuery(BaseVectorQuery):
         """Return a Redis-Py Query object representing the query.
 
         Returns:
-            redis.commands.search.query.Query: The query object.
+            redis.commands.search.query.Query: The Redis-Py query object.
         """
         base_query = f"{str(self._filter)}=>[KNN {self._num_results} @{self._field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
         query = (
@@ -297,26 +308,35 @@ class RangeQuery(BaseVectorQuery):
         return_score: bool = True,
         dialect: int = 2,
     ):
-        """Vector query by distance range.
-
-        Range queries are for filtering vector search results
-        by the distance between a vector field value and a query
-        vector, in terms of the index distance metric.
-
-        Read more: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
+        """A query for running a filtered vector search based on semantic
+        distance threshold.
 
         Args:
-            vector (List[float]): The vector to query for.
-            vector_field_name (str): The name of the vector field.
-            return_fields (List[str]): The fields to return.
-            filter_expression (FilterExpression, optional): A filter to apply to the query. Defaults to None.
-            dtype (str, optional): The dtype of the vector. Defaults to "float32".
-            distance_threshold (str, float): The threshold for vector distance. Defaults to 0.2.
-            num_results (int): The MAX number of results to return. defaults to 10.
-            return_score (bool, optional): Whether to return the score. Defaults to True.
+            vector (List[float]): The vector to perform the range query with.
+            vector_field_name (str): The name of the vector field to search
+                against in the database.
+            return_fields (List[str]): The declared fields to return with search
+                results.
+            filter_expression (FilterExpression, optional): A filter to apply
+                along with the range query. Defaults to None.
+            dtype (str, optional): The dtype of the vector. Defaults to
+                "float32".
+            distance_threshold (str, float): The threshold for vector distance.
+                A smaller threshold indicates a stricter semantic search.
+                Defaults to 0.2.
+            num_results (int): The MAX number of results to return.
+                Defaults to 10.
+            return_score (bool, optional): Whether to return the vector
+                distance. Defaults to True.
+            dialect (int, optional): The RediSearch query dialect.
+                Defaults to 2.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        Note:
+            Learn more about vector range queries: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
+
         """
         super().__init__(
             vector,
@@ -354,7 +374,7 @@ class RangeQuery(BaseVectorQuery):
         """Return a Redis-Py Query object representing the query.
 
         Returns:
-            redis.commands.search.query.Query: The query object.
+            redis.commands.search.query.Query: The Redis-Py query object.
         """
         base_query = f"@{self._field}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
 

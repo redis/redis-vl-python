@@ -1,9 +1,9 @@
 import pytest
 
 from redisvl.index import SearchIndex
+from redisvl.query import VectorQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.query import VectorQuery
 
 fields = [{"name": "test", "type": "tag"}]
 
@@ -12,13 +12,16 @@ fields = [{"name": "test", "type": "tag"}]
 def index_schema():
     return IndexSchema.from_dict({"index": {"name": "my_index"}, "fields": fields})
 
+
 @pytest.fixture
 def index(index_schema):
     return SearchIndex(schema=index_schema)
 
+
 @pytest.fixture
 def index_from_yaml():
     return SearchIndex.from_yaml("schemas/test_json_schema.yaml")
+
 
 def test_search_index_properties(index_schema, index):
     assert index.schema == index_schema
@@ -31,6 +34,7 @@ def test_search_index_properties(index_schema, index):
     assert index.storage_type == index_schema.index.storage_type == StorageType.HASH
     assert index.key("foo").startswith(index.prefix)
 
+
 def test_search_index_from_yaml(index_from_yaml):
     assert index_from_yaml.name == "json-test"
     assert index_from_yaml.client == None
@@ -38,6 +42,7 @@ def test_search_index_from_yaml(index_from_yaml):
     assert index_from_yaml.key_separator == ":"
     assert index_from_yaml.storage_type == StorageType.JSON
     assert index_from_yaml.key("foo").startswith(index_from_yaml.prefix)
+
 
 def test_search_index_no_prefix(index_schema):
     # specify an explicitly empty prefix...
@@ -129,12 +134,14 @@ def test_no_id_field(client, index):
     with pytest.raises(ValueError):
         index.load(bad_data, id_field="key")
 
+
 def test_check_index_exists_before_delete(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
     with pytest.raises(ValueError):
         index.delete()
+
 
 def test_check_index_exists_before_search(client, index):
     index.set_client(client)
@@ -150,6 +157,7 @@ def test_check_index_exists_before_search(client, index):
     with pytest.raises(ValueError):
         index.search(query.query, query_params=query.params)
 
+
 def test_check_index_exists_before_info(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
@@ -157,6 +165,7 @@ def test_check_index_exists_before_info(client, index):
 
     with pytest.raises(ValueError):
         index.info()
+
 
 def test_index_needs_valid_schema():
     with pytest.raises(ValueError, match=r"Must provide a valid IndexSchema object"):

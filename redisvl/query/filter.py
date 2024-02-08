@@ -80,7 +80,7 @@ def check_operator_misuse(func: Callable) -> Callable:
 
 
 class Tag(FilterField):
-    """A Tag is a FilterField representing a tag in a Redis index."""
+    """A Tag filter can be applied to Tag fields"""
 
     OPERATORS: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
@@ -93,14 +93,6 @@ class Tag(FilterField):
         FilterOperator.IN: "@%s:{%s}",
     }
     SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
-
-    def __init__(self, field: str):
-        """Create a Tag FilterField.
-
-        Args:
-            field (str): The name of the tag field in the index to be queried against
-        """
-        super().__init__(field)
 
     def _set_tag_value(
         self, other: Union[List[str], Set[str], str], operator: FilterOperator
@@ -129,7 +121,8 @@ class Tag(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Tag
-            filter = Tag("brand") == "nike"
+
+            f = Tag("brand") == "nike"
         """
         self._set_tag_value(other, FilterOperator.EQ)
         return FilterExpression(str(self))
@@ -144,7 +137,7 @@ class Tag(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Tag
-            filter = Tag("brand") != "nike"
+            f = Tag("brand") != "nike"
 
         """
         self._set_tag_value(other, FilterOperator.NE)
@@ -155,7 +148,7 @@ class Tag(FilterField):
         return "|".join([self.escaper.escape(tag) for tag in self._value])
 
     def __str__(self) -> str:
-        """Return the Redis Query syntax for a Tag filter expression."""
+        """Return the Redis Query string for the Tag filter"""
         if not self._value:
             return "*"
 
@@ -221,15 +214,16 @@ class Geo(FilterField):
 
     @check_operator_misuse
     def __eq__(self, other) -> "FilterExpression":
-        """Create a Geographic equality filter expression.
+        """Create a geographic filter within a specified GeoRadius.
 
         Args:
-            other (GeoSpec): The geographic spec to filter on.
+            other (GeoRadius): The geographic spec to filter on.
 
         .. code-block:: python
 
             from redisvl.query.filter import Geo, GeoRadius
-            filter = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
+
+            f = Geo("location") == GeoRadius(-122.4194, 37.7749, 1, unit="m")
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)  # type: ignore
@@ -237,22 +231,23 @@ class Geo(FilterField):
 
     @check_operator_misuse
     def __ne__(self, other) -> "FilterExpression":
-        """Create a Geographic inequality filter expression.
+        """Create a geographic filter outside of a specified GeoRadius.
 
         Args:
-            other (GeoSpec): The geographic spec to filter on.
+            other (GeoRadius): The geographic spec to filter on.
 
         .. code-block:: python
 
             from redisvl.query.filter import Geo, GeoRadius
-            filter = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
+
+            f = Geo("location") != GeoRadius(-122.4194, 37.7749, 1, unit="m")
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)  # type: ignore
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
-        """Return the Redis Query syntax for a Geographic filter expression."""
+        """Return the Redis Query string for the Geo filter"""
         if not self._value:
             return "*"
 
@@ -292,7 +287,7 @@ class Num(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Num
-            filter = Num("zipcode") == 90210
+            f = Num("zipcode") == 90210
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
@@ -307,7 +302,8 @@ class Num(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Num
-            filter = Num("zipcode") != 90210
+
+            f = Num("zipcode") != 90210
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
@@ -322,7 +318,8 @@ class Num(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Num
-            filter = Num("age") > 18
+
+            f = Num("age") > 18
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
@@ -337,7 +334,8 @@ class Num(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Num
-            filter = Num("age") < 18
+
+            f = Num("age") < 18
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
@@ -352,7 +350,8 @@ class Num(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Num
-            filter = Num("age") >= 18
+
+            f = Num("age") >= 18
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
@@ -367,14 +366,15 @@ class Num(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Num
-            filter = Num("age") <= 18
+
+            f = Num("age") <= 18
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
-        """Return the Redis Query syntax for a Numeric filter expression."""
+        """Return the Redis Query string for the Numeric filter"""
         if not self._value:
             return "*"
 
@@ -414,7 +414,8 @@ class Text(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Text
-            filter = Text("job") == "engineer"
+
+            f = Text("job") == "engineer"
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
@@ -432,7 +433,8 @@ class Text(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Text
-            filter = Text("job") != "engineer"
+
+            f = Text("job") != "engineer"
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
@@ -450,16 +452,18 @@ class Text(FilterField):
         .. code-block:: python
 
             from redisvl.query.filter import Text
-            filter = Text("job") % "engine*"         # suffix wild card match
-            filter = Text("job") % "%%engine%%"      # fuzzy match w/ Levenshtein Distance
-            filter = Text("job") % "engineer|doctor" # contains either term in field
-            filter = Text("job") % "engineer doctor" # contains both terms in field
+
+            f = Text("job") % "engine*"         # suffix wild card match
+            f = Text("job") % "%%engine%%"      # fuzzy match w/ Levenshtein Distance
+            f = Text("job") % "engineer|doctor" # contains either term in field
+            f = Text("job") % "engineer doctor" # contains both terms in field
 
         """
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LIKE)
         return FilterExpression(str(self))
 
     def __str__(self) -> str:
+        """Return the Redis Query string for the Text filter"""
         if not self._value:
             return "*"
 
@@ -470,37 +474,42 @@ class Text(FilterField):
 
 
 class FilterExpression:
-    """A FilterExpression is a logical expression of FilterFields.
+    """A FilterExpression is a logical combination of filters in RedisVL.
 
     FilterExpressions can be combined using the & and | operators to create
-    complex logical expressions that evaluate to the Redis Query language.
+    complex expressions that evaluate to the Redis Query language.
 
     This presents an interface by which users can create complex queries
     without having to know the Redis Query language.
 
-    Filter expressions are not created directly. Instead they are built
-    by combining FilterFields using the & and | operators.
-
     .. code-block:: python
 
         from redisvl.query.filter import Tag, Num
+
         brand_is_nike = Tag("brand") == "nike"
         price_is_over_100 = Num("price") < 100
-        filter = brand_is_nike & price_is_over_100
-        print(str(filter))
-        (@brand:{nike} @price:[-inf (100)])
+        f = brand_is_nike & price_is_over_100
+
+        print(str(f))
+
+        >>> (@brand:{nike} @price:[-inf (100)])
 
     This can be combined with the VectorQuery class to create a query:
 
     .. code-block:: python
 
         from redisvl.query import VectorQuery
+
         v = VectorQuery(
-        ...     vector=[0.1, 0.1, 0.5, ...],
-        ...     vector_field_name="product_embedding",
-        ...     return_fields=["product_id", "brand", "price"],
-        ...     filter_expression=filter,
-        ... )
+            vector=[0.1, 0.1, 0.5, ...],
+            vector_field_name="product_embedding",
+            return_fields=["product_id", "brand", "price"],
+            filter_expression=f,
+        )
+
+    Note:
+        Filter expressions are typically not called directly. Instead they are
+        built by combining filter statements using the & and | operators.
 
     """
 

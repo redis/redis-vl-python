@@ -207,7 +207,8 @@ class BaseSearchIndex:
 
     @property
     def storage_type(self) -> StorageType:
-        """The underlying storage type for the search index: hash or json."""
+        """The underlying storage type for the search index; either
+        hash or json."""
         return self.schema.index.storage_type
 
     @property
@@ -228,8 +229,8 @@ class BaseSearchIndex:
         .. code-block:: python
 
             from redisvl.index import SearchIndex
+
             index = SearchIndex.from_yaml("schemas/schema.yaml")
-            index.connect(redis_url="redis://localhost:6379")
         """
         schema = IndexSchema.from_yaml(schema_path)
         return cls(schema=schema, **kwargs)
@@ -249,6 +250,7 @@ class BaseSearchIndex:
         .. code-block:: python
 
             from redisvl.index import SearchIndex
+
             index = SearchIndex.from_dict({
                 "index": {
                     "name": "my-index",
@@ -259,7 +261,6 @@ class BaseSearchIndex:
                     {"name": "doc-id", "type": "tag"}
                 ]
             })
-            index.connect(redis_url="redis://localhost:6379")
 
         """
         schema = IndexSchema.from_dict(schema_dict)
@@ -274,12 +275,12 @@ class BaseSearchIndex:
         raise NotImplementedError
 
     def disconnect(self):
-        """Reset the Redis connection."""
+        """Disconnect from the Redis database."""
         self._redis_client = None
         return self
 
     def key(self, id: str) -> str:
-        """Create a redis key as a combination of an index key prefix (optional)
+        """Construct a redis key as a combination of an index key prefix (optional)
         and specified id.
 
         The id is typically either a unique identifier, or
@@ -301,10 +302,11 @@ class BaseSearchIndex:
 
 
 class SearchIndex(BaseSearchIndex):
-    """A class for interacting with Redis as a vector database.
+    """A search index class for interacting with Redis as a vector database.
 
-    This class is a wrapper around the redis-py client that provides
-    purpose-built methods for interacting with Redis as a vector database.
+    The SearchIndex is instantiated with a reference to a Redis database and an
+    IndexSchema (YAML path or dictionary object) that describes the various
+    settings and field configurations.
 
     .. code-block:: python
 
@@ -384,7 +386,7 @@ class SearchIndex(BaseSearchIndex):
         return self
 
     def create(self, overwrite: bool = False, drop: bool = False) -> None:
-        """Create an index in Redis with the given schema and properties.
+        """Create an index in Redis with the current schema and properties.
 
         Args:
             overwrite (bool, optional): Whether to overwrite the index if it
@@ -460,8 +462,12 @@ class SearchIndex(BaseSearchIndex):
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
     ) -> List[str]:
-        """Load a batch of objects to Redis. Returns the list of keys loaded to
-        Redis.
+        """Load objects to the Redis database. Returns the list of keys loaded
+        to Redis.
+
+        RedisVL automatically handles constructing the object keys, batching,
+        optional preprocessing steps, and setting optional expiration
+        (TTL policies) on keys.
 
         Args:
             data (Iterable[Any]): An iterable of objects to store.
@@ -487,7 +493,22 @@ class SearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            keys = index.load([{"test": "foo"}, {"test": "bar"}])
+            data = [{"test": "foo"}, {"test": "bar"}]
+
+            # simple case
+            keys = index.load(data)
+
+            # set 360 second ttl policy on data
+            keys = index.load(data, ttl=360)
+
+            # load data with predefined keys
+            keys = index.load(data, keys=["rvl:foo", "rvl:bar"])
+
+            # load data with preprocessing step
+            def add_field(d):
+                d["new_field"] = 123
+                return d
+            keys = index.load(data, preprocess=add_field)
         """
         try:
             return self._storage.write(
@@ -559,50 +580,66 @@ class SearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
+            from redisvl.query import VectorQuery
+
+            query = VectorQuery(
+                vector=[0.16, -0.34, 0.98, 0.23],
+                vector_field_name="embedding",
+                num_results=3
+            )
+
             results = index.query(query)
 
         """
         return self._query(query)
 
-    def query_batch(self, query: BaseQuery, batch_size: int = 30) -> Generator:
-        """Execute a query on the index while batching results.
+    def paginate(self, query: BaseQuery, page_size: int = 30) -> Generator:
+        """Execute a given query against the index and return results in
+        paginated batches.
 
-        This method takes a BaseQuery object directly, handles optional paging
-        support, and post-processing of the search results.
+        This method accepts a RedisVL query instance, enabling pagination of
+        results which allows for subsequent processing over each batch with a
+        generator.
 
         Args:
-            query (BaseQuery): The query to run.
-            batch_size (int): The size of batches to return on each iteration.
+            query (BaseQuery): The search query to be executed.
+            page_size (int, optional): The number of results to return in each
+                batch. Defaults to 30.
 
-        Returns:
-            List[Result]: A list of search results.
+        Yields:
+            A generator yielding batches of search results.
 
         Raises:
-            TypeError: If the batch size is not an integer
-            ValueError: If the batch size is less than or equal to zero.
+            TypeError: If the page_size argument is not of type int.
+            ValueError: If the page_size argument is less than or equal to zero.
 
-        .. code-block:: python
-
-            for batch in index.query_batch(query, batch_size=10):
-                # process batched results
+        Example:
+            # Iterate over paginated search results in batches of 10
+            for result_batch in index.paginate(query, page_size=10):
+                # Process each batch of results
                 pass
 
+        Note:
+            The page_size parameter controls the number of items each result
+            batch contains. Adjust this value based on performance
+            considerations and the expected volume of search results.
+
         """
-        if not isinstance(batch_size, int):
-            raise TypeError("batch_size must be an integer")
+        if not isinstance(page_size, int):
+            raise TypeError("page_size must be an integer")
 
-        if batch_size <= 0:
-            raise ValueError("batch_size must be greater than 0")
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than 0")
 
-        first = 0
+        offset = 0
         while True:
-            query.set_paging(first, batch_size)
-            batch_results = self._query(query)
-            if not batch_results:
+            query.set_paging(offset, page_size)
+            results = self._query(query)
+            if not results:
                 break
-            yield batch_results
-            # increment the pagination tracker
-            first += batch_size
+            yield results
+            # Increment the offset for the next batch of pagination
+            offset += page_size
 
     def listall(self) -> List[str]:
         """List all search indices in Redis database.
@@ -639,10 +676,12 @@ class SearchIndex(BaseSearchIndex):
 
 
 class AsyncSearchIndex(BaseSearchIndex):
-    """A class for interacting with Redis as a vector database in async mode.
+    """A search index class for interacting with Redis as a vector database in
+    async-mode.
 
-    This class is a wrapper around the redis-py async client that provides
-    purpose-built methods for interacting with Redis as a vector database.
+    The AsyncSearchIndex is instantiated with a reference to a Redis database
+    and an IndexSchema (YAML path or dictionary object) that describes the
+    various settings and field configurations.
 
     .. code-block:: python
 
@@ -653,7 +692,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         index.connect(redis_url="redis://localhost:6379")
 
         # create the index
-       await index.create(overwrite=True)
+        await index.create(overwrite=True)
 
         # data is an iterable of dictionaries
         await index.load(data)
@@ -723,7 +762,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         return self
 
     async def create(self, overwrite: bool = False, drop: bool = False) -> None:
-        """Asynchronously create an index in Redis with the given schema
+        """Asynchronously create an index in Redis with the current schema
             and properties.
 
         Args:
@@ -802,6 +841,10 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Asynchronously load objects to Redis with concurrency control.
         Returns the list of keys loaded to Redis.
 
+        RedisVL automatically handles constructing the object keys, batching,
+        optional preprocessing steps, and setting optional expiration
+        (TTL policies) on keys.
+
         Args:
             data (Iterable[Any]): An iterable of objects to store.
             id_field (Optional[str], optional): Specified field used as the id
@@ -826,7 +869,22 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            keys = await index.aload([{"test": "foo"}, {"test": "bar"}])
+            data = [{"test": "foo"}, {"test": "bar"}]
+
+            # simple case
+            keys = await index.load(data)
+
+            # set 360 second ttl policy on data
+            keys = await index.load(data, ttl=360)
+
+            # load data with predefined keys
+            keys = await index.load(data, keys=["rvl:foo", "rvl:bar"])
+
+            # load data with preprocessing step
+            async def add_field(d):
+                d["new_field"] = 123
+                return d
+            keys = await index.load(data, preprocess=add_field)
 
         """
         try:
@@ -897,50 +955,65 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            results = await aindex.query(query)
+            from redisvl.query import VectorQuery
+
+            query = VectorQuery(
+                vector=[0.16, -0.34, 0.98, 0.23],
+                vector_field_name="embedding",
+                num_results=3
+            )
+
+            results = await index.query(query)
         """
         return await self._query(query)
 
-    async def query_batch(
-        self, query: BaseQuery, batch_size: int = 30
-    ) -> AsyncGenerator:
-        """Execute a query on the index with batching.
+    async def paginate(self, query: BaseQuery, page_size: int = 30) -> AsyncGenerator:
+        """Execute a given query against the index and return results in
+        paginated batches.
 
-        This method takes a BaseQuery object directly, handles optional paging
-        support, and post-processing of the search results.
+        This method accepts a RedisVL query instance, enabling async pagination
+        of results which allows for subsequent processing over each batch with a
+        generator.
 
         Args:
-            query (BaseQuery): The query to run.
-            batch_size (int): The size of batches to return on each iteration.
+            query (BaseQuery): The search query to be executed.
+            page_size (int, optional): The number of results to return in each
+                batch. Defaults to 30.
 
-        Returns:
-            List[Result]: A list of search results.
+        Yields:
+            An async generator yielding batches of search results.
 
         Raises:
-            TypeError: If the batch size is not an integer
-            ValueError: If the batch size is less than or equal to zero.
+            TypeError: If the page_size argument is not of type int.
+            ValueError: If the page_size argument is less than or equal to zero.
 
-        .. code-block:: python
-
-            async for batch in index.query_batch(query, batch_size=10):
-                # process batched results
+        Example:
+            # Iterate over paginated search results in batches of 10
+            async for result_batch in index.paginate(query, page_size=10):
+                # Process each batch of results
                 pass
-        """
-        if not isinstance(batch_size, int):
-            raise TypeError("batch_size must be an integer")
 
-        if batch_size <= 0:
-            raise ValueError("batch_size must be greater than 0")
+        Note:
+            The page_size parameter controls the number of items each result
+            batch contains. Adjust this value based on performance
+            considerations and the expected volume of search results.
+
+        """
+        if not isinstance(page_size, int):
+            raise TypeError("page_size must be an integer")
+
+        if page_size <= 0:
+            raise ValueError("page_size must be greater than 0")
 
         first = 0
         while True:
-            query.set_paging(first, batch_size)
-            batch_results = await self._query(query)
-            if not batch_results:
+            query.set_paging(first, page_size)
+            results = await self._query(query)
+            if not results:
                 break
-            yield batch_results
+            yield results
             # increment the pagination tracker
-            first += batch_size
+            first += page_size
 
     async def listall(self) -> List[str]:
         """List all search indices in Redis database.
