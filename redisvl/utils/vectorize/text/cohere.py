@@ -79,7 +79,7 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
 
-        client = cohere.Client(api_key)
+        client = cohere.Client(api_key, client_name="redisvl")
         dims = self._set_model_dims(client, model)
         super().__init__(model=model, dims=dims, client=client)
 
