@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional
 
 import cohere
@@ -6,10 +7,7 @@ from redisvl.utils.rerank.base import BaseReranker
 
 
 class CohereReranker(BaseReranker):
-    def __init__(self, model: str = "rerank-english-v2.0", **data):
-        super().__init__(model=model, **data)
-        self.client = cohere.Client()
-        self.aclient = cohere.AsyncClient()
+    model: str = "rerank-english-v2.0"
 
     @staticmethod
     def _preprocess(results: List[Dict[str, Any]], rank_by: str) -> List[str]:
@@ -46,13 +44,13 @@ class CohereReranker(BaseReranker):
         rank_by = kwargs.get("rank_by", self.rank_by)
 
         docs = self._preprocess(results, rank_by)
+        client = cohere.Client(os.environ["COHERE_API_KEY"])
 
-        rankings = self.client.rerank(
+        rankings = client.rerank(
             model=self.model,
             query=query,
             documents=docs,
             top_n=limit,
-            return_documents=False,
             max_chunks_per_doc=max_chunks_per_doc,
         )
 
@@ -70,13 +68,12 @@ class CohereReranker(BaseReranker):
         rank_by = kwargs.get("rank_by", self.rank_by)
 
         docs = self._preprocess(results, rank_by)
-
-        rankings = await self.aclient.rerank(
+        client = cohere.AsyncClient(os.environ["COHERE_API_KEY"])
+        rankings = await client.rerank(
             model=self.model,
             query=query,
             documents=docs,
             top_n=limit,
-            return_documents=False,
             max_chunks_per_doc=max_chunks_per_doc,
         )
 
