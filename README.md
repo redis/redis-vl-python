@@ -80,8 +80,6 @@ Choose from multiple Redis deployment options:
 
     [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a [YAML file](schemas/schema.yaml):
     ```yaml
-    version: '0.1.0'
-
     index:
         name: user-index-v1
         prefix: user
