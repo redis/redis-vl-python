@@ -538,7 +538,9 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             Dict[str, Any]: The fetched object.
         """
-        return convert_bytes(self._redis_client.hgetall(self.key(id)))  # type: ignore
+        obj = self._storage.get(self._redis_client, [self.key(id)])  # type: ignore
+        if obj:
+            return convert_bytes(obj[0])
 
     @check_index_exists()
     def search(self, *args, **kwargs) -> "Result":
@@ -913,7 +915,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             Dict[str, Any]: The fetched object.
         """
-        return convert_bytes(await self._redis_client.hgetall(self.key(id)))  # type: ignore
+        obj = await self._storage.aget(self._redis_client, [self.key(id)])  # type: ignore
+        if obj:
+            return convert_bytes(obj[0])
 
     @check_async_index_exists()
     async def search(self, *args, **kwargs) -> "Result":

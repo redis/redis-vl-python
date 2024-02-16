@@ -54,9 +54,11 @@ def test_simple(client, schema, sample_data):
         return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
 
     if index.storage_type == StorageType.HASH:
-        index.load(sample_data, preprocess=hash_preprocess)
+        index.load(sample_data, preprocess=hash_preprocess, id_field="user")
     else:
-        index.load(sample_data)
+        index.load(sample_data, id_field="user")
+
+    assert index.fetch("john")
 
     return_fields = ["user", "age", "job", "credit_score"]
     query = VectorQuery(
