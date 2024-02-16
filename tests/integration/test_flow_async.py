@@ -57,9 +57,11 @@ async def test_simple(async_client, schema, sample_data):
         return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
 
     if index.storage_type == StorageType.HASH:
-        await index.load(sample_data, preprocess=hash_preprocess)
+        await index.load(sample_data, preprocess=hash_preprocess, id_field="user")
     else:
-        await index.load(sample_data)
+        await index.load(sample_data, id_field="user")
+
+    assert await index.fetch("john")
 
     # wait for async index to create
     time.sleep(1)

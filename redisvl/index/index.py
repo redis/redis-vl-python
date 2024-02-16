@@ -524,7 +524,7 @@ class SearchIndex(BaseSearchIndex):
             logger.exception("Error while loading data to Redis")
             raise
 
-    def fetch(self, id: str) -> Dict[str, Any]:
+    def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Fetch an object from Redis by id.
 
         The id is typically either a unique identifier,
@@ -538,7 +538,10 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             Dict[str, Any]: The fetched object.
         """
-        return convert_bytes(self._redis_client.hgetall(self.key(id)))  # type: ignore
+        obj = self._storage.get(self._redis_client, [self.key(id)])  # type: ignore
+        if obj:
+            return convert_bytes(obj[0])
+        return None
 
     @check_index_exists()
     def search(self, *args, **kwargs) -> "Result":
@@ -901,7 +904,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             logger.exception("Error while loading data to Redis")
             raise
 
-    async def fetch(self, id: str) -> Dict[str, Any]:
+    async def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Asynchronously etch an object from Redis by id. The id is typically
         either a unique identifier, or derived from some domain-specific
         metadata combination (like a document id or chunk id).
@@ -913,7 +916,10 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             Dict[str, Any]: The fetched object.
         """
-        return convert_bytes(await self._redis_client.hgetall(self.key(id)))  # type: ignore
+        obj = await self._storage.aget(self._redis_client, [self.key(id)])  # type: ignore
+        if obj:
+            return convert_bytes(obj[0])
+        return None
 
     @check_async_index_exists()
     async def search(self, *args, **kwargs) -> "Result":
