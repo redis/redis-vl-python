@@ -43,7 +43,10 @@ def vectorizer(request):
 @pytest.mark.skipif(skip_vectorizer_test, reason="Skipping vectorizer tests")
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
-    embedding = vectorizer.embed(text)
+    if isinstance(vectorizer, CohereTextVectorizer):
+        embedding = vectorizer.embed(text, input_type="search_document")
+    else:
+        embedding = vectorizer.embed(text)
 
     assert isinstance(embedding, list)
     assert len(embedding) == vectorizer.dims
@@ -77,7 +80,7 @@ def test_vectorizer_bad_input(vectorizer):
 
 
 @pytest.fixture(params=[OpenAITextVectorizer])
-def avectorizer(request, openai_key):
+def avectorizer(request):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
         return request.param()
