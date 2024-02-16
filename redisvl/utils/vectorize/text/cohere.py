@@ -38,7 +38,7 @@ class CohereTextVectorizer(BaseVectorizer):
         )
         doc_embeddings = cohere.embed_many(
             texts=["your document text", "more document text"],
-            input_type="search_documents"
+            input_type="search_document"
         )
 
     """
