@@ -229,7 +229,7 @@ embedding = co.embed(
 
 embeddings = co.embed_many(
     texts=["my document chunk content", "my other document chunk content"],
-    search_type="search_documents"
+    input_type="search_document"
 )
 ```
 
