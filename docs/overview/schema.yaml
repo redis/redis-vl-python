@@ -1,0 +1,17 @@
+
+version: '0.1.0'
+
+index:
+    name: vectorizers
+    prefix: doc
+    storage_type: hash
+
+fields:
+    - name: sentence
+      type: text
+    - name: embedding
+      type: vector
+      attrs:
+        dims: 768
+        algorithm: flat
+        distance_metric: cosine
