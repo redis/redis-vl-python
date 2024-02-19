@@ -14,7 +14,7 @@ There are a few ways to install RedisVL. The easiest way is to use pip.
 Install `redisvl` into your Python (>=3.8) environment using `pip`:
 
 ```bash
-$ pip install redisvl
+$ pip install -U redisvl
 ```
 
 RedisVL comes with a few dependencies that are automatically installed, however, a few dependencies

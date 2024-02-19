@@ -1,0 +1,4 @@
+openai<=0.28.1
+sentence-transformers>=2.2.2
+google-cloud-aiplatform>=1.26
+cohere>=4.44

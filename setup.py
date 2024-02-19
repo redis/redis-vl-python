@@ -11,20 +11,20 @@ def read_dev_requirements():
         requirements = f.read().splitlines()
     return requirements
 
+def read_all_requirements():
+    with open("requirements-all.txt") as f:
+        requirements = f.read().splitlines()
+    return requirements
+
 extras_require = {
-    "all": [
-        "openai==0.28.1",
-        "sentence-transformers>=2.2.2",
-        "google-cloud-aiplatform>=1.26",
-        "cohere==4.44"
-    ],
+    "all": read_all_requirements(),
     "dev": read_dev_requirements()
 }
 
 
 setup(
     name="redisvl",
-    version="0.1.0",
+    version="0.1.1",
     python_requires=">=3.7",
     install_requires=read_requirements(),
     extras_require=extras_require,
