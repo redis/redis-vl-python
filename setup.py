@@ -29,7 +29,11 @@ setup(
     install_requires=read_requirements(),
     extras_require=extras_require,
     packages=find_packages(),
-    package_data = {"redisvl": ["requirements.txt", "requirements-dev.txt"]},
+    package_data={
+        "redisvl": [
+            "requirements.txt", "requirements-dev.txt", "requirements-all.txt"
+        ]
+    },
     zip_safe=False,
     entry_points={
         "console_scripts": [
