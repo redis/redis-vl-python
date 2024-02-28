@@ -68,6 +68,7 @@ Choose from multiple Redis deployment options:
     docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
     ```
 3. [Redis Enterprise](https://redis.com/redis-enterprise/): Commercial, self-hosted database
+4. [Azure Cache for Redis Enterprise](https://learn.microsoft.com/azure/azure-cache-for-redis/quickstart-create-redis-enterprise): Fully managed Redis Enterprise on Azure
 
 > Enhance your experience and observability with the free [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/).
 
