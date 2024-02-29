@@ -84,7 +84,10 @@ def test_vectorizer_bad_input(vectorizer, skip_vectorizer):
 
 
 @pytest.fixture(params=[OpenAITextVectorizer])
-def avectorizer(request):
+def avectorizer(request, skip_vectorizer):
+    if skip_vectorizer:
+        pytest.skip("Skipping vectorizer instantiation...")
+
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
         return request.param()
