@@ -22,7 +22,7 @@ print(f"Python version: {sys.version}", flush=True)
 project = 'RedisVL'
 copyright = '2024, Redis Inc.'
 author = 'RedisVentures'
-version = "0.1.1"
+version = "0.1.2"
 
 # The full version, including alpha/beta/rc tags
 release = version
