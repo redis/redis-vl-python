@@ -616,7 +616,8 @@ class SearchIndex(BaseSearchIndex):
             TypeError: If the page_size argument is not of type int.
             ValueError: If the page_size argument is less than or equal to zero.
 
-        Example:
+        .. code-block:: python
+
             # Iterate over paginated search results in batches of 10
             for result_batch in index.paginate(query, page_size=10):
                 # Process each batch of results
@@ -993,7 +994,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             TypeError: If the page_size argument is not of type int.
             ValueError: If the page_size argument is less than or equal to zero.
 
-        Example:
+        .. code-block:: python
+
             # Iterate over paginated search results in batches of 10
             async for result_batch in index.paginate(query, page_size=10):
                 # Process each batch of results
