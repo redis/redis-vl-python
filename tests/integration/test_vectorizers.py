@@ -9,12 +9,14 @@ from redisvl.utils.vectorize import (
     VertexAITextVectorizer,
 )
 
+
 @pytest.fixture
 def skip_vectorizer() -> bool:
     # os.getenv returns a string
     v = os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
     print(v, flush=True)
     return v
+
 
 @pytest.fixture(
     params=[
