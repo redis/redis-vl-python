@@ -14,6 +14,9 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('.'))
 
+print(f"Sphinx is using Python executable at: {sys.executable}", flush=True)
+print(f"Python version: {sys.version}", flush=True)
+
 # -- Project information -----------------------------------------------------
 
 project = 'RedisVL'
