@@ -19,7 +19,7 @@ class OpenAITextVectorizer(BaseVectorizer):
     in the `api_config` dictionary or through the `OPENAI_API_KEY` environment
     variable. Users must obtain an API key from OpenAI's website
     (https://api.openai.com/). Additionally, the `openai` python client must be
-    installed with `pip install openai==1.13.3`.
+    installed with `pip install openai>=1.13.0`.
 
     The vectorizer supports both synchronous and asynchronous operations,
     allowing for batch processing of texts and flexibility in handling

@@ -1,4 +1,4 @@
-openai>=1.13.3
+openai>=1.13.0
 sentence-transformers>=2.2.2
 google-cloud-aiplatform>=1.26
 cohere>=4.44
