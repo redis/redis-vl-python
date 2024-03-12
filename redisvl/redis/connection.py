@@ -1,8 +1,10 @@
 import os
 from typing import Any, Dict, List, Optional
 
-from redis import ConnectionPool, Redis
+from redis import Connection, ConnectionPool, Redis, SSLConnection
+from redis.asyncio import Connection as AConnection
 from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio import SSLConnection as ASSLConnection
 
 from redisvl.redis.constants import REDIS_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
@@ -130,8 +132,16 @@ class RedisConnectionFactory:
         Raises:
             ValueError: If required Redis modules are not installed.
         """
+        # pick the right connection class
+        connection_class = Connection
+        if isinstance(client.connection_pool.connection_class, ASSLConnection):
+            connection_class = SSLConnection
+        # set up a temp sync client
         temp_client = Redis(
-            connection_pool=ConnectionPool(**client.connection_pool.connection_kwargs)
+            connection_pool=ConnectionPool(
+                connection_class=connection_class,
+                **client.connection_pool.connection_kwargs,
+            )
         )
         RedisConnectionFactory.validate_redis_modules(
             temp_client, redis_required_modules
