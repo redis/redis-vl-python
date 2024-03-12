@@ -1,10 +1,15 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
-from redis import Connection, ConnectionPool, Redis, SSLConnection
-from redis.asyncio import Connection as AConnection
+from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio import SSLConnection as ASSLConnection
+from redis.connection import (
+    AbstractConnection,
+    Connection,
+    ConnectionPool,
+    SSLConnection,
+)
 
 from redisvl.redis.constants import REDIS_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
@@ -133,7 +138,7 @@ class RedisConnectionFactory:
             ValueError: If required Redis modules are not installed.
         """
         # pick the right connection class
-        connection_class = Connection
+        connection_class: Type[AbstractConnection] = Connection
         if isinstance(client.connection_pool.connection_class, ASSLConnection):
             connection_class = SSLConnection
         # set up a temp sync client
