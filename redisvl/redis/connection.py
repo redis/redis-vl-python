@@ -138,9 +138,11 @@ class RedisConnectionFactory:
             ValueError: If required Redis modules are not installed.
         """
         # pick the right connection class
-        connection_class: Type[AbstractConnection] = Connection
-        if isinstance(client.connection_pool.connection_class, ASSLConnection):
-            connection_class = SSLConnection
+        connection_class: Type[AbstractConnection] = (
+            SSLConnection
+            if client.connection_pool.connection_class == ASSLConnection
+            else Connection
+        )
         # set up a temp sync client
         temp_client = Redis(
             connection_pool=ConnectionPool(
