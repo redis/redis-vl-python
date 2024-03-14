@@ -51,4 +51,8 @@ def test_unknown_redis():
 
 def test_required_modules(client):
     RedisConnectionFactory.validate_redis_modules(client)
-    RedisConnectionFactory.validate_async_redis_modules(client)
+
+
+@pytest.mark.asyncio
+async def test_async_required_modules(async_client):
+    RedisConnectionFactory.validate_async_redis_modules(async_client)
