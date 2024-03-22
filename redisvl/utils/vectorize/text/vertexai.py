@@ -80,24 +80,21 @@ class VertexAITextVectorizer(BaseVectorizer):
             )
 
         # Check for Google Application Credentials
-        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
-            creds_path = (
-                api_config.get("google_application_credentials") if api_config else None
-            )
-            if creds_path:
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
-            else:
-                raise ValueError(
-                    "Missing Google Application Credentials. "
-                    "Provide the path to the credentials JSON file in the api_config with\
-                        key 'google_application_credentials' or set the \
-                            GOOGLE_APPLICATION_CREDENTIALS environment variable."
-                )
+        credentials = (
+            api_config.get("credentials") if api_config else None
+        )
+        if not credentials:
+            credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
         try:
             import vertexai
-            from vertexai.preview.language_models import TextEmbeddingModel
+            from vertexai.language_models import TextEmbeddingModel
 
-            vertexai.init(project=project_id, location=location)
+            vertexai.init(
+                project=project_id,
+                location=location,
+                credentials=credentials
+            )
         except ImportError:
             raise ImportError(
                 "VertexAI vectorizer requires the google-cloud-aiplatform library. "
