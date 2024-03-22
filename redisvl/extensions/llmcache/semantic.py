@@ -64,6 +64,12 @@ class SemanticCache(BaseLLMCache):
         if prefix is None:
             prefix = name
 
+        # Set vectorizer default
+        if vectorizer is None:
+            vectorizer = HFTextVectorizer(
+                model="sentence-transformers/all-mpnet-base-v2"
+            )
+
         # build cache index schema
         schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
         # add fields
@@ -101,11 +107,6 @@ class SemanticCache(BaseLLMCache):
             self.vector_field_name,
             self.metadata_field_name,
         ]
-
-        if vectorizer is None:
-            vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-mpnet-base-v2"
-            )
         self.set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
 
