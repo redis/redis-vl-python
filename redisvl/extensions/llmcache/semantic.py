@@ -25,9 +25,7 @@ class SemanticCache(BaseLLMCache):
         prefix: Optional[str] = None,
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
-        vectorizer: BaseVectorizer = HFTextVectorizer(
-            model="sentence-transformers/all-mpnet-base-v2"
-        ),
+        vectorizer: Optional[BaseVectorizer] = None,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_args: Dict[str, Any] = {},
@@ -103,6 +101,11 @@ class SemanticCache(BaseLLMCache):
             self.vector_field_name,
             self.metadata_field_name,
         ]
+
+        if vectorizer is None:
+            vectorizer = HFTextVectorizer(
+                model="sentence-transformers/all-mpnet-base-v2"
+            )
         self.set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
 
