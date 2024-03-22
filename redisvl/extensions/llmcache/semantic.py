@@ -25,9 +25,7 @@ class SemanticCache(BaseLLMCache):
         prefix: Optional[str] = None,
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
-        vectorizer: BaseVectorizer = HFTextVectorizer(
-            model="sentence-transformers/all-mpnet-base-v2"
-        ),
+        vectorizer: Optional[BaseVectorizer] = None,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_args: Dict[str, Any] = {},
@@ -65,6 +63,12 @@ class SemanticCache(BaseLLMCache):
         # Use the index name as the key prefix by default
         if prefix is None:
             prefix = name
+
+        # Set vectorizer default
+        if vectorizer is None:
+            vectorizer = HFTextVectorizer(
+                model="sentence-transformers/all-mpnet-base-v2"
+            )
 
         # build cache index schema
         schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
