@@ -37,7 +37,7 @@ Then install the required libraries into your virtual environment:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-poetry install
+poetry install --all-extras
 ```
 
 Then, to deactivate the environment:

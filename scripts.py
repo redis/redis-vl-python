@@ -17,7 +17,7 @@ def check_lint():
     subprocess.run(["pylint", "--rcfile=.pylintrc", "./redisvl"])
 
 def mypy():
-    subprocess.run(["mypy", "./redisvl"])
+    subprocess.run(["python", "-m", "mypy", "./redisvl"])
 
 def test():
     subprocess.run(["python", "-m", "pytest", "--log-level=CRITICAL"])
@@ -26,11 +26,11 @@ def test_verbose():
     subprocess.run(["python", "-m", "pytest", "-vv", "-s", "--log-level=CRITICAL"])
 
 def test_cov():
-    subprocess.run(["python", "-m", "pytest", "-vv", "--cov=./redisvl", "--log-level=CRITICAL"])
+    subprocess.run(["python", "-m", "pytest", "-vv", "--cov=./redisvl", "--cov-report=xml", "--log-level=CRITICAL"])
 
 def cov():
     subprocess.run(["coverage", "html"])
     print("If data was present, coverage report is in ./htmlcov/index.html")
 
 def test_notebooks():
-    subprocess.run(["cd", "docs/", "&&", "treon", "-v"])
+    subprocess.run(["cd", "docs/", "&&", "poetry run treon", "-v"])
