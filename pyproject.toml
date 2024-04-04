@@ -19,7 +19,7 @@ classifiers = [
 packages = [{ include = "redisvl", from = "." }]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<4.0"
+python = ">=3.9,<4.0"
 numpy = "*"
 pyyaml = "*"
 coloredlogs = "*"
@@ -58,6 +58,9 @@ test-verbose = "scripts:test_verbose"
 test-cov = "scripts:test_cov"
 cov = "scripts:cov"
 test-notebooks = "scripts:test_notebooks"
+
+[tool.poetry.group.test.dependencies]
+testcontainers = "^4.3.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

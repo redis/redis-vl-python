@@ -53,20 +53,25 @@ Check formatting, linting, and typing:
 poetry run check
 ```
 
+#### TestContainers
+
+RedisVL uses Testcontainers Python for integration tests. Testcontainers is an open-source framework for provisioning throwaway, on-demand containers for development and testing use cases.
+
+To run Testcontainers-based tests you need a local Docker installation such as:
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Docker Engine on Linux](https://docs.docker.com/engine/install/)
+
+#### Running the Tests
+
 Tests (with vectorizers):
 ```bash
 poetry run test-cov
 ```
 
-**NOTE**: Some tests require the `REDIS_URL` environment variable to be set (e.g. `export REDIS_URL=redis://localhost:6379`).
-
 Tests w/out vectorizers:
 ```bash
 SKIP_VECTORIZERS=true poetry run test-cov
 ```
-
-> Dev requirements are needed here to be able to run tests and linting.
-> See other commands in the [Makefile](Makefile)
 
 ### Docker Tips
 

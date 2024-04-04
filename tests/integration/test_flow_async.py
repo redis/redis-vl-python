@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import pytest
@@ -43,7 +44,7 @@ json_schema = {
 }
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 @pytest.mark.parametrize("schema", [hash_schema, json_schema])
 async def test_simple(async_client, schema, sample_data):
     index = AsyncSearchIndex.from_dict(schema)
@@ -64,7 +65,7 @@ async def test_simple(async_client, schema, sample_data):
     assert await index.fetch("john")
 
     # wait for async index to create
-    time.sleep(1)
+    await asyncio.sleep(1)
 
     return_fields = ["user", "age", "job", "credit_score"]
     query = VectorQuery(
@@ -79,15 +80,11 @@ async def test_simple(async_client, schema, sample_data):
     assert len(results.docs) == len(results_2)
 
     # make sure correct users returned
-    # users = list(results.docs)
-    # print(len(users))
     users = [doc for doc in results.docs]
     assert users[0].user in ["john", "mary"]
     assert users[1].user in ["john", "mary"]
 
     # make sure vector scores are correct
-    # query vector and first two are the same vector.
-    # third is different (hence should be positive difference)
     assert float(users[0].vector_distance) == 0.0
     assert float(users[1].vector_distance) == 0.0
     assert float(users[2].vector_distance) > 0
