@@ -2,6 +2,7 @@ __pycache__/
 redisvl.egg-info/
 .coverage.*
 .coverage
+coverage.xml
 scratch
 .DS_Store
 *.csv

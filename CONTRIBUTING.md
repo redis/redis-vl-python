@@ -28,37 +28,41 @@ Here's how to get started with your code contribution:
     pull request.
 
 ### Dev Environment
-There is a provided `requirements.txt` and `requirements-dev.txt` file you can use to install required libraries with `pip` into your virtual environment.
+RedisVL uses [Poetry](https://python-poetry.org/) for dependency management.
 
-Or use the local package editable install method:
+Follow the instructions to [install Poetry](https://python-poetry.org/docs/#installation).
+
+Then install the required libraries into your virtual environment:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e '.[all,dev]'
+poetry install
 ```
 
-Then to deactivate the env:
-```
-source deactivate
+Then, to deactivate the environment:
+
+```bash
+deactivate
 ```
 
 ### Linting and Tests
 
 Check formatting, linting, and typing:
 ```bash
-make check
+poetry run check
 ```
 
 Tests (with vectorizers):
 ```bash
-make test-cov
+poetry run test-cov
 ```
 
 **NOTE**: Some tests require the `REDIS_URL` environment variable to be set (e.g. `export REDIS_URL=redis://localhost:6379`).
 
 Tests w/out vectorizers:
 ```bash
-SKIP_VECTORIZERS=true make test-cov
+SKIP_VECTORIZERS=true poetry run test-cov
 ```
 
 > Dev requirements are needed here to be able to run tests and linting.
