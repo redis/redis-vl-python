@@ -69,7 +69,7 @@ capability enabled when creating your database.
 
 ### Redis Stack (local development)
 
-For local development and testing, Redis-Stack and be used. We recommend running Redis
+For local development and testing, Redis-Stack can be used. We recommend running Redis
 in a docker container. To do so, run the following command:
 
 ```bash
