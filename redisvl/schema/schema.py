@@ -14,6 +14,28 @@ logger = get_logger(__name__)
 SCHEMA_VERSION = "0.1.0"
 
 
+def custom_dict(model: BaseModel) -> Dict[str, Any]:
+    """
+    Custom serialization function that converts a Pydantic model to a dict,
+    serializing Enum fields to their values, and handling nested models and lists.
+    """
+
+    def serialize_item(item):
+        if isinstance(item, Enum):
+            return item.value.lower()
+        elif isinstance(item, dict):
+            return {key: serialize_item(value) for key, value in item.items()}
+        elif isinstance(item, list):
+            return [serialize_item(element) for element in item]
+        else:
+            return item
+
+    serialized_data = model.dict(exclude_none=True)
+    for key, value in serialized_data.items():
+        serialized_data[key] = serialize_item(value)
+    return serialized_data
+
+
 class StorageType(Enum):
     """
     Enumeration for the storage types supported in Redis.
@@ -62,14 +84,6 @@ class IndexInfo(BaseModel):
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
-
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
-        return {
-            "name": self.name,
-            "prefix": self.prefix,
-            "key_separator": self.key_separator,
-            "storage_type": self.storage_type.value,
-        }
 
 
 class IndexSchema(BaseModel):
@@ -428,12 +442,13 @@ class IndexSchema(BaseModel):
         return fields
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the index schema to a dictionary.
+        """Serialize the index schema model to a dictionary, handling Enums
+        and other special cases properly.
 
         Returns:
             Dict[str, Any]: The index schema as a dictionary.
         """
-        dict_schema = self.dict(exclude_none=True)
+        dict_schema = custom_dict(self)
         # cast fields back to a pure list
         dict_schema["fields"] = [
             field for field_name, field in dict_schema["fields"].items()
@@ -456,6 +471,7 @@ class IndexSchema(BaseModel):
 
         with open(fp, "w") as f:
             yaml_data = self.to_dict()
+            print(yaml_data)
             yaml.dump(yaml_data, f, sort_keys=False)
 
 
