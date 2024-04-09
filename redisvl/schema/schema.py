@@ -471,7 +471,6 @@ class IndexSchema(BaseModel):
 
         with open(fp, "w") as f:
             yaml_data = self.to_dict()
-            print(yaml_data)
             yaml.dump(yaml_data, f, sort_keys=False)
 
 
