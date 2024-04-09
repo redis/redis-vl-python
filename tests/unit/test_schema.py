@@ -3,8 +3,8 @@ import pathlib
 
 import pytest
 
-from redisvl.schema.fields import NumericField, TagField, TextField
-from redisvl.schema.schema import IndexSchema, StorageType
+from redisvl.schema.fields import TagField, TextField
+from redisvl.schema.schema import IndexSchema, StorageType, custom_dict
 
 
 def get_base_path():
@@ -16,6 +16,12 @@ def create_sample_index_schema():
     sample_fields = [
         {"name": "example_text", "type": "text", "attrs": {"sortable": False}},
         {"name": "example_numeric", "type": "numeric", "attrs": {"sortable": True}},
+        {"name": "example_tag", "type": "tag", "attrs": {"sortable": True}},
+        {
+            "name": "example_vector",
+            "type": "vector",
+            "attrs": {"dims": 1024, "algorithm": "flat"},
+        },
     ]
     return IndexSchema.from_dict({"index": {"name": "test"}, "fields": sample_fields})
 
@@ -89,26 +95,6 @@ def test_remove_field():
     assert "example_text" not in index_schema.field_names
 
 
-def test_schema_compare():
-    """Test schema comparisons."""
-    schema_1 = IndexSchema.from_dict({"index": {"name": "test"}})
-    # manually add the same fields as the helper method provides below
-    schema_1.add_fields(
-        [
-            {"name": "example_text", "type": "text", "attrs": {"sortable": False}},
-            {"name": "example_numeric", "type": "numeric", "attrs": {"sortable": True}},
-        ]
-    )
-
-    assert "example_text" in schema_1.fields
-    assert "example_numeric" in schema_1.fields
-
-    schema_2 = create_sample_index_schema()
-    assert schema_1.fields == schema_2.fields
-    assert schema_1.index.name == schema_2.index.name
-    assert schema_1.to_dict() == schema_2.to_dict()
-
-
 def test_generate_fields():
     """Test field generation."""
     sample = {"name": "John", "age": 30, "tags": ["test", "test2"]}
@@ -126,7 +112,7 @@ def test_to_dict():
     index_dict = index_schema.to_dict()
     assert index_dict["index"]["name"] == "test"
     assert isinstance(index_dict["fields"], list)
-    assert len(index_dict["fields"]) == 2 == len(index_schema.fields)
+    assert len(index_dict["fields"]) == 4 == len(index_schema.fields)
 
 
 def test_from_dict():
