@@ -22,6 +22,14 @@ def openai_key():
     return os.getenv("OPENAI_API_KEY")
 
 @pytest.fixture
+def openai_version():
+    return os.getenv("OPENAI_API_VERSION")
+
+@pytest.fixture
+def azure_endpoint():
+    return os.getenv("AZURE_OPENAI_ENDPOINT")
+
+@pytest.fixture
 def cohere_key():
     return os.getenv("COHERE_API_KEY")
 
