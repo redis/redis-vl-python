@@ -260,7 +260,7 @@ aim to improve applications working with LLMs:
         metadata={}
     )
 
-    # quickly check the cache with a slightly different prompt (before invoiking an LLM)
+    # quickly check the cache with a slightly different prompt (before invoking an LLM)
     response = llmcache.check(prompt="What is France's capital city?")
     print(response[0]["response"])
     ```
