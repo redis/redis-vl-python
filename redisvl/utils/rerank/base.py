@@ -1,3 +1,4 @@
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -6,9 +7,9 @@ from pydantic.v1 import BaseModel, validator
 
 class BaseReranker(BaseModel, ABC):
     model: str
-    rank_by: Optional[str] = None
-    limit: int = 5
-    return_score: bool = True
+    rank_by: Optional[str]
+    limit: int
+    return_score: bool
 
     @validator("limit")
     @classmethod
@@ -28,3 +29,5 @@ class BaseReranker(BaseModel, ABC):
         self, query: str, results: List[Dict[str, Any]], **kwargs
     ) -> List[Dict[str, Any]]:
         pass
+
+
