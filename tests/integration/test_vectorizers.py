@@ -3,11 +3,11 @@ import os
 import pytest
 
 from redisvl.utils.vectorize import (
+    AzureOpenAITextVectorizer,
     CohereTextVectorizer,
     HFTextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
-    AzureOpenAITextVectorizer
 )
 
 
@@ -25,7 +25,7 @@ def skip_vectorizer() -> bool:
         OpenAITextVectorizer,
         VertexAITextVectorizer,
         CohereTextVectorizer,
-        AzureOpenAITextVectorizer
+        AzureOpenAITextVectorizer,
     ]
 )
 def vectorizer(request, skip_vectorizer):

@@ -16,8 +16,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
     This vectorizer is designed to interact with AzureOpenAI's embeddings API,
     requiring an API key, an AzureOpenAI deployment endpoint and API version.
-    These values can be provided directly in the `api_config` dictionary with 
-    the parameters 'azure_endpoint'. 'api_version' and 'api_key' or through the 
+    These values can be provided directly in the `api_config` dictionary with
+    the parameters 'azure_endpoint', 'api_version' and 'api_key' or through the
     environment variables 'AZURE_OPENAI_ENDPOINT', 'OPENAI_API_VERSION', and 'AZURE_OPENAI_API_KEY'.
     Users must obtain these values from the 'Keys and Endpoints' section in their Azure OpenAI service.
     Additionally, the `openai` python client must be installed with `pip install openai>=1.13.0`.
@@ -35,7 +35,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 "api_key": "your_api_key", # OR set OPENAI_API_KEY in your env
                 "api_version": "your_api_version", # OR set OPENAI_API_VERSION in your env
                 "azure_endpoint": "your_azure_endpoint", # OR set AZURE_OPENAI_ENDPOINT in your env
-                } 
+                }
         )
         embedding = vectorizer.embed("Hello, world!")
 
@@ -76,7 +76,9 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         # Fetch the API key, version and endpoint from api_config or environment variable
         azure_endpoint = (
-            api_config.get("azure_endpoint") if api_config else os.getenv("AZURE_OPENAI_ENDPOINT")
+            api_config.get("azure_endpoint")
+            if api_config
+            else os.getenv("AZURE_OPENAI_ENDPOINT")
         )
 
         if not azure_endpoint:
@@ -87,7 +89,9 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             )
 
         api_version = (
-            api_config.get("api_version") if api_config else os.getenv("OPENAI_API_VERSION")
+            api_config.get("api_version")
+            if api_config
+            else os.getenv("OPENAI_API_VERSION")
         )
 
         if not api_version:
@@ -98,7 +102,9 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             )
 
         api_key = (
-            api_config.get("api_key") if api_config else os.getenv("AZURE_OPENAI_API_KEY")
+            api_config.get("api_key")
+            if api_config
+            else os.getenv("AZURE_OPENAI_API_KEY")
         )
 
         if not api_key:
@@ -108,11 +114,14 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-
-        client = AzureOpenAI(api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint)
+        client = AzureOpenAI(
+            api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
+        )
         dims = self._set_model_dims(client, model)
         super().__init__(model=model, dims=dims, client=client)
-        self.aclient = AsyncAzureOpenAI(api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint)
+        self.aclient = AsyncAzureOpenAI(
+            api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
+        )
 
     @staticmethod
     def _set_model_dims(client, model) -> int:
