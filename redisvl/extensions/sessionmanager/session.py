@@ -10,11 +10,30 @@ class SessionManager():
         context. Session history is stored in prompt:response pairs referred to
         as exchanges.
 
-        An exchange is
-
         Args:
             from_file Optional[str]: File to intiaialize the cache index with.
             vectorizer Vectorizer: The vectorizer to create embeddings with.
+
+        The proposed schema will support a single combined vector embedding constructed
+        from the prompt & response in a single string.
+
+        schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
+        schema.add_fields(
+            [
+                {"name": prompt_field, "type": "text"},
+                {"name": response_field, "type": "text"},
+                {
+                    "name": combined_vector_field,
+                    "type": "vector",
+                    "attrs": {
+                        "dims": vectorizer_dims,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                 },
+            ]
+        )
+
 
         """
         pass
@@ -65,9 +84,18 @@ class SessionManager():
         pass
 
 
-    def _order_by(self, exchanges: List[str]):
+    def _order_by(self, exchanges: List[str], recency: bool = True) ->  List[str]:
+        """ Orders the fetched conversational context by either recency or relevance.
+
+        Args:
+            exchanges List[str]: The list of fetched conversation subsections
+            recency bool: Whether to sort exchanges by recency or relevance
+
+        Returns:
+            List[str]: The re-ordered conversation subsections.
+        """
         # need to do this ordering in the query with a timestamp attr
-        # because once we get prompt:response strings back the timstamp is stripped
+        # because once we get prompt:response strings back the timestamp is stripped
         pass
 
     @property
