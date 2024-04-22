@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 
-class BaseSessionManager():
+class SessionManager():
     def __init__(self, from_file: Optional[str] = None, vectorizer: Vectorizer):
         """ initialize session memory with index
 
@@ -68,6 +68,7 @@ class BaseSessionManager():
     def _order_by(self, exchanges: List[str]):
         # need to do this ordering in the query with a timestamp attr
         # because once we get prompt:response strings back the timstamp is stripped
+        pass
 
     @property
     def distance_threshold(self):
@@ -89,7 +90,7 @@ class BaseSessionManager():
         pass
 
 
-    def insert(self, exchange: Tuple[str, str]):
+    def store(self, exchange: Tuple[str, str]):
         """ Insert a prompt:response pair into the session memory. A timestamp
             is associated with each exchange so that they can be later sorted
             in sequential ordering after retrieval.
