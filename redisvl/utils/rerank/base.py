@@ -1,13 +1,13 @@
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic.v1 import BaseModel, validator
 
 
 class BaseReranker(BaseModel, ABC):
     model: str
-    rank_by: Optional[str]
+    rank_by: Optional[List[str]]
     limit: int
     return_score: bool
 
@@ -20,13 +20,13 @@ class BaseReranker(BaseModel, ABC):
 
     @abstractmethod
     def rank(
-        self, query: str, results: List[Dict[str, Any]], **kwargs
+        self, query: str, results: Union[List[Dict[str, Any]], List[str]], **kwargs
     ) -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
     async def arank(
-        self, query: str, results: List[Dict[str, Any]], **kwargs
+        self, query: str, results: Union[List[Dict[str, Any]], List[str]], **kwargs
     ) -> List[Dict[str, Any]]:
         pass
 
