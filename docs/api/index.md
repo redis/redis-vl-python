@@ -16,6 +16,7 @@ searchindex
 query
 filter
 vectorizer
+reranker
 cache
 ```
 
