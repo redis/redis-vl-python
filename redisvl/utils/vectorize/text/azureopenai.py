@@ -32,7 +32,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         vectorizer = AzureOpenAITextVectorizer(
             model="text-embedding-ada-002",
             api_config={
-                "api_key": "your_api_key", # OR set OPENAI_API_KEY in your env
+                "api_key": "your_api_key", # OR set AZURE_OPENAI_API_KEY in your env
                 "api_version": "your_api_version", # OR set OPENAI_API_VERSION in your env
                 "azure_endpoint": "your_azure_endpoint", # OR set AZURE_OPENAI_ENDPOINT in your env
                 }
