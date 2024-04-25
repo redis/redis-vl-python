@@ -1,9 +1,14 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+from redis import Redis
 
 class SessionManager():
-    def __init__(self, from_file: Optional[str] = None, vectorizer: Vectorizer):
-        """ initialize session memory with index
+    def __init__(self,
+                 from_file: Optional[str] = None,
+                 vectorizer: Vectorizer = None
+                 redis_client: Optional[Redis] = None,
+                 redis_url: str = "redis://localhost:6379"
+                 ):
+        """ Initialize session memory with index
 
         Session Manager stores the current and previous user text prompts and
         LLM responses to allow for enriching future prompts with session
@@ -11,17 +16,26 @@ class SessionManager():
         as exchanges.
 
         Args:
-            from_file Optional[str]: File to intiaialize the cache index with.
+            from_file Optional[str]: File to intiaialize the session index with.
             vectorizer Vectorizer: The vectorizer to create embeddings with.
+            redis_client Optional[Redis]: A Redis client instance. Defaults to
+                None.
+            redis_url Optional[str]: The redis url if no Redis client instance
+                is provided.  Defaults to "redis://localhost:6379".
 
-        The proposed schema will support a single combined vector embedding constructed
-        from the prompt & response in a single string.
+
+        The proposed schema will support a single combined vector embedding
+        constructed from the prompt & response in a single string.
+
+        """
 
         schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
         schema.add_fields(
             [
                 {"name": prompt_field, "type": "text"},
                 {"name": response_field, "type": "text"},
+                {"name": timestamp, "type": "numeric"},
+                {"name": user_id, "type": "tag"},
                 {
                     "name": combined_vector_field,
                     "type": "vector",
@@ -34,9 +48,14 @@ class SessionManager():
             ]
         )
 
+        self._index = SearchIndex(schema=schema)
 
-        """
-        pass
+        if redis_client:
+            self._index.set_client(redis_client)
+        else:
+            self._index.connect(redis_url=redis_url)
+
+        self._index.create()
 
 
     def clear(self):
@@ -98,9 +117,11 @@ class SessionManager():
         # because once we get prompt:response strings back the timestamp is stripped
         pass
 
+
     @property
     def distance_threshold(self):
         return self.distance_threshold
+
 
     def set_distance_threshold(self, threshold):
         self.set_distance_threshold = threshold
