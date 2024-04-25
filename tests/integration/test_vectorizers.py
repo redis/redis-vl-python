@@ -3,6 +3,7 @@ import os
 import pytest
 
 from redisvl.utils.vectorize import (
+    AzureOpenAITextVectorizer,
     CohereTextVectorizer,
     HFTextVectorizer,
     OpenAITextVectorizer,
@@ -24,6 +25,7 @@ def skip_vectorizer() -> bool:
         OpenAITextVectorizer,
         VertexAITextVectorizer,
         CohereTextVectorizer,
+        AzureOpenAITextVectorizer,
     ]
 )
 def vectorizer(request, skip_vectorizer):
@@ -37,6 +39,8 @@ def vectorizer(request, skip_vectorizer):
     elif request.param == VertexAITextVectorizer:
         return request.param()
     elif request.param == CohereTextVectorizer:
+        return request.param()
+    elif request.param == AzureOpenAITextVectorizer:
         return request.param()
 
 
