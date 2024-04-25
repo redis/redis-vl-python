@@ -62,6 +62,7 @@ jobs:
         COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
         AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
         AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
+        AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
         OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
       run: |
         make test-cov
@@ -80,6 +81,7 @@ jobs:
         COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
         AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
         AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
+        AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
         OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
       run: |
         cd docs/ && treon -v --exclude="./examples/openai_qna.ipynb"
