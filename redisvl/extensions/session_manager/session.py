@@ -1,10 +1,27 @@
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime
+
 from redis import Redis
 
-class SessionManager():
+from redisvl.index import SearchIndex
+from redisvl.query import RangeQuery
+from redisvl.redis.utils import array_to_buffer
+from redisvl.schema.schema import IndexSchema
+from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+
+class SessionManager:
+    _session_id: str = "any_session"
+    _user_id: str = "any_user"
+    _application_id: str = "any_app"
+
     def __init__(self,
-                 from_file: Optional[str] = None,
-                 vectorizer: Vectorizer = None
+                 name: str = "session", 
+                 prefix: Optional[str] = None,
+                 session_id: str = None,
+                 user_id: str = None,
+                 application_id: str = None,
+                 vectorizer: Optional[BaseVectorizer] = None,
                  redis_client: Optional[Redis] = None,
                  redis_url: str = "redis://localhost:6379"
                  ):
@@ -16,7 +33,8 @@ class SessionManager():
         as exchanges.
 
         Args:
-            from_file Optional[str]: File to intiaialize the session index with.
+            name str:
+            prefix Optional[str]: 
             vectorizer Vectorizer: The vectorizer to create embeddings with.
             redis_client Optional[Redis]: A Redis client instance. Defaults to
                 None.
@@ -28,22 +46,40 @@ class SessionManager():
         constructed from the prompt & response in a single string.
 
         """
+        if not prefix:
+            prefix = name
+        if not session_id:
+            self._session_id = "any_session"
+        if not user_id:
+            self._user_id = "any_id"
+        if not application_id:
+            self._application_id = "any_app"
+
+        if vectorizer is None:
+            self._vectorizer = HFTextVectorizer(
+                model="sentence-transformers/all-mpnet-base-v2"
+            )
 
         schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
+
         schema.add_fields(
             [
-                {"name": prompt_field, "type": "text"},
-                {"name": response_field, "type": "text"},
-                {"name": timestamp, "type": "numeric"},
-                {"name": user_id, "type": "tag"},
+                {"name": "prompt", "type": "text"},
+                {"name": "response", "type": "text"},
+                {"name": "timestamp", "type": "numeric"},
+                {"name": self._session_id, "type": "tag"},
+                {"name": self._user_id, "type": "tag"},
+                {"name": self._application_id, "type": "tag"},
+                {"name": "token_count", "type": "numeric"},
                 {
-                    "name": combined_vector_field,
+                    "name": "combined_vector_field",
                     "type": "vector",
                     "attrs": {
-                        "dims": vectorizer_dims,
+                        "dims": self._vectorizer.dims,
                         "datatype": "float32",
                         "distance_metric": "cosine",
                         "algorithm": "flat",
+                    },
                  },
             ]
         )
@@ -63,7 +99,7 @@ class SessionManager():
         pass
 
 
-    def fetch_context( self, prompt: str, as_text: bool = False, top_k: int = 5) -> Union[str, List[str]]:
+    def fetch_context(self, prompt: str, as_text: bool = False, top_k: int = 5) -> Union[str, List[str]]:
         """ Searches the chat history for information semantically related to
         the specified prompt.
 
@@ -86,7 +122,28 @@ class SessionManager():
         Raises:
             ValueError: If top_k is an invalid integer.
         """
-        pass
+       
+        return_fields = [
+            self._session_id,
+            self._user_id,
+            self._application_id,
+            "prompt",
+            "response",
+            "combined_vector_field",
+        ]
+
+
+        query = RangeQuery(
+            vector=self._vectorizer.embed(prompt),
+            vector_field_name="combined_vector_field",
+            return_fields=return_fields,
+            distance_threshold=0.2, #self._distance_threshold
+            num_results=top_k,
+            return_score=True
+        )
+        
+        hits = self._index.query(query)
+        return hits
 
 
     def conversation_history(self, as_text: bool = False) -> Union[str, List[str]]:
@@ -120,11 +177,11 @@ class SessionManager():
 
     @property
     def distance_threshold(self):
-        return self.distance_threshold
+        return self._distance_threshold
 
 
     def set_distance_threshold(self, threshold):
-        self.set_distance_threshold = threshold
+        self._distance_threshold = threshold
 
 
     def summarize(self) -> str:
@@ -139,12 +196,91 @@ class SessionManager():
         pass
 
 
-    def store(self, exchange: Tuple[str, str]):
+    def store(self,
+              exchange: Tuple[str, str],
+              scope: str,
+              session_id: Union[str, int] = None,
+              user_id: Union[str, int] = None,
+              application_id: Union[str, int] = None,
+              ):
         """ Insert a prompt:response pair into the session memory. A timestamp
             is associated with each exchange so that they can be later sorted
             in sequential ordering after retrieval.
 
             Args:
-                exchange Tuple[str, str]: The user prompt and corresponding LLM response.
+                exchange Tuple[str, str]: The user prompt and corresponding LLM
+                    response.
+                scope str: the scope of access this exchange can be retrieved by.
+                    must be one of {Session, User, Application}.
+                session_id Union[str, int]: = the session id tag to index this
+                    exchange with. Must be provided if scope==Session.
+                user_id Union[str, int]: the user id tag to index this exchange
+                    with. Must be provided if scope==User
+                application_id Union[str, int]: = the application id tag to
+                    index this exchange with. Must be provided if scope==Application
+        """
+        
+        vector = self._vectorizer.embed(exchange[0] + exchange[1])
+        timestamp = int(datetime.now().timestamp())
+        payload = {
+                #TODO decide if hash id should be based on prompt, response,
+                # user, session, app, or some combination 
+                "id": self.hash_input(exchange[0]+str(timestamp)),
+                "prompt": exchange[0],
+                "response": exchange[1],
+                "timestamp": timestamp,
+                "session_id": session_id or self._session_id,
+                "user_id": user_id or self._user_id,
+                "application_id": application_id or self._application_id,
+                "token_count": 1, #TODO get actual token count
+                "combined_vector_field": array_to_buffer(vector)
+        }
+        '''
+                {"name": "prompt", "type": "text"},
+                {"name": "response", "type": "text"},
+                {"name": "timestamp", "type": "numeric"},
+                {"name": session_id, "type": "tag"},
+                {"name": user_id, "type": "tag"},
+                {"name": application_id, "type": "tag"},
+                {"name": "token_count", "type": "numeric"},
+                {
+                    "name": "combined_vector_field",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": self._vectorizer.dims,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                    },
+                 }
+        '''
+        keys = self._index.load(data=[payload])
+        return keys
+
+
+    def set_preamble(self, prompt: str) -> None:
+        """ Add a preamble statement to the the begining of each session history
+            and will be included in each subsequent LLM call.
+        """ 
+        self._preamble = prompt # TODO store this in Redis with asigned scope?
+
+
+    def timstamp_to_int(self, timestamp: datetime.timestamp) -> int: 
+        """ Converts a datetime object into integer for storage as numeric field
+            in hash.
         """
         pass
+
+
+    def int_to_timestamp(self, epoch_time: int) -> datetime.timestamp: 
+        """ Converts a numeric date expressed in epoch time into datetime 
+            object.
+        """
+        pass
+
+
+    def hash_input(self, prompt: str):
+        """Hashes the input using SHA256."""
+        #TODO find out if this is really necessary
+        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
