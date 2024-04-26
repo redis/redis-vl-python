@@ -1,6 +1,7 @@
 import os
-from typing import Any, Dict, List, Optional, Union, Tuple
-from pydantic import BaseModel, PrivateAttr
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from pydantic import PrivateAttr
 
 from redisvl.utils.rerank.base import BaseReranker
 
@@ -31,7 +32,7 @@ class CohereReranker(BaseReranker):
         rank_by: Optional[List[str]] = None,
         limit: int = 5,
         return_score: bool = True,
-        api_config: Optional[Dict] = None
+        api_config: Optional[Dict] = None,
     ) -> None:
         """
         Initialize the CohereReranker with specified model, ranking criteria,
@@ -55,7 +56,9 @@ class CohereReranker(BaseReranker):
             ImportError: If the cohere library is not installed.
             ValueError: If the API key is not provided.
         """
-        super().__init__(model=model, rank_by=rank_by, limit=limit, return_score=return_score)
+        super().__init__(
+            model=model, rank_by=rank_by, limit=limit, return_score=return_score
+        )
         self._initialize_clients(api_config)
 
     def _initialize_clients(self, api_config: Optional[Dict]):
@@ -65,7 +68,7 @@ class CohereReranker(BaseReranker):
         """
         # Dynamic import of the cohere module
         try:
-            from cohere import Client, AsyncClient
+            from cohere import AsyncClient, Client
         except ImportError:
             raise ImportError(
                 "Cohere vectorizer requires the cohere library. \
@@ -81,14 +84,11 @@ class CohereReranker(BaseReranker):
                 "Cohere API key is required. "
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
-        self._client = Client(api_key=api_key)
-        self._aclient = AsyncClient(api_key=api_key)
+        self._client = Client(api_key=api_key, client_name="redisvl")
+        self._aclient = AsyncClient(api_key=api_key, client_name="redisvl")
 
     def _preprocess(
-        self,
-        query: str,
-        docs: Union[List[Dict[str, Any]], List[str]],
-        **kwargs
+        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
     ):
         """
         Prepare and validate reranking config based on provided input and
@@ -105,7 +105,7 @@ class CohereReranker(BaseReranker):
             "query": query,
             "top_n": limit,
             "documents": docs,
-            "max_chunks_per_doc": max_chunks_per_doc
+            "max_chunks_per_doc": max_chunks_per_doc,
         }
         # if we are working with list of dicts
         if all(isinstance(doc, dict) for doc in docs):
@@ -135,11 +135,10 @@ class CohereReranker(BaseReranker):
         return reranked_docs, scores
 
     def rank(
-        self,
-        query: str,
-        docs: Union[List[Dict[str, Any]], List[str]],
-        **kwargs
-    ) -> Union[Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]]:
+        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
+    ) -> Union[
+        Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]
+    ]:
         """
         Rerank documents based on the provided query using the Cohere rerank API.
 
@@ -163,11 +162,10 @@ class CohereReranker(BaseReranker):
         return reranked_docs
 
     async def arank(
-        self,
-        query: str,
-        docs: Union[List[Dict[str, Any]], List[str]],
-        **kwargs
-    ) -> Union[Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]]:
+        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
+    ) -> Union[
+        Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]
+    ]:
         """
         Rerank documents based on the provided query using the Cohere rerank API.
 
