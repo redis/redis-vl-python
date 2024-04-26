@@ -50,7 +50,7 @@ deactivate
 
 Check formatting, linting, and typing:
 ```bash
-poetry run check
+poetry check
 ```
 
 #### TestContainers
