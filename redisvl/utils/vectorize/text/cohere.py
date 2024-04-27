@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -90,7 +90,6 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
         self._client = Client(api_key=api_key, client_name="redisvl")
-        self._aclient = AsyncClient(api_key=api_key, client_name="redisvl")
 
     def _set_model_dims(self, model) -> int:
         try:
@@ -158,7 +157,7 @@ class CohereTextVectorizer(BaseVectorizer):
             )
         if preprocess:
             text = preprocess(text)
-        embedding = self.client.embed(
+        embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
         ).embeddings[0]
         return self._process_embedding(embedding, as_buffer)
@@ -227,7 +226,7 @@ class CohereTextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self.client.embed(
+            response = self._client.embed(
                 texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
@@ -235,3 +234,22 @@ class CohereTextVectorizer(BaseVectorizer):
                 for embedding in response.embeddings
             ]
         return embeddings
+
+    async def aembed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[List[float]]:
+        raise NotImplementedError
+
+    async def aembed(
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[float]:
+        raise NotImplementedError

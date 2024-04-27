@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic import PrivateAttr
+from pydantic.v1 import PrivateAttr
 
 from redisvl.utils.rerank.base import BaseReranker
 

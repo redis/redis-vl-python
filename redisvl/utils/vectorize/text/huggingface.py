@@ -1,6 +1,6 @@
 from typing import Any, Callable, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic.v1 import PrivateAttr
 
 from redisvl.utils.vectorize.base import BaseVectorizer
 
@@ -99,7 +99,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        embedding = self.client.encode([text])[0]
+        embedding = self._client.encode([text])[0]
         return self._process_embedding(embedding.tolist(), as_buffer)
 
     def embed_many(
@@ -135,7 +135,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            batch_embeddings = self.client.encode(batch)
+            batch_embeddings = self._client.encode(batch)
             embeddings.extend(
                 [
                     self._process_embedding(embedding.tolist(), as_buffer)
@@ -143,3 +143,22 @@ class HFTextVectorizer(BaseVectorizer):
                 ]
             )
         return embeddings
+
+    async def aembed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[List[float]]:
+        raise NotImplementedError
+
+    async def aembed(
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[float]:
+        raise NotImplementedError

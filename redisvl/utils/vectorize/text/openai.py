@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 

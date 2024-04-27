@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -193,3 +193,22 @@ class VertexAITextVectorizer(BaseVectorizer):
             text = preprocess(text)
         result = self._client.get_embeddings([text])
         return self._process_embedding(result[0].values, as_buffer)
+
+    async def aembed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[List[float]]:
+        raise NotImplementedError
+
+    async def aembed(
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[float]:
+        raise NotImplementedError
