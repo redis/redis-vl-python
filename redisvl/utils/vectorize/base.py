@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable, List, Optional
 
-from pydantic.v1 import BaseModel
+from pydantic.v1 import BaseModel, validator
 
 from redisvl.redis.utils import array_to_buffer
 
@@ -9,6 +9,14 @@ from redisvl.redis.utils import array_to_buffer
 class BaseVectorizer(BaseModel, ABC):
     model: str
     dims: int
+
+    @validator("dims")
+    @classmethod
+    def check_dims(cls, value):
+        """Ensures the dims are a positive integer."""
+        if value <= 0:
+            raise ValueError("Dims must be a positive integer.")
+        return value
 
     @abstractmethod
     def embed_many(
