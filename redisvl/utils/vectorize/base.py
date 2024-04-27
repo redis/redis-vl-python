@@ -8,7 +8,7 @@ from redisvl.redis.utils import array_to_buffer
 
 class BaseVectorizer(BaseModel, ABC):
     model: str
-    dims: Optional[int]
+    dims: int
 
     @abstractmethod
     def embed_many(

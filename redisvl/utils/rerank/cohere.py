@@ -123,22 +123,20 @@ class CohereReranker(BaseReranker):
     def _postprocess(
         docs: Union[List[Dict[str, Any]], List[str]],
         rankings: List[Any],
-    ) -> Tuple[Union[List[Dict[str, Any]], List[str]], float]:
+    ) -> Tuple[List[Any], List[float]]:
         """
         Post-process the initial list of documents to include ranking scores,
         if specified.
         """
         reranked_docs, scores = [], []
-        for item in rankings.results:
+        for item in rankings.results:  # type: ignore
             scores.append(item.relevance_score)
             reranked_docs.append(docs[item.index])
         return reranked_docs, scores
 
     def rank(
         self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[
-        Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]
-    ]:
+    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
         """
         Rerank documents based on the provided query using the Cohere rerank API.
 
@@ -163,9 +161,7 @@ class CohereReranker(BaseReranker):
 
     async def arank(
         self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[
-        Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]
-    ]:
+    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
         """
         Rerank documents based on the provided query using the Cohere rerank API.
 

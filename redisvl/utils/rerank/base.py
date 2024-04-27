@@ -32,9 +32,7 @@ class BaseReranker(BaseModel, ABC):
     @abstractmethod
     def rank(
         self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[
-        Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]
-    ]:
+    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
         """
         Synchronously rerank the docs based on the provided query.
         """
@@ -43,9 +41,7 @@ class BaseReranker(BaseModel, ABC):
     @abstractmethod
     async def arank(
         self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[
-        Tuple[Union[List[Dict[str, Any]], List[str]], float], List[Dict[str, Any]]
-    ]:
+    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
         """
         Asynchronously rerank the docs based on the provided query.
         """
