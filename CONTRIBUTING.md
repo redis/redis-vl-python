@@ -68,6 +68,11 @@ Tests w/out vectorizers:
 SKIP_VECTORIZERS=true poetry run test-cov
 ```
 
+Tests w/out rerankers:
+```bash
+SKIP_RERANKERS=true poetry run test-cov
+```
+
 ### Getting Redis
 
 In order for your applications to use RedisVL, you must have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):

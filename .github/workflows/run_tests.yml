@@ -71,7 +71,7 @@ jobs:
     - name: Run tests
       if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
       run: |
-        SKIP_VECTORIZERS=True poetry run test-cov
+        SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-cov
 
     - name: Run notebooks
       if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
