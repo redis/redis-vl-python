@@ -32,25 +32,20 @@ RedisVL uses [Poetry](https://python-poetry.org/) for dependency management.
 
 Follow the instructions to [install Poetry](https://python-poetry.org/docs/#installation).
 
-Then install the required libraries into your virtual environment:
+Then install the required libraries:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 poetry install --all-extras
 ```
 
-Then, to deactivate the environment:
-
-```bash
-deactivate
-```
 
 ### Linting and Tests
 
 Check formatting, linting, and typing:
 ```bash
-poetry check
+poetry run format
+poetry run sort-imports
+poetry run mypy
 ```
 
 #### TestContainers
@@ -73,9 +68,9 @@ Tests w/out vectorizers:
 SKIP_VECTORIZERS=true poetry run test-cov
 ```
 
-### Docker Tips
+### Getting Redis
 
-Make sure to have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
+In order for your applications to use RedisVL, you must have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
 
 ```bash
 docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
