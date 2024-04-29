@@ -14,31 +14,40 @@ def vectorizer():
 
 
 @pytest.fixture
-def cache(vectorizer):
-    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
-    yield cache_instance
-    cache_instance.clear()  # Clear cache after each test
-    cache_instance._index.delete(True)  # Clean up index
-
-
-@pytest.fixture
-def cache_no_cleanup(vectorizer):
-    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
-    yield cache_instance
-
-
-@pytest.fixture
-def cache_with_ttl(vectorizer):
-    cache_instance = SemanticCache(vectorizer=vectorizer, distance_threshold=0.2, ttl=2)
-    yield cache_instance
-    cache_instance.clear()  # Clear cache after each test
-    cache_instance._index.delete(True)  # Clean up index
-
-
-@pytest.fixture
-def cache_with_redis_client(vectorizer, client):
+def cache(vectorizer, redis_url):
     cache_instance = SemanticCache(
-        vectorizer=vectorizer, redis_client=client, distance_threshold=0.2
+        vectorizer=vectorizer, distance_threshold=0.2, redis_url=redis_url
+    )
+    yield cache_instance
+    cache_instance.clear()  # Clear cache after each test
+    cache_instance._index.delete(True)  # Clean up index
+
+
+@pytest.fixture
+def cache_no_cleanup(vectorizer, redis_url):
+    cache_instance = SemanticCache(
+        vectorizer=vectorizer, distance_threshold=0.2, redis_url=redis_url
+    )
+    yield cache_instance
+
+
+@pytest.fixture
+def cache_with_ttl(vectorizer, redis_url):
+    cache_instance = SemanticCache(
+        vectorizer=vectorizer, distance_threshold=0.2, ttl=2, redis_url=redis_url
+    )
+    yield cache_instance
+    cache_instance.clear()  # Clear cache after each test
+    cache_instance._index.delete(True)  # Clean up index
+
+
+@pytest.fixture
+def cache_with_redis_client(vectorizer, client, redis_url):
+    cache_instance = SemanticCache(
+        vectorizer=vectorizer,
+        redis_client=client,
+        distance_threshold=0.2,
+        redis_url=redis_url,
     )
     yield cache_instance
     cache_instance.clear()  # Clear cache after each test
@@ -198,6 +207,6 @@ def test_store_and_check_with_provided_client(cache_with_redis_client, vectorize
 
 
 # Test deleting the cache
-def test_delete(cache_no_cleanup, vectorizer):
+def test_delete(cache_no_cleanup):
     cache_no_cleanup.delete()
     assert not cache_no_cleanup.index.exists()

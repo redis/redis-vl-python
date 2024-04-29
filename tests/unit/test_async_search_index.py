@@ -64,7 +64,7 @@ def test_search_index_set_client(async_client, client, async_index):
     assert async_index.client == None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_search_index_create(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -74,7 +74,7 @@ async def test_search_index_create(async_client, async_index):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_search_index_delete(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -85,7 +85,7 @@ async def test_search_index_delete(async_client, async_index):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_search_index_load_and_fetch(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -104,7 +104,7 @@ async def test_search_index_load_and_fetch(async_client, async_index):
     assert not await async_index.fetch("1")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_search_index_load_preprocess(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -129,7 +129,7 @@ async def test_search_index_load_preprocess(async_client, async_index):
         await async_index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_no_id_field(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -140,7 +140,7 @@ async def test_no_id_field(async_client, async_index):
         await async_index.load(bad_data, id_field="key")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_check_index_exists_before_delete(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -149,7 +149,7 @@ async def test_check_index_exists_before_delete(async_client, async_index):
         await async_index.delete()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_check_index_exists_before_search(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
@@ -165,7 +165,7 @@ async def test_check_index_exists_before_search(async_client, async_index):
         await async_index.search(query.query, query_params=query.params)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_check_index_exists_before_info(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)

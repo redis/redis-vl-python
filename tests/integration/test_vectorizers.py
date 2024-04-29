@@ -41,7 +41,9 @@ def vectorizer(request, skip_vectorizer):
     elif request.param == CohereTextVectorizer:
         return request.param()
     elif request.param == AzureOpenAITextVectorizer:
-        return request.param(model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"))
+        return request.param(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
+        )
 
 
 def test_vectorizer_embed(vectorizer, skip_vectorizer):

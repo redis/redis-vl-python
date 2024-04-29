@@ -2,9 +2,11 @@ __pycache__/
 redisvl.egg-info/
 .coverage.*
 .coverage
+coverage.xml
 scratch
 .DS_Store
 *.csv
 wiki_schema.yaml
 docs/_build/
 .venv
+coverage.xml
