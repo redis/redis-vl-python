@@ -15,7 +15,7 @@ class AmazonBedrockTextVectorizer(BaseVectorizer):
     This vectorizer is designed to interact with Amazon Bedrock API,
     requiring an API key for authentication. The key can be provided
     directly in the `api_config` dictionary or through the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` & `AWS_REGION`
-    environment variable. User must obtain an API key from Cohere's website
+    environment variable. User must obtain an API key from AWS's website
     (https://aws.amazon.com/bedrock/).
 
     The vectorizer supports only synchronous operations, allows for batch
