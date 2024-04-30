@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  # TODO: remove
+  push:
+    branches: [ robert/build/tests ]
   workflow_dispatch:
     inputs:
       version:
@@ -13,7 +16,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +43,7 @@ jobs:
 
   test-pypi-publish:
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -59,15 +62,13 @@ jobs:
           path: dist/
 
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
+        env:
+          POETRY_PYPI_TOKEN_TESTPYPI: ${{ secrets.TESTPYPI }}
+        run: poetry config repositories.test-pypi https://test.pypi.org/legacy/; poetry config pypi-token.test-pypi $POETRY_PYPI_TOKEN_TESTPYPI; poetry publish --repository test-pypi
 
   pre-release-checks:
     needs: test-pypi-publish
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -80,13 +81,10 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
 
-      - name: Install dependencies
-        run: |
-          poetry install --all-extras
+      # - name: Install dependencies
+      #   run: |
+      #     poetry install --all-extras
       - name: Install published package from TestPyPI
-        run: |
-          poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl==${{ github.event.inputs.version }}
-      - name: Run tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
@@ -96,11 +94,12 @@ jobs:
           AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
           AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
           OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
-        run: |
-          poetry run test-cov
+        run:
+          poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl-test; poetry run test-cov
+
   # publish:
   #   needs: pre-release-checks
-  #   runs-on: ubuntu-22.04
+  #   runs-on: ubuntu-latest
 
   #   steps:
   #     - uses: actions/checkout@v4
@@ -118,14 +117,14 @@ jobs:
   #         name: dist
   #         path: dist/
 
-      # - name: Publish to PyPI
-      #   env:
-      #     POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI }}
-      #   run: poetry publish
+  #     - name: Publish to PyPI
+  #       env:
+  #         POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI }}
+  #       run: poetry publish
 
   # create-release:
   #   needs: publish
-  #   runs-on: ubuntu-22.04
+  #   runs-on: ubuntu-latest
 
   #   steps:
   #     - uses: actions/checkout@v4
