@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version of this deployment'
+        required: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.4.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - name: Set Version
+        run: poetry version ${{ github.event.inputs.version }}
+
+      - name: Build package
+        run: poetry build
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  test-pypi-publish:
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+
+  pre-release-checks:
+    needs: test-pypi-publish
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
+      - name: Install published package from TestPyPI
+        run: |
+          poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl==${{ github.event.inputs.version }}
+      - name: Run tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
+          AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
+          OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+        run: |
+          poetry run test-cov
+  # publish:
+  #   needs: pre-release-checks
+  #   runs-on: ubuntu-22.04
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+
+  #     - name: Install Poetry
+  #       uses: snok/install-poetry@v1
+
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: dist
+  #         path: dist/
+
+      # - name: Publish to PyPI
+      #   env:
+      #     POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI }}
+      #   run: poetry publish
+
+  # create-release:
+  #   needs: publish
+  #   runs-on: ubuntu-22.04
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: dist
+  #         path: dist/
+
+  #     - name: Create Release
+  #       uses: ncipollo/release-action@v1
+  #       with:
+  #         artifacts: "dist/*"
+  #         token: ${{ secrets.GITHUB_TOKEN }}
+  #         draft: false
+  #         generateReleaseNotes: true
+  #         tag: ${{ github.event.inputs.version }}
+  #         commit: main
