@@ -99,8 +99,6 @@ class AmazonBedrockTextVectorizer(BaseVectorizer):
 
         embedding = bedrock_em_model.embed_query(text)
 
-        # print(f"\n\n **** Embedding: {embedding} ****")
-
         return self._process_embedding(embedding, as_buffer)
     
     @retry(
@@ -142,5 +140,4 @@ class AmazonBedrockTextVectorizer(BaseVectorizer):
                 for embedding in response.embeddings
             ]
 
-        # print(f"\n\n **** Embeddings: {embeddings} ****")
         return embeddings
