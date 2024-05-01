@@ -76,8 +76,8 @@ html_title = "RedisVL"
 html_context = {
    "default_mode": "dark"
 }
-html_logo = "_static/redis-cube-red-white-rgb.svg"
-html_favicon = "_static/redis-cube-red-white-rgb.svg"
+html_logo = "_static/Redis_Favicon_32x32_Red.png"
+html_favicon = "_static/Redis_Favicon_32x32_Red.png"
 html_context = {
     "github_user": "RedisVentures",
     "github_repo": "RedisVL",
@@ -145,13 +145,10 @@ autoapi_member_order = "groupwise"
 
 # see https://sphinx-favicon.readthedocs.io for more information about the
 # sphinx-favicon extension
+
 favicons = [
     # generic icons compatible with most browsers
-    "favicon-32x32.png",
-    "favicon-16x16.png",
-    {"rel": "shortcut icon", "sizes": "any", "href": "favicon.ico"},
-    # chrome specific
-    "android-chrome-192x192.png",
-    # apple icons
-    {"rel": "apple-touch-icon", "href": "apple-touch-icon.png"},
+    "Redis_Favicon_32x32_Red.png",
+    "Redis_Favicon_16x16_Red.png",
+    "Redis_Favicon_144x144_Red.png",
 ]

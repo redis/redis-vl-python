@@ -34,3 +34,9 @@ def cov():
 
 def test_notebooks():
     subprocess.run(["cd", "docs/", "&&", "poetry run treon", "-v"])
+
+def build_docs():
+    subprocess.run("cd docs/ && make html", shell=True)
+
+def serve_docs():
+    subprocess.run("cd docs/_build/html && python -m http.server", shell=True)
