@@ -5,23 +5,17 @@ import pytest
 from redisvl.utils.rerank import CohereReranker
 
 
-@pytest.fixture
-def skip_reranker() -> bool:
-    # os.getenv returns a string
-    v = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
-    return v
-
-
 # Fixture for the reranker instance
 @pytest.fixture
 def reranker():
+    skip_reranker = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
+    if skip_reranker:
+        pytest.skip("Skipping reranker instantiation...")
     return CohereReranker()
 
 
 # Test for basic ranking functionality
-def test_rank_documents(reranker, skip_reranker):
-    if skip_reranker:
-        pytest.skip("Skipping reranker instantiation...")
+def test_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
@@ -34,9 +28,7 @@ def test_rank_documents(reranker, skip_reranker):
 
 # Test for asynchronous ranking functionality
 @pytest.mark.asyncio
-async def test_async_rank_documents(reranker, skip_reranker):
-    if skip_reranker:
-        pytest.skip("Skipping reranker instantiation...")
+async def test_async_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
@@ -48,9 +40,7 @@ async def test_async_rank_documents(reranker, skip_reranker):
 
 
 # Test handling of bad input
-def test_bad_input(reranker, skip_reranker):
-    if skip_reranker:
-        pytest.skip("Skipping reranker instantiation...")
+def test_bad_input(reranker):
     with pytest.raises(Exception):
         reranker.rank("", [])  # Empty query or documents
 

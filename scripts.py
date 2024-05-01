@@ -26,7 +26,7 @@ def test_verbose():
     subprocess.run(["python", "-m", "pytest", "-vv", "-s", "--log-level=CRITICAL"])
 
 def test_cov():
-    subprocess.run(["python", "-m", "pytest", "-vv", "--cov=./redisvl", "--cov-report=xml", "--log-level=CRITICAL"])
+    subprocess.run(["python", "-m", "pytest", "-vv", "--cov=./redisvl", "--cov-report=xml", "--log-level=CRITICAL"], check=True)
 
 def cov():
     subprocess.run(["coverage", "html"])
