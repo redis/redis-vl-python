@@ -73,7 +73,7 @@ SKIP_RERANKERS=true poetry run test-cov
 ```
 
 ### Documentation
-Docs are served from the `dcos/` directory.
+Docs are served from the `docs/` directory.
 
 Build the docs. Generates the `_build/html` contents:
 ```bash
