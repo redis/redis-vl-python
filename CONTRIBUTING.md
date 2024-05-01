@@ -38,7 +38,6 @@ Then install the required libraries:
 poetry install --all-extras
 ```
 
-
 ### Linting and Tests
 
 Check formatting, linting, and typing:
@@ -58,7 +57,7 @@ To run Testcontainers-based tests you need a local Docker installation such as:
 
 #### Running the Tests
 
-Tests (with vectorizers):
+Tests w/ vectorizers:
 ```bash
 poetry run test-cov
 ```
@@ -71,6 +70,19 @@ SKIP_VECTORIZERS=true poetry run test-cov
 Tests w/out rerankers:
 ```bash
 SKIP_RERANKERS=true poetry run test-cov
+```
+
+### Documentation
+Docs are served from the `dcos/` directory.
+
+Build the docs. Generates the `_build/html` contents:
+```bash
+poetry run build-docs
+```
+
+Serve the documentation with a local webserver:
+```bash
+poetry run serve-docs
 ```
 
 ### Getting Redis

@@ -76,6 +76,8 @@ test-verbose = "scripts:test_verbose"
 test-cov = "scripts:test_cov"
 cov = "scripts:cov"
 test-notebooks = "scripts:test_notebooks"
+build-docs = "scripts:build_docs"
+serve-docs = "scripts:serve_docs"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
