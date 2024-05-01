@@ -20,7 +20,19 @@ class CohereReranker(BaseReranker):
 
     .. code-block:: python
 
+        from redisvl.utils.rerank import CohereReranker
 
+        # set up the Cohere reranker with some configuration
+        reranker = CohereReranker(rank_by=["content"], limit=2)
+        # rerank raw search results based on user input/query
+        results = reranker.rank(
+            query="your input query text here",
+            docs=[
+                {"content": "document 1"},
+                {"content": "document 2"},
+                {"content": "document 3"}
+            ]
+        )
     """
 
     _client: Any = PrivateAttr()
