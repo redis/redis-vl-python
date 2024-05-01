@@ -10,3 +10,4 @@ wiki_schema.yaml
 docs/_build/
 .venv
 coverage.xml
+dist/

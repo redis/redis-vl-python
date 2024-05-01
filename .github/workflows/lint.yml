@@ -1,5 +1,5 @@
 
-name: check
+name: Lint
 
 on:
   pull_request:
