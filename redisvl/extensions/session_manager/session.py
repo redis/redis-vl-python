@@ -74,6 +74,7 @@ class SessionManager:
                 {"name": "timestamp", "type": "numeric"},
                 {"name": "session_id", "type": "tag"},
                 {"name": "user_id", "type": "tag"},
+                {"name": "application_id", "type": "tag"},
                 {"name": "count", "type": "numeric"},
                 {"name": "token_count", "type": "numeric"},
                 {
@@ -100,13 +101,13 @@ class SessionManager:
 
         self._index.create(overwrite=False)
 
-        self._tag_filter = Tag('application_id') == self._application_id
+        self._tag_filter = Tag("application_id") == self._application_id
         if self._scope == 'user':
-            user_filter = Tag('user_id') == self._user_id
+            user_filter = Tag("user_id") == self._user_id
             self._tag_filter = self._tag_filter & user_filter
         if self._scope == 'session':
-            session_filter = Tag('session_id') == self._session_id
-            user_filter = Tag('user_id') == self._user_id
+            session_filter = Tag("session_id") == self._session_id
+            user_filter = Tag("user_id") == self._user_id
             self._tag_filter = self._tag_filter & user_filter & session_filter
 
 
@@ -119,7 +120,7 @@ class SessionManager:
         self,
         prompt: str,
         as_text: bool = False,
-        top_k: int = 5
+        top_k: int = 3
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Searches the chat history for information semantically related to
         the specified prompt.
@@ -133,7 +134,7 @@ class SessionManager:
             prompt str: The text prompt to search for in session memory
             as_text bool: Whether to return the prompt:response pairs as text
             or as JSON
-            top_k int: The number of previous exchanges to return. Default is 5
+            top_k int: The number of previous exchanges to return. Default is 3
 
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
@@ -144,9 +145,10 @@ class SessionManager:
         """
 
         return_fields = [
-            self._session_id,
-            self._user_id,
-            self._application_id,
+            "session_id",
+            "user_id",
+            "application_id",
+            "count",
             "prompt",
             "response",
             "timestamp",
@@ -162,7 +164,6 @@ class SessionManager:
             return_score=True,
             filter_expression=self._tag_filter
         )
-
         hits = self._index.query(query)
         # if we don't find semantic matches fallback to returning recent context
         if not hits:
@@ -187,14 +188,14 @@ class SessionManager:
     def conversation_history(
         self,
         as_text: bool = False,
-        top_k: int = 5
+        top_k: int = 3
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Retreive the conversation history in sequential order.
 
         Args:
             as_text bool: Whether to return the conversation as a single string,
                           or list of alternating prompts and responses.
-            top_k int: The number of previous exchanges to return. Default is 5
+            top_k int: The number of previous exchanges to return. Default is 3
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
@@ -210,7 +211,8 @@ class SessionManager:
             "timestamp",
         ]
 
-        count = self._redis_client.get(self._session_id + ":count") or 0
+        count_key = ":".join([self._application_id, self._user_id, self._session_id, "count"])
+        count = self._redis_client.get(count_key) or 0
         last_k_filter = Num("count") > int(count) - top_k
         combined = self._tag_filter & last_k_filter
 
@@ -243,7 +245,7 @@ class SessionManager:
             Returns:
                 str: The Redis key for the entry added to the database.
         """
-        count_key = ":".join([self._application_id , self._user_id, self._session_id, "count"])
+        count_key = ":".join([self._application_id, self._user_id, self._session_id, "count"])
         count = self._redis_client.incr(count_key)
         vector = self._vectorizer.embed(exchange[0] + exchange[1])
         timestamp = int(datetime.now().timestamp())
