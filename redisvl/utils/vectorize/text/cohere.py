@@ -1,6 +1,7 @@
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -43,6 +44,8 @@ class CohereTextVectorizer(BaseVectorizer):
 
     """
 
+    _client: Any = PrivateAttr()
+
     def __init__(
         self, model: str = "embed-english-v3.0", api_config: Optional[Dict] = None
     ):
@@ -60,9 +63,17 @@ class CohereTextVectorizer(BaseVectorizer):
             ValueError: If the API key is not provided.
 
         """
+        self._initialize_client(api_config)
+        super().__init__(model=model, dims=self._set_model_dims(model))
+
+    def _initialize_client(self, api_config: Optional[Dict]):
+        """
+        Setup the Cohere clients using the provided API key or an
+        environment variable.
+        """
         # Dynamic import of the cohere module
         try:
-            import cohere
+            from cohere import AsyncClient, Client
         except ImportError:
             raise ImportError(
                 "Cohere vectorizer requires the cohere library. \
@@ -78,15 +89,11 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Cohere API key is required. "
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
+        self._client = Client(api_key=api_key, client_name="redisvl")
 
-        client = cohere.Client(api_key, client_name="redisvl")
-        dims = self._set_model_dims(client, model)
-        super().__init__(model=model, dims=dims, client=client)
-
-    @staticmethod
-    def _set_model_dims(client, model) -> int:
+    def _set_model_dims(self, model) -> int:
         try:
-            embedding = client.embed(
+            embedding = self._client.embed(
                 texts=["dimension test"],
                 model=model,
                 input_type="search_document",
@@ -150,7 +157,7 @@ class CohereTextVectorizer(BaseVectorizer):
             )
         if preprocess:
             text = preprocess(text)
-        embedding = self.client.embed(
+        embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
         ).embeddings[0]
         return self._process_embedding(embedding, as_buffer)
@@ -219,7 +226,7 @@ class CohereTextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self.client.embed(
+            response = self._client.embed(
                 texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
@@ -227,3 +234,22 @@ class CohereTextVectorizer(BaseVectorizer):
                 for embedding in response.embeddings
             ]
         return embeddings
+
+    async def aembed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[List[float]]:
+        raise NotImplementedError
+
+    async def aembed(
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[float]:
+        raise NotImplementedError

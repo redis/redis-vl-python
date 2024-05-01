@@ -1,4 +1,6 @@
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, List, Optional
+
+from pydantic.v1 import PrivateAttr
 
 from redisvl.utils.vectorize.base import BaseVectorizer
 
@@ -28,6 +30,8 @@ class HFTextVectorizer(BaseVectorizer):
 
     """
 
+    _client: Any = PrivateAttr()
+
     def __init__(
         self, model: str = "sentence-transformers/all-mpnet-base-v2", **kwargs
     ):
@@ -42,7 +46,12 @@ class HFTextVectorizer(BaseVectorizer):
             ImportError: If the sentence-transformers library is not installed.
             ValueError: If there is an error setting the embedding model dimensions.
         """
-        # Load the SentenceTransformer model
+        self._initialize_client(model)
+        super().__init__(model=model, dims=self._set_model_dims())
+
+    def _initialize_client(self, model: str):
+        """Setup the HuggingFace client"""
+        # Dynamic import of the cohere module\
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -51,14 +60,11 @@ class HFTextVectorizer(BaseVectorizer):
                 "Please install with `pip install sentence-transformers`"
             )
 
-        client = SentenceTransformer(model)
-        dims = self._set_model_dims(client)
-        super().__init__(model=model, dims=dims, client=client)
+        self._client = SentenceTransformer(model)
 
-    @staticmethod
-    def _set_model_dims(client):
+    def _set_model_dims(self):
         try:
-            embedding = client.encode(["dimension check"])[0]
+            embedding = self._client.encode(["dimension check"])[0]
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Empty response from the embedding model: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -93,7 +99,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        embedding = self.client.encode([text])[0]
+        embedding = self._client.encode([text])[0]
         return self._process_embedding(embedding.tolist(), as_buffer)
 
     def embed_many(
@@ -129,7 +135,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            batch_embeddings = self.client.encode(batch)
+            batch_embeddings = self._client.encode(batch)
             embeddings.extend(
                 [
                     self._process_embedding(embedding.tolist(), as_buffer)
@@ -137,3 +143,22 @@ class HFTextVectorizer(BaseVectorizer):
                 ]
             )
         return embeddings
+
+    async def aembed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[List[float]]:
+        raise NotImplementedError
+
+    async def aembed(
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[float]:
+        raise NotImplementedError

@@ -1,6 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
+from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -47,7 +48,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
     """
 
-    aclient: Any  # Since the OpenAI module is loaded dynamically
+    _client: Any = PrivateAttr()
+    _aclient: Any = PrivateAttr()
 
     def __init__(
         self, model: str = "text-embedding-ada-002", api_config: Optional[Dict] = None
@@ -64,6 +66,14 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         Raises:
             ImportError: If the openai library is not installed.
             ValueError: If the AzureOpenAI API key, version, or endpoint are not provided.
+        """
+        self._initialize_clients(api_config)
+        super().__init__(model=model, dims=self._set_model_dims(model))
+
+    def _initialize_clients(self, api_config: Optional[Dict]):
+        """
+        Setup the OpenAI clients using the provided API key or an
+        environment variable.
         """
         # Dynamic import of the openai module
         try:
@@ -114,20 +124,17 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-        client = AzureOpenAI(
+        self._client = AzureOpenAI(
             api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
         )
-        dims = self._set_model_dims(client, model)
-        super().__init__(model=model, dims=dims, client=client)
-        self.aclient = AsyncAzureOpenAI(
+        self._aclient = AsyncAzureOpenAI(
             api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
         )
 
-    @staticmethod
-    def _set_model_dims(client, model) -> int:
+    def _set_model_dims(self, model) -> int:
         try:
             embedding = (
-                client.embeddings.create(input=["dimension test"], model=model)
+                self._client.embeddings.create(input=["dimension test"], model=model)
                 .data[0]
                 .embedding
             )
@@ -175,7 +182,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self.client.embeddings.create(input=batch, model=self.model)
+            response = self._client.embeddings.create(input=batch, model=self.model)
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer) for r in response.data
             ]
@@ -213,7 +220,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = self.client.embeddings.create(input=[text], model=self.model)
+        result = self._client.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer)
 
     @retry(
@@ -253,7 +260,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self.aclient.embeddings.create(
+            response = await self._aclient.embeddings.create(
                 input=batch, model=self.model
             )
             embeddings += [
@@ -293,5 +300,5 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = await self.aclient.embeddings.create(input=[text], model=self.model)
+        result = await self._aclient.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer)

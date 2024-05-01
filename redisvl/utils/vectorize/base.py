@@ -1,22 +1,24 @@
-from typing import Any, Callable, List, Optional
+from abc import ABC, abstractmethod
+from typing import Callable, List, Optional
 
 from pydantic.v1 import BaseModel, validator
 
 from redisvl.redis.utils import array_to_buffer
 
 
-class BaseVectorizer(BaseModel):
+class BaseVectorizer(BaseModel, ABC):
     model: str
     dims: int
-    client: Any
 
-    @validator("dims", pre=True)
+    @validator("dims")
     @classmethod
-    def check_dims(cls, v):
-        if v <= 0:
-            raise ValueError("Dimension must be a positive integer")
-        return v
+    def check_dims(cls, value):
+        """Ensures the dims are a positive integer."""
+        if value <= 0:
+            raise ValueError("Dims must be a positive integer.")
+        return value
 
+    @abstractmethod
     def embed_many(
         self,
         texts: List[str],
@@ -27,6 +29,7 @@ class BaseVectorizer(BaseModel):
     ) -> List[List[float]]:
         raise NotImplementedError
 
+    @abstractmethod
     def embed(
         self,
         text: str,
@@ -36,6 +39,7 @@ class BaseVectorizer(BaseModel):
     ) -> List[float]:
         raise NotImplementedError
 
+    @abstractmethod
     async def aembed_many(
         self,
         texts: List[str],
@@ -46,6 +50,7 @@ class BaseVectorizer(BaseModel):
     ) -> List[List[float]]:
         raise NotImplementedError
 
+    @abstractmethod
     async def aembed(
         self,
         text: str,

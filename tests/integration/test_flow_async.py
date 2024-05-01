@@ -44,7 +44,7 @@ json_schema = {
 }
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio
 @pytest.mark.parametrize("schema", [hash_schema, json_schema])
 async def test_simple(async_client, schema, sample_data):
     index = AsyncSearchIndex.from_dict(schema)

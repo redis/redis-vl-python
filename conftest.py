@@ -5,6 +5,14 @@ import asyncio
 from redisvl.redis.connection import RedisConnectionFactory
 from testcontainers.compose import DockerCompose
 
+
+# @pytest.fixture(scope="session")
+# def event_loop():
+#     loop = asyncio.get_event_loop_policy().new_event_loop()
+#     yield loop
+#     loop.close()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def redis_container():
     # Set the default Redis version if not already set
@@ -25,7 +33,7 @@ def redis_container():
 def redis_url():
     return os.getenv("REDIS_URL", "redis://localhost:6379")
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def async_client(redis_url):
     client = await RedisConnectionFactory.get_async_redis_connection(redis_url)
     yield client
@@ -35,7 +43,7 @@ async def async_client(redis_url):
         if "Event loop is closed" not in str(e):
             raise
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def client():
     conn = RedisConnectionFactory.get_redis_connection(os.environ["REDIS_URL"])
     yield conn
