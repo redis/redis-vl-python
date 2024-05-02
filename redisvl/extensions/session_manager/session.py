@@ -22,6 +22,7 @@ class SessionManager:
                  vectorizer: Optional[BaseVectorizer] = None,
                  distance_threshold: float = 0.3,
                  redis_client: Optional[Redis] = None,
+                 preamble: str = None
                  ):
         """ Initialize session memory with index
 
@@ -38,14 +39,15 @@ class SessionManager:
             application_id str: Tag to be added to entries to link to a
                 specific application.
             scope str: The level of access this session manager can retrieve
-                data at. Must be one of 'session', 'user', 'application'
+                data at. Must be one of 'session', 'user', 'application'.
             prefix Optional[str]: Prefix for the keys for this session data.
                 Defaults to None and will be replaced with the index name.
             vectorizer Vectorizer: The vectorizer to create embeddings with.
             distance_threshold float: The maximum semantic distance to be
-                included in the context. Defaults to 0.3
+                included in the context. Defaults to 0.3.
             redis_client Optional[Redis]: A Redis client instance. Defaults to
                 None.
+            preamble str: System level prompt to be included in all context.
 
 
         The proposed schema will support a single combined vector embedding
@@ -57,6 +59,7 @@ class SessionManager:
         self._user_id = user_id
         self._application_id = application_id
         self._scope = scope
+        self.set_preamble(preamble)
 
         if vectorizer is None:
             self._vectorizer = HFTextVectorizer(
@@ -111,16 +114,25 @@ class SessionManager:
             self._tag_filter = self._tag_filter & user_filter & session_filter
 
 
-    def clear(self):
+    def clear(self) -> None:
         """ Clears the chat session history. """
-        pass
+        with self._index.client.pipeline(transaction=False) as pipe:
+            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):
+                pipe.delete(key)
+            pipe.execute()
+
+
+    def delete(self) -> None:
+        """ Clear all conversation keys and remove the search index. """
+        self._index.delete(drop=True)
 
 
     def fetch_context(
         self,
         prompt: str,
         as_text: bool = False,
-        top_k: int = 3
+        top_k: int = 3,
+        fall_back: bool = False
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Searches the chat history for information semantically related to
         the specified prompt.
@@ -134,14 +146,13 @@ class SessionManager:
             prompt str: The text prompt to search for in session memory
             as_text bool: Whether to return the prompt:response pairs as text
             or as JSON
-            top_k int: The number of previous exchanges to return. Default is 3
+            top_k int: The number of previous exchanges to return. Default is 3.
+            fallback bool: Whether to drop back to conversation history if no
+                relevant context is found.
 
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
             list of prompts and responses in JSON containing the most relevant
-
-        Raises:
-            ValueError: If top_k is an invalid integer.
         """
 
         return_fields = [
@@ -165,30 +176,18 @@ class SessionManager:
             filter_expression=self._tag_filter
         )
         hits = self._index.query(query)
+
         # if we don't find semantic matches fallback to returning recent context
-        if not hits:
-            hits = self.conversation_history()
-
-        hits.sort(key=lambda x: x['timestamp']) # TODO move sorting to query.py
-
-        if as_text:
-            statements = [self._preamble["_content"]]
-            for hit in hits:
-                statements.append(hit["prompt"])
-                statements.append(hit["response"])
-        else:
-            statements = [self._preamble]
-            for hit in hits:
-                statements.append({"role": "_user", "_content": hit["prompt"]})
-                statements.append({"role": "_llm", "_content": hit["response"]})
-
-        return statements
+        if not hits and fall_back:
+            return self.conversation_history(as_text=as_text, top_k=top_k)
+        return self._format_context(hits, as_text)
 
 
     def conversation_history(
         self,
         as_text: bool = False,
-        top_k: int = 3
+        top_k: int = 3,
+        raw = False
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Retreive the conversation history in sequential order.
 
@@ -196,7 +195,8 @@ class SessionManager:
             as_text bool: Whether to return the conversation as a single string,
                           or list of alternating prompts and responses.
             top_k int: The number of previous exchanges to return. Default is 3
-
+            raw bool: Whether to return the full Redis hash entry or just the
+                prompt and response
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                                    or list of strings if as_text is false.
@@ -221,7 +221,28 @@ class SessionManager:
                 filter_expression=combined
         )
         hits = self._index.query(query)
-        return hits
+        return self._format_context(hits, as_text)
+
+
+    def _format_context(
+        self,
+        hits: List[Dict[str: Any]],
+        as_text: bool
+        ) -> Union[List[str], List[Dict[str,str]]]:
+        if hits:
+            hits.sort(key=lambda x: x['timestamp']) # TODO move sorting to query.py
+
+        if as_text:
+            statements = [self._preamble["_content"]]
+            for hit in hits:
+                statements.append(hit["prompt"])
+                statements.append(hit["response"])
+        else:
+            statements = [self._preamble]
+            for hit in hits:
+                statements.append({"role": "_user", "_content": hit["prompt"]})
+                statements.append({"role": "_llm", "_content": hit["response"]})
+        return statements
 
 
     @property
@@ -271,20 +292,6 @@ class SessionManager:
         """
         self._preamble = {"role": "_preamble", "_content": prompt}
         # TODO store this in Redis with asigned scope?
-
-
-    def timstamp_to_int(self, timestamp: datetime.timestamp) -> int:
-        """ Converts a datetime object into integer for storage as numeric field
-            in hash.
-        """
-        pass
-
-
-    def int_to_timestamp(self, epoch_time: int) -> datetime.timestamp:
-        """ Converts a numeric date expressed in epoch time into datetime
-            object.
-        """
-        pass
 
 
     def hash_input(self, prompt: str):
