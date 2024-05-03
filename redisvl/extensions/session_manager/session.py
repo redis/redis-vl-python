@@ -114,6 +114,36 @@ class SessionManager:
             self._tag_filter = self._tag_filter & user_filter & session_filter
 
 
+    def set_scope(
+        self,
+        session_id: str = None,
+        user_id: str = None,
+        application_id: str = None
+        ) -> None:
+        """ Set the tag filter to apply to querries based on the desired scope.
+
+        Args:
+            session_id str: Id of the specific session to filter to. Default is
+                None, which means all sessions will be in scope.
+            user_id str: Id of the specific user to filter to. Default is None,
+                which means all users will be in scope.
+            application_id str: Id of the specific application to filter to.
+                Default is None, which means all applications ill be in scope.
+        """
+        if not (session_id or user_id or application_id):
+            return
+
+        tag_filter = None
+        if application_id:
+            tag_filter = tag_filter & (Tag("application_id") == application_id)
+        if user_id:
+            tag_filter = tag_filter & (Tag("user_id") == self._user_id)
+        if session_id:
+            tag_filter = tag_filter & (Tag("session_id") == self._user_id)
+
+        self._tag_filter = tag_filter
+
+
     def clear(self) -> None:
         """ Clears the chat session history. """
         with self._index.client.pipeline(transaction=False) as pipe:
@@ -132,7 +162,10 @@ class SessionManager:
         prompt: str,
         as_text: bool = False,
         top_k: int = 3,
-        fall_back: bool = False
+        fall_back: bool = False,
+        session_id: str = None,
+        user_id: str = None,
+        application_id: str = None,
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Searches the chat history for information semantically related to
         the specified prompt.
@@ -152,9 +185,9 @@ class SessionManager:
 
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
-            list of prompts and responses in JSON containing the most relevant
+            list of prompts and responses in JSON containing the most relevant.
         """
-
+        self.set_scope(session_id, user_id, application_id)
         return_fields = [
             "session_id",
             "user_id",
@@ -226,9 +259,21 @@ class SessionManager:
 
     def _format_context(
         self,
-        hits: List[Dict[str: Any]],
+        hits: List[Dict[str, Any]],
         as_text: bool
-        ) -> Union[List[str], List[Dict[str,str]]]:
+        ) -> Union[List[str], List[Dict[str, str]]]:
+        """ Extracts the prompt and response fields from the Redis hashes and
+            formats them as either flat dictionaries oor strings.
+
+        Args:
+            hits List: The hashes containing prompt & response pairs from
+                conversation history.
+            as_text bool: Whether to return the conversation as a single string,
+                          or list of alternating prompts and responses.
+        Returns:
+            Union[str, List[str]]: A single string transcription of the session
+                                   or list of strings if as_text is false.
+        """
         if hits:
             hits.sort(key=lambda x: x['timestamp']) # TODO move sorting to query.py
 
