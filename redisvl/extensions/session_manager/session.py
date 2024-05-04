@@ -22,7 +22,7 @@ class SessionManager:
                  vectorizer: Optional[BaseVectorizer] = None,
                  distance_threshold: float = 0.3,
                  redis_client: Optional[Redis] = None,
-                 preamble: str = None
+                 preamble: str = ''
                  ):
         """ Initialize session memory with index
 
@@ -122,6 +122,9 @@ class SessionManager:
         ) -> None:
         """ Set the tag filter to apply to querries based on the desired scope.
 
+        This new scope persists until another call to set_scope is made, or if
+        scope specified in calls to conversation_history or fetch_context.
+
         Args:
             session_id str: Id of the specific session to filter to. Default is
                 None, which means all sessions will be in scope.
@@ -133,7 +136,7 @@ class SessionManager:
         if not (session_id or user_id or application_id):
             return
 
-        tag_filter = None
+        tag_filter = Tag('application_id') == []
         if application_id:
             tag_filter = tag_filter & (Tag("application_id") == application_id)
         if user_id:
@@ -166,6 +169,7 @@ class SessionManager:
         session_id: str = None,
         user_id: str = None,
         application_id: str = None,
+        raw: bool = False
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Searches the chat history for information semantically related to
         the specified prompt.
@@ -182,6 +186,13 @@ class SessionManager:
             top_k int: The number of previous exchanges to return. Default is 3.
             fallback bool: Whether to drop back to conversation history if no
                 relevant context is found.
+            session_id str: Tag to be added to entries to link to a specific
+                session.
+            user_id str: Tag to be added to entries to link to a specific user.
+            application_id str: Tag to be added to entries to link to a
+                specific application.
+            raw bool: Whether to return the full Redis hash entry or just the
+                prompt and response.
 
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
@@ -212,7 +223,9 @@ class SessionManager:
 
         # if we don't find semantic matches fallback to returning recent context
         if not hits and fall_back:
-            return self.conversation_history(as_text=as_text, top_k=top_k)
+            return self.conversation_history(as_text=as_text, top_k=top_k, raw=raw)
+        if raw:
+            return hits
         return self._format_context(hits, as_text)
 
 
@@ -220,6 +233,9 @@ class SessionManager:
         self,
         as_text: bool = False,
         top_k: int = 3,
+        session_id: str = None,
+        user_id: str = None,
+        application_id: str = None,
         raw = False
         ) -> Union[List[str], List[Dict[str,str]]]:
         """ Retreive the conversation history in sequential order.
@@ -228,12 +244,18 @@ class SessionManager:
             as_text bool: Whether to return the conversation as a single string,
                           or list of alternating prompts and responses.
             top_k int: The number of previous exchanges to return. Default is 3
+            session_id str: Tag to be added to entries to link to a specific
+                session.
+            user_id str: Tag to be added to entries to link to a specific user.
+            application_id str: Tag to be added to entries to link to a
+                specific application.
             raw bool: Whether to return the full Redis hash entry or just the
                 prompt and response
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                                    or list of strings if as_text is false.
         """
+        self.set_scope(session_id, user_id, application_id)
         return_fields = [
             "session_id",
             "user_id",
@@ -254,6 +276,8 @@ class SessionManager:
                 filter_expression=combined
         )
         hits = self._index.query(query)
+        if raw:
+            return hits
         return self._format_context(hits, as_text)
 
 
