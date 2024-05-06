@@ -1,9 +1,7 @@
 import hashlib
-from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime
-
+from typing import Any, Dict, List, Optional, Tuple, Union
 from redis import Redis
-
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag, Num
@@ -12,18 +10,19 @@ from redisvl.schema.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 class SessionManager:
-    def __init__(self,
-                 name: str,
-                 session_id: str,
-                 user_id: str,
-                 application_id: str,
-                 scope: str = 'session',
-                 prefix: Optional[str] = None,
-                 vectorizer: Optional[BaseVectorizer] = None,
-                 distance_threshold: float = 0.3,
-                 redis_client: Optional[Redis] = None,
-                 preamble: str = ''
-                 ):
+    def __init__(
+        self,
+        name: str,
+        session_id: str,
+        user_id: str,
+        application_id: str,
+        scope: str = 'session',
+        prefix: Optional[str] = None,
+        vectorizer: Optional[BaseVectorizer] = None,
+        distance_threshold: float = 0.3,
+        redis_client: Optional[Redis] = None,
+        preamble: str = ''
+        ):
         """ Initialize session memory with index
 
         Session Manager stores the current and previous user text prompts and
@@ -123,7 +122,7 @@ class SessionManager:
         """ Set the tag filter to apply to querries based on the desired scope.
 
         This new scope persists until another call to set_scope is made, or if
-        scope specified in calls to conversation_history or fetch_context.
+        scope specified in calls to fetch_recent or fetch_relevant.
 
         Args:
             session_id str: Id of the specific session to filter to. Default is
@@ -160,7 +159,7 @@ class SessionManager:
         self._index.delete(drop=True)
 
 
-    def fetch_context(
+    def fetch_relevant(
         self,
         prompt: str,
         as_text: bool = False,
@@ -184,8 +183,8 @@ class SessionManager:
             as_text bool: Whether to return the prompt:response pairs as text
             or as JSON
             top_k int: The number of previous exchanges to return. Default is 3.
-            fallback bool: Whether to drop back to conversation history if no
-                relevant context is found.
+            fallback bool: Whether to drop back to recent conversation history
+                if no relevant context is found.
             session_id str: Tag to be added to entries to link to a specific
                 session.
             user_id str: Tag to be added to entries to link to a specific user.
@@ -223,13 +222,13 @@ class SessionManager:
 
         # if we don't find semantic matches fallback to returning recent context
         if not hits and fall_back:
-            return self.conversation_history(as_text=as_text, top_k=top_k, raw=raw)
+            return self.fetch_recent(as_text=as_text, top_k=top_k, raw=raw)
         if raw:
             return hits
         return self._format_context(hits, as_text)
 
 
-    def conversation_history(
+    def fetch_recent(
         self,
         as_text: bool = False,
         top_k: int = 3,
@@ -238,7 +237,7 @@ class SessionManager:
         application_id: str = None,
         raw = False
         ) -> Union[List[str], List[Dict[str,str]]]:
-        """ Retreive the conversation history in sequential order.
+        """ Retreive the recent conversation history in sequential order.
 
         Args:
             as_text bool: Whether to return the conversation as a single string,
@@ -272,8 +271,8 @@ class SessionManager:
         combined = self._tag_filter & last_k_filter
 
         query = FilterQuery(
-                return_fields=return_fields,
-                filter_expression=combined
+            return_fields=return_fields,
+            filter_expression=combined
         )
         hits = self._index.query(query)
         if raw:
@@ -291,7 +290,7 @@ class SessionManager:
 
         Args:
             hits List: The hashes containing prompt & response pairs from
-                conversation history.
+                recent conversation history.
             as_text bool: Whether to return the conversation as a single string,
                           or list of alternating prompts and responses.
         Returns:
