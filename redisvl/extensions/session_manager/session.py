@@ -116,7 +116,10 @@ class SessionManager:
             self._tag_filter = self._tag_filter & user_filter & session_filter
 
     def set_scope(
-        self, session_id: Optional[str] = None, user_id: Optional[str] = None, application_id: Optional[str] = None
+        self,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        application_id: Optional[str] = None,
     ) -> None:
         """Set the tag filter to apply to querries based on the desired scope.
 
