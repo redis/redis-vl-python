@@ -65,7 +65,7 @@ class SessionManager:
 
         if vectorizer is None:
             self._vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-mpnet-base-v2"
+                model="sentence-transformers/msmarco-distilbert-cos-v5"
             )
 
         self.set_distance_threshold(distance_threshold)
