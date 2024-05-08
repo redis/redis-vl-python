@@ -179,6 +179,7 @@ class FilterQuery(BaseQuery):
             .return_fields(*self._return_fields)
             .paging(self._first, self._limit)
             .dialect(self._dialect)
+            .sort_by(self._params.get("sortby"))
         )
         return query
 

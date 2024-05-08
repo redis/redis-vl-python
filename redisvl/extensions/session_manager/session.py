@@ -270,7 +270,11 @@ class SessionManager:
         last_k_filter = Num("count") > int(count) - top_k
         combined = self._tag_filter & last_k_filter
 
-        query = FilterQuery(return_fields=return_fields, filter_expression=combined)
+        query = FilterQuery(
+            return_fields=return_fields,
+            filter_expression=combined,
+            params={"sortby": "timestamp"},
+        )
         hits = self._index.query(query)
         if raw:
             return hits
@@ -291,9 +295,6 @@ class SessionManager:
             Union[str, List[str]]: A single string transcription of the session
                                    or list of strings if as_text is false.
         """
-        if hits:
-            hits.sort(key=lambda x: x["timestamp"])  # TODO move sorting to query.py
-
         if as_text:
             text_statements = [self._preamble["_content"]]
             for hit in hits:
