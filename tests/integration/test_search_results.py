@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from redisvl.index import SearchIndex
@@ -45,7 +47,7 @@ def index(sample_data):
     index = SearchIndex.from_dict(json_schema)
 
     # connect to local redis instance
-    index.connect("redis://localhost:6379")
+    index.connect(os.environ["REDIS_URL"])
 
     # create the index (no data yet)
     index.create(overwrite=True)

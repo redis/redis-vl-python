@@ -16,5 +16,6 @@ hybrid_queries_02
 llmcache_03
 vectorizers_04
 hash_vs_json_05
+rerankers_06
 ```
 

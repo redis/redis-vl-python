@@ -3,6 +3,7 @@ import os
 import pytest
 
 from redisvl.utils.vectorize import (
+    AzureOpenAITextVectorizer,
     CohereTextVectorizer,
     HFTextVectorizer,
     OpenAITextVectorizer,
@@ -14,7 +15,6 @@ from redisvl.utils.vectorize import (
 def skip_vectorizer() -> bool:
     # os.getenv returns a string
     v = os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
-    print(v, flush=True)
     return v
 
 
@@ -24,6 +24,7 @@ def skip_vectorizer() -> bool:
         OpenAITextVectorizer,
         VertexAITextVectorizer,
         CohereTextVectorizer,
+        AzureOpenAITextVectorizer,
     ]
 )
 def vectorizer(request, skip_vectorizer):
@@ -38,12 +39,13 @@ def vectorizer(request, skip_vectorizer):
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
+    elif request.param == AzureOpenAITextVectorizer:
+        return request.param(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
+        )
 
 
-def test_vectorizer_embed(vectorizer, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer tests")
-
+def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     if isinstance(vectorizer, CohereTextVectorizer):
         embedding = vectorizer.embed(text, input_type="search_document")
@@ -54,10 +56,7 @@ def test_vectorizer_embed(vectorizer, skip_vectorizer):
     assert len(embedding) == vectorizer.dims
 
 
-def test_vectorizer_embed_many(vectorizer, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer tests")
-
+def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     if isinstance(vectorizer, CohereTextVectorizer):
         embeddings = vectorizer.embed_many(texts, input_type="search_document")
@@ -71,10 +70,7 @@ def test_vectorizer_embed_many(vectorizer, skip_vectorizer):
     )
 
 
-def test_vectorizer_bad_input(vectorizer, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer tests")
-
+def test_vectorizer_bad_input(vectorizer):
     with pytest.raises(TypeError):
         vectorizer.embed(1)
 
@@ -96,10 +92,7 @@ def avectorizer(request, skip_vectorizer):
 
 
 @pytest.mark.asyncio
-async def test_vectorizer_aembed(avectorizer, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer tests")
-
+async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
     embedding = await avectorizer.aembed(text)
 
@@ -108,10 +101,7 @@ async def test_vectorizer_aembed(avectorizer, skip_vectorizer):
 
 
 @pytest.mark.asyncio
-async def test_vectorizer_aembed_many(avectorizer, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer tests")
-
+async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     embeddings = await avectorizer.aembed_many(texts)
 
@@ -123,10 +113,7 @@ async def test_vectorizer_aembed_many(avectorizer, skip_vectorizer):
 
 
 @pytest.mark.asyncio
-async def test_avectorizer_bad_input(avectorizer, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer tests")
-
+async def test_avectorizer_bad_input(avectorizer):
     with pytest.raises(TypeError):
         avectorizer.embed(1)
 

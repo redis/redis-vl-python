@@ -1,6 +1,7 @@
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -40,6 +41,8 @@ class VertexAITextVectorizer(BaseVectorizer):
 
     """
 
+    _client: Any = PrivateAttr()
+
     def __init__(
         self, model: str = "textembedding-gecko", api_config: Optional[Dict] = None
     ):
@@ -54,6 +57,14 @@ class VertexAITextVectorizer(BaseVectorizer):
         Raises:
             ImportError: If the google-cloud-aiplatform library is not installed.
             ValueError: If the API key is not provided.
+        """
+        self._initialize_client(model, api_config)
+        super().__init__(model=model, dims=self._set_model_dims())
+
+    def _initialize_client(self, model: str, api_config: Optional[Dict]):
+        """
+        Setup the VertexAI clients using the provided API key or an
+        environment variable.
         """
         # Fetch the project_id and location from api_config or environment variables
         project_id = (
@@ -93,14 +104,11 @@ class VertexAITextVectorizer(BaseVectorizer):
                 "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
 
-        client = TextEmbeddingModel.from_pretrained(model)
-        dims = self._set_model_dims(client)
-        super().__init__(model=model, dims=dims, client=client)
+        self._client = TextEmbeddingModel.from_pretrained(model)
 
-    @staticmethod
-    def _set_model_dims(client) -> int:
+    def _set_model_dims(self) -> int:
         try:
-            embedding = client.get_embeddings(["dimension test"])[0].values
+            embedding = self._client.get_embeddings(["dimension test"])[0].values
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -145,7 +153,7 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self.client.get_embeddings(batch)
+            response = self._client.get_embeddings(batch)
             embeddings += [
                 self._process_embedding(r.values, as_buffer) for r in response
             ]
@@ -183,5 +191,24 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = self.client.get_embeddings([text])
+        result = self._client.get_embeddings([text])
         return self._process_embedding(result[0].values, as_buffer)
+
+    async def aembed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 1000,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[List[float]]:
+        raise NotImplementedError
+
+    async def aembed(
+        self,
+        text: str,
+        preprocess: Optional[Callable] = None,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> List[float]:
+        raise NotImplementedError

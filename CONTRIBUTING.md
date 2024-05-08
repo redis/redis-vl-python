@@ -28,45 +28,66 @@ Here's how to get started with your code contribution:
     pull request.
 
 ### Dev Environment
-There is a provided `requirements.txt` and `requirements-dev.txt` file you can use to install required libraries with `pip` into your virtual environment.
+RedisVL uses [Poetry](https://python-poetry.org/) for dependency management.
 
-Or use the local package editable install method:
+Follow the instructions to [install Poetry](https://python-poetry.org/docs/#installation).
+
+Then install the required libraries:
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[all,dev]'
-```
-
-Then to deactivate the env:
-```
-source deactivate
+poetry install --all-extras
 ```
 
 ### Linting and Tests
 
 Check formatting, linting, and typing:
 ```bash
-make check
+poetry run format
+poetry run sort-imports
+poetry run mypy
 ```
 
-Tests (with vectorizers):
+#### TestContainers
+
+RedisVL uses Testcontainers Python for integration tests. Testcontainers is an open-source framework for provisioning throwaway, on-demand containers for development and testing use cases.
+
+To run Testcontainers-based tests you need a local Docker installation such as:
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Docker Engine on Linux](https://docs.docker.com/engine/install/)
+
+#### Running the Tests
+
+Tests w/ vectorizers:
 ```bash
-make test-cov
+poetry run test-cov
 ```
-
-**NOTE**: Some tests require the `REDIS_URL` environment variable to be set (e.g. `export REDIS_URL=redis://localhost:6379`).
 
 Tests w/out vectorizers:
 ```bash
-SKIP_VECTORIZERS=true make test-cov
+SKIP_VECTORIZERS=true poetry run test-cov
 ```
 
-> Dev requirements are needed here to be able to run tests and linting.
-> See other commands in the [Makefile](Makefile)
+Tests w/out rerankers:
+```bash
+SKIP_RERANKERS=true poetry run test-cov
+```
 
-### Docker Tips
+### Documentation
+Docs are served from the `docs/` directory.
 
-Make sure to have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
+Build the docs. Generates the `_build/html` contents:
+```bash
+poetry run build-docs
+```
+
+Serve the documentation with a local webserver:
+```bash
+poetry run serve-docs
+```
+
+### Getting Redis
+
+In order for your applications to use RedisVL, you must have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
 
 ```bash
 docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest

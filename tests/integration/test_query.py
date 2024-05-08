@@ -37,7 +37,7 @@ def range_query():
 
 
 @pytest.fixture
-def index(sample_data):
+def index(sample_data, redis_url):
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
@@ -66,7 +66,7 @@ def index(sample_data):
     )
 
     # connect to local redis instance
-    index.connect("redis://localhost:6379")
+    index.connect(redis_url)
 
     # create the index (no data yet)
     index.create(overwrite=True)

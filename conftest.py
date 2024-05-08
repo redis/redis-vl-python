@@ -3,23 +3,63 @@ import pytest
 import asyncio
 
 from redisvl.redis.connection import RedisConnectionFactory
+from testcontainers.compose import DockerCompose
 
 
-@pytest.fixture()
+# @pytest.fixture(scope="session")
+# def event_loop():
+#     loop = asyncio.get_event_loop_policy().new_event_loop()
+#     yield loop
+#     loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def redis_container():
+    # Set the default Redis version if not already set
+    os.environ.setdefault("REDIS_VERSION", "edge")
+
+    compose = DockerCompose("tests", compose_file_name="docker-compose.yml", pull=True)
+    compose.start()
+
+    redis_host, redis_port = compose.get_service_host_and_port("redis", 6379)
+    redis_url = f"redis://{redis_host}:{redis_port}"
+    os.environ["REDIS_URL"] = redis_url
+
+    yield compose
+
+    compose.stop()
+
+@pytest.fixture(scope="session")
 def redis_url():
     return os.getenv("REDIS_URL", "redis://localhost:6379")
 
 @pytest.fixture
-def async_client(redis_url):
-    return RedisConnectionFactory.get_async_redis_connection(redis_url)
+async def async_client(redis_url):
+    client = await RedisConnectionFactory.get_async_redis_connection(redis_url)
+    yield client
+    try:
+        await client.aclose()
+    except RuntimeError as e:
+        if "Event loop is closed" not in str(e):
+            raise
 
 @pytest.fixture
-def client(redis_url):
-    return RedisConnectionFactory.get_redis_connection(redis_url)
+def client():
+    conn = RedisConnectionFactory.get_redis_connection(os.environ["REDIS_URL"])
+    yield conn
+    conn.close()
 
 @pytest.fixture
 def openai_key():
     return os.getenv("OPENAI_API_KEY")
+
+@pytest.fixture
+def openai_version():
+    return os.getenv("OPENAI_API_VERSION")
+
+@pytest.fixture
+def azure_endpoint():
+    return os.getenv("AZURE_OPENAI_ENDPOINT")
 
 @pytest.fixture
 def cohere_key():

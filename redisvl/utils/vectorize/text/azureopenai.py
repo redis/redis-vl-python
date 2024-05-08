@@ -11,16 +11,17 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 # mypy: disable-error-code="name-defined"
 
 
-class OpenAITextVectorizer(BaseVectorizer):
-    """The OpenAITextVectorizer class utilizes OpenAI's API to generate
+class AzureOpenAITextVectorizer(BaseVectorizer):
+    """The AzureOpenAITextVectorizer class utilizes AzureOpenAI's API to generate
     embeddings for text data.
 
-    This vectorizer is designed to interact with OpenAI's embeddings API,
-    requiring an API key for authentication. The key can be provided directly
-    in the `api_config` dictionary or through the `OPENAI_API_KEY` environment
-    variable. Users must obtain an API key from OpenAI's website
-    (https://api.openai.com/). Additionally, the `openai` python client must be
-    installed with `pip install openai>=1.13.0`.
+    This vectorizer is designed to interact with AzureOpenAI's embeddings API,
+    requiring an API key, an AzureOpenAI deployment endpoint and API version.
+    These values can be provided directly in the `api_config` dictionary with
+    the parameters 'azure_endpoint', 'api_version' and 'api_key' or through the
+    environment variables 'AZURE_OPENAI_ENDPOINT', 'OPENAI_API_VERSION', and 'AZURE_OPENAI_API_KEY'.
+    Users must obtain these values from the 'Keys and Endpoints' section in their Azure OpenAI service.
+    Additionally, the `openai` python client must be installed with `pip install openai>=1.13.0`.
 
     The vectorizer supports both synchronous and asynchronous operations,
     allowing for batch processing of texts and flexibility in handling
@@ -29,9 +30,13 @@ class OpenAITextVectorizer(BaseVectorizer):
     .. code-block:: python
 
         # Synchronous embedding of a single text
-        vectorizer = OpenAITextVectorizer(
+        vectorizer = AzureOpenAITextVectorizer(
             model="text-embedding-ada-002",
-            api_config={"api_key": "your_api_key"} # OR set OPENAI_API_KEY in your env
+            api_config={
+                "api_key": "your_api_key", # OR set AZURE_OPENAI_API_KEY in your env
+                "api_version": "your_api_version", # OR set OPENAI_API_VERSION in your env
+                "azure_endpoint": "your_azure_endpoint", # OR set AZURE_OPENAI_ENDPOINT in your env
+                }
         )
         embedding = vectorizer.embed("Hello, world!")
 
@@ -49,17 +54,18 @@ class OpenAITextVectorizer(BaseVectorizer):
     def __init__(
         self, model: str = "text-embedding-ada-002", api_config: Optional[Dict] = None
     ):
-        """Initialize the OpenAI vectorizer.
+        """Initialize the AzureOpenAI vectorizer.
 
         Args:
-            model (str): Model to use for embedding. Defaults to
+            model (str): Deployment to use for embedding. Must be the
+                'Deployment name' not the 'Model name'. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key. Defaults to None.
+                API key, API version and Azure endpoint. Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
-            ValueError: If the OpenAI API key is not provided.
+            ValueError: If the AzureOpenAI API key, version, or endpoint are not provided.
         """
         self._initialize_clients(api_config)
         super().__init__(model=model, dims=self._set_model_dims(model))
@@ -71,26 +77,59 @@ class OpenAITextVectorizer(BaseVectorizer):
         """
         # Dynamic import of the openai module
         try:
-            from openai import AsyncOpenAI, OpenAI
+            from openai import AsyncAzureOpenAI, AzureOpenAI
         except ImportError:
             raise ImportError(
-                "OpenAI vectorizer requires the openai library. \
+                "AzureOpenAI vectorizer requires the openai library. \
                     Please install with `pip install openai`"
             )
 
-        # Fetch the API key from api_config or environment variable
-        api_key = (
-            api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+        # Fetch the API key, version and endpoint from api_config or environment variable
+        azure_endpoint = (
+            api_config.get("azure_endpoint")
+            if api_config
+            else os.getenv("AZURE_OPENAI_ENDPOINT")
         )
-        if not api_key:
+
+        if not azure_endpoint:
             raise ValueError(
-                "OpenAI API key is required. "
-                "Provide it in api_config or set the OPENAI_API_KEY\
+                "AzureOpenAI API endpoint is required. "
+                "Provide it in api_config or set the AZURE_OPENAI_ENDPOINT\
                     environment variable."
             )
 
-        self._client = OpenAI(api_key=api_key)
-        self._aclient = AsyncOpenAI(api_key=api_key)
+        api_version = (
+            api_config.get("api_version")
+            if api_config
+            else os.getenv("OPENAI_API_VERSION")
+        )
+
+        if not api_version:
+            raise ValueError(
+                "AzureOpenAI API version is required. "
+                "Provide it in api_config or set the OPENAI_API_VERSION\
+                    environment variable."
+            )
+
+        api_key = (
+            api_config.get("api_key")
+            if api_config
+            else os.getenv("AZURE_OPENAI_API_KEY")
+        )
+
+        if not api_key:
+            raise ValueError(
+                "AzureOpenAI API key is required. "
+                "Provide it in api_config or set the AZURE_OPENAI_API_KEY\
+                    environment variable."
+            )
+
+        self._client = AzureOpenAI(
+            api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
+        )
+        self._aclient = AsyncAzureOpenAI(
+            api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
+        )
 
     def _set_model_dims(self, model) -> int:
         try:
@@ -100,7 +139,7 @@ class OpenAITextVectorizer(BaseVectorizer):
                 .embedding
             )
         except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
+            raise ValueError(f"Unexpected response from the AzureOpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
@@ -119,7 +158,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
-        """Embed many chunks of texts using the OpenAI API.
+        """Embed many chunks of texts using the AzureOpenAI API.
 
         Args:
             texts (List[str]): List of text chunks to embed.
@@ -161,7 +200,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[float]:
-        """Embed a chunk of text using the OpenAI API.
+        """Embed a chunk of text using the AzureOpenAI API.
 
         Args:
             text (str): Chunk of text to embed.
@@ -197,7 +236,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
-        """Asynchronously embed many chunks of texts using the OpenAI API.
+        """Asynchronously embed many chunks of texts using the AzureOpenAI API.
 
         Args:
             texts (List[str]): List of text chunks to embed.
