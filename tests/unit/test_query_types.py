@@ -45,6 +45,7 @@ def test_filter_query():
     assert isinstance(filter_query.params, dict)
     assert filter_query.params == {}
     assert filter_query._dialect == 2
+    assert filter_query._sort_by == None
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -56,6 +57,12 @@ def test_filter_query():
     assert filter_query._first == 5
     assert filter_query._limit == 7
     assert filter_query._num_results == 10
+
+    # Test sort_by functionality
+    filter_query = FilterQuery(
+        filter_expression, return_fields, num_results=10, sort_by="price"
+    )
+    assert filter_query._sort_by == "price"
 
 
 def test_vector_query():

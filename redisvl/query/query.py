@@ -136,6 +136,7 @@ class FilterQuery(BaseQuery):
         return_fields: Optional[List[str]] = None,
         num_results: int = 10,
         dialect: int = 2,
+        sort_by: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ):
         """A query for a running a filtered search with a filter expression.
@@ -146,6 +147,8 @@ class FilterQuery(BaseQuery):
             return_fields (Optional[List[str]], optional): The fields to return.
             num_results (Optional[int], optional): The number of results to
                 return. Defaults to 10.
+            sort_by (Optional[str]): The field to order the result by.
+                Defaults to None.
             params (Optional[Dict[str, Any]], optional): The parameters for the
                 query. Defaults to None.
 
@@ -164,6 +167,7 @@ class FilterQuery(BaseQuery):
         """
         super().__init__(return_fields, num_results, dialect)
         self.set_filter(filter_expression)
+        self._sort_by = sort_by
         self._params = params or {}
 
     @property
@@ -180,6 +184,8 @@ class FilterQuery(BaseQuery):
             .paging(self._first, self._limit)
             .dialect(self._dialect)
         )
+        if self._sort_by:
+            query = query.sort_by(self._sort_by)
         return query
 
 

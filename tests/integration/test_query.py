@@ -27,6 +27,15 @@ def filter_query():
 
 
 @pytest.fixture
+def sorted_filter_query():
+    return FilterQuery(
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        filter_expression=Tag("credit_score") == "high",
+        sort_by="age",
+    )
+
+
+@pytest.fixture
 def range_query():
     return RangeQuery(
         vector=[0.1, 0.1, 0.5],
@@ -160,6 +169,7 @@ def search(
     age_range=None,
     location=None,
     distance_threshold=0.2,
+    sort=False,
 ):
     """Utility function to test filters."""
 
@@ -198,6 +208,10 @@ def search(
     # otherwise check by expected count.
     else:
         assert len(results.docs) == expected_count
+
+    # check results are in sorted order
+    if sort:
+        assert [int(doc.age) for doc in results.docs] == [12, 14, 15, 18, 35, 94, 100]
 
 
 @pytest.fixture(
@@ -339,3 +353,8 @@ def test_paginate_range_query(index, range_query):
     assert len(all_results) == expected_count
     assert i == expected_iterations
     assert all(float(item["vector_distance"]) <= 0.2 for item in all_results)
+
+
+def test_sort_filter_query(index, sorted_filter_query):
+    t = Text("job") % ""
+    search(sorted_filter_query, index, t, 7, sort=True)
