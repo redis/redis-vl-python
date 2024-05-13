@@ -47,9 +47,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
     _aclient: Any = PrivateAttr()
 
-    def __init__(
-        self, model: str, api_config: Optional[Dict] = None
-    ):
+    def __init__(self, model: str, api_config: Optional[Dict] = None):
         """Initialize the VoyageAI vectorizer.
 
         Visit https://docs.voyageai.com/docs/embeddings to learn about embeddings and check the available models.
@@ -144,10 +142,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             TypeError: In an invalid input_type is provided.
         """
         return self.embed_many(
-            texts=[text],
-            preprocess=preprocess,
-            as_buffer=as_buffer,
-            **kwargs
+            texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
         )[0]
 
     @retry(
@@ -202,7 +197,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        if input_type is not None and input_type not in ['document', 'query']:
+        if input_type is not None and input_type not in ["document", "query"]:
             raise TypeError(
                 "Must pass in a allowed value for voyageai embedding input_type. \
                     See https://docs.voyageai.com/docs/embeddings."
@@ -229,7 +224,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = None,
+        batch_size: Optional[int] = None,
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
@@ -272,7 +267,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        if input_type is not None and input_type not in ['document', 'query']:
+        if input_type is not None and input_type not in ["document", "query"]:
             raise TypeError(
                 "Must pass in a allowed value for voyageai embedding input_type. \
                     See https://docs.voyageai.com/docs/embeddings."
@@ -333,9 +328,6 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
 
         result = await self.aembed_many(
-            texts=[text],
-            preprocess=preprocess,
-            as_buffer=as_buffer,
-            **kwargs
+            texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
         )
         return result[0]
