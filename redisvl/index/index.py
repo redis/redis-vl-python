@@ -32,6 +32,38 @@ from redisvl.utils.log import get_logger
 logger = get_logger(__name__)
 
 
+def _handle_dialect_3(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle dialect 3 responses by converting JSON-encoded list values to strings.
+
+    Each JSON-encoded string in the result that is a list will be converted:
+    - If the list has one item, it is unpacked.
+    - If the list has multiple items, they are joined into a single comma-separated string.
+
+    Args:
+        result (Dict[str, Any]): The dictionary containing the results to process.
+
+    Returns:
+        Dict[str, Any]: The processed dictionary with updated values.
+    """
+    for field, value in result.items():
+        if isinstance(value, str):
+            try:
+                parsed_value = json.loads(value)
+            except json.JSONDecodeError:
+                continue  # Skip processing if value is not valid JSON
+
+            if isinstance(parsed_value, list):
+                # Use a single value if the list contains only one item, else join all items.
+                result[field] = (
+                    parsed_value[0]
+                    if len(parsed_value) == 1
+                    else ", ".join(map(str, parsed_value))
+                )
+
+    return result
+
+
 def process_results(
     results: "Result", query: BaseQuery, storage_type: StorageType
 ) -> List[Dict[str, Any]]:
@@ -81,7 +113,13 @@ def process_results(
 
         return doc_dict
 
-    return [_process(doc) for doc in results.docs]
+    processed_results = [_process(doc) for doc in results.docs]
+
+    # Handle dialect 3 responses
+    if query._dialect == 3:
+        processed_results = [_handle_dialect_3(result) for result in processed_results]
+
+    return processed_results
 
 
 def check_modules_present():
