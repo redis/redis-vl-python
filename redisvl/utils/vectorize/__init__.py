@@ -7,6 +7,7 @@ from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
+from redisvl.utils.vectorize.text.voyageai import VoyageAITextVectorizer
 
 __all__ = [
     "BaseVectorizer",
@@ -18,6 +19,7 @@ __all__ = [
     "MistralAITextVectorizer",
     "CustomTextVectorizer",
     "BedrockTextVectorizer",
+    "VoyageAITextVectorizer",
 ]
 
 
@@ -36,3 +38,5 @@ def vectorizer_from_dict(vectorizer: dict) -> BaseVectorizer:
         return MistralAITextVectorizer(model)
     elif vectorizer_type == Vectorizers.vertexai:
         return VertexAITextVectorizer(model)
+    elif vectorizer_type == Vectorizers.voyageai:
+        return VoyageAITextVectorizer(model)

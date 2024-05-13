@@ -197,6 +197,7 @@ Integrate with popular embedding providers to greatly simplify the process of ve
 - [HuggingFace](https://docs.redisvl.com/en/latest/api/vectorizer.html#hftextvectorizer)
 - [Mistral](https://docs.redisvl.com/en/latest/api/vectorizer/html#mistralaitextvectorizer)
 - [OpenAI](https://docs.redisvl.com/en/latest/api/vectorizer.html#openaitextvectorizer)
+- [VoyageAI](https://docs.redisvl.com/en/latest/api/vectorizer/html#voyageaitextvectorizer)
 
 ```python
 from redisvl.utils.vectorize import CohereTextVectorizer
