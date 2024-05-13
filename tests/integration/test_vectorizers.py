@@ -8,6 +8,7 @@ from redisvl.utils.vectorize import (
     HFTextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
+    VoyageAITextVectorizer,
 )
 
 
@@ -25,6 +26,7 @@ def skip_vectorizer() -> bool:
         VertexAITextVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
+        VoyageAITextVectorizer,
     ]
 )
 def vectorizer(request, skip_vectorizer):
@@ -39,6 +41,8 @@ def vectorizer(request, skip_vectorizer):
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
+    elif request.param == VoyageAITextVectorizer:
+        return request.param(model="voyage-large-2")
     elif request.param == AzureOpenAITextVectorizer:
         return request.param(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
@@ -49,6 +53,8 @@ def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     if isinstance(vectorizer, CohereTextVectorizer):
         embedding = vectorizer.embed(text, input_type="search_document")
+    elif isinstance(vectorizer, VoyageAITextVectorizer):
+        embedding = vectorizer.embed(text, input_type="document")
     else:
         embedding = vectorizer.embed(text)
 
@@ -60,6 +66,8 @@ def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     if isinstance(vectorizer, CohereTextVectorizer):
         embeddings = vectorizer.embed_many(texts, input_type="search_document")
+    elif isinstance(vectorizer, VoyageAITextVectorizer):
+        embeddings = vectorizer.embed_many(texts, input_type="document")
     else:
         embeddings = vectorizer.embed_many(texts)
 
@@ -81,7 +89,7 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
-@pytest.fixture(params=[OpenAITextVectorizer])
+@pytest.fixture(params=[OpenAITextVectorizer, VoyageAITextVectorizer])
 def avectorizer(request, skip_vectorizer):
     if skip_vectorizer:
         pytest.skip("Skipping vectorizer instantiation...")
@@ -89,12 +97,17 @@ def avectorizer(request, skip_vectorizer):
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
         return request.param()
+    elif request.param == VoyageAITextVectorizer:
+        return request.param(model="voyage-large-2")
 
 
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
-    embedding = await avectorizer.aembed(text)
+    if isinstance(avectorizer, VoyageAITextVectorizer):
+        embedding = await avectorizer.aembed(text)
+    else:
+        embedding = await avectorizer.aembed(text)
 
     assert isinstance(embedding, list)
     assert len(embedding) == avectorizer.dims
@@ -103,7 +116,10 @@ async def test_vectorizer_aembed(avectorizer):
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
-    embeddings = await avectorizer.aembed_many(texts)
+    if isinstance(avectorizer, VoyageAITextVectorizer):
+        embeddings = await avectorizer.aembed_many(texts)
+    else:
+        embeddings = await avectorizer.aembed_many(texts)
 
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)

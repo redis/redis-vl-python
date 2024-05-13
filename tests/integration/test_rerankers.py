@@ -2,16 +2,31 @@ import os
 
 import pytest
 
-from redisvl.utils.rerank import CohereReranker
+from redisvl.utils.rerank import CohereReranker, VoyageAIReranker
+
+
+@pytest.fixture
+def skip_reranker() -> bool:
+    # os.getenv returns a string
+    v = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
+    return v
 
 
 # Fixture for the reranker instance
-@pytest.fixture
-def reranker():
-    skip_reranker = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
+@pytest.fixture(
+    params=[
+        CohereReranker,
+        VoyageAIReranker,
+    ]
+)
+def reranker(request, skip_reranker):
     if skip_reranker:
         pytest.skip("Skipping reranker instantiation...")
-    return CohereReranker()
+
+    if request.param == CohereReranker:
+        return request.param()
+    elif request.param == VoyageAIReranker:
+        return request.param(model="rerank-lite-1")
 
 
 # Test for basic ranking functionality

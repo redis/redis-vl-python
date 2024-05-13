@@ -12,3 +12,15 @@ CohereReranker
 .. autoclass:: CohereReranker
    :show-inheritance:
    :members:
+
+
+VoyageAIReranker
+================
+
+.. _voyageaireranker_api:
+
+.. currentmodule:: redisvl.utils.rerank.voyageai
+
+.. autoclass:: VoyageAIReranker
+   :show-inheritance:
+   :members:
