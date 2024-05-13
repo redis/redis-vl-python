@@ -49,3 +49,14 @@ CohereTextVectorizer
    :show-inheritance:
    :members:
 
+
+VoyageAITextVectorizer
+====================
+
+.. _voyageaitextvectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.text.voyageai
+
+.. autoclass:: VoyageAITextVectorizer
+   :show-inheritance:
+   :members:

@@ -30,12 +30,14 @@ openai = { version = ">=1.13.0", optional = true }
 sentence-transformers = { version = ">=2.2.2", optional = true }
 google-cloud-aiplatform = { version = ">=1.26", optional = true }
 cohere = { version = ">=4.44", optional = true }
+voyageai = { version = ">=0.2.2", optional = true }
 
 [tool.poetry.extras]
 openai = ["openai"]
 sentence-transformers = ["sentence-transformers"]
 google_cloud_aiplatform = ["google_cloud_aiplatform"]
 cohere = ["cohere"]
+voyageai = ["voyageai"]
 
 [tool.poetry.group.dev.dependencies]
 black = ">=20.8b1"

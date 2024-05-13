@@ -216,6 +216,7 @@ Integrate with popular embedding models and providers to greatly simplify the pr
 - [OpenAI](https://www.redisvl.com/api/vectorizer.html#openaitextvectorizer)
 - [HuggingFace](https://www.redisvl.com/api/vectorizer.html#hftextvectorizer)
 - [GCP VertexAI](https://www.redisvl.com/api/vectorizer.html#vertexaitextvectorizer)
+- [VoyageAI](https://www.redisvl.com/api/vectorizer/html#voyageaitextvectorizer)
 
 ```python
 from redisvl.utils.vectorize import CohereTextVectorizer
