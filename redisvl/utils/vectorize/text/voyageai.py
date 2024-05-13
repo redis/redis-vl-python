@@ -224,7 +224,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = None,
+        batch_size: Optional[int] = None,
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
