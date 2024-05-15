@@ -284,7 +284,6 @@ class VectorQuery(BaseVectorQuery):
         query = (
             Query(base_query)
             .return_fields(*self._return_fields)
-            ##.sort_by(self.DISTANCE_ID)
             .paging(self._first, self._limit)
             .dialect(self._dialect)
         )
@@ -409,7 +408,6 @@ class RangeQuery(BaseVectorQuery):
         query = (
             Query(base_query)
             .return_fields(*self._return_fields)
-            ##.sort_by(self.DISTANCE_ID)
             .paging(self._first, self._limit)
             .dialect(self._dialect)
         )
