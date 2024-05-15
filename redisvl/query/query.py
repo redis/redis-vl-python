@@ -147,8 +147,8 @@ class FilterQuery(BaseQuery):
             return_fields (Optional[List[str]], optional): The fields to return.
             num_results (Optional[int], optional): The number of results to
                 return. Defaults to 10.
-            sort_by (Optional[str]): The field to order the result by.
-                Defaults to None.
+            sort_by (Optional[str]): The field to order the results by. Defaults
+                to None. Results will be ordered by vector distance.
             params (Optional[Dict[str, Any]], optional): The parameters for the
                 query. Defaults to None.
 
@@ -207,12 +207,14 @@ class BaseVectorQuery(BaseQuery):
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
+        sort_by: Optional[str] = None,
     ):
         super().__init__(return_fields, num_results, dialect)
         self.set_filter(filter_expression)
         self._vector = vector
         self._field = vector_field_name
         self._dtype = dtype.lower()
+        self._sort_by = sort_by
 
         if return_score:
             self._return_fields.append(self.DISTANCE_ID)
@@ -229,6 +231,7 @@ class VectorQuery(BaseVectorQuery):
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
+        sort_by: Optional[str] = None,
     ):
         """A query for running a vector search along with an optional filter
         expression.
@@ -249,6 +252,8 @@ class VectorQuery(BaseVectorQuery):
                 distance. Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
                 Defaults to 2.
+            sort_by (Optional[str]): The field to order the results by. Defaults
+                to None. Results will be ordered by vector distance.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
@@ -265,6 +270,7 @@ class VectorQuery(BaseVectorQuery):
             num_results,
             return_score,
             dialect,
+            sort_by,
         )
 
     @property
@@ -278,10 +284,14 @@ class VectorQuery(BaseVectorQuery):
         query = (
             Query(base_query)
             .return_fields(*self._return_fields)
-            .sort_by(self.DISTANCE_ID)
+            ##.sort_by(self.DISTANCE_ID)
             .paging(self._first, self._limit)
             .dialect(self._dialect)
         )
+        if self._sort_by:
+            query = query.sort_by(self._sort_by)
+        else:
+            query = query.sort_by(self.DISTANCE_ID)
         return query
 
     @property
@@ -313,6 +323,7 @@ class RangeQuery(BaseVectorQuery):
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
+        sort_by: Optional[str] = None,
     ):
         """A query for running a filtered vector search based on semantic
         distance threshold.
@@ -336,7 +347,8 @@ class RangeQuery(BaseVectorQuery):
                 distance. Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
                 Defaults to 2.
-
+            sort_by (Optional[str]): The field to order the results by. Defaults
+                to None. Results will be ordered by vector distance.
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
@@ -353,6 +365,7 @@ class RangeQuery(BaseVectorQuery):
             num_results,
             return_score,
             dialect,
+            sort_by,
         )
         self.set_distance_threshold(distance_threshold)
 
@@ -396,10 +409,14 @@ class RangeQuery(BaseVectorQuery):
         query = (
             Query(base_query)
             .return_fields(*self._return_fields)
-            .sort_by(self.DISTANCE_ID)
+            ##.sort_by(self.DISTANCE_ID)
             .paging(self._first, self._limit)
             .dialect(self._dialect)
         )
+        if self._sort_by:
+            query = query.sort_by(self._sort_by)
+        else:
+            query = query.sort_by(self.DISTANCE_ID)
         return query
 
     @property

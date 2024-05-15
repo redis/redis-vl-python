@@ -80,6 +80,7 @@ def test_vector_query():
     assert isinstance(vector_query.params, dict)
     assert vector_query.params != {}
     assert vector_query._dialect == 3
+    assert vector_query._sort_by == None
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -91,6 +92,17 @@ def test_vector_query():
     assert vector_query._first == 5
     assert vector_query._limit == 7
     assert vector_query._num_results == 10
+
+    # Test sort_by functionality
+    vector_query = VectorQuery(
+        sample_vector,
+        "vector_field",
+        ["field1", "field2"],
+        dialect=3,
+        num_results=10,
+        sort_by="field2",
+    )
+    assert vector_query._sort_by == "field2"
 
 
 def test_range_query():
@@ -111,6 +123,7 @@ def test_range_query():
     assert isinstance(range_query.query, Query)
     assert isinstance(range_query.params, dict)
     assert range_query.params != {}
+    assert range_query._sort_by == None
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Outdoor"
@@ -122,3 +135,14 @@ def test_range_query():
     assert range_query._first == 5
     assert range_query._limit == 7
     assert range_query._num_results == 10
+
+    # Test sort_by functionality
+    range_query = RangeQuery(
+        sample_vector,
+        "vector_field",
+        ["field1"],
+        filter_expression,
+        num_results=10,
+        sort_by="field1",
+    )
+    assert range_query._sort_by == "field1"

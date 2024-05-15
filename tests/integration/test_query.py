@@ -19,6 +19,16 @@ def vector_query():
 
 
 @pytest.fixture
+def sorted_vector_query():
+    return VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        sort_by="age",
+    )
+
+
+@pytest.fixture
 def filter_query():
     return FilterQuery(
         return_fields=["user", "credit_score", "age", "job", "location"],
@@ -42,6 +52,17 @@ def range_query():
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
         distance_threshold=0.2,
+    )
+
+
+@pytest.fixture
+def sorted_range_query():
+    return RangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        distance_threshold=0.2,
+        sort_by="age",
     )
 
 
@@ -211,7 +232,18 @@ def search(
 
     # check results are in sorted order
     if sort:
-        assert [int(doc.age) for doc in results.docs] == [12, 14, 15, 18, 35, 94, 100]
+        if isinstance(query, RangeQuery):
+            assert [int(doc.age) for doc in results.docs] == [12, 14, 18, 100]
+        else:
+            assert [int(doc.age) for doc in results.docs] == [
+                12,
+                14,
+                15,
+                18,
+                35,
+                94,
+                100,
+            ]
 
 
 @pytest.fixture(
@@ -358,3 +390,13 @@ def test_paginate_range_query(index, range_query):
 def test_sort_filter_query(index, sorted_filter_query):
     t = Text("job") % ""
     search(sorted_filter_query, index, t, 7, sort=True)
+
+
+def test_sort_vector_query(index, sorted_vector_query):
+    t = Text("job") % ""
+    search(sorted_vector_query, index, t, 7, sort=True)
+
+
+def test_sort_range_query(index, sorted_range_query):
+    t = Text("job") % ""
+    search(sorted_range_query, index, t, 7, sort=True)
