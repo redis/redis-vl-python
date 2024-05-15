@@ -42,7 +42,7 @@ pip install redisvl[hiredis]
 To install RedisVL from source, clone the repository and install the package using `pip`:
 
 ```bash
-$ git clone https://github.com/redisventures/redisvl.git && cd redisvl
+$ git clone https://github.com/redis/redis-vl-python.git && cd redisvl
 $ pip install .
 
 # or for an editable installation (for developers of RedisVL)
