@@ -4,21 +4,21 @@
         <span style="font-size: smaller;">the AI-native Redis Python client</span>
         <br />
 
-[![Codecov](https://img.shields.io/codecov/c/github/RedisVentures/RedisVL/dev?label=Codecov&logo=codecov&token=E30WxqBeJJ)](https://codecov.io/gh/RedisVentures/RedisVL)
+[![Codecov](https://img.shields.io/codecov/c/github/redis/redis-vl-python/dev?label=Codecov&logo=codecov&token=E30WxqBeJJ)](https://codecov.io/gh/redis/redis-vl-python)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![Language](https://img.shields.io/github/languages/top/RedisVentures/RedisVL)
+![Language](https://img.shields.io/github/languages/top/redis/redis-vl-python)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![GitHub last commit](https://img.shields.io/github/last-commit/RedisVentures/RedisVL)
-![GitHub deployments](https://img.shields.io/github/deployments/RedisVentures/RedisVL/github-pages?label=doc%20build)
+![GitHub last commit](https://img.shields.io/github/last-commit/redis/redis-vl-python)
+![GitHub deployments](https://img.shields.io/github/deployments/redis/redis-vl-python/github-pages?label=doc%20build)
 [![pypi](https://badge.fury.io/py/redisvl.svg)](https://pypi.org/project/redisvl/)
 
 </div>
 
 <div align="center">
 <div display="inline-block">
-    <a href="https://github.com/RedisVentures/redisvl"><b>Home</b></a>&nbsp;&nbsp;&nbsp;
+    <a href="https://github.com/redis/redis-vl-python"><b>Home</b></a>&nbsp;&nbsp;&nbsp;
     <a href="https://www.redisvl.com"><b>Documentation</b></a>&nbsp;&nbsp;&nbsp;
-    <a href="https://github.com/RedisVentures"><b>More Projects</b></a>&nbsp;&nbsp;&nbsp;
+    <a href="https://github.com/redis-developer"><b>More Projects</b></a>&nbsp;&nbsp;&nbsp;
   </div>
     <br />
 </div>
@@ -288,4 +288,4 @@ To get started, check out the following guides:
 Please help us by contributing PRs, opening GitHub issues for bugs or new feature ideas, improving documentation, or increasing test coverage. [Read more about how to contribute!](CONTRIBUTING.md)
 
 ## 🚧 Maintenance
-This project is supported by [Redis, Inc](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/RedisVentures/redisvl/issues).
+This project is supported by [Redis, Inc](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/redis/redis-vl-python/issues).
