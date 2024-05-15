@@ -19,10 +19,29 @@ def vector_query():
 
 
 @pytest.fixture
+def sorted_vector_query():
+    return VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        sort_by="age",
+    )
+
+
+@pytest.fixture
 def filter_query():
     return FilterQuery(
         return_fields=["user", "credit_score", "age", "job", "location"],
         filter_expression=Tag("credit_score") == "high",
+    )
+
+
+@pytest.fixture
+def sorted_filter_query():
+    return FilterQuery(
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        filter_expression=Tag("credit_score") == "high",
+        sort_by="age",
     )
 
 
@@ -33,6 +52,17 @@ def range_query():
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
         distance_threshold=0.2,
+    )
+
+
+@pytest.fixture
+def sorted_range_query():
+    return RangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        distance_threshold=0.2,
+        sort_by="age",
     )
 
 
@@ -160,6 +190,7 @@ def search(
     age_range=None,
     location=None,
     distance_threshold=0.2,
+    sort=False,
 ):
     """Utility function to test filters."""
 
@@ -198,6 +229,21 @@ def search(
     # otherwise check by expected count.
     else:
         assert len(results.docs) == expected_count
+
+    # check results are in sorted order
+    if sort:
+        if isinstance(query, RangeQuery):
+            assert [int(doc.age) for doc in results.docs] == [12, 14, 18, 100]
+        else:
+            assert [int(doc.age) for doc in results.docs] == [
+                12,
+                14,
+                15,
+                18,
+                35,
+                94,
+                100,
+            ]
 
 
 @pytest.fixture(
@@ -339,3 +385,18 @@ def test_paginate_range_query(index, range_query):
     assert len(all_results) == expected_count
     assert i == expected_iterations
     assert all(float(item["vector_distance"]) <= 0.2 for item in all_results)
+
+
+def test_sort_filter_query(index, sorted_filter_query):
+    t = Text("job") % ""
+    search(sorted_filter_query, index, t, 7, sort=True)
+
+
+def test_sort_vector_query(index, sorted_vector_query):
+    t = Text("job") % ""
+    search(sorted_vector_query, index, t, 7, sort=True)
+
+
+def test_sort_range_query(index, sorted_range_query):
+    t = Text("job") % ""
+    search(sorted_range_query, index, t, 7, sort=True)

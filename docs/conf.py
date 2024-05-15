@@ -21,7 +21,7 @@ print(f"Python version: {sys.version}", flush=True)
 
 project = 'RedisVL'
 copyright = '2024, Redis Inc.'
-author = 'RedisVentures'
+author = 'Redis Applied AI'
 version = "0.2.0"
 
 # The full version, including alpha/beta/rc tags
@@ -79,7 +79,7 @@ html_context = {
 html_logo = "_static/Redis_Favicon_32x32_Red.png"
 html_favicon = "_static/Redis_Favicon_32x32_Red.png"
 html_context = {
-    "github_user": "RedisVentures",
+    "github_user": "Redis Applied AI",
     "github_repo": "RedisVL",
     "github_version": "main",
     "doc_path": "docs",
@@ -111,7 +111,7 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/RedisVentures/RedisVL",
+            "url": "https://github.com/redis/redis-vl-python",
             "icon": "fa-brands fa-square-github",
             "type": "fontawesome",
         }
