@@ -51,7 +51,7 @@ class SemanticSessionManager(BaseSessionManager):
         constructed from the prompt & response in a single string.
 
         """
-        super().__init__(name, session_id, user_id, prefix, preamble)
+        super().__init__(name, session_id, user_id, preamble)
 
         prefix = prefix or name
 
@@ -71,7 +71,6 @@ class SemanticSessionManager(BaseSessionManager):
                 {"name": "timestamp", "type": "numeric"},
                 {"name": "session_id", "type": "tag"},
                 {"name": "user_id", "type": "tag"},
-                {"name": "count", "type": "numeric"},
                 {"name": "token_count", "type": "numeric"},
                 {
                     "name": "combined_vector_field",
@@ -90,10 +89,10 @@ class SemanticSessionManager(BaseSessionManager):
 
         if redis_client:
             self._index.set_client(redis_client)
-            self._redis_client = redis_client
+            self._client = redis_client
         else:
             self._index.connect(redis_url="redis://localhost:6379")
-            self._redis_client = Redis(decode_responses=True)
+            self._client = Redis(decode_responses=True)
 
         self._index.create(overwrite=False)
 
@@ -117,7 +116,8 @@ class SemanticSessionManager(BaseSessionManager):
         """
         if not (session_id or user_id):
             return
-
+        self._session_id = session_id or self._session_id
+        self._user_id = user_id or self._user_id
         tag_filter = Tag("user_id") == []
         if user_id:
             tag_filter = tag_filter & (Tag("user_id") == self._user_id)
@@ -137,9 +137,24 @@ class SemanticSessionManager(BaseSessionManager):
         """Clear all conversation keys and remove the search index."""
         self._index.delete(drop=True)
 
-    def drop(self, timestamp: Optional[int]) -> None:
-        """Remove a specific exchange from the conversation history."""
-        raise NotImplementedError
+    def drop(self, id_field: Optional[str]=None) -> None:
+        """Remove a specific exchange from the conversation history.
+
+        Args:
+            id_field Optional[str]: The id_field of the entry to delete.
+                If None then the last entry is deleted.
+        """
+        if id_field:
+            key = ":".join([self._index.schema.index.name, id_field])
+
+            #key = self.hash_input(key)
+
+            print('#### WITH ID_FIELD KEY', key)
+        else:
+            key = self.fetch_recent(top_k=1, raw=True)[0]["id"]
+            
+            print('#### NO TIMESTAMP KEY', key)
+        self._client.delete(key)
 
     def fetch_relevant(
         self,
@@ -164,6 +179,7 @@ class SemanticSessionManager(BaseSessionManager):
             as_text (bool): Whether to return the prompt:response pairs as text
             or as JSON
             top_k (int): The number of previous exchanges to return. Default is 3.
+                Note that one exchange contains both a prompt and a response.
             fallback (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
             session_id (str): Tag to be added to entries to link to a specific
@@ -180,7 +196,6 @@ class SemanticSessionManager(BaseSessionManager):
         return_fields = [
             "session_id",
             "user_id",
-            "count",
             "prompt",
             "response",
             "timestamp",
@@ -195,6 +210,7 @@ class SemanticSessionManager(BaseSessionManager):
             num_results=top_k,
             return_score=True,
             filter_expression=self._tag_filter,
+            ##sort_by="timestamp" ## TODO should I include this here?
         )
         hits = self._index.query(query)
 
@@ -218,7 +234,8 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             as_text (bool): Whether to return the conversation as a single string,
                           or list of alternating prompts and responses.
-            top_k (int): The number of previous exchanges to return. Default is 3
+            top_k (int): The number of previous exchanges to return. Default is 3.
+                Note that one exchange contains both a prompt and a respoonse.
             session_id (str): Tag to be added to entries to link to a specific
                 session.
             user_id (str): Tag to be added to entries to link to a specific user.
@@ -230,28 +247,28 @@ class SemanticSessionManager(BaseSessionManager):
         """
         self.set_scope(session_id, user_id)
         return_fields = [
+            "id_field",
             "session_id",
             "user_id",
-            "count",
             "prompt",
             "response",
             "timestamp",
+            "token_count",
         ]
 
-        count_key = ":".join([self._user_id, self._session_id, "count"])
-        count = self._redis_client.get(count_key) or 0
-        last_k_filter = Num("count") > int(count) - top_k
-        combined = self._tag_filter & last_k_filter
-
         query = FilterQuery(
+            filter_expression=self._tag_filter,
             return_fields=return_fields,
-            filter_expression=combined,
-            params={"sortby": "timestamp"},
+            num_results=top_k,
         )
-        hits = self._index.query(query)
+
+        sorted_query = query.query
+        sorted_query.sort_by("timestamp", asc=False)
+        hits = self._index.search(sorted_query, query.params).docs
+
         if raw:
-            return hits
-        return self._format_context(hits, as_text)
+            return hits[::-1]
+        return self._format_context(hits[::-1], as_text)
 
     @property
     def distance_threshold(self):
@@ -269,22 +286,20 @@ class SemanticSessionManager(BaseSessionManager):
             prompt (str): The user prompt to the LLM.
             response (str): The corresponding LLM response.
         """
-        count_key = ":".join([self._user_id, self._session_id, "count"])
-        count = self._redis_client.incr(count_key)
         vector = self._vectorizer.embed(prompt + response)
-        timestamp = int(datetime.now().timestamp())
+        timestamp = datetime.now().timestamp()
         payload = {
-            "id": self.hash_input(prompt + str(timestamp)),
+            #"id": self.hash_input(prompt + str(timestamp)),
+            "id_field": ":".join([self._user_id, self._session_id, str(timestamp)]),
             "prompt": prompt,
             "response": response,
             "timestamp": timestamp,
             "session_id": self._session_id,
             "user_id": self._user_id,
-            "count": count,
             "token_count": 1,  # TODO get actual token count
             "combined_vector_field": array_to_buffer(vector),
         }
-        self._index.load(data=[payload])
+        self._index.load(data=[payload], id_field="id_field")
 
     def set_preamble(self, prompt: str) -> None:
         """Add a preamble statement to the the begining of each session to be

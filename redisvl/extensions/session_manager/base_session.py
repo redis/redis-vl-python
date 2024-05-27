@@ -13,7 +13,6 @@ class BaseSessionManager:
         name: str,
         session_id: str,
         user_id: str,
-        prefix: Optional[str] = None,
         preamble: str = "",
     ):
         """Initialize session memory with index
@@ -28,13 +27,11 @@ class BaseSessionManager:
             session_id (str): Tag to be added to entries to link to a specific
                 session.
             user_id (str): Tag to be added to entries to link to a specific user.
-            prefix (Optional[str]): Prefix for the keys for this session data.
-                Defaults to None and will be replaced with the index name.
             preamble (str): System level prompt to be included in all context.
         """
-        prefix = prefix or name
-        self._session_id = session_id
+        self._name = name
         self._user_id = user_id
+        self._session_id = session_id
         self.set_preamble(preamble)
 
     def set_scope(
@@ -62,8 +59,13 @@ class BaseSessionManager:
         """Clear all conversation history and remove any search indices."""
         raise NotImplementedError
 
-    def drop(self, timestamp: Optional[int]) -> None:
-        """Re/move a specific exchange from the conversation history."""
+    def drop(self, id_field: Optional[str]=None) -> None:
+        """Remove a specific exchange from the conversation history.
+
+        Args:
+            id_field Optional[str]: The id_field of the entry to delete.
+                If None then the last entry is deleted.
+        """
         raise NotImplementedError
 
     def fetch_recent(
@@ -77,7 +79,8 @@ class BaseSessionManager:
         """Retreive the recent conversation history in sequential order.
 
         Args:
-            top_k (int): The number of previous exchanges to return. Default is 3
+            top_k (int): The number of previous exchanges to return. Default is 3.
+                Note that one exchange contains both a prompt and response.
             session_id (str): Tag to be added to entries to link to a specific
                 session.
             user_id (str): Tag to be added to entries to link to a specific user.
