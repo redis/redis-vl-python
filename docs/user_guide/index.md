@@ -18,6 +18,5 @@ vectorizers_04
 hash_vs_json_05
 rerankers_06
 session_manager_07
-scoped_session_manager_08
 ```
 

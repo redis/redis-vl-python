@@ -146,7 +146,7 @@ class SemanticSessionManager(BaseSessionManager):
         """
         if id_field:
             key = ":".join([self._index.schema.index.name, id_field])
-            key = self.hash_input(key)
+            # key = self.hash_input(key)
         else:
             key = self.fetch_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
         self._client.delete(key)
@@ -205,7 +205,6 @@ class SemanticSessionManager(BaseSessionManager):
             num_results=top_k,
             return_score=True,
             filter_expression=self._tag_filter,
-            ##sort_by="timestamp" ## TODO should I include this here?
         )
         hits = self._index.query(query)
 
@@ -284,8 +283,9 @@ class SemanticSessionManager(BaseSessionManager):
         vector = self._vectorizer.embed(prompt + response)
         timestamp = datetime.now().timestamp()
         id_field = ":".join([self._user_id, self._session_id, str(timestamp)])
+        hash_id = self.hash_input(id_field)
         payload = {
-            "id_field": id_field,
+            "id_field": hash_id,
             "prompt": prompt,
             "response": response,
             "timestamp": timestamp,
@@ -301,7 +301,6 @@ class SemanticSessionManager(BaseSessionManager):
         included in each subsequent LLM call.
         """
         self._preamble = {"role": "_preamble", "_content": prompt}
-        # TODO store this in Redis with asigned scope?
 
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
