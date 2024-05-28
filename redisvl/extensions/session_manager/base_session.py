@@ -59,7 +59,7 @@ class BaseSessionManager:
         """Clear all conversation history and remove any search indices."""
         raise NotImplementedError
 
-    def drop(self, id_field: Optional[str]=None) -> None:
+    def drop(self, id_field: Optional[str] = None) -> None:
         """Remove a specific exchange from the conversation history.
 
         Args:

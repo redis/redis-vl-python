@@ -137,7 +137,7 @@ class SemanticSessionManager(BaseSessionManager):
         """Clear all conversation keys and remove the search index."""
         self._index.delete(drop=True)
 
-    def drop(self, id_field: Optional[str]=None) -> None:
+    def drop(self, id_field: Optional[str] = None) -> None:
         """Remove a specific exchange from the conversation history.
 
         Args:
@@ -146,14 +146,9 @@ class SemanticSessionManager(BaseSessionManager):
         """
         if id_field:
             key = ":".join([self._index.schema.index.name, id_field])
-
-            #key = self.hash_input(key)
-
-            print('#### WITH ID_FIELD KEY', key)
+            key = self.hash_input(key)
         else:
-            key = self.fetch_recent(top_k=1, raw=True)[0]["id"]
-            
-            print('#### NO TIMESTAMP KEY', key)
+            key = self.fetch_recent(top_k=1, raw=True)[0]["id"] # type: ignore
         self._client.delete(key)
 
     def fetch_relevant(
@@ -288,9 +283,9 @@ class SemanticSessionManager(BaseSessionManager):
         """
         vector = self._vectorizer.embed(prompt + response)
         timestamp = datetime.now().timestamp()
+        id_field = ":".join([self._user_id, self._session_id, str(timestamp)])
         payload = {
-            #"id": self.hash_input(prompt + str(timestamp)),
-            "id_field": ":".join([self._user_id, self._session_id, str(timestamp)]),
+            "id_field": id_field,
             "prompt": prompt,
             "response": response,
             "timestamp": timestamp,

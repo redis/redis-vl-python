@@ -82,7 +82,7 @@ class StandardSessionManager(BaseSessionManager):
         """Clears the chat session history."""
         self._client.delete(self.key)
 
-    def drop(self, id_field: Optional[str]=None) -> None:
+    def drop(self, id_field: Optional[str] = None) -> None:
         """Remove a specific exchange from the conversation history.
 
         Args:
