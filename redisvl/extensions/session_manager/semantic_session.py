@@ -148,7 +148,7 @@ class SemanticSessionManager(BaseSessionManager):
             key = ":".join([self._index.schema.index.name, id_field])
             key = self.hash_input(key)
         else:
-            key = self.fetch_recent(top_k=1, raw=True)[0]["id"] # type: ignore
+            key = self.fetch_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
         self._client.delete(key)
 
     def fetch_relevant(
