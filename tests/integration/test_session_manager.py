@@ -10,16 +10,20 @@ from redisvl.extensions.session_manager import (
 
 
 @pytest.fixture
-def standard_session(app_name, user_id, session_id):
-    session = StandardSessionManager(app_name, session_id=session_id, user_id=user_id)
+def standard_session(app_name, user_tag, session_tag):
+    session = StandardSessionManager(
+        app_name, session_tag=session_tag, user_tag=user_tag
+    )
     yield session
     session.clear()
     session.delete()
 
 
 @pytest.fixture
-def semantic_session(app_name, user_id, session_id):
-    session = SemanticSessionManager(app_name, session_id=session_id, user_id=user_id)
+def semantic_session(app_name, user_tag, session_tag):
+    session = SemanticSessionManager(
+        app_name, session_tag=session_tag, user_tag=user_tag
+    )
     yield session
     session.clear()
     session.delete()
@@ -28,16 +32,16 @@ def semantic_session(app_name, user_id, session_id):
 # test standard session manager
 def test_include_preamble():
     # test default key creation
-    session = StandardSessionManager(name="test_app", session_id="123", user_id="abc")
+    session = StandardSessionManager(name="test_app", session_tag="123", user_tag="abc")
     assert session.key == "test_app:abc:123"
 
     # test initializing and changing preamble
-    session = StandardSessionManager(name="test_app", session_id="123", user_id="abc")
+    session = StandardSessionManager(name="test_app", session_tag="123", user_tag="abc")
     assert session._preamble == {"role": "_preamble", "_content": ""}
 
     preamble = "system level instruction to llm."
     session = StandardSessionManager(
-        name="test_app", session_id="123", user_id="abc", preamble=preamble
+        name="test_app", session_tag="123", user_tag="abc", preamble=preamble
     )
     assert session._preamble == {"role": "_preamble", "_content": preamble}
 
@@ -48,7 +52,7 @@ def test_include_preamble():
 
 def test_specify_redis_client(client):
     session = StandardSessionManager(
-        name="test_app", session_id="abc", user_id="123", redis_client=client
+        name="test_app", session_tag="abc", user_tag="123", redis_client=client
     )
     assert isinstance(session._client, type(client))
 
@@ -105,30 +109,30 @@ def test_standard_store_and_fetch(standard_session):
     ]
 
 
-def test_standard_set_scope(standard_session, app_name, user_id, session_id):
+def test_standard_set_scope(standard_session, app_name, user_tag, session_tag):
     # test calling set_scope with no params does not change scope
     current_key = standard_session.key
     standard_session.set_scope()
     assert standard_session.key == current_key
 
-    # test passing either user_id or session_id only changes corresponding value
+    # test passing either user_tag or session_tag only changes corresponding value
     new_user = "def"
-    standard_session.set_scope(user_id=new_user)
-    assert standard_session.key == f"{app_name}:{new_user}:{session_id}"
+    standard_session.set_scope(user_tag=new_user)
+    assert standard_session.key == f"{app_name}:{new_user}:{session_tag}"
 
     new_session = "456"
-    standard_session.set_scope(session_id=new_session)
+    standard_session.set_scope(session_tag=new_session)
     assert standard_session.key == f"{app_name}:{new_user}:{new_session}"
 
     # test that changing user and session id does indeed change access scope
     standard_session.store("new user prompt", "new user response")
 
-    standard_session.set_scope(session_id="789", user_id="ghi")
+    standard_session.set_scope(session_tag="789", user_tag="ghi")
     no_context = standard_session.fetch_recent()
     assert no_context == [{"role": "_preamble", "_content": ""}]
 
     # change scope back to read previously stored entries
-    standard_session.set_scope(session_id="456", user_id="def")
+    standard_session.set_scope(session_tag="456", user_tag="def")
     previous_context = standard_session.fetch_recent()
     assert previous_context == [
         {"role": "_preamble", "_content": ""},
@@ -137,7 +141,7 @@ def test_standard_set_scope(standard_session, app_name, user_id, session_id):
     ]
 
 
-def test_standard_fetch_recent_with_scope(standard_session, session_id):
+def test_standard_fetch_recent_with_scope(standard_session, session_tag):
     # test that passing user or session id to fetch_recent(...) changes scope
     standard_session.store("first prompt", "first response")
 
@@ -148,7 +152,7 @@ def test_standard_fetch_recent_with_scope(standard_session, session_id):
         {"role": "_llm", "_content": "first response"},
     ]
 
-    context = standard_session.fetch_recent(session_id="456")
+    context = standard_session.fetch_recent(session_tag="456")
     assert context == [{"role": "_preamble", "_content": ""}]
 
     # test that scope change persists after being updated via fetch_recent(...)
@@ -162,7 +166,7 @@ def test_standard_fetch_recent_with_scope(standard_session, session_id):
 
     # clean up lingering sessions
     standard_session.clear()
-    standard_session.set_scope(session_id=session_id)
+    standard_session.set_scope(session_tag=session_tag)
 
 
 def test_standard_fetch_text(standard_session):
@@ -182,12 +186,10 @@ def test_standard_fetch_raw(standard_session):
         "prompt",
         "response",
         "timestamp",
-        "token_count",
     }
     assert raw[0]["prompt"] == "first prompt"
     assert raw[0]["response"] == "first response"
     assert current_time <= raw[0]["timestamp"] <= time.time()
-    assert raw[0]["token_count"] == 1
 
 
 def test_standard_drop(standard_session):
@@ -241,12 +243,12 @@ def test_standard_delete(standard_session):
 
 def test_semantic_include_preamble():
     # test initializing and changing preamble
-    session = SemanticSessionManager(name="test_app", session_id="123", user_id="abc")
+    session = SemanticSessionManager(name="test_app", session_tag="123", user_tag="abc")
     assert session._preamble == {"role": "_preamble", "_content": ""}
 
     preamble = "system level instruction to llm."
     session = SemanticSessionManager(
-        name="test_app", session_id="123", user_id="abc", preamble=preamble
+        name="test_app", session_tag="123", user_tag="abc", preamble=preamble
     )
     assert session._preamble == {"role": "_preamble", "_content": preamble}
 
@@ -257,12 +259,12 @@ def test_semantic_include_preamble():
 
 def test_semantic_specify_client(client):
     session = SemanticSessionManager(
-        name="test_app", session_id="abc", user_id="123", redis_client=client
+        name="test_app", session_tag="abc", user_tag="123", redis_client=client
     )
     assert isinstance(session._client, type(client))
 
 
-def test_semantic_set_scope(semantic_session, app_name, user_id, session_id):
+def test_semantic_set_scope(semantic_session, app_name, user_tag, session_tag):
     # test calling set_scope with no params does not change scope
     semantic_session.store("some prompt", "some response")
     semantic_session.set_scope()
@@ -275,7 +277,7 @@ def test_semantic_set_scope(semantic_session, app_name, user_id, session_id):
 
     # test that changing user and session id does indeed change access scope
     new_user = "def"
-    semantic_session.set_scope(user_id=new_user)
+    semantic_session.set_scope(user_tag=new_user)
     semantic_session.store("new user prompt", "new user response")
     context = semantic_session.fetch_recent()
     assert context == [
@@ -286,7 +288,7 @@ def test_semantic_set_scope(semantic_session, app_name, user_id, session_id):
 
     # test that previous user and session data is still accessible
     previous_user = "abc"
-    semantic_session.set_scope(user_id=previous_user)
+    semantic_session.set_scope(user_tag=previous_user)
     context = semantic_session.fetch_recent()
     assert context == [
         {"role": "_preamble", "_content": ""},
@@ -294,7 +296,7 @@ def test_semantic_set_scope(semantic_session, app_name, user_id, session_id):
         {"role": "_llm", "_content": "some response"},
     ]
 
-    semantic_session.set_scope(session_id="789", user_id="ghi")
+    semantic_session.set_scope(session_tag="789", user_tag="ghi")
     no_context = semantic_session.fetch_recent()
     assert no_context == [{"role": "_preamble", "_content": ""}]
 
@@ -398,7 +400,6 @@ def test_semantic_fetch_raw(semantic_session):
     assert raw[0]["prompt"] == "first prompt"
     assert raw[0]["response"] == "first response"
     assert current_time <= float(raw[0]["timestamp"]) <= time.time()
-    assert int(raw[0]["token_count"]) == 1
 
 
 def test_semantic_drop(semantic_session):

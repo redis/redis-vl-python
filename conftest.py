@@ -146,9 +146,9 @@ def app_name():
     return "test_app"
 
 @pytest.fixture
-def session_id():
+def session_tag():
     return "123"
 
 @pytest.fixture
-def user_id():
+def user_tag():
     return "abc"

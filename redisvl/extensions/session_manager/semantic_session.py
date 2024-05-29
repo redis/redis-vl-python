@@ -14,11 +14,19 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticSessionManager(BaseSessionManager):
+    id_field_name: str = "id_field"
+    prompt_field_name: str = "prompt"
+    response_field_name: str = "response"
+    timestamp_field_name: str = "timestamp"
+    session_field_name: str = "session_tag"
+    user_field_name: str = "user_tag"
+    combined_vector_field_name: str = "combined_vector_field"
+
     def __init__(
         self,
         name: str,
-        session_id: str,
-        user_id: str,
+        session_tag: str,
+        user_tag: str,
         prefix: Optional[str] = None,
         vectorizer: Optional[BaseVectorizer] = None,
         distance_threshold: float = 0.3,
@@ -34,9 +42,9 @@ class SemanticSessionManager(BaseSessionManager):
 
         Args:
             name (str): The name of the session manager index.
-            session_id (str): Tag to be added to entries to link to a specific
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_id (str): Tag to be added to entries to link to a specific user.
+            user_tag (str): Tag to be added to entries to link to a specific user.
             prefix (Optional[str]): Prefix for the keys for this session data.
                 Defaults to None and will be replaced with the index name.
             vectorizer (Vectorizer): The vectorizer to create embeddings with.
@@ -51,7 +59,7 @@ class SemanticSessionManager(BaseSessionManager):
         constructed from the prompt & response in a single string.
 
         """
-        super().__init__(name, session_id, user_id, preamble)
+        super().__init__(name, session_tag, user_tag, preamble)
 
         prefix = prefix or name
 
@@ -69,9 +77,8 @@ class SemanticSessionManager(BaseSessionManager):
                 {"name": "prompt", "type": "text"},
                 {"name": "response", "type": "text"},
                 {"name": "timestamp", "type": "numeric"},
-                {"name": "session_id", "type": "tag"},
-                {"name": "user_id", "type": "tag"},
-                {"name": "token_count", "type": "numeric"},
+                {"name": "session_tag", "type": "tag"},
+                {"name": "user_tag", "type": "tag"},
                 {
                     "name": "combined_vector_field",
                     "type": "vector",
@@ -96,12 +103,12 @@ class SemanticSessionManager(BaseSessionManager):
 
         self._index.create(overwrite=False)
 
-        self.set_scope(session_id, user_id)
+        self.set_scope(session_tag, user_tag)
 
     def set_scope(
         self,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
     ) -> None:
         """Set the tag filter to apply to querries based on the desired scope.
 
@@ -109,20 +116,20 @@ class SemanticSessionManager(BaseSessionManager):
         scope specified in calls to fetch_recent or fetch_relevant.
 
         Args:
-            session_id (str): Id of the specific session to filter to. Default is
+            session_tag (str): Id of the specific session to filter to. Default is
                 None, which means all sessions will be in scope.
-            user_id (str): Id of the specific user to filter to. Default is None,
+            user_tag (str): Id of the specific user to filter to. Default is None,
                 which means all users will be in scope.
         """
-        if not (session_id or user_id):
+        if not (session_tag or user_tag):
             return
-        self._session_id = session_id or self._session_id
-        self._user_id = user_id or self._user_id
-        tag_filter = Tag("user_id") == []
-        if user_id:
-            tag_filter = tag_filter & (Tag("user_id") == self._user_id)
-        if session_id:
-            tag_filter = tag_filter & (Tag("session_id") == self._session_id)
+        self._session_tag = session_tag or self._session_tag
+        self._user_tag = user_tag or self._user_tag
+        tag_filter = Tag("user_tag") == []
+        if user_tag:
+            tag_filter = tag_filter & (Tag("user_tag") == self._user_tag)
+        if session_tag:
+            tag_filter = tag_filter & (Tag("session_tag") == self._session_tag)
 
         self._tag_filter = tag_filter
 
@@ -157,8 +164,8 @@ class SemanticSessionManager(BaseSessionManager):
         as_text: bool = False,
         top_k: int = 3,
         fall_back: bool = False,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
         raw: bool = False,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Searches the chat history for information semantically related to
@@ -177,9 +184,9 @@ class SemanticSessionManager(BaseSessionManager):
                 Note that one exchange contains both a prompt and a response.
             fallback (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
-            session_id (str): Tag to be added to entries to link to a specific
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_id (str): Tag to be added to entries to link to a specific user.
+            user_tag (str): Tag to be added to entries to link to a specific user.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response.
 
@@ -187,10 +194,10 @@ class SemanticSessionManager(BaseSessionManager):
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
             list of prompts and responses in JSON containing the most relevant.
         """
-        self.set_scope(session_id, user_id)
+        self.set_scope(session_tag, user_tag)
         return_fields = [
-            "session_id",
-            "user_id",
+            "session_tag",
+            "user_tag",
             "prompt",
             "response",
             "timestamp",
@@ -218,8 +225,8 @@ class SemanticSessionManager(BaseSessionManager):
     def fetch_recent(
         self,
         top_k: int = 3,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
         as_text: bool = False,
         raw: bool = False,
     ) -> Union[List[str], List[Dict[str, str]]]:
@@ -230,24 +237,23 @@ class SemanticSessionManager(BaseSessionManager):
                           or list of alternating prompts and responses.
             top_k (int): The number of previous exchanges to return. Default is 3.
                 Note that one exchange contains both a prompt and a respoonse.
-            session_id (str): Tag to be added to entries to link to a specific
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_id (str): Tag to be added to entries to link to a specific user.
+            user_tag (str): Tag to be added to entries to link to a specific user.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                                    or list of strings if as_text is false.
         """
-        self.set_scope(session_id, user_id)
+        self.set_scope(session_tag, user_tag)
         return_fields = [
             "id_field",
-            "session_id",
-            "user_id",
+            "session_tag",
+            "user_tag",
             "prompt",
             "response",
             "timestamp",
-            "token_count",
         ]
 
         query = FilterQuery(
@@ -282,17 +288,16 @@ class SemanticSessionManager(BaseSessionManager):
         """
         vector = self._vectorizer.embed(prompt + response)
         timestamp = datetime.now().timestamp()
-        id_field = ":".join([self._user_id, self._session_id, str(timestamp)])
+        id_field = ":".join([self._user_tag, self._session_tag, str(timestamp)])
         hash_id = self.hash_input(id_field)
         payload = {
-            "id_field": hash_id,
-            "prompt": prompt,
-            "response": response,
-            "timestamp": timestamp,
-            "session_id": self._session_id,
-            "user_id": self._user_id,
-            "token_count": 1,  # TODO get actual token count
-            "combined_vector_field": array_to_buffer(vector),
+            self.id_field_name: hash_id,
+            self.prompt_field_name: prompt,
+            self.response_field_name: response,
+            self.timestamp_field_name: timestamp,
+            self.session_field_name: self._session_tag,
+            self.user_field_name: self._user_tag,
+            self.combined_vector_field_name: array_to_buffer(vector),
         }
         self._index.load(data=[payload], id_field="id_field")
 

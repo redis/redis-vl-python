@@ -13,11 +13,17 @@ from redisvl.schema.schema import IndexSchema
 
 
 class StandardSessionManager(BaseSessionManager):
+
+    id_field_name: str = "id_field"
+    prompt_field_name: str = "prompt"
+    response_field_name: str = "response"
+    timestamp_field_name: str = "timestamp"
+
     def __init__(
         self,
         name: str,
-        session_id: str,
-        user_id: str,
+        session_tag: str,
+        user_tag: str,
         redis_client: Optional[Redis] = None,
         preamble: str = "",
     ):
@@ -30,9 +36,9 @@ class StandardSessionManager(BaseSessionManager):
 
         Args:
             name str: The name of the session manager index.
-            session_id str: Tag to be added to entries to link to a specific
+            session_tag str: Tag to be added to entries to link to a specific
                 session.
-            user_id str: Tag to be added to entries to link to a specific user.
+            user_tag str: Tag to be added to entries to link to a specific user.
             redis_client Optional[Redis]: A Redis client instance. Defaults to
                 None.
             preamble str: System level prompt to be included in all context.
@@ -42,7 +48,7 @@ class StandardSessionManager(BaseSessionManager):
         constructed from the prompt & response in a single string.
 
         """
-        super().__init__(name, session_id, user_id, preamble)
+        super().__init__(name, session_tag, user_tag, preamble)
 
         if redis_client:
             self._client = redis_client
@@ -50,12 +56,12 @@ class StandardSessionManager(BaseSessionManager):
             # TODO make this configurable
             self._client = Redis(host="localhost", port=6379, decode_responses=True)
 
-        self.set_scope(session_id, user_id)
+        self.set_scope(session_tag, user_tag)
 
     def set_scope(
         self,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
     ) -> None:
         """Set the filter to apply to querries based on the desired scope.
 
@@ -63,16 +69,16 @@ class StandardSessionManager(BaseSessionManager):
         scope is specified in calls to fetch_recent.
 
         Args:
-            session_id str: Id of the specific session to filter to. Default is
-                None, which means session_id will be unchanged.
-            user_id str: Id of the specific user to filter to. Default is None,
-                which means user_id will be unchanged.
+            session_tag str: Id of the specific session to filter to. Default is
+                None, which means session_tag will be unchanged.
+            user_tag str: Id of the specific user to filter to. Default is None,
+                which means user_tag will be unchanged.
         """
-        if not (session_id or user_id):
+        if not (session_tag or user_tag):
             return
 
-        self._session_id = session_id or self._session_id
-        self._user_id = user_id or self._user_id
+        self._session_tag = session_tag or self._session_tag
+        self._user_tag = user_tag or self._user_tag
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -102,8 +108,8 @@ class StandardSessionManager(BaseSessionManager):
     def fetch_recent(
         self,
         top_k: int = 3,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
         as_text: bool = False,
         raw: bool = False,
     ) -> Union[List[str], List[Dict[str, str]]]:
@@ -111,9 +117,9 @@ class StandardSessionManager(BaseSessionManager):
 
         Args:
             top_k int: The number of previous exchanges to return. Default is 3
-            session_id str: Tag to be added to entries to link to a specific
+            session_tag str: Tag to be added to entries to link to a specific
                 session.
-            user_id str: Tag to be added to entries to link to a specific user.
+            user_tag str: Tag to be added to entries to link to a specific user.
             as_text bool: Whether to return the conversation as a single string,
                 or list of alternating prompts and responses.
             raw bool: Whether to return the full Redis hash entry or just the
@@ -126,7 +132,7 @@ class StandardSessionManager(BaseSessionManager):
             return self._format_context([], as_text)
         if top_k == -1:
             top_k = 0
-        self.set_scope(session_id, user_id)
+        self.set_scope(session_tag, user_tag)
         messages = self._client.lrange(self.key, -top_k, -1)
         messages = [json.loads(msg) for msg in messages]
         if raw:
@@ -135,7 +141,7 @@ class StandardSessionManager(BaseSessionManager):
 
     @property
     def key(self):
-        return ":".join([self._name, self._user_id, self._session_id])
+        return ":".join([self._name, self._user_tag, self._session_tag])
 
     def store(self, prompt: str, response: str) -> None:
         """Insert a prompt:response pair into the session memory. A timestamp
@@ -148,11 +154,12 @@ class StandardSessionManager(BaseSessionManager):
         """
         timestamp = datetime.now().timestamp()
         payload = {
-            "id_field": ":".join([self._user_id, self._session_id, str(timestamp)]),
-            "prompt": prompt,
-            "response": response,
-            "timestamp": timestamp,
-            "token_count": 1,  # TODO get actual token count
+            self.id_field_name: ":".join(
+                [self._user_tag, self._session_tag, str(timestamp)]
+            ),
+            self.prompt_field_name: prompt,
+            self.response_field_name: response,
+            self.timestamp_field_name: timestamp,
         }
         self._client.rpush(self.key, json.dumps(payload))
 

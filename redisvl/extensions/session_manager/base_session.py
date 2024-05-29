@@ -11,8 +11,8 @@ class BaseSessionManager:
     def __init__(
         self,
         name: str,
-        session_id: str,
-        user_id: str,
+        session_tag: str,
+        user_tag: str,
         preamble: str = "",
     ):
         """Initialize session memory with index
@@ -24,20 +24,20 @@ class BaseSessionManager:
 
         Args:
             name (str): The name of the session manager index.
-            session_id (str): Tag to be added to entries to link to a specific
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_id (str): Tag to be added to entries to link to a specific user.
+            user_tag (str): Tag to be added to entries to link to a specific user.
             preamble (str): System level prompt to be included in all context.
         """
         self._name = name
-        self._user_id = user_id
-        self._session_id = session_id
+        self._user_tag = user_tag
+        self._session_tag = session_tag
         self.set_preamble(preamble)
 
     def set_scope(
         self,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
     ) -> None:
         """Set the filter to apply to querries based on the desired scope.
 
@@ -45,9 +45,9 @@ class BaseSessionManager:
         scope specified in calls to fetch_recent.
 
         Args:
-            session_id (str): Id of the specific session to filter to. Default is
+            session_tag (str): Id of the specific session to filter to. Default is
                 None.
-            user_id (str): Id of the specific user to filter to. Default is None.
+            user_tag (str): Id of the specific user to filter to. Default is None.
         """
         raise NotImplementedError
 
@@ -71,8 +71,8 @@ class BaseSessionManager:
     def fetch_recent(
         self,
         top_k: int = 3,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        user_tag: Optional[str] = None,
         as_text: bool = False,
         raw: bool = False,
     ) -> Union[List[str], List[Dict[str, str]]]:
@@ -81,9 +81,9 @@ class BaseSessionManager:
         Args:
             top_k (int): The number of previous exchanges to return. Default is 3.
                 Note that one exchange contains both a prompt and response.
-            session_id (str): Tag to be added to entries to link to a specific
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_id (str): Tag to be added to entries to link to a specific user.
+            user_tag (str): Tag to be added to entries to link to a specific user.
             as_text (bool): Whether to return the conversation as a single string,
                 or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
