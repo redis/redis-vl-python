@@ -163,13 +163,6 @@ class StandardSessionManager(BaseSessionManager):
         }
         self._client.rpush(self.key, json.dumps(payload))
 
-    def set_preamble(self, prompt: str) -> None:
-        """Add a preamble statement to the the begining of each session to be
-        included in each subsequent LLM call.
-        """
-        self._preamble = {"role": "_preamble", "_content": prompt}
-        # TODO store this in Redis with asigned scope?
-
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
         return hashlib.sha256(prompt.encode("utf-8")).hexdigest()

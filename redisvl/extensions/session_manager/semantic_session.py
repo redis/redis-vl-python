@@ -301,12 +301,6 @@ class SemanticSessionManager(BaseSessionManager):
         }
         self._index.load(data=[payload], id_field="id_field")
 
-    def set_preamble(self, prompt: str) -> None:
-        """Add a preamble statement to the the begining of each session to be
-        included in each subsequent LLM call.
-        """
-        self._preamble = {"role": "_preamble", "_content": prompt}
-
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
         return hashlib.sha256(prompt.encode("utf-8")).hexdigest()

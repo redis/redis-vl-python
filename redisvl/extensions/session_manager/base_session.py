@@ -110,13 +110,13 @@ class BaseSessionManager:
                 or list of strings if as_text is false.
         """
         if as_text:
-            text_statements = [self._preamble["_content"]]
+            text_statements = [self._preamble["_content"]] if self._preamble else []
             for hit in hits:
                 text_statements.append(hit["prompt"])
                 text_statements.append(hit["response"])
             return text_statements
         else:
-            statements = [self._preamble]
+            statements = [self._preamble] if self._preamble else []
             for hit in hits:
                 statements.append({"role": "_user", "_content": hit["prompt"]})
                 statements.append({"role": "_llm", "_content": hit["response"]})
@@ -137,8 +137,10 @@ class BaseSessionManager:
         """Add a preamble statement to the the begining of each session to be
         included in each subsequent LLM call.
         """
-        self._preamble = {"role": "_preamble", "_content": prompt}
-        # TODO store this in Redis with asigned scope?
+        if prompt:
+            self._preamble = {"role": "_preamble", "_content": prompt}
+        else:
+            self._preamble = {}
 
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
