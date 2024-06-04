@@ -84,12 +84,12 @@ def process_results(
     return [_process(doc) for doc in results.docs]
 
 
-def check_modules_present():
+def setup_redis():
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             result = func(self, *args, **kwargs)
-            RedisConnectionFactory.validate_redis_modules(self._redis_client)
+            RedisConnectionFactory.validate_redis(self._redis_client, self._lib_name)
             return result
 
         return wrapper
@@ -97,12 +97,14 @@ def check_modules_present():
     return decorator
 
 
-def check_async_modules_present():
+def setup_async_redis():
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             result = func(self, *args, **kwargs)
-            RedisConnectionFactory.validate_async_redis_modules(self._redis_client)
+            RedisConnectionFactory.validate_async_redis(
+                self._redis_client, self._lib_name
+            )
             return result
 
         return wrapper
@@ -174,6 +176,9 @@ class BaseSearchIndex:
             raise ValueError("Must provide a valid IndexSchema object")
 
         self.schema = schema
+
+        # set custom lib name
+        self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
 
         # set up redis connection
         self._redis_client: Optional[Union[redis.Redis, aredis.Redis]] = None
@@ -350,11 +355,13 @@ class SearchIndex(BaseSearchIndex):
             index.connect(redis_url="redis://localhost:6379")
 
         """
-        client = RedisConnectionFactory.connect(redis_url, use_async=False, **kwargs)
+        client = RedisConnectionFactory.connect(
+            redis_url=redis_url, use_async=False, **kwargs
+        )
         return self.set_client(client)
 
-    @check_modules_present()
-    def set_client(self, client: redis.Redis):
+    @setup_redis()
+    def set_client(self, client: redis.Redis, **kwargs):
         """Manually set the Redis client to use with the search index.
 
         This method configures the search index to use a specific Redis or
@@ -729,10 +736,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             index.connect(redis_url="redis://localhost:6379")
 
         """
-        client = RedisConnectionFactory.connect(redis_url, use_async=True, **kwargs)
+        client = RedisConnectionFactory.connect(
+            redis_url=redis_url, use_async=True, **kwargs
+        )
         return self.set_client(client)
 
-    @check_async_modules_present()
+    @setup_async_redis()
     def set_client(self, client: aredis.Redis):
         """Manually set the Redis client to use with the search index.
 

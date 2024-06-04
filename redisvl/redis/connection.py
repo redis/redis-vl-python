@@ -13,6 +13,7 @@ from redis.connection import (
 
 from redisvl.redis.constants import REDIS_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
+from redisvl.version import __version__
 
 
 def get_address_from_env() -> str:
@@ -24,6 +25,20 @@ def get_address_from_env() -> str:
     if "REDIS_URL" not in os.environ:
         raise ValueError("REDIS_URL env var not set")
     return os.environ["REDIS_URL"]
+
+
+def make_lib_name(*args) -> str:
+    """Build the lib name to be reported through the Redis client setinfo
+    command.
+
+    Returns:
+        str: Redis client library name
+    """
+    custom_libs = f"redisvl_v{__version__}"
+    for arg in args:
+        if arg:
+            custom_libs += f";{arg}"
+    return f"redis-py({custom_libs})"
 
 
 class RedisConnectionFactory:
@@ -108,8 +123,10 @@ class RedisConnectionFactory:
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
-    def validate_redis_modules(
-        client: Redis, redis_required_modules: Optional[List[Dict[str, Any]]] = None
+    def validate_redis(
+        client: Redis,
+        lib_name: Optional[str] = None,
+        redis_required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Validates if the required Redis modules are installed.
 
@@ -119,13 +136,18 @@ class RedisConnectionFactory:
         Raises:
             ValueError: If required Redis modules are not installed.
         """
-        RedisConnectionFactory._validate_redis_modules(
+        # set client library name
+        client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+
+        # validate available modules
+        RedisConnectionFactory._validate_modules(
             convert_bytes(client.module_list()), redis_required_modules
         )
 
     @staticmethod
-    def validate_async_redis_modules(
+    def validate_async_redis(
         client: AsyncRedis,
+        lib_name: Optional[str] = None,
         redis_required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
@@ -150,12 +172,12 @@ class RedisConnectionFactory:
                 **client.connection_pool.connection_kwargs,
             )
         )
-        RedisConnectionFactory.validate_redis_modules(
-            temp_client, redis_required_modules
+        RedisConnectionFactory.validate_redis(
+            temp_client, lib_name, redis_required_modules
         )
 
     @staticmethod
-    def _validate_redis_modules(
+    def _validate_modules(
         installed_modules, redis_required_modules: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """
