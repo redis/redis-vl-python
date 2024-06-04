@@ -6,13 +6,16 @@ from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError
 
 from redisvl.redis.connection import RedisConnectionFactory, get_address_from_env
+from redisvl.version import __version__
+
+EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
 
 
 def test_get_address_from_env(redis_url):
     assert get_address_from_env() == redis_url
 
 
-def test_sync_redis_connection(redis_url):
+def test_sync_redis_connect(redis_url):
     client = RedisConnectionFactory.connect(redis_url)
     assert client is not None
     assert isinstance(client, Redis)
@@ -21,7 +24,7 @@ def test_sync_redis_connection(redis_url):
 
 
 @pytest.mark.asyncio
-async def test_async_redis_connection(redis_url):
+async def test_async_redis_connect(redis_url):
     client = RedisConnectionFactory.connect(redis_url, use_async=True)
     assert client is not None
     assert isinstance(client, AsyncRedis)
@@ -49,11 +52,29 @@ def test_unknown_redis():
         bad_client.ping()
 
 
-def test_required_modules(client):
-    RedisConnectionFactory.validate_redis_modules(client)
+def test_validate_redis(client):
+    RedisConnectionFactory.validate_redis(client)
+    lib_name = client.client_info()
+    assert lib_name["lib-name"] == EXPECTED_LIB_NAME
 
 
 @pytest.mark.asyncio
-async def test_async_required_modules(async_client):
+async def test_validate_async_redis(async_client):
     client = await async_client
-    RedisConnectionFactory.validate_async_redis_modules(client)
+    RedisConnectionFactory.validate_async_redis(client)
+    lib_name = await client.client_info()
+    assert lib_name["lib-name"] == EXPECTED_LIB_NAME
+
+
+def test_custom_lib_name(client):
+    RedisConnectionFactory.validate_redis(client, "langchain_v0.1.0")
+    lib_name = client.client_info()
+    assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
+
+
+@pytest.mark.asyncio
+async def test_async_custom_lib_name(async_client):
+    client = await async_client
+    RedisConnectionFactory.validate_async_redis(client, "langchain_v0.1.0")
+    lib_name = await client.client_info()
+    assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
