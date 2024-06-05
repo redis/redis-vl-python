@@ -97,21 +97,6 @@ def setup_redis():
     return decorator
 
 
-# def setup_async_redis():
-#     def decorator(func):
-#         @wraps(func)
-#         def wrapper(self, *args, **kwargs):
-#             result = func(self, *args, **kwargs)
-#             RedisConnectionFactory.validate_async_redis(
-#                 self._redis_client, self._lib_name
-#             )
-#             return result
-
-#         return wrapper
-
-#     return decorator
-
-
 def check_index_exists():
     def decorator(func):
         @wraps(func)
