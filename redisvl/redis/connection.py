@@ -11,6 +11,7 @@ from redis.connection import (
     ConnectionPool,
     SSLConnection,
 )
+from redis.exceptions import ResponseError
 
 from redisvl.redis.constants import REDIS_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
@@ -140,7 +141,6 @@ class RedisConnectionFactory:
             ValueError: If required Redis modules are not installed.
         """
         if isinstance(client, AsyncRedis):
-            print("VALIDATING ASYNC CLIENT", flush=True)
             RedisConnectionFactory._run_async(
                 RedisConnectionFactory._validate_async_redis,
                 client,
@@ -160,7 +160,11 @@ class RedisConnectionFactory:
     ) -> None:
         """Validates the sync client."""
         # Set client library name
-        client.client_setinfo("LIB-NAME", make_lib_name(lib_name))  # type: ignore
+        _lib_name = make_lib_name(lib_name)
+        try:
+            client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
+        except ResponseError:
+            client.echo(_lib_name)
 
         # Get list of modules
         modules_list = convert_bytes(client.module_list())
@@ -176,8 +180,11 @@ class RedisConnectionFactory:
     ) -> None:
         """Validates the async client."""
         # Set client library name
-        res = await client.client_setinfo("LIB-NAME", make_lib_name(lib_name))  # type: ignore
-        print("SET ASYNC CLIENT NAME", res, flush=True)
+        _lib_name = make_lib_name(lib_name)
+        try:
+            await client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
+        except ResponseError:
+            await client.echo(_lib_name)
 
         # Get list of modules
         modules_list = convert_bytes(await client.module_list())
