@@ -164,6 +164,7 @@ class RedisConnectionFactory:
         try:
             client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
         except ResponseError:
+            # Fall back to a simple log echo
             client.echo(_lib_name)
 
         # Get list of modules
@@ -184,6 +185,7 @@ class RedisConnectionFactory:
         try:
             await client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
         except ResponseError:
+            # Fall back to a simple log echo
             await client.echo(_lib_name)
 
         # Get list of modules
