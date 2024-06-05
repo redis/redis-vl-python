@@ -97,19 +97,19 @@ def setup_redis():
     return decorator
 
 
-def setup_async_redis():
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            result = func(self, *args, **kwargs)
-            RedisConnectionFactory.validate_async_redis(
-                self._redis_client, self._lib_name
-            )
-            return result
+# def setup_async_redis():
+#     def decorator(func):
+#         @wraps(func)
+#         def wrapper(self, *args, **kwargs):
+#             result = func(self, *args, **kwargs)
+#             RedisConnectionFactory.validate_async_redis(
+#                 self._redis_client, self._lib_name
+#             )
+#             return result
 
-        return wrapper
+#         return wrapper
 
-    return decorator
+#     return decorator
 
 
 def check_index_exists():
@@ -741,7 +741,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         )
         return self.set_client(client)
 
-    @setup_async_redis()
+    @setup_redis()
     def set_client(self, client: aredis.Redis):
         """Manually set the Redis client to use with the search index.
 

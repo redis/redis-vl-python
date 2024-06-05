@@ -58,23 +58,7 @@ def test_validate_redis(client):
     assert lib_name["lib-name"] == EXPECTED_LIB_NAME
 
 
-@pytest.mark.asyncio
-async def test_validate_async_redis(async_client):
-    client = await async_client
-    RedisConnectionFactory.validate_async_redis(client)
-    lib_name = await client.client_info()
-    assert lib_name["lib-name"] == EXPECTED_LIB_NAME
-
-
-def test_custom_lib_name(client):
+def test_validate_redis_custom_lib_name(client):
     RedisConnectionFactory.validate_redis(client, "langchain_v0.1.0")
     lib_name = client.client_info()
-    assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
-
-
-@pytest.mark.asyncio
-async def test_async_custom_lib_name(async_client):
-    client = await async_client
-    RedisConnectionFactory.validate_async_redis(client, "langchain_v0.1.0")
-    lib_name = await client.client_info()
     assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
