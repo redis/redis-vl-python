@@ -123,6 +123,7 @@ class RedisConnectionFactory:
         # fallback to env var REDIS_URL
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
+    @staticmethod
     def validate_redis(
         client: Union[Redis, AsyncRedis],
         lib_name: Optional[str] = None,
@@ -159,7 +160,7 @@ class RedisConnectionFactory:
     ) -> None:
         """Validates the sync client."""
         # Set client library name
-        client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+        client.client_setinfo("LIB-NAME", make_lib_name(lib_name)) # type: ignore
 
         # Get list of modules
         modules_list = convert_bytes(client.module_list())
@@ -175,7 +176,7 @@ class RedisConnectionFactory:
     ) -> None:
         """Validates the async client."""
         # Set client library name
-        res = await client.client_setinfo("LIB-NAME", make_lib_name(lib_name))
+        res = await client.client_setinfo("LIB-NAME", make_lib_name(lib_name)) # type: ignore
         print("SET ASYNC CLIENT NAME", res, flush=True)
 
         # Get list of modules
