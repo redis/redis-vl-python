@@ -160,7 +160,7 @@ class RedisConnectionFactory:
     ) -> None:
         """Validates the sync client."""
         # Set client library name
-        client.client_setinfo("LIB-NAME", make_lib_name(lib_name)) # type: ignore
+        client.client_setinfo("LIB-NAME", make_lib_name(lib_name))  # type: ignore
 
         # Get list of modules
         modules_list = convert_bytes(client.module_list())
@@ -176,7 +176,7 @@ class RedisConnectionFactory:
     ) -> None:
         """Validates the async client."""
         # Set client library name
-        res = await client.client_setinfo("LIB-NAME", make_lib_name(lib_name)) # type: ignore
+        res = await client.client_setinfo("LIB-NAME", make_lib_name(lib_name))  # type: ignore
         print("SET ASYNC CLIENT NAME", res, flush=True)
 
         # Get list of modules
