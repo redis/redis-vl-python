@@ -7,7 +7,7 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class CustomTextVectorizer(BaseVectorizer):
-    """The CustomTextVectorizer class wraps a user-defined vectorizer to create
+    """The CustomTextVectorizer class wraps user-defined embeding methods to create
     embeddings for text data.
 
     This vectorizer is designed to accept a provided callable text vectorizer and
@@ -49,15 +49,16 @@ class CustomTextVectorizer(BaseVectorizer):
         """Initialize the Custom vectorizer.
 
                 Args:
-                    embed (Optional[Callable]) a Callable function that accepts a list of string object and return a list containing lists of floats. Defaults to None.
+                    embed (Callable) a Callable function that accepts a string object and return a list of floats.
 
         :
-                    embed_many (Optional[Callable)]: a Callable function that accepts a list of string object and return a list containing lists of floats. Defaults to None.
-                    aembed: Optional[Callable] = None,
-                    aembed_many: Optional[Callable] = None,
+                    embed_many (Optional[Callable)]: a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+                    aembed: Optional[Callable] =  an asyncronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
+                    aembed_many: Optional[Callable] =  an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
 
                 Raises:
-                    ValueError if neither embed and embed_many are provided
+                    ValueError if any of the provided functions accept or return incorrect types.
+                    TypeError if any of the provided functions are not Callable objects.
         """
 
         self._validate_embed(embed)
@@ -76,7 +77,7 @@ class CustomTextVectorizer(BaseVectorizer):
         super().__init__(model=model, dims=self._set_model_dims())
 
     def _validate_embed(self, func: Callable):
-        # calling the func with dummy input and validating that it returns a vector
+        """calls the func with dummy input and validates that it returns a vector"""
         try:
             test_str = "this is a test sentence"
             candidate_vector = func(test_str)
@@ -88,7 +89,7 @@ class CustomTextVectorizer(BaseVectorizer):
             raise TypeError(f"{func} is not a callable object")
 
     def _validate_embed_many(self, func: Callable):
-        # calling the func with dummy input and validating that it returns a list of vectors
+        """calls the func with dummy input and validates that it returns a list of vectors"""
         try:
             test_strs = ["first test sentence", "second test sentence"]
             candidate_vectors = func(test_strs)
@@ -104,7 +105,7 @@ class CustomTextVectorizer(BaseVectorizer):
             raise TypeError(f"{func} is not a callable object")
 
     def _validate_aembed(self, func: Callable):
-        # calling the func with dummy input and validating that it returns a vector
+        """calls the func with dummy input and validates that it returns a vector"""
         import asyncio
 
         try:
@@ -119,7 +120,7 @@ class CustomTextVectorizer(BaseVectorizer):
             raise TypeError(f"{func} is not a callable object")
 
     def _validate_aembed_many(self, func: Callable):
-        # calling the func with dummy input and validating that it returns a list of floats
+        """calls the func with dummy input and validates that it returns a list of vectors"""
         import asyncio
 
         try:
