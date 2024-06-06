@@ -48,17 +48,15 @@ class CustomTextVectorizer(BaseVectorizer):
     ):
         """Initialize the Custom vectorizer.
 
-                Args:
-                    embed (Callable) a Callable function that accepts a string object and return a list of floats.
+        Args:
+            embed (Callable): a Callable function that accepts a string object and returns a list of floats.
+            embed_many (Optional[Callable)]: a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+            aembed (Optional[Callable]): an asyncronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
+            aembed_many (Optional[Callable]):  an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
 
-        :
-                    embed_many (Optional[Callable)]: a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
-                    aembed: Optional[Callable] =  an asyncronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
-                    aembed_many: Optional[Callable] =  an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
-
-                Raises:
-                    ValueError if any of the provided functions accept or return incorrect types.
-                    TypeError if any of the provided functions are not Callable objects.
+        Raises:
+            ValueError if any of the provided functions accept or return incorrect types.
+            TypeError if any of the provided functions are not Callable objects.
         """
 
         self._validate_embed(embed)
