@@ -59,16 +59,28 @@ def vectorizer(request, skip_vectorizer):
 @pytest.fixture
 def custom_embed_func():
     def embed(text: str):
-        return [0.1, 0.2, 0.3]
+        return [1.1, 2.2, 3.3, 4.4]
 
     return embed
 
 
 @pytest.fixture
-def custom_embedder_class():
+def custom_embed_class():
     class embedder:
         def embed(self, text: str):
-            return [0.1, 0.2, 0.3]
+            return [1.1, 2.2, 3.3, 4.4]
+
+        def embed_with_args(self, text: str, max_len=None):
+            return [1.1, 2.2, 3.3, 4.4][0:max_len]
+
+        def embed_many(self, text_list):
+            return [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
+
+        def embed_many_with_args(self, texts, param=True):
+            if param:
+                return [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+            else:
+                return [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
     return embedder
 
@@ -109,29 +121,19 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
-def test_custom_vectorizer_embed(custom_embedder_class, custom_embed_func):
+def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
     # test we can pass a stand alone function as embedder callable
-    def my_embedder(text: str):
-        return [1.1, 2.2, 3.3, 4.4]
-
-    custom_wrapper = CustomTextVectorizer(embed=my_embedder)
+    custom_wrapper = CustomTextVectorizer(embed=custom_embed_func)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == [1.1, 2.2, 3.3, 4.4]
 
     # test we can pass an instance of a class method as embedder callable
-    class EmbedClass:
-        def embed_method(self, text: str):
-            return [5.0, 6.0, 7.0, 8.0]
-
-    custom_wrapper = CustomTextVectorizer(embed=EmbedClass().embed_method)
+    custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed)
     embedding = custom_wrapper.embed("This is a test sentence.")
-    assert embedding == [5.0, 6.0, 7.0, 8.0]
+    assert embedding == [1.1, 2.2, 3.3, 4.4]
 
     # test we can pass additional parameters and kwargs to embedding methods
-    def embedder_with_args(text: str, max_len=None):
-        return [1.1, 2.2, 3.3, 4.4][0:max_len]
-
-    custom_wrapper = CustomTextVectorizer(embed=embedder_with_args)
+    custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed_with_args)
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=4)
     assert embedding == [1.1, 2.2, 3.3, 4.4]
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=2)
@@ -161,35 +163,24 @@ def test_custom_vectorizer_embed(custom_embedder_class, custom_embed_func):
         bad_wrapper = CustomTextVectorizer(embed=bad_return_type)
 
 
-def test_custom_vectorizer_embed_many(custom_embedder_class, custom_embed_func):
+def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     # test we can pass a stand alone function as embed_many callable
-    def my_embed_many(text_list):
-        return [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
-
-    custom_wrapper = CustomTextVectorizer(custom_embed_func, embed_many=my_embed_many)
+    custom_wrapper = CustomTextVectorizer(
+        custom_embed_func, embed_many=custom_embed_class().embed_many
+    )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
     # test we can pass a class method as embedder callable
-    class EmbedClass:
-        def embed_many_method(self, text_list):
-            return [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-
     custom_wrapper = CustomTextVectorizer(
-        custom_embed_func, embed_many=EmbedClass().embed_many_method
+        custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
-    assert embeddings == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
     # test we can pass additional parameters and kwargs to embedding methods
-    def embed_many_with_args(texts, param=True):
-        if param:
-            return [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-        else:
-            return [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
-
     custom_wrapper = CustomTextVectorizer(
-        custom_embed_func, embed_many=embed_many_with_args
+        custom_embed_func, embed_many=custom_embed_class().embed_many_with_args
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"], param=True)
     assert embeddings == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
