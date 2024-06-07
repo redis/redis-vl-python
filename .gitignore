@@ -9,5 +9,6 @@ scratch
 wiki_schema.yaml
 docs/_build/
 .venv
+.env
 coverage.xml
 dist/
