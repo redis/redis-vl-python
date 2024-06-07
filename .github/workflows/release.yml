@@ -96,7 +96,7 @@ jobs:
           poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl; poetry run test-cov
 
   publish:
-    needs: build #pre-release-checks
+    needs: pre-release-checks
     runs-on: ubuntu-latest
 
     steps:
