@@ -38,62 +38,62 @@ jobs:
           name: dist
           path: dist/
 
-  # test-pypi-publish:
-  #   needs: build
-  #   runs-on: ubuntu-latest
+  test-pypi-publish:
+    needs: build
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #     - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
 
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: dist
-  #         path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
-  #     - name: Publish to TestPyPI
-  #       env:
-  #         POETRY_PYPI_TOKEN_TESTPYPI: ${{ secrets.TESTPYPI }}
-  #       run: poetry config repositories.test-pypi https://test.pypi.org/legacy/; poetry config pypi-token.test-pypi $POETRY_PYPI_TOKEN_TESTPYPI; poetry publish --repository test-pypi
+      - name: Publish to TestPyPI
+        env:
+          POETRY_PYPI_TOKEN_TESTPYPI: ${{ secrets.TESTPYPI }}
+        run: poetry config repositories.test-pypi https://test.pypi.org/legacy/; poetry config pypi-token.test-pypi $POETRY_PYPI_TOKEN_TESTPYPI; poetry publish --repository test-pypi
 
-  # pre-release-checks:
-  #   needs: test-pypi-publish
-  #   runs-on: ubuntu-latest
+  pre-release-checks:
+    needs: test-pypi-publish
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #     - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
 
-  #     - name: Install dependencies
-  #       run: |
-  #         poetry install --all-extras
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
 
-  #     - name: Install published package from TestPyPI
-  #       env:
-  #         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
-  #         GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-  #         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  #         COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-  #         AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
-  #         AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
-  #         AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
-  #         OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
-  #       run:
-  #         poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl-test; poetry run test-cov
+      - name: Install published package from TestPyPI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
+          AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
+          OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+        run:
+          poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl; poetry run test-cov
 
   publish:
     needs: build #pre-release-checks
