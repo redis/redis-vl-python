@@ -108,27 +108,24 @@ class VoyageAIReranker(BaseReranker):
         limit = kwargs.get("limit", self.limit)
         return_score = kwargs.get("return_score", self.return_score)
         truncation = kwargs.get("truncation")
-        rank_by = kwargs.get("rank_by", self.rank_by) or []
-        rank_by = [rank_by] if isinstance(rank_by, str) else rank_by
+
+        if all(isinstance(doc, dict) and "content" in doc for doc in docs):
+            texts = [
+                str(doc["content"])
+                for doc in docs
+                if isinstance(doc, dict) and "content" in doc
+            ]
+        else:
+            texts = [str(doc) for doc in docs]
 
         reranker_kwargs = {
             "query": query,
-            "documents": docs,
+            "documents": texts,
             "model": self.model,
             "top_k": limit,
         }
         if truncation is not None:
             reranker_kwargs["truncation"] = truncation
-
-        # if we are working with list of dicts
-        if all(isinstance(doc, dict) for doc in docs):
-            if rank_by:
-                reranker_kwargs["rank_fields"] = rank_by
-            else:
-                raise ValueError(
-                    "If reranking dictionary-like docs, "
-                    "you must provide a list of rank_by fields"
-                )
 
         return reranker_kwargs, return_score
 
