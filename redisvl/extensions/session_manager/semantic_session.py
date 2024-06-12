@@ -1,4 +1,3 @@
-import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -113,7 +112,7 @@ class SemanticSessionManager(BaseSessionManager):
         """Set the tag filter to apply to querries based on the desired scope.
 
         This new scope persists until another call to set_scope is made, or if
-        scope specified in calls to fetch_recent or fetch_relevant.
+        scope specified in calls to get_recent or get_relevant.
 
         Args:
             session_tag (str): Id of the specific session to filter to. Default is
@@ -153,12 +152,11 @@ class SemanticSessionManager(BaseSessionManager):
         """
         if id_field:
             key = ":".join([self._index.schema.index.name, id_field])
-            # key = self.hash_input(key)
         else:
-            key = self.fetch_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
+            key = self.get_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
         self._client.delete(key)
 
-    def fetch_relevant(
+    def get_relevant(
         self,
         prompt: str,
         as_text: bool = False,
@@ -172,7 +170,7 @@ class SemanticSessionManager(BaseSessionManager):
         the specified prompt.
 
         This method uses vector similarity search with a text prompt as input.
-        It checks for semantically similar prompt:response pairs and fetches
+        It checks for semantically similar prompt:response pairs and gets
         the top k most relevant previous prompt:response pairs to include as
         context to the next LLM call.
 
@@ -193,7 +191,12 @@ class SemanticSessionManager(BaseSessionManager):
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
             list of prompts and responses in JSON containing the most relevant.
+
+        Raises ValueError: if top_k is not an integer greater or equal to 1.
         """
+        if type(top_k) != int or top_k < 1:
+            raise ValueError("top_k must be an integer greater than or equal to 1")
+
         self.set_scope(session_tag, user_tag)
         return_fields = [
             "session_tag",
@@ -217,12 +220,12 @@ class SemanticSessionManager(BaseSessionManager):
 
         # if we don't find semantic matches fallback to returning recent context
         if not hits and fall_back:
-            return self.fetch_recent(as_text=as_text, top_k=top_k, raw=raw)
+            return self.get_recent(as_text=as_text, top_k=top_k, raw=raw)
         if raw:
             return hits
         return self._format_context(hits, as_text)
 
-    def fetch_recent(
+    def get_recent(
         self,
         top_k: int = 3,
         session_tag: Optional[str] = None,
@@ -242,10 +245,17 @@ class SemanticSessionManager(BaseSessionManager):
             user_tag (str): Tag to be added to entries to link to a specific user.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
+
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                                    or list of strings if as_text is false.
+
+        Raises:
+            ValueError: if top_k is not an integer greater than or equal to 1.
         """
+        if type(top_k) != int or top_k < 1:
+            raise ValueError("top_k must be an integer greater than or equal to 1")
+
         self.set_scope(session_tag, user_tag)
         return_fields = [
             "id_field",
@@ -289,9 +299,8 @@ class SemanticSessionManager(BaseSessionManager):
         vector = self._vectorizer.embed(prompt + response)
         timestamp = datetime.now().timestamp()
         id_field = ":".join([self._user_tag, self._session_tag, str(timestamp)])
-        hash_id = self.hash_input(id_field)
         payload = {
-            self.id_field_name: hash_id,
+            self.id_field_name: id_field,
             self.prompt_field_name: prompt,
             self.response_field_name: response,
             self.timestamp_field_name: timestamp,
@@ -300,7 +309,3 @@ class SemanticSessionManager(BaseSessionManager):
             self.combined_vector_field_name: array_to_buffer(vector),
         }
         self._index.load(data=[payload], id_field="id_field")
-
-    def hash_input(self, prompt: str):
-        """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()

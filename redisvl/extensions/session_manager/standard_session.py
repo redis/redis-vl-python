@@ -1,4 +1,3 @@
-import hashlib
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -66,7 +65,7 @@ class StandardSessionManager(BaseSessionManager):
         """Set the filter to apply to querries based on the desired scope.
 
         This new scope persists until another call to set_scope is made, or if
-        scope is specified in calls to fetch_recent.
+        scope is specified in calls to get_recent.
 
         Args:
             session_tag str: Id of the specific session to filter to. Default is
@@ -105,7 +104,13 @@ class StandardSessionManager(BaseSessionManager):
         else:
             self._client.rpop(self.key)
 
-    def fetch_recent(
+    @property
+    def messages(self) -> Union[List[str], List[Dict[str, str]]]:
+        """Returns the full chat history."""
+        # TODO raw or as_text?
+        return self.get_recent(top_k=0)
+
+    def get_recent(
         self,
         top_k: int = 3,
         session_tag: Optional[str] = None,
@@ -124,14 +129,17 @@ class StandardSessionManager(BaseSessionManager):
                 or list of alternating prompts and responses.
             raw bool: Whether to return the full Redis hash entry or just the
                 prompt and response
+
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                 or list of strings if as_text is false.
+
+        Raises:
+            ValueError: if top_k is not an integer greater than or equal to 0.
         """
-        if top_k == 0:
-            return self._format_context([], as_text)
-        if top_k == -1:
-            top_k = 0
+        if type(top_k) != int or top_k < 0:
+            raise ValueError("top_k must be an integer greater than or equal to 0")
+
         self.set_scope(session_tag, user_tag)
         messages = self._client.lrange(self.key, -top_k, -1)
         messages = [json.loads(msg) for msg in messages]
@@ -162,7 +170,3 @@ class StandardSessionManager(BaseSessionManager):
             self.timestamp_field_name: timestamp,
         }
         self._client.rpush(self.key, json.dumps(payload))
-
-    def hash_input(self, prompt: str):
-        """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()

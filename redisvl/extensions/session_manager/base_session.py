@@ -1,10 +1,6 @@
-import hashlib
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
-
-from redisvl.redis.utils import array_to_buffer
 
 
 class BaseSessionManager:
@@ -42,7 +38,7 @@ class BaseSessionManager:
         """Set the filter to apply to querries based on the desired scope.
 
         This new scope persists until another call to set_scope is made, or if
-        scope specified in calls to fetch_recent.
+        scope specified in calls to get_recent.
 
         Args:
             session_tag (str): Id of the specific session to filter to. Default is
@@ -68,7 +64,12 @@ class BaseSessionManager:
         """
         raise NotImplementedError
 
-    def fetch_recent(
+    @property
+    def messages(self) -> Union[List[str], List[Dict[str, str]]]:
+        """Returns the full chat history."""
+        raise NotImplementedError
+
+    def get_recent(
         self,
         top_k: int = 3,
         session_tag: Optional[str] = None,
@@ -88,9 +89,13 @@ class BaseSessionManager:
                 or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
+
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                                    or list of strings if as_text is false.
+
+        Raises:
+            ValueError: If top_k is not an integer greater than or equal to 0.
         """
         raise NotImplementedError
 
@@ -110,7 +115,7 @@ class BaseSessionManager:
                 or list of strings if as_text is false.
         """
         if as_text:
-            text_statements = [self._preamble["_content"]] if self._preamble else []
+            text_statements = [self._preamble["content"]] if self._preamble else []
             for hit in hits:
                 text_statements.append(hit["prompt"])
                 text_statements.append(hit["response"])
@@ -118,8 +123,8 @@ class BaseSessionManager:
         else:
             statements = [self._preamble] if self._preamble else []
             for hit in hits:
-                statements.append({"role": "_user", "_content": hit["prompt"]})
-                statements.append({"role": "_llm", "_content": hit["response"]})
+                statements.append({"role": "user", "content": hit["prompt"]})
+                statements.append({"role": "llm", "content": hit["response"]})
             return statements
 
     def store(self, prompt: str, response: str) -> None:
@@ -138,10 +143,6 @@ class BaseSessionManager:
         included in each subsequent LLM call.
         """
         if prompt:
-            self._preamble = {"role": "_preamble", "_content": prompt}
+            self._preamble = {"role": "preamble", "content": prompt}
         else:
             self._preamble = {}
-
-    def hash_input(self, prompt: str):
-        """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
