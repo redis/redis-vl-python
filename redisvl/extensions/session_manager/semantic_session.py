@@ -14,12 +14,12 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 class SemanticSessionManager(BaseSessionManager):
     id_field_name: str = "id_field"
-    prompt_field_name: str = "prompt"
-    response_field_name: str = "response"
+    role_field_name: str = "role"
+    content_field_name: str = "content"
     timestamp_field_name: str = "timestamp"
     session_field_name: str = "session_tag"
     user_field_name: str = "user_tag"
-    combined_vector_field_name: str = "combined_vector_field"
+    vector_field_name: str = "vector_field"
 
     def __init__(
         self,
@@ -30,7 +30,6 @@ class SemanticSessionManager(BaseSessionManager):
         vectorizer: Optional[BaseVectorizer] = None,
         distance_threshold: float = 0.3,
         redis_client: Optional[Redis] = None,
-        preamble: str = "",
     ):
         """Initialize session memory with index
 
@@ -51,14 +50,12 @@ class SemanticSessionManager(BaseSessionManager):
                 included in the context. Defaults to 0.3.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
-            preamble (str): System level prompt to be included in all context.
 
-
-        The proposed schema will support a single combined vector embedding
-        constructed from the prompt & response in a single string.
+        The proposed schema will support a single vector embedding constructed
+        from either the prompt or response in a single string.
 
         """
-        super().__init__(name, session_tag, user_tag, preamble)
+        super().__init__(name, session_tag, user_tag)
 
         prefix = prefix or name
 
@@ -73,13 +70,13 @@ class SemanticSessionManager(BaseSessionManager):
 
         schema.add_fields(
             [
-                {"name": "prompt", "type": "text"},
-                {"name": "response", "type": "text"},
+                {"name": "role", "type": "text"},
+                {"name": "content", "type": "text"},
                 {"name": "timestamp", "type": "numeric"},
                 {"name": "session_tag", "type": "tag"},
                 {"name": "user_tag", "type": "tag"},
                 {
-                    "name": "combined_vector_field",
+                    "name": "vector_field",
                     "type": "vector",
                     "attrs": {
                         "dims": self._vectorizer.dims,
@@ -160,7 +157,7 @@ class SemanticSessionManager(BaseSessionManager):
         self,
         prompt: str,
         as_text: bool = False,
-        top_k: int = 3,
+        top_k: int = 5,
         fall_back: bool = False,
         session_tag: Optional[str] = None,
         user_tag: Optional[str] = None,
@@ -170,15 +167,15 @@ class SemanticSessionManager(BaseSessionManager):
         the specified prompt.
 
         This method uses vector similarity search with a text prompt as input.
-        It checks for semantically similar prompt:response pairs and gets
-        the top k most relevant previous prompt:response pairs to include as
+        It checks for semantically similar prompts and responses and gets
+        the top k most relevant previous prompts or responses to include as
         context to the next LLM call.
 
         Args:
             prompt (str): The text prompt to search for in session memory
-            as_text (bool): Whether to return the prompt:response pairs as text
+            as_text (bool): Whether to return the prompts and responses as text
             or as JSON
-            top_k (int): The number of previous exchanges to return. Default is 3.
+            top_k (int): The number of previous exchanges to return. Default is 5.
                 Note that one exchange contains both a prompt and a response.
             fallback (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
@@ -201,15 +198,15 @@ class SemanticSessionManager(BaseSessionManager):
         return_fields = [
             "session_tag",
             "user_tag",
-            "prompt",
-            "response",
+            "role",
+            "content",
             "timestamp",
-            "combined_vector_field",
+            "vector_field",
         ]
 
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
-            vector_field_name="combined_vector_field",
+            vector_field_name="vector_field",
             return_fields=return_fields,
             distance_threshold=self._distance_threshold,
             num_results=top_k,
@@ -227,7 +224,7 @@ class SemanticSessionManager(BaseSessionManager):
 
     def get_recent(
         self,
-        top_k: int = 3,
+        top_k: int = 5,
         session_tag: Optional[str] = None,
         user_tag: Optional[str] = None,
         as_text: bool = False,
@@ -238,7 +235,7 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             as_text (bool): Whether to return the conversation as a single string,
                           or list of alternating prompts and responses.
-            top_k (int): The number of previous exchanges to return. Default is 3.
+            top_k (int): The number of previous exchanges to return. Default is 5.
                 Note that one exchange contains both a prompt and a respoonse.
             session_tag (str): Tag to be added to entries to link to a specific
                 session.
@@ -261,8 +258,8 @@ class SemanticSessionManager(BaseSessionManager):
             "id_field",
             "session_tag",
             "user_tag",
-            "prompt",
-            "response",
+            "role",
+            "content",
             "timestamp",
         ]
 
@@ -296,16 +293,44 @@ class SemanticSessionManager(BaseSessionManager):
             prompt (str): The user prompt to the LLM.
             response (str): The corresponding LLM response.
         """
-        vector = self._vectorizer.embed(prompt + response)
-        timestamp = datetime.now().timestamp()
-        id_field = ":".join([self._user_tag, self._session_tag, str(timestamp)])
-        payload = {
-            self.id_field_name: id_field,
-            self.prompt_field_name: prompt,
-            self.response_field_name: response,
-            self.timestamp_field_name: timestamp,
-            self.session_field_name: self._session_tag,
-            self.user_field_name: self._user_tag,
-            self.combined_vector_field_name: array_to_buffer(vector),
-        }
-        self._index.load(data=[payload], id_field="id_field")
+        self.add_messages(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "llm", "content": response},
+            ]
+        )
+
+    def add_messages(self, messages: List[Dict[str, str]]) -> None:
+        """Insert a list of prompts and responses into the session memory.
+        A timestamp is associated with each so that they can be later sorted
+        in sequential ordering after retrieval.
+
+        Args:
+            messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
+        """
+        payloads = []
+        for message in messages:
+            vector = self._vectorizer.embed(message[self.content_field_name])
+            timestamp = datetime.now().timestamp()
+            id_field = ":".join([self._user_tag, self._session_tag, str(timestamp)])
+            payload = {
+                self.id_field_name: id_field,
+                self.role_field_name: message[self.role_field_name],
+                self.content_field_name: message[self.content_field_name],
+                self.timestamp_field_name: timestamp,
+                self.session_field_name: self._session_tag,
+                self.user_field_name: self._user_tag,
+                self.vector_field_name: array_to_buffer(vector),
+            }
+            payloads.append(payload)
+        self._index.load(data=payloads, id_field="id_field")
+
+    def add_message(self, message: Dict[str, str]) -> None:
+        """Insert a single prompt or response into the session memory.
+        A timestamp is associated with it so that it can be later sorted
+        in sequential ordering after retrieval.
+
+        Args:
+            message (Dict[str,str]): The user prompt or LLM response.
+        """
+        self.add_messages([message])

@@ -14,8 +14,8 @@ from redisvl.schema.schema import IndexSchema
 class StandardSessionManager(BaseSessionManager):
 
     id_field_name: str = "id_field"
-    prompt_field_name: str = "prompt"
-    response_field_name: str = "response"
+    role_field_name: str = "role"
+    content_field_name: str = "content"
     timestamp_field_name: str = "timestamp"
 
     def __init__(
@@ -24,7 +24,6 @@ class StandardSessionManager(BaseSessionManager):
         session_tag: str,
         user_tag: str,
         redis_client: Optional[Redis] = None,
-        preamble: str = "",
     ):
         """Initialize session memory
 
@@ -40,14 +39,12 @@ class StandardSessionManager(BaseSessionManager):
             user_tag str: Tag to be added to entries to link to a specific user.
             redis_client Optional[Redis]: A Redis client instance. Defaults to
                 None.
-            preamble str: System level prompt to be included in all context.
-
 
         The proposed schema will support a single combined vector embedding
         constructed from the prompt & response in a single string.
 
         """
-        super().__init__(name, session_tag, user_tag, preamble)
+        super().__init__(name, session_tag, user_tag)
 
         if redis_client:
             self._client = redis_client
@@ -112,7 +109,7 @@ class StandardSessionManager(BaseSessionManager):
 
     def get_recent(
         self,
-        top_k: int = 3,
+        top_k: int = 5,
         session_tag: Optional[str] = None,
         user_tag: Optional[str] = None,
         as_text: bool = False,
@@ -121,7 +118,7 @@ class StandardSessionManager(BaseSessionManager):
         """Retreive the recent conversation history in sequential order.
 
         Args:
-            top_k int: The number of previous exchanges to return. Default is 3
+            top_k int: The number of previous exchanges to return. Default is 5
             session_tag str: Tag to be added to entries to link to a specific
                 session.
             user_tag str: Tag to be added to entries to link to a specific user.
@@ -160,13 +157,48 @@ class StandardSessionManager(BaseSessionManager):
             prompt str: The user prompt to the LLM.
             response str: The corresponding LLM response.
         """
+        self.add_messages(
+            [{"role": "user", "content": prompt}, {"role": "llm", "content": response}]
+        )
+
+    def add_messages(self, messages: List[Dict[str, str]]) -> None:
+        """Insert a list of prompts and responses into the session memory.
+        A timestamp is associated with each so that they can be later sorted
+        in sequential ordering after retrieval.
+
+        Args:
+            messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
+        """
+        payloads = []
+        for message in messages:
+            timestamp = datetime.now().timestamp()
+            payload = {
+                self.id_field_name: ":".join(
+                    [self._user_tag, self._session_tag, str(timestamp)]
+                ),
+                self.role_field_name: message["role"],
+                self.content_field_name: message["content"],
+                self.timestamp_field_name: timestamp,
+            }
+            payloads.append(json.dumps(payload))
+
+        self._client.rpush(self.key, *payloads)
+
+    def add_message(self, message: Dict[str, str]) -> None:
+        """Insert a single prompt or response into the session memory.
+        A timestamp is associated with it so that it can be later sorted
+        in sequential ordering after retrieval.
+
+        Args:
+            message (Dict[str,str]): The user prompt or LLM response.
+        """
         timestamp = datetime.now().timestamp()
         payload = {
             self.id_field_name: ":".join(
                 [self._user_tag, self._session_tag, str(timestamp)]
             ),
-            self.prompt_field_name: prompt,
-            self.response_field_name: response,
+            self.role_field_name: message["role"],
+            self.content_field_name: message["content"],
             self.timestamp_field_name: timestamp,
         }
         self._client.rpush(self.key, json.dumps(payload))

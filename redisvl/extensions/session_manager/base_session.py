@@ -9,7 +9,6 @@ class BaseSessionManager:
         name: str,
         session_tag: str,
         user_tag: str,
-        preamble: str = "",
     ):
         """Initialize session memory with index
 
@@ -23,12 +22,10 @@ class BaseSessionManager:
             session_tag (str): Tag to be added to entries to link to a specific
                 session.
             user_tag (str): Tag to be added to entries to link to a specific user.
-            preamble (str): System level prompt to be included in all context.
         """
         self._name = name
         self._user_tag = user_tag
         self._session_tag = session_tag
-        self.set_preamble(preamble)
 
     def set_scope(
         self,
@@ -71,7 +68,7 @@ class BaseSessionManager:
 
     def get_recent(
         self,
-        top_k: int = 3,
+        top_k: int = 5,
         session_tag: Optional[str] = None,
         user_tag: Optional[str] = None,
         as_text: bool = False,
@@ -80,7 +77,7 @@ class BaseSessionManager:
         """Retreive the recent conversation history in sequential order.
 
         Args:
-            top_k (int): The number of previous exchanges to return. Default is 3.
+            top_k (int): The number of previous exchanges to return. Default is 5.
                 Note that one exchange contains both a prompt and response.
             session_tag (str): Tag to be added to entries to link to a specific
                 session.
@@ -115,16 +112,14 @@ class BaseSessionManager:
                 or list of strings if as_text is false.
         """
         if as_text:
-            text_statements = [self._preamble["content"]] if self._preamble else []
+            text_statements = []
             for hit in hits:
-                text_statements.append(hit["prompt"])
-                text_statements.append(hit["response"])
+                text_statements.append(hit["content"])
             return text_statements
         else:
-            statements = [self._preamble] if self._preamble else []
+            statements = []
             for hit in hits:
-                statements.append({"role": "user", "content": hit["prompt"]})
-                statements.append({"role": "llm", "content": hit["response"]})
+                statements.append({"role": hit["role"], "content": hit["content"]})
             return statements
 
     def store(self, prompt: str, response: str) -> None:
@@ -138,11 +133,22 @@ class BaseSessionManager:
         """
         raise NotImplementedError
 
-    def set_preamble(self, prompt: str) -> None:
-        """Add a preamble statement to the the begining of each session to be
-        included in each subsequent LLM call.
+    def add_messages(self, messages: List[Dict[str, str]]) -> None:
+        """Insert a list of prompts and responses into the session memory.
+        A timestamp is associated with each so that they can be later sorted
+        in sequential ordering after retrieval.
+
+        Args:
+            messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
         """
-        if prompt:
-            self._preamble = {"role": "preamble", "content": prompt}
-        else:
-            self._preamble = {}
+        raise NotImplementedError
+
+    def add_message(self, message: Dict[str, str]) -> None:
+        """Insert a single prompt or response into the session memory.
+        A timestamp is associated with it so that it can be later sorted
+        in sequential ordering after retrieval.
+
+        Args:
+            message (Dict[str,str]): The user prompt or LLM response.
+        """
+        raise NotImplementedError

@@ -30,30 +30,10 @@ def semantic_session(app_name, user_tag, session_tag):
 
 
 # test standard session manager
-def test_include_preamble():
+def test_key_creation():
     # test default key creation
     session = StandardSessionManager(name="test_app", session_tag="123", user_tag="abc")
     assert session.key == "test_app:abc:123"
-
-    # test initializing and changing preamble
-    session = StandardSessionManager(name="test_app", session_tag="123", user_tag="abc")
-    assert session._preamble == {}
-
-    preamble = "system level instruction to llm."
-    session = StandardSessionManager(
-        name="test_app", session_tag="123", user_tag="abc", preamble=preamble
-    )
-    assert session._preamble == {"role": "preamble", "content": preamble}
-
-    context = session.get_recent()
-    assert context == [{"role": "preamble", "content": preamble}]
-
-    new_preamble = "new llm instruction."
-    session.set_preamble(new_preamble)
-    assert session._preamble == {"role": "preamble", "content": new_preamble}
-
-    context = session.get_recent()
-    assert context == [{"role": "preamble", "content": new_preamble}]
 
 
 def test_specify_redis_client(client):
@@ -75,19 +55,18 @@ def test_standard_store_and_get(standard_session):
 
     # test default context history size
     default_context = standard_session.get_recent()
-    assert len(default_context) == 6  # 3 pairs of prompt:response
+    assert len(default_context) == 5  #  default is 5
 
     # test specified context history size
     partial_context = standard_session.get_recent(top_k=2)
-    assert len(partial_context) == 4  # 4 pairs of prompt:response
+    assert len(partial_context) == 2
     assert partial_context == [
-        {"role": "user", "content": "fourth prompt"},
-        {"role": "llm", "content": "fourth response"},
         {"role": "user", "content": "fifth prompt"},
         {"role": "llm", "content": "fifth response"},
     ]
+
     # test larger context history returns full history
-    too_large_context = standard_session.get_recent(top_k=10)
+    too_large_context = standard_session.get_recent(top_k=100)
     assert len(too_large_context) == 10
 
     # test that the full context is returned when top_k is 0
@@ -120,6 +99,110 @@ def test_standard_store_and_get(standard_session):
 
     with pytest.raises(ValueError):
         bad_context = standard_session.get_recent(top_k="3")
+
+
+def test_standard_add_and_get(standard_session):
+    context = standard_session.get_recent()
+    assert len(context) == 0
+
+    standard_session.add_message({"role": "user", "content": "first prompt"})
+    standard_session.add_message({"role": "llm", "content": "first response"})
+    standard_session.add_message({"role": "user", "content": "second prompt"})
+    standard_session.add_message({"role": "llm", "content": "second response"})
+    standard_session.add_message({"role": "user", "content": "third prompt"})
+    standard_session.add_message({"role": "llm", "content": "third response"})
+    standard_session.add_message({"role": "user", "content": "fourth prompt"})
+    standard_session.add_message({"role": "llm", "content": "fourth response"})
+    standard_session.add_message({"role": "user", "content": "fifth prompt"})
+    standard_session.add_message({"role": "llm", "content": "fifth response"})
+
+    # test default context history size
+    default_context = standard_session.get_recent()
+    assert len(default_context) == 5  #  default is 5
+
+    # test specified context history size
+    partial_context = standard_session.get_recent(top_k=2)
+    assert len(partial_context) == 2
+    assert partial_context == [
+        {"role": "user", "content": "fifth prompt"},
+        {"role": "llm", "content": "fifth response"},
+    ]
+
+    # test larger context history returns full history
+    too_large_context = standard_session.get_recent(top_k=100)
+    assert len(too_large_context) == 10
+
+    # test that the full context is returned when top_k is 0
+    full_context = standard_session.get_recent(top_k=0)
+    assert len(full_context) == 10
+
+    # test that order is maintained
+    assert full_context == [
+        {"role": "user", "content": "first prompt"},
+        {"role": "llm", "content": "first response"},
+        {"role": "user", "content": "second prompt"},
+        {"role": "llm", "content": "second response"},
+        {"role": "user", "content": "third prompt"},
+        {"role": "llm", "content": "third response"},
+        {"role": "user", "content": "fourth prompt"},
+        {"role": "llm", "content": "fourth response"},
+        {"role": "user", "content": "fifth prompt"},
+        {"role": "llm", "content": "fifth response"},
+    ]
+
+
+def test_standard_add_messages(standard_session):
+    context = standard_session.get_recent()
+    assert len(context) == 0
+
+    standard_session.add_messages(
+        [
+            {"role": "user", "content": "first prompt"},
+            {"role": "llm", "content": "first response"},
+            {"role": "user", "content": "second prompt"},
+            {"role": "llm", "content": "second response"},
+            {"role": "user", "content": "third prompt"},
+            {"role": "llm", "content": "third response"},
+            {"role": "user", "content": "fourth prompt"},
+            {"role": "llm", "content": "fourth response"},
+            {"role": "user", "content": "fifth prompt"},
+            {"role": "llm", "content": "fifth response"},
+        ]
+    )
+
+    # test default context history size
+    default_context = standard_session.get_recent()
+    assert len(default_context) == 5  #  default is 5
+
+    # test specified context history size
+    partial_context = standard_session.get_recent(top_k=2)
+    assert len(partial_context) == 2
+    assert partial_context == [
+        {"role": "user", "content": "fifth prompt"},
+        {"role": "llm", "content": "fifth response"},
+    ]
+
+    # test larger context history returns full history
+    too_large_context = standard_session.get_recent(top_k=100)
+    assert len(too_large_context) == 10
+
+    # test that the full context is returned when top_k is 0
+    full_context = standard_session.get_recent(top_k=0)
+    assert len(full_context) == 10
+
+    # test that order is maintained
+    assert full_context == [
+        {"role": "user", "content": "first prompt"},
+        {"role": "llm", "content": "first response"},
+        {"role": "user", "content": "second prompt"},
+        {"role": "llm", "content": "second response"},
+        {"role": "user", "content": "third prompt"},
+        {"role": "llm", "content": "third response"},
+        {"role": "user", "content": "fourth prompt"},
+        {"role": "llm", "content": "fourth response"},
+        {"role": "user", "content": "fifth prompt"},
+        {"role": "llm", "content": "fifth response"},
+    ]
 
 
 def test_standard_set_scope(standard_session, app_name, user_tag, session_tag):
@@ -184,9 +267,9 @@ def test_standard_get_text(standard_session):
     text = standard_session.get_recent(as_text=True)
     assert text == ["first prompt", "first response"]
 
-    standard_session.set_preamble("system level prompt")
+    standard_session.add_message({"role": "system", "content": "system level prompt"})
     text = standard_session.get_recent(as_text=True)
-    assert text == ["system level prompt", "first prompt", "first response"]
+    assert text == ["first prompt", "first response", "system level prompt"]
 
 
 def test_standard_get_raw(standard_session):
@@ -194,16 +277,19 @@ def test_standard_get_raw(standard_session):
     standard_session.store("first prompt", "first response")
     standard_session.store("second prompt", "second response")
     raw = standard_session.get_recent(raw=True)
-    assert len(raw) == 2
+    assert len(raw) == 4
     assert raw[0].keys() == {
         "id_field",
-        "prompt",
-        "response",
+        "role",
+        "content",
         "timestamp",
     }
-    assert raw[0]["prompt"] == "first prompt"
-    assert raw[0]["response"] == "first response"
+    assert raw[0]["role"] == "user"
+    assert raw[0]["content"] == "first prompt"
     assert current_time <= raw[0]["timestamp"] <= time.time()
+    assert raw[1]["role"] == "llm"
+    assert raw[1]["content"] == "first response"
+    assert raw[1]["timestamp"] > raw[0]["timestamp"]
 
 
 def test_standard_drop(standard_session):
@@ -214,22 +300,25 @@ def test_standard_drop(standard_session):
 
     # test drop() with no arguments removes the last element
     standard_session.drop()
-    context = standard_session.get_recent(top_k=1)
+    context = standard_session.get_recent(top_k=3)
     assert context == [
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
+        {"role": "user", "content": "fourth prompt"},
     ]
 
-    # test drop(timestamp) removes the specified element
+    # test drop(id) removes the specified element
     context = standard_session.get_recent(top_k=0, raw=True)
-    middle_id = context[1]["id_field"]
+    middle_id = context[3]["id_field"]
     standard_session.drop(middle_id)
-    context = standard_session.get_recent(top_k=2)
+    context = standard_session.get_recent(top_k=6)
     assert context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
+        {"role": "user", "content": "second prompt"},
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
+        {"role": "user", "content": "fourth prompt"},
     ]
 
 
@@ -248,30 +337,6 @@ def test_standard_delete(standard_session):
 
 
 # test semantic session manager
-
-
-def test_semantic_include_preamble():
-    # test initializing and changing preamble
-    session = SemanticSessionManager(name="test_app", session_tag="123", user_tag="abc")
-    assert session._preamble == {}
-
-    preamble = "system level instruction to llm."
-    session = SemanticSessionManager(
-        name="test_app", session_tag="123", user_tag="abc", preamble=preamble
-    )
-    assert session._preamble == {"role": "preamble", "content": preamble}
-
-    context = session.get_recent()
-    assert context == [{"role": "preamble", "content": preamble}]
-
-    new_preamble = "new llm instruction."
-    session.set_preamble(new_preamble)
-    assert session._preamble == {"role": "preamble", "content": new_preamble}
-
-    context = session.get_recent()
-    assert context == [{"role": "preamble", "content": new_preamble}]
-
-
 def test_semantic_specify_client(client):
     session = SemanticSessionManager(
         name="test_app", session_tag="abc", user_tag="123", redis_client=client
@@ -325,14 +390,14 @@ def test_semantic_store_and_get_recent(semantic_session):
 
     # test default context history size
     default_context = semantic_session.get_recent()
-    assert len(default_context) == 6  # 3 pairs of prompt:response
+    assert len(default_context) == 5  # 5 is default
 
     # test specified context history size
     partial_context = semantic_session.get_recent(top_k=4)
-    assert len(partial_context) == 8  # 4 pairs of prompt:response
+    assert len(partial_context) == 4
 
     # test larger context history returns full history
-    too_large_context = semantic_session.get_recent(top_k=10)
+    too_large_context = semantic_session.get_recent(top_k=100)
     assert len(too_large_context) == 10
 
     # test that order is maintained
@@ -351,7 +416,7 @@ def test_semantic_store_and_get_recent(semantic_session):
     ]
 
     # test that more recent entries are returned
-    context = semantic_session.get_recent(top_k=3)
+    context = semantic_session.get_recent(top_k=6)
     assert context == [
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
@@ -379,7 +444,9 @@ def test_semantic_store_and_get_recent(semantic_session):
 
 
 def test_semantic_store_and_get_relevant(semantic_session):
-    semantic_session.set_preamble("discussing common fruits and vegetables")
+    semantic_session.add_message(
+        {"role": "system", "content": "discussing common fruits and vegetables"}
+    )
     semantic_session.store(
         prompt="list of common fruits",
         response="apples, oranges, bananas, strawberries",
@@ -397,19 +464,17 @@ def test_semantic_store_and_get_relevant(semantic_session):
     default_context = semantic_session.get_relevant(
         "set of common fruits like apples and bananas"
     )
-    assert len(default_context) == 3
-    assert default_context[1] == {"role": "user", "content": "list of common fruits"}
-    assert default_context[2] == {
+    assert len(default_context) == 2
+    assert default_context[0] == {"role": "user", "content": "list of common fruits"}
+    assert default_context[1] == {
         "role": "llm",
         "content": "apples, oranges, bananas, strawberries",
     }
 
-    #
-
     # test increasing distance metric broadens results
     semantic_session.set_distance_threshold(0.5)
     default_context = semantic_session.get_relevant("list of fruits and vegetables")
-    assert len(default_context) == 5  # 2 pairs of prompt:response, and preamble
+    assert len(default_context) == 5  # 2 pairs of prompt:response, and system
 
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):
@@ -430,9 +495,9 @@ def test_semantic_get_raw(semantic_session):
     semantic_session.store("first prompt", "first response")
     semantic_session.store("second prompt", "second response")
     raw = semantic_session.get_recent(raw=True)
-    assert len(raw) == 2
-    assert raw[0]["prompt"] == "first prompt"
-    assert raw[0]["response"] == "first response"
+    assert len(raw) == 4
+    assert raw[0]["content"] == "first prompt"
+    assert raw[1]["content"] == "first response"
     assert current_time <= float(raw[0]["timestamp"]) <= time.time()
 
 
@@ -444,20 +509,21 @@ def test_semantic_drop(semantic_session):
 
     # test drop() with no arguments removes the last element
     semantic_session.drop()
-    context = semantic_session.get_recent(top_k=1)
+    context = semantic_session.get_recent(top_k=3)
     assert context == [
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
+        {"role": "user", "content": "fourth prompt"},
     ]
 
-    # test drop(timestamp) removes the specified element
-    context = semantic_session.get_recent(top_k=4, raw=True)
-    middle_id = context[1]["id_field"]
+    # test drop(id) removes the specified element
+    context = semantic_session.get_recent(top_k=5, raw=True)
+    middle_id = context[2]["id_field"]
     semantic_session.drop(middle_id)
-    context = semantic_session.get_recent(top_k=2)
+    context = semantic_session.get_recent(top_k=4)
     assert context == [
-        {"role": "user", "content": "first prompt"},
-        {"role": "llm", "content": "first response"},
-        {"role": "user", "content": "third prompt"},
+        {"role": "user", "content": "second prompt"},
+        {"role": "llm", "content": "second response"},
         {"role": "llm", "content": "third response"},
+        {"role": "user", "content": "fourth prompt"},
     ]
