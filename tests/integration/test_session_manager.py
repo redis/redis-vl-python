@@ -205,6 +205,26 @@ def test_standard_add_messages(standard_session):
     ]
 
 
+def test_standard_messages_property(standard_session):
+    standard_session.add_messages(
+        [
+            {"role": "user", "content": "first prompt"},
+            {"role": "llm", "content": "first response"},
+            {"role": "user", "content": "second prompt"},
+            {"role": "llm", "content": "second response"},
+            {"role": "user", "content": "third prompt"},
+        ]
+    )
+
+    assert standard_session.messages == [
+        {"role": "user", "content": "first prompt"},
+        {"role": "llm", "content": "first response"},
+        {"role": "user", "content": "second prompt"},
+        {"role": "llm", "content": "second response"},
+        {"role": "user", "content": "third prompt"},
+    ]
+
+
 def test_standard_set_scope(standard_session, app_name, user_tag, session_tag):
     # test calling set_scope with no params does not change scope
     current_key = standard_session.key
@@ -441,6 +461,30 @@ def test_semantic_store_and_get_recent(semantic_session):
 
     with pytest.raises(ValueError):
         bad_context = semantic_session.get_recent(top_k="3")
+
+
+def test_semantic_messages_property(semantic_session):
+    semantic_session.add_messages(
+        [
+            {"role": "user", "content": "first prompt"},
+            {"role": "llm", "content": "first response"},
+            {"role": "user", "content": "second prompt"},
+            {"role": "llm", "content": "second response"},
+            {"role": "user", "content": "third prompt"},
+            {"role": "llm", "content": "fourth response"},
+            {"role": "user", "content": "fourth prompt"},
+        ]
+    )
+
+    assert semantic_session.messages == [
+        {"role": "user", "content": "first prompt"},
+        {"role": "llm", "content": "first response"},
+        {"role": "user", "content": "second prompt"},
+        {"role": "llm", "content": "second response"},
+        {"role": "user", "content": "third prompt"},
+        {"role": "llm", "content": "fourth response"},
+        {"role": "user", "content": "fourth prompt"},
+    ]
 
 
 def test_semantic_store_and_get_relevant(semantic_session):
