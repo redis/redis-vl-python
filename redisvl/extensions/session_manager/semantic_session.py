@@ -153,6 +153,30 @@ class SemanticSessionManager(BaseSessionManager):
             key = self.get_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
         self._client.delete(key)
 
+    @property
+    def messages(self) -> Union[List[str], List[Dict[str, str]]]:
+        """Returns the full chat history."""
+        # TODO raw or as_text?
+        return_fields = [
+            "id_field",
+            "session_tag",
+            "user_tag",
+            "role",
+            "content",
+            "timestamp",
+        ]
+
+        query = FilterQuery(
+            filter_expression=self._tag_filter,
+            return_fields=return_fields,
+        )
+
+        sorted_query = query.query
+        sorted_query.sort_by("timestamp", asc=True)
+        hits = self._index.search(sorted_query, query.params).docs
+
+        return self._format_context(hits, as_text=False)
+
     def get_relevant(
         self,
         prompt: str,
