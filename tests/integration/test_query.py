@@ -400,3 +400,17 @@ def test_sort_vector_query(index, sorted_vector_query):
 def test_sort_range_query(index, sorted_range_query):
     t = Text("job") % ""
     search(sorted_range_query, index, t, 7, sort=True)
+
+def test_query_with_chunk_number_zero():
+    doc_base_id = "8675309"
+    file_id = "e9ffbac9ff6f67cc"
+    chunk_num = 0
+
+    filter_conditions = (
+        (Tag("doc_base_id") == doc_base_id) &
+        (Tag("file_id") == file_id) &
+        (Num("chunk_number") == chunk_num)
+    )
+
+    expected_query_str = '((@doc_base_id:{8675309} @file_id:{e9ffbac9ff6f67cc}) @chunk_number:[0 0])'
+    assert str(filter_conditions) == expected_query_str, "Query with chunk_number zero is incorrect"
