@@ -41,7 +41,7 @@ def vectorizer(request, skip_vectorizer):
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
-    elif request.param == MistralTextVectorizer:
+    elif request.param == MistralAITextVectorizer:
         return request.param()
     elif request.param == AzureOpenAITextVectorizer:
         return request.param(

@@ -5516,10 +5516,11 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [extras]
 cohere = ["cohere"]
 google-cloud-aiplatform = ["google-cloud-aiplatform"]
+mistralai = ["mistralai"]
 openai = ["openai"]
 sentence-transformers = ["sentence-transformers"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<4.0"
-content-hash = "45f9105701335bad996e585212cc9c25ae68f38e27f11f272650722ee99b2165"
+content-hash = "be9b5df2ff3600823749e4d0bfffe148c6bb04f88fa287a3dfae712ade9fd06e"

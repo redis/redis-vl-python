@@ -69,7 +69,8 @@ class MistralAITextVectorizer(BaseVectorizer):
         """
         # Dynamic import of the mistralai module
         try:
-            from mistralai.client import MistralAsyncClient, MistralClient
+            from mistralai.async_client import MistralAsyncClient
+            from mistralai.client import MistralClient
         except ImportError:
             raise ImportError(
                 "MistralAI vectorizer requires the mistralai library. \
