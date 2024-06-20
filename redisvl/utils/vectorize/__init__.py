@@ -2,6 +2,7 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.azureopenai import AzureOpenAITextVectorizer
 from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
+from redisvl.utils.vectorize.text.mistralai import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
 
@@ -12,4 +13,5 @@ __all__ = [
     "OpenAITextVectorizer",
     "VertexAITextVectorizer",
     "AzureOpenAITextVectorizer",
+    "MistralAITextVectorizer",
 ]

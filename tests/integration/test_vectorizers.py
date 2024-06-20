@@ -6,6 +6,7 @@ from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
     CohereTextVectorizer,
     HFTextVectorizer,
+    MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
 )
@@ -25,6 +26,7 @@ def skip_vectorizer() -> bool:
         VertexAITextVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
+        MistralAITextVectorizer,
     ]
 )
 def vectorizer(request, skip_vectorizer):
@@ -38,6 +40,8 @@ def vectorizer(request, skip_vectorizer):
     elif request.param == VertexAITextVectorizer:
         return request.param()
     elif request.param == CohereTextVectorizer:
+        return request.param()
+    elif request.param == MistralTextVectorizer:
         return request.param()
     elif request.param == AzureOpenAITextVectorizer:
         return request.param(
@@ -81,13 +85,15 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
-@pytest.fixture(params=[OpenAITextVectorizer])
+@pytest.fixture(params=[OpenAITextVectorizer, MistralAITextVectorizer])
 def avectorizer(request, skip_vectorizer):
     if skip_vectorizer:
         pytest.skip("Skipping vectorizer instantiation...")
 
     # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
+        return request.param()
+    elif request.param == MistralAITextVectorizer:
         return request.param()
 
 

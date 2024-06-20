@@ -30,6 +30,7 @@ openai = { version = ">=1.13.0", optional = true }
 sentence-transformers = { version = ">=2.2.2", optional = true }
 google-cloud-aiplatform = { version = ">=1.26", optional = true }
 cohere = { version = ">=4.44", optional = true }
+mistralai = { version = ">=0.2.0", optional = true }
 
 [tool.poetry.extras]
 openai = ["openai"]
