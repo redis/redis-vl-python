@@ -55,7 +55,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key. Defaults to None.
+                API key and any additional OpenAI API options. Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
@@ -69,6 +69,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         Setup the OpenAI clients using the provided API key or an
         environment variable.
         """
+        if api_config is None:
+            api_config = {}
+
         # Dynamic import of the openai module
         try:
             from openai import AsyncOpenAI, OpenAI
@@ -78,9 +81,9 @@ class OpenAITextVectorizer(BaseVectorizer):
                     Please install with `pip install openai`"
             )
 
-        # Fetch the API key from api_config or environment variable
+        # Pull the API key from api_config or environment variable
         api_key = (
-            api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+            api_config.pop("api_key") if api_config else os.getenv("OPENAI_API_KEY")
         )
         if not api_key:
             raise ValueError(
@@ -89,8 +92,8 @@ class OpenAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-        self._client = OpenAI(api_key=api_key)
-        self._aclient = AsyncOpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, **api_config)
+        self._aclient = AsyncOpenAI(api_key=api_key, **api_config)
 
     def _set_model_dims(self, model) -> int:
         try:
