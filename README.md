@@ -213,6 +213,7 @@ Commands:
 ### ⚡  Community Integrations
 Integrate with popular embedding models and providers to greatly simplify the process of vectorizing unstructured data for your index and queries:
 - [Cohere](https://www.redisvl.com/api/vectorizer/html#coheretextvectorizer)
+- [Mistral](https://www.redisvl.com/api/vectorizer/html#mistralaitextvectorizer)
 - [OpenAI](https://www.redisvl.com/api/vectorizer.html#openaitextvectorizer)
 - [HuggingFace](https://www.redisvl.com/api/vectorizer.html#hftextvectorizer)
 - [GCP VertexAI](https://www.redisvl.com/api/vectorizer.html#vertexaitextvectorizer)

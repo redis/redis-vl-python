@@ -375,9 +375,8 @@ class Num(FilterField):
 
     def __str__(self) -> str:
         """Return the Redis Query string for the Numeric filter"""
-        if not self._value:
+        if self._value is None:
             return "*"
-
         if self._operator == FilterOperator.EQ or self._operator == FilterOperator.NE:
             return self.OPERATOR_MAP[self._operator] % (
                 self._field,

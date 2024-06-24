@@ -6,12 +6,6 @@ from redisvl.redis.connection import RedisConnectionFactory
 from testcontainers.compose import DockerCompose
 
 
-# @pytest.fixture(scope="session")
-# def event_loop():
-#     loop = asyncio.get_event_loop_policy().new_event_loop()
-#     yield loop
-#     loop.close()
-
 
 @pytest.fixture(scope="session", autouse=True)
 def redis_container():
@@ -64,6 +58,10 @@ def azure_endpoint():
 @pytest.fixture
 def cohere_key():
     return os.getenv("COHERE_API_KEY")
+
+@pytest.fixture
+def mistral_key():
+    return os.getenv("MISTRAL_API_KEY")
 
 @pytest.fixture
 def gcp_location():
