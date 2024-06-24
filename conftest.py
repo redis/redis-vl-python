@@ -60,6 +60,10 @@ def cohere_key():
     return os.getenv("COHERE_API_KEY")
 
 @pytest.fixture
+def mistral_key():
+    return os.getenv("MISTRAL_API_KEY")
+
+@pytest.fixture
 def gcp_location():
     return os.getenv("GCP_LOCATION")
 
