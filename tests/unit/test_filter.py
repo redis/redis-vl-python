@@ -286,6 +286,9 @@ def test_filters_combination():
     tf4 = Geo("geo_field") == GeoRadius(1.0, 2.0, 3, "km")
     assert str(tf1 & tf2 & tf3 & tf4) == str(tf1 & tf4)
 
+
 def test_num_filter_zero():
     num_filter = Num("chunk_number") == 0
-    assert str(num_filter) == "@chunk_number:[0 0]", "Num filter should handle zero correctly"
+    assert (
+        str(num_filter) == "@chunk_number:[0 0]"
+    ), "Num filter should handle zero correctly"
