@@ -134,7 +134,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of embeddings.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -174,7 +174,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[float]: Embedding.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
@@ -212,7 +212,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of embeddings.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -254,7 +254,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[float]: Embedding.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
