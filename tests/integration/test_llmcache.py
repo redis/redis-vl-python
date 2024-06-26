@@ -69,6 +69,43 @@ def test_store_and_check(cache, vectorizer):
     assert "metadata" not in check_result[0]
 
 
+def test_return_fields(cache, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache.store(prompt, response, vector=vector)
+
+    # check default return fields
+    check_result = cache.check(vector=vector)
+    assert set(check_result[0].keys()) == {
+        "id",
+        "prompt",
+        "response",
+        "prompt_vector",
+        "vector_distance",
+    }
+
+    # check all return fields
+    fields = [
+        "id",
+        "prompt",
+        "response",
+        "inserted_at",
+        "updated_at",
+        "prompt_vector",
+        "vector_distance",
+    ]
+    check_result = cache.check(vector=vector, return_fields=fields[:])
+    assert set(check_result[0].keys()) == set(fields)
+
+    # check only some return fields
+    fields = ["inserted_at", "updated_at"]
+    check_result = cache.check(vector=vector, return_fields=fields[:])
+    fields.extend(["id", "vector_distance"])  # id and vector_distance always returned
+    assert set(check_result[0].keys()) == set(fields)
+
+
 # Test clearing the cache
 def test_clear(cache, vectorizer):
     prompt = "This is a test prompt."
@@ -93,6 +130,44 @@ def test_ttl_expiration(cache_with_ttl, vectorizer):
 
     check_result = cache_with_ttl.check(vector=vector)
     assert len(check_result) == 0
+
+
+# Test manual expiration of single document
+def test_drop_document(cache, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache.store(prompt, response, vector=vector)
+    check_result = cache.check(vector=vector)
+
+    cache.drop(check_result[0]["id"])
+    recheck_result = cache.check(vector=vector)
+    assert len(recheck_result) == 0
+
+
+# Test manual expiration of multiple documents
+def test_drop_documents(cache, vectorizer):
+    prompts = [
+        "This is a test prompt.",
+        "This is also test prompt.",
+        "This is another test prompt.",
+    ]
+    responses = [
+        "This is a test response.",
+        "This is also test response.",
+        "This is a another test response.",
+    ]
+    for prompt, response in zip(prompts, responses):
+        vector = vectorizer.embed(prompt)
+        cache.store(prompt, response, vector=vector)
+
+    check_result = cache.check(vector=vector, num_results=3)
+    keys = [r["id"] for r in check_result[0:2]]  # drop first 2 entries
+    cache.drop(keys)
+
+    recheck_result = cache.check(vector=vector, num_results=3)
+    assert len(recheck_result) == 1
 
 
 # Test check behavior with no match

@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from time import time
+from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
@@ -16,6 +17,8 @@ class SemanticCache(BaseLLMCache):
     entry_id_field_name: str = "id"
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
+    inserted_at_field_name: str = "inserted_at"
+    updated_at_field_name: str = "updated_at"
     response_field_name: str = "response"
     metadata_field_name: str = "metadata"
 
@@ -77,6 +80,8 @@ class SemanticCache(BaseLLMCache):
             [
                 {"name": self.prompt_field_name, "type": "text"},
                 {"name": self.response_field_name, "type": "text"},
+                {"name": self.inserted_at_field_name, "type": "numeric"},
+                {"name": self.updated_at_field_name, "type": "numeric"},
                 {
                     "name": self.vector_field_name,
                     "type": "vector",
@@ -185,6 +190,20 @@ class SemanticCache(BaseLLMCache):
         """Clear the semantic cache of all keys and remove the underlying search
         index."""
         self._index.delete(drop=True)
+
+    def drop(self, document_ids: Union[str, List[str]]) -> None:
+        """Remove a specific entry or entries from the cache by it's ID.
+
+        Args:
+            document_ids (Union[str, List[str]]): The document ID or IDs to remove from the cache.
+        """
+        if isinstance(document_ids, List):
+            with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
+                for key in document_ids:  # type: ignore
+                    pipe.delete(key)
+                pipe.execute()
+        else:
+            self._index.client.delete(document_ids)  # type: ignore
 
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
@@ -320,12 +339,15 @@ class SemanticCache(BaseLLMCache):
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
         # Construct semantic cache payload
+        now = time()
         id_field = self.entry_id_field_name
         payload = {
             id_field: self.hash_input(prompt),
             self.prompt_field_name: prompt,
             self.response_field_name: response,
             self.vector_field_name: array_to_buffer(vector),
+            self.inserted_at_field_name: now,
+            self.updated_at_field_name: now,
         }
         if metadata is not None:
             if not isinstance(metadata, dict):
