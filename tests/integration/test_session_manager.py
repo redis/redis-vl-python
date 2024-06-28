@@ -109,32 +109,43 @@ def test_standard_add_and_get(standard_session):
     standard_session.add_message({"role": "llm", "content": "first response"})
     standard_session.add_message({"role": "user", "content": "second prompt"})
     standard_session.add_message({"role": "llm", "content": "second response"})
-    standard_session.add_message({"role": "user", "content": "third prompt"})
-    standard_session.add_message({"role": "llm", "content": "third response"})
+    standard_session.add_message(
+        {
+            "role": "tool",
+            "content": "tool result 1",
+            "tool_call_id": "tool call one",
+        }
+    )
+    standard_session.add_message(
+        {
+            "role": "tool",
+            "content": "tool result 2",
+            "tool_call_id": "tool call two",
+        }
+    )
     standard_session.add_message({"role": "user", "content": "fourth prompt"})
     standard_session.add_message({"role": "llm", "content": "fourth response"})
-    standard_session.add_message({"role": "user", "content": "fifth prompt"})
-    standard_session.add_message({"role": "llm", "content": "fifth response"})
 
     # test default context history size
     default_context = standard_session.get_recent()
     assert len(default_context) == 5  #  default is 5
 
     # test specified context history size
-    partial_context = standard_session.get_recent(top_k=2)
-    assert len(partial_context) == 2
+    partial_context = standard_session.get_recent(top_k=3)
+    assert len(partial_context) == 3
     assert partial_context == [
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
+        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
+        {"role": "user", "content": "fourth prompt"},
+        {"role": "llm", "content": "fourth response"},
     ]
 
     # test larger context history returns full history
     too_large_context = standard_session.get_recent(top_k=100)
-    assert len(too_large_context) == 10
+    assert len(too_large_context) == 8
 
     # test that the full context is returned when top_k is 0
     full_context = standard_session.get_recent(top_k=0)
-    assert len(full_context) == 10
+    assert len(full_context) == 8
 
     # test that order is maintained
     assert full_context == [
@@ -142,12 +153,10 @@ def test_standard_add_and_get(standard_session):
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
-        {"role": "user", "content": "third prompt"},
-        {"role": "llm", "content": "third response"},
+        {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
+        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
     ]
 
 
@@ -161,12 +170,18 @@ def test_standard_add_messages(standard_session):
             {"role": "llm", "content": "first response"},
             {"role": "user", "content": "second prompt"},
             {"role": "llm", "content": "second response"},
-            {"role": "user", "content": "third prompt"},
-            {"role": "llm", "content": "third response"},
+            {
+                "role": "tool",
+                "content": "tool result 1",
+                "tool_call_id": "tool call one",
+            },
+            {
+                "role": "tool",
+                "content": "tool resuilt 2",
+                "tool_call_id": "tool call two",
+            },
             {"role": "user", "content": "fourth prompt"},
             {"role": "llm", "content": "fourth response"},
-            {"role": "user", "content": "fifth prompt"},
-            {"role": "llm", "content": "fifth response"},
         ]
     )
 
@@ -178,17 +193,17 @@ def test_standard_add_messages(standard_session):
     partial_context = standard_session.get_recent(top_k=2)
     assert len(partial_context) == 2
     assert partial_context == [
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
+        {"role": "user", "content": "fourth prompt"},
+        {"role": "llm", "content": "fourth response"},
     ]
 
     # test larger context history returns full history
     too_large_context = standard_session.get_recent(top_k=100)
-    assert len(too_large_context) == 10
+    assert len(too_large_context) == 8
 
     # test that the full context is returned when top_k is 0
     full_context = standard_session.get_recent(top_k=0)
-    assert len(full_context) == 10
+    assert len(full_context) == 8
 
     # test that order is maintained
     assert full_context == [
@@ -196,12 +211,10 @@ def test_standard_add_messages(standard_session):
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
-        {"role": "user", "content": "third prompt"},
-        {"role": "llm", "content": "third response"},
+        {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
+        {"role": "tool", "content": "tool resuilt 2", "tool_call_id": "tool call two"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
     ]
 
 
@@ -406,8 +419,9 @@ def test_semantic_store_and_get_recent(semantic_session):
     semantic_session.store(prompt="second prompt", response="second response")
     semantic_session.store(prompt="third prompt", response="third response")
     semantic_session.store(prompt="fourth prompt", response="fourth response")
-    semantic_session.store(prompt="fifth prompt", response="fifth response")
-
+    semantic_session.add_message(
+        {"role": "tool", "content": "tool result", "tool_call_id": "tool id"}
+    )
     # test default context history size
     default_context = semantic_session.get_recent()
     assert len(default_context) == 5  # 5 is default
@@ -418,10 +432,10 @@ def test_semantic_store_and_get_recent(semantic_session):
 
     # test larger context history returns full history
     too_large_context = semantic_session.get_recent(top_k=100)
-    assert len(too_large_context) == 10
+    assert len(too_large_context) == 9
 
     # test that order is maintained
-    full_context = semantic_session.get_recent(top_k=10)
+    full_context = semantic_session.get_recent(top_k=9)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -431,19 +445,16 @@ def test_semantic_store_and_get_recent(semantic_session):
         {"role": "llm", "content": "third response"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
+        {"role": "tool", "content": "tool result", "tool_call_id": "tool id"},
     ]
 
     # test that more recent entries are returned
-    context = semantic_session.get_recent(top_k=6)
+    context = semantic_session.get_recent(top_k=4)
     assert context == [
-        {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
+        {"role": "tool", "content": "tool result", "tool_call_id": "tool id"},
     ]
 
     # test that a ValueError is raised when top_k is invalid
@@ -468,26 +479,34 @@ def test_semantic_messages_property(semantic_session):
         [
             {"role": "user", "content": "first prompt"},
             {"role": "llm", "content": "first response"},
+            {
+                "role": "tool",
+                "content": "tool result 1",
+                "tool_call_id": "tool call one",
+            },
+            {
+                "role": "tool",
+                "content": "tool result 2",
+                "tool_call_id": "tool call two",
+            },
             {"role": "user", "content": "second prompt"},
             {"role": "llm", "content": "second response"},
             {"role": "user", "content": "third prompt"},
-            {"role": "llm", "content": "fourth response"},
-            {"role": "user", "content": "fourth prompt"},
         ]
     )
 
     assert semantic_session.messages == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
+        {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
+        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
         {"role": "user", "content": "third prompt"},
-        {"role": "llm", "content": "fourth response"},
-        {"role": "user", "content": "fourth prompt"},
     ]
 
 
-def test_semantic_store_and_get_relevant(semantic_session):
+def test_semantic_add_and_get_relevant(semantic_session):
     semantic_session.add_message(
         {"role": "system", "content": "discussing common fruits and vegetables"}
     )
@@ -502,6 +521,13 @@ def test_semantic_store_and_get_relevant(semantic_session):
     semantic_session.store(
         prompt="winter sports in the olympics",
         response="downhill skiing, ice skating, luge",
+    )
+    semantic_session.add_message(
+        {
+            "role": "tool",
+            "content": "skiing, skating, luge",
+            "tool_call_id": "winter_sports()",
+        }
     )
 
     # test default distance metric
@@ -519,6 +545,24 @@ def test_semantic_store_and_get_relevant(semantic_session):
     semantic_session.set_distance_threshold(0.5)
     default_context = semantic_session.get_relevant("list of fruits and vegetables")
     assert len(default_context) == 5  # 2 pairs of prompt:response, and system
+
+    # test tool calls can also be returned
+    context = semantic_session.get_relevant("winter sports like skiing")
+    assert context == [
+        {
+            "role": "user",
+            "content": "winter sports in the olympics",
+        },
+        {
+            "role": "tool",
+            "content": "skiing, skating, luge",
+            "tool_call_id": "winter_sports()",
+        },
+        {
+            "role": "llm",
+            "content": "downhill skiing, ice skating, luge",
+        },
+    ]
 
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):

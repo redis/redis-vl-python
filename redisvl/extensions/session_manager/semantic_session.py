@@ -1,4 +1,4 @@
-from datetime import datetime
+from time import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from redis import Redis
@@ -13,10 +13,6 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticSessionManager(BaseSessionManager):
-    id_field_name: str = "id_field"
-    role_field_name: str = "role"
-    content_field_name: str = "content"
-    timestamp_field_name: str = "timestamp"
     session_field_name: str = "session_tag"
     user_field_name: str = "user_tag"
     vector_field_name: str = "vector_field"
@@ -72,6 +68,7 @@ class SemanticSessionManager(BaseSessionManager):
             [
                 {"name": "role", "type": "text"},
                 {"name": "content", "type": "text"},
+                {"name": "tool_call_id", "type": "text"},
                 {"name": "timestamp", "type": "numeric"},
                 {"name": "session_tag", "type": "tag"},
                 {"name": "user_tag", "type": "tag"},
@@ -121,11 +118,13 @@ class SemanticSessionManager(BaseSessionManager):
             return
         self._session_tag = session_tag or self._session_tag
         self._user_tag = user_tag or self._user_tag
-        tag_filter = Tag("user_tag") == []
+        tag_filter = Tag(self.user_field_name) == []
         if user_tag:
-            tag_filter = tag_filter & (Tag("user_tag") == self._user_tag)
+            tag_filter = tag_filter & (Tag(self.user_field_name) == self._user_tag)
         if session_tag:
-            tag_filter = tag_filter & (Tag("session_tag") == self._session_tag)
+            tag_filter = tag_filter & (
+                Tag(self.session_field_name) == self._session_tag
+            )
 
         self._tag_filter = tag_filter
 
@@ -158,12 +157,13 @@ class SemanticSessionManager(BaseSessionManager):
         """Returns the full chat history."""
         # TODO raw or as_text?
         return_fields = [
-            "id_field",
-            "session_tag",
-            "user_tag",
-            "role",
-            "content",
-            "timestamp",
+            self.id_field_name,
+            self.session_field_name,
+            self.user_field_name,
+            self.role_field_name,
+            self.content_field_name,
+            self.tool_field_name,
+            self.timestamp_field_name,
         ]
 
         query = FilterQuery(
@@ -172,7 +172,7 @@ class SemanticSessionManager(BaseSessionManager):
         )
 
         sorted_query = query.query
-        sorted_query.sort_by("timestamp", asc=True)
+        sorted_query.sort_by(self.timestamp_field_name, asc=True)
         hits = self._index.search(sorted_query, query.params).docs
 
         return self._format_context(hits, as_text=False)
@@ -220,17 +220,18 @@ class SemanticSessionManager(BaseSessionManager):
 
         self.set_scope(session_tag, user_tag)
         return_fields = [
-            "session_tag",
-            "user_tag",
-            "role",
-            "content",
-            "timestamp",
-            "vector_field",
+            self.session_field_name,
+            self.user_field_name,
+            self.role_field_name,
+            self.content_field_name,
+            self.timestamp_field_name,
+            self.tool_field_name,
+            self.vector_field_name,
         ]
 
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
-            vector_field_name="vector_field",
+            vector_field_name=self.vector_field_name,
             return_fields=return_fields,
             distance_threshold=self._distance_threshold,
             num_results=top_k,
@@ -279,12 +280,13 @@ class SemanticSessionManager(BaseSessionManager):
 
         self.set_scope(session_tag, user_tag)
         return_fields = [
-            "id_field",
-            "session_tag",
-            "user_tag",
-            "role",
-            "content",
-            "timestamp",
+            self.id_field_name,
+            self.session_field_name,
+            self.user_field_name,
+            self.role_field_name,
+            self.content_field_name,
+            self.tool_field_name,
+            self.timestamp_field_name,
         ]
 
         query = FilterQuery(
@@ -294,7 +296,7 @@ class SemanticSessionManager(BaseSessionManager):
         )
 
         sorted_query = query.query
-        sorted_query.sort_by("timestamp", asc=False)
+        sorted_query.sort_by(self.timestamp_field_name, asc=False)
         hits = self._index.search(sorted_query, query.params).docs
 
         if raw:
@@ -319,8 +321,8 @@ class SemanticSessionManager(BaseSessionManager):
         """
         self.add_messages(
             [
-                {"role": "user", "content": prompt},
-                {"role": "llm", "content": response},
+                {self.role_field_name: "user", self.content_field_name: prompt},
+                {self.role_field_name: "llm", self.content_field_name: response},
             ]
         )
 
@@ -335,7 +337,7 @@ class SemanticSessionManager(BaseSessionManager):
         payloads = []
         for message in messages:
             vector = self._vectorizer.embed(message[self.content_field_name])
-            timestamp = datetime.now().timestamp()
+            timestamp = time()
             id_field = ":".join([self._user_tag, self._session_tag, str(timestamp)])
             payload = {
                 self.id_field_name: id_field,
@@ -346,8 +348,10 @@ class SemanticSessionManager(BaseSessionManager):
                 self.user_field_name: self._user_tag,
                 self.vector_field_name: array_to_buffer(vector),
             }
+            if self.tool_field_name in message:
+                payload.update({self.tool_field_name: message[self.tool_field_name]})
             payloads.append(payload)
-        self._index.load(data=payloads, id_field="id_field")
+        self._index.load(data=payloads, id_field=self.id_field_name)
 
     def add_message(self, message: Dict[str, str]) -> None:
         """Insert a single prompt or response into the session memory.

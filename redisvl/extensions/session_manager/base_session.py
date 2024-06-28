@@ -4,6 +4,12 @@ from redis import Redis
 
 
 class BaseSessionManager:
+    id_field_name: str = "id_field"
+    role_field_name: str = "role"
+    content_field_name: str = "content"
+    tool_field_name: str = "tool_call_id"
+    timestamp_field_name: str = "timestamp"
+
     def __init__(
         self,
         name: str,
@@ -114,12 +120,25 @@ class BaseSessionManager:
         if as_text:
             text_statements = []
             for hit in hits:
-                text_statements.append(hit["content"])
+                text_statements.append(hit[self.content_field_name])
             return text_statements
         else:
             statements = []
             for hit in hits:
-                statements.append({"role": hit["role"], "content": hit["content"]})
+                statements.append(
+                    {
+                        self.role_field_name: hit[self.role_field_name],
+                        self.content_field_name: hit[self.content_field_name],
+                    }
+                )
+                if (
+                    hasattr(hit, self.tool_field_name)
+                    or isinstance(hit, dict)
+                    and self.tool_field_name in hit
+                ):
+                    statements[-1].update(
+                        {self.tool_field_name: hit[self.tool_field_name]}
+                    )
             return statements
 
     def store(self, prompt: str, response: str) -> None:

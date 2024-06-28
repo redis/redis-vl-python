@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from time import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from redis import Redis
@@ -12,11 +12,6 @@ from redisvl.schema.schema import IndexSchema
 
 
 class StandardSessionManager(BaseSessionManager):
-
-    id_field_name: str = "id_field"
-    role_field_name: str = "role"
-    content_field_name: str = "content"
-    timestamp_field_name: str = "timestamp"
 
     def __init__(
         self,
@@ -171,15 +166,18 @@ class StandardSessionManager(BaseSessionManager):
         """
         payloads = []
         for message in messages:
-            timestamp = datetime.now().timestamp()
+            timestamp = time()
             payload = {
                 self.id_field_name: ":".join(
                     [self._user_tag, self._session_tag, str(timestamp)]
                 ),
-                self.role_field_name: message["role"],
-                self.content_field_name: message["content"],
+                self.role_field_name: message[self.role_field_name],
+                self.content_field_name: message[self.content_field_name],
                 self.timestamp_field_name: timestamp,
             }
+            if self.tool_field_name in message:
+                payload.update({self.tool_field_name: message[self.tool_field_name]})
+
             payloads.append(json.dumps(payload))
 
         self._client.rpush(self.key, *payloads)
@@ -192,13 +190,4 @@ class StandardSessionManager(BaseSessionManager):
         Args:
             message (Dict[str,str]): The user prompt or LLM response.
         """
-        timestamp = datetime.now().timestamp()
-        payload = {
-            self.id_field_name: ":".join(
-                [self._user_tag, self._session_tag, str(timestamp)]
-            ),
-            self.role_field_name: message["role"],
-            self.content_field_name: message["content"],
-            self.timestamp_field_name: timestamp,
-        }
-        self._client.rpush(self.key, json.dumps(payload))
+        self.add_messages([message])
