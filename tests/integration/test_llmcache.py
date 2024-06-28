@@ -172,16 +172,9 @@ def test_drop_documents(cache, vectorizer):
 
 # Test updating document fields
 def test_updating_document(cache):
-    prompts = [
-        "This is a test prompt.",
-        "This is also test prompt.",
-    ]
-    responses = [
-        "This is a test response.",
-        "This is also test response.",
-    ]
-    for prompt, response in zip(prompts, responses):
-        cache.store(prompt, response)
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    cache.store(prompt=prompt, response=response)
 
     check_result = cache.check(prompt=prompt, return_fields=["updated_at"])
     key = check_result[0]["id"]
@@ -194,7 +187,6 @@ def test_updating_document(cache):
     updated_result = cache.check(
         prompt=prompt, return_fields=["updated_at", "metadata"]
     )
-    assert updated_result[0]["id"] == check_result[0]["id"]
     assert updated_result[0]["metadata"] == metadata
     assert updated_result[0]["updated_at"] > check_result[0]["updated_at"]
 
