@@ -43,6 +43,41 @@ def make_lib_name(*args) -> str:
     return f"redis-py({custom_libs})"
 
 
+def convert_ft_info_to_schema(ft_info: dict) -> dict:
+    index_name = ft_info['index_name']
+    prefixes = ft_info['index_definition'][3][0]  # 'prefixes' is the fourth element in the index_definition list
+    storage_type = ft_info['index_definition'][1].lower()
+
+    attributes = ft_info['attributes']
+
+    fields = []
+    for attr in attributes:
+        field = {"name": attr[1], "type": attr[5].lower()}
+        field["attrs"] = {}
+        for i in range(6, len(attr), 2):
+            key = attr[i].lower()
+            value = attr[i+1]
+            field["attrs"][key] = value
+        if attr[5] == "VECTOR":
+            # Correct data types in the VECTOR field attributes
+            field["attrs"]["dims"] = int(field["attrs"]["dim"])
+            del field["attrs"]["dim"]
+            field["attrs"]["distance_metric"] = field["attrs"]["distance_metric"].lower()
+            field["attrs"]["algorithm"] = field["attrs"]["algorithm"].lower()
+            field["attrs"]["datatype"] = field["attrs"]["data_type"].lower()
+            del field["attrs"]["data_type"]
+        fields.append(field)
+
+    return {
+        "index": {
+            "name": index_name,
+            "prefix": prefixes,
+            "storage_type": storage_type
+        },
+        "fields": fields
+    }
+
+
 class RedisConnectionFactory:
     """Builds connections to a Redis database, supporting both synchronous and
     asynchronous clients.
@@ -260,3 +295,38 @@ class RedisConnectionFactory:
             f"Required Redis database module {required_module['name']} with version >= {required_module['ver']} not installed. "
             "Refer to Redis Stack documentation: https://redis.io/docs/stack/"
         )
+
+
+if __name__ == "__main__":
+    from redisvl.index import SearchIndex
+    
+    schema = {
+        "index": {
+            "name": "user_simple",
+            "prefix": "user_simple_docs",
+        },
+        "fields": [
+            {"name": "user", "type": "tag"},
+            {"name": "credit_score", "type": "tag"},
+            {"name": "job", "type": "text"},
+            {"name": "age", "type": "numeric"},
+            {
+                "name": "user_embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 3,
+                    "distance_metric": "cosine",
+                    "algorithm": "flat",
+                    "datatype": "float32"
+                }
+            }
+        ]
+    }
+    index = SearchIndex.from_dict(schema, redis_url="redis://localhost:6379")
+    index.create(overwrite=True)
+
+    schema2 = convert_ft_info_to_schema(index.info())
+    print(schema2)
+    index2 = SearchIndex.from_dict(schema2, redis_url="redis://localhost:6379")
+    
+    breakpoint()
