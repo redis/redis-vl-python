@@ -83,17 +83,8 @@ jobs:
   #         poetry install --all-extras
 
   #     - name: Install published package from TestPyPI
-  #       env:
-  #         OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
-  #         GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-  #         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  #         COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-  #         AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
-  #         AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
-  #         AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
-  #         OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
   #       run:
-  #         poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl-test; poetry run test-cov
+  #         poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl; SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-cov
 
   publish:
     needs: build #pre-release-checks

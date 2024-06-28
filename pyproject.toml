@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "redisvl"
-version = "0.2.0"
+version = "0.2.2"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = ["Redis Inc. <applied.ai@redis.com>"]
 license = "MIT"
@@ -30,12 +30,14 @@ openai = { version = ">=1.13.0", optional = true }
 sentence-transformers = { version = ">=2.2.2", optional = true }
 google-cloud-aiplatform = { version = ">=1.26", optional = true }
 cohere = { version = ">=4.44", optional = true }
+mistralai = { version = ">=0.2.0", optional = true }
 
 [tool.poetry.extras]
 openai = ["openai"]
 sentence-transformers = ["sentence-transformers"]
 google_cloud_aiplatform = ["google_cloud_aiplatform"]
 cohere = ["cohere"]
+mistralai = ["mistralai"]
 
 [tool.poetry.group.dev.dependencies]
 black = ">=20.8b1"

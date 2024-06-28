@@ -1,5 +1,6 @@
+import asyncio
 import os
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -10,9 +11,11 @@ from redis.connection import (
     ConnectionPool,
     SSLConnection,
 )
+from redis.exceptions import ResponseError
 
 from redisvl.redis.constants import REDIS_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
+from redisvl.version import __version__
 
 
 def get_address_from_env() -> str:
@@ -24,6 +27,20 @@ def get_address_from_env() -> str:
     if "REDIS_URL" not in os.environ:
         raise ValueError("REDIS_URL env var not set")
     return os.environ["REDIS_URL"]
+
+
+def make_lib_name(*args) -> str:
+    """Build the lib name to be reported through the Redis client setinfo
+    command.
+
+    Returns:
+        str: Redis client library name
+    """
+    custom_libs = f"redisvl_v{__version__}"
+    for arg in args:
+        if arg:
+            custom_libs += f";{arg}"
+    return f"redis-py({custom_libs})"
 
 
 class RedisConnectionFactory:
@@ -108,54 +125,116 @@ class RedisConnectionFactory:
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
-    def validate_redis_modules(
-        client: Redis, redis_required_modules: Optional[List[Dict[str, Any]]] = None
-    ) -> None:
-        """Validates if the required Redis modules are installed.
-
-        Args:
-            client (Redis): Synchronous Redis client.
-
-        Raises:
-            ValueError: If required Redis modules are not installed.
-        """
-        RedisConnectionFactory._validate_redis_modules(
-            convert_bytes(client.module_list()), redis_required_modules
-        )
-
-    @staticmethod
-    def validate_async_redis_modules(
-        client: AsyncRedis,
+    def validate_redis(
+        client: Union[Redis, AsyncRedis],
+        lib_name: Optional[str] = None,
         redis_required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """
-        Validates if the required Redis modules are installed.
+        """Validates the Redis connection.
 
         Args:
-            client (AsyncRedis): Asynchronous Redis client.
+            client (Redis or AsyncRedis): Redis client.
+            lib_name (str): Library name to set on the Redis client.
+            redis_required_modules (List[Dict[str, Any]]): List of required modules and their versions.
 
         Raises:
             ValueError: If required Redis modules are not installed.
         """
-        # pick the right connection class
-        connection_class: Type[AbstractConnection] = (
-            SSLConnection
-            if client.connection_pool.connection_class == ASSLConnection
-            else Connection
-        )
-        # set up a temp sync client
-        temp_client = Redis(
-            connection_pool=ConnectionPool(
-                connection_class=connection_class,
-                **client.connection_pool.connection_kwargs,
+        if isinstance(client, AsyncRedis):
+            RedisConnectionFactory._run_async(
+                RedisConnectionFactory._validate_async_redis,
+                client,
+                lib_name,
+                redis_required_modules,
             )
-        )
-        RedisConnectionFactory.validate_redis_modules(
-            temp_client, redis_required_modules
-        )
+        else:
+            RedisConnectionFactory._validate_sync_redis(
+                client, lib_name, redis_required_modules
+            )
 
     @staticmethod
-    def _validate_redis_modules(
+    def _validate_sync_redis(
+        client: Redis,
+        lib_name: Optional[str],
+        redis_required_modules: Optional[List[Dict[str, Any]]],
+    ) -> None:
+        """Validates the sync client."""
+        # Set client library name
+        _lib_name = make_lib_name(lib_name)
+        try:
+            client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
+        except ResponseError:
+            # Fall back to a simple log echo
+            client.echo(_lib_name)
+
+        # Get list of modules
+        modules_list = convert_bytes(client.module_list())
+
+        # Validate available modules
+        RedisConnectionFactory._validate_modules(modules_list, redis_required_modules)
+
+    @staticmethod
+    async def _validate_async_redis(
+        client: AsyncRedis,
+        lib_name: Optional[str],
+        redis_required_modules: Optional[List[Dict[str, Any]]],
+    ) -> None:
+        """Validates the async client."""
+        # Set client library name
+        _lib_name = make_lib_name(lib_name)
+        try:
+            await client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
+        except ResponseError:
+            # Fall back to a simple log echo
+            await client.echo(_lib_name)
+
+        # Get list of modules
+        modules_list = convert_bytes(await client.module_list())
+
+        # Validate available modules
+        RedisConnectionFactory._validate_modules(modules_list, redis_required_modules)
+
+    @staticmethod
+    def _run_async(coro, *args, **kwargs):
+        """
+        Runs an asynchronous function in the appropriate event loop context.
+
+        This method checks if there is an existing event loop running. If there is,
+        it schedules the coroutine to be run within the current loop using `asyncio.ensure_future`.
+        If no event loop is running, it creates a new event loop, runs the coroutine,
+        and then closes the loop to avoid resource leaks.
+
+        Args:
+            coro (coroutine): The coroutine function to be run.
+            *args: Positional arguments to pass to the coroutine function.
+            **kwargs: Keyword arguments to pass to the coroutine function.
+
+        Returns:
+            The result of the coroutine if a new event loop is created,
+            otherwise a task object representing the coroutine execution.
+        """
+        try:
+            # Try to get the current running event loop
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # No running event loop
+            loop = None
+
+        if loop and loop.is_running():
+            # If an event loop is running, schedule the coroutine to run in the existing loop
+            return asyncio.ensure_future(coro(*args, **kwargs))
+        else:
+            # No event loop is running, create a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                # Run the coroutine in the new event loop and wait for it to complete
+                return loop.run_until_complete(coro(*args, **kwargs))
+            finally:
+                # Close the event loop to release resources
+                loop.close()
+
+    @staticmethod
+    def _validate_modules(
         installed_modules, redis_required_modules: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """

@@ -7,21 +7,20 @@ from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.utils.vectorize.base import BaseVectorizer
 
-# ignore that openai isn't imported
+# ignore that mistralai isn't imported
 # mypy: disable-error-code="name-defined"
 
 
-class AzureOpenAITextVectorizer(BaseVectorizer):
-    """The AzureOpenAITextVectorizer class utilizes AzureOpenAI's API to generate
+class MistralAITextVectorizer(BaseVectorizer):
+    """The MistralAITextVectorizer class utilizes MistralAI's API to generate
     embeddings for text data.
 
-    This vectorizer is designed to interact with AzureOpenAI's embeddings API,
-    requiring an API key, an AzureOpenAI deployment endpoint and API version.
-    These values can be provided directly in the `api_config` dictionary with
-    the parameters 'azure_endpoint', 'api_version' and 'api_key' or through the
-    environment variables 'AZURE_OPENAI_ENDPOINT', 'OPENAI_API_VERSION', and 'AZURE_OPENAI_API_KEY'.
-    Users must obtain these values from the 'Keys and Endpoints' section in their Azure OpenAI service.
-    Additionally, the `openai` python client must be installed with `pip install openai>=1.13.0`.
+    This vectorizer is designed to interact with Mistral's embeddings API,
+    requiring an API key for authentication. The key can be provided directly
+    in the `api_config` dictionary or through the `MISTRAL_API_KEY` environment
+    variable. Users must obtain an API key from Mistral's website
+    (https://console.mistral.ai/). Additionally, the `mistralai` python client
+    must be installed with `pip install mistralai`.
 
     The vectorizer supports both synchronous and asynchronous operations,
     allowing for batch processing of texts and flexibility in handling
@@ -30,13 +29,9 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     .. code-block:: python
 
         # Synchronous embedding of a single text
-        vectorizer = AzureOpenAITextVectorizer(
-            model="text-embedding-ada-002",
-            api_config={
-                "api_key": "your_api_key", # OR set AZURE_OPENAI_API_KEY in your env
-                "api_version": "your_api_version", # OR set OPENAI_API_VERSION in your env
-                "azure_endpoint": "your_azure_endpoint", # OR set AZURE_OPENAI_ENDPOINT in your env
-            }
+        vectorizer = MistralAITextVectorizer(
+            model="mistral-embed"
+            api_config={"api_key": "your_api_key"} # OR set MISTRAL_API_KEY in your env
         )
         embedding = vectorizer.embed("Hello, world!")
 
@@ -51,105 +46,60 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
     _aclient: Any = PrivateAttr()
 
-    def __init__(
-        self, model: str = "text-embedding-ada-002", api_config: Optional[Dict] = None
-    ):
-        """Initialize the AzureOpenAI vectorizer.
+    def __init__(self, model: str = "mistral-embed", api_config: Optional[Dict] = None):
+        """Initialize the MistralAI vectorizer.
 
         Args:
-            model (str): Deployment to use for embedding. Must be the
-                'Deployment name' not the 'Model name'. Defaults to
+            model (str): Model to use for embedding. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key, API version, Azure endpoint, and any other API options.
-                Defaults to None.
+                API key. Defaults to None.
 
         Raises:
-            ImportError: If the openai library is not installed.
-            ValueError: If the AzureOpenAI API key, version, or endpoint are not provided.
+            ImportError: If the mistralai library is not installed.
+            ValueError: If the Mistral API key is not provided.
         """
         self._initialize_clients(api_config)
         super().__init__(model=model, dims=self._set_model_dims(model))
 
     def _initialize_clients(self, api_config: Optional[Dict]):
         """
-        Setup the OpenAI clients using the provided API key or an
+        Setup the Mistral clients using the provided API key or an
         environment variable.
         """
-        if api_config is None:
-            api_config = {}
-
-        # Dynamic import of the openai module
+        # Dynamic import of the mistralai module
         try:
-            from openai import AsyncAzureOpenAI, AzureOpenAI
+            from mistralai.async_client import MistralAsyncClient
+            from mistralai.client import MistralClient
         except ImportError:
             raise ImportError(
-                "AzureOpenAI vectorizer requires the openai library. \
-                    Please install with `pip install openai`"
+                "MistralAI vectorizer requires the mistralai library. \
+                    Please install with `pip install mistralai`"
             )
 
-        # Fetch the API key, version and endpoint from api_config or environment variable
-        azure_endpoint = (
-            api_config.pop("azure_endpoint")
-            if api_config
-            else os.getenv("AZURE_OPENAI_ENDPOINT")
-        )
-
-        if not azure_endpoint:
-            raise ValueError(
-                "AzureOpenAI API endpoint is required. "
-                "Provide it in api_config or set the AZURE_OPENAI_ENDPOINT\
-                    environment variable."
-            )
-
-        api_version = (
-            api_config.pop("api_version")
-            if api_config
-            else os.getenv("OPENAI_API_VERSION")
-        )
-
-        if not api_version:
-            raise ValueError(
-                "AzureOpenAI API version is required. "
-                "Provide it in api_config or set the OPENAI_API_VERSION\
-                    environment variable."
-            )
-
+        # Fetch the API key from api_config or environment variable
         api_key = (
-            api_config.pop("api_key")
-            if api_config
-            else os.getenv("AZURE_OPENAI_API_KEY")
+            api_config.get("api_key") if api_config else os.getenv("MISTRAL_API_KEY")
         )
-
         if not api_key:
             raise ValueError(
-                "AzureOpenAI API key is required. "
-                "Provide it in api_config or set the AZURE_OPENAI_API_KEY\
+                "MISTRAL API key is required. "
+                "Provide it in api_config or set the MISTRAL_API_KEY\
                     environment variable."
             )
 
-        self._client = AzureOpenAI(
-            api_key=api_key,
-            api_version=api_version,
-            azure_endpoint=azure_endpoint,
-            **api_config,
-        )
-        self._aclient = AsyncAzureOpenAI(
-            api_key=api_key,
-            api_version=api_version,
-            azure_endpoint=azure_endpoint,
-            **api_config,
-        )
+        self._client = MistralClient(api_key=api_key)
+        self._aclient = MistralAsyncClient(api_key=api_key)
 
     def _set_model_dims(self, model) -> int:
         try:
             embedding = (
-                self._client.embeddings.create(input=["dimension test"], model=model)
+                self._client.embeddings(model=model, input=["dimension test"])
                 .data[0]
                 .embedding
             )
         except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the AzureOpenAI API: {str(ke)}")
+            raise ValueError(f"Unexpected response from the MISTRAL API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
@@ -168,7 +118,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
-        """Embed many chunks of texts using the AzureOpenAI API.
+        """Embed many chunks of texts using the Mistral API.
 
         Args:
             texts (List[str]): List of text chunks to embed.
@@ -192,7 +142,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings.create(input=batch, model=self.model)
+            response = self._client.embeddings(model=self.model, input=batch)
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer) for r in response.data
             ]
@@ -210,7 +160,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[float]:
-        """Embed a chunk of text using the AzureOpenAI API.
+        """Embed a chunk of text using the Mistral API.
 
         Args:
             text (str): Chunk of text to embed.
@@ -230,7 +180,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = self._client.embeddings.create(input=[text], model=self.model)
+        result = self._client.embeddings(model=self.model, input=[text])
         return self._process_embedding(result.data[0].embedding, as_buffer)
 
     @retry(
@@ -246,7 +196,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
-        """Asynchronously embed many chunks of texts using the AzureOpenAI API.
+        """Asynchronously embed many chunks of texts using the Mistral API.
 
         Args:
             texts (List[str]): List of text chunks to embed.
@@ -270,9 +220,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self._aclient.embeddings.create(
-                input=batch, model=self.model
-            )
+            response = await self._aclient.embeddings(model=self.model, input=batch)
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer) for r in response.data
             ]
@@ -290,7 +238,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[float]:
-        """Asynchronously embed a chunk of text using the OpenAI API.
+        """Asynchronously embed a chunk of text using the MistralAPI.
 
         Args:
             text (str): Chunk of text to embed.
@@ -310,5 +258,5 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        result = await self._aclient.embeddings.create(input=[text], model=self.model)
+        result = await self._aclient.embeddings(model=self.model, input=[text])
         return self._process_embedding(result.data[0].embedding, as_buffer)
