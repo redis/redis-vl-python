@@ -358,3 +358,44 @@ class SemanticCache(BaseLLMCache):
         # Load LLMCache entry with TTL
         keys = self._index.load(data=[payload], ttl=self._ttl, id_field=id_field)
         return keys[0]
+
+    def update(self, key: str, **kwargs) -> None:
+        """Update specific fields within an existing cache entry. If no fields
+        are passed, then only the document TTL is refreshed.
+
+        Args:
+            key (str): the key of the document to update.
+            kwargs:
+
+        Raises:
+            ValueError if an incorrect mapping is provided as a kwarg.
+            TypeError if metadata is provided and not of type dict.
+
+        .. code-block:: python
+            key = cache.store('this is a prompt', 'this is a response')
+            cache.update(key, metadata={"hit_count": 1, "model_name": "Llama-2-7b"})
+            )
+        """
+        if not kwargs:
+            self._refresh_ttl(key)
+            return
+
+        for _key, val in kwargs.items():
+            if _key not in {
+                self.prompt_field_name,
+                self.vector_field_name,
+                self.response_field_name,
+                self.metadata_field_name,
+            }:
+                raise ValueError(f" {key} is not a valid field within document")
+
+            # Check for metadata and deserialize
+            if _key == self.metadata_field_name:
+                if isinstance(val, dict):
+                    kwargs[_key] = self.serialize(val)
+                else:
+                    raise TypeError(
+                        "If specified, cached metadata must be a dictionary."
+                    )
+        kwargs.update({self.updated_at_field_name: time()})
+        self._index.client.hset(key, mapping=kwargs)  # type: ignore

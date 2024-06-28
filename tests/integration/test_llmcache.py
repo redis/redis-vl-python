@@ -170,6 +170,35 @@ def test_drop_documents(cache, vectorizer):
     assert len(recheck_result) == 1
 
 
+# Test updating document fields
+def test_updating_document(cache):
+    prompts = [
+        "This is a test prompt.",
+        "This is also test prompt.",
+    ]
+    responses = [
+        "This is a test response.",
+        "This is also test response.",
+    ]
+    for prompt, response in zip(prompts, responses):
+        cache.store(prompt, response)
+
+    check_result = cache.check(prompt=prompt, return_fields=["updated_at"])
+    key = check_result[0]["id"]
+
+    sleep(1)
+
+    metadata = {"foo": "bar"}
+    cache.update(key=key, metadata=metadata)
+
+    updated_result = cache.check(
+        prompt=prompt, return_fields=["updated_at", "metadata"]
+    )
+    assert updated_result[0]["id"] == check_result[0]["id"]
+    assert updated_result[0]["metadata"] == metadata
+    assert updated_result[0]["updated_at"] > check_result[0]["updated_at"]
+
+
 # Test check behavior with no match
 def test_check_no_match(cache, vectorizer):
     vector = vectorizer.embed("Some random sentence.")
