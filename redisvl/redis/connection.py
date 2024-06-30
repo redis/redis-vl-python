@@ -13,9 +13,14 @@ from redis.connection import (
 )
 from redis.exceptions import ResponseError
 
-from redisvl.redis.constants import REDIS_REQUIRED_MODULES
+from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
 from redisvl.version import __version__
+
+
+def unpack_redis_modules(module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Unpack a list of Redis modules pulled from the MODULES LIST command."""
+    return {module["name"]: module["ver"] for module in module_list}
 
 
 def get_address_from_env() -> str:
@@ -43,39 +48,78 @@ def make_lib_name(*args) -> str:
     return f"redis-py({custom_libs})"
 
 
-def convert_ft_info_to_schema(ft_info: dict) -> dict:
-    index_name = ft_info['index_name']
-    prefixes = ft_info['index_definition'][3][0]  # 'prefixes' is the fourth element in the index_definition list
-    storage_type = ft_info['index_definition'][1].lower()
+def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert the output of FT.INFO into a schema-ready dictionary.
 
-    attributes = ft_info['attributes']
+    Args:
+        index_info (Dict[str, Any]): Output of the Redis FT.INFO command.
+
+    Returns:
+        Dict[str, Any]: Schema dictionary.
+    """
+    index_name = index_info["index_name"]
+    prefixes = index_info["index_definition"][3][0]
+    storage_type = index_info["index_definition"][1].lower()
+
+    attributes = index_info["attributes"]
+
+    def parse_vector_attrs(attrs):
+        vector_attrs = {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
+        vector_attrs["dims"] = int(vector_attrs.pop("dim"))
+        vector_attrs["distance_metric"] = vector_attrs.pop("distance_metric").lower()
+        vector_attrs["algorithm"] = vector_attrs.pop("algorithm").lower()
+        vector_attrs["datatype"] = vector_attrs.pop("data_type").lower()
+        return vector_attrs
+
+    def parse_attrs(attrs):
+        return {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
 
     fields = []
     for attr in attributes:
         field = {"name": attr[1], "type": attr[5].lower()}
-        field["attrs"] = {}
-        for i in range(6, len(attr), 2):
-            key = attr[i].lower()
-            value = attr[i+1]
-            field["attrs"][key] = value
         if attr[5] == "VECTOR":
-            # Correct data types in the VECTOR field attributes
-            field["attrs"]["dims"] = int(field["attrs"]["dim"])
-            del field["attrs"]["dim"]
-            field["attrs"]["distance_metric"] = field["attrs"]["distance_metric"].lower()
-            field["attrs"]["algorithm"] = field["attrs"]["algorithm"].lower()
-            field["attrs"]["datatype"] = field["attrs"]["data_type"].lower()
-            del field["attrs"]["data_type"]
+            field["attrs"] = parse_vector_attrs(attr)
+        else:
+            field["attrs"] = parse_attrs(attr)
         fields.append(field)
 
     return {
-        "index": {
-            "name": index_name,
-            "prefix": prefixes,
-            "storage_type": storage_type
-        },
-        "fields": fields
+        "index": {"name": index_name, "prefix": prefixes, "storage_type": storage_type},
+        "fields": fields,
     }
+
+
+def validate_modules(
+    installed_modules: Dict[str, Any],
+    required_modules: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """
+    Validates if required Redis modules are installed.
+
+    Args:
+        installed_modules: List of installed modules.
+        required_modules: List of required modules.
+
+    Raises:
+        ValueError: If required Redis modules are not installed.
+    """
+    required_modules = required_modules or DEFAULT_REQUIRED_MODULES
+
+    print("INSTALLED", installed_modules, flush=True)
+
+    for required_module in required_modules:
+        if required_module["name"] in installed_modules:
+            installed_version = installed_modules[required_module["name"]]  # type: ignore
+            print("INSTALLED VERSION", installed_version, flush=True)
+            print("REQUIRED VERSION", required_module["ver"], flush=True)
+            print(int(installed_version) >= int(required_module["ver"]), flush=True)
+            if int(installed_version) >= int(required_module["ver"]):  # type: ignore
+                return
+
+    raise ValueError(
+        f"Required Redis database module {required_module['name']} with version >= {required_module['ver']} not installed. "
+        "See Redis Stack documentation: https://redis.io/docs/stack/"
+    )
 
 
 class RedisConnectionFactory:
@@ -163,14 +207,14 @@ class RedisConnectionFactory:
     def validate_redis(
         client: Union[Redis, AsyncRedis],
         lib_name: Optional[str] = None,
-        redis_required_modules: Optional[List[Dict[str, Any]]] = None,
+        required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Validates the Redis connection.
 
         Args:
             client (Redis or AsyncRedis): Redis client.
             lib_name (str): Library name to set on the Redis client.
-            redis_required_modules (List[Dict[str, Any]]): List of required modules and their versions.
+            required_modules (List[Dict[str, Any]]): List of required modules and their versions.
 
         Raises:
             ValueError: If required Redis modules are not installed.
@@ -180,18 +224,18 @@ class RedisConnectionFactory:
                 RedisConnectionFactory._validate_async_redis,
                 client,
                 lib_name,
-                redis_required_modules,
+                required_modules,
             )
         else:
             RedisConnectionFactory._validate_sync_redis(
-                client, lib_name, redis_required_modules
+                client, lib_name, required_modules
             )
 
     @staticmethod
     def _validate_sync_redis(
         client: Redis,
         lib_name: Optional[str],
-        redis_required_modules: Optional[List[Dict[str, Any]]],
+        required_modules: Optional[List[Dict[str, Any]]],
     ) -> None:
         """Validates the sync client."""
         # Set client library name
@@ -203,16 +247,16 @@ class RedisConnectionFactory:
             client.echo(_lib_name)
 
         # Get list of modules
-        modules_list = convert_bytes(client.module_list())
+        installed_modules = unpack_redis_modules(convert_bytes(client.module_list()))
 
         # Validate available modules
-        RedisConnectionFactory._validate_modules(modules_list, redis_required_modules)
+        validate_modules(installed_modules, required_modules)
 
     @staticmethod
     async def _validate_async_redis(
         client: AsyncRedis,
         lib_name: Optional[str],
-        redis_required_modules: Optional[List[Dict[str, Any]]],
+        required_modules: Optional[List[Dict[str, Any]]],
     ) -> None:
         """Validates the async client."""
         # Set client library name
@@ -224,10 +268,12 @@ class RedisConnectionFactory:
             await client.echo(_lib_name)
 
         # Get list of modules
-        modules_list = convert_bytes(await client.module_list())
+        installed_modules = unpack_redis_modules(
+            convert_bytes(await client.module_list())
+        )
 
         # Validate available modules
-        RedisConnectionFactory._validate_modules(modules_list, redis_required_modules)
+        validate_modules(installed_modules, required_modules)
 
     @staticmethod
     def _run_async(coro, *args, **kwargs):
@@ -268,65 +314,37 @@ class RedisConnectionFactory:
                 # Close the event loop to release resources
                 loop.close()
 
-    @staticmethod
-    def _validate_modules(
-        installed_modules, redis_required_modules: Optional[List[Dict[str, Any]]] = None
-    ) -> None:
-        """
-        Validates if required Redis modules are installed.
 
-        Args:
-            installed_modules: List of installed modules.
-            redis_required_modules: List of required modules.
+# if __name__ == "__main__":
+#     from redisvl.index import SearchIndex
 
-        Raises:
-            ValueError: If required Redis modules are not installed.
-        """
-        installed_modules = {module["name"]: module for module in installed_modules}
-        redis_required_modules = redis_required_modules or REDIS_REQUIRED_MODULES
+#     schema = {
+#         "index": {
+#             "name": "user_simple",
+#             "prefix": "user_simple_docs",
+#         },
+#         "fields": [
+#             {"name": "user", "type": "tag"},
+#             {"name": "credit_score", "type": "tag"},
+#             {"name": "job", "type": "text"},
+#             {"name": "age", "type": "numeric"},
+#             {
+#                 "name": "user_embedding",
+#                 "type": "vector",
+#                 "attrs": {
+#                     "dims": 3,
+#                     "distance_metric": "cosine",
+#                     "algorithm": "flat",
+#                     "datatype": "float32"
+#                 }
+#             }
+#         ]
+#     }
+#     index = SearchIndex.from_dict(schema, redis_url="redis://localhost:6379")
+#     index.create(overwrite=True)
 
-        for required_module in redis_required_modules:
-            if required_module["name"] in installed_modules:
-                installed_version = installed_modules[required_module["name"]]["ver"]
-                if int(installed_version) >= int(required_module["ver"]):  # type: ignore
-                    return
+#     schema2 = convert_index_info_to_schema(index.info())
+#     print(schema2)
+#     index2 = SearchIndex.from_dict(schema2, redis_url="redis://localhost:6379")
 
-        raise ValueError(
-            f"Required Redis database module {required_module['name']} with version >= {required_module['ver']} not installed. "
-            "Refer to Redis Stack documentation: https://redis.io/docs/stack/"
-        )
-
-
-if __name__ == "__main__":
-    from redisvl.index import SearchIndex
-    
-    schema = {
-        "index": {
-            "name": "user_simple",
-            "prefix": "user_simple_docs",
-        },
-        "fields": [
-            {"name": "user", "type": "tag"},
-            {"name": "credit_score", "type": "tag"},
-            {"name": "job", "type": "text"},
-            {"name": "age", "type": "numeric"},
-            {
-                "name": "user_embedding",
-                "type": "vector",
-                "attrs": {
-                    "dims": 3,
-                    "distance_metric": "cosine",
-                    "algorithm": "flat",
-                    "datatype": "float32"
-                }
-            }
-        ]
-    }
-    index = SearchIndex.from_dict(schema, redis_url="redis://localhost:6379")
-    index.create(overwrite=True)
-
-    schema2 = convert_ft_info_to_schema(index.info())
-    print(schema2)
-    index2 = SearchIndex.from_dict(schema2, redis_url="redis://localhost:6379")
-    
-    breakpoint()
+#     assert index.schema == index2.schema
