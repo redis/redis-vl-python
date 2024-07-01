@@ -125,6 +125,12 @@ def test_search_index_load_preprocess(client, index):
         index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
+def test_search_index_load_empty(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    index.load([])
+
+
 def test_no_id_field(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)

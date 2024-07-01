@@ -210,27 +210,28 @@ class BaseStorage(BaseModel):
         keys_iterator = iter(keys) if keys else None
         added_keys: List[str] = []
 
-        with redis_client.pipeline(transaction=False) as pipe:
-            for i, obj in enumerate(objects, start=1):
-                # Construct key, validate, and write
-                key = (
-                    next(keys_iterator)
-                    if keys_iterator
-                    else self._create_key(obj, id_field)
-                )
-                obj = self._preprocess(obj, preprocess)
-                self._validate(obj)
-                self._set(pipe, key, obj)
-                # Set TTL if provided
-                if ttl:
-                    pipe.expire(key, ttl)
-                # Execute mini batch
-                if i % batch_size == 0:
+        if objects:
+            with redis_client.pipeline(transaction=False) as pipe:
+                for i, obj in enumerate(objects, start=1):
+                    # Construct key, validate, and write
+                    key = (
+                        next(keys_iterator)
+                        if keys_iterator
+                        else self._create_key(obj, id_field)
+                    )
+                    obj = self._preprocess(obj, preprocess)
+                    self._validate(obj)
+                    self._set(pipe, key, obj)
+                    # Set TTL if provided
+                    if ttl:
+                        pipe.expire(key, ttl)
+                    # Execute mini batch
+                    if i % batch_size == 0:
+                        pipe.execute()
+                    added_keys.append(key)
+                # Clean up batches if needed
+                if i % batch_size != 0:
                     pipe.execute()
-                added_keys.append(key)
-            # Clean up batches if needed
-            if i % batch_size != 0:
-                pipe.execute()
 
         return added_keys
 
