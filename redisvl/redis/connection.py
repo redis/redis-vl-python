@@ -234,6 +234,18 @@ class RedisConnectionFactory:
             )
 
     @staticmethod
+    def _get_modules(client: Redis) -> Dict[str, Any]:
+        return unpack_redis_modules(
+            convert_bytes(client.module_list())
+        )
+
+    @staticmethod
+    async def _get_modules_async(client: AsyncRedis) -> Dict[str, Any]:
+        return unpack_redis_modules(
+            convert_bytes(await client.module_list())
+        )
+
+    @staticmethod
     def _validate_sync_redis(
         client: Redis,
         lib_name: Optional[str],
@@ -249,7 +261,7 @@ class RedisConnectionFactory:
             client.echo(_lib_name)
 
         # Get list of modules
-        installed_modules = unpack_redis_modules(convert_bytes(client.module_list()))
+        installed_modules = RedisConnectionFactory._get_modules(client)
 
         # Validate available modules
         validate_modules(installed_modules, required_modules)
@@ -270,9 +282,7 @@ class RedisConnectionFactory:
             await client.echo(_lib_name)
 
         # Get list of modules
-        installed_modules = unpack_redis_modules(
-            convert_bytes(await client.module_list())
-        )
+        installed_modules = await RedisConnectionFactory._get_modules_async(client)
 
         # Validate available modules
         validate_modules(installed_modules, required_modules)
