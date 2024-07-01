@@ -757,7 +757,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
 
         # Validate modules
-        installed_modules = convert_bytes(await redis_client.module_list())
+        installed_modules = unpack_redis_modules(
+            convert_bytes(await redis_client.module_list())
+        )
         validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
 
         # Fetch index info and convert to schema
