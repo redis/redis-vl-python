@@ -27,7 +27,6 @@ from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     convert_index_info_to_schema,
-    unpack_redis_modules,
     validate_modules,
 )
 from redisvl.redis.utils import convert_bytes
@@ -340,9 +339,7 @@ class SearchIndex(BaseSearchIndex):
             )
 
         # Validate modules
-        installed_modules = unpack_redis_modules(
-            convert_bytes(redis_client.module_list())
-        )
+        installed_modules = RedisConnectionFactory._get_modules(redis_client)
         validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
 
         # Fetch index info and convert to schema
@@ -757,9 +754,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
 
         # Validate modules
-        installed_modules = unpack_redis_modules(
-            convert_bytes(await redis_client.module_list())
-        )
+        installed_modules = await RedisConnectionFactory._get_modules_async(redis_client)
         validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
 
         # Fetch index info and convert to schema

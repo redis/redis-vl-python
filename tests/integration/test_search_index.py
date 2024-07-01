@@ -68,6 +68,8 @@ def test_search_index_from_existing(client, index):
 
 
 def test_search_index_from_existing_complex(client):
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
     schema = {
         "index": {
             "name": "test",
