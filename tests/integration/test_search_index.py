@@ -67,6 +67,42 @@ def test_search_index_from_existing(client, index):
     assert index2.schema == index.schema
 
 
+def test_search_index_from_existing_complex(client):
+    schema = {
+        "index": {
+            "name": "test",
+            "prefix": "test",
+            "storage_type": "json",
+        },
+        "fields": [
+            {"name": "user", "type": "tag", "path": "$.user"},
+            {"name": "credit_score", "type": "tag", "path": "$.metadata.credit_score"},
+            {"name": "job", "type": "text", "path": "$.metadata.job"},
+            {
+                "name": "age",
+                "type": "numeric",
+                "path": "$.metadata.age",
+                "attrs": {"sortable": False},
+            },
+            {
+                "name": "user_embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 3,
+                    "distance_metric": "cosine",
+                    "algorithm": "flat",
+                    "datatype": "float32",
+                },
+            },
+        ],
+    }
+    index = SearchIndex.from_dict(schema, redis_client=client)
+    index.create(overwrite=True)
+
+    index2 = SearchIndex.from_existing(index.name, redis_client=client)
+    assert index.schema == index2.schema
+
+
 def test_search_index_no_prefix(index_schema):
     # specify an explicitly empty prefix...
     index_schema.index.prefix = ""

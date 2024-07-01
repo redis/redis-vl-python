@@ -61,7 +61,7 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
     prefixes = index_info["index_definition"][3][0]
     storage_type = index_info["index_definition"][1].lower()
 
-    attributes = index_info["attributes"]
+    index_fields = index_info["attributes"]
 
     def parse_vector_attrs(attrs):
         vector_attrs = {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
@@ -74,18 +74,25 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
     def parse_attrs(attrs):
         return {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
 
-    fields = []
-    for attr in attributes:
-        field = {"name": attr[1], "type": attr[5].lower()}
-        if attr[5] == "VECTOR":
-            field["attrs"] = parse_vector_attrs(attr)
+    schema_fields = []
+
+    for field_attrs in index_fields:
+        # parse field info
+        name = field_attrs[1] if storage_type == "hash" else field_attrs[3]
+        field = {"name": name, "type": field_attrs[5].lower()}
+        if storage_type == "json":
+            field["path"] = field_attrs[1]
+        # parse field attrs
+        if field_attrs[5] == "VECTOR":
+            field["attrs"] = parse_vector_attrs(field_attrs)
         else:
-            field["attrs"] = parse_attrs(attr)
-        fields.append(field)
+            field["attrs"] = parse_attrs(field_attrs)
+        # append field
+        schema_fields.append(field)
 
     return {
         "index": {"name": index_name, "prefix": prefixes, "storage_type": storage_type},
-        "fields": fields,
+        "fields": schema_fields,
     }
 
 
