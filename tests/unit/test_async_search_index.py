@@ -130,6 +130,13 @@ async def test_search_index_load_preprocess(async_client, async_index):
 
 
 @pytest.mark.asyncio
+async def test_search_index_load_empty(async_client, async_index):
+    async_index.set_client(async_client)
+    await async_index.create(overwrite=True, drop=True)
+    await async_index.load([])
+
+
+@pytest.mark.asyncio
 async def test_no_id_field(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
