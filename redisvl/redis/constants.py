@@ -1,5 +1,5 @@
 # required modules
-REDIS_REQUIRED_MODULES = [
+DEFAULT_REQUIRED_MODULES = [
     {"name": "search", "ver": 20600},
     {"name": "searchlight", "ver": 20600},
 ]
