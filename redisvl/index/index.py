@@ -754,7 +754,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
 
         # Validate modules
-        installed_modules = await RedisConnectionFactory._get_modules_async(redis_client)
+        installed_modules = await RedisConnectionFactory._get_modules_async(
+            redis_client
+        )
         validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
 
         # Fetch index info and convert to schema
