@@ -105,14 +105,9 @@ def validate_modules(
     """
     required_modules = required_modules or DEFAULT_REQUIRED_MODULES
 
-    print("INSTALLED", installed_modules, flush=True)
-
     for required_module in required_modules:
         if required_module["name"] in installed_modules:
             installed_version = installed_modules[required_module["name"]]  # type: ignore
-            print("INSTALLED VERSION", installed_version, flush=True)
-            print("REQUIRED VERSION", required_module["ver"], flush=True)
-            print(int(installed_version) >= int(required_module["ver"]), flush=True)
             if int(installed_version) >= int(required_module["ver"]):  # type: ignore
                 return
 
@@ -313,38 +308,3 @@ class RedisConnectionFactory:
             finally:
                 # Close the event loop to release resources
                 loop.close()
-
-
-# if __name__ == "__main__":
-#     from redisvl.index import SearchIndex
-
-#     schema = {
-#         "index": {
-#             "name": "user_simple",
-#             "prefix": "user_simple_docs",
-#         },
-#         "fields": [
-#             {"name": "user", "type": "tag"},
-#             {"name": "credit_score", "type": "tag"},
-#             {"name": "job", "type": "text"},
-#             {"name": "age", "type": "numeric"},
-#             {
-#                 "name": "user_embedding",
-#                 "type": "vector",
-#                 "attrs": {
-#                     "dims": 3,
-#                     "distance_metric": "cosine",
-#                     "algorithm": "flat",
-#                     "datatype": "float32"
-#                 }
-#             }
-#         ]
-#     }
-#     index = SearchIndex.from_dict(schema, redis_url="redis://localhost:6379")
-#     index.create(overwrite=True)
-
-#     schema2 = convert_index_info_to_schema(index.info())
-#     print(schema2)
-#     index2 = SearchIndex.from_dict(schema2, redis_url="redis://localhost:6379")
-
-#     assert index.schema == index2.schema
