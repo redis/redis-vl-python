@@ -210,3 +210,31 @@ def test_store_and_check_with_provided_client(cache_with_redis_client, vectorize
 def test_delete(cache_no_cleanup):
     cache_no_cleanup.delete()
     assert not cache_no_cleanup.index.exists()
+
+
+# Test we can only store and check vectors of correct dimensions
+def test_vector_size(cache, vectorizer):
+    prompt = "This is test prompt."
+    response = "This is a test response."
+
+    vector = vectorizer.embed(prompt)
+    cache.store(prompt=prompt, response=response, vector=vector)
+
+    # Test we can query with modified embeddings of correct size
+    vector_2 = [v * 0.99 for v in vector]  # same dimensions
+    check_result = cache.check(vector=vector_2)
+    assert check_result[0]["prompt"] == prompt
+
+    # Test that error is raised when we try to load wrong size vectors
+    with pytest.raises(ValueError):
+        cache.store(prompt=prompt, response=response, vector=vector[0:-1])
+
+    with pytest.raises(ValueError):
+        cache.store(prompt=prompt, response=response, vector=[1, 2, 3])
+
+    # Test that error is raised when we try to query with wrong size vector
+    with pytest.raises(ValueError):
+        cache.check(vector=vector[0:-1])
+
+    with pytest.raises(ValueError):
+        cache.check(vector=[1, 2, 3])

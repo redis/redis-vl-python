@@ -234,6 +234,15 @@ class SemanticCache(BaseLLMCache):
                 )
         return cache_hits
 
+    def _check_vector_dims(self, vector: List[float]):
+        schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
+        if schema_vector_dims != len(vector):
+            raise ValueError(
+                "Invalid vector dimensions! "
+                f"Vector has dims defined as {len(vector)}",
+                f"Vector field has dims defined as {schema_vector_dims}",
+            )
+
     def check(
         self,
         prompt: Optional[str] = None,
@@ -266,6 +275,7 @@ class SemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If neither a `prompt` nor a `vector` is specified.
+            ValueError: if 'vector' has incorrect dimensions.
             TypeError: If `return_fields` is not a list when provided.
 
         .. code-block:: python
@@ -279,6 +289,7 @@ class SemanticCache(BaseLLMCache):
 
         # Use provided vector or create from prompt
         vector = vector or self._vectorize_prompt(prompt)
+        self._check_vector_dims(vector)
 
         # Check for cache hits by searching the cache
         cache_hits = self._search_cache(vector, num_results, return_fields)
@@ -307,6 +318,7 @@ class SemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If neither prompt nor vector is specified.
+            ValueError: if vector has incorrect dimensions.
             TypeError: If provided metadata is not a dictionary.
 
         .. code-block:: python
@@ -319,6 +331,8 @@ class SemanticCache(BaseLLMCache):
         """
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
+        self._check_vector_dims(vector)
+
         # Construct semantic cache payload
         id_field = self.entry_id_field_name
         payload = {
