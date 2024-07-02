@@ -235,6 +235,8 @@ class SemanticCache(BaseLLMCache):
         return cache_hits
 
     def _check_vector_dims(self, vector: List[float]):
+        """Checks the size of the provided vector and raises an error if it
+        doesn't match the search index vector dimensions."""
         schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
         if schema_vector_dims != len(vector):
             raise ValueError(
