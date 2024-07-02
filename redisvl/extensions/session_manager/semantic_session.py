@@ -55,10 +55,9 @@ class SemanticSessionManager(BaseSessionManager):
 
         prefix = prefix or name
 
-        if vectorizer is None:
-            self._vectorizer = HFTextVectorizer(
-                model="sentence-transformers/msmarco-distilbert-cos-v5"
-            )
+        self._vectorizer = vectorizer or HFTextVectorizer(
+            model="sentence-transformers/msmarco-distilbert-cos-v5"
+        )
 
         self.set_distance_threshold(distance_threshold)
 
@@ -147,7 +146,8 @@ class SemanticSessionManager(BaseSessionManager):
                 If None then the last entry is deleted.
         """
         if id_field:
-            key = ":".join([self._index.schema.index.name, id_field])
+            sep = self._index.key_separator
+            key = sep.join([self._index.schema.index.name, id_field])
         else:
             key = self.get_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
         self._client.delete(key)
@@ -334,11 +334,12 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
         """
+        sep = self._index.key_separator
         payloads = []
         for message in messages:
             vector = self._vectorizer.embed(message[self.content_field_name])
             timestamp = time()
-            id_field = ":".join([self._user_tag, self._session_tag, str(timestamp)])
+            id_field = sep.join([self._user_tag, self._session_tag, str(timestamp)])
             payload = {
                 self.id_field_name: id_field,
                 self.role_field_name: message[self.role_field_name],
