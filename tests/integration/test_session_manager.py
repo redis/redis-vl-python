@@ -69,8 +69,12 @@ def test_standard_store_and_get(standard_session):
     too_large_context = standard_session.get_recent(top_k=100)
     assert len(too_large_context) == 10
 
-    # test that the full context is returned when top_k is 0
-    full_context = standard_session.get_recent(top_k=0)
+    # test no context is returned when top_k is 0
+    no_context = standard_session.get_recent(top_k=0)
+    assert len(no_context) == 0
+
+    # test that the full context is returned when top_k is -1
+    full_context = standard_session.get_recent(top_k=-1)
     assert len(full_context) == 10
 
     # test that order is maintained
@@ -89,7 +93,7 @@ def test_standard_store_and_get(standard_session):
 
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=-1)
+        bad_context = standard_session.get_recent(top_k=-2)
 
     with pytest.raises(ValueError):
         bad_context = standard_session.get_recent(top_k=-2.0)
@@ -139,15 +143,8 @@ def test_standard_add_and_get(standard_session):
         {"role": "llm", "content": "fourth response"},
     ]
 
-    # test larger context history returns full history
-    too_large_context = standard_session.get_recent(top_k=100)
-    assert len(too_large_context) == 8
-
-    # test that the full context is returned when top_k is 0
-    full_context = standard_session.get_recent(top_k=0)
-    assert len(full_context) == 8
-
     # test that order is maintained
+    full_context = standard_session.get_recent(top_k=-1)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -197,15 +194,8 @@ def test_standard_add_messages(standard_session):
         {"role": "llm", "content": "fourth response"},
     ]
 
-    # test larger context history returns full history
-    too_large_context = standard_session.get_recent(top_k=100)
-    assert len(too_large_context) == 8
-
-    # test that the full context is returned when top_k is 0
-    full_context = standard_session.get_recent(top_k=0)
-    assert len(full_context) == 8
-
     # test that order is maintained
+    full_context = standard_session.get_recent(top_k=-1)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -341,7 +331,7 @@ def test_standard_drop(standard_session):
     ]
 
     # test drop(id) removes the specified element
-    context = standard_session.get_recent(top_k=0, raw=True)
+    context = standard_session.get_recent(top_k=-1, raw=True)
     middle_id = context[3]["id_field"]
     standard_session.drop(middle_id)
     context = standard_session.get_recent(top_k=6)
@@ -358,14 +348,14 @@ def test_standard_drop(standard_session):
 def test_standard_clear(standard_session):
     standard_session.store("some prompt", "some response")
     standard_session.clear()
-    empty_context = standard_session.get_recent(top_k=0)
+    empty_context = standard_session.get_recent(top_k=-1)
     assert empty_context == []
 
 
 def test_standard_delete(standard_session):
     standard_session.store("some prompt", "some response")
     standard_session.delete()
-    empty_context = standard_session.get_recent(top_k=0)
+    empty_context = standard_session.get_recent(top_k=-1)
     assert empty_context == []
 
 
@@ -374,7 +364,7 @@ def test_semantic_specify_client(client):
     session = SemanticSessionManager(
         name="test_app", session_tag="abc", user_tag="123", redis_client=client
     )
-    assert isinstance(session._client, type(client))
+    assert isinstance(session._index.client, type(client))
 
 
 def test_semantic_set_scope(semantic_session, app_name, user_tag, session_tag):
@@ -457,9 +447,13 @@ def test_semantic_store_and_get_recent(semantic_session):
         {"role": "tool", "content": "tool result", "tool_call_id": "tool id"},
     ]
 
+    # test no entries are returned and no error is raised if top_k == 0
+    context = semantic_session.get_recent(top_k=0)
+    assert context == []
+
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_recent(top_k=0)
+        bad_context = semantic_session.get_recent(top_k=0.5)
 
     with pytest.raises(ValueError):
         bad_context = semantic_session.get_recent(top_k=-1)

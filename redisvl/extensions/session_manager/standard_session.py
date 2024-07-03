@@ -1,14 +1,10 @@
 import json
 from time import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 from redis import Redis
 
 from redisvl.extensions.session_manager import BaseSessionManager
-from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery
-from redisvl.query.filter import Num, Tag
-from redisvl.schema.schema import IndexSchema
 
 
 class StandardSessionManager(BaseSessionManager):
@@ -19,6 +15,7 @@ class StandardSessionManager(BaseSessionManager):
         session_tag: str,
         user_tag: str,
         redis_client: Optional[Redis] = None,
+        redis_url: str = "redis://localhost:6379",
     ):
         """Initialize session memory
 
@@ -28,12 +25,13 @@ class StandardSessionManager(BaseSessionManager):
         responses.
 
         Args:
-            name str: The name of the session manager index.
-            session_tag str: Tag to be added to entries to link to a specific
+            name (str): The name of the session manager index.
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_tag str: Tag to be added to entries to link to a specific user.
-            redis_client Optional[Redis]: A Redis client instance. Defaults to
+            user_tag (str): Tag to be added to entries to link to a specific user.
+            redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
+            redis_url (str): The URL of the Redis instance. Defaults to 'redis://localhost:6379'.
 
         The proposed schema will support a single combined vector embedding
         constructed from the prompt & response in a single string.
@@ -44,8 +42,7 @@ class StandardSessionManager(BaseSessionManager):
         if redis_client:
             self._client = redis_client
         else:
-            # TODO make this configurable
-            self._client = Redis(host="localhost", port=6379, decode_responses=True)
+            self._client = Redis.from_url(redis_url)
 
         self.set_scope(session_tag, user_tag)
 
@@ -60,9 +57,9 @@ class StandardSessionManager(BaseSessionManager):
         scope is specified in calls to get_recent.
 
         Args:
-            session_tag str: Id of the specific session to filter to. Default is
+            session_tag (str): Id of the specific session to filter to. Default is
                 None, which means session_tag will be unchanged.
-            user_tag str: Id of the specific user to filter to. Default is None,
+            user_tag (str): Id of the specific user to filter to. Default is None,
                 which means user_tag will be unchanged.
         """
         if not (session_tag or user_tag):
@@ -83,7 +80,7 @@ class StandardSessionManager(BaseSessionManager):
         """Remove a specific exchange from the conversation history.
 
         Args:
-            id_field Optional[str]: The id_field of the entry to delete.
+            id_field (Optional[str]): The id_field of the entry to delete.
                 If None then the last entry is deleted.
         """
         if id_field:
@@ -99,8 +96,7 @@ class StandardSessionManager(BaseSessionManager):
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:
         """Returns the full chat history."""
-        # TODO raw or as_text?
-        return self.get_recent(top_k=0)
+        return self.get_recent(top_k=-1)
 
     def get_recent(
         self,
@@ -113,13 +109,14 @@ class StandardSessionManager(BaseSessionManager):
         """Retreive the recent conversation history in sequential order.
 
         Args:
-            top_k int: The number of previous exchanges to return. Default is 5
-            session_tag str: Tag to be added to entries to link to a specific
+            top_k (int): The number of previous messages to return. Default is 5.
+                To get all messages set top_k = -1.
+            session_tag (str): Tag to be added to entries to link to a specific
                 session.
-            user_tag str: Tag to be added to entries to link to a specific user.
-            as_text bool: Whether to return the conversation as a single string,
+            user_tag (str): Tag to be added to entries to link to a specific user.
+            as_text (bool): Whether to return the conversation as a single string,
                 or list of alternating prompts and responses.
-            raw bool: Whether to return the full Redis hash entry or just the
+            raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
 
         Returns:
@@ -127,11 +124,14 @@ class StandardSessionManager(BaseSessionManager):
                 or list of strings if as_text is false.
 
         Raises:
-            ValueError: if top_k is not an integer greater than or equal to 0.
+            ValueError: if top_k is not an integer greater than or equal to -1.
         """
-        if type(top_k) != int or top_k < 0:
-            raise ValueError("top_k must be an integer greater than or equal to 0")
-
+        if type(top_k) != int or top_k < -1:
+            raise ValueError("top_k must be an integer greater than or equal to -1")
+        if top_k == 0:
+            return []
+        elif top_k == -1:
+            top_k = 0
         self.set_scope(session_tag, user_tag)
         messages = self._client.lrange(self.key, -top_k, -1)
         messages = [json.loads(msg) for msg in messages]
@@ -149,8 +149,8 @@ class StandardSessionManager(BaseSessionManager):
         in sequential ordering after retrieval.
 
         Args:
-            prompt str: The user prompt to the LLM.
-            response str: The corresponding LLM response.
+            prompt (str): The user prompt to the LLM.
+            response (str): The corresponding LLM response.
         """
         self.add_messages(
             [{"role": "user", "content": prompt}, {"role": "llm", "content": response}]

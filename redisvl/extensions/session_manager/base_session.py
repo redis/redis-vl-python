@@ -62,7 +62,7 @@ class BaseSessionManager:
         """Remove a specific exchange from the conversation history.
 
         Args:
-            id_field Optional[str]: The id_field of the entry to delete.
+            id_field (Optional[str]): The id_field of the entry to delete.
                 If None then the last entry is deleted.
         """
         raise NotImplementedError

@@ -1,12 +1,12 @@
 from time import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 from redis import Redis
 
 from redisvl.extensions.session_manager import BaseSessionManager
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
-from redisvl.query.filter import Num, Tag
+from redisvl.query.filter import Tag
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
@@ -26,6 +26,7 @@ class SemanticSessionManager(BaseSessionManager):
         vectorizer: Optional[BaseVectorizer] = None,
         distance_threshold: float = 0.3,
         redis_client: Optional[Redis] = None,
+        redis_url: str = "redis://localhost:6379",
     ):
         """Initialize session memory with index
 
@@ -47,6 +48,7 @@ class SemanticSessionManager(BaseSessionManager):
                 included in the context. Defaults to 0.3.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
+            redis_url (str): The URL of the Redis instance. Defaults to 'redis://localhost:6379'.
 
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
@@ -89,10 +91,8 @@ class SemanticSessionManager(BaseSessionManager):
 
         if redis_client:
             self._index.set_client(redis_client)
-            self._client = redis_client
         else:
-            self._index.connect(redis_url="redis://localhost:6379")
-            self._client = Redis(decode_responses=True)
+            self._index.connect(redis_url=redis_url)
 
         self._index.create(overwrite=False)
 
@@ -143,7 +143,7 @@ class SemanticSessionManager(BaseSessionManager):
         """Remove a specific exchange from the conversation history.
 
         Args:
-            id_field Optional[str]: The id_field of the entry to delete.
+            id_field (Optional[str]): The id_field of the entry to delete.
                 If None then the last entry is deleted.
         """
         if id_field:
@@ -151,7 +151,7 @@ class SemanticSessionManager(BaseSessionManager):
             key = sep.join([self._index.schema.index.name, id_field])
         else:
             key = self.get_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
-        self._client.delete(key)
+        self._index.client.delete(key)  # type: ignore
 
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:
@@ -197,28 +197,27 @@ class SemanticSessionManager(BaseSessionManager):
         context to the next LLM call.
 
         Args:
-            prompt (str): The text prompt to search for in session memory
+            prompt (str): The message text to search for in session memory
             as_text (bool): Whether to return the prompts and responses as text
             or as JSON
-            top_k (int): The number of previous exchanges to return. Default is 5.
-                Note that one exchange contains both a prompt and a response.
+            top_k (int): The number of previous messages to return. Default is 5.
             fallback (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
-            session_tag (str): Tag to be added to entries to link to a specific
-                session.
-            user_tag (str): Tag to be added to entries to link to a specific user.
+            session_tag (str): Tag of entries linked to a specific session.
+            user_tag (str): Tag of entries linked to a specific user.
             raw (bool): Whether to return the full Redis hash entry or just the
-                prompt and response.
+                message.
 
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
             list of prompts and responses in JSON containing the most relevant.
 
-        Raises ValueError: if top_k is not an integer greater or equal to 1.
+        Raises ValueError: if top_k is not an integer greater or equal to 0.
         """
-        if type(top_k) != int or top_k < 1:
-            raise ValueError("top_k must be an integer greater than or equal to 1")
-
+        if type(top_k) != int or top_k < 0:
+            raise ValueError("top_k must be an integer greater than or equal to -1")
+        if top_k == 0:
+            return []
         self.set_scope(session_tag, user_tag)
         return_fields = [
             self.session_field_name,
@@ -274,10 +273,10 @@ class SemanticSessionManager(BaseSessionManager):
                                    or list of strings if as_text is false.
 
         Raises:
-            ValueError: if top_k is not an integer greater than or equal to 1.
+            ValueError: if top_k is not an integer greater than or equal to 0.
         """
-        if type(top_k) != int or top_k < 1:
-            raise ValueError("top_k must be an integer greater than or equal to 1")
+        if type(top_k) != int or top_k < 0:
+            raise ValueError("top_k must be an integer greater than or equal to 0")
 
         self.set_scope(session_tag, user_tag)
         return_fields = [
@@ -313,7 +312,7 @@ class SemanticSessionManager(BaseSessionManager):
 
     def store(self, prompt: str, response: str) -> None:
         """Insert a prompt:response pair into the session memory. A timestamp
-        is associated with each exchange so that they can be later sorted
+        is associated with each message so that they can be later sorted
         in sequential ordering after retrieval.
 
         Args:
