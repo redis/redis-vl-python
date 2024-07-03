@@ -31,8 +31,9 @@ class SemanticSessionManager(BaseSessionManager):
 
         Session Manager stores the current and previous user text prompts and
         LLM responses to allow for enriching future prompts with session
-        context. Session history is stored in prompt:response pairs referred to
-        as exchanges.
+        context. Session history is stored in individual user or LLM prompts and
+        responses.
+
 
         Args:
             name (str): The name of the session manager index.
