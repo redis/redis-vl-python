@@ -5,7 +5,14 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError
 
-from redisvl.redis.connection import RedisConnectionFactory, get_address_from_env
+from redisvl.redis.connection import (
+    RedisConnectionFactory,
+    convert_index_info_to_schema,
+    get_address_from_env,
+    unpack_redis_modules,
+    validate_modules,
+)
+from redisvl.schema import IndexSchema
 from redisvl.version import __version__
 
 EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
@@ -42,6 +49,105 @@ def compare_versions(version1, version2):
 
 def test_get_address_from_env(redis_url):
     assert get_address_from_env() == redis_url
+
+
+def test_unpack_redis_modules():
+    module_list = [
+        {
+            "name": "search",
+            "ver": 20811,
+            "path": "/opt/redis-stack/lib/redisearch.so",
+            "args": [],
+        },
+        {
+            "name": "ReJSON",
+            "ver": 20609,
+            "path": "/opt/redis-stack/lib/rejson.so",
+            "args": [],
+        },
+    ]
+    installed_modules = unpack_redis_modules(module_list)
+    assert installed_modules == {"search": 20811, "ReJSON": 20609}
+
+
+def test_convert_index_info_to_schema():
+    index_info = {
+        "index_name": "image_summaries",
+        "index_options": [],
+        "index_definition": [
+            "key_type",
+            "HASH",
+            "prefixes",
+            ["summary"],
+            "default_score",
+            "1",
+        ],
+        "attributes": [
+            [
+                "identifier",
+                "content",
+                "attribute",
+                "content",
+                "type",
+                "TEXT",
+                "WEIGHT",
+                "1",
+            ],
+            [
+                "identifier",
+                "doc_id",
+                "attribute",
+                "doc_id",
+                "type",
+                "TAG",
+                "SEPARATOR",
+                ",",
+            ],
+            [
+                "identifier",
+                "content_vector",
+                "attribute",
+                "content_vector",
+                "type",
+                "VECTOR",
+                "algorithm",
+                "FLAT",
+                "data_type",
+                "FLOAT32",
+                "dim",
+                1536,
+                "distance_metric",
+                "COSINE",
+            ],
+        ],
+    }
+    schema_dict = convert_index_info_to_schema(index_info)
+    assert "index" in schema_dict
+    assert "fields" in schema_dict
+    assert len(schema_dict["fields"]) == len(index_info["attributes"])
+
+    schema = IndexSchema.from_dict(schema_dict)
+    assert schema.index.name == index_info["index_name"]
+
+
+def test_validate_modules_exist():
+    validate_modules(
+        installed_modules={"search": 20811},
+        required_modules=[
+            {"name": "search", "ver": 20600},
+            {"name": "searchlight", "ver": 20600},
+        ],
+    )
+
+
+def test_validate_modules_not_exist():
+    with pytest.raises(ValueError):
+        validate_modules(
+            installed_modules={"search": 20811},
+            required_modules=[
+                {"name": "ReJSON", "ver": 20600},
+            ],
+        )
 
 
 def test_sync_redis_connect(redis_url):

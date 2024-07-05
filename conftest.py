@@ -138,3 +138,15 @@ def clear_db(redis):
     redis.flushall()
     yield
     redis.flushall()
+
+@pytest.fixture
+def app_name():
+    return "test_app"
+
+@pytest.fixture
+def session_tag():
+    return "123"
+
+@pytest.fixture
+def user_tag():
+    return "abc"

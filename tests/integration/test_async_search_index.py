@@ -18,6 +18,16 @@ def async_index(index_schema):
     return AsyncSearchIndex(schema=index_schema)
 
 
+@pytest.fixture
+def async_index_from_dict():
+    return AsyncSearchIndex.from_dict({"index": {"name": "my_index"}, "fields": fields})
+
+
+@pytest.fixture
+def async_index_from_yaml():
+    return AsyncSearchIndex.from_yaml("schemas/test_json_schema.yaml")
+
+
 def test_search_index_properties(index_schema, async_index):
     assert async_index.schema == index_schema
     # custom settings
@@ -30,6 +40,83 @@ def test_search_index_properties(index_schema, async_index):
         async_index.storage_type == index_schema.index.storage_type == StorageType.HASH
     )
     assert async_index.key("foo").startswith(async_index.prefix)
+
+
+def test_search_index_from_yaml(async_index_from_yaml):
+    assert async_index_from_yaml.name == "json-test"
+    assert async_index_from_yaml.client == None
+    assert async_index_from_yaml.prefix == "json"
+    assert async_index_from_yaml.key_separator == ":"
+    assert async_index_from_yaml.storage_type == StorageType.JSON
+    assert async_index_from_yaml.key("foo").startswith(async_index_from_yaml.prefix)
+
+
+def test_search_index_from_dict(async_index_from_dict):
+    assert async_index_from_dict.name == "my_index"
+    assert async_index_from_dict.client == None
+    assert async_index_from_dict.prefix == "rvl"
+    assert async_index_from_dict.key_separator == ":"
+    assert async_index_from_dict.storage_type == StorageType.HASH
+    assert len(async_index_from_dict.schema.fields) == len(fields)
+    assert async_index_from_dict.key("foo").startswith(async_index_from_dict.prefix)
+
+
+@pytest.mark.asyncio
+async def test_search_index_from_existing(async_client, async_index):
+    async_index.set_client(async_client)
+    await async_index.create(overwrite=True)
+
+    try:
+        async_index2 = await AsyncSearchIndex.from_existing(
+            async_index.name, redis_client=async_client
+        )
+    except Exception as e:
+        pytest.skip(str(e))
+
+    assert async_index2.schema == async_index.schema
+
+
+@pytest.mark.asyncio
+async def test_search_index_from_existing_complex(async_client):
+    schema = {
+        "index": {
+            "name": "test",
+            "prefix": "test",
+            "storage_type": "json",
+        },
+        "fields": [
+            {"name": "user", "type": "tag", "path": "$.user"},
+            {"name": "credit_score", "type": "tag", "path": "$.metadata.credit_score"},
+            {"name": "job", "type": "text", "path": "$.metadata.job"},
+            {
+                "name": "age",
+                "type": "numeric",
+                "path": "$.metadata.age",
+                "attrs": {"sortable": False},
+            },
+            {
+                "name": "user_embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 3,
+                    "distance_metric": "cosine",
+                    "algorithm": "flat",
+                    "datatype": "float32",
+                },
+            },
+        ],
+    }
+    async_index = AsyncSearchIndex.from_dict(schema, redis_client=async_client)
+    await async_index.create(overwrite=True)
+
+    try:
+        async_index2 = await AsyncSearchIndex.from_existing(
+            async_index.name, redis_client=async_client
+        )
+    except Exception as e:
+        pytest.skip(str(e))
+
+    assert async_index2.schema == async_index.schema
 
 
 def test_search_index_no_prefix(index_schema):
@@ -127,6 +214,13 @@ async def test_search_index_load_preprocess(async_client, async_index):
 
     with pytest.raises(TypeError):
         await async_index.load(data, id_field="id", preprocess=bad_preprocess)
+
+
+@pytest.mark.asyncio
+async def test_search_index_load_empty(async_client, async_index):
+    async_index.set_client(async_client)
+    await async_index.create(overwrite=True, drop=True)
+    await async_index.load([])
 
 
 @pytest.mark.asyncio

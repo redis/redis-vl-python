@@ -24,7 +24,11 @@ from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.index.storage import HashStorage, JsonStorage
 from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
-from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.connection import (
+    RedisConnectionFactory,
+    convert_index_info_to_schema,
+    validate_modules,
+)
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.utils.log import get_logger
@@ -102,7 +106,7 @@ def check_index_exists():
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             if not self.exists():
-                raise ValueError(
+                raise RuntimeError(
                     f"Index has not been created. Must be created before calling {func.__name__}"
                 )
             return func(self, *args, **kwargs)
@@ -162,7 +166,6 @@ class BaseSearchIndex:
 
         self.schema = schema
 
-        # set custom lib name
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
 
         # set up redis connection
@@ -316,6 +319,34 @@ class SearchIndex(BaseSearchIndex):
         index.delete(drop=True)
 
     """
+
+    @classmethod
+    def from_existing(
+        cls,
+        name: str,
+        redis_client: Optional[redis.Redis] = None,
+        redis_url: Optional[str] = None,
+        **kwargs,
+    ):
+        # Handle redis instance
+        if redis_url:
+            redis_client = RedisConnectionFactory.connect(
+                redis_url=redis_url, use_async=False, **kwargs
+            )
+        if not redis_client:
+            raise ValueError(
+                "Must provide either a redis_url or redis_client to fetch Redis index info."
+            )
+
+        # Validate modules
+        installed_modules = RedisConnectionFactory._get_modules(redis_client)
+        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+
+        # Fetch index info and convert to schema
+        index_info = cls._info(name, redis_client)
+        schema_dict = convert_index_info_to_schema(index_info)
+        schema = IndexSchema.from_dict(schema_dict)
+        return cls(schema, redis_client, **kwargs)
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
@@ -653,22 +684,28 @@ class SearchIndex(BaseSearchIndex):
         """
         return self.schema.index.name in self.listall()
 
+    @staticmethod
+    def _info(name: str, redis_client: redis.Redis) -> Dict[str, Any]:
+        """Run FT.INFO to fetch information about the index."""
+        try:
+            return convert_bytes(redis_client.ft(name).info())  # type: ignore
+        except:
+            logger.exception(f"Error while fetching {name} index info")
+            raise
+
     @check_index_exists()
-    def info(self) -> Dict[str, Any]:
+    def info(self, name: Optional[str] = None) -> Dict[str, Any]:
         """Get information about the index.
+
+        Args:
+            name (str, optional): Index name to fetch info about.
+                Defaults to None.
 
         Returns:
             dict: A dictionary containing the information about the index.
         """
-        try:
-            return convert_bytes(
-                self._redis_client.ft(self.schema.index.name).info()  # type: ignore
-            )
-        except:
-            logger.exception(
-                f"Error while fetching {self.schema.index.name} index info"
-            )
-            raise
+        index_name = name or self.schema.index.name
+        return self._info(index_name, self._redis_client)  # type: ignore
 
 
 class AsyncSearchIndex(BaseSearchIndex):
@@ -697,6 +734,36 @@ class AsyncSearchIndex(BaseSearchIndex):
         await index.delete(drop=True)
 
     """
+
+    @classmethod
+    async def from_existing(
+        cls,
+        name: str,
+        redis_client: Optional[aredis.Redis] = None,
+        redis_url: Optional[str] = None,
+        **kwargs,
+    ):
+        if redis_url:
+            redis_client = RedisConnectionFactory.connect(
+                redis_url=redis_url, use_async=True, **kwargs
+            )
+
+        if not redis_client:
+            raise ValueError(
+                "Must provide either a redis_url or redis_client to fetch Redis index info."
+            )
+
+        # Validate modules
+        installed_modules = await RedisConnectionFactory._get_modules_async(
+            redis_client
+        )
+        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+
+        # Fetch index info and convert to schema
+        index_info = await cls._info(name, redis_client)
+        schema_dict = convert_index_info_to_schema(index_info)
+        schema = IndexSchema.from_dict(schema_dict)
+        return cls(schema, redis_client, **kwargs)
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
@@ -1035,19 +1102,24 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         return self.schema.index.name in await self.listall()
 
+    @staticmethod
+    async def _info(name: str, redis_client: aredis.Redis) -> Dict[str, Any]:
+        try:
+            return convert_bytes(await redis_client.ft(name).info())  # type: ignore
+        except:
+            logger.exception(f"Error while fetching {name} index info")
+            raise
+
     @check_async_index_exists()
-    async def info(self) -> Dict[str, Any]:
+    async def info(self, name: Optional[str] = None) -> Dict[str, Any]:
         """Get information about the index.
+
+        Args:
+            name (str, optional): Index name to fetch info about.
+                Defaults to None.
 
         Returns:
             dict: A dictionary containing the information about the index.
         """
-        try:
-            return convert_bytes(
-                await self._redis_client.ft(self.schema.index.name).info()  # type: ignore
-            )
-        except:
-            logger.exception(
-                f"Error while fetching {self.schema.index.name} index info"
-            )
-            raise
+        index_name = name or self.schema.index.name
+        return await self._info(index_name, self._redis_client)  # type: ignore
