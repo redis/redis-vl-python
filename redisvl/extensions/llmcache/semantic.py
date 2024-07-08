@@ -176,10 +176,7 @@ class SemanticCache(BaseLLMCache):
 
     def clear(self) -> None:
         """Clear the cache of all keys while preserving the index."""
-        with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
-            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):  # type: ignore
-                pipe.delete(key)
-            pipe.execute()
+        self._index.clear()
 
     def delete(self) -> None:
         """Clear the semantic cache of all keys and remove the underlying search
