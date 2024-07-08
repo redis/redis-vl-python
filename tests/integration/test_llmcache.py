@@ -54,6 +54,24 @@ def cache_with_redis_client(vectorizer, client, redis_url):
     cache_instance._index.delete(True)  # Clean up index
 
 
+# Test handling invalid input for check method
+def test_bad_ttl(cache):
+    with pytest.raises(ValueError):
+        cache.set_ttl(2.5)
+
+
+def test_cache_ttl(cache_with_ttl):
+    assert cache_with_ttl.ttl == 2
+    cache_with_ttl.set_ttl(5)
+    assert cache_with_ttl.ttl == 5
+
+
+def test_set_ttl(cache):
+    assert cache.ttl == None
+    cache.set_ttl(5)
+    assert cache.ttl == 5
+
+
 # Test basic store and check functionality
 def test_store_and_check(cache, vectorizer):
     prompt = "This is a test prompt."
@@ -95,6 +113,26 @@ def test_ttl_expiration(cache_with_ttl, vectorizer):
     assert len(check_result) == 0
 
 
+def test_ttl_expiration_after_update(cache_with_ttl, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+    cache_with_ttl.set_ttl(5)
+
+    cache_with_ttl.store(prompt, response, vector=vector)
+    sleep(2)
+
+    check_result = cache_with_ttl.check(vector=vector)
+    assert len(check_result) == 1
+    print(check_result, flush=True)
+    assert response == check_result[0]["response"]
+    assert "metadata" not in check_result[0]
+
+    sleep(5)
+    check_result = cache_with_ttl.check(vector=vector)
+    assert len(check_result) == 0
+
+
 # Test check behavior with no match
 def test_check_no_match(cache, vectorizer):
     vector = vectorizer.embed("Some random sentence.")
@@ -109,12 +147,6 @@ def test_check_invalid_input(cache):
 
     with pytest.raises(TypeError):
         cache.check(prompt="test", return_fields="bad value")
-
-
-# Test handling invalid input for check method
-def test_bad_ttl(cache):
-    with pytest.raises(ValueError):
-        cache.set_ttl(2.5)
 
 
 # Test storing with metadata
