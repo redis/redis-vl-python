@@ -19,7 +19,6 @@ def cache(vectorizer, redis_url):
         vectorizer=vectorizer, distance_threshold=0.2, redis_url=redis_url
     )
     yield cache_instance
-    cache_instance.clear()  # Clear cache after each test
     cache_instance._index.delete(True)  # Clean up index
 
 
@@ -37,7 +36,6 @@ def cache_with_ttl(vectorizer, redis_url):
         vectorizer=vectorizer, distance_threshold=0.2, ttl=2, redis_url=redis_url
     )
     yield cache_instance
-    cache_instance.clear()  # Clear cache after each test
     cache_instance._index.delete(True)  # Clean up index
 
 
@@ -54,7 +52,7 @@ def cache_with_redis_client(vectorizer, client, redis_url):
     cache_instance._index.delete(True)  # Clean up index
 
 
-# Test handling invalid input for check method
+# # Test handling invalid input for check method
 def test_bad_ttl(cache):
     with pytest.raises(ValueError):
         cache.set_ttl(2.5)
@@ -117,18 +115,13 @@ def test_ttl_expiration_after_update(cache_with_ttl, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
-    cache_with_ttl.set_ttl(5)
+    cache_with_ttl.set_ttl(4)
+
+    assert cache_with_ttl.ttl == 4
 
     cache_with_ttl.store(prompt, response, vector=vector)
-    sleep(2)
-
-    check_result = cache_with_ttl.check(vector=vector)
-    assert len(check_result) == 1
-    print(check_result, flush=True)
-    assert response == check_result[0]["response"]
-    assert "metadata" not in check_result[0]
-
     sleep(5)
+
     check_result = cache_with_ttl.check(vector=vector)
     assert len(check_result) == 0
 

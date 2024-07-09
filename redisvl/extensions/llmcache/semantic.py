@@ -185,8 +185,8 @@ class SemanticCache(BaseLLMCache):
 
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
-        if self.ttl:
-            self._index.client.expire(key, self.ttl)  # type: ignore
+        if self._ttl:
+            self._index.client.expire(key, self._ttl)  # type: ignore
 
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
