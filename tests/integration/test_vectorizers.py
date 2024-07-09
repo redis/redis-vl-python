@@ -27,7 +27,7 @@ def skip_vectorizer() -> bool:
         VertexAITextVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
-        MistralAITextVectorizer,
+        # MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
 )
