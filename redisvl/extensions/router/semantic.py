@@ -1,7 +1,8 @@
-from pydantic.v1 import BaseModel, root_validator, Field
+from pydantic.v1 import BaseModel, root_validator, Field, PrivateAttr
 from typing import Any, List, Dict, Optional, Union
 from redis import Redis
 from redisvl.index import SearchIndex
+from redisvl.query import VectorQuery, RangeQuery
 from redisvl.schema import IndexSchema, IndexInfo
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 from redisvl.extensions.router.routes import Route, RoutingConfig
@@ -15,10 +16,10 @@ class SemanticRouterIndexSchema(IndexSchema):
     def from_params(cls, name: str, vector_dims: int):
         return cls(
             index=IndexInfo(name=name, prefix=name),
-            fields={
-                "route_name": {"name": "route_name", "type": "tag"},
-                "reference": {"name": "reference", "type": "text"},
-                "vector": {
+            fields=[
+                {"name": "route_name", "type": "tag"},
+                {"name": "reference", "type": "text"},
+                {
                     "name": "vector",
                     "type": "vector",
                     "attrs": {
@@ -28,38 +29,56 @@ class SemanticRouterIndexSchema(IndexSchema):
                         "datatype": "float32"
                     }
                 }
-            }
+            ]
         )
 
 
 class SemanticRouter(BaseModel):
     name: str
     """The name of the semantic router"""
-    vectorizer: BaseVectorizer = Field(default_factory=HFTextVectorizer)
-    """The vectorizer used to embed route references"""
     routes: List[Route]
     """List of Route objects"""
+    vectorizer: BaseVectorizer = Field(default_factory=HFTextVectorizer)
+    """The vectorizer used to embed route references"""
     routing_config: RoutingConfig = Field(default_factory=RoutingConfig)
     """Configuration for routing behavior"""
+
+    _index: SearchIndex = PrivateAttr()
 
     class Config:
         arbitrary_types_allowed = True
 
-    def __init__(self, **data):
-        super().__init__(**data)
-        self._initialize_index(**data)
+    def __init__(
+        self,
+        name: str,
+        routes: List[Route],
+        vectorizer: BaseVectorizer = HFTextVectorizer(),
+        routing_config: RoutingConfig = RoutingConfig(),
+        redis_client: Optional[Redis] = None,
+        redis_url: str = "redis://localhost:6379",
+        overwrite: bool = False,
+        **kwargs
+    ):
+        super().__init__(
+            name=name,
+            routes=routes,
+            vectorizer=vectorizer,
+            routing_config=routing_config
+        )
+        self._initialize_index(redis_client, redis_url, overwrite)
 
-    def _initialize_index(self, **data):
+    def _initialize_index(
+        self,
+        redis_client: Optional[Redis] = None,
+        redis_url: str = "redis://localhost:6379",
+        overwrite: bool = False,
+        **connection_kwargs
+    ):
         """Initialize the search index and handle Redis connection.
 
         Args:
             data (dict): Initialization data containing Redis connection details.
         """
-        # Extract connection parameters
-        redis_url = data.pop("redis_url", "redis://localhost:6379")
-        redis_client = data.pop("redis_client", None)
-        connection_args = data.pop("connection_args", {})
-
         # Create search index schema
         schema = SemanticRouterIndexSchema.from_params(self.name, self.vectorizer.dims)
 
@@ -70,12 +89,18 @@ class SemanticRouter(BaseModel):
         if redis_client:
             self._index.set_client(redis_client)
         else:
-            self._index.connect(redis_url=redis_url, **connection_args)
+            self._index.connect(redis_url=redis_url, **connection_kwargs)
 
-        if not self._index.exists():
+        existed = self._index.exists()
+        self._index.create(overwrite=overwrite)
+
+        # If the index did not yet exist OR we overwrote it
+        if not existed or overwrite:
             self._add_routes(self.routes)
 
-        self._index.create(overwrite=False)
+        # TODO : double check this kind of logic
+
+
 
     def update_routing_config(self, routing_config: RoutingConfig):
         """Update the routing configuration.
@@ -95,13 +120,13 @@ class SemanticRouter(BaseModel):
         """
         route_references: List[Dict[str, Any]] = []
         keys: List[str] = []
-
+        # Iteratively load route references
         for route in routes:
             for reference in route.references:
                 route_references.append({
                     "route_name": route.name,
                     "reference": reference,
-                    "vector": self.vectorizer.embed(reference)
+                    "vector": self.vectorizer.embed(reference, as_buffer=True)
                 })
                 reference_hash = hashlib.sha256(reference.encode("utf-8")).hexdigest()
                 keys.append(f"{self._index.schema.index.prefix}:{route.name}:{reference_hash}")
@@ -129,7 +154,28 @@ class SemanticRouter(BaseModel):
         top_k = top_k if top_k is not None else self.routing_config.top_k
         distance_threshold = distance_threshold if distance_threshold is not None else self.routing_config.distance_threshold
 
-        # TODO: Implement the query logic based on top_k and distance_threshold
-        results = []
+        if distance_threshold:
+            query = RangeQuery(
+                vector=vector,
+                vector_field_name="vector",
+                distance_threshold=distance_threshold,
+                return_fields=["route_name", "reference"],
+                num_results=top_k # need to fetch more to be able to do aggregation
+            )
+        else:
+            query = VectorQuery(
+                vector=vector,
+                vector_field_name="vector",
+                return_fields=["route_name", "reference"],
+                num_results=top_k # need to fetch more to be able to do aggregation
+            )
 
-        return results
+        route_references = self._index.query(query)
+
+        # TODO use accumulation strategy to aggregation (sum or avg) the scores by the associated route
+        #top_routes_and_scores = ...
+
+        # TODO fetch the route objects and metadata directly from this class based on top matches
+        #results = ...
+
+        return route_references
