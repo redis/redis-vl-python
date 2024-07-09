@@ -159,6 +159,17 @@ def test_search_index_delete(client, index):
     assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
 
 
+def test_search_index_clear(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}]
+    index.load(data, id_field="id")
+
+    count = index.clear()
+    assert count == len(data)
+    assert index.exists()
+
+
 def test_search_index_load_and_fetch(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)

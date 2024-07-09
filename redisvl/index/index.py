@@ -492,8 +492,8 @@ class SearchIndex(BaseSearchIndex):
             FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
         ):
             batch_keys = [record["id"] for record in batch]
-            self._redis_client.delete(*batch_keys)  # type: ignore
-            total_records_deleted += len(batch_keys)
+            record_deleted = self._redis_client.delete(*batch_keys)  # type: ignore
+            total_records_deleted += record_deleted  # type: ignore
 
         return total_records_deleted
 
@@ -930,8 +930,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
         ):
             batch_keys = [record["id"] for record in batch]
-            await self._redis_client.delete(*batch_keys)  # type: ignore
-            total_records_deleted += len(batch_keys)
+            records_deleted = await self._redis_client.delete(*batch_keys)  # type: ignore
+            total_records_deleted += records_deleted  # type: ignore
 
         return total_records_deleted
 
