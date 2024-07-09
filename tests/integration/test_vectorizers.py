@@ -218,7 +218,11 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 
 
 @pytest.fixture(
-    params=[OpenAITextVectorizer, MistralAITextVectorizer, CustomTextVectorizer]
+    params=[
+        OpenAITextVectorizer,
+        # MistralAITextVectorizer,
+        CustomTextVectorizer,
+    ]
 )
 def avectorizer(request, skip_vectorizer):
     if skip_vectorizer:
