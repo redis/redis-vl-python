@@ -137,38 +137,29 @@ class SemanticRouter(BaseModel):
     def __call__(
         self,
         statement: str,
-        top_k: Optional[int] = None,
+        max_k: Optional[int] = None,
         distance_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Query the semantic router with a given statement.
 
         Args:
             statement (str): The input statement to be queried.
-            top_k (Optional[int]): The maximum number of top matches to return.
+            max_k (Optional[int]): The maximum number of top matches to return.
             distance_threshold (Optional[float]): The threshold for semantic distance.
 
         Returns:
             List[Dict[str, Any]]: The matching routes and their details.
         """
         vector = self.vectorizer.embed(statement)
-        top_k = top_k if top_k is not None else self.routing_config.top_k
+        max_k = max_k if max_k is not None else self.routing_config.max_k
         distance_threshold = distance_threshold if distance_threshold is not None else self.routing_config.distance_threshold
 
-        if distance_threshold:
-            query = RangeQuery(
-                vector=vector,
-                vector_field_name="vector",
-                distance_threshold=distance_threshold,
-                return_fields=["route_name", "reference"],
-                num_results=top_k # need to fetch more to be able to do aggregation
-            )
-        else:
-            query = VectorQuery(
-                vector=vector,
-                vector_field_name="vector",
-                return_fields=["route_name", "reference"],
-                num_results=top_k # need to fetch more to be able to do aggregation
-            )
+        query = RangeQuery(
+            vector=vector,
+            vector_field_name="vector",
+            distance_threshold=distance_threshold,
+            return_fields=["route_name", "reference"],
+        )
 
         route_references = self._index.query(query)
 

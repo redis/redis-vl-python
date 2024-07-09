@@ -3,6 +3,8 @@
 from pydantic.v1 import BaseModel, Field, validator
 from typing import List, Dict, Optional
 
+from enum import Enum
+
 
 class Route(BaseModel):
     name: str
@@ -27,17 +29,26 @@ class Route(BaseModel):
         return v
 
 
-class RoutingConfig(BaseModel):
-    top_k: int = Field(default=1)
-    """The maximum number of top matches to return"""
-    distance_threshold: Optional[float] = None
-    """The threshold for semantic distance"""
-    # TODO: need more here
+class AccumulationMethod(Enum):
+    # TODO: tidy up the enum usage
+    simple = "simple" # Take the winner at face value
+    avg = "avg" # Consider the avg score of all matches
+    sum = "sum" # Consider the cumulative score of all matches
+    auto = "auto" # Pick on the user's behalf?
 
-    @validator('top_k')
-    def top_k_must_be_positive(cls, v):
+
+class RoutingConfig(BaseModel):
+    max_k: int = Field(default=1)
+    """The maximum number of top matches to return"""
+    distance_threshold: float = Field(default=0.5)
+    """The threshold for semantic distance"""
+    accumulation_method: AccumulationMethod = Field(default=AccumulationMethod.auto)
+    """The accumulation method used to determine the matching route"""
+
+    @validator('max_k')
+    def max_k_must_be_positive(cls, v):
         if v <= 0:
-            raise ValueError('top_k must be a positive integer')
+            raise ValueError('max_k must be a positive integer')
         return v
 
     @validator('distance_threshold')
