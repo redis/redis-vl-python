@@ -334,3 +334,38 @@ def test_vector_size(cache, vectorizer):
 
     with pytest.raises(ValueError):
         cache.check(vector=[1, 2, 3])
+
+
+# test we can pass a list of tags and we'll include all results that match
+def test_multiple_tags(cache):
+    tag_1 = "group 0"
+    tag_2 = "group 1"
+    tag_3 = "group 2"
+    tag_4 = "group 3"
+    tags = [tag_1, tag_2, tag_3, tag_4]
+
+    for i in range(4):
+        prompt = f"test prompt {i}"
+        response = f"test response {i}"
+        cache.store(prompt, response, tag=tags[i])
+
+    # test we can specify one specific tag
+    results = cache.check("test prompt 1", tags=tag_1, num_results=5)
+    assert len(results) == 1
+    assert results[0]["prompt"] == "test prompt 0"
+
+    # test we can pass a list of tags
+    results = cache.check("test prompt 1", tags=[tag_1, tag_2, tag_3], num_results=5)
+    assert len(results) == 3
+
+    # test that default tag param searches full cache
+    results = cache.check("test prompt 1", num_results=5)
+    assert len(results) == 4
+
+    # test we can get all matches with empty tag list
+    results = cache.check("test prompt 1", tags=[], num_results=5)
+    assert len(results) == 4
+
+    # test no results are returned if we pass a nonexistant tag
+    results = cache.check("test prompt 1", tags=["bad tag"], num_results=5)
+    assert len(results) == 0

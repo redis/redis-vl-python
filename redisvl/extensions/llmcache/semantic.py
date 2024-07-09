@@ -6,6 +6,7 @@ from redis import Redis
 from redisvl.extensions.llmcache.base import BaseLLMCache
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
+from redisvl.query.filter import Tag
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
@@ -19,6 +20,7 @@ class SemanticCache(BaseLLMCache):
     vector_field_name: str = "prompt_vector"
     inserted_at_field_name: str = "inserted_at"
     updated_at_field_name: str = "updated_at"
+    tag_field_name: str = "scope_tag"
     response_field_name: str = "response"
     metadata_field_name: str = "metadata"
 
@@ -82,6 +84,7 @@ class SemanticCache(BaseLLMCache):
                 {"name": self.response_field_name, "type": "text"},
                 {"name": self.inserted_at_field_name, "type": "numeric"},
                 {"name": self.updated_at_field_name, "type": "numeric"},
+                {"name": self.tag_field_name, "type": "tag"},
                 {
                     "name": self.vector_field_name,
                     "type": "vector",
@@ -109,12 +112,12 @@ class SemanticCache(BaseLLMCache):
             self.entry_id_field_name,
             self.prompt_field_name,
             self.response_field_name,
+            self.tag_field_name,
             self.vector_field_name,
             self.metadata_field_name,
         ]
         self.set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
-
         self._index.create(overwrite=False)
 
     @property
@@ -218,7 +221,11 @@ class SemanticCache(BaseLLMCache):
         return self._vectorizer.embed(prompt)
 
     def _search_cache(
-        self, vector: List[float], num_results: int, return_fields: Optional[List[str]]
+        self,
+        vector: List[float],
+        num_results: int,
+        return_fields: Optional[List[str]],
+        tags: Optional[Union[List[str], str]],
     ) -> List[Dict[str, Any]]:
         """Searches the semantic cache for similar prompt vectors and returns
         the specified return fields for each cache hit."""
@@ -240,6 +247,8 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
         )
+        if tags:
+            query.set_filter(self.get_filter(tags))  # type: ignore
 
         # Gather and return the cache hits
         cache_hits: List[Dict[str, Any]] = self._index.query(query)
@@ -270,6 +279,7 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
+        tags: Optional[Union[List[str], str]] = None,
     ) -> List[Dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -289,6 +299,8 @@ class SemanticCache(BaseLLMCache):
             return_fields (Optional[List[str]], optional): The fields to include
                 in each returned result. If None, defaults to all available
                 fields in the cached entry.
+            tags (Optional[Union[List[str], str]) : the tag or tags to filter
+            results by. Default is None and full cache is searched.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -313,7 +325,7 @@ class SemanticCache(BaseLLMCache):
         self._check_vector_dims(vector)
 
         # Check for cache hits by searching the cache
-        cache_hits = self._search_cache(vector, num_results, return_fields)
+        cache_hits = self._search_cache(vector, num_results, return_fields, tags)
         return cache_hits
 
     def store(
@@ -322,6 +334,7 @@ class SemanticCache(BaseLLMCache):
         response: str,
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = None,
+        tag: Optional[str] = None,
     ) -> str:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -333,6 +346,8 @@ class SemanticCache(BaseLLMCache):
                 demand.
             metadata (Optional[dict], optional): The optional metadata to cache
                 alongside the prompt and response. Defaults to None.
+            tag (Optional[str]): The optional tag to assign to the cache entry.
+                Defaults to None.
 
         Returns:
             str: The Redis key for the entries added to the semantic cache.
@@ -370,6 +385,8 @@ class SemanticCache(BaseLLMCache):
                 raise TypeError("If specified, cached metadata must be a dictionary.")
             # Serialize the metadata dict and add to cache payload
             payload[self.metadata_field_name] = self.serialize(metadata)
+        if tag is not None:
+            payload[self.tag_field_name] = tag
 
         # Load LLMCache entry with TTL
         keys = self._index.load(data=[payload], ttl=self._ttl, id_field=id_field)
@@ -401,6 +418,7 @@ class SemanticCache(BaseLLMCache):
                 self.prompt_field_name,
                 self.vector_field_name,
                 self.response_field_name,
+                self.tag_field_name,
                 self.metadata_field_name,
             }:
                 raise ValueError(f" {key} is not a valid field within document")
@@ -415,3 +433,21 @@ class SemanticCache(BaseLLMCache):
                     )
         kwargs.update({self.updated_at_field_name: time()})
         self._index.client.hset(key, mapping=kwargs)  # type: ignore
+
+    def get_filter(
+        self,
+        tags: Optional[Union[List[str], str]] = None,
+    ) -> Tag:
+        """Set the tags filter to apply to querries based on the desired scope.
+
+        Args:
+            tags (Optional[Union[List[str], str]]): name of the specific tag or
+                tags to filter to. Default is None, which means all cache data
+                will be in scope.
+        """
+        default_filter = Tag(self.tag_field_name) == []
+        if not (tags):
+            return default_filter
+
+        tag_filter = Tag(self.tag_field_name) == tags
+        return tag_filter
