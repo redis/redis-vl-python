@@ -173,6 +173,18 @@ async def test_search_index_delete(async_client, async_index):
 
 
 @pytest.mark.asyncio
+async def test_search_index_clear(async_client, async_index):
+    async_index.set_client(async_client)
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}]
+    await async_index.load(data, id_field="id")
+
+    count = await async_index.clear()
+    assert count == len(data)
+    assert await async_index.exists()
+
+
+@pytest.mark.asyncio
 async def test_search_index_load_and_fetch(async_client, async_index):
     async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)

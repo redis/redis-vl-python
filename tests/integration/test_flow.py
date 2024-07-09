@@ -90,4 +90,11 @@ def test_simple(client, schema, sample_data):
         for field in return_fields:
             assert getattr(doc1, field) == doc2[field]
 
+    count_deleted_keys = index.clear()
+    assert count_deleted_keys == len(sample_data)
+
+    assert index.exists() == True
+
     index.delete()
+
+    assert index.exists() == False
