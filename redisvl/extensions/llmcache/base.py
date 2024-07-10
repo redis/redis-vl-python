@@ -27,6 +27,8 @@ class BaseLLMCache:
             if not isinstance(ttl, int):
                 raise ValueError(f"TTL must be an integer value, got {ttl}")
             self._ttl = int(ttl)
+        else:
+            self._ttl = None
 
     def clear(self) -> None:
         """Clear the LLMCache of all keys in the index."""
