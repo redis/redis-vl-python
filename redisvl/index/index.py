@@ -23,7 +23,8 @@ import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.index.storage import HashStorage, JsonStorage
-from redisvl.query.query import BaseQuery, CountQuery, FilterQuery
+from redisvl.query import BaseQuery, CountQuery, FilterQuery
+from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     convert_index_info_to_schema,
@@ -476,6 +477,26 @@ class SearchIndex(BaseSearchIndex):
         except:
             logger.exception("Error while deleting index")
 
+    def clear(self) -> int:
+        """Clear all keys in Redis associated with the index, leaving the index
+        available and in-place for future insertions or updates.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        # Track deleted records
+        total_records_deleted: int = 0
+
+        # Paginate using queries and delete in batches
+        for batch in self.paginate(
+            FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
+        ):
+            batch_keys = [record["id"] for record in batch]
+            record_deleted = self._redis_client.delete(*batch_keys)  # type: ignore
+            total_records_deleted += record_deleted  # type: ignore
+
+        return total_records_deleted
+
     def load(
         self,
         data: Iterable[Any],
@@ -893,6 +914,26 @@ class AsyncSearchIndex(BaseSearchIndex):
         except:
             logger.exception("Error while deleting index")
             raise
+
+    async def clear(self) -> int:
+        """Clear all keys in Redis associated with the index, leaving the index
+        available and in-place for future insertions or updates.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        # Track deleted records
+        total_records_deleted: int = 0
+
+        # Paginate using queries and delete in batches
+        async for batch in self.paginate(
+            FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
+        ):
+            batch_keys = [record["id"] for record in batch]
+            records_deleted = await self._redis_client.delete(*batch_keys)  # type: ignore
+            total_records_deleted += records_deleted  # type: ignore
+
+        return total_records_deleted
 
     async def load(
         self,

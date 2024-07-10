@@ -9,7 +9,7 @@ index:
 fields:
   - name: user
     type: tag
-    path: '.user'
+    path: '$.user'
   - name: credit_score
     type: tag
     path: '$.credit_score'

@@ -184,10 +184,7 @@ class SemanticCache(BaseLLMCache):
 
     def clear(self) -> None:
         """Clear the cache of all keys while preserving the index."""
-        with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
-            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):  # type: ignore
-                pipe.delete(key)
-            pipe.execute()
+        self._index.clear()
 
     def delete(self) -> None:
         """Clear the semantic cache of all keys and remove the underlying search
@@ -210,8 +207,8 @@ class SemanticCache(BaseLLMCache):
 
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
-        if self.ttl:
-            self._index.client.expire(key, self.ttl)  # type: ignore
+        if self._ttl:
+            self._index.client.expire(key, self._ttl)  # type: ignore
 
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the

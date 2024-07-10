@@ -130,10 +130,7 @@ class SemanticSessionManager(BaseSessionManager):
 
     def clear(self) -> None:
         """Clears the chat session history."""
-        with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
-            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):  # type: ignore
-                pipe.delete(key)
-            pipe.execute()
+        self._index.clear()
 
     def delete(self) -> None:
         """Clear all conversation keys and remove the search index."""
