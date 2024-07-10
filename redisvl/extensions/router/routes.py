@@ -30,7 +30,6 @@ class Route(BaseModel):
 
 
 class AccumulationMethod(Enum):
-    # TODO: tidy up the enum usage
     simple = "simple" # Take the winner at face value
     avg = "avg" # Consider the avg score of all matches
     sum = "sum" # Consider the cumulative score of all matches
@@ -56,4 +55,3 @@ class RoutingConfig(BaseModel):
         if v is not None and (v <= 0 or v > 1):
             raise ValueError('distance_threshold must be between 0 and 1')
         return v
-
