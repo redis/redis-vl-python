@@ -170,6 +170,37 @@ def test_search_index_clear(client, index):
     assert index.exists()
 
 
+def test_search_index_drop_key(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    keys = index.load(data, id_field="id")
+
+    # test passing a single string key removes only that key
+    index.drop_keys(keys[0])
+    assert not index.fetch(keys[0])
+    assert index.fetch(keys[1]) is not None  # still have all other entries
+
+
+def test_search_index_drop_keys(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    data = [
+        {"id": "1", "test": "foo"},
+        {"id": "2", "test": "bar"},
+        {"id": "3", "test": "baz"},
+    ]
+    keys = index.load(data, id_field="id")
+
+    # test passing a list of keys selectively removes only those keys
+    index.drop_keys(keys[0:2])
+    assert not index.fetch(keys[0])
+    assert not index.fetch(keys[1])
+    assert index.fetch(keys[2]) is not None
+
+    assert index.exists()
+
+
 def test_search_index_load_and_fetch(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
