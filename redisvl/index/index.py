@@ -503,10 +503,7 @@ class SearchIndex(BaseSearchIndex):
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
         """
         if isinstance(keys, List):
-            with self._redis_client.pipeline(transaction=False) as pipe:  # type: ignore
-                for key in keys:  # type: ignore
-                    pipe.delete(key)
-                pipe.execute()
+            self._redis_client.delete(*keys)  # type: ignore
         else:
             self._redis_client.delete(keys)  # type: ignore
 
