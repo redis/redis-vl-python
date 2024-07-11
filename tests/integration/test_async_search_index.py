@@ -191,7 +191,8 @@ async def test_search_index_drop_key(async_client, async_index):
     data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
     keys = await async_index.load(data, id_field="id")
 
-    await async_index.drop_keys(keys[0])
+    dropped = await async_index.drop_keys(keys[0])
+    assert dropped == 1
     assert not await async_index.fetch(keys[0])
     assert await async_index.fetch(keys[1]) is not None
 
@@ -207,7 +208,8 @@ async def test_search_index_drop_keys(async_client, async_index):
     ]
     keys = await async_index.load(data, id_field="id")
 
-    await async_index.drop_keys(keys[0:2])
+    dropped = await async_index.drop_keys(keys[0:2])
+    assert dropped == 2
     assert not await async_index.fetch(keys[0])
     assert not await async_index.fetch(keys[1])
     assert await async_index.fetch(keys[2]) is not None

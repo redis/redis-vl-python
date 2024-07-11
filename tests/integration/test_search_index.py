@@ -177,7 +177,8 @@ def test_search_index_drop_key(client, index):
     keys = index.load(data, id_field="id")
 
     # test passing a single string key removes only that key
-    index.drop_keys(keys[0])
+    dropped = index.drop_keys(keys[0])
+    assert dropped == 1
     assert not index.fetch(keys[0])
     assert index.fetch(keys[1]) is not None  # still have all other entries
 
@@ -193,7 +194,8 @@ def test_search_index_drop_keys(client, index):
     keys = index.load(data, id_field="id")
 
     # test passing a list of keys selectively removes only those keys
-    index.drop_keys(keys[0:2])
+    dropped = index.drop_keys(keys[0:2])
+    assert dropped == 2
     assert not index.fetch(keys[0])
     assert not index.fetch(keys[1])
     assert index.fetch(keys[2]) is not None
