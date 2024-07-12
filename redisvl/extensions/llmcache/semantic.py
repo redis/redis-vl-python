@@ -6,7 +6,7 @@ from redis import Redis
 from redisvl.extensions.llmcache.base import BaseLLMCache
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
-from redisvl.query.filter import Tag
+from redisvl.query.filter import Tag, FilterExpression
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
@@ -18,8 +18,8 @@ class SemanticCacheIndexSchema(IndexSchema):
     def from_params(cls, name: str, vector_dims: int):
 
         return cls(
-            index={"name": name, "prefix": name},
-            fields=[
+                index={"name": name, "prefix": name},  # type: ignore
+                fields=[  # type: ignore
                 {"name": "cache_name", "type": "tag"},
                 {"name": "prompt", "type": "text"},
                 {"name": "response", "type": "text"},
@@ -227,7 +227,8 @@ class SemanticCache(BaseLLMCache):
         vector: List[float],
         num_results: int,
         return_fields: Optional[List[str]],
-        tags: Optional[Union[List[str], str]],
+        ##tags: Optional[Union[List[str], str]],
+        filters: Optional[FilterExpression],
     ) -> List[Dict[str, Any]]:
         """Searches the semantic cache for similar prompt vectors and returns
         the specified return fields for each cache hit."""
@@ -249,8 +250,10 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
         )
-        if tags:
-            query.set_filter(self.get_filter(tags))  # type: ignore
+        ##if tags:
+        ##    query.set_filter(self.get_filter(tags))  # type: ignore
+        if filters:
+            query.set_filter(filters)  # type: ignore
 
         # Gather and return the cache hits
         cache_hits: List[Dict[str, Any]] = self._index.query(query)
@@ -281,7 +284,8 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
-        tags: Optional[Union[List[str], str]] = None,
+        ##tags: Optional[Union[List[str], str]] = None,
+        filters: Optional[FilterExpression] = None,
     ) -> List[Dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -327,7 +331,8 @@ class SemanticCache(BaseLLMCache):
         self._check_vector_dims(vector)
 
         # Check for cache hits by searching the cache
-        cache_hits = self._search_cache(vector, num_results, return_fields, tags)
+        ##cache_hits = self._search_cache(vector, num_results, return_fields, tags)
+        cache_hits = self._search_cache(vector, num_results, return_fields, filters)
         return cache_hits
 
     def store(
