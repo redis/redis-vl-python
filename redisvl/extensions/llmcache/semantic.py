@@ -8,8 +8,36 @@ from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import Tag
 from redisvl.redis.utils import array_to_buffer
-from redisvl.schema.schema import IndexSchema
+from redisvl.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+
+
+class SemanticCacheIndexSchema(IndexSchema):
+
+    @classmethod
+    def from_params(cls, name: str, vector_dims: int):
+
+        return cls(
+            index={"name": name, "prefix": name},
+            fields=[
+                {"name": "cache_name", "type": "tag"},
+                {"name": "prompt", "type": "text"},
+                {"name": "response", "type": "text"},
+                {"name": "inserted_at", "type": "numeric"},
+                {"name": "updated_at", "type": "numeric"},
+                {"name": "scope_tag", "type": "tag"},
+                {
+                    "name": "prompt_vector",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": vector_dims,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                    },
+                },
+            ],
+        )
 
 
 class SemanticCache(BaseLLMCache):
@@ -75,30 +103,7 @@ class SemanticCache(BaseLLMCache):
                 model="sentence-transformers/all-mpnet-base-v2"
             )
 
-        # build cache index schema
-        schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
-        # add fields
-        schema.add_fields(
-            [
-                {"name": self.prompt_field_name, "type": "text"},
-                {"name": self.response_field_name, "type": "text"},
-                {"name": self.inserted_at_field_name, "type": "numeric"},
-                {"name": self.updated_at_field_name, "type": "numeric"},
-                {"name": self.tag_field_name, "type": "tag"},
-                {
-                    "name": self.vector_field_name,
-                    "type": "vector",
-                    "attrs": {
-                        "dims": vectorizer.dims,
-                        "datatype": "float32",
-                        "distance_metric": "cosine",
-                        "algorithm": "flat",
-                    },
-                },
-            ]
-        )
-
-        # build search index
+        schema = SemanticCacheIndexSchema.from_params(name, vectorizer.dims)
         self._index = SearchIndex(schema=schema)
 
         # handle redis connection
