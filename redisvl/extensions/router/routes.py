@@ -1,9 +1,6 @@
-
-
-from pydantic.v1 import BaseModel, Field, validator
-from typing import List, Dict, Optional
-
 from enum import Enum
+from pydantic.v1 import BaseModel, Field, validator
+from typing import List, Dict
 
 
 class Route(BaseModel):
@@ -29,20 +26,18 @@ class Route(BaseModel):
         return v
 
 
-class AccumulationMethod(Enum):
-    simple = "simple" # Take the winner at face value
-    avg = "avg" # Consider the avg score of all matches
-    sum = "sum" # Consider the cumulative score of all matches
-    auto = "auto" # Pick on the user's behalf?
+class RouteSortingMethod(Enum):
+    avg_distance = "avg_distance"
+    min_distance = "min_distance"
 
 
 class RoutingConfig(BaseModel):
-    max_k: int = Field(default=1)
-    """The maximum number of top matches to return"""
     distance_threshold: float = Field(default=0.5)
-    """The threshold for semantic distance"""
-    accumulation_method: AccumulationMethod = Field(default=AccumulationMethod.auto)
-    """The accumulation method used to determine the matching route"""
+    """The threshold for semantic distance."""
+    max_k: int = Field(default=1)
+    """The maximum number of top matches to return."""
+    sort_by: RouteSortingMethod = Field(default=RouteSortingMethod.avg_distance)
+    """The technique used to sort the final route matches before truncating."""
 
     @validator('max_k')
     def max_k_must_be_positive(cls, v):

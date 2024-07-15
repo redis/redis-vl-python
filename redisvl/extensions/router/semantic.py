@@ -2,14 +2,14 @@ from pydantic.v1 import BaseModel, root_validator, Field, PrivateAttr
 from typing import Any, List, Dict, Optional, Union
 
 from redis import Redis
-from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
+from redis.commands.search.aggregation import AggregateRequest, AggregateResult
 import redis.commands.search.reducers as reducers
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery, RangeQuery
 from redisvl.schema import IndexSchema, IndexInfo
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
-from redisvl.extensions.router.routes import Route, RoutingConfig, AccumulationMethod
+from redisvl.extensions.router.routes import Route, RoutingConfig, RouteSortingMethod
 
 from redisvl.redis.utils import make_dict, convert_bytes
 
@@ -20,6 +20,9 @@ class SemanticRouterIndexSchema(IndexSchema):
 
     @classmethod
     def from_params(cls, name: str, vector_dims: int):
+        """Load the semantic router index schema from the router name and
+        vector dimensionality.
+        """
         return cls(
             index=IndexInfo(name=name, prefix=name),
             fields=[
@@ -50,7 +53,6 @@ class SemanticRouter(BaseModel):
     """Configuration for routing behavior"""
 
     _index: SearchIndex = PrivateAttr()
-    # _accumulation_method: AccumulationMethod = PrivateAttr()
 
     class Config:
         arbitrary_types_allowed = True
@@ -85,7 +87,6 @@ class SemanticRouter(BaseModel):
             routing_config=routing_config
         )
         self._initialize_index(redis_client, redis_url, overwrite)
-        # self._accumulation_method = self._pick_accumulation_method()
 
     def _initialize_index(
         self,
@@ -115,20 +116,6 @@ class SemanticRouter(BaseModel):
 
         if not existed or overwrite:
             self._add_routes(self.routes)
-
-    # def _pick_accumulation_method(self) -> AccumulationMethod:
-    #     """Pick the accumulation method based on the routing configuration."""
-    #     if self.routing_config.accumulation_method != AccumulationMethod.auto:
-    #         return self.routing_config.accumulation_method
-
-    #     num_route_references = [len(route.references) for route in self.routes]
-    #     avg_num_references = sum(num_route_references) / len(num_route_references)
-    #     variance = sum((x - avg_num_references) ** 2 for x in num_route_references) / len(num_route_references)
-
-    #     if variance < 1:  # TODO: Arbitrary threshold for low variance
-    #         return AccumulationMethod.sum
-    #     else:
-    #         return AccumulationMethod.avg
 
     def update_routing_config(self, routing_config: RoutingConfig):
         """Update the routing configuration.
@@ -165,6 +152,7 @@ class SemanticRouter(BaseModel):
         statement: str,
         max_k: Optional[int] = None,
         distance_threshold: Optional[float] = None,
+        sort_by: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Query the semantic router with a given statement.
 
@@ -172,6 +160,7 @@ class SemanticRouter(BaseModel):
             statement (str): The input statement to be queried.
             max_k (Optional[int]): The maximum number of top matches to return.
             distance_threshold (Optional[float]): The threshold for semantic distance.
+            sort_by (Optional[str]): The technique used to sort the final route matches before truncating.
 
         Returns:
             List[Dict[str, Any]]: The matching routes and their details.
@@ -179,11 +168,8 @@ class SemanticRouter(BaseModel):
         vector = self.vectorizer.embed(statement)
         max_k = max_k if max_k is not None else self.routing_config.max_k
         distance_threshold = distance_threshold if distance_threshold is not None else self.routing_config.distance_threshold
+        sort_by = RouteSortingMethod(sort_by) if sort_by is not None else self.routing_config.sort_by
 
-        # # get the total number of route references in the index
-        # num_route_references = sum(
-        #     [len(route.references) for route in self.routes]
-        # )
         # define the baseline range query to fetch relevant route references
         vector_range_query = RangeQuery(
             vector=vector,
@@ -198,42 +184,40 @@ class SemanticRouter(BaseModel):
             AggregateRequest(aggregate_query)
                 .group_by(
                     "@route_name",
-                    reducers.avg("vector_distance").alias("avg"),
-                    reducers.min("vector_distance").alias("score")
+                    reducers.avg("vector_distance").alias("avg_distance"),
+                    reducers.min("vector_distance").alias("min_distance")
                 )
-                .apply(avg_score="1 - @avg", score="1 - @score")
                 .dialect(2)
         )
 
-        top_routes_and_scores = []
-        aggregate_results = self._index.client.ft(self._index.name).aggregate(aggregate_request, vector_range_query.params)
+        # run the aggregation query in Redis
+        aggregate_result: AggregateResult = (
+            self._index.client
+                .ft(self._index.name)
+                .aggregate(aggregate_request, vector_range_query.params)
+        )
 
-        for result in aggregate_results.rows:
-            top_routes_and_scores.append(make_dict(convert_bytes(result)))
+        top_routes_and_scores = sorted([
+            self._process_result(result) for result in aggregate_result.rows
+        ], key=lambda r: r[sort_by.value])
 
-        top_routes = self._fetch_routes(top_routes_and_scores)
-
-        return top_routes
+        return top_routes_and_scores[:max_k]
 
 
-    def _fetch_routes(self, top_routes_and_scores: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Fetch route objects and metadata based on top matches.
+    def _process_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Process resulting route objects and metadata.
 
         Args:
-            top_routes_and_scores: List of top routes and their scores.
+            result: Aggregation query result object
 
         Returns:
             List[Dict[str, Any]]: Routes with their metadata.
         """
-        results = []
-        for route_info in top_routes_and_scores:
-            route_name = route_info["route_name"]
-            route = next((r for r in self.routes if r.name == route_name), None)
-            if route:
-                results.append({
-                    **route.dict(),
-                    "score": route_info["score"],
-                    "avg_score": route_info["avg_score"]
-                })
-
-        return results
+        result_dict = make_dict(convert_bytes(result))
+        route_name = result_dict["route_name"]
+        route = next((r for r in self.routes if r.name == route_name), None)
+        return {
+            **route.dict(),
+            "avg_distance": float(result_dict["avg_distance"]),
+            "min_distance": float(result_dict["min_distance"])
+        }
