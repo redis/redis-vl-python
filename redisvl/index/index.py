@@ -177,7 +177,14 @@ class BaseSearchIndex:
             self.connect(redis_url, **connection_args)
 
         # set up index storage layer
-        self._storage = self._STORAGE_MAP[self.schema.index.storage_type](
+        # self._storage = self._STORAGE_MAP[self.schema.index.storage_type](
+        #     prefix=self.schema.index.prefix,
+        #     key_separator=self.schema.index.key_separator,
+        # )
+
+    @property
+    def _storage(self):
+        return self._STORAGE_MAP[self.schema.index.storage_type](
             prefix=self.schema.index.prefix,
             key_separator=self.schema.index.key_separator,
         )
