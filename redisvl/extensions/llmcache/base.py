@@ -1,6 +1,7 @@
-import hashlib
 import json
 from typing import Any, Dict, List, Optional
+
+from redisvl.redis.utils import hashify
 
 
 class BaseLLMCache:
@@ -54,7 +55,7 @@ class BaseLLMCache:
 
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        return hashify(prompt)
 
     def serialize(self, metadata: Dict[str, Any]) -> str:
         """Serlize the input into a string."""

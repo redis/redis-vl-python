@@ -40,10 +40,10 @@ class Route(BaseModel):
 class RouteMatch(BaseModel):
     """Model representing a matched route with distance information."""
 
-    route: Optional[Route] = None
-    """The matched route."""
+    name: Optional[str] = None
+    """The matched route name."""
     distance: Optional[float] = Field(default=None)
-    """The distance of the match."""
+    """The vector distance between the statement and the matched route."""
 
 
 class DistanceAggregationMethod(Enum):

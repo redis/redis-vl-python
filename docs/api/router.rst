@@ -32,6 +32,7 @@ Route
 .. autoclass:: Route
    :members:
 
+
 Route Match
 ===========
 
@@ -39,6 +40,7 @@ Route Match
 
 .. autoclass:: RouteMatch
    :members:
+
 
 Distance Aggregation Method
 ===========================

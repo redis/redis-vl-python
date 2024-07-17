@@ -71,8 +71,7 @@ def test_single_query(semantic_router):
         pytest.skip("Not using a late enough version of Redis")
 
     match = semantic_router("hello")
-    assert match.route is not None
-    assert match.route.name == "greeting"
+    assert match.name == "greeting"
     assert match.distance <= semantic_router.route_thresholds["greeting"]
 
 
@@ -82,7 +81,7 @@ def test_single_query_no_match(semantic_router):
         pytest.skip("Not using a late enough version of Redis")
 
     match = semantic_router("unknown_phrase")
-    assert match.route is None
+    assert match.name is None
 
 
 def test_multiple_query(semantic_router):
@@ -92,7 +91,7 @@ def test_multiple_query(semantic_router):
 
     matches = semantic_router.route_many("hello", max_k=2)
     assert len(matches) > 0
-    assert matches[0].route.name == "greeting"
+    assert matches[0].name == "greeting"
 
 
 def test_update_routing_config(semantic_router):
@@ -109,8 +108,7 @@ def test_vector_query(semantic_router):
 
     vector = semantic_router.vectorizer.embed("goodbye")
     match = semantic_router(vector=vector)
-    assert match.route is not None
-    assert match.route.name == "farewell"
+    assert match.name == "farewell"
 
 
 def test_vector_query_no_match(semantic_router):
@@ -122,10 +120,10 @@ def test_vector_query_no_match(semantic_router):
         0.0
     ] * semantic_router.vectorizer.dims  # Random vector unlikely to match any route
     match = semantic_router(vector=vector)
-    assert match.route is None
+    assert match.name is None
 
 
-def test_additional_route(semantic_router):
+def test_add_route(semantic_router):
     new_routes = [
         Route(
             name="politics",
@@ -149,4 +147,12 @@ def test_additional_route(semantic_router):
         match = semantic_router("political speech")
         print(match, flush=True)
         assert match is not None
-        assert match.route.name == "politics"
+        assert match.name == "politics"
+
+
+def test_remove_routes(semantic_router):
+    semantic_router.remove_route("greeting")
+    assert semantic_router.get("greeting") is None
+
+    semantic_router.remove_route("unknown_route")
+    assert semantic_router.get("unknown_route") is None

@@ -90,20 +90,14 @@ def test_route_invalid_threshold_negative():
 
 
 def test_route_match():
-    route = Route(
-        name="Test Route",
-        references=["reference1", "reference2"],
-        metadata={"key": "value"},
-        distance_threshold=0.3,
-    )
-    route_match = RouteMatch(route=route, distance=0.25)
-    assert route_match.route == route
+    route_match = RouteMatch(name="test", distance=0.25)
+    assert route_match.name == "test"
     assert route_match.distance == 0.25
 
 
 def test_route_match_no_route():
     route_match = RouteMatch()
-    assert route_match.route is None
+    assert route_match.name is None
     assert route_match.distance is None
 
 
