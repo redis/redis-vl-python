@@ -5,6 +5,7 @@ import redis.commands.search.reducers as reducers
 from pydantic.v1 import BaseModel, Field, PrivateAttr
 from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
+from redis.exceptions import ResponseError
 
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
@@ -275,10 +276,19 @@ class SemanticRouter(BaseModel):
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k=1
         )
-        route_matches: AggregateResult = self._index.client.ft(  # type: ignore
-            self._index.name
-        ).aggregate(aggregate_request, vector_range_query.params)
-        return [self._process_route(route_match) for route_match in route_matches.rows]
+        try:
+            route_matches: AggregateResult = self._index.client.ft(  # type: ignore
+                self._index.name
+            ).aggregate(aggregate_request, vector_range_query.params)
+            return [
+                self._process_route(route_match) for route_match in route_matches.rows
+            ]
+        except ResponseError as e:
+            if "VSS is not yet supported on FT.AGGREGATE" in str(e):
+                raise RuntimeError(
+                    "Semantic routing is only available on Redis version 7.x.x or greater"
+                )
+            raise e
 
     def _classify_many(
         self,
@@ -307,10 +317,19 @@ class SemanticRouter(BaseModel):
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k
         )
-        route_matches: AggregateResult = self._index.client.ft(  # type: ignore
-            self._index.name
-        ).aggregate(aggregate_request, vector_range_query.params)
-        return [self._process_route(route_match) for route_match in route_matches.rows]
+        try:
+            route_matches: AggregateResult = self._index.client.ft(  # type: ignore
+                self._index.name
+            ).aggregate(aggregate_request, vector_range_query.params)
+            return [
+                self._process_route(route_match) for route_match in route_matches.rows
+            ]
+        except ResponseError as e:
+            if "VSS is not yet supported on FT.AGGREGATE" in str(e):
+                raise RuntimeError(
+                    "Semantic routing is only available on Redis version 7.x.x or greater"
+                )
+            raise e
 
     def _pass_threshold(self, route_match: Optional[RouteMatch]) -> bool:
         """Check if a route match passes the distance threshold.
