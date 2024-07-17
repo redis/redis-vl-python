@@ -3,10 +3,11 @@
 Query
 *****
 
+.. _query_api:
+
+
 VectorQuery
 ===========
-
-.. _query_api:
 
 .. currentmodule:: redisvl.query
 

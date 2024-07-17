@@ -1,6 +1,6 @@
 
 ********
-LLMCache
+LLM Cache
 ********
 
 SemanticCache
