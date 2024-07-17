@@ -195,7 +195,7 @@ class IndexSchema(BaseModel):
         """
         Validate uniqueness of field names and create valid field instances.
         """
-         # Ensure index is a dictionary for validation
+        # Ensure index is a dictionary for validation
         index = values.get("index")
         if not isinstance(index, IndexInfo):
             index = IndexInfo(**index)

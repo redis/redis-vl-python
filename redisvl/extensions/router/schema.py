@@ -64,7 +64,9 @@ class RoutingConfig(BaseModel):
     """The threshold for semantic distance."""
     max_k: int = Field(default=1)
     """The maximum number of top matches to return."""
-    aggregation_method: DistanceAggregationMethod = Field(default=DistanceAggregationMethod.avg)
+    aggregation_method: DistanceAggregationMethod = Field(
+        default=DistanceAggregationMethod.avg
+    )
     """Aggregation method to use to classify queries."""
 
     @validator("max_k")

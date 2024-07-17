@@ -1,15 +1,26 @@
 import pytest
 
-from redisvl.extensions.router.schema import Route, RoutingConfig
 from redisvl.extensions.router import SemanticRouter
+from redisvl.extensions.router.schema import Route, RoutingConfig
 
 
 @pytest.fixture
 def routes():
     return [
-        Route(name="greeting", references=["hello", "hi"], metadata={"type": "greeting"}, distance_threshold=0.3),
-        Route(name="farewell", references=["bye", "goodbye"], metadata={"type": "farewell"}, distance_threshold=0.3)
+        Route(
+            name="greeting",
+            references=["hello", "hi"],
+            metadata={"type": "greeting"},
+            distance_threshold=0.3,
+        ),
+        Route(
+            name="farewell",
+            references=["bye", "goodbye"],
+            metadata={"type": "farewell"},
+            distance_threshold=0.3,
+        ),
     ]
+
 
 @pytest.fixture
 def semantic_router(client, routes):
@@ -18,7 +29,7 @@ def semantic_router(client, routes):
         routes=routes,
         routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
         redis_client=client,
-        overwrite=False
+        overwrite=False,
     )
     yield router
     router._index.delete(drop=True)
@@ -70,6 +81,7 @@ def test_multiple_query(semantic_router):
     assert len(matches) > 0
     assert matches[0].route.name == "greeting"
 
+
 def test_update_routing_config(semantic_router):
     new_config = RoutingConfig(distance_threshold=0.5, max_k=1)
     semantic_router.update_routing_config(new_config)
@@ -85,7 +97,9 @@ def test_vector_query(semantic_router):
 
 
 def test_vector_query_no_match(semantic_router):
-    vector = [0.0] * semantic_router.vectorizer.dims  # Random vector unlikely to match any route
+    vector = [
+        0.0
+    ] * semantic_router.vectorizer.dims  # Random vector unlikely to match any route
     match = semantic_router(vector=vector)
     assert match.route is None
 
@@ -94,7 +108,11 @@ def test_additional_route(semantic_router):
     new_routes = [
         Route(
             name="politics",
-            references=["are you liberal or conservative?", "who will you vote for?", "political speech"],
+            references=[
+                "are you liberal or conservative?",
+                "who will you vote for?",
+                "political speech",
+            ],
             metadata={"type": "greeting"},
         )
     ]

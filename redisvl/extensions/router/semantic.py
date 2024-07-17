@@ -1,12 +1,17 @@
 import hashlib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 import redis.commands.search.reducers as reducers
 from pydantic.v1 import BaseModel, Field, PrivateAttr
 from redis import Redis
-from redis.commands.search.aggregation import AggregateRequest, AggregateResult
+from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 
-from redisvl.extensions.router.schema import Route, RoutingConfig, RouteMatch, DistanceAggregationMethod
+from redisvl.extensions.router.schema import (
+    DistanceAggregationMethod,
+    Route,
+    RouteMatch,
+    RoutingConfig,
+)
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.redis.utils import convert_bytes, make_dict
@@ -18,7 +23,7 @@ class SemanticRouterIndexSchema(IndexSchema):
     """Customized index schema for SemanticRouter."""
 
     @classmethod
-    def from_params(cls, name: str, vector_dims: int) -> 'SemanticRouterIndexSchema':
+    def from_params(cls, name: str, vector_dims: int) -> "SemanticRouterIndexSchema":
         """Create an index schema based on router name and vector dimensions.
 
         Args:
@@ -30,7 +35,7 @@ class SemanticRouterIndexSchema(IndexSchema):
         """
         return cls(
             index=IndexInfo(name=name, prefix=name),
-            fields=[
+            fields=[  # type: ignore
                 {"name": "route_name", "type": "tag"},
                 {"name": "reference", "type": "text"},
                 {
@@ -87,7 +92,12 @@ class SemanticRouter(BaseModel):
             overwrite (bool, optional): Whether to overwrite existing index. Defaults to False.
             **kwargs: Additional arguments.
         """
-        super().__init__(name=name, routes=routes, vectorizer=vectorizer, routing_config=routing_config)
+        super().__init__(
+            name=name,
+            routes=routes,
+            vectorizer=vectorizer,
+            routing_config=routing_config,
+        )
         self._initialize_index(redis_client, redis_url, overwrite)
 
     def _initialize_index(
@@ -130,7 +140,7 @@ class SemanticRouter(BaseModel):
         return [route.name for route in self.routes]
 
     @property
-    def route_thresholds(self) -> Dict[str, float]:
+    def route_thresholds(self) -> Dict[str, Optional[float]]:
         """Get the distance thresholds for each route.
 
         Returns:
@@ -168,7 +178,9 @@ class SemanticRouter(BaseModel):
                     }
                 )
                 reference_hash = hashlib.sha256(reference.encode("utf-8")).hexdigest()
-                keys.append(f"{self._index.schema.index.prefix}:{route.name}:{reference_hash}")
+                keys.append(
+                    f"{self._index.schema.index.prefix}:{route.name}:{reference_hash}"
+                )
 
             # set route if does not yet exist client side
             if not self.get(route.name):
@@ -204,7 +216,7 @@ class SemanticRouter(BaseModel):
         self,
         vector_range_query: RangeQuery,
         aggregation_method: DistanceAggregationMethod,
-        max_k: int
+        max_k: int,
     ) -> AggregateRequest:
         """Build the Redis aggregation request.
 
@@ -216,6 +228,8 @@ class SemanticRouter(BaseModel):
         Returns:
             AggregateRequest: The constructed aggregation request.
         """
+        aggregation_func: Type[Reducer]
+
         if aggregation_method == DistanceAggregationMethod.min:
             aggregation_func = reducers.min
         elif aggregation_method == DistanceAggregationMethod.sum:
@@ -226,7 +240,9 @@ class SemanticRouter(BaseModel):
         aggregate_query = str(vector_range_query).split(" RETURN")[0]
         aggregate_request = (
             AggregateRequest(aggregate_query)
-            .group_by("@route_name", aggregation_func("vector_distance").alias("distance"))
+            .group_by(
+                "@route_name", aggregation_func("vector_distance").alias("distance")
+            )
             .sort_by("@distance", max=max_k)
             .dialect(2)
         )
@@ -237,7 +253,7 @@ class SemanticRouter(BaseModel):
         self,
         vector: List[float],
         distance_threshold: float,
-        aggregation_method: DistanceAggregationMethod
+        aggregation_method: DistanceAggregationMethod,
     ) -> List[RouteMatch]:
         """Classify a single query vector.
 
@@ -256,8 +272,12 @@ class SemanticRouter(BaseModel):
             return_fields=["route_name"],
         )
 
-        aggregate_request = self._build_aggregate_request(vector_range_query, aggregation_method, max_k=1)
-        route_matches: AggregateResult = self._index.client.ft(self._index.name).aggregate(aggregate_request, vector_range_query.params)
+        aggregate_request = self._build_aggregate_request(
+            vector_range_query, aggregation_method, max_k=1
+        )
+        route_matches: AggregateResult = self._index.client.ft(  # type: ignore
+            self._index.name
+        ).aggregate(aggregate_request, vector_range_query.params)
         return [self._process_route(route_match) for route_match in route_matches.rows]
 
     def _classify_many(
@@ -265,7 +285,7 @@ class SemanticRouter(BaseModel):
         vector: List[float],
         max_k: int,
         distance_threshold: float,
-        aggregation_method: DistanceAggregationMethod
+        aggregation_method: DistanceAggregationMethod,
     ) -> List[RouteMatch]:
         """Classify multiple query vectors.
 
@@ -284,8 +304,12 @@ class SemanticRouter(BaseModel):
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
         )
-        aggregate_request = self._build_aggregate_request(vector_range_query, aggregation_method, max_k)
-        route_matches: AggregateResult = self._index.client.ft(self._index.name).aggregate(aggregate_request, vector_range_query.params)
+        aggregate_request = self._build_aggregate_request(
+            vector_range_query, aggregation_method, max_k
+        )
+        route_matches: AggregateResult = self._index.client.ft(  # type: ignore
+            self._index.name
+        ).aggregate(aggregate_request, vector_range_query.params)
         return [self._process_route(route_match) for route_match in route_matches.rows]
 
     def _pass_threshold(self, route_match: Optional[RouteMatch]) -> bool:
@@ -297,7 +321,11 @@ class SemanticRouter(BaseModel):
         Returns:
             bool: True if the route match passes the threshold, False otherwise.
         """
-        return route_match is not None and route_match.distance <= route_match.route.distance_threshold
+        if route_match:
+            if route_match.distance is not None and route_match.route is not None:
+                if route_match.route.distance_threshold:
+                    return route_match.distance <= route_match.route.distance_threshold
+        return False
 
     def __call__(
         self,
@@ -320,8 +348,12 @@ class SemanticRouter(BaseModel):
                 raise ValueError("Must provide a vector or statement to the router")
             vector = self.vectorizer.embed(statement)
 
-        distance_threshold = distance_threshold or self.routing_config.distance_threshold
-        route_matches = self._classify(vector, distance_threshold, self.routing_config.aggregation_method)
+        distance_threshold = (
+            distance_threshold or self.routing_config.distance_threshold
+        )
+        route_matches = self._classify(
+            vector, distance_threshold, self.routing_config.aggregation_method
+        )
         route_match = route_matches[0] if route_matches else None
 
         if route_match and self._pass_threshold(route_match):
@@ -352,8 +384,16 @@ class SemanticRouter(BaseModel):
                 raise ValueError("Must provide a vector or statement to the router")
             vector = self.vectorizer.embed(statement)
 
-        distance_threshold = distance_threshold or self.routing_config.distance_threshold
+        distance_threshold = (
+            distance_threshold or self.routing_config.distance_threshold
+        )
         max_k = max_k or self.routing_config.max_k
-        route_matches = self._classify_many(vector, max_k, distance_threshold, self.routing_config.aggregation_method)
+        route_matches = self._classify_many(
+            vector, max_k, distance_threshold, self.routing_config.aggregation_method
+        )
 
-        return [route_match for route_match in route_matches if self._pass_threshold(route_match)]
+        return [
+            route_match
+            for route_match in route_matches
+            if self._pass_threshold(route_match)
+        ]
