@@ -174,9 +174,7 @@ class SemanticRouter(BaseModel):
         keys: List[str] = []
 
         for route in routes:
-            if route.distance_threshold is None:
-                route.distance_threshold = self.routing_config.distance_threshold
-            # set route reference
+            # set route references
             for reference in route.references:
                 route_references.append(
                     {
@@ -338,19 +336,21 @@ class SemanticRouter(BaseModel):
                 )
             raise e
 
-    def _pass_threshold(self, route_match: Optional[RouteMatch]) -> bool:
+    def _pass_threshold(self, route_match: Optional[RouteMatch], distance_threshold: float) -> bool:
         """Check if a route match passes the distance threshold.
 
         Args:
             route_match (Optional[RouteMatch]): The route match to check.
+            distance_threshold (float): The fallback distance threshold to use if not assigned to a route.
 
         Returns:
             bool: True if the route match passes the threshold, False otherwise.
         """
         if route_match:
             if route_match.distance is not None and route_match.route is not None:
-                if route_match.route.distance_threshold:
-                    return route_match.distance <= route_match.route.distance_threshold
+                _distance_threshold = route_match.route.distance_threshold or distance_threshold
+                if _distance_threshold:
+                    return route_match.distance <= _distance_threshold
         return False
 
     def __call__(
@@ -358,6 +358,7 @@ class SemanticRouter(BaseModel):
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
         distance_threshold: Optional[float] = None,
+        aggregation_method: Optional[DistanceAggregationMethod] = None
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
 
@@ -365,6 +366,7 @@ class SemanticRouter(BaseModel):
             statement (Optional[str]): The input statement to be queried.
             vector (Optional[List[float]]): The input vector to be queried.
             distance_threshold (Optional[float]): The threshold for semantic distance.
+            aggregation_method (Optional[DistanceAggregationMethod]): The aggregation method used for vector distances.
 
         Returns:
             RouteMatch: The matching route.
@@ -377,12 +379,13 @@ class SemanticRouter(BaseModel):
         distance_threshold = (
             distance_threshold or self.routing_config.distance_threshold
         )
+        aggregation_method = aggregation_method or self.routing_config.aggregation_method
         route_matches = self._classify(
-            vector, distance_threshold, self.routing_config.aggregation_method
+            vector, distance_threshold, aggregation_method
         )
         route_match = route_matches[0] if route_matches else None
 
-        if route_match and self._pass_threshold(route_match):
+        if route_match and self._pass_threshold(route_match, distance_threshold):
             return route_match
 
         return RouteMatch()
@@ -393,6 +396,7 @@ class SemanticRouter(BaseModel):
         vector: Optional[List[float]] = None,
         max_k: Optional[int] = None,
         distance_threshold: Optional[float] = None,
+        aggregation_method: Optional[DistanceAggregationMethod] = None
     ) -> List[RouteMatch]:
         """Query the semantic router with a given statement or vector for multiple matches.
 
@@ -401,6 +405,7 @@ class SemanticRouter(BaseModel):
             vector (Optional[List[float]]): The input vector to be queried.
             max_k (Optional[int]): The maximum number of top matches to return.
             distance_threshold (Optional[float]): The threshold for semantic distance.
+            aggregation_method (Optional[DistanceAggregationMethod]): The aggregation method used for vector distances.
 
         Returns:
             List[RouteMatch]: The matching routes and their details.
@@ -414,12 +419,19 @@ class SemanticRouter(BaseModel):
             distance_threshold or self.routing_config.distance_threshold
         )
         max_k = max_k or self.routing_config.max_k
+        aggregation_method = aggregation_method or self.routing_config.aggregation_method
         route_matches = self._classify_many(
-            vector, max_k, distance_threshold, self.routing_config.aggregation_method
+            vector, max_k, distance_threshold, aggregation_method
         )
 
         return [
             route_match
             for route_match in route_matches
-            if self._pass_threshold(route_match)
+            if self._pass_threshold(route_match, distance_threshold)
         ]
+
+    def delete(self):
+        self._index.delete(drop=True)
+
+    def clear(self):
+        self._index.clear()
