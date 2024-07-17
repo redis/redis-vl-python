@@ -9,7 +9,7 @@ const toc = [
         { title: "Query and Filter", path: "/user_guide/hybrid_queries_02.html" },
         { title: "JSON vs Hash Storage", path: "/user_guide/hash_vs_json_05.html" },
         { title: "Vectorizers", path: "/user_guide/vectorizers_04.html" },
-        { title: "Rerankers", path: "/user_guide/rerankers_06.html"},
+        { title: "Rerankers", path: "/user_guide/rerankers_06.html" },
         { title: "Semantic Caching", path: "/user_guide/llmcache_03.html" },
     ]},
     { header: "API", toc: [
@@ -17,9 +17,14 @@ const toc = [
         { title: "Search Index", path: "/api/searchindex.html" },
         { title: "Query", path: "/api/query.html" },
         { title: "Filter", path: "/api/filter.html" },
+    ]},
+    { header: "Utils", toc: [
         { title: "Vectorizers", path: "/api/vectorizer.html" },
         { title: "Rerankers", path: "/api/reranker.html" },
-        { title: "LLMCache", path: "/api/cache.html" }
+    ]},
+    { header: "Extensions", toc: [
+        { title: "LLM Cache", path: "/api/cache.html" },
+        { title: "Semantic Router", path: "/api/router.html" },
     ]}
 ];
 

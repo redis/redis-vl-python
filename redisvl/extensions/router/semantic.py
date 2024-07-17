@@ -74,8 +74,8 @@ class SemanticRouter(BaseModel):
         self,
         name: str,
         routes: List[Route],
-        vectorizer: BaseVectorizer = HFTextVectorizer(),
-        routing_config: RoutingConfig = RoutingConfig(),
+        vectorizer: Optional[BaseVectorizer] = None,
+        routing_config: Optional[RoutingConfig] = None,
         redis_client: Optional[Redis] = None,
         redis_url: Optional[str] = None,
         overwrite: bool = False,
@@ -86,13 +86,20 @@ class SemanticRouter(BaseModel):
         Args:
             name (str): The name of the semantic router.
             routes (List[Route]): List of Route objects.
-            vectorizer (BaseVectorizer, optional): The vectorizer used to embed route references. Defaults to HFTextVectorizer().
-            routing_config (RoutingConfig, optional): Configuration for routing behavior. Defaults to RoutingConfig().
+            vectorizer (BaseVectorizer, optional): The vectorizer used to embed route references. Defaults to default HFTextVectorizer.
+            routing_config (RoutingConfig, optional): Configuration for routing behavior. Defaults to the default RoutingConfig.
             redis_client (Optional[Redis], optional): Redis client for connection. Defaults to None.
             redis_url (Optional[str], optional): Redis URL for connection. Defaults to None.
             overwrite (bool, optional): Whether to overwrite existing index. Defaults to False.
             **kwargs: Additional arguments.
         """
+        # Set vectorizer default
+        if vectorizer is None:
+            vectorizer = HFTextVectorizer()
+
+        if routing_config is None:
+            routing_config = RoutingConfig()
+
         super().__init__(
             name=name,
             routes=routes,
