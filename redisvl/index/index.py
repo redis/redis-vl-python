@@ -497,6 +497,20 @@ class SearchIndex(BaseSearchIndex):
 
         return total_records_deleted
 
+    def drop_keys(self, keys: Union[str, List[str]]) -> int:
+        """Remove a specific entry or entries from the index by it's key ID.
+
+        Args:
+            keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        if isinstance(keys, List):
+            return self._redis_client.delete(*keys)  # type: ignore
+        else:
+            return self._redis_client.delete(keys)  # type: ignore
+
     def load(
         self,
         data: Iterable[Any],
@@ -934,6 +948,20 @@ class AsyncSearchIndex(BaseSearchIndex):
             total_records_deleted += records_deleted  # type: ignore
 
         return total_records_deleted
+
+    async def drop_keys(self, keys: Union[str, List[str]]) -> int:
+        """Remove a specific entry or entries from the index by it's key ID.
+
+        Args:
+            keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        if isinstance(keys, List):
+            return await self._redis_client.delete(*keys)  # type: ignore
+        else:
+            return await self._redis_client.delete(keys)  # type: ignore
 
     async def load(
         self,
