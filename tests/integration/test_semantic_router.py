@@ -33,7 +33,7 @@ def semantic_router(client, routes):
         overwrite=False,
     )
     yield router
-    router._index.delete(drop=True)
+    router.delete()
 
 
 def test_initialize_router(semantic_router):

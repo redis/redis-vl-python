@@ -11,6 +11,7 @@ const toc = [
         { title: "Vectorizers", path: "/user_guide/vectorizers_04.html" },
         { title: "Rerankers", path: "/user_guide/rerankers_06.html" },
         { title: "Semantic Caching", path: "/user_guide/llmcache_03.html" },
+        { title: "Semantic Routing", path: "/user_guide/semantic_router_08.html" },
     ]},
     { header: "API", toc: [
         { title: "Schema", path: "/api/schema.html"},

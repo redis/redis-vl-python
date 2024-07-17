@@ -336,7 +336,9 @@ class SemanticRouter(BaseModel):
                 )
             raise e
 
-    def _pass_threshold(self, route_match: Optional[RouteMatch], distance_threshold: float) -> bool:
+    def _pass_threshold(
+        self, route_match: Optional[RouteMatch], distance_threshold: float
+    ) -> bool:
         """Check if a route match passes the distance threshold.
 
         Args:
@@ -348,7 +350,9 @@ class SemanticRouter(BaseModel):
         """
         if route_match:
             if route_match.distance is not None and route_match.route is not None:
-                _distance_threshold = route_match.route.distance_threshold or distance_threshold
+                _distance_threshold = (
+                    route_match.route.distance_threshold or distance_threshold
+                )
                 if _distance_threshold:
                     return route_match.distance <= _distance_threshold
         return False
@@ -358,7 +362,7 @@ class SemanticRouter(BaseModel):
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
         distance_threshold: Optional[float] = None,
-        aggregation_method: Optional[DistanceAggregationMethod] = None
+        aggregation_method: Optional[DistanceAggregationMethod] = None,
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
 
@@ -379,10 +383,10 @@ class SemanticRouter(BaseModel):
         distance_threshold = (
             distance_threshold or self.routing_config.distance_threshold
         )
-        aggregation_method = aggregation_method or self.routing_config.aggregation_method
-        route_matches = self._classify(
-            vector, distance_threshold, aggregation_method
+        aggregation_method = (
+            aggregation_method or self.routing_config.aggregation_method
         )
+        route_matches = self._classify(vector, distance_threshold, aggregation_method)
         route_match = route_matches[0] if route_matches else None
 
         if route_match and self._pass_threshold(route_match, distance_threshold):
@@ -396,7 +400,7 @@ class SemanticRouter(BaseModel):
         vector: Optional[List[float]] = None,
         max_k: Optional[int] = None,
         distance_threshold: Optional[float] = None,
-        aggregation_method: Optional[DistanceAggregationMethod] = None
+        aggregation_method: Optional[DistanceAggregationMethod] = None,
     ) -> List[RouteMatch]:
         """Query the semantic router with a given statement or vector for multiple matches.
 
@@ -419,7 +423,9 @@ class SemanticRouter(BaseModel):
             distance_threshold or self.routing_config.distance_threshold
         )
         max_k = max_k or self.routing_config.max_k
-        aggregation_method = aggregation_method or self.routing_config.aggregation_method
+        aggregation_method = (
+            aggregation_method or self.routing_config.aggregation_method
+        )
         route_matches = self._classify_many(
             vector, max_k, distance_threshold, aggregation_method
         )
