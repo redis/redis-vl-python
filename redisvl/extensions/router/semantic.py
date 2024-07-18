@@ -118,14 +118,7 @@ class SemanticRouter(BaseModel):
         overwrite: bool = False,
         **connection_kwargs,
     ):
-        """Initialize the search index and handle Redis connection.
-
-        Args:
-            redis_client (Optional[Redis], optional): Redis client for connection. Defaults to None.
-            redis_url (Optional[str], optional): Redis URL for connection. Defaults to None.
-            overwrite (bool, optional): Whether to overwrite existing index. Defaults to False.
-            **connection_kwargs: Additional connection arguments.
-        """
+        """Initialize the search index and handle Redis connection."""
         schema = SemanticRouterIndexSchema.from_params(self.name, self.vectorizer.dims)
         self._index = SearchIndex(schema=schema)
 
@@ -168,6 +161,7 @@ class SemanticRouter(BaseModel):
         self.routing_config = routing_config
 
     def _route_ref_key(self, route_name: str, reference: str) -> str:
+        """Generate the route reference key."""
         reference_hash = hashify(reference)
         return f"{self._index.prefix}:{route_name}:{reference_hash}"
 
@@ -210,14 +204,7 @@ class SemanticRouter(BaseModel):
         return next((route for route in self.routes if route.name == route_name), None)
 
     def _process_route(self, result: Dict[str, Any]) -> RouteMatch:
-        """Process resulting route objects and metadata.
-
-        Args:
-            result (Dict[str, Any]): Aggregation query result object.
-
-        Returns:
-            RouteMatch: Processed route match with route name and distance.
-        """
+        """Process resulting route objects and metadata."""
         route_dict = make_dict(convert_bytes(result))
         return RouteMatch(
             name=route_dict["route_name"], distance=float(route_dict["distance"])
@@ -229,16 +216,7 @@ class SemanticRouter(BaseModel):
         aggregation_method: DistanceAggregationMethod,
         max_k: int,
     ) -> AggregateRequest:
-        """Build the Redis aggregation request.
-
-        Args:
-            vector_range_query (RangeQuery): The query vector.
-            aggregation_method (DistanceAggregationMethod): The aggregation method.
-            max_k (int): The maximum number of top matches to return.
-
-        Returns:
-            AggregateRequest: The constructed aggregation request.
-        """
+        """Build the Redis aggregation request."""
         aggregation_func: Type[Reducer]
 
         if aggregation_method == DistanceAggregationMethod.min:
@@ -266,16 +244,7 @@ class SemanticRouter(BaseModel):
         distance_threshold: float,
         aggregation_method: DistanceAggregationMethod,
     ) -> RouteMatch:
-        """Classify to a single route using a vector.
-
-        Args:
-            vector (List[float]): The query vector.
-            distance_threshold (float): The distance threshold.
-            aggregation_method (DistanceAggregationMethod): The aggregation method.
-
-        Returns:
-            RouteMatch: Top matching route.
-        """
+        """Classify to a single route using a vector."""
         vector_range_query = RangeQuery(
             vector=vector,
             vector_field_name="vector",
@@ -327,17 +296,7 @@ class SemanticRouter(BaseModel):
         distance_threshold: float,
         aggregation_method: DistanceAggregationMethod,
     ) -> List[RouteMatch]:
-        """Classify to multiple routes, up to max_k (int), using a vector.
-
-        Args:
-            vector (List[float]): The query vector.
-            max_k (int): The maximum number of top matches to return.
-            distance_threshold (float): The distance threshold.
-            aggregation_method (DistanceAggregationMethod): The aggregation method.
-
-        Returns:
-            RouteMatch: Top matching route.
-        """
+        """Classify to multiple routes, up to max_k (int), using a vector."""
         vector_range_query = RangeQuery(
             vector=vector,
             vector_field_name="vector",
