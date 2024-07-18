@@ -22,7 +22,7 @@ import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.index.storage import HashStorage, JsonStorage
+from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
@@ -176,8 +176,10 @@ class BaseSearchIndex:
         elif redis_url is not None:
             self.connect(redis_url, **connection_args)
 
-        # set up index storage layer
-        self._storage = self._STORAGE_MAP[self.schema.index.storage_type](
+    @property
+    def _storage(self) -> BaseStorage:
+        """The storage type for the index schema."""
+        return self._STORAGE_MAP[self.schema.index.storage_type](
             prefix=self.schema.index.prefix,
             key_separator=self.schema.index.key_separator,
         )

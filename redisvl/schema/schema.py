@@ -195,7 +195,11 @@ class IndexSchema(BaseModel):
         """
         Validate uniqueness of field names and create valid field instances.
         """
-        index = IndexInfo(**values.get("index"))
+        # Ensure index is a dictionary for validation
+        index = values.get("index")
+        if not isinstance(index, IndexInfo):
+            index = IndexInfo(**index)
+
         input_fields = values.get("fields", [])
         prepared_fields: Dict[str, BaseField] = {}
         # Handle old fields format temporarily
