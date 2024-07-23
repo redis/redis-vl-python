@@ -1,4 +1,3 @@
-import hashlib
 from typing import Any, Dict, List, Optional, Type
 
 import redis.commands.search.reducers as reducers
@@ -175,13 +174,17 @@ class SemanticRouter(BaseModel):
         keys: List[str] = []
 
         for route in routes:
+            # embed route references as a single batch
+            reference_vectors = self.vectorizer.embed_many(
+                [reference for reference in route.references], as_buffer=True
+            )
             # set route references
-            for reference in route.references:
+            for i, reference in enumerate(route.references):
                 route_references.append(
                     {
                         "route_name": route.name,
                         "reference": reference,
-                        "vector": self.vectorizer.embed(reference, as_buffer=True),
+                        "vector": reference_vectors[i]
                     }
                 )
                 keys.append(self._route_ref_key(route.name, reference))
@@ -462,3 +465,17 @@ class SemanticRouter(BaseModel):
         """Flush all routes from the semantic router index."""
         self._index.clear()
         self.routes = []
+
+    @classmethod
+    def from_dict(cls):
+        pass
+
+    def to_dict(self):
+        pass
+
+    @classmethod
+    def from_yaml(cls):
+        pass
+
+    def to_yaml(self):
+        pass
