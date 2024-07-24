@@ -4,7 +4,7 @@ import pathlib
 import pytest
 
 from redisvl.schema.fields import TagField, TextField
-from redisvl.schema.schema import IndexSchema, StorageType, custom_dict
+from redisvl.schema.schema import IndexSchema, StorageType
 
 
 def get_base_path():

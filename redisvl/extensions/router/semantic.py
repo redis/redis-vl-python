@@ -1,6 +1,8 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
 import redis.commands.search.reducers as reducers
+import yaml
 from pydantic.v1 import BaseModel, Field, PrivateAttr
 from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
@@ -17,7 +19,12 @@ from redisvl.query import RangeQuery
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.schema import IndexInfo, IndexSchema
 from redisvl.utils.log import get_logger
-from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+from redisvl.utils.utils import model_to_dict
+from redisvl.utils.vectorize import (
+    BaseVectorizer,
+    HFTextVectorizer,
+    vectorizer_from_dict,
+)
 
 logger = get_logger(__name__)
 
@@ -123,8 +130,10 @@ class SemanticRouter(BaseModel):
 
         if redis_client:
             self._index.set_client(redis_client)
-        else:
+        elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
+        else:
+            raise ValueError("Must provide either a redis client or redis url string.")
 
         existed = self._index.exists()
         self._index.create(overwrite=overwrite)
@@ -184,7 +193,7 @@ class SemanticRouter(BaseModel):
                     {
                         "route_name": route.name,
                         "reference": reference,
-                        "vector": reference_vectors[i]
+                        "vector": reference_vectors[i],
                     }
                 )
                 keys.append(self._route_ref_key(route.name, reference))
@@ -467,15 +476,163 @@ class SemanticRouter(BaseModel):
         self.routes = []
 
     @classmethod
-    def from_dict(cls):
-        pass
+    def from_dict(
+        cls,
+        data: Dict[str, Any],
+        redis_client: Optional[Redis] = None,
+        redis_url: Optional[str] = None,
+        overwrite: bool = False,
+        **kwargs,
+    ) -> "SemanticRouter":
+        """Create a SemanticRouter from a dictionary.
 
-    def to_dict(self):
-        pass
+        Args:
+            data (Dict[str, Any]): The dictionary containing the semantic router data.
+            redis_client (Optional[Redis]): Redis client for connection.
+            redis_url (Optional[str]): Redis URL for connection.
+            overwrite (bool): Whether to overwrite existing index.
+            **kwargs: Additional arguments.
+
+        Returns:
+            SemanticRouter: The semantic router instance.
+
+        Raises:
+            ValueError: If required data is missing or invalid.
+
+        .. code-block:: python
+
+            from redisvl.extensions.router import SemanticRouter
+            router_data = {
+                "name": "example_router",
+                "routes": [{"name": "route1", "references": ["ref1"], "distance_threshold": 0.5}],
+                "vectorizer": {"type": "openai", "model": "text-embedding-ada-002"},
+            }
+            router = SemanticRouter.from_dict(router_data)
+        """
+        try:
+            name = data["name"]
+            routes_data = data["routes"]
+            vectorizer_data = data["vectorizer"]
+            routing_config_data = data["routing_config"]
+        except KeyError as e:
+            raise ValueError(f"Unable to load semantic router from dict: {str(e)}")
+
+        try:
+            vectorizer = vectorizer_from_dict(vectorizer_data)
+        except Exception as e:
+            raise ValueError(f"Unable to load vectorizer: {str(e)}")
+
+        if not vectorizer:
+            raise ValueError(f"Unable to load vectorizer: {vectorizer_data}")
+
+        routes = [Route(**route) for route in routes_data]
+        routing_config = RoutingConfig(**routing_config_data)
+
+        return cls(
+            name=name,
+            routes=routes,
+            vectorizer=vectorizer,
+            routing_config=routing_config,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            overwrite=overwrite,
+            **kwargs,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the SemanticRouter instance to a dictionary.
+
+        Returns:
+            Dict[str, Any]: The dictionary representation of the SemanticRouter.
+
+        .. code-block:: python
+
+            from redisvl.extensions.router import SemanticRouter
+            router = SemanticRouter(name="example_router", routes=[], redis_url="redis://localhost:6379")
+            router_dict = router.to_dict()
+        """
+        return {
+            "name": self.name,
+            "routes": [model_to_dict(route) for route in self.routes],
+            "vectorizer": {
+                "type": self.vectorizer.type,
+                "model": self.vectorizer.model,
+            },
+            "routing_config": model_to_dict(self.routing_config),
+        }
 
     @classmethod
-    def from_yaml(cls):
-        pass
+    def from_yaml(
+        cls,
+        file_path: str,
+        redis_client: Optional[Redis] = None,
+        redis_url: Optional[str] = None,
+        overwrite: bool = False,
+        **kwargs,
+    ) -> "SemanticRouter":
+        """Create a SemanticRouter from a YAML file.
 
-    def to_yaml(self):
-        pass
+        Args:
+            file_path (str): The path to the YAML file.
+            redis_client (Optional[Redis]): Redis client for connection.
+            redis_url (Optional[str]): Redis URL for connection.
+            overwrite (bool): Whether to overwrite existing index.
+            **kwargs: Additional arguments.
+
+        Returns:
+            SemanticRouter: The semantic router instance.
+
+        Raises:
+            ValueError: If the file path is invalid.
+            FileNotFoundError: If the file does not exist.
+
+        .. code-block:: python
+
+            from redisvl.extensions.router import SemanticRouter
+            router = SemanticRouter.from_yaml("router.yaml", redis_url="redis://localhost:6379")
+        """
+        try:
+            fp = Path(file_path).resolve()
+        except OSError as e:
+            raise ValueError(f"Invalid file path: {file_path}") from e
+
+        if not fp.exists():
+            raise FileNotFoundError(f"File {file_path} does not exist")
+
+        with open(fp, "r") as f:
+            yaml_data = yaml.safe_load(f)
+            return cls.from_dict(
+                yaml_data,
+                redis_client=redis_client,
+                redis_url=redis_url,
+                overwrite=overwrite,
+                **kwargs,
+            )
+
+    def to_yaml(self, file_path: str, overwrite: bool = True) -> None:
+        """Write the semantic router to a YAML file.
+
+        Args:
+            file_path (str): The path to the YAML file.
+            overwrite (bool): Whether to overwrite the file if it already exists.
+
+        Raises:
+            FileExistsError: If the file already exists and overwrite is False.
+
+        .. code-block:: python
+
+            from redisvl.extensions.router import SemanticRouter
+            router = SemanticRouter(
+                name="example_router",
+                routes=[],
+                redis_url="redis://localhost:6379"
+            )
+            router.to_yaml("router.yaml")
+        """
+        fp = Path(file_path).resolve()
+        if fp.exists() and not overwrite:
+            raise FileExistsError(f"Schema file {file_path} already exists.")
+
+        with open(fp, "w") as f:
+            yaml_data = self.to_dict()
+            yaml.dump(yaml_data, f, sort_keys=False)

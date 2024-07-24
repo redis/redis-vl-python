@@ -9,31 +9,10 @@ from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, FieldFactory
 from redisvl.utils.log import get_logger
+from redisvl.utils.utils import model_to_dict
 
 logger = get_logger(__name__)
 SCHEMA_VERSION = "0.1.0"
-
-
-def custom_dict(model: BaseModel) -> Dict[str, Any]:
-    """
-    Custom serialization function that converts a Pydantic model to a dict,
-    serializing Enum fields to their values, and handling nested models and lists.
-    """
-
-    def serialize_item(item):
-        if isinstance(item, Enum):
-            return item.value.lower()
-        elif isinstance(item, dict):
-            return {key: serialize_item(value) for key, value in item.items()}
-        elif isinstance(item, list):
-            return [serialize_item(element) for element in item]
-        else:
-            return item
-
-    serialized_data = model.dict(exclude_none=True)
-    for key, value in serialized_data.items():
-        serialized_data[key] = serialize_item(value)
-    return serialized_data
 
 
 class StorageType(Enum):
@@ -452,7 +431,7 @@ class IndexSchema(BaseModel):
         Returns:
             Dict[str, Any]: The index schema as a dictionary.
         """
-        dict_schema = custom_dict(self)
+        dict_schema = model_to_dict(self)
         # cast fields back to a pure list
         dict_schema["fields"] = [
             field for field_name, field in dict_schema["fields"].items()
