@@ -312,3 +312,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             text = preprocess(text)
         result = await self._aclient.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer)
+
+    @property
+    def type(self) -> str:
+        return "azure_openai"

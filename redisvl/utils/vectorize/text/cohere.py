@@ -253,3 +253,7 @@ class CohereTextVectorizer(BaseVectorizer):
         **kwargs,
     ) -> List[float]:
         raise NotImplementedError
+
+    @property
+    def type(self) -> str:
+        return "cohere"
