@@ -1,6 +1,7 @@
-import hashlib
 import json
 from typing import Any, Dict, List, Optional
+
+from redisvl.redis.utils import hashify
 
 
 class BaseLLMCache:
@@ -27,6 +28,8 @@ class BaseLLMCache:
             if not isinstance(ttl, int):
                 raise ValueError(f"TTL must be an integer value, got {ttl}")
             self._ttl = int(ttl)
+        else:
+            self._ttl = None
 
     def clear(self) -> None:
         """Clear the LLMCache of all keys in the index."""
@@ -54,7 +57,7 @@ class BaseLLMCache:
 
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        return hashify(prompt)
 
     def serialize(self, metadata: Dict[str, Any]) -> str:
         """Serlize the input into a string."""

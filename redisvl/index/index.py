@@ -22,7 +22,7 @@ import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.index.storage import HashStorage, JsonStorage
+from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
@@ -176,8 +176,10 @@ class BaseSearchIndex:
         elif redis_url is not None:
             self.connect(redis_url, **connection_args)
 
-        # set up index storage layer
-        self._storage = self._STORAGE_MAP[self.schema.index.storage_type](
+    @property
+    def _storage(self) -> BaseStorage:
+        """The storage type for the index schema."""
+        return self._STORAGE_MAP[self.schema.index.storage_type](
             prefix=self.schema.index.prefix,
             key_separator=self.schema.index.key_separator,
         )
@@ -496,6 +498,20 @@ class SearchIndex(BaseSearchIndex):
             total_records_deleted += record_deleted  # type: ignore
 
         return total_records_deleted
+
+    def drop_keys(self, keys: Union[str, List[str]]) -> int:
+        """Remove a specific entry or entries from the index by it's key ID.
+
+        Args:
+            keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        if isinstance(keys, List):
+            return self._redis_client.delete(*keys)  # type: ignore
+        else:
+            return self._redis_client.delete(keys)  # type: ignore
 
     def load(
         self,
@@ -934,6 +950,20 @@ class AsyncSearchIndex(BaseSearchIndex):
             total_records_deleted += records_deleted  # type: ignore
 
         return total_records_deleted
+
+    async def drop_keys(self, keys: Union[str, List[str]]) -> int:
+        """Remove a specific entry or entries from the index by it's key ID.
+
+        Args:
+            keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        if isinstance(keys, List):
+            return await self._redis_client.delete(*keys)  # type: ignore
+        else:
+            return await self._redis_client.delete(keys)  # type: ignore
 
     async def load(
         self,

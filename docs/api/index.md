@@ -18,5 +18,6 @@ filter
 vectorizer
 reranker
 cache
+router
 ```
 

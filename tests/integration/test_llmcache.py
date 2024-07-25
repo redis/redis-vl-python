@@ -71,6 +71,12 @@ def test_set_ttl(cache):
     assert cache.ttl == 5
 
 
+def test_reset_ttl(cache):
+    cache.set_ttl(4)
+    cache.set_ttl()
+    assert cache.ttl is None
+
+
 # Test basic store and check functionality
 def test_store_and_check(cache, vectorizer):
     prompt = "This is a test prompt."

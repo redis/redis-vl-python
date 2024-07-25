@@ -291,3 +291,7 @@ class CustomTextVectorizer(BaseVectorizer):
             results = await self._aembed_many_func(batch, **kwargs)
             embeddings += [self._process_embedding(r, as_buffer) for r in results]
         return embeddings
+
+    @property
+    def type(self) -> str:
+        return "custom"

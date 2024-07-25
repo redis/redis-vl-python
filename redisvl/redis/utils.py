@@ -1,3 +1,4 @@
+import hashlib
 from typing import Any, Dict, List
 
 import numpy as np
@@ -37,3 +38,8 @@ def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
 def buffer_to_array(buffer: bytes, dtype: Any = np.float32) -> List[float]:
     """Convert bytes into into a list of floats."""
     return np.frombuffer(buffer, dtype=dtype).tolist()
+
+
+def hashify(content: str) -> str:
+    """Create a secure hash of some arbitrary input text."""
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
