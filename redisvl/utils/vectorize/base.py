@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Callable, List, Optional
 
 from pydantic.v1 import BaseModel, validator
@@ -6,9 +7,22 @@ from pydantic.v1 import BaseModel, validator
 from redisvl.redis.utils import array_to_buffer
 
 
+class Vectorizers(Enum):
+    azure_openai = "azure_openai"
+    openai = "openai"
+    cohere = "cohere"
+    mistral = "mistral"
+    vertexai = "vertexai"
+    hf = "hf"
+
+
 class BaseVectorizer(BaseModel, ABC):
     model: str
     dims: int
+
+    @property
+    def type(self) -> str:
+        return "base"
 
     @validator("dims")
     @classmethod

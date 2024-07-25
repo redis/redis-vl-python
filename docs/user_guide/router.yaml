@@ -1,0 +1,35 @@
+name: topic-router
+routes:
+- name: technology
+  references:
+  - what are the latest advancements in AI?
+  - tell me about the newest gadgets
+  - what's trending in tech?
+  metadata:
+    category: tech
+    priority: '1'
+- name: sports
+  references:
+  - who won the game last night?
+  - tell me about the upcoming sports events
+  - what's the latest in the world of sports?
+  - sports
+  - basketball and football
+  metadata:
+    category: sports
+    priority: '2'
+- name: entertainment
+  references:
+  - what are the top movies right now?
+  - who won the best actor award?
+  - what's new in the entertainment industry?
+  metadata:
+    category: entertainment
+    priority: '3'
+vectorizer:
+  type: hf
+  model: sentence-transformers/all-mpnet-base-v2
+routing_config:
+  distance_threshold: 1.0
+  max_k: 3
+  aggregation_method: min

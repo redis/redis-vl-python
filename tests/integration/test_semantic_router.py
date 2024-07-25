@@ -1,8 +1,14 @@
+import pathlib
+
 import pytest
 
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import Route, RoutingConfig
 from redisvl.redis.connection import compare_versions
+
+
+def get_base_path():
+    return pathlib.Path(__file__).parent.resolve()
 
 
 @pytest.fixture
@@ -156,3 +162,66 @@ def test_remove_routes(semantic_router):
 
     semantic_router.remove_route("unknown_route")
     assert semantic_router.get("unknown_route") is None
+
+
+def test_to_dict(semantic_router):
+    router_dict = semantic_router.to_dict()
+    assert router_dict["name"] == semantic_router.name
+    assert len(router_dict["routes"]) == len(semantic_router.routes)
+    assert router_dict["vectorizer"]["type"] == semantic_router.vectorizer.type
+
+
+def test_from_dict(semantic_router):
+    router_dict = semantic_router.to_dict()
+    new_router = SemanticRouter.from_dict(
+        router_dict, redis_client=semantic_router._index.client
+    )
+    assert new_router == semantic_router
+
+
+def test_to_yaml(semantic_router):
+    yaml_file = str(get_base_path().joinpath("../../schemas/semantic_router.yaml"))
+    semantic_router.to_yaml(yaml_file, overwrite=True)
+    assert pathlib.Path(yaml_file).exists()
+
+
+def test_from_yaml(semantic_router):
+    yaml_file = str(get_base_path().joinpath("../../schemas/semantic_router.yaml"))
+    new_router = SemanticRouter.from_yaml(
+        yaml_file, redis_client=semantic_router._index.client, overwrite=True
+    )
+    assert new_router == semantic_router
+
+
+def test_to_dict_missing_fields():
+    data = {
+        "name": "incomplete-router",
+        "routes": [],
+        "vectorizer": {"type": "HFTextVectorizer", "model": "bert-base-uncased"},
+    }
+    with pytest.raises(ValueError):
+        SemanticRouter.from_dict(data)
+
+
+def test_invalid_vectorizer():
+    data = {
+        "name": "invalid-router",
+        "routes": [],
+        "vectorizer": {"type": "InvalidVectorizer", "model": "invalid-model"},
+        "routing_config": {},
+    }
+    with pytest.raises(ValueError):
+        SemanticRouter.from_dict(data)
+
+
+def test_yaml_invalid_file_path():
+    with pytest.raises(FileNotFoundError):
+        SemanticRouter.from_yaml("invalid_path.yaml", redis_client=None)
+
+
+def test_idempotent_to_dict(semantic_router):
+    router_dict = semantic_router.to_dict()
+    new_router = SemanticRouter.from_dict(
+        router_dict, redis_client=semantic_router._index.client
+    )
+    assert new_router.to_dict() == router_dict

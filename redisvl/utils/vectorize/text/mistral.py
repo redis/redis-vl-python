@@ -260,3 +260,7 @@ class MistralAITextVectorizer(BaseVectorizer):
             text = preprocess(text)
         result = await self._aclient.embeddings(model=self.model, input=[text])
         return self._process_embedding(result.data[0].embedding, as_buffer)
+
+    @property
+    def type(self) -> str:
+        return "mistral"
