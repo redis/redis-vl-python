@@ -202,13 +202,7 @@ class SemanticCache(BaseLLMCache):
         Args:
             document_ids (Union[str, List[str]]): The document ID or IDs to remove from the cache.
         """
-        if isinstance(document_ids, List):
-            with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
-                for key in document_ids:  # type: ignore
-                    pipe.delete(key)
-                pipe.execute()
-        else:
-            self._index.client.delete(document_ids)  # type: ignore
+        self._index.drop_keys(document_ids)
 
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
