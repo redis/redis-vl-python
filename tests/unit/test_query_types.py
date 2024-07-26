@@ -46,6 +46,7 @@ def test_filter_query():
     assert filter_query.params == {}
     assert filter_query._dialect == 2
     assert filter_query._sort_by == None
+    assert filter_query._in_order == None
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -64,6 +65,12 @@ def test_filter_query():
     )
     assert filter_query._sort_by == "price"
 
+    # Test in_order functionality
+    filter_query = FilterQuery(
+        filter_expression, return_fields, num_results=10, in_order=True
+    )
+    assert filter_query._in_order
+
 
 def test_vector_query():
     # Create a vector query
@@ -81,6 +88,7 @@ def test_vector_query():
     assert vector_query.params != {}
     assert vector_query._dialect == 3
     assert vector_query._sort_by == None
+    assert vector_query._in_order == None
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -123,6 +131,7 @@ def test_range_query():
     assert isinstance(range_query.query, Query)
     assert isinstance(range_query.params, dict)
     assert range_query.params != {}
+    assert range_query._sort_by == None
     assert range_query._sort_by == None
 
     # Test set_filter functionality
