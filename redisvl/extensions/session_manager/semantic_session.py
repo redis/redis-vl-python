@@ -1,5 +1,5 @@
 from time import time
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
@@ -26,7 +26,9 @@ class SemanticSessionManager(BaseSessionManager):
         vectorizer: Optional[BaseVectorizer] = None,
         distance_threshold: float = 0.3,
         redis_client: Optional[Redis] = None,
-        redis_url: str = "redis://localhost:6379",
+        redis_url: Optional[str] = None,
+        connection_kwargs: Dict[str, Any] = {},
+        **kwargs,
     ):
         """Initialize session memory with index
 
@@ -43,12 +45,15 @@ class SemanticSessionManager(BaseSessionManager):
             user_tag (str): Tag to be added to entries to link to a specific user.
             prefix (Optional[str]): Prefix for the keys for this session data.
                 Defaults to None and will be replaced with the index name.
-            vectorizer (Vectorizer): The vectorizer to create embeddings with.
+            vectorizer (Optional[BaseVectorizer]): The vectorizer used to create embeddings.
             distance_threshold (float): The maximum semantic distance to be
                 included in the context. Defaults to 0.3.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
-            redis_url (str): The URL of the Redis instance. Defaults to 'redis://localhost:6379'.
+            redis_url (Optional[str]): The URL of the Redis instance. Defaults
+                to None.
+            connection_kwargs (Dict[str, Any]): The connection arguments
+                for the redis client. Defaults to empty {}.
 
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
@@ -89,10 +94,13 @@ class SemanticSessionManager(BaseSessionManager):
 
         self._index = SearchIndex(schema=schema)
 
+        # handle redis connection
         if redis_client:
             self._index.set_client(redis_client)
+        elif redis_url:
+            self._index.connect(redis_url=redis_url, **connection_kwargs)
         else:
-            self._index.connect(redis_url=redis_url)
+            raise ValueError("Must provide either a redis client or redis url string.")
 
         self._index.create(overwrite=False)
 

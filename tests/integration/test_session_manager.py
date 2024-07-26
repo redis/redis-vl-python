@@ -10,9 +10,9 @@ from redisvl.extensions.session_manager import (
 
 
 @pytest.fixture
-def standard_session(app_name, user_tag, session_tag):
+def standard_session(app_name, user_tag, session_tag, client):
     session = StandardSessionManager(
-        app_name, session_tag=session_tag, user_tag=user_tag
+        app_name, session_tag=session_tag, user_tag=user_tag, redis_client=client
     )
     yield session
     session.clear()
@@ -20,9 +20,9 @@ def standard_session(app_name, user_tag, session_tag):
 
 
 @pytest.fixture
-def semantic_session(app_name, user_tag, session_tag):
+def semantic_session(app_name, user_tag, session_tag, client):
     session = SemanticSessionManager(
-        app_name, session_tag=session_tag, user_tag=user_tag
+        app_name, session_tag=session_tag, user_tag=user_tag, redis_client=client
     )
     yield session
     session.clear()
@@ -30,9 +30,11 @@ def semantic_session(app_name, user_tag, session_tag):
 
 
 # test standard session manager
-def test_key_creation():
+def test_key_creation(client):
     # test default key creation
-    session = StandardSessionManager(name="test_app", session_tag="123", user_tag="abc")
+    session = StandardSessionManager(
+        name="test_app", session_tag="123", user_tag="abc", redis_client=client
+    )
     assert session.key == "test_app:abc:123"
 
 
@@ -41,6 +43,11 @@ def test_specify_redis_client(client):
         name="test_app", session_tag="abc", user_tag="123", redis_client=client
     )
     assert isinstance(session._client, type(client))
+
+
+def test_standard_no_connection_info():
+    with pytest.raises(ValueError):
+        StandardSessionManager(name="test_app", session_tag="abc", user_tag="123")
 
 
 def test_standard_store_and_get(standard_session):
@@ -365,6 +372,11 @@ def test_semantic_specify_client(client):
         name="test_app", session_tag="abc", user_tag="123", redis_client=client
     )
     assert isinstance(session._index.client, type(client))
+
+
+def test_semantic_no_connection_info():
+    with pytest.raises(ValueError):
+        SemanticSessionManager(name="test_app", session_tag="abc", user_tag="123")
 
 
 def test_semantic_set_scope(semantic_session, app_name, user_tag, session_tag):

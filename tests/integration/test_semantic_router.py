@@ -225,3 +225,13 @@ def test_idempotent_to_dict(semantic_router):
         router_dict, redis_client=semantic_router._index.client
     )
     assert new_router.to_dict() == router_dict
+
+
+def test_no_connection_info(routes):
+    with pytest.raises(ValueError):
+        SemanticRouter(
+            name="test-router",
+            routes=routes,
+            routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
+            overwrite=False,
+        )

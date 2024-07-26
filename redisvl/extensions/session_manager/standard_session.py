@@ -1,6 +1,6 @@
 import json
 from time import time
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
@@ -15,7 +15,9 @@ class StandardSessionManager(BaseSessionManager):
         session_tag: str,
         user_tag: str,
         redis_client: Optional[Redis] = None,
-        redis_url: str = "redis://localhost:6379",
+        redis_url: Optional[str] = None,
+        connection_kwargs: Dict[str, Any] = {},
+        **kwargs,
     ):
         """Initialize session memory
 
@@ -32,6 +34,8 @@ class StandardSessionManager(BaseSessionManager):
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
             redis_url (str): The URL of the Redis instance. Defaults to 'redis://localhost:6379'.
+            connection_kwargs (Dict[str, Any]): The connection arguments
+                for the redis client. Defaults to empty {}.
 
         The proposed schema will support a single combined vector embedding
         constructed from the prompt & response in a single string.
@@ -39,10 +43,13 @@ class StandardSessionManager(BaseSessionManager):
         """
         super().__init__(name, session_tag, user_tag)
 
+        # handle redis connection
         if redis_client:
             self._client = redis_client
+        elif redis_url:
+            self._client = Redis.from_url(redis_url, **connection_kwargs)
         else:
-            self._client = Redis.from_url(redis_url)
+            raise ValueError("Must provide either a redis client or redis url string.")
 
         self.set_scope(session_tag, user_tag)
 
