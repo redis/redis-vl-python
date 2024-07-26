@@ -151,7 +151,7 @@ class SemanticSessionManager(BaseSessionManager):
             as_text (bool): Whether to return the prompts and responses as text
             or as JSON
             top_k (int): The number of previous messages to return. Default is 5.
-            fallback (bool): Whether to drop back to recent conversation history
+            fall_back (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 session. Defaults to instance uuid.

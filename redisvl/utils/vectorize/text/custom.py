@@ -44,7 +44,6 @@ class CustomTextVectorizer(BaseVectorizer):
         embed_many: Optional[Callable] = None,
         aembed: Optional[Callable] = None,
         aembed_many: Optional[Callable] = None,
-        model: str = "custom_vectorizer",
     ):
         """Initialize the Custom vectorizer.
 
@@ -72,7 +71,7 @@ class CustomTextVectorizer(BaseVectorizer):
             self._validate_aembed_many(aembed_many)
             self._aembed_many_func = aembed_many
 
-        super().__init__(model=model, dims=self._set_model_dims())
+        super().__init__(model=self.type, dims=self._set_model_dims())
 
     def _validate_embed(self, func: Callable):
         """calls the func with dummy input and validates that it returns a vector"""
