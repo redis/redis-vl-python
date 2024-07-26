@@ -1,12 +1,12 @@
 from collections import namedtuple
-from time import sleep
+from time import sleep, time
 
 import pytest
 
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.index.index import SearchIndex
+from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
-from redisvl.query.filter import Tag, FilterExpression
 
 
 @pytest.fixture
@@ -376,7 +376,9 @@ def test_multiple_tags(cache):
     tag_4 = "group 3"
     tags = [tag_1, tag_2, tag_3, tag_4]
 
-    filter_1 = Tag('scope_tag') == tag_1
+    filter_1 = Tag("label") == tag_1
+    filter_2 = Tag("label") == tag_2
+    filter_3 = Tag("label") == tag_3
 
     for i in range(4):
         prompt = f"test prompt {i}"
@@ -384,26 +386,40 @@ def test_multiple_tags(cache):
         cache.store(prompt, response, tag=tags[i])
 
     # test we can specify one specific tag
-    ##results = cache.check("test prompt 1", tags=tag_1, num_results=5)
-    results = cache.check("test prompt 1", filters=filter_1, num_results=5)
+    results = cache.check("test prompt 1", tag_filter=filter_1, num_results=5)
     assert len(results) == 1
     assert results[0]["prompt"] == "test prompt 0"
 
     # test we can pass a list of tags
-    ##results = cache.check("test prompt 1", tags=[tag_1, tag_2, tag_3], num_results=5)
-    results = cache.check("test prompt 1", filters=[filter_1, filter_2, filter_3], num_results=5)
+    combined_filter = filter_1 | filter_2 | filter_3
+    results = cache.check("test prompt 1", tag_filter=combined_filter, num_results=5)
     assert len(results) == 3
 
     # test that default tag param searches full cache
     results = cache.check("test prompt 1", num_results=5)
     assert len(results) == 4
 
-    # test we can get all matches with empty tag list
-    ##results = cache.check("test prompt 1", tags=[], num_results=5)
-    results = cache.check("test prompt 1", filters=[], num_results=5)
-    assert len(results) == 4
-
     # test no results are returned if we pass a nonexistant tag
-    ##results = cache.check("test prompt 1", tags=["bad tag"], num_results=5)
-    results = cache.check("test prompt 1", filters=["bad tag"], num_results=5)
+    bad_filter = Tag("label") == "bad tag"
+    results = cache.check("test prompt 1", tag_filter=bad_filter, num_results=5)
     assert len(results) == 0
+
+
+def test_complex_filters(cache):
+    cache.store(prompt="prompt 1", response="response 1")
+    cache.store(prompt="prompt 2", response="response 2")
+    sleep(1)
+    current_timestamp = time()
+    cache.store(prompt="prompt 3", response="response 3")
+
+    # test we can do range filters on inserted_at and updated_at fields
+    range_filter = Num("inserted_at") < current_timestamp
+    results = cache.check("prompt 1", tag_filter=range_filter, num_results=5)
+    assert len(results) == 2
+
+    # test we can combine range filters and text filters
+    prompt_filter = Text("prompt") % "*pt 1"
+    combined_filter = prompt_filter & range_filter
+
+    results = cache.check("prompt 1", tag_filter=combined_filter, num_results=5)
+    assert len(results) == 1
