@@ -255,19 +255,18 @@ class SemanticSessionManager(BaseSessionManager):
         """Retreive the recent conversation history in sequential order.
 
         Args:
-            as_text (bool): Whether to return the conversation as a single string,
-                          or list of alternating prompts and responses.
             top_k (int): The number of previous exchanges to return. Default is 5.
-                Note that one exchange contains both a prompt and a respoonse.
             session_tag (str): Tag to be added to entries to link to a specific
                 session.
             user_tag (str): Tag to be added to entries to link to a specific user.
+            as_text (bool): Whether to return the conversation as a single string,
+                or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
-                                   or list of strings if as_text is false.
+                or list of strings if as_text is false.
 
         Raises:
             ValueError: if top_k is not an integer greater than or equal to 0.
