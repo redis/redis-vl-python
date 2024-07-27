@@ -12,6 +12,34 @@ from redisvl.schema.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
+class SemanticSessionIndexSchema(IndexSchema):
+
+    @classmethod
+    def from_params(cls, name: str, prefix: str, vectorizer_dims:int):
+
+        return cls(
+            index={"name": name, "prefix": prefix},  # type: ignore
+            fields=[  # type: ignore
+                {"name": "role", "type": "text"},
+                {"name": "content", "type": "text"},
+                {"name": "tool_call_id", "type": "text"},
+                {"name": "timestamp", "type": "numeric"},
+                {"name": "session_tag", "type": "tag"},
+                {"name": "user_tag", "type": "tag"},
+                {
+                    "name": "vector_field",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": vectorizer_dims,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                    },
+                },
+            ],
+            )
+
+
 class SemanticSessionManager(BaseSessionManager):
     session_field_name: str = "session_tag"
     user_field_name: str = "user_tag"
@@ -64,28 +92,7 @@ class SemanticSessionManager(BaseSessionManager):
 
         self.set_distance_threshold(distance_threshold)
 
-        schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
-
-        schema.add_fields(
-            [
-                {"name": "role", "type": "text"},
-                {"name": "content", "type": "text"},
-                {"name": "tool_call_id", "type": "text"},
-                {"name": "timestamp", "type": "numeric"},
-                {"name": "session_tag", "type": "tag"},
-                {"name": "user_tag", "type": "tag"},
-                {
-                    "name": "vector_field",
-                    "type": "vector",
-                    "attrs": {
-                        "dims": self._vectorizer.dims,
-                        "datatype": "float32",
-                        "distance_metric": "cosine",
-                        "algorithm": "flat",
-                    },
-                },
-            ]
-        )
+        schema = SemanticSessionIndexSchema.from_params(name, prefix, self._vectorizer.dims)
 
         self._index = SearchIndex(schema=schema)
 
