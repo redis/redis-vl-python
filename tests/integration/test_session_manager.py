@@ -46,6 +46,16 @@ def test_specify_redis_client(client):
     assert isinstance(session._client, type(client))
 
 
+def test_specify_redis_url(client):
+    session = StandardSessionManager(
+        name="test_app",
+        session_tag="abc",
+        user_tag="123",
+        redis_url="redis://localhost:6379",
+    )
+    assert isinstance(session._client, type(client))
+
+
 def test_standard_bad_connection_info():
     with pytest.raises(ConnectionError):
         StandardSessionManager(
