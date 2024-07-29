@@ -14,7 +14,7 @@ class BaseQuery:
         num_results: int = 10,
         dialect: int = 2,
         sort_by: Optional[str] = None,
-        in_order: Optional[bool] = None,
+        in_order: bool = False,
     ):
         """Base query class used to subclass many query types."""
         self._return_fields = return_fields if return_fields is not None else []
@@ -141,7 +141,7 @@ class FilterQuery(BaseQuery):
         num_results: int = 10,
         dialect: int = 2,
         sort_by: Optional[str] = None,
-        in_order: Optional[bool] = None,
+        in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
     ):
         """A query for a running a filtered search with a filter expression.
@@ -154,9 +154,9 @@ class FilterQuery(BaseQuery):
                 return. Defaults to 10.
             sort_by (Optional[str]): The field to order the results by. Defaults
                 to None. Results will be ordered by vector distance.
-            in_order (Optional[bool]): Requires the terms in the field to have
+            in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
-                the offsets between them. Defaults to None.
+                the offsets between them. Defaults to False.
             params (Optional[Dict[str, Any]], optional): The parameters for the
                 query. Defaults to None.
 
@@ -219,7 +219,7 @@ class BaseVectorQuery(BaseQuery):
         return_score: bool = True,
         dialect: int = 2,
         sort_by: Optional[str] = None,
-        in_order: Optional[bool] = None,
+        in_order: bool = False,
     ):
         super().__init__(return_fields, num_results, dialect, sort_by, in_order)
         self.set_filter(filter_expression)
@@ -243,7 +243,7 @@ class VectorQuery(BaseVectorQuery):
         return_score: bool = True,
         dialect: int = 2,
         sort_by: Optional[str] = None,
-        in_order: Optional[bool] = None,
+        in_order: bool = False,
     ):
         """A query for running a vector search along with an optional filter
         expression.
@@ -266,9 +266,9 @@ class VectorQuery(BaseVectorQuery):
                 Defaults to 2.
             sort_by (Optional[str]): The field to order the results by. Defaults
                 to None. Results will be ordered by vector distance.
-            in_order (Optional[bool]): Requires the terms in the field to have
+            in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
-                the offsets between them. Defaults to None.
+                the offsets between them. Defaults to False.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
@@ -343,7 +343,7 @@ class RangeQuery(BaseVectorQuery):
         return_score: bool = True,
         dialect: int = 2,
         sort_by: Optional[str] = None,
-        in_order: Optional[bool] = None,
+        in_order: bool = False,
     ):
         """A query for running a filtered vector search based on semantic
         distance threshold.
@@ -369,9 +369,9 @@ class RangeQuery(BaseVectorQuery):
                 Defaults to 2.
             sort_by (Optional[str]): The field to order the results by. Defaults
                 to None. Results will be ordered by vector distance.
-            in_order (Optional[bool]): Requires the terms in the field to have
+            in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
-                the offsets between them. Defaults to None.
+                the offsets between them. Defaults to False.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression

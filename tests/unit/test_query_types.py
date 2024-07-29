@@ -46,7 +46,7 @@ def test_filter_query():
     assert filter_query.params == {}
     assert filter_query._dialect == 2
     assert filter_query._sort_by == None
-    assert filter_query._in_order == None
+    assert filter_query._in_order == False
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -88,7 +88,7 @@ def test_vector_query():
     assert vector_query.params != {}
     assert vector_query._dialect == 3
     assert vector_query._sort_by == None
-    assert vector_query._in_order == None
+    assert vector_query._in_order == False
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
