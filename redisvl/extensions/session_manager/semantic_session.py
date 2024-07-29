@@ -15,7 +15,7 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 class SemanticSessionIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vectorizer_dims:int):
+    def from_params(cls, name: str, prefix: str, vectorizer_dims: int):
 
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
@@ -37,7 +37,7 @@ class SemanticSessionIndexSchema(IndexSchema):
                     },
                 },
             ],
-            )
+        )
 
 
 class SemanticSessionManager(BaseSessionManager):
@@ -92,7 +92,9 @@ class SemanticSessionManager(BaseSessionManager):
 
         self.set_distance_threshold(distance_threshold)
 
-        schema = SemanticSessionIndexSchema.from_params(name, prefix, self._vectorizer.dims)
+        schema = SemanticSessionIndexSchema.from_params(
+            name, prefix, self._vectorizer.dims
+        )
 
         self._index = SearchIndex(schema=schema)
 
