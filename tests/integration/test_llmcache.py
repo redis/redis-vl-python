@@ -2,6 +2,7 @@ from collections import namedtuple
 from time import sleep
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.index.index import SearchIndex
@@ -143,9 +144,13 @@ def test_check_invalid_input(cache):
         cache.check(prompt="test", return_fields="bad value")
 
 
-def test_no_connection_info(vectorizer):
-    with pytest.raises(ValueError):
-        SemanticCache(vectorizer=vectorizer, distance_threshold=0.2)
+def test_bad_connection_info(vectorizer):
+    with pytest.raises(ConnectionError):
+        SemanticCache(
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            redis_url="redis://localhost:6389",
+        )
 
 
 def test_store_with_metadata(cache, vectorizer):

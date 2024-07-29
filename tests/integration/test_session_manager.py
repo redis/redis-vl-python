@@ -2,6 +2,7 @@ import json
 import time
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from redisvl.extensions.session_manager import (
     SemanticSessionManager,
@@ -45,9 +46,14 @@ def test_specify_redis_client(client):
     assert isinstance(session._client, type(client))
 
 
-def test_standard_no_connection_info():
-    with pytest.raises(ValueError):
-        StandardSessionManager(name="test_app", session_tag="abc", user_tag="123")
+def test_standard_bad_connection_info():
+    with pytest.raises(ConnectionError):
+        StandardSessionManager(
+            name="test_app",
+            session_tag="abc",
+            user_tag="123",
+            redis_url="redis://localhost:6389",  # bad url
+        )
 
 
 def test_standard_store_and_get(standard_session):
@@ -374,9 +380,14 @@ def test_semantic_specify_client(client):
     assert isinstance(session._index.client, type(client))
 
 
-def test_semantic_no_connection_info():
-    with pytest.raises(ValueError):
-        SemanticSessionManager(name="test_app", session_tag="abc", user_tag="123")
+def test_semantic_bad_connection_info():
+    with pytest.raises(ConnectionError):
+        SemanticSessionManager(
+            name="test_app",
+            session_tag="abc",
+            user_tag="123",
+            redis_url="redis://localhost:6389",
+        )
 
 
 def test_semantic_set_scope(semantic_session, app_name, user_tag, session_tag):

@@ -27,7 +27,7 @@ class SemanticCache(BaseLLMCache):
         ttl: Optional[int] = None,
         vectorizer: Optional[BaseVectorizer] = None,
         redis_client: Optional[Redis] = None,
-        redis_url: Optional[str] = None,
+        redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
         **kwargs,
     ):
@@ -47,7 +47,7 @@ class SemanticCache(BaseLLMCache):
                 Defaults to HFTextVectorizer.
             redis_client(Optional[Redis], optional): A redis client connection instance.
                 Defaults to None.
-            redis_url (Optional[str], optional): The redis url. Defaults to None.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
 
@@ -97,8 +97,6 @@ class SemanticCache(BaseLLMCache):
             self._index.set_client(redis_client)
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
-        else:
-            raise ValueError("Must provide either a redis client or redis url string.")
 
         # initialize other components
         self.default_return_fields = [

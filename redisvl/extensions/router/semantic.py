@@ -86,7 +86,7 @@ class SemanticRouter(BaseModel):
         vectorizer: Optional[BaseVectorizer] = None,
         routing_config: Optional[RoutingConfig] = None,
         redis_client: Optional[Redis] = None,
-        redis_url: Optional[str] = None,
+        redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         **kwargs,
     ):
@@ -98,7 +98,7 @@ class SemanticRouter(BaseModel):
             vectorizer (BaseVectorizer, optional): The vectorizer used to embed route references. Defaults to default HFTextVectorizer.
             routing_config (RoutingConfig, optional): Configuration for routing behavior. Defaults to the default RoutingConfig.
             redis_client (Optional[Redis], optional): Redis client for connection. Defaults to None.
-            redis_url (Optional[str], optional): Redis URL for connection. Defaults to None.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             overwrite (bool, optional): Whether to overwrite existing index. Defaults to False.
             **kwargs: Additional arguments.
         """
@@ -120,7 +120,7 @@ class SemanticRouter(BaseModel):
     def _initialize_index(
         self,
         redis_client: Optional[Redis] = None,
-        redis_url: Optional[str] = None,
+        redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         **connection_kwargs,
     ):
@@ -132,8 +132,6 @@ class SemanticRouter(BaseModel):
             self._index.set_client(redis_client)
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
-        else:
-            raise ValueError("Must provide either a redis client or redis url string.")
 
         existed = self._index.exists()
         self._index.create(overwrite=overwrite)
@@ -480,7 +478,7 @@ class SemanticRouter(BaseModel):
         cls,
         data: Dict[str, Any],
         redis_client: Optional[Redis] = None,
-        redis_url: Optional[str] = None,
+        redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         **kwargs,
     ) -> "SemanticRouter":
@@ -489,7 +487,7 @@ class SemanticRouter(BaseModel):
         Args:
             data (Dict[str, Any]): The dictionary containing the semantic router data.
             redis_client (Optional[Redis]): Redis client for connection.
-            redis_url (Optional[str]): Redis URL for connection.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             overwrite (bool): Whether to overwrite existing index.
             **kwargs: Additional arguments.
 
@@ -566,7 +564,7 @@ class SemanticRouter(BaseModel):
         cls,
         file_path: str,
         redis_client: Optional[Redis] = None,
-        redis_url: Optional[str] = None,
+        redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         **kwargs,
     ) -> "SemanticRouter":
@@ -575,7 +573,7 @@ class SemanticRouter(BaseModel):
         Args:
             file_path (str): The path to the YAML file.
             redis_client (Optional[Redis]): Redis client for connection.
-            redis_url (Optional[str]): Redis URL for connection.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             overwrite (bool): Whether to overwrite existing index.
             **kwargs: Additional arguments.
 
