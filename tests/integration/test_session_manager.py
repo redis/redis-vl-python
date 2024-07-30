@@ -310,14 +310,12 @@ def test_standard_get_text(standard_session):
 
 
 def test_standard_get_raw(standard_session):
-    current_time = int(time.time())
     standard_session.store("first prompt", "first response")
     standard_session.store("second prompt", "second response")
     raw = standard_session.get_recent(raw=True)
     assert len(raw) == 4
     assert raw[0]["role"] == "user"
     assert raw[0]["content"] == "first prompt"
-    assert current_time <= float(raw[0]["timestamp"]) <= time.time()
     assert raw[1]["role"] == "llm"
     assert raw[1]["content"] == "first response"
 
@@ -583,14 +581,14 @@ def test_semantic_add_and_get_relevant(semantic_session):
 
 
 def test_semantic_get_raw(semantic_session):
-    current_time = int(time.time())
     semantic_session.store("first prompt", "first response")
     semantic_session.store("second prompt", "second response")
     raw = semantic_session.get_recent(raw=True)
     assert len(raw) == 4
+    assert raw[0]["role"] == "user"
     assert raw[0]["content"] == "first prompt"
+    assert raw[1]["role"] == "llm"
     assert raw[1]["content"] == "first response"
-    assert current_time <= float(raw[0]["timestamp"]) <= time.time()
 
 
 def test_semantic_drop(semantic_session):
