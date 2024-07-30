@@ -2,6 +2,7 @@ from collections import namedtuple
 from time import sleep
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.index.index import SearchIndex
@@ -40,19 +41,17 @@ def cache_with_ttl(vectorizer, redis_url):
 
 
 @pytest.fixture
-def cache_with_redis_client(vectorizer, client, redis_url):
+def cache_with_redis_client(vectorizer, client):
     cache_instance = SemanticCache(
         vectorizer=vectorizer,
         redis_client=client,
         distance_threshold=0.2,
-        redis_url=redis_url,
     )
     yield cache_instance
     cache_instance.clear()  # Clear cache after each test
     cache_instance._index.delete(True)  # Clean up index
 
 
-# # Test handling invalid input for check method
 def test_bad_ttl(cache):
     with pytest.raises(ValueError):
         cache.set_ttl(2.5)
@@ -76,7 +75,6 @@ def test_reset_ttl(cache):
     assert cache.ttl is None
 
 
-# Test basic store and check functionality
 def test_store_and_check(cache, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
@@ -91,7 +89,6 @@ def test_store_and_check(cache, vectorizer):
     assert "metadata" not in check_result[0]
 
 
-# Test clearing the cache
 def test_clear(cache, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
@@ -139,7 +136,6 @@ def test_check_no_match(cache, vectorizer):
     assert len(check_result) == 0
 
 
-# Test handling invalid input for check method
 def test_check_invalid_input(cache):
     with pytest.raises(ValueError):
         cache.check()
@@ -148,7 +144,15 @@ def test_check_invalid_input(cache):
         cache.check(prompt="test", return_fields="bad value")
 
 
-# Test storing with metadata
+def test_bad_connection_info(vectorizer):
+    with pytest.raises(ConnectionError):
+        SemanticCache(
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            redis_url="redis://localhost:6389",
+        )
+
+
 def test_store_with_metadata(cache, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
@@ -165,7 +169,6 @@ def test_store_with_metadata(cache, vectorizer):
     assert check_result[0]["prompt"] == prompt
 
 
-# Test storing with invalid metadata
 def test_store_with_invalid_metadata(cache, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
@@ -179,7 +182,6 @@ def test_store_with_invalid_metadata(cache, vectorizer):
         cache.store(prompt, response, vector=vector, metadata=metadata)
 
 
-# Test setting and getting the distance threshold
 def test_distance_threshold(cache):
     initial_threshold = cache.distance_threshold
     new_threshold = 0.1
@@ -189,14 +191,12 @@ def test_distance_threshold(cache):
     assert cache.distance_threshold != initial_threshold
 
 
-# Test out of range distance threshold
 def test_distance_threshold_out_of_range(cache):
     out_of_range_threshold = -1
     with pytest.raises(ValueError):
         cache.set_threshold(out_of_range_threshold)
 
 
-# Test storing and retrieving multiple items
 def test_multiple_items(cache, vectorizer):
     prompts_responses = {
         "prompt1": "response1",
@@ -217,12 +217,10 @@ def test_multiple_items(cache, vectorizer):
         assert "metadata" not in check_result[0]
 
 
-# Test retrieving underlying SearchIndex for the cache.
 def test_get_index(cache):
     assert isinstance(cache.index, SearchIndex)
 
 
-# Test basic functionality with cache created with user-provided Redis client
 def test_store_and_check_with_provided_client(cache_with_redis_client, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
@@ -237,13 +235,11 @@ def test_store_and_check_with_provided_client(cache_with_redis_client, vectorize
     assert "metadata" not in check_result[0]
 
 
-# Test deleting the cache
 def test_delete(cache_no_cleanup):
     cache_no_cleanup.delete()
     assert not cache_no_cleanup.index.exists()
 
 
-# Test we can only store and check vectors of correct dimensions
 def test_vector_size(cache, vectorizer):
     prompt = "This is test prompt."
     response = "This is a test response."

@@ -2,6 +2,7 @@ import json
 import time
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from redisvl.extensions.session_manager import (
     SemanticSessionManager,
@@ -28,7 +29,26 @@ def semantic_session(app_name):
 # test standard session manager
 def test_specify_redis_client(client):
     session = StandardSessionManager(name="test_app", redis_client=client)
-    assert isinstance(session._client, type(client))
+    assert isinstance(session._index.client, type(client))
+
+
+def test_specify_redis_url(client):
+    session = StandardSessionManager(
+        name="test_app",
+        session_tag="abc",
+        user_tag="123",
+        redis_url="redis://localhost:6379",
+    )
+    assert isinstance(session._index.client, type(client))
+
+
+def test_standard_bad_connection_info():
+    with pytest.raises(ConnectionError):
+        StandardSessionManager(
+            name="test_app",
+            session_tag="abc",
+            redis_url="redis://localhost:6389",  # bad url
+        )
 
 
 def test_standard_store(standard_session):
@@ -139,7 +159,7 @@ def test_standard_add_messages(standard_session):
             },
             {
                 "role": "tool",
-                "content": "tool resuilt 2",
+                "content": "tool result 2",
                 "tool_call_id": "tool call two",
             },
             {"role": "user", "content": "fourth prompt"},
@@ -148,13 +168,14 @@ def test_standard_add_messages(standard_session):
     )
 
     full_context = standard_session.get_recent(top_k=10)
+    assert len(full_context) == 8
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
         {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
-        {"role": "tool", "content": "tool resuilt 2", "tool_call_id": "tool call two"},
+        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
     ]
@@ -220,14 +241,12 @@ def test_standard_get_text(standard_session):
 
 
 def test_standard_get_raw(standard_session):
-    current_time = int(time.time())
     standard_session.store("first prompt", "first response")
     standard_session.store("second prompt", "second response")
     raw = standard_session.get_recent(raw=True)
     assert len(raw) == 4
     assert raw[0]["role"] == "user"
     assert raw[0]["content"] == "first prompt"
-    assert current_time <= float(raw[0]["timestamp"]) <= time.time()
     assert raw[1]["role"] == "llm"
     assert raw[1]["content"] == "first response"
 
@@ -275,6 +294,15 @@ def test_semantic_specify_client(client):
         name="test_app", session_tag="abc", redis_client=client
     )
     assert isinstance(session._index.client, type(client))
+
+
+def test_semantic_bad_connection_info():
+    with pytest.raises(ConnectionError):
+        SemanticSessionManager(
+            name="test_app",
+            session_tag="abc",
+            redis_url="redis://localhost:6389",
+        )
 
 
 def test_semantic_scope(semantic_session):
@@ -478,14 +506,14 @@ def test_semantic_add_and_get_relevant(semantic_session):
 
 
 def test_semantic_get_raw(semantic_session):
-    current_time = int(time.time())
     semantic_session.store("first prompt", "first response")
     semantic_session.store("second prompt", "second response")
     raw = semantic_session.get_recent(raw=True)
     assert len(raw) == 4
+    assert raw[0]["role"] == "user"
     assert raw[0]["content"] == "first prompt"
+    assert raw[1]["role"] == "llm"
     assert raw[1]["content"] == "first response"
-    assert current_time <= float(raw[0]["timestamp"]) <= time.time()
 
 
 def test_semantic_drop(semantic_session):

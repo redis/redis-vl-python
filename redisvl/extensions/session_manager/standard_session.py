@@ -1,5 +1,5 @@
 from time import time
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
@@ -28,6 +28,8 @@ class StandardSessionIndexSchema(IndexSchema):
 
 
 class StandardSessionManager(BaseSessionManager):
+    session_field_name: str = "session_tag"
+    user_field_name: str = "user_tag"
 
     def __init__(
         self,
@@ -36,6 +38,8 @@ class StandardSessionManager(BaseSessionManager):
         prefix: Optional[str] = None,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
+        connection_kwargs: Dict[str, Any] = {},
+        **kwargs,
     ):
         """Initialize session memory
 
@@ -52,7 +56,9 @@ class StandardSessionManager(BaseSessionManager):
                 Defaults to None and will be replaced with the index name.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
-            redis_url (str): The URL of the Redis instance. Defaults to 'redis://localhost:6379'.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
+            connection_kwargs (Dict[str, Any]): The connection arguments
+                for the redis client. Defaults to empty {}.
 
         The proposed schema will support a single combined vector embedding
         constructed from the prompt & response in a single string.
@@ -71,10 +77,18 @@ class StandardSessionManager(BaseSessionManager):
 
         self._index.create(overwrite=False)
 
+        prefix = prefix or name
+
+        schema = StandardSessionIndexSchema.from_params(name, prefix)
+        self._index = SearchIndex(schema=schema)
+
+        # handle redis connection
         if redis_client:
-            self._client = redis_client
-        else:
-            self._client = Redis.from_url(redis_url)
+            self._index.set_client(redis_client)
+        elif redis_url:
+            self._index.connect(redis_url=redis_url, **connection_kwargs)
+
+        self._index.create(overwrite=False)
 
         self._default_tag_filter = Tag(self.session_field_name) == self._session_tag
 
