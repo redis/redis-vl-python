@@ -63,7 +63,7 @@ def test_search_index_from_dict(async_index_from_dict):
 
 @pytest.mark.asyncio
 async def test_search_index_from_existing(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True)
 
     try:
@@ -106,7 +106,9 @@ async def test_search_index_from_existing_complex(async_client):
             },
         ],
     }
-    async_index = AsyncSearchIndex.from_dict(schema, redis_client=async_client)
+    async_index = await AsyncSearchIndex.from_dict(schema).set_client(
+        redis_client=async_client
+    )
     await async_index.create(overwrite=True)
 
     try:
@@ -127,25 +129,32 @@ def test_search_index_no_prefix(index_schema):
     assert async_index.key("foo") == "foo"
 
 
-def test_search_index_redis_url(redis_url, index_schema):
-    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+@pytest.mark.asyncio
+async def test_search_index_redis_url(redis_url, index_schema):
+    async_index = await AsyncSearchIndex(schema=index_schema).connect(
+        redis_url=redis_url
+    )
     assert async_index.client
 
     async_index.disconnect()
     assert async_index.client == None
 
 
-def test_search_index_client(async_client, index_schema):
-    async_index = AsyncSearchIndex(schema=index_schema, redis_client=async_client)
+@pytest.mark.asyncio
+async def test_search_index_client(async_client, index_schema):
+    async_index = await AsyncSearchIndex(schema=index_schema).set_client(
+        redis_client=async_client
+    )
     assert async_index.client == async_client
 
 
-def test_search_index_set_client(async_client, client, async_index):
-    async_index.set_client(async_client)
+@pytest.mark.asyncio
+async def test_search_index_set_client(async_client, client, async_index):
+    await async_index.set_client(async_client)
     assert async_index.client == async_client
     # should not be able to set the sync client here
     with pytest.raises(TypeError):
-        async_index.set_client(client)
+        await async_index.set_client(client)
 
     async_index.disconnect()
     assert async_index.client == None
@@ -153,7 +162,7 @@ def test_search_index_set_client(async_client, client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_create(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     assert await async_index.exists()
     assert async_index.name in convert_bytes(
@@ -163,7 +172,7 @@ async def test_search_index_create(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_delete(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
     assert not await async_index.exists()
@@ -174,7 +183,7 @@ async def test_search_index_delete(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_clear(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
     await async_index.load(data, id_field="id")
@@ -186,7 +195,7 @@ async def test_search_index_clear(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_drop_key(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
     keys = await async_index.load(data, id_field="id")
@@ -199,7 +208,7 @@ async def test_search_index_drop_key(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_drop_keys(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     data = [
         {"id": "1", "test": "foo"},
@@ -219,7 +228,7 @@ async def test_search_index_drop_keys(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_load_and_fetch(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
     await async_index.load(data, id_field="id")
@@ -238,7 +247,7 @@ async def test_search_index_load_and_fetch(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_load_preprocess(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
 
@@ -263,14 +272,14 @@ async def test_search_index_load_preprocess(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_search_index_load_empty(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     await async_index.load([])
 
 
 @pytest.mark.asyncio
 async def test_no_id_field(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
@@ -281,7 +290,7 @@ async def test_no_id_field(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_check_index_exists_before_delete(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
     with pytest.raises(ValueError):
@@ -290,7 +299,7 @@ async def test_check_index_exists_before_delete(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_check_index_exists_before_search(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
 
@@ -306,7 +315,7 @@ async def test_check_index_exists_before_search(async_client, async_index):
 
 @pytest.mark.asyncio
 async def test_check_index_exists_before_info(async_client, async_index):
-    async_index.set_client(async_client)
+    await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
 
