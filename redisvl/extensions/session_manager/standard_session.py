@@ -1,10 +1,11 @@
 import json
 from time import time
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
 from redisvl.extensions.session_manager import BaseSessionManager
+from redisvl.redis.connection import RedisConnectionFactory
 
 
 class StandardSessionManager(BaseSessionManager):
@@ -16,6 +17,8 @@ class StandardSessionManager(BaseSessionManager):
         user_tag: str,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
+        connection_kwargs: Dict[str, Any] = {},
+        **kwargs,
     ):
         """Initialize session memory
 
@@ -31,7 +34,9 @@ class StandardSessionManager(BaseSessionManager):
             user_tag (str): Tag to be added to entries to link to a specific user.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
                 None.
-            redis_url (str): The URL of the Redis instance. Defaults to 'redis://localhost:6379'.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
+            connection_kwargs (Dict[str, Any]): The connection arguments
+                for the redis client. Defaults to empty {}.
 
         The proposed schema will support a single combined vector embedding
         constructed from the prompt & response in a single string.
@@ -39,10 +44,14 @@ class StandardSessionManager(BaseSessionManager):
         """
         super().__init__(name, session_tag, user_tag)
 
+        # handle redis connection
         if redis_client:
             self._client = redis_client
-        else:
-            self._client = Redis.from_url(redis_url)
+        elif redis_url:
+            self._client = RedisConnectionFactory.get_redis_connection(
+                redis_url, **connection_kwargs
+            )
+            RedisConnectionFactory.validate_redis(self._client)
 
         self.set_scope(session_tag, user_tag)
 
@@ -51,7 +60,7 @@ class StandardSessionManager(BaseSessionManager):
         session_tag: Optional[str] = None,
         user_tag: Optional[str] = None,
     ) -> None:
-        """Set the filter to apply to querries based on the desired scope.
+        """Set the filter to apply to queries based on the desired scope.
 
         This new scope persists until another call to set_scope is made, or if
         scope is specified in calls to get_recent.
