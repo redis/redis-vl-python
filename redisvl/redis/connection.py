@@ -1,16 +1,8 @@
-import asyncio
 import os
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
-from redis.asyncio import SSLConnection as ASSLConnection
-from redis.connection import (
-    AbstractConnection,
-    Connection,
-    ConnectionPool,
-    SSLConnection,
-)
 from redis.exceptions import ResponseError
 
 from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES
@@ -235,118 +227,51 @@ class RedisConnectionFactory:
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
-    def validate_redis(
-        client: Union[Redis, AsyncRedis],
-        lib_name: Optional[str] = None,
-        required_modules: Optional[List[Dict[str, Any]]] = None,
-    ) -> None:
-        """Validates the Redis connection.
-
-        Args:
-            client (Redis or AsyncRedis): Redis client.
-            lib_name (str): Library name to set on the Redis client.
-            required_modules (List[Dict[str, Any]]): List of required modules and their versions.
-
-        Raises:
-            ValueError: If required Redis modules are not installed.
-        """
-        if isinstance(client, AsyncRedis):
-            RedisConnectionFactory._run_async(
-                RedisConnectionFactory._validate_async_redis,
-                client,
-                lib_name,
-                required_modules,
-            )
-        else:
-            RedisConnectionFactory._validate_sync_redis(
-                client, lib_name, required_modules
-            )
-
-    @staticmethod
-    def _get_modules(client: Redis) -> Dict[str, Any]:
+    def get_modules(client: Redis) -> Dict[str, Any]:
         return unpack_redis_modules(convert_bytes(client.module_list()))
 
     @staticmethod
-    async def _get_modules_async(client: AsyncRedis) -> Dict[str, Any]:
+    async def get_modules_async(client: AsyncRedis) -> Dict[str, Any]:
         return unpack_redis_modules(convert_bytes(await client.module_list()))
 
     @staticmethod
-    def _validate_sync_redis(
-        client: Redis,
-        lib_name: Optional[str],
-        required_modules: Optional[List[Dict[str, Any]]],
+    def validate_sync_redis(
+        redis_client: Redis,
+        lib_name: Optional[str] = None,
+        required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Validates the sync client."""
+        """Validates the sync Redis client."""
         # Set client library name
         _lib_name = make_lib_name(lib_name)
         try:
-            client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
+            redis_client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
         except ResponseError:
             # Fall back to a simple log echo
-            client.echo(_lib_name)
+            redis_client.echo(_lib_name)
 
         # Get list of modules
-        installed_modules = RedisConnectionFactory._get_modules(client)
+        installed_modules = RedisConnectionFactory.get_modules(redis_client)
 
         # Validate available modules
         validate_modules(installed_modules, required_modules)
 
     @staticmethod
-    async def _validate_async_redis(
-        client: AsyncRedis,
-        lib_name: Optional[str],
-        required_modules: Optional[List[Dict[str, Any]]],
+    async def validate_async_redis(
+        redis_client: AsyncRedis,
+        lib_name: Optional[str] = None,
+        required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Validates the async client."""
+        """Validates the async Redis client."""
         # Set client library name
         _lib_name = make_lib_name(lib_name)
         try:
-            await client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
+            await redis_client.client_setinfo("LIB-NAME", _lib_name)  # type: ignore
         except ResponseError:
             # Fall back to a simple log echo
-            await client.echo(_lib_name)
+            await redis_client.echo(_lib_name)
 
         # Get list of modules
-        installed_modules = await RedisConnectionFactory._get_modules_async(client)
+        installed_modules = await RedisConnectionFactory.get_modules_async(redis_client)
 
         # Validate available modules
         validate_modules(installed_modules, required_modules)
-
-    @staticmethod
-    def _run_async(coro, *args, **kwargs):
-        """
-        Runs an asynchronous function in the appropriate event loop context.
-
-        This method checks if there is an existing event loop running. If there is,
-        it schedules the coroutine to be run within the current loop using `asyncio.ensure_future`.
-        If no event loop is running, it creates a new event loop, runs the coroutine,
-        and then closes the loop to avoid resource leaks.
-
-        Args:
-            coro (coroutine): The coroutine function to be run.
-            *args: Positional arguments to pass to the coroutine function.
-            **kwargs: Keyword arguments to pass to the coroutine function.
-
-        Returns:
-            The result of the coroutine if a new event loop is created,
-            otherwise a task object representing the coroutine execution.
-        """
-        try:
-            # Try to get the current running event loop
-            loop = asyncio.get_running_loop()
-        except RuntimeError:  # No running event loop
-            loop = None
-
-        if loop and loop.is_running():
-            # If an event loop is running, schedule the coroutine to run in the existing loop
-            return asyncio.ensure_future(coro(*args, **kwargs))
-        else:
-            # No event loop is running, create a new event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                # Run the coroutine in the new event loop and wait for it to complete
-                return loop.run_until_complete(coro(*args, **kwargs))
-            finally:
-                # Close the event loop to release resources
-                loop.close()

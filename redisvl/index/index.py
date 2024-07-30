@@ -94,7 +94,24 @@ def setup_redis():
         @wraps(func)
         def wrapper(self, *args, **kwargs):
             result = func(self, *args, **kwargs)
-            RedisConnectionFactory.validate_redis(self._redis_client, self._lib_name)
+            RedisConnectionFactory.validate_sync_redis(
+                self._redis_client, self._lib_name
+            )
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+def setup_async_redis():
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            result = await func(self, *args, **kwargs)
+            await RedisConnectionFactory.validate_async_redis(
+                self._redis_client, self._lib_name
+            )
             return result
 
         return wrapper
@@ -140,41 +157,10 @@ class BaseSearchIndex:
         StorageType.JSON: JsonStorage,
     }
 
-    def __init__(
-        self,
-        schema: IndexSchema,
-        redis_client: Optional[Union[redis.Redis, aredis.Redis]] = None,
-        redis_url: Optional[str] = None,
-        connection_args: Dict[str, Any] = {},
-        **kwargs,
-    ):
-        """Initialize the RedisVL search index with a schema, Redis client
-        (or URL string with other connection args), connection_args, and other
-        kwargs.
+    schema: IndexSchema
 
-        Args:
-            schema (IndexSchema): Index schema object.
-            redis_client(Union[redis.Redis, aredis.Redis], optional): An
-                instantiated redis client.
-            redis_url (str, optional): The URL of the Redis server to
-                connect to.
-            connection_args (Dict[str, Any], optional): Redis client connection
-                args.
-        """
-        # final validation on schema object
-        if not isinstance(schema, IndexSchema):
-            raise ValueError("Must provide a valid IndexSchema object")
-
-        self.schema = schema
-
-        self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
-
-        # set up redis connection
-        self._redis_client: Optional[Union[redis.Redis, aredis.Redis]] = None
-        if redis_client is not None:
-            self.set_client(redis_client)
-        elif redis_url is not None:
-            self.connect(redis_url, **connection_args)
+    def __init__(*args, **kwargs):
+        pass
 
     @property
     def _storage(self) -> BaseStorage:
@@ -237,8 +223,6 @@ class BaseSearchIndex:
 
         Args:
             schema_dict (Dict[str, Any]): A dictionary containing the schema.
-            connection_args (Dict[str, Any], optional): Redis client connection
-                args.
 
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
@@ -261,14 +245,6 @@ class BaseSearchIndex:
         """
         schema = IndexSchema.from_dict(schema_dict)
         return cls(schema=schema, **kwargs)
-
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
-        """Connect to Redis at a given URL."""
-        raise NotImplementedError
-
-    def set_client(self, client: Union[redis.Redis, aredis.Redis]):
-        """Manually set the Redis client to use with the search index."""
-        raise NotImplementedError
 
     def disconnect(self):
         """Disconnect from the Redis database."""
@@ -323,6 +299,43 @@ class SearchIndex(BaseSearchIndex):
 
     """
 
+    def __init__(
+        self,
+        schema: IndexSchema,
+        redis_client: Optional[redis.Redis] = None,
+        redis_url: Optional[str] = None,
+        connection_args: Dict[str, Any] = {},
+        **kwargs,
+    ):
+        """Initialize the RedisVL search index with a schema, Redis client
+        (or URL string with other connection args), connection_args, and other
+        kwargs.
+
+        Args:
+            schema (IndexSchema): Index schema object.
+            redis_client(Optional[redis.Redis]): An
+                instantiated redis client.
+            redis_url (Optional[str]): The URL of the Redis server to
+                connect to.
+            connection_args (Dict[str, Any], optional): Redis client connection
+                args.
+        """
+        # final validation on schema object
+        if not isinstance(schema, IndexSchema):
+            raise ValueError("Must provide a valid IndexSchema object")
+
+        self.schema = schema
+
+        self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
+
+        # set up redis connection
+        self._redis_client: Optional[redis.Redis] = None
+
+        if redis_client is not None:
+            self.set_client(redis_client)
+        elif redis_url is not None:
+            self.connect(redis_url, **connection_args)
+
     @classmethod
     def from_existing(
         cls,
@@ -342,7 +355,7 @@ class SearchIndex(BaseSearchIndex):
             )
 
         # Validate modules
-        installed_modules = RedisConnectionFactory._get_modules(redis_client)
+        installed_modules = RedisConnectionFactory.get_modules(redis_client)
         validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
 
         # Fetch index info and convert to schema
@@ -380,7 +393,7 @@ class SearchIndex(BaseSearchIndex):
         return self.set_client(client)
 
     @setup_redis()
-    def set_client(self, client: redis.Redis, **kwargs):
+    def set_client(self, redis_client: redis.Redis, **kwargs):
         """Manually set the Redis client to use with the search index.
 
         This method configures the search index to use a specific Redis or
@@ -388,7 +401,7 @@ class SearchIndex(BaseSearchIndex):
         custom-configured client is preferred instead of creating a new one.
 
         Args:
-            client (redis.Redis): A Redis or Async Redis
+            redis_client (redis.Redis): A Redis or Async Redis
                 client instance to be used for the connection.
 
         Raises:
@@ -404,10 +417,10 @@ class SearchIndex(BaseSearchIndex):
             index.set_client(client)
 
         """
-        if not isinstance(client, redis.Redis):
+        if not isinstance(redis_client, redis.Redis):
             raise TypeError("Invalid Redis client instance")
 
-        self._redis_client = client
+        self._redis_client = redis_client
 
         return self
 
@@ -759,7 +772,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         # initialize the index object with schema from file
         index = AsyncSearchIndex.from_yaml("schemas/schema.yaml")
-        index.connect(redis_url="redis://localhost:6379")
+        await index.connect(redis_url="redis://localhost:6379")
 
         # create the index
         await index.create(overwrite=True)
@@ -771,6 +784,34 @@ class AsyncSearchIndex(BaseSearchIndex):
         await index.delete(drop=True)
 
     """
+
+    def __init__(
+        self,
+        schema: IndexSchema,
+        **kwargs,
+    ):
+        """Initialize the RedisVL async search index with a schema.
+
+        Args:
+            schema (IndexSchema): Index schema object.
+            connection_args (Dict[str, Any], optional): Redis client connection
+                args.
+        """
+        # final validation on schema object
+        if not isinstance(schema, IndexSchema):
+            raise ValueError("Must provide a valid IndexSchema object")
+
+        self.schema = schema
+
+        self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
+
+        # set up empty redis connection
+        self._redis_client: Optional[aredis.Redis] = None
+
+        if "redis_client" in kwargs or "redis_url" in kwargs:
+            logger.warning(
+                "Must use set_client() or connect() methods to provide a Redis connection to AsyncSearchIndex"
+            )
 
     @classmethod
     async def from_existing(
@@ -791,18 +832,18 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
 
         # Validate modules
-        installed_modules = await RedisConnectionFactory._get_modules_async(
-            redis_client
-        )
+        installed_modules = await RedisConnectionFactory.get_modules_async(redis_client)
         validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
 
         # Fetch index info and convert to schema
         index_info = await cls._info(name, redis_client)
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
-        return cls(schema, redis_client, **kwargs)
+        index = cls(schema, **kwargs)
+        await index.set_client(redis_client)
+        return index
 
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
+    async def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
         back to the `REDIS_URL` environment variable (if available).
 
@@ -828,10 +869,10 @@ class AsyncSearchIndex(BaseSearchIndex):
         client = RedisConnectionFactory.connect(
             redis_url=redis_url, use_async=True, **kwargs
         )
-        return self.set_client(client)
+        return await self.set_client(client)
 
-    @setup_redis()
-    def set_client(self, client: aredis.Redis):
+    @setup_async_redis()
+    async def set_client(self, redis_client: aredis.Redis):
         """Manually set the Redis client to use with the search index.
 
         This method configures the search index to use a specific
@@ -839,7 +880,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         custom-configured client is preferred instead of creating a new one.
 
         Args:
-            client (aredis.Redis): An Async Redis
+            redis_client (aredis.Redis): An Async Redis
                 client instance to be used for the connection.
 
         Raises:
@@ -853,13 +894,13 @@ class AsyncSearchIndex(BaseSearchIndex):
             # async Redis client and index
             client = aredis.Redis.from_url("redis://localhost:6379")
             index = AsyncSearchIndex.from_yaml("schemas/schema.yaml")
-            index.set_client(client)
+            await index.set_client(client)
 
         """
-        if not isinstance(client, aredis.Redis):
+        if not isinstance(redis_client, aredis.Redis):
             raise TypeError("Invalid Redis client instance")
 
-        self._redis_client = client
+        self._redis_client = redis_client
 
         return self
 
@@ -889,6 +930,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             await index.create(overwrite=True, drop=True)
         """
         redis_fields = self.schema.redis_fields
+
         if not redis_fields:
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):

@@ -1,6 +1,7 @@
 import pathlib
 
 import pytest
+from redis.exceptions import ConnectionError
 
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import Route, RoutingConfig
@@ -225,3 +226,14 @@ def test_idempotent_to_dict(semantic_router):
         router_dict, redis_client=semantic_router._index.client
     )
     assert new_router.to_dict() == router_dict
+
+
+def test_bad_connection_info(routes):
+    with pytest.raises(ConnectionError):
+        SemanticRouter(
+            name="test-router",
+            routes=routes,
+            routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
+            redis_url="redis://localhost:6389",  # bad connection url
+            overwrite=False,
+        )

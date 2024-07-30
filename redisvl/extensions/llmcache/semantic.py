@@ -28,7 +28,7 @@ class SemanticCache(BaseLLMCache):
         vectorizer: Optional[BaseVectorizer] = None,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
-        connection_args: Dict[str, Any] = {},
+        connection_kwargs: Dict[str, Any] = {},
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -43,14 +43,13 @@ class SemanticCache(BaseLLMCache):
                 cache. Defaults to 0.1.
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
-            vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
+            vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
-            redis_client(Redis, optional): A redis client connection instance.
+            redis_client(Optional[Redis], optional): A redis client connection instance.
                 Defaults to None.
-            redis_url (str, optional): The redis url. Defaults to
-                "redis://localhost:6379".
-            connection_args (Dict[str, Any], optional): The connection arguments
-                for the redis client. Defaults to None.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
+            connection_kwargs (Dict[str, Any]): The connection arguments
+                for the redis client. Defaults to empty {}.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
@@ -96,8 +95,8 @@ class SemanticCache(BaseLLMCache):
         # handle redis connection
         if redis_client:
             self._index.set_client(redis_client)
-        else:
-            self._index.connect(redis_url=redis_url, **connection_args)
+        elif redis_url:
+            self._index.connect(redis_url=redis_url, **connection_kwargs)
 
         # initialize other components
         self.default_return_fields = [
