@@ -51,7 +51,7 @@ class StandardSessionManager(BaseSessionManager):
             self._client = RedisConnectionFactory.get_redis_connection(
                 redis_url, **connection_kwargs
             )
-            RedisConnectionFactory.validate_redis(self._client)
+            RedisConnectionFactory.validate_sync_redis(self._client)
 
         self.set_scope(session_tag, user_tag)
 
