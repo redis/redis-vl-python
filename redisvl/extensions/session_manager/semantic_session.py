@@ -1,13 +1,12 @@
-from time import time
 from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
 from redisvl.extensions.session_manager import BaseSessionManager
+from redisvl.extensions.session_manager.schema import ChatMessage
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
-from redisvl.query.filter import FilterExpression, Tag
-from redisvl.redis.utils import array_to_buffer
+from redisvl.query.filter import Tag
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
@@ -20,9 +19,9 @@ class SemanticSessionIndexSchema(IndexSchema):
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
-                {"name": "role", "type": "text"},
+                {"name": "role", "type": "tag"},
                 {"name": "content", "type": "text"},
-                {"name": "tool_call_id", "type": "text"},
+                {"name": "tool_call_id", "type": "tag"},
                 {"name": "timestamp", "type": "numeric"},
                 {"name": "session_tag", "type": "tag"},
                 {
@@ -148,9 +147,11 @@ class SemanticSessionManager(BaseSessionManager):
 
         sorted_query = query.query
         sorted_query.sort_by(self.timestamp_field_name, asc=True)
-        hits = self._index.search(sorted_query, query.params).docs
+        messages = [
+            doc.__dict__ for doc in self._index.search(sorted_query, query.params).docs
+        ]
 
-        return self._format_context(hits, as_text=False)
+        return self._format_context(messages, as_text=False)
 
     def get_relevant(
         self,
@@ -198,7 +199,6 @@ class SemanticSessionManager(BaseSessionManager):
             self.content_field_name,
             self.timestamp_field_name,
             self.tool_field_name,
-            self.vector_field_name,
         ]
 
         session_filter = (
@@ -216,14 +216,14 @@ class SemanticSessionManager(BaseSessionManager):
             return_score=True,
             filter_expression=session_filter,
         )
-        hits = self._index.query(query)
+        messages = self._index.query(query)
 
         # if we don't find semantic matches fallback to returning recent context
-        if not hits and fall_back:
+        if not messages and fall_back:
             return self.get_recent(as_text=as_text, top_k=top_k, raw=raw)
         if raw:
-            return hits
-        return self._format_context(hits, as_text)
+            return messages
+        return self._format_context(messages, as_text)
 
     def get_recent(
         self,
@@ -276,11 +276,13 @@ class SemanticSessionManager(BaseSessionManager):
 
         sorted_query = query.query
         sorted_query.sort_by(self.timestamp_field_name, asc=False)
-        hits = self._index.search(sorted_query, query.params).docs
+        messages = [
+            doc.__dict__ for doc in self._index.search(sorted_query, query.params).docs
+        ]
 
         if raw:
-            return hits[::-1]
-        return self._format_context(hits[::-1], as_text)
+            return messages[::-1]
+        return self._format_context(messages[::-1], as_text)
 
     @property
     def distance_threshold(self):
@@ -322,26 +324,24 @@ class SemanticSessionManager(BaseSessionManager):
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 session. Defaults to instance uuid.
         """
-        sep = self._index.key_separator
         session_tag = session_tag or self._session_tag
-        payloads = []
+        chat_messages: List[Dict[str, Any]] = []
+
         for message in messages:
-            vector = self._vectorizer.embed(message[self.content_field_name])
-            timestamp = time()
-            id_field = sep.join([self._session_tag, str(timestamp)])
-            payload = {
-                self.id_field_name: id_field,
-                self.role_field_name: message[self.role_field_name],
-                self.content_field_name: message[self.content_field_name],
-                self.timestamp_field_name: timestamp,
-                self.vector_field_name: array_to_buffer(vector),
-                self.session_field_name: session_tag,
-            }
+
+            chat_message = ChatMessage(
+                role=message[self.role_field_name],
+                content=message[self.content_field_name],
+                session_tag=session_tag,
+                vector_field=self._vectorizer.embed(message[self.content_field_name]),
+            )
 
             if self.tool_field_name in message:
-                payload.update({self.tool_field_name: message[self.tool_field_name]})
-            payloads.append(payload)
-        self._index.load(data=payloads, id_field=self.id_field_name)
+                chat_message.tool_call_id = message[self.tool_field_name]
+
+            chat_messages.append(chat_message.to_dict())
+
+        self._index.load(data=chat_messages, id_field=self.id_field_name)
 
     def add_message(
         self, message: Dict[str, str], session_tag: Optional[str] = None

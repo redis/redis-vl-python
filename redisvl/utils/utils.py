@@ -1,7 +1,17 @@
 from enum import Enum
+from time import time
 from typing import Any, Dict
+from uuid import uuid4
 
 from pydantic.v1 import BaseModel
+
+
+def create_uuid() -> str:
+    return str(uuid4())
+
+
+def current_timestamp():
+    return time()
 
 
 def model_to_dict(model: BaseModel) -> Dict[str, Any]:
