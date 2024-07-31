@@ -1,20 +1,23 @@
 from typing import Any, Dict, List, Optional, Union
+from uuid import uuid4
 
 from redis import Redis
 
+from redisvl.query.filter import FilterExpression
+
 
 class BaseSessionManager:
-    id_field_name: str = "id_field"
+    id_field_name: str = "_id"
     role_field_name: str = "role"
     content_field_name: str = "content"
     tool_field_name: str = "tool_call_id"
     timestamp_field_name: str = "timestamp"
+    session_field_name: str = "session_tag"
 
     def __init__(
         self,
         name: str,
-        session_tag: str,
-        user_tag: str,
+        session_tag: Optional[str] = None,
     ):
         """Initialize session memory with index
 
@@ -26,29 +29,10 @@ class BaseSessionManager:
         Args:
             name (str): The name of the session manager index.
             session_tag (str): Tag to be added to entries to link to a specific
-                session.
-            user_tag (str): Tag to be added to entries to link to a specific user.
+                session. Defaults to instance uuid.
         """
         self._name = name
-        self._user_tag = user_tag
-        self._session_tag = session_tag
-
-    def set_scope(
-        self,
-        session_tag: Optional[str] = None,
-        user_tag: Optional[str] = None,
-    ) -> None:
-        """Set the filter to apply to querries based on the desired scope.
-
-        This new scope persists until another call to set_scope is made, or if
-        scope specified in calls to get_recent.
-
-        Args:
-            session_tag (str): Id of the specific session to filter to. Default is
-                None.
-            user_tag (str): Id of the specific user to filter to. Default is None.
-        """
-        raise NotImplementedError
+        self._session_tag = session_tag or uuid4().hex
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -75,23 +59,21 @@ class BaseSessionManager:
     def get_recent(
         self,
         top_k: int = 5,
-        session_tag: Optional[str] = None,
-        user_tag: Optional[str] = None,
         as_text: bool = False,
         raw: bool = False,
+        session_tag: Optional[str] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retreive the recent conversation history in sequential order.
 
         Args:
             top_k (int): The number of previous exchanges to return. Default is 5.
                 Note that one exchange contains both a prompt and response.
-            session_tag (str): Tag to be added to entries to link to a specific
-                session.
-            user_tag (str): Tag to be added to entries to link to a specific user.
             as_text (bool): Whether to return the conversation as a single string,
                 or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
+            session_tag (str): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
@@ -113,6 +95,7 @@ class BaseSessionManager:
                 recent conversation history.
             as_text (bool): Whether to return the conversation as a single string,
                 or list of alternating prompts and responses.
+
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                 or list of strings if as_text is false.
@@ -141,7 +124,9 @@ class BaseSessionManager:
                     )
             return statements
 
-    def store(self, prompt: str, response: str) -> None:
+    def store(
+        self, prompt: str, response: str, session_tag: Optional[str] = None
+    ) -> None:
         """Insert a prompt:response pair into the session memory. A timestamp
         is associated with each exchange so that they can be later sorted
         in sequential ordering after retrieval.
@@ -149,25 +134,32 @@ class BaseSessionManager:
         Args:
             prompt (str): The user prompt to the LLM.
             response (str): The corresponding LLM response.
+            session_tag (Optional[str]): The tag to mark the message with. Defaults to None.
         """
         raise NotImplementedError
 
-    def add_messages(self, messages: List[Dict[str, str]]) -> None:
+    def add_messages(
+        self, messages: List[Dict[str, str]], session_tag: Optional[str] = None
+    ) -> None:
         """Insert a list of prompts and responses into the session memory.
         A timestamp is associated with each so that they can be later sorted
         in sequential ordering after retrieval.
 
         Args:
             messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
+            session_tag (Optional[str]): The tag to mark the messages with. Defaults to None.
         """
         raise NotImplementedError
 
-    def add_message(self, message: Dict[str, str]) -> None:
+    def add_message(
+        self, message: Dict[str, str], session_tag: Optional[str] = None
+    ) -> None:
         """Insert a single prompt or response into the session memory.
         A timestamp is associated with it so that it can be later sorted
         in sequential ordering after retrieval.
 
         Args:
             message (Dict[str,str]): The user prompt or LLM response.
+            session_tag (Optional[str]): The tag to mark the message with. Defaults to None.
         """
         raise NotImplementedError

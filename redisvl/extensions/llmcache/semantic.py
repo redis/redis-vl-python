@@ -13,7 +13,7 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
 
-    entry_id_field_name: str = "id"
+    entry_id_field_name: str = "_id"
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
     response_field_name: str = "response"
@@ -222,7 +222,8 @@ class SemanticCache(BaseLLMCache):
         cache_hits: List[Dict[str, Any]] = self._index.query(query)
         # Process cache hits
         for hit in cache_hits:
-            self._refresh_ttl(hit[self.entry_id_field_name])
+            key = hit["id"]
+            self._refresh_ttl(key)
             # Check for metadata and deserialize
             if self.metadata_field_name in hit:
                 hit[self.metadata_field_name] = self.deserialize(

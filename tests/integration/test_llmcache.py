@@ -114,6 +114,20 @@ def test_ttl_expiration(cache_with_ttl, vectorizer):
     assert len(check_result) == 0
 
 
+def test_ttl_refresh(cache_with_ttl, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache_with_ttl.store(prompt, response, vector=vector)
+
+    for _ in range(3):
+        sleep(1)
+        check_result = cache_with_ttl.check(vector=vector)
+
+    assert len(check_result) == 1
+
+
 def test_ttl_expiration_after_update(cache_with_ttl, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."

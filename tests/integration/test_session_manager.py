@@ -1,6 +1,3 @@
-import json
-import time
-
 import pytest
 from redis.exceptions import ConnectionError
 
@@ -11,38 +8,32 @@ from redisvl.extensions.session_manager import (
 
 
 @pytest.fixture
-def standard_session(app_name, user_tag, session_tag, client):
-    session = StandardSessionManager(
-        app_name, session_tag=session_tag, user_tag=user_tag, redis_client=client
-    )
+def standard_session(app_name, client):
+    session = StandardSessionManager(app_name, redis_client=client)
     yield session
     session.clear()
-    session.delete()
 
 
 @pytest.fixture
-def semantic_session(app_name, user_tag, session_tag, client):
-    session = SemanticSessionManager(
-        app_name, session_tag=session_tag, user_tag=user_tag, redis_client=client
-    )
+def semantic_session(app_name, client):
+    session = SemanticSessionManager(app_name, redis_client=client)
     yield session
     session.clear()
     session.delete()
 
 
+# test standard session manager
 def test_specify_redis_client(client):
-    session = StandardSessionManager(
-        name="test_app", session_tag="abc", user_tag="123", redis_client=client
-    )
+    session = StandardSessionManager(name="test_app", redis_client=client)
     assert isinstance(session._index.client, type(client))
 
 
-def test_specify_redis_url(client):
+def test_specify_redis_url(client, redis_url):
     session = StandardSessionManager(
         name="test_app",
         session_tag="abc",
         user_tag="123",
-        redis_url="redis://localhost:6379",
+        redis_url=redis_url,
     )
     assert isinstance(session._index.client, type(client))
 
@@ -52,12 +43,11 @@ def test_standard_bad_connection_info():
         StandardSessionManager(
             name="test_app",
             session_tag="abc",
-            user_tag="123",
             redis_url="redis://localhost:6389",  # bad url
         )
 
 
-def test_standard_store_and_get(standard_session):
+def test_standard_store(standard_session):
     context = standard_session.get_recent()
     assert len(context) == 0
 
@@ -66,26 +56,6 @@ def test_standard_store_and_get(standard_session):
     standard_session.store(prompt="third prompt", response="third response")
     standard_session.store(prompt="fourth prompt", response="fourth response")
     standard_session.store(prompt="fifth prompt", response="fifth response")
-
-    # test default context history size
-    default_context = standard_session.get_recent()
-    assert len(default_context) == 5  #  default is 5
-
-    # test specified context history size
-    partial_context = standard_session.get_recent(top_k=2)
-    assert len(partial_context) == 2
-    assert partial_context == [
-        {"role": "user", "content": "fifth prompt"},
-        {"role": "llm", "content": "fifth response"},
-    ]
-
-    # test larger context history returns full history
-    too_large_context = standard_session.get_recent(top_k=100)
-    assert len(too_large_context) == 10
-
-    # test no context is returned when top_k is 0
-    no_context = standard_session.get_recent(top_k=0)
-    assert len(no_context) == 0
 
     # test that order is maintained
     full_context = standard_session.get_recent(top_k=10)
@@ -101,19 +71,6 @@ def test_standard_store_and_get(standard_session):
         {"role": "user", "content": "fifth prompt"},
         {"role": "llm", "content": "fifth response"},
     ]
-
-    # test that a ValueError is raised when top_k is invalid
-    with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=-2)
-
-    with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=-2.0)
-
-    with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=1.3)
-
-    with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k="3")
 
 
 def test_standard_add_and_get(standard_session):
@@ -167,6 +124,19 @@ def test_standard_add_and_get(standard_session):
         {"role": "llm", "content": "third response"},
     ]
 
+    # test that a ValueError is raised when top_k is invalid
+    with pytest.raises(ValueError):
+        bad_context = standard_session.get_recent(top_k=-2)
+
+    with pytest.raises(ValueError):
+        bad_context = standard_session.get_recent(top_k=-2.0)
+
+    with pytest.raises(ValueError):
+        bad_context = standard_session.get_recent(top_k=1.3)
+
+    with pytest.raises(ValueError):
+        bad_context = standard_session.get_recent(top_k="3")
+
 
 def test_standard_add_messages(standard_session):
     context = standard_session.get_recent()
@@ -185,7 +155,7 @@ def test_standard_add_messages(standard_session):
             },
             {
                 "role": "tool",
-                "content": "tool resuilt 2",
+                "content": "tool result 2",
                 "tool_call_id": "tool call two",
             },
             {"role": "user", "content": "fourth prompt"},
@@ -193,27 +163,15 @@ def test_standard_add_messages(standard_session):
         ]
     )
 
-    # test default context history size
-    default_context = standard_session.get_recent()
-    assert len(default_context) == 5  #  default is 5
-
-    # test specified context history size
-    partial_context = standard_session.get_recent(top_k=2)
-    assert len(partial_context) == 2
-    assert partial_context == [
-        {"role": "user", "content": "fourth prompt"},
-        {"role": "llm", "content": "fourth response"},
-    ]
-
-    # test that order is maintained
     full_context = standard_session.get_recent(top_k=10)
+    assert len(full_context) == 8
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
         {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
-        {"role": "tool", "content": "tool resuilt 2", "tool_call_id": "tool call two"},
+        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
     ]
@@ -239,64 +197,31 @@ def test_standard_messages_property(standard_session):
     ]
 
 
-def test_standard_set_scope(standard_session, app_name, user_tag, session_tag):
-    # test calling set_scope with no params does not change scope
+def test_standard_scope(standard_session):
+    # store entries under default session tag
     standard_session.store("some prompt", "some response")
-    standard_session.set_scope()
-    context = standard_session.get_recent()
-    assert context == [
-        {"role": "user", "content": "some prompt"},
-        {"role": "llm", "content": "some response"},
-    ]
 
-    # test that changing user and session id does indeed change access scope
-    new_user = "def"
-    standard_session.set_scope(user_tag=new_user)
-    standard_session.store("new user prompt", "new user response")
-    context = standard_session.get_recent()
+    # test that changing session tag does indeed change access scope
+    new_session = "def"
+    standard_session.store(
+        "new user prompt", "new user response", session_tag=new_session
+    )
+    context = standard_session.get_recent(session_tag=new_session)
     assert context == [
         {"role": "user", "content": "new user prompt"},
         {"role": "llm", "content": "new user response"},
     ]
 
-    # test that previous user and session data is still accessible
-    previous_user = "abc"
-    standard_session.set_scope(user_tag=previous_user)
+    # test that default session data is still accessible
     context = standard_session.get_recent()
     assert context == [
         {"role": "user", "content": "some prompt"},
         {"role": "llm", "content": "some response"},
     ]
 
-    standard_session.set_scope(session_tag="789", user_tag="ghi")
-    no_context = standard_session.get_recent()
+    bad_session = "xyz"
+    no_context = standard_session.get_recent(session_tag=bad_session)
     assert no_context == []
-
-
-def test_standard_get_recent_with_scope(standard_session, session_tag):
-    # test that passing user or session id to get_recent(...) changes scope
-    standard_session.store("first prompt", "first response")
-
-    context = standard_session.get_recent()
-    assert context == [
-        {"role": "user", "content": "first prompt"},
-        {"role": "llm", "content": "first response"},
-    ]
-
-    context = standard_session.get_recent(session_tag="456")
-    assert context == []
-
-    # test that scope change persists after being updated via get_recent(...)
-    standard_session.store("new session prompt", "new session response")
-    context = standard_session.get_recent()
-    assert context == [
-        {"role": "user", "content": "new session prompt"},
-        {"role": "llm", "content": "new session response"},
-    ]
-
-    # clean up lingering sessions
-    standard_session.clear()
-    standard_session.set_scope(session_tag=session_tag)
 
 
 def test_standard_get_text(standard_session):
@@ -337,7 +262,7 @@ def test_standard_drop(standard_session):
 
     # test drop(id) removes the specified element
     context = standard_session.get_recent(top_k=10, raw=True)
-    middle_id = context[3]["id_field"]
+    middle_id = context[3][standard_session.id_field_name]
     standard_session.drop(middle_id)
     context = standard_session.get_recent(top_k=6)
     assert context == [
@@ -360,7 +285,7 @@ def test_standard_clear(standard_session):
 # test semantic session manager
 def test_semantic_specify_client(client):
     session = SemanticSessionManager(
-        name="test_app", session_tag="abc", user_tag="123", redis_client=client
+        name="test_app", session_tag="abc", redis_client=client
     )
     assert isinstance(session._index.client, type(client))
 
@@ -370,42 +295,34 @@ def test_semantic_bad_connection_info():
         SemanticSessionManager(
             name="test_app",
             session_tag="abc",
-            user_tag="123",
             redis_url="redis://localhost:6389",
         )
 
 
-def test_semantic_set_scope(semantic_session, app_name, user_tag, session_tag):
-    # test calling set_scope with no params does not change scope
+def test_semantic_scope(semantic_session):
+    # store entries under default session tag
     semantic_session.store("some prompt", "some response")
-    semantic_session.set_scope()
-    context = semantic_session.get_recent()
-    assert context == [
-        {"role": "user", "content": "some prompt"},
-        {"role": "llm", "content": "some response"},
-    ]
 
-    # test that changing user and session id does indeed change access scope
-    new_user = "def"
-    semantic_session.set_scope(user_tag=new_user)
-    semantic_session.store("new user prompt", "new user response")
-    context = semantic_session.get_recent()
+    # test that changing session tag does indeed change access scope
+    new_session = "def"
+    semantic_session.store(
+        "new user prompt", "new user response", session_tag=new_session
+    )
+    context = semantic_session.get_recent(session_tag=new_session)
     assert context == [
         {"role": "user", "content": "new user prompt"},
         {"role": "llm", "content": "new user response"},
     ]
 
-    # test that previous user and session data is still accessible
-    previous_user = "abc"
-    semantic_session.set_scope(user_tag=previous_user)
+    # test that previous session data is still accessible
     context = semantic_session.get_recent()
     assert context == [
         {"role": "user", "content": "some prompt"},
         {"role": "llm", "content": "some response"},
     ]
 
-    semantic_session.set_scope(session_tag="789", user_tag="ghi")
-    no_context = semantic_session.get_recent()
+    bad_session = "xyz"
+    no_context = semantic_session.get_recent(session_tag=bad_session)
     assert no_context == []
 
 
@@ -608,7 +525,7 @@ def test_semantic_drop(semantic_session):
 
     # test drop(id) removes the specified element
     context = semantic_session.get_recent(top_k=5, raw=True)
-    middle_id = context[2]["id_field"]
+    middle_id = context[2][semantic_session.id_field_name]
     semantic_session.drop(middle_id)
     context = semantic_session.get_recent(top_k=4)
     assert context == [
