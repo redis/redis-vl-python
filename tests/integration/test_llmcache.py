@@ -1,7 +1,8 @@
 from collections import namedtuple
 from time import sleep, time
-
+from pydantic.v1 import ValidationError
 import pytest
+
 from redis.exceptions import ConnectionError
 
 from redisvl.extensions.llmcache import SemanticCache
@@ -19,6 +20,17 @@ def vectorizer():
 def cache(vectorizer, redis_url):
     cache_instance = SemanticCache(
         vectorizer=vectorizer, distance_threshold=0.2, redis_url=redis_url
+    )
+    yield cache_instance
+    cache_instance._index.delete(True)  # Clean up index
+
+@pytest.fixture
+def cache_with_filters(vectorizer, redis_url):
+    cache_instance = SemanticCache(
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        filterable_fields=[{"name": "label", "type": "tag"}],
+        redis_url=redis_url
     )
     yield cache_instance
     cache_instance._index.delete(True)  # Clean up index
@@ -100,32 +112,30 @@ def test_return_fields(cache, vectorizer):
     # check default return fields
     check_result = cache.check(vector=vector)
     assert set(check_result[0].keys()) == {
-        "id",
-        "_id",
+        "key",
+        "entry_id",
         "prompt",
         "response",
-        "prompt_vector",
         "vector_distance",
-    }
-
-    # check all return fields
-    fields = [
-        "id",
-        "_id",
-        "prompt",
-        "response",
         "inserted_at",
         "updated_at",
-        "prompt_vector",
+    }
+
+    # check specific return fields
+    fields = [
+        "key",
+        "entry_id",
+        "prompt",
+        "response",
         "vector_distance",
     ]
-    check_result = cache.check(vector=vector, return_fields=fields[:])
+    check_result = cache.check(vector=vector, return_fields=fields)
     assert set(check_result[0].keys()) == set(fields)
 
     # check only some return fields
     fields = ["inserted_at", "updated_at"]
-    check_result = cache.check(vector=vector, return_fields=fields[:])
-    fields.extend(["id", "vector_distance"])  # id and vector_distance always returned
+    check_result = cache.check(vector=vector, return_fields=fields)
+    fields.append("key")
     assert set(check_result[0].keys()) == set(fields)
 
 
@@ -178,7 +188,7 @@ def test_drop_document(cache, vectorizer):
     cache.store(prompt, response, vector=vector)
     check_result = cache.check(vector=vector)
 
-    cache.drop(check_result[0]["id"])
+    cache.drop(ids=[check_result[0]["entry_id"]])
     recheck_result = cache.check(vector=vector)
     assert len(recheck_result) == 0
 
@@ -200,8 +210,9 @@ def test_drop_documents(cache, vectorizer):
         cache.store(prompt, response, vector=vector)
 
     check_result = cache.check(vector=vector, num_results=3)
-    keys = [r["id"] for r in check_result[0:2]]  # drop first 2 entries
-    cache.drop(keys)
+    print(check_result, flush=True)
+    ids = [r["entry_id"] for r in check_result[0:2]]  # drop first 2 entries
+    cache.drop(ids=ids)
 
     recheck_result = cache.check(vector=vector, num_results=3)
     assert len(recheck_result) == 1
@@ -214,7 +225,7 @@ def test_updating_document(cache):
     cache.store(prompt=prompt, response=response)
 
     check_result = cache.check(prompt=prompt, return_fields=["updated_at"])
-    key = check_result[0]["id"]
+    key = check_result[0]["key"]
 
     sleep(1)
 
@@ -290,9 +301,7 @@ def test_store_with_invalid_metadata(cache, vectorizer):
 
     vector = vectorizer.embed(prompt)
 
-    with pytest.raises(
-        TypeError, match=r"If specified, cached metadata must be a dictionary."
-    ):
+    with pytest.raises(ValidationError):
         cache.store(prompt, response, vector=vector, metadata=metadata)
 
 
@@ -381,8 +390,11 @@ def test_vector_size(cache, vectorizer):
         cache.check(vector=[1, 2, 3])
 
 
-# test we can pass a list of tags and we'll include all results that match
-def test_multiple_tags(cache):
+def test_cache_with_filters(cache_with_filters):
+    assert "label" in cache_with_filters._index.schema.fields
+
+
+def test_cache_filtering(cache_with_filters):
     tag_1 = "group 0"
     tag_2 = "group 1"
     tag_3 = "group 2"
@@ -396,43 +408,72 @@ def test_multiple_tags(cache):
     for i in range(4):
         prompt = f"test prompt {i}"
         response = f"test response {i}"
-        cache.store(prompt, response, tag=tags[i])
+        cache_with_filters.store(prompt, response, filters={"label": tags[i]})
 
     # test we can specify one specific tag
-    results = cache.check("test prompt 1", tag_filter=filter_1, num_results=5)
+    results = cache_with_filters.check("test prompt 1", filter_expression=filter_1, num_results=5)
     assert len(results) == 1
     assert results[0]["prompt"] == "test prompt 0"
 
     # test we can pass a list of tags
     combined_filter = filter_1 | filter_2 | filter_3
-    results = cache.check("test prompt 1", tag_filter=combined_filter, num_results=5)
+    results = cache_with_filters.check("test prompt 1", filter_expression=combined_filter, num_results=5)
     assert len(results) == 3
 
     # test that default tag param searches full cache
-    results = cache.check("test prompt 1", num_results=5)
+    results = cache_with_filters.check("test prompt 1", num_results=5)
     assert len(results) == 4
 
     # test no results are returned if we pass a nonexistant tag
     bad_filter = Tag("label") == "bad tag"
-    results = cache.check("test prompt 1", tag_filter=bad_filter, num_results=5)
+    results = cache_with_filters.check("test prompt 1", filter_expression=bad_filter, num_results=5)
     assert len(results) == 0
 
 
-def test_complex_filters(cache):
-    cache.store(prompt="prompt 1", response="response 1")
-    cache.store(prompt="prompt 2", response="response 2")
+def test_cache_bad_filters(vectorizer, redis_url):
+    with pytest.raises(ValueError):
+        cache_instance = SemanticCache(
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            # invalid field type
+            filterable_fields=[{"name": "label", "type": "tag"}, {"name": "test", "type": "nothing"}],
+            redis_url=redis_url
+        )
+
+    with pytest.raises(ValueError):
+        cache_instance = SemanticCache(
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            # duplicate field type
+            filterable_fields=[{"name": "label", "type": "tag"}, {"name": "label", "type": "tag"}],
+            redis_url=redis_url
+        )
+
+    with pytest.raises(ValueError):
+        cache_instance = SemanticCache(
+            vectorizer=vectorizer,
+            distance_threshold=0.2,
+            # reserved field name
+            filterable_fields=[{"name": "label", "type": "tag"}, {"name": "metadata", "type": "tag"}],
+            redis_url=redis_url
+        )
+
+
+def test_complex_filters(cache_with_filters):
+    cache_with_filters.store(prompt="prompt 1", response="response 1")
+    cache_with_filters.store(prompt="prompt 2", response="response 2")
     sleep(1)
     current_timestamp = time()
-    cache.store(prompt="prompt 3", response="response 3")
+    cache_with_filters.store(prompt="prompt 3", response="response 3")
 
     # test we can do range filters on inserted_at and updated_at fields
     range_filter = Num("inserted_at") < current_timestamp
-    results = cache.check("prompt 1", tag_filter=range_filter, num_results=5)
+    results = cache_with_filters.check("prompt 1", filter_expression=range_filter, num_results=5)
     assert len(results) == 2
 
     # test we can combine range filters and text filters
     prompt_filter = Text("prompt") % "*pt 1"
     combined_filter = prompt_filter & range_filter
 
-    results = cache.check("prompt 1", tag_filter=combined_filter, num_results=5)
+    results = cache_with_filters.check("prompt 1", filter_expression=combined_filter, num_results=5)
     assert len(results) == 1
