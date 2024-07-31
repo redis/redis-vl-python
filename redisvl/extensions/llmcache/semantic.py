@@ -428,3 +428,4 @@ class SemanticCache(BaseLLMCache):
                     )
         kwargs.update({self.updated_at_field_name: current_timestamp()})
         self._index.client.hset(key, mapping=kwargs)  # type: ignore
+        self._refresh_ttl(key)
