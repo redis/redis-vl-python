@@ -205,9 +205,6 @@ class SemanticCache(BaseLLMCache):
 
         return_fields = return_fields or self.default_return_fields
 
-        if self.entry_id_field_name not in return_fields:
-            return_fields.append(self.entry_id_field_name)
-
         if not isinstance(return_fields, list):
             raise TypeError("return_fields must be a list of field names")
 
@@ -225,8 +222,8 @@ class SemanticCache(BaseLLMCache):
         cache_hits: List[Dict[str, Any]] = self._index.query(query)
         # Process cache hits
         for hit in cache_hits:
-            id = hit[self.entry_id_field_name]
-            self._refresh_ttl(self._index.key(id))
+            key = hit["id"]
+            self._refresh_ttl(key)
             # Check for metadata and deserialize
             if self.metadata_field_name in hit:
                 hit[self.metadata_field_name] = self.deserialize(
