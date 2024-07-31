@@ -8,10 +8,12 @@ from pydantic.v1 import BaseModel
 
 
 def create_uuid() -> str:
+    """Generate a unique indentifier to group related Redis documents."""
     return str(uuid4())
 
 
-def current_timestamp():
+def current_timestamp() -> float:
+    """Generate a unix epoch timestamp to assign to Redis documents."""
     return time()
 
 
