@@ -7,7 +7,7 @@ from redisvl.query.filter import FilterExpression
 
 
 class BaseSessionManager:
-    id_field_name: str = "id_field"
+    id_field_name: str = "_id"
     role_field_name: str = "role"
     content_field_name: str = "content"
     tool_field_name: str = "tool_call_id"
@@ -61,7 +61,7 @@ class BaseSessionManager:
         top_k: int = 5,
         as_text: bool = False,
         raw: bool = False,
-        tag_filter: Optional[FilterExpression] = None,
+        session_tag: Optional[str] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retreive the recent conversation history in sequential order.
 
@@ -72,8 +72,8 @@ class BaseSessionManager:
                 or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
-            tag_filter (Optional[FilterExpression]) : The tag filter to filter
-                results by. Default is None and all sessions are searched.
+            session_tag (str): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session

@@ -13,7 +13,7 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
 
-    entry_id_field_name: str = "id"
+    entry_id_field_name: str = "_id"
     prompt_field_name: str = "prompt"
     vector_field_name: str = "prompt_vector"
     response_field_name: str = "response"

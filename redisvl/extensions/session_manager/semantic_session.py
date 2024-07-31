@@ -64,7 +64,7 @@ class SemanticSessionManager(BaseSessionManager):
 
         Args:
             name (str): The name of the session manager index.
-            session_tag (str): Tag to be added to entries to link to a specific
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 session. Defaults to instance uuid.
             prefix (Optional[str]): Prefix for the keys for this session data.
                 Defaults to None and will be replaced with the index name.
@@ -105,7 +105,7 @@ class SemanticSessionManager(BaseSessionManager):
 
         self._index.create(overwrite=False)
 
-        self._default_tag_filter = Tag(self.session_field_name) == self._session_tag
+        self._default_session_filter = Tag(self.session_field_name) == self._session_tag
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -115,24 +115,23 @@ class SemanticSessionManager(BaseSessionManager):
         """Clear all conversation keys and remove the search index."""
         self._index.delete(drop=True)
 
-    def drop(self, id_field: Optional[str] = None) -> None:
+    def drop(self, id: Optional[str] = None) -> None:
         """Remove a specific exchange from the conversation history.
 
         Args:
-            id_field (Optional[str]): The id_field of the entry to delete.
+            id (Optional[str]): The id of the session entry to delete.
                 If None then the last entry is deleted.
         """
-        if id_field:
-            sep = self._index.key_separator
-            key = sep.join([self._index.schema.index.name, id_field])
-        else:
-            key = self.get_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
-        self._index.client.delete(key)  # type: ignore
+        if id is None:
+            id = self.get_recent(top_k=1, raw=True)[0][self.id_field_name]  # type: ignore
+
+        self._index.client.delete(self._index.key(id))  # type: ignore
 
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:
         """Returns the full chat history."""
         # TODO raw or as_text?
+        # TODO refactor method to use get_recent and support other session tags
         return_fields = [
             self.id_field_name,
             self.session_field_name,
@@ -143,7 +142,7 @@ class SemanticSessionManager(BaseSessionManager):
         ]
 
         query = FilterQuery(
-            filter_expression=self._default_tag_filter,
+            filter_expression=self._default_session_filter,
             return_fields=return_fields,
         )
 
@@ -159,7 +158,7 @@ class SemanticSessionManager(BaseSessionManager):
         as_text: bool = False,
         top_k: int = 5,
         fall_back: bool = False,
-        tag_filter: Optional[FilterExpression] = None,
+        session_tag: Optional[str] = None,
         raw: bool = False,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Searches the chat history for information semantically related to
@@ -177,8 +176,8 @@ class SemanticSessionManager(BaseSessionManager):
             top_k (int): The number of previous messages to return. Default is 5.
             fallback (bool): Whether to drop back to recent conversation history
                 if no relevant context is found.
-            tag_filter (Optional[FilterExpression]): The tag filter to filter results
-                by. Defaults to None and all messages will be searched.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
             raw (bool): Whether to return the full Redis hash entry or just the
                 message.
 
@@ -202,6 +201,12 @@ class SemanticSessionManager(BaseSessionManager):
             self.vector_field_name,
         ]
 
+        session_filter = (
+            Tag(self.session_field_name) == session_tag
+            if session_tag
+            else self._default_session_filter
+        )
+
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
             vector_field_name=self.vector_field_name,
@@ -209,7 +214,7 @@ class SemanticSessionManager(BaseSessionManager):
             distance_threshold=self._distance_threshold,
             num_results=top_k,
             return_score=True,
-            filter_expression=tag_filter or self._default_tag_filter,
+            filter_expression=session_filter,
         )
         hits = self._index.query(query)
 
@@ -225,7 +230,7 @@ class SemanticSessionManager(BaseSessionManager):
         top_k: int = 5,
         as_text: bool = False,
         raw: bool = False,
-        tag_filter: Optional[FilterExpression] = None,
+        session_tag: Optional[str] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retreive the recent conversation history in sequential order.
 
@@ -235,8 +240,8 @@ class SemanticSessionManager(BaseSessionManager):
                 or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
-            tag_filter (Optional[FilterExpression]): The tag filter to filter
-                results by. Defaults to None and all messages will be searched.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
@@ -257,8 +262,14 @@ class SemanticSessionManager(BaseSessionManager):
             self.timestamp_field_name,
         ]
 
+        session_filter = (
+            Tag(self.session_field_name) == session_tag
+            if session_tag
+            else self._default_session_filter
+        )
+
         query = FilterQuery(
-            filter_expression=tag_filter or self._default_tag_filter,
+            filter_expression=session_filter,
             return_fields=return_fields,
             num_results=top_k,
         )
@@ -288,6 +299,8 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             prompt (str): The user prompt to the LLM.
             response (str): The corresponding LLM response.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
         """
         self.add_messages(
             [
@@ -306,6 +319,8 @@ class SemanticSessionManager(BaseSessionManager):
 
         Args:
             messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
         """
         sep = self._index.key_separator
         session_tag = session_tag or self._session_tag
@@ -337,5 +352,7 @@ class SemanticSessionManager(BaseSessionManager):
 
         Args:
             message (Dict[str,str]): The user prompt or LLM response.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
         """
         self.add_messages([message], session_tag)

@@ -6,7 +6,7 @@ from redis import Redis
 from redisvl.extensions.session_manager import BaseSessionManager
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery
-from redisvl.query.filter import FilterExpression, Tag
+from redisvl.query.filter import Tag
 from redisvl.schema.schema import IndexSchema
 
 
@@ -29,7 +29,6 @@ class StandardSessionIndexSchema(IndexSchema):
 
 class StandardSessionManager(BaseSessionManager):
     session_field_name: str = "session_tag"
-    user_field_name: str = "user_tag"
 
     def __init__(
         self,
@@ -51,7 +50,7 @@ class StandardSessionManager(BaseSessionManager):
         Args:
             name (str): The name of the session manager index.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session.
+                session. Defaults to instance uuid.
             prefix (Optional[str]): Prefix for the keys for this session data.
                 Defaults to None and will be replaced with the index name.
             redis_client (Optional[Redis]): A Redis client instance. Defaults to
@@ -69,7 +68,9 @@ class StandardSessionManager(BaseSessionManager):
         prefix = prefix or name
 
         schema = StandardSessionIndexSchema.from_params(name, prefix)
+
         self._index = SearchIndex(schema=schema)
+
         if redis_client:
             self._index.set_client(redis_client)
         else:
@@ -77,20 +78,7 @@ class StandardSessionManager(BaseSessionManager):
 
         self._index.create(overwrite=False)
 
-        prefix = prefix or name
-
-        schema = StandardSessionIndexSchema.from_params(name, prefix)
-        self._index = SearchIndex(schema=schema)
-
-        # handle redis connection
-        if redis_client:
-            self._index.set_client(redis_client)
-        elif redis_url:
-            self._index.connect(redis_url=redis_url, **connection_kwargs)
-
-        self._index.create(overwrite=False)
-
-        self._default_tag_filter = Tag(self.session_field_name) == self._session_tag
+        self._default_session_filter = Tag(self.session_field_name) == self._session_tag
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -100,24 +88,23 @@ class StandardSessionManager(BaseSessionManager):
         """Clear all conversation keys and remove the search index."""
         self._index.delete(drop=True)
 
-    def drop(self, id_field: Optional[str] = None) -> None:
+    def drop(self, id: Optional[str] = None) -> None:
         """Remove a specific exchange from the conversation history.
 
         Args:
-            id_field (Optional[str]): The id_field of the entry to delete.
+            id (Optional[str]): The id of the session entry to delete.
                 If None then the last entry is deleted.
         """
-        if id_field:
-            sep = self._index.key_separator
-            key = sep.join([self._index.schema.index.name, id_field])
-        else:
-            key = self.get_recent(top_k=1, raw=True)[0]["id"]  # type: ignore
-        self._index.client.delete(key)  # type: ignore
+        if id is None:
+            id = self.get_recent(top_k=1, raw=True)[0][self.id_field_name]  # type: ignore
+
+        self._index.client.delete(self._index.key(id))  # type: ignore
 
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:
         """Returns the full chat history."""
         # TODO raw or as_text?
+        # TODO refactor this method to use get_recent and support other session tags?
         return_fields = [
             self.id_field_name,
             self.session_field_name,
@@ -128,7 +115,7 @@ class StandardSessionManager(BaseSessionManager):
         ]
 
         query = FilterQuery(
-            filter_expression=self._default_tag_filter,
+            filter_expression=self._default_session_filter,
             return_fields=return_fields,
         )
 
@@ -143,7 +130,7 @@ class StandardSessionManager(BaseSessionManager):
         top_k: int = 5,
         as_text: bool = False,
         raw: bool = False,
-        tag_filter: Optional[FilterExpression] = None,
+        session_tag: Optional[str] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retreive the recent conversation history in sequential order.
 
@@ -153,8 +140,8 @@ class StandardSessionManager(BaseSessionManager):
                 or list of alternating prompts and responses.
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
-            tag_filter (Optional[FilterExpression]) : The tag filter to filter
-                results by. Default is None and all sessions are searched.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
@@ -175,8 +162,14 @@ class StandardSessionManager(BaseSessionManager):
             self.timestamp_field_name,
         ]
 
+        session_filter = (
+            Tag(self.session_field_name) == session_tag
+            if session_tag
+            else self._default_session_filter
+        )
+
         query = FilterQuery(
-            filter_expression=tag_filter or self._default_tag_filter,
+            filter_expression=session_filter,
             return_fields=return_fields,
             num_results=top_k,
         )
@@ -199,7 +192,8 @@ class StandardSessionManager(BaseSessionManager):
         Args:
             prompt (str): The user prompt to the LLM.
             response (str): The corresponding LLM response.
-            session_tag (Optional[str]): The tag to mark the message with. Defaults to None.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
         """
         self.add_messages(
             [
@@ -218,7 +212,8 @@ class StandardSessionManager(BaseSessionManager):
 
         Args:
             messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
-            session_tag (Optional[str]): The tag to mark the messages with. Defaults to None.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
         """
         sep = self._index.key_separator
         session_tag = session_tag or self._session_tag
@@ -249,6 +244,7 @@ class StandardSessionManager(BaseSessionManager):
 
         Args:
             message (Dict[str,str]): The user prompt or LLM response.
-            session_tag (Optional[str]): The tag to mark the message with. Defaults to None.
+            session_tag (Optional[str]): Tag to be added to entries to link to a specific
+                session. Defaults to instance uuid.
         """
         self.add_messages([message], session_tag)

@@ -1,6 +1,3 @@
-import json
-import time
-
 import pytest
 from redis.exceptions import ConnectionError
 
@@ -8,19 +5,18 @@ from redisvl.extensions.session_manager import (
     SemanticSessionManager,
     StandardSessionManager,
 )
-from redisvl.query.filter import Tag
 
 
 @pytest.fixture
-def standard_session(app_name):
-    session = StandardSessionManager(app_name)
+def standard_session(app_name, client):
+    session = StandardSessionManager(app_name, redis_client=client)
     yield session
     session.clear()
 
 
 @pytest.fixture
-def semantic_session(app_name):
-    session = SemanticSessionManager(app_name)
+def semantic_session(app_name, client):
+    session = SemanticSessionManager(app_name, redis_client=client)
     yield session
     session.clear()
     session.delete()
@@ -32,12 +28,12 @@ def test_specify_redis_client(client):
     assert isinstance(session._index.client, type(client))
 
 
-def test_specify_redis_url(client):
+def test_specify_redis_url(client, redis_url):
     session = StandardSessionManager(
         name="test_app",
         session_tag="abc",
         user_tag="123",
-        redis_url="redis://localhost:6379",
+        redis_url=redis_url,
     )
     assert isinstance(session._index.client, type(client))
 
@@ -210,8 +206,7 @@ def test_standard_scope(standard_session):
     standard_session.store(
         "new user prompt", "new user response", session_tag=new_session
     )
-    session_filter = Tag("session_tag") == new_session
-    context = standard_session.get_recent(tag_filter=session_filter)
+    context = standard_session.get_recent(session_tag=new_session)
     assert context == [
         {"role": "user", "content": "new user prompt"},
         {"role": "llm", "content": "new user response"},
@@ -225,8 +220,7 @@ def test_standard_scope(standard_session):
     ]
 
     bad_session = "xyz"
-    bad_filter = Tag("session_tag") == bad_session
-    no_context = standard_session.get_recent(tag_filter=bad_filter)
+    no_context = standard_session.get_recent(session_tag=bad_session)
     assert no_context == []
 
 
@@ -268,7 +262,7 @@ def test_standard_drop(standard_session):
 
     # test drop(id) removes the specified element
     context = standard_session.get_recent(top_k=10, raw=True)
-    middle_id = context[3]["id_field"]
+    middle_id = context[3][standard_session.id_field_name]
     standard_session.drop(middle_id)
     context = standard_session.get_recent(top_k=6)
     assert context == [
@@ -314,8 +308,7 @@ def test_semantic_scope(semantic_session):
     semantic_session.store(
         "new user prompt", "new user response", session_tag=new_session
     )
-    session_filter = Tag("session_tag") == new_session
-    context = semantic_session.get_recent(tag_filter=session_filter)
+    context = semantic_session.get_recent(session_tag=new_session)
     assert context == [
         {"role": "user", "content": "new user prompt"},
         {"role": "llm", "content": "new user response"},
@@ -329,8 +322,7 @@ def test_semantic_scope(semantic_session):
     ]
 
     bad_session = "xyz"
-    bad_filter = Tag("session_tag") == bad_session
-    no_context = semantic_session.get_recent(tag_filter=bad_filter)
+    no_context = semantic_session.get_recent(session_tag=bad_session)
     assert no_context == []
 
 
@@ -533,7 +525,7 @@ def test_semantic_drop(semantic_session):
 
     # test drop(id) removes the specified element
     context = semantic_session.get_recent(top_k=5, raw=True)
-    middle_id = context[2]["id_field"]
+    middle_id = context[2][semantic_session.id_field_name]
     semantic_session.drop(middle_id)
     context = semantic_session.get_recent(top_k=4)
     assert context == [
