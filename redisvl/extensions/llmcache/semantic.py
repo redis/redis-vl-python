@@ -1,4 +1,3 @@
-from time import time
 from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
@@ -9,6 +8,7 @@ from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression, Tag
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
+from redisvl.utils.utils import current_timestamp, deserialize, serialize
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
@@ -20,7 +20,6 @@ class SemanticCacheIndexSchema(IndexSchema):
         return cls(
             index={"name": name, "prefix": name},  # type: ignore
             fields=[  # type: ignore
-                {"name": "cache_name", "type": "tag"},
                 {"name": "prompt", "type": "text"},
                 {"name": "response", "type": "text"},
                 {"name": "inserted_at", "type": "numeric"},
@@ -253,7 +252,7 @@ class SemanticCache(BaseLLMCache):
             self._refresh_ttl(key)
             # Check for metadata and deserialize
             if self.metadata_field_name in hit:
-                hit[self.metadata_field_name] = self.deserialize(
+                hit[self.metadata_field_name] = deserialize(
                     hit[self.metadata_field_name]
                 )
         return cache_hits
@@ -366,7 +365,7 @@ class SemanticCache(BaseLLMCache):
         self._check_vector_dims(vector)
 
         # Construct semantic cache payload
-        now = time()
+        now = current_timestamp()
         id_field = self.entry_id_field_name
         payload = {
             id_field: self.hash_input(prompt),
@@ -380,7 +379,7 @@ class SemanticCache(BaseLLMCache):
             if not isinstance(metadata, dict):
                 raise TypeError("If specified, cached metadata must be a dictionary.")
             # Serialize the metadata dict and add to cache payload
-            payload[self.metadata_field_name] = self.serialize(metadata)
+            payload[self.metadata_field_name] = serialize(metadata)
         if tag is not None:
             payload[self.tag_field_name] = tag
 
@@ -422,10 +421,10 @@ class SemanticCache(BaseLLMCache):
             # Check for metadata and deserialize
             if _key == self.metadata_field_name:
                 if isinstance(val, dict):
-                    kwargs[_key] = self.serialize(val)
+                    kwargs[_key] = serialize(val)
                 else:
                     raise TypeError(
                         "If specified, cached metadata must be a dictionary."
                     )
-        kwargs.update({self.updated_at_field_name: time()})
+        kwargs.update({self.updated_at_field_name: current_timestamp()})
         self._index.client.hset(key, mapping=kwargs)  # type: ignore
