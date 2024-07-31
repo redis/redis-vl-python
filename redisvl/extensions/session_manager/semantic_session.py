@@ -309,7 +309,7 @@ class SemanticSessionManager(BaseSessionManager):
 
             validate_vector_dims(
                 len(content_vector),
-                self._index.schema.fields[self.vector_field_name].attrs.dims, # type: ignore
+                self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
             )
 
             chat_message = ChatMessage(

@@ -1,8 +1,8 @@
+import json
 from enum import Enum
 from time import time
 from typing import Any, Dict
 from uuid import uuid4
-import json
 
 from pydantic.v1 import BaseModel
 
@@ -41,10 +41,9 @@ def validate_vector_dims(v1: int, v2: int) -> None:
     """Check the equality of vector dimensions."""
     if v1 != v2:
         raise ValueError(
-            "Invalid vector dimensions! "
-            f"Vector has dims defined as {v1}",
+            "Invalid vector dimensions! " f"Vector has dims defined as {v1}",
             f"Vector field has dims defined as {v2}",
-            "Vector dims must be equal in order to perform similarity search."
+            "Vector dims must be equal in order to perform similarity search.",
         )
 
 
