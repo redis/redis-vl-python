@@ -1,9 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
-from uuid import uuid4
 
-from redis import Redis
-
-from redisvl.query.filter import FilterExpression
+from redisvl.extensions.session_manager.schema import ChatMessage
+from redisvl.utils.utils import create_uuid
 
 
 class BaseSessionManager:
@@ -32,7 +30,7 @@ class BaseSessionManager:
                 session. Defaults to instance uuid.
         """
         self._name = name
-        self._session_tag = session_tag or uuid4().hex
+        self._session_tag = session_tag or create_uuid()
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -85,14 +83,13 @@ class BaseSessionManager:
         raise NotImplementedError
 
     def _format_context(
-        self, hits: List[Dict[str, Any]], as_text: bool
+        self, messages: List[Dict[str, Any]], as_text: bool
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Extracts the prompt and response fields from the Redis hashes and
            formats them as either flat dictionaries or strings.
 
         Args:
-            hits (List): The hashes containing prompt & response pairs from
-                recent conversation history.
+            messages (List[Dict[str, Any]]): The messages from the session index.
             as_text (bool): Whether to return the conversation as a single string,
                 or list of alternating prompts and responses.
 
@@ -100,29 +97,25 @@ class BaseSessionManager:
             Union[str, List[str]]: A single string transcription of the session
                 or list of strings if as_text is false.
         """
-        if as_text:
-            text_statements = []
-            for hit in hits:
-                text_statements.append(hit[self.content_field_name])
-            return text_statements
-        else:
-            statements = []
-            for hit in hits:
-                statements.append(
-                    {
-                        self.role_field_name: hit[self.role_field_name],
-                        self.content_field_name: hit[self.content_field_name],
-                    }
-                )
-                if (
-                    hasattr(hit, self.tool_field_name)
-                    or isinstance(hit, dict)
-                    and self.tool_field_name in hit
-                ):
-                    statements[-1].update(
-                        {self.tool_field_name: hit[self.tool_field_name]}
-                    )
-            return statements
+        context = []
+
+        for message in messages:
+
+            chat_message = ChatMessage(**message)
+
+            if as_text:
+                context.append(chat_message.content)
+            else:
+                chat_message_dict = {
+                    self.role_field_name: chat_message.role,
+                    self.content_field_name: chat_message.content,
+                }
+                if chat_message.tool_call_id is not None:
+                    chat_message_dict[self.tool_field_name] = chat_message.tool_call_id
+
+                context.append(chat_message_dict)  # type: ignore
+
+        return context
 
     def store(
         self, prompt: str, response: str, session_tag: Optional[str] = None

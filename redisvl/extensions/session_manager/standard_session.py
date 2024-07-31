@@ -1,30 +1,15 @@
-from time import time
 from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
 from redisvl.extensions.session_manager import BaseSessionManager
+from redisvl.extensions.session_manager.schema import (
+    ChatMessage,
+    StandardSessionIndexSchema,
+)
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery
 from redisvl.query.filter import Tag
-from redisvl.schema.schema import IndexSchema
-
-
-class StandardSessionIndexSchema(IndexSchema):
-
-    @classmethod
-    def from_params(cls, name: str, prefix: str):
-
-        return cls(
-            index={"name": name, "prefix": prefix},  # type: ignore
-            fields=[  # type: ignore
-                {"name": "role", "type": "text"},
-                {"name": "content", "type": "text"},
-                {"name": "tool_call_id", "type": "text"},
-                {"name": "timestamp", "type": "numeric"},
-                {"name": "session_tag", "type": "tag"},
-            ],
-        )
 
 
 class StandardSessionManager(BaseSessionManager):
@@ -74,7 +59,7 @@ class StandardSessionManager(BaseSessionManager):
         if redis_client:
             self._index.set_client(redis_client)
         else:
-            self._index.connect(redis_url=redis_url)
+            self._index.connect(redis_url=redis_url, **connection_kwargs)
 
         self._index.create(overwrite=False)
 
@@ -121,9 +106,11 @@ class StandardSessionManager(BaseSessionManager):
 
         sorted_query = query.query
         sorted_query.sort_by(self.timestamp_field_name, asc=True)
-        hits = self._index.search(sorted_query, query.params).docs
+        messages = [
+            doc.__dict__ for doc in self._index.search(sorted_query, query.params).docs
+        ]
 
-        return self._format_context(hits, as_text=False)
+        return self._format_context(messages, as_text=False)
 
     def get_recent(
         self,
@@ -176,11 +163,13 @@ class StandardSessionManager(BaseSessionManager):
 
         sorted_query = query.query
         sorted_query.sort_by(self.timestamp_field_name, asc=False)
-        hits = self._index.search(sorted_query, query.params).docs
+        messages = [
+            doc.__dict__ for doc in self._index.search(sorted_query, query.params).docs
+        ]
 
         if raw:
-            return hits[::-1]
-        return self._format_context(hits[::-1], as_text)
+            return messages[::-1]
+        return self._format_context(messages[::-1], as_text)
 
     def store(
         self, prompt: str, response: str, session_tag: Optional[str] = None
@@ -215,25 +204,23 @@ class StandardSessionManager(BaseSessionManager):
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 session. Defaults to instance uuid.
         """
-        sep = self._index.key_separator
         session_tag = session_tag or self._session_tag
-        payloads = []
+        chat_messages: List[Dict[str, Any]] = []
+
         for message in messages:
-            timestamp = time()
-            id_field = sep.join([self._session_tag, str(timestamp)])
-            payload = {
-                self.id_field_name: id_field,
-                self.role_field_name: message[self.role_field_name],
-                self.content_field_name: message[self.content_field_name],
-                self.timestamp_field_name: timestamp,
-                self.session_field_name: session_tag,
-            }
+
+            chat_message = ChatMessage(
+                role=message[self.role_field_name],
+                content=message[self.content_field_name],
+                session_tag=session_tag,
+            )
 
             if self.tool_field_name in message:
-                payload.update({self.tool_field_name: message[self.tool_field_name]})
+                chat_message.tool_call_id = message[self.tool_field_name]
 
-            payloads.append(payload)
-        self._index.load(data=payloads, id_field=self.id_field_name)
+            chat_messages.append(chat_message.to_dict())
+
+        self._index.load(data=chat_messages, id_field=self.id_field_name)
 
     def add_message(
         self, message: Dict[str, str], session_tag: Optional[str] = None
