@@ -3,6 +3,8 @@ from typing import Dict, List, Optional
 
 from pydantic.v1 import BaseModel, Field, validator
 
+from redisvl.schema import IndexInfo, IndexSchema
+
 
 class Route(BaseModel):
     """Model representing a routing path with associated metadata and thresholds."""
@@ -80,3 +82,36 @@ class RoutingConfig(BaseModel):
         if v <= 0 or v > 1:
             raise ValueError("distance_threshold must be between 0 and 1")
         return v
+
+
+class SemanticRouterIndexSchema(IndexSchema):
+    """Customized index schema for SemanticRouter."""
+
+    @classmethod
+    def from_params(cls, name: str, vector_dims: int) -> "SemanticRouterIndexSchema":
+        """Create an index schema based on router name and vector dimensions.
+
+        Args:
+            name (str): The name of the index.
+            vector_dims (int): The dimensions of the vectors.
+
+        Returns:
+            SemanticRouterIndexSchema: The constructed index schema.
+        """
+        return cls(
+            index=IndexInfo(name=name, prefix=name),
+            fields=[  # type: ignore
+                {"name": "route_name", "type": "tag"},
+                {"name": "reference", "type": "text"},
+                {
+                    "name": "vector",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": vector_dims,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        )
