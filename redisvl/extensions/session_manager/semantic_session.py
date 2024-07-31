@@ -10,6 +10,7 @@ from redisvl.extensions.session_manager.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
+from redisvl.utils.utils import validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
@@ -304,11 +305,18 @@ class SemanticSessionManager(BaseSessionManager):
 
         for message in messages:
 
+            content_vector = self._vectorizer.embed(message[self.content_field_name])
+
+            validate_vector_dims(
+                len(content_vector),
+                self._index.schema.fields[self.vector_field_name].attrs.dims, # type: ignore
+            )
+
             chat_message = ChatMessage(
                 role=message[self.role_field_name],
                 content=message[self.content_field_name],
                 session_tag=session_tag,
-                vector_field=self._vectorizer.embed(message[self.content_field_name]),
+                vector_field=content_vector,
             )
 
             if self.tool_field_name in message:

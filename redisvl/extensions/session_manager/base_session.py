@@ -106,7 +106,6 @@ class BaseSessionManager:
             if as_text:
                 context.append(chat_message.content)
             else:
-                chat_message = ChatMessage(**message)
                 chat_message_dict = {
                     self.role_field_name: chat_message.role,
                     self.content_field_name: chat_message.content,
