@@ -49,7 +49,7 @@ json_schema = {
 async def test_simple(async_client, schema, sample_data):
     index = AsyncSearchIndex.from_dict(schema)
     # assign client (only for testing)
-    index.set_client(async_client)
+    await index.set_client(async_client)
     # create the index
     await index.create(overwrite=True, drop=True)
 
