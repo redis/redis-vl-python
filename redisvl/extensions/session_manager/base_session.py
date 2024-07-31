@@ -114,7 +114,7 @@ class BaseSessionManager:
                 if chat_message.tool_call_id is not None:
                     chat_message_dict[self.tool_field_name] = chat_message.tool_call_id
 
-                context.append(chat_message_dict) # type: ignore
+                context.append(chat_message_dict)  # type: ignore
 
         return context
 

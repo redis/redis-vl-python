@@ -13,11 +13,11 @@ from redisvl.extensions.router.schema import (
     Route,
     RouteMatch,
     RoutingConfig,
+    SemanticRouterIndexSchema,
 )
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
-from redisvl.schema import IndexInfo, IndexSchema
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import model_to_dict
 from redisvl.utils.vectorize import (
@@ -27,39 +27,6 @@ from redisvl.utils.vectorize import (
 )
 
 logger = get_logger(__name__)
-
-
-class SemanticRouterIndexSchema(IndexSchema):
-    """Customized index schema for SemanticRouter."""
-
-    @classmethod
-    def from_params(cls, name: str, vector_dims: int) -> "SemanticRouterIndexSchema":
-        """Create an index schema based on router name and vector dimensions.
-
-        Args:
-            name (str): The name of the index.
-            vector_dims (int): The dimensions of the vectors.
-
-        Returns:
-            SemanticRouterIndexSchema: The constructed index schema.
-        """
-        return cls(
-            index=IndexInfo(name=name, prefix=name),
-            fields=[  # type: ignore
-                {"name": "route_name", "type": "tag"},
-                {"name": "reference", "type": "text"},
-                {
-                    "name": "vector",
-                    "type": "vector",
-                    "attrs": {
-                        "algorithm": "flat",
-                        "dims": vector_dims,
-                        "distance_metric": "cosine",
-                        "datatype": "float32",
-                    },
-                },
-            ],
-        )
 
 
 class SemanticRouter(BaseModel):

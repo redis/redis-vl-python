@@ -3,39 +3,14 @@ from typing import Any, Dict, List, Optional, Union
 from redis import Redis
 
 from redisvl.extensions.session_manager import BaseSessionManager
-from redisvl.extensions.session_manager.schema import ChatMessage
+from redisvl.extensions.session_manager.schema import (
+    ChatMessage,
+    SemanticSessionIndexSchema,
+)
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
-from redisvl.schema.schema import IndexSchema
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
-
-
-class SemanticSessionIndexSchema(IndexSchema):
-
-    @classmethod
-    def from_params(cls, name: str, prefix: str, vectorizer_dims: int):
-
-        return cls(
-            index={"name": name, "prefix": prefix},  # type: ignore
-            fields=[  # type: ignore
-                {"name": "role", "type": "tag"},
-                {"name": "content", "type": "text"},
-                {"name": "tool_call_id", "type": "tag"},
-                {"name": "timestamp", "type": "numeric"},
-                {"name": "session_tag", "type": "tag"},
-                {
-                    "name": "vector_field",
-                    "type": "vector",
-                    "attrs": {
-                        "dims": vectorizer_dims,
-                        "datatype": "float32",
-                        "distance_metric": "cosine",
-                        "algorithm": "flat",
-                    },
-                },
-            ],
-        )
 
 
 class SemanticSessionManager(BaseSessionManager):

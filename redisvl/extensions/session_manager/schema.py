@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from pydantic.v1 import BaseModel, Field, root_validator
 
 from redisvl.redis.utils import array_to_buffer
+from redisvl.schema import IndexSchema
 from redisvl.utils.utils import current_timestamp
 
 
@@ -47,3 +48,47 @@ class ChatMessage(BaseModel):
             del data["tool_call_id"]
 
         return data
+
+
+class StandardSessionIndexSchema(IndexSchema):
+
+    @classmethod
+    def from_params(cls, name: str, prefix: str):
+
+        return cls(
+            index={"name": name, "prefix": prefix},  # type: ignore
+            fields=[  # type: ignore
+                {"name": "role", "type": "tag"},
+                {"name": "content", "type": "text"},
+                {"name": "tool_call_id", "type": "tag"},
+                {"name": "timestamp", "type": "numeric"},
+                {"name": "session_tag", "type": "tag"},
+            ],
+        )
+
+
+class SemanticSessionIndexSchema(IndexSchema):
+
+    @classmethod
+    def from_params(cls, name: str, prefix: str, vectorizer_dims: int):
+
+        return cls(
+            index={"name": name, "prefix": prefix},  # type: ignore
+            fields=[  # type: ignore
+                {"name": "role", "type": "tag"},
+                {"name": "content", "type": "text"},
+                {"name": "tool_call_id", "type": "tag"},
+                {"name": "timestamp", "type": "numeric"},
+                {"name": "session_tag", "type": "tag"},
+                {
+                    "name": "vector_field",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": vectorizer_dims,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                    },
+                },
+            ],
+        )
