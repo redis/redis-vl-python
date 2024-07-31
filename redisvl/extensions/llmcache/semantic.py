@@ -222,7 +222,8 @@ class SemanticCache(BaseLLMCache):
         cache_hits: List[Dict[str, Any]] = self._index.query(query)
         # Process cache hits
         for hit in cache_hits:
-            self._refresh_ttl(hit[self.entry_id_field_name])
+            id = hit[self.entry_id_field_name]
+            self._refresh_ttl(self._index.key(id))
             # Check for metadata and deserialize
             if self.metadata_field_name in hit:
                 hit[self.metadata_field_name] = self.deserialize(
