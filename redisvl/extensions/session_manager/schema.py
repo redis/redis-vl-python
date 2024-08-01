@@ -10,7 +10,7 @@ from redisvl.utils.utils import current_timestamp
 class ChatMessage(BaseModel):
     """A single chat message exchanged between a user and an LLM."""
 
-    entry_id: str
+    entry_id: Optional[str] = Field(default=None)
     """A unique identifier for the message."""
     role: str  # TODO -- do we enumify this?
     """The role of the message sender (e.g., 'user' or 'llm')."""
@@ -18,7 +18,7 @@ class ChatMessage(BaseModel):
     """The content of the message."""
     session_tag: str
     """Tag associated with the current session."""
-    timestamp: float
+    timestamp: Optional[float] = Field(default=None)
     """The time the message was sent, in UTC, rounded to milliseconds."""
     tool_call_id: Optional[str] = Field(default=None)
     """An optional identifier for a tool call associated with the message."""
