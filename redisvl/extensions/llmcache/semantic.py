@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from redis import Redis
 
@@ -10,20 +10,15 @@ from redisvl.extensions.llmcache.schema import (
 )
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
-from redisvl.query.filter import FilterExpression, Tag
-from redisvl.redis.utils import array_to_buffer
-from redisvl.utils.utils import (
-    current_timestamp,
-    deserialize,
-    serialize,
-    validate_vector_dims,
-)
+from redisvl.query.filter import FilterExpression
+from redisvl.utils.utils import current_timestamp, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
 
+    redis_key_field_name: str = "key"
     entry_id_field_name: str = "entry_id"
     prompt_field_name: str = "prompt"
     response_field_name: str = "response"
@@ -55,6 +50,8 @@ class SemanticCache(BaseLLMCache):
                 in Redis. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
+            filterable_fields (Optional[List[Dict[str, Any]]]): An optional list of RedisVL fields
+                that can be used to customize cache retrieval with filters.
             redis_client(Optional[Redis], optional): A redis client connection instance.
                 Defaults to None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
@@ -81,9 +78,6 @@ class SemanticCache(BaseLLMCache):
                 model="sentence-transformers/all-mpnet-base-v2"
             )
 
-        # Create semantic cache schema
-        schema = SemanticCacheIndexSchema.from_params(name, prefix, vectorizer.dims)
-
         # Process fields
         self.return_fields = [
             self.entry_id_field_name,
@@ -94,18 +88,9 @@ class SemanticCache(BaseLLMCache):
             self.metadata_field_name,
         ]
 
-        if filterable_fields is not None:
-            for filter_field in filterable_fields:
-                if (
-                    filter_field["name"] in self.return_fields
-                    or filter_field["name"] == "key"
-                ):
-                    raise ValueError(
-                        f'{filter_field["name"]} is a reserved field name for the semantic cache schema'
-                    )
-                schema.add_field(filter_field)
-                # Add to return fields too
-                self.return_fields.append(filter_field["name"])
+        # Create semantic cache schema and index
+        schema = SemanticCacheIndexSchema.from_params(name, prefix, vectorizer.dims)
+        schema = self._modify_schema(schema, filterable_fields)
 
         self._index = SearchIndex(schema=schema)
 
@@ -119,6 +104,30 @@ class SemanticCache(BaseLLMCache):
         self._set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
         self._index.create(overwrite=False)
+
+    def _modify_schema(
+        self,
+        schema: SemanticCacheIndexSchema,
+        filterable_fields: Optional[List[Dict[str, Any]]] = None,
+    ) -> SemanticCacheIndexSchema:
+        """Modify the base cache schema using the provided filterable fields"""
+
+        if filterable_fields is not None:
+            protected_field_names = set(
+                self.return_fields + [self.redis_key_field_name]
+            )
+            for filter_field in filterable_fields:
+                field_name = filter_field["name"]
+                if field_name in protected_field_names:
+                    raise ValueError(
+                        f"{field_name} is a reserved field name for the semantic cache schema"
+                    )
+                # Add to schema
+                schema.add_field(filter_field)
+                # Add to return fields too
+                self.return_fields.append(field_name)
+
+        return schema
 
     @property
     def index(self) -> SearchIndex:
