@@ -32,7 +32,6 @@ def test_specify_redis_url(client, redis_url):
     session = StandardSessionManager(
         name="test_app",
         session_tag="abc",
-        user_tag="123",
         redis_url=redis_url,
     )
     assert isinstance(session._index.client, type(client))

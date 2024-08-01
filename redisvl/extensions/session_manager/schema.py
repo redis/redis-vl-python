@@ -10,7 +10,7 @@ from redisvl.utils.utils import current_timestamp
 class ChatMessage(BaseModel):
     """A single chat message exchanged between a user and an LLM."""
 
-    _id: Optional[str] = Field(default=None)
+    entry_id: Optional[str] = Field(default=None)
     """A unique identifier for the message."""
     role: str  # TODO -- do we enumify this?
     """The role of the message sender (e.g., 'user' or 'llm')."""
@@ -18,7 +18,7 @@ class ChatMessage(BaseModel):
     """The content of the message."""
     session_tag: str
     """Tag associated with the current session."""
-    timestamp: float = Field(default_factory=current_timestamp)
+    timestamp: Optional[float] = Field(default=None)
     """The time the message was sent, in UTC, rounded to milliseconds."""
     tool_call_id: Optional[str] = Field(default=None)
     """An optional identifier for a tool call associated with the message."""
@@ -28,24 +28,21 @@ class ChatMessage(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    @root_validator(pre=False)
+    @root_validator(pre=True)
     @classmethod
     def generate_id(cls, values):
-        if "_id" not in values:
-            values["_id"] = f'{values["session_tag"]}:{values["timestamp"]}'
+        if "timestamp" not in values:
+            values["timestamp"] = current_timestamp()
+        if "entry_id" not in values:
+            values["entry_id"] = f'{values["session_tag"]}:{values["timestamp"]}'
         return values
 
     def to_dict(self) -> Dict:
-        data = self.dict()
+        data = self.dict(exclude_none=True)
 
         # handle optional fields
-        if data["vector_field"] is not None:
+        if "vector_field" in data:
             data["vector_field"] = array_to_buffer(data["vector_field"])
-        else:
-            del data["vector_field"]
-
-        if self.tool_call_id is None:
-            del data["tool_call_id"]
 
         return data
 

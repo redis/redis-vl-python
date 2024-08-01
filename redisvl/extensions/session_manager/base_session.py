@@ -5,7 +5,7 @@ from redisvl.utils.utils import create_uuid
 
 
 class BaseSessionManager:
-    id_field_name: str = "_id"
+    id_field_name: str = "entry_id"
     role_field_name: str = "role"
     content_field_name: str = "content"
     tool_field_name: str = "tool_call_id"
