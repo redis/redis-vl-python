@@ -58,11 +58,3 @@ class BaseLLMCache:
     def hash_input(self, prompt: str):
         """Hashes the input using SHA256."""
         return hashify(prompt)
-
-    def serialize(self, metadata: Dict[str, Any]) -> str:
-        """Serlize the input into a string."""
-        return json.dumps(metadata)
-
-    def deserialize(self, metadata: str) -> Dict[str, Any]:
-        """Deserialize the input from a string."""
-        return json.loads(metadata)

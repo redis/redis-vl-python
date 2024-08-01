@@ -1,11 +1,12 @@
 from collections import namedtuple
-from time import sleep
+from time import sleep, time
 
 import pytest
 from redis.exceptions import ConnectionError
 
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.index.index import SearchIndex
+from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
 
 
@@ -89,6 +90,46 @@ def test_store_and_check(cache, vectorizer):
     assert "metadata" not in check_result[0]
 
 
+def test_return_fields(cache, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache.store(prompt, response, vector=vector)
+
+    # check default return fields
+    check_result = cache.check(vector=vector)
+    assert set(check_result[0].keys()) == {
+        "id",
+        "_id",
+        "prompt",
+        "response",
+        "prompt_vector",
+        "vector_distance",
+    }
+
+    # check all return fields
+    fields = [
+        "id",
+        "_id",
+        "prompt",
+        "response",
+        "inserted_at",
+        "updated_at",
+        "prompt_vector",
+        "vector_distance",
+    ]
+    check_result = cache.check(vector=vector, return_fields=fields[:])
+    assert set(check_result[0].keys()) == set(fields)
+
+    # check only some return fields
+    fields = ["inserted_at", "updated_at"]
+    check_result = cache.check(vector=vector, return_fields=fields[:])
+    fields.extend(["id", "vector_distance"])  # id and vector_distance always returned
+    assert set(check_result[0].keys()) == set(fields)
+
+
+# Test clearing the cache
 def test_clear(cache, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
@@ -126,6 +167,65 @@ def test_ttl_refresh(cache_with_ttl, vectorizer):
         check_result = cache_with_ttl.check(vector=vector)
 
     assert len(check_result) == 1
+
+
+# Test manual expiration of single document
+def test_drop_document(cache, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache.store(prompt, response, vector=vector)
+    check_result = cache.check(vector=vector)
+
+    cache.drop(check_result[0]["id"])
+    recheck_result = cache.check(vector=vector)
+    assert len(recheck_result) == 0
+
+
+# Test manual expiration of multiple documents
+def test_drop_documents(cache, vectorizer):
+    prompts = [
+        "This is a test prompt.",
+        "This is also test prompt.",
+        "This is another test prompt.",
+    ]
+    responses = [
+        "This is a test response.",
+        "This is also test response.",
+        "This is a another test response.",
+    ]
+    for prompt, response in zip(prompts, responses):
+        vector = vectorizer.embed(prompt)
+        cache.store(prompt, response, vector=vector)
+
+    check_result = cache.check(vector=vector, num_results=3)
+    keys = [r["id"] for r in check_result[0:2]]  # drop first 2 entries
+    cache.drop(keys)
+
+    recheck_result = cache.check(vector=vector, num_results=3)
+    assert len(recheck_result) == 1
+
+
+# Test updating document fields
+def test_updating_document(cache):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    cache.store(prompt=prompt, response=response)
+
+    check_result = cache.check(prompt=prompt, return_fields=["updated_at"])
+    key = check_result[0]["id"]
+
+    sleep(1)
+
+    metadata = {"foo": "bar"}
+    cache.update(key=key, metadata=metadata)
+
+    updated_result = cache.check(
+        prompt=prompt, return_fields=["updated_at", "metadata"]
+    )
+    assert updated_result[0]["metadata"] == metadata
+    assert updated_result[0]["updated_at"] > check_result[0]["updated_at"]
 
 
 def test_ttl_expiration_after_update(cache_with_ttl, vectorizer):
@@ -279,3 +379,60 @@ def test_vector_size(cache, vectorizer):
 
     with pytest.raises(ValueError):
         cache.check(vector=[1, 2, 3])
+
+
+# test we can pass a list of tags and we'll include all results that match
+def test_multiple_tags(cache):
+    tag_1 = "group 0"
+    tag_2 = "group 1"
+    tag_3 = "group 2"
+    tag_4 = "group 3"
+    tags = [tag_1, tag_2, tag_3, tag_4]
+
+    filter_1 = Tag("label") == tag_1
+    filter_2 = Tag("label") == tag_2
+    filter_3 = Tag("label") == tag_3
+
+    for i in range(4):
+        prompt = f"test prompt {i}"
+        response = f"test response {i}"
+        cache.store(prompt, response, tag=tags[i])
+
+    # test we can specify one specific tag
+    results = cache.check("test prompt 1", tag_filter=filter_1, num_results=5)
+    assert len(results) == 1
+    assert results[0]["prompt"] == "test prompt 0"
+
+    # test we can pass a list of tags
+    combined_filter = filter_1 | filter_2 | filter_3
+    results = cache.check("test prompt 1", tag_filter=combined_filter, num_results=5)
+    assert len(results) == 3
+
+    # test that default tag param searches full cache
+    results = cache.check("test prompt 1", num_results=5)
+    assert len(results) == 4
+
+    # test no results are returned if we pass a nonexistant tag
+    bad_filter = Tag("label") == "bad tag"
+    results = cache.check("test prompt 1", tag_filter=bad_filter, num_results=5)
+    assert len(results) == 0
+
+
+def test_complex_filters(cache):
+    cache.store(prompt="prompt 1", response="response 1")
+    cache.store(prompt="prompt 2", response="response 2")
+    sleep(1)
+    current_timestamp = time()
+    cache.store(prompt="prompt 3", response="response 3")
+
+    # test we can do range filters on inserted_at and updated_at fields
+    range_filter = Num("inserted_at") < current_timestamp
+    results = cache.check("prompt 1", tag_filter=range_filter, num_results=5)
+    assert len(results) == 2
+
+    # test we can combine range filters and text filters
+    prompt_filter = Text("prompt") % "*pt 1"
+    combined_filter = prompt_filter & range_filter
+
+    results = cache.check("prompt 1", tag_filter=combined_filter, num_results=5)
+    assert len(results) == 1

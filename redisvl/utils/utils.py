@@ -54,6 +54,6 @@ def serialize(data: Dict[str, Any]) -> str:
     return json.dumps(data)
 
 
-def deserialize(self, data: str) -> Dict[str, Any]:
+def deserialize(data: str) -> Dict[str, Any]:
     """Deserialize the input from a string."""
     return json.loads(data)
