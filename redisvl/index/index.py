@@ -193,11 +193,6 @@ class BaseSearchIndex:
         hash or json."""
         return self.schema.index.storage_type
 
-    @property
-    def client(self) -> Optional[Union[redis.Redis, aredis.Redis]]:
-        """The underlying redis-py client object."""
-        return self._redis_client
-
     @classmethod
     def from_yaml(cls, schema_path: str, **kwargs):
         """Create a SearchIndex from a YAML schema file.
@@ -363,6 +358,11 @@ class SearchIndex(BaseSearchIndex):
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
         return cls(schema, redis_client, **kwargs)
+
+    @property
+    def client(self) -> Optional[redis.Redis]:
+        """The underlying redis-py client object."""
+        return self._redis_client
 
     def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
@@ -842,6 +842,11 @@ class AsyncSearchIndex(BaseSearchIndex):
         index = cls(schema, **kwargs)
         await index.set_client(redis_client)
         return index
+
+    @property
+    def client(self) -> Optional[aredis.Redis]:
+        """The underlying redis-py client object."""
+        return self._redis_client
 
     async def connect(self, redis_url: Optional[str] = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling

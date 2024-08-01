@@ -1,63 +1,39 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from redis import Redis
 
 from redisvl.extensions.llmcache.base import BaseLLMCache
+from redisvl.extensions.llmcache.schema import (
+    CacheEntry,
+    CacheHit,
+    SemanticCacheIndexSchema,
+)
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
-from redisvl.query.filter import FilterExpression, Tag
-from redisvl.redis.utils import array_to_buffer
-from redisvl.schema import IndexSchema
-from redisvl.utils.utils import current_timestamp, deserialize, serialize
+from redisvl.query.filter import FilterExpression
+from redisvl.utils.utils import current_timestamp, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
-
-
-class SemanticCacheIndexSchema(IndexSchema):
-
-    @classmethod
-    def from_params(cls, name: str, vector_dims: int):
-
-        return cls(
-            index={"name": name, "prefix": name},  # type: ignore
-            fields=[  # type: ignore
-                {"name": "prompt", "type": "text"},
-                {"name": "response", "type": "text"},
-                {"name": "inserted_at", "type": "numeric"},
-                {"name": "updated_at", "type": "numeric"},
-                {"name": "label", "type": "tag"},
-                {
-                    "name": "prompt_vector",
-                    "type": "vector",
-                    "attrs": {
-                        "dims": vector_dims,
-                        "datatype": "float32",
-                        "distance_metric": "cosine",
-                        "algorithm": "flat",
-                    },
-                },
-            ],
-        )
 
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
 
-    entry_id_field_name: str = "_id"
+    redis_key_field_name: str = "key"
+    entry_id_field_name: str = "entry_id"
     prompt_field_name: str = "prompt"
+    response_field_name: str = "response"
     vector_field_name: str = "prompt_vector"
     inserted_at_field_name: str = "inserted_at"
     updated_at_field_name: str = "updated_at"
-    tag_field_name: str = "label"
-    response_field_name: str = "response"
     metadata_field_name: str = "metadata"
 
     def __init__(
         self,
         name: str = "llmcache",
-        prefix: Optional[str] = None,
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
         vectorizer: Optional[BaseVectorizer] = None,
+        filterable_fields: Optional[List[Dict[str, Any]]] = None,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
@@ -68,15 +44,14 @@ class SemanticCache(BaseLLMCache):
         Args:
             name (str, optional): The name of the semantic cache search index.
                 Defaults to "llmcache".
-            prefix (Optional[str], optional): The prefix for Redis keys
-                associated with the semantic cache search index. Defaults to
-                None, and the index name will be used as the key prefix.
             distance_threshold (float, optional): Semantic threshold for the
                 cache. Defaults to 0.1.
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
+            filterable_fields (Optional[List[Dict[str, Any]]]): An optional list of RedisVL fields
+                that can be used to customize cache retrieval with filters.
             redis_client(Optional[Redis], optional): A redis client connection instance.
                 Defaults to None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
@@ -87,12 +62,13 @@ class SemanticCache(BaseLLMCache):
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 1.
-            ValueError: If the index name is not provided
         """
         super().__init__(ttl)
 
         # Use the index name as the key prefix by default
-        if prefix is None:
+        if "prefix" in kwargs:
+            prefix = kwargs["prefix"]
+        else:
             prefix = name
 
         # Set vectorizer default
@@ -101,27 +77,56 @@ class SemanticCache(BaseLLMCache):
                 model="sentence-transformers/all-mpnet-base-v2"
             )
 
-        schema = SemanticCacheIndexSchema.from_params(name, vectorizer.dims)
+        # Process fields
+        self.return_fields = [
+            self.entry_id_field_name,
+            self.prompt_field_name,
+            self.response_field_name,
+            self.inserted_at_field_name,
+            self.updated_at_field_name,
+            self.metadata_field_name,
+        ]
+
+        # Create semantic cache schema and index
+        schema = SemanticCacheIndexSchema.from_params(name, prefix, vectorizer.dims)
+        schema = self._modify_schema(schema, filterable_fields)
+
         self._index = SearchIndex(schema=schema)
 
-        # handle redis connection
+        # Handle redis connection
         if redis_client:
             self._index.set_client(redis_client)
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
-        # initialize other components
-        self.default_return_fields = [
-            self.entry_id_field_name,
-            self.prompt_field_name,
-            self.response_field_name,
-            self.tag_field_name,
-            self.vector_field_name,
-            self.metadata_field_name,
-        ]
-        self.set_vectorizer(vectorizer)
+        # Initialize other components
+        self._set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
         self._index.create(overwrite=False)
+
+    def _modify_schema(
+        self,
+        schema: SemanticCacheIndexSchema,
+        filterable_fields: Optional[List[Dict[str, Any]]] = None,
+    ) -> SemanticCacheIndexSchema:
+        """Modify the base cache schema using the provided filterable fields"""
+
+        if filterable_fields is not None:
+            protected_field_names = set(
+                self.return_fields + [self.redis_key_field_name]
+            )
+            for filter_field in filterable_fields:
+                field_name = filter_field["name"]
+                if field_name in protected_field_names:
+                    raise ValueError(
+                        f"{field_name} is a reserved field name for the semantic cache schema"
+                    )
+                # Add to schema
+                schema.add_field(filter_field)
+                # Add to return fields too
+                self.return_fields.append(field_name)
+
+        return schema
 
     @property
     def index(self) -> SearchIndex:
@@ -157,7 +162,7 @@ class SemanticCache(BaseLLMCache):
             )
         self._distance_threshold = float(distance_threshold)
 
-    def set_vectorizer(self, vectorizer: BaseVectorizer) -> None:
+    def _set_vectorizer(self, vectorizer: BaseVectorizer) -> None:
         """Sets the vectorizer for the LLM cache.
 
         Must be a valid subclass of BaseVectorizer and have equivalent
@@ -175,14 +180,7 @@ class SemanticCache(BaseLLMCache):
             raise TypeError("Must provide a valid redisvl.vectorizer class.")
 
         schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
-
-        if schema_vector_dims != vectorizer.dims:
-            raise ValueError(
-                "Invalid vector dimensions! "
-                f"Vectorizer has dims defined as {vectorizer.dims}",
-                f"Vector field has dims defined as {schema_vector_dims}",
-            )
-
+        validate_vector_dims(vectorizer.dims, schema_vector_dims)
         self._vectorizer = vectorizer
 
     def clear(self) -> None:
@@ -194,13 +192,20 @@ class SemanticCache(BaseLLMCache):
         index."""
         self._index.delete(drop=True)
 
-    def drop(self, document_ids: Union[str, List[str]]) -> None:
-        """Remove a specific entry or entries from the cache by it's ID.
+    def drop(
+        self, ids: Optional[List[str]] = None, keys: Optional[List[str]] = None
+    ) -> None:
+        """Manually expire specific entries from the cache by id or specific
+        Redis key.
 
         Args:
-            document_ids (Union[str, List[str]]): The document ID or IDs to remove from the cache.
+            ids (Optional[str]): The document ID or IDs to remove from the cache.
+            keys (Optional[str]):
         """
-        self._index.drop_keys(document_ids)
+        if ids is not None:
+            self._index.drop_keys([self._index.key(id) for id in ids])
+        if keys is not None:
+            self._index.drop_keys(keys)
 
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
@@ -212,61 +217,14 @@ class SemanticCache(BaseLLMCache):
         configured vectorizer."""
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
+
         return self._vectorizer.embed(prompt)
-
-    def _search_cache(
-        self,
-        vector: List[float],
-        num_results: int,
-        return_fields: Optional[List[str]],
-        tag_filter: Optional[FilterExpression],
-    ) -> List[Dict[str, Any]]:
-        """Searches the semantic cache for similar prompt vectors and returns
-        the specified return fields for each cache hit."""
-        # Setup and type checks
-        if not isinstance(vector, list):
-            raise TypeError("Vector must be a list of floats")
-
-        return_fields = return_fields or self.default_return_fields
-
-        if not isinstance(return_fields, list):
-            raise TypeError("return_fields must be a list of field names")
-
-        # Construct vector RangeQuery for the cache check
-        query = RangeQuery(
-            vector=vector,
-            vector_field_name=self.vector_field_name,
-            return_fields=return_fields,
-            distance_threshold=self._distance_threshold,
-            num_results=num_results,
-            return_score=True,
-        )
-        if tag_filter:
-            query.set_filter(tag_filter)  # type: ignore
-
-        # Gather and return the cache hits
-        cache_hits: List[Dict[str, Any]] = self._index.query(query)
-        # Process cache hits
-        for hit in cache_hits:
-            key = hit["id"]
-            self._refresh_ttl(key)
-            # Check for metadata and deserialize
-            if self.metadata_field_name in hit:
-                hit[self.metadata_field_name] = deserialize(
-                    hit[self.metadata_field_name]
-                )
-        return cache_hits
 
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it
         doesn't match the search index vector dimensions."""
         schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
-        if schema_vector_dims != len(vector):
-            raise ValueError(
-                "Invalid vector dimensions! "
-                f"Vector has dims defined as {len(vector)}",
-                f"Vector field has dims defined as {schema_vector_dims}",
-            )
+        validate_vector_dims(len(vector), schema_vector_dims)
 
     def check(
         self,
@@ -274,7 +232,7 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
-        tag_filter: Optional[FilterExpression] = None,
+        filter_expression: Optional[FilterExpression] = None,
     ) -> List[Dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -294,8 +252,9 @@ class SemanticCache(BaseLLMCache):
             return_fields (Optional[List[str]], optional): The fields to include
                 in each returned result. If None, defaults to all available
                 fields in the cached entry.
-            tag_filter (Optional[FilterExpression]) : the tag filter to filter
-            results by. Default is None and full cache is searched.
+            filter_expression (Optional[FilterExpression]) : Optional filter expression
+                that can be used to filter cache results. Defaults to None and
+                the full cache will be searched.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -315,12 +274,40 @@ class SemanticCache(BaseLLMCache):
         if not (prompt or vector):
             raise ValueError("Either prompt or vector must be specified.")
 
-        # Use provided vector or create from prompt
         vector = vector or self._vectorize_prompt(prompt)
         self._check_vector_dims(vector)
+        return_fields = return_fields or self.return_fields
 
-        # Check for cache hits by searching the cache
-        cache_hits = self._search_cache(vector, num_results, return_fields, tag_filter)
+        if not isinstance(return_fields, list):
+            raise TypeError("return_fields must be a list of field names")
+
+        query = RangeQuery(
+            vector=vector,
+            vector_field_name=self.vector_field_name,
+            return_fields=self.return_fields,
+            distance_threshold=self._distance_threshold,
+            num_results=num_results,
+            return_score=True,
+            filter_expression=filter_expression,
+        )
+
+        cache_hits: List[Dict[Any, str]] = []
+
+        # Search the cache!
+        cache_search_results = self._index.query(query)
+
+        for cache_search_result in cache_search_results:
+            key = cache_search_result["id"]
+            self._refresh_ttl(key)
+
+            # Create cache hit
+            cache_hit = CacheHit(**cache_search_result)
+            cache_hit_dict = {
+                k: v for k, v in cache_hit.to_dict().items() if k in return_fields
+            }
+            cache_hit_dict["key"] = key
+            cache_hits.append(cache_hit_dict)
+
         return cache_hits
 
     def store(
@@ -328,8 +315,8 @@ class SemanticCache(BaseLLMCache):
         prompt: str,
         response: str,
         vector: Optional[List[float]] = None,
-        metadata: Optional[dict] = None,
-        tag: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -339,9 +326,9 @@ class SemanticCache(BaseLLMCache):
             vector (Optional[List[float]], optional): The prompt vector to
                 cache. Defaults to None, and the prompt vector is generated on
                 demand.
-            metadata (Optional[dict], optional): The optional metadata to cache
+            metadata (Optional[Dict[str, Any]], optional): The optional metadata to cache
                 alongside the prompt and response. Defaults to None.
-            tag (Optional[str]): The optional tag to assign to the cache entry.
+            filters (Optional[Dict[str, Any]]): The optional tag to assign to the cache entry.
                 Defaults to None.
 
         Returns:
@@ -362,29 +349,24 @@ class SemanticCache(BaseLLMCache):
         """
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
+
         self._check_vector_dims(vector)
 
-        # Construct semantic cache payload
-        now = current_timestamp()
-        id_field = self.entry_id_field_name
-        payload = {
-            id_field: self.hash_input(prompt),
-            self.prompt_field_name: prompt,
-            self.response_field_name: response,
-            self.vector_field_name: array_to_buffer(vector),
-            self.inserted_at_field_name: now,
-            self.updated_at_field_name: now,
-        }
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise TypeError("If specified, cached metadata must be a dictionary.")
-            # Serialize the metadata dict and add to cache payload
-            payload[self.metadata_field_name] = serialize(metadata)
-        if tag is not None:
-            payload[self.tag_field_name] = tag
+        # Build cache entry for the cache
+        cache_entry = CacheEntry(
+            prompt=prompt,
+            response=response,
+            prompt_vector=vector,
+            metadata=metadata,
+            filters=filters,
+        )
 
-        # Load LLMCache entry with TTL
-        keys = self._index.load(data=[payload], ttl=self._ttl, id_field=id_field)
+        # Load cache entry with TTL
+        keys = self._index.load(
+            data=[cache_entry.to_dict()],
+            ttl=self._ttl,
+            id_field=self.entry_id_field_name,
+        )
         return keys[0]
 
     def update(self, key: str, **kwargs) -> None:
@@ -392,8 +374,7 @@ class SemanticCache(BaseLLMCache):
         are passed, then only the document TTL is refreshed.
 
         Args:
-            key (str): the key of the document to update.
-            kwargs:
+            key (str): the key of the document to update using kwargs.
 
         Raises:
             ValueError if an incorrect mapping is provided as a kwarg.
@@ -404,28 +385,26 @@ class SemanticCache(BaseLLMCache):
             cache.update(key, metadata={"hit_count": 1, "model_name": "Llama-2-7b"})
             )
         """
-        if not kwargs:
-            self._refresh_ttl(key)
-            return
+        if kwargs:
+            for k, v in kwargs.items():
 
-        for _key, val in kwargs.items():
-            if _key not in {
-                self.prompt_field_name,
-                self.vector_field_name,
-                self.response_field_name,
-                self.tag_field_name,
-                self.metadata_field_name,
-            }:
-                raise ValueError(f" {key} is not a valid field within document")
+                # Make sure the item is in the index schema
+                if k not in set(
+                    self._index.schema.field_names + [self.metadata_field_name]
+                ):
+                    raise ValueError(f"{k} is not a valid field within the cache entry")
 
-            # Check for metadata and deserialize
-            if _key == self.metadata_field_name:
-                if isinstance(val, dict):
-                    kwargs[_key] = serialize(val)
-                else:
-                    raise TypeError(
-                        "If specified, cached metadata must be a dictionary."
-                    )
-        kwargs.update({self.updated_at_field_name: current_timestamp()})
-        self._index.client.hset(key, mapping=kwargs)  # type: ignore
+                # Check for metadata and deserialize
+                if k == self.metadata_field_name:
+                    if isinstance(v, dict):
+                        kwargs[k] = serialize(v)
+                    else:
+                        raise TypeError(
+                            "If specified, cached metadata must be a dictionary."
+                        )
+
+            kwargs.update({self.updated_at_field_name: current_timestamp()})
+
+            self._index.client.hset(key, mapping=kwargs)  # type: ignore
+
         self._refresh_ttl(key)

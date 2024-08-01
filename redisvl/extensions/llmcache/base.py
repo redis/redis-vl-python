@@ -1,4 +1,3 @@
-import json
 from typing import Any, Dict, List, Optional
 
 from redisvl.redis.utils import hashify
