@@ -62,7 +62,6 @@ class SemanticCache(BaseLLMCache):
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 1.
-            ValueError: If the index name is not provided
         """
         super().__init__(ttl)
 
