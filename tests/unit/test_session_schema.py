@@ -14,14 +14,14 @@ def test_chat_message_creation():
     content = "Hello, world!"
 
     chat_message = ChatMessage(
-        _id=f"{session_tag}:{timestamp}",
+        entry_id=f"{session_tag}:{timestamp}",
         role="user",
         content=content,
         session_tag=session_tag,
         timestamp=timestamp,
     )
 
-    assert chat_message._id == f"{session_tag}:{timestamp}"
+    assert chat_message.entry_id == f"{session_tag}:{timestamp}"
     assert chat_message.role == "user"
     assert chat_message.content == content
     assert chat_message.session_tag == session_tag
@@ -42,7 +42,7 @@ def test_chat_message_default_id_generation():
         timestamp=timestamp,
     )
 
-    assert chat_message._id == f"{session_tag}:{timestamp}"
+    assert chat_message.entry_id == f"{session_tag}:{timestamp}"
 
 
 def test_chat_message_with_tool_call_id():
@@ -52,7 +52,7 @@ def test_chat_message_with_tool_call_id():
     tool_call_id = create_uuid()
 
     chat_message = ChatMessage(
-        _id=f"{session_tag}:{timestamp}",
+        entry_id=f"{session_tag}:{timestamp}",
         role="user",
         content=content,
         session_tag=session_tag,
@@ -70,7 +70,7 @@ def test_chat_message_with_vector_field():
     vector_field = [0.1, 0.2, 0.3]
 
     chat_message = ChatMessage(
-        _id=f"{session_tag}:{timestamp}",
+        entry_id=f"{session_tag}:{timestamp}",
         role="user",
         content=content,
         session_tag=session_tag,
@@ -88,7 +88,7 @@ def test_chat_message_to_dict():
     vector_field = [0.1, 0.2, 0.3]
 
     chat_message = ChatMessage(
-        _id=f"{session_tag}:{timestamp}",
+        entry_id=f"{session_tag}:{timestamp}",
         role="user",
         content=content,
         session_tag=session_tag,
@@ -98,7 +98,7 @@ def test_chat_message_to_dict():
 
     data = chat_message.to_dict()
 
-    assert data["_id"] == f"{session_tag}:{timestamp}"
+    assert data["entry_id"] == f"{session_tag}:{timestamp}"
     assert data["role"] == "user"
     assert data["content"] == content
     assert data["session_tag"] == session_tag
@@ -126,7 +126,7 @@ def test_chat_message_invalid_role():
 
     with pytest.raises(ValidationError):
         ChatMessage(
-            _id=f"{session_tag}:{timestamp}",
+            entry_id=f"{session_tag}:{timestamp}",
             role=[1, 2, 3],  # Invalid role type
             content=content,
             session_tag=session_tag,
