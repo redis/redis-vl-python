@@ -1,12 +1,14 @@
 from typing import Any, Dict, List, Optional
+
 from pydantic.v1 import BaseModel, Field, root_validator, validator
+
 from redisvl.redis.utils import array_to_buffer, hashify
-from redisvl.utils.utils import current_timestamp, deserialize, serialize
 from redisvl.schema import IndexSchema
+from redisvl.utils.utils import current_timestamp, deserialize, serialize
 
 
 class CacheEntry(BaseModel):
-    entry_id: str
+    entry_id: Optional[str] = Field(default=None)
     prompt: str
     response: str
     prompt_vector: List[float]

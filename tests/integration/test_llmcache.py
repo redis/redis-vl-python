@@ -1,8 +1,8 @@
 from collections import namedtuple
 from time import sleep, time
-from pydantic.v1 import ValidationError
-import pytest
 
+import pytest
+from pydantic.v1 import ValidationError
 from redis.exceptions import ConnectionError
 
 from redisvl.extensions.llmcache import SemanticCache
@@ -24,13 +24,14 @@ def cache(vectorizer, redis_url):
     yield cache_instance
     cache_instance._index.delete(True)  # Clean up index
 
+
 @pytest.fixture
 def cache_with_filters(vectorizer, redis_url):
     cache_instance = SemanticCache(
         vectorizer=vectorizer,
         distance_threshold=0.2,
         filterable_fields=[{"name": "label", "type": "tag"}],
-        redis_url=redis_url
+        redis_url=redis_url,
     )
     yield cache_instance
     cache_instance._index.delete(True)  # Clean up index
@@ -411,13 +412,17 @@ def test_cache_filtering(cache_with_filters):
         cache_with_filters.store(prompt, response, filters={"label": tags[i]})
 
     # test we can specify one specific tag
-    results = cache_with_filters.check("test prompt 1", filter_expression=filter_1, num_results=5)
+    results = cache_with_filters.check(
+        "test prompt 1", filter_expression=filter_1, num_results=5
+    )
     assert len(results) == 1
     assert results[0]["prompt"] == "test prompt 0"
 
     # test we can pass a list of tags
     combined_filter = filter_1 | filter_2 | filter_3
-    results = cache_with_filters.check("test prompt 1", filter_expression=combined_filter, num_results=5)
+    results = cache_with_filters.check(
+        "test prompt 1", filter_expression=combined_filter, num_results=5
+    )
     assert len(results) == 3
 
     # test that default tag param searches full cache
@@ -426,7 +431,9 @@ def test_cache_filtering(cache_with_filters):
 
     # test no results are returned if we pass a nonexistant tag
     bad_filter = Tag("label") == "bad tag"
-    results = cache_with_filters.check("test prompt 1", filter_expression=bad_filter, num_results=5)
+    results = cache_with_filters.check(
+        "test prompt 1", filter_expression=bad_filter, num_results=5
+    )
     assert len(results) == 0
 
 
@@ -436,8 +443,11 @@ def test_cache_bad_filters(vectorizer, redis_url):
             vectorizer=vectorizer,
             distance_threshold=0.2,
             # invalid field type
-            filterable_fields=[{"name": "label", "type": "tag"}, {"name": "test", "type": "nothing"}],
-            redis_url=redis_url
+            filterable_fields=[
+                {"name": "label", "type": "tag"},
+                {"name": "test", "type": "nothing"},
+            ],
+            redis_url=redis_url,
         )
 
     with pytest.raises(ValueError):
@@ -445,8 +455,11 @@ def test_cache_bad_filters(vectorizer, redis_url):
             vectorizer=vectorizer,
             distance_threshold=0.2,
             # duplicate field type
-            filterable_fields=[{"name": "label", "type": "tag"}, {"name": "label", "type": "tag"}],
-            redis_url=redis_url
+            filterable_fields=[
+                {"name": "label", "type": "tag"},
+                {"name": "label", "type": "tag"},
+            ],
+            redis_url=redis_url,
         )
 
     with pytest.raises(ValueError):
@@ -454,8 +467,11 @@ def test_cache_bad_filters(vectorizer, redis_url):
             vectorizer=vectorizer,
             distance_threshold=0.2,
             # reserved field name
-            filterable_fields=[{"name": "label", "type": "tag"}, {"name": "metadata", "type": "tag"}],
-            redis_url=redis_url
+            filterable_fields=[
+                {"name": "label", "type": "tag"},
+                {"name": "metadata", "type": "tag"},
+            ],
+            redis_url=redis_url,
         )
 
 
@@ -468,12 +484,16 @@ def test_complex_filters(cache_with_filters):
 
     # test we can do range filters on inserted_at and updated_at fields
     range_filter = Num("inserted_at") < current_timestamp
-    results = cache_with_filters.check("prompt 1", filter_expression=range_filter, num_results=5)
+    results = cache_with_filters.check(
+        "prompt 1", filter_expression=range_filter, num_results=5
+    )
     assert len(results) == 2
 
     # test we can combine range filters and text filters
     prompt_filter = Text("prompt") % "*pt 1"
     combined_filter = prompt_filter & range_filter
 
-    results = cache_with_filters.check("prompt 1", filter_expression=combined_filter, num_results=5)
+    results = cache_with_filters.check(
+        "prompt 1", filter_expression=combined_filter, num_results=5
+    )
     assert len(results) == 1

@@ -3,7 +3,11 @@ from typing import Any, Dict, List, Optional, Union
 from redis import Redis
 
 from redisvl.extensions.llmcache.base import BaseLLMCache
-from redisvl.extensions.llmcache.schema import CacheEntry, CacheHit, SemanticCacheIndexSchema
+from redisvl.extensions.llmcache.schema import (
+    CacheEntry,
+    CacheHit,
+    SemanticCacheIndexSchema,
+)
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression, Tag
@@ -92,8 +96,13 @@ class SemanticCache(BaseLLMCache):
 
         if filterable_fields is not None:
             for filter_field in filterable_fields:
-                if filter_field["name"] in self.return_fields or filter_field["name"] =="key":
-                    raise ValueError(f'{filter_field["name"]} is a reserved field name for the semantic cache schema')
+                if (
+                    filter_field["name"] in self.return_fields
+                    or filter_field["name"] == "key"
+                ):
+                    raise ValueError(
+                        f'{filter_field["name"]} is a reserved field name for the semantic cache schema'
+                    )
                 schema.add_field(filter_field)
                 # Add to return fields too
                 self.return_fields.append(filter_field["name"])
@@ -285,7 +294,9 @@ class SemanticCache(BaseLLMCache):
 
             # Create cache hit
             cache_hit = CacheHit(**cache_search_result)
-            cache_hit_dict = {k: v for k, v in cache_hit.to_dict().items() if k in return_fields}
+            cache_hit_dict = {
+                k: v for k, v in cache_hit.to_dict().items() if k in return_fields
+            }
             cache_hit_dict["key"] = key
             cache_hits.append(cache_hit_dict)
 
@@ -370,7 +381,9 @@ class SemanticCache(BaseLLMCache):
             for k, v in kwargs.items():
 
                 # Make sure the item is in the index schema
-                if k not in set(self._index.schema.field_names + [self.metadata_field_name]):
+                if k not in set(
+                    self._index.schema.field_names + [self.metadata_field_name]
+                ):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
 
                 # Check for metadata and deserialize
@@ -384,6 +397,6 @@ class SemanticCache(BaseLLMCache):
 
             kwargs.update({self.updated_at_field_name: current_timestamp()})
 
-            self._index.client.hset(key, mapping=kwargs) # type: ignore
+            self._index.client.hset(key, mapping=kwargs)  # type: ignore
 
         self._refresh_ttl(key)
