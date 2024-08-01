@@ -297,6 +297,7 @@ class SemanticCache(BaseLLMCache):
         cache_search_results = self._index.query(query)
 
         for cache_search_result in cache_search_results:
+            print(cache_search_result, flush=True)
             key = cache_search_result["id"]
             self._refresh_ttl(key)
 
@@ -360,10 +361,12 @@ class SemanticCache(BaseLLMCache):
             metadata=metadata,
             filters=filters,
         )
+        cache_entry_dict = cache_entry.to_dict()
+        print(cache_entry_dict, flush=True)
 
         # Load cache entry with TTL
         keys = self._index.load(
-            data=[cache_entry.to_dict()],
+            data=[cache_entry_dict],
             ttl=self._ttl,
             id_field=self.entry_id_field_name,
         )
