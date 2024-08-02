@@ -200,7 +200,7 @@ class SemanticCache(BaseLLMCache):
 
         Args:
             ids (Optional[str]): The document ID or IDs to remove from the cache.
-            keys (Optional[str]):
+            keys (Optional[str]): The Redis keys to remove from the cache.
         """
         if ids is not None:
             self._index.drop_keys([self._index.key(id) for id in ids])
@@ -299,6 +299,8 @@ class SemanticCache(BaseLLMCache):
         for cache_search_result in cache_search_results:
             key = cache_search_result["id"]
             self._refresh_ttl(key)
+
+            print(cache_search_result, flush=True)
 
             # Create cache hit
             cache_hit = CacheHit(**cache_search_result)

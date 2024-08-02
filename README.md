@@ -1,8 +1,12 @@
-<h1 align="center">🔥 Redis Vector Library</h1>
+<div align="center" style="margin-bottom: 20px;">
+    <div><img src="docs/_static/Redis_Logo_Red_RGB.svg" style="width: 200px; margin-bottom: 20px;"></div>
+    <h1>🔥 Vector Library</h1>
+</div>
 
-<div align="center">
-        <span style="font-size: smaller;">the AI-native Redis Python client</span>
-        <br />
+<div align="center" style="margin-top: 20px;">
+    <span style="display: block; margin-bottom: 10px;">the *AI-native* Redis Python client</span>
+    <br />
+
 
 [![Codecov](https://img.shields.io/codecov/c/github/redis/redis-vl-python/dev?label=Codecov&logo=codecov&token=E30WxqBeJJ)](https://codecov.io/gh/redis/redis-vl-python)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -18,7 +22,7 @@
 <div display="inline-block">
     <a href="https://github.com/redis/redis-vl-python"><b>Home</b></a>&nbsp;&nbsp;&nbsp;
     <a href="https://www.redisvl.com"><b>Documentation</b></a>&nbsp;&nbsp;&nbsp;
-    <a href="https://github.com/redis-developer"><b>More Projects</b></a>&nbsp;&nbsp;&nbsp;
+    <a href="https://github.com/redis-developer/redis-ai-resources"><b>Recipes</b></a>&nbsp;&nbsp;&nbsp;
   </div>
     <br />
 </div>
@@ -26,25 +30,25 @@
 
 # Introduction
 
-The Python Redis Vector Library (RedisVL) is a tailor-made client for AI applications leveraging [Redis](https://redis.com).
+Welcome to the Redis Vector Library – the ultimate Python client designed for AI applications harnessing the power of [Redis](https://redis.io).
 
-It's specifically designed for:
+`redisvl` is your go-to tool for:
 
-- Information retrieval & vector similarity search
+- Lightning-fast information retrieval & vector similarity search
 - Real-time RAG pipelines
-- Recommendation engines
+- Agentic memory structures
+- Smart recommendation engines
 
-Enhance your applications with Redis' **speed**, **flexibility**, and **reliability**, incorporating capabilities like vector-based semantic search, full-text search, and geo-spatial search.
+## 🚀 Why RedisVL?
 
-# 🚀 Why RedisVL?
+In the age of GenAI, **vector databases** and **LLMs** are transforming information retrieval systems. With emerging and popular frameworks like [LangChain](https://github.com/langchain-ai/langchain) and [LlamaIndex](https://www.llamaindex.ai/), innovation is soaring. Yet, many organizations face the challenge of delivering AI solutions **quickly** and at **scale**.
 
-The emergence of the modern GenAI stack, including **vector databases** and **LLMs**, has become increasingly popular due to accelerated innovation & research in information retrieval, the ubiquity of tools & frameworks (e.g. [LangChain](https://github.com/langchain-ai/langchain), [LlamaIndex](https://www.llamaindex.ai/), [EmbedChain](https://github.com/embedchain/embedchain)), and the never-ending stream of business problems addressable by AI.
+Enter [Redis](https://redis.io) – a cornerstone of the NoSQL world, renowned for its versatile [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/). Redis excels in real-time workloads like caching, session management, and search. It's also a powerhouse as a vector database for RAG, an LLM cache, and a chat session memory store for conversational AI.
 
-However, organizations still struggle with delivering reliable solutions **quickly** (*time to value*) at **scale** (*beyond a demo*).
+The Redis Vector Library bridges the gap between the AI-native developer ecosystem and Redis's robust capabilities. With a lightweight, elegant, and intuitive interface, RedisVL makes it easy to leverage Redis's power. Built on the [Redis Python](https://github.com/redis/redis-py/tree/master) client, `redisvl` transforms Redis's features into a grammar perfectly aligned with the needs of today's AI/ML Engineers and Data Scientists.
 
-[Redis](https://redis.io) has been a staple for over a decade in the NoSQL world, and boasts a number of flexible [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/) to handle realtime application workloads like caching, session management, and search. Most notably, Redis has been used as a vector database for RAG, as an LLM cache, and chat session memory store for conversational AI applications.
+Unleash the full potential of Redis for your AI projects with `redisvl`.
 
-The vector library **bridges the gap between** the emerging AI-native developer ecosystem and the capabilities of Redis by providing a lightweight, elegant, and intuitive interface. Built on the back of the popular Python client, [`redis-py`](https://github.com/redis/redis-py/tree/master), it abstracts the features Redis into a grammar that is more aligned to the needs of today's AI/ML Engineers or Data Scientists.
 
 # 💪 Getting Started
 
@@ -55,31 +59,29 @@ Install `redisvl` into your Python (>=3.8) environment using `pip`:
 ```bash
 pip install redisvl
 ```
-> For more instructions, visit the `redisvl` [installation guide](https://www.redisvl.com/overview/installation.html).
+> For more detailed instructions, visit the [installation guide](https://www.redisvl.com/overview/installation.html).
 
 ## Setting up Redis
 
 Choose from multiple Redis deployment options:
 
 
-1. [Redis Cloud](https://redis.com/try-free): Managed cloud database (free tier available)
+1. [Redis Cloud](https://redis.io/try-free): Managed cloud database (free tier available)
 2. [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/): Docker image for development
     ```bash
     docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
     ```
-3. [Redis Enterprise](https://redis.com/redis-enterprise/): Commercial, self-hosted database
+3. [Redis Enterprise](https://redis.io/enterprise/): Commercial, self-hosted database
 4. [Azure Cache for Redis Enterprise](https://learn.microsoft.com/azure/azure-cache-for-redis/quickstart-create-redis-enterprise): Fully managed Redis Enterprise on Azure
 
 > Enhance your experience and observability with the free [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/).
 
 
-## What's included?
+# Overview
 
 
-### 🗃️ Redis Index Management
-1. [Design an `IndexSchema`](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis [data structures](https://www.redisvl.com/user_guide/hash_vs_json_05.html) (*Hash or JSON*) and indexable fields (*e.g. text, tags, numerics, geo, and vectors*).
-
-    [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a [YAML file](schemas/schema.yaml):
+## 🗃️ Redis Index Management
+1. [Design a schema for your use case](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis  and indexable fields (*e.g. text, tags, numerics, geo, and vectors*). [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a YAML file:
     ```yaml
     index:
         name: user-index-v1
@@ -155,7 +157,7 @@ and [fetch](https://www.redisvl.com/user_guide/getting_started_01.html#fetch-an-
     john = index.fetch("john")
     ```
 
-### 🔍 Realtime Search
+## 🔍 Retrieval
 
 Define queries and perform advanced searches over your indices, including the combination of vectors, metadata filters, and more.
 
@@ -191,32 +193,20 @@ Define queries and perform advanced searches over your indices, including the co
 - [FilterQuery](https://www.redisvl.com/api/query.html#filterquery) - Standard search using filters and the full-text search
 - [CountQuery](https://www.redisvl.com/api/query.html#countquery) - Count the number of indexed records given attributes
 
-> Read more about building advanced Redis queries [here](https://www.redisvl.com/user_guide/hybrid_queries_02.html).
+> Read more about building [advanced Redis queries](https://www.redisvl.com/user_guide/hybrid_queries_02.html).
 
 
-### 🖥️ Command Line Interface
-Create, destroy, and manage Redis index configurations from a purpose-built CLI interface: `rvl`.
+## 🔧  Utilities
 
-```bash
-$ rvl -h
-
-usage: rvl <command> [<args>]
-
-Commands:
-        index       Index manipulation (create, delete, etc.)
-        version     Obtain the version of RedisVL
-        stats       Obtain statistics about an index
-```
-
-> Read more about using the `redisvl` CLI [here](https://www.redisvl.com/user_guide/cli.html).
-
-### ⚡  Community Integrations
-Integrate with popular embedding models and providers to greatly simplify the process of vectorizing unstructured data for your index and queries:
-- [Cohere](https://www.redisvl.com/api/vectorizer/html#coheretextvectorizer)
+### Vectorizers
+Integrate with popular embedding providers to greatly simplify the process of vectorizing unstructured data for your index and queries:
+- [AzureOpenAI](https://www.redisvl.com/api/vectorizer.html#azureopenaitextvectorizer)
+- [Cohere](https://www.redisvl.com/api/vectorizer.html#coheretextvectorizer)
+- [Custom](https://www.redisvl.com/api/vectorizer.html#customtextvectorizer)
+- [GCP VertexAI](https://www.redisvl.com/api/vectorizer.html#vertexaitextvectorizer)
+- [HuggingFace](https://www.redisvl.com/api/vectorizer.html#hftextvectorizer)
 - [Mistral](https://www.redisvl.com/api/vectorizer/html#mistralaitextvectorizer)
 - [OpenAI](https://www.redisvl.com/api/vectorizer.html#openaitextvectorizer)
-- [HuggingFace](https://www.redisvl.com/api/vectorizer.html#hftextvectorizer)
-- [GCP VertexAI](https://www.redisvl.com/api/vectorizer.html#vertexaitextvectorizer)
 
 ```python
 from redisvl.utils.vectorize import CohereTextVectorizer
@@ -235,53 +225,144 @@ embeddings = co.embed_many(
 )
 ```
 
-> Learn more about using `redisvl` Vectorizers in your workflows [here](https://www.redisvl.com/user_guide/vectorizers_04.html).
+> Learn more about using [vectorizers]((https://www.redisvl.com/user_guide/vectorizers_04.html)) in your embedding workflows.
 
-### 💫 Beyond Vector Search
-In order to perform well in production, modern GenAI applications require much more than vector search for retrieval. `redisvl` provides some common extensions that
-aim to improve applications working with LLMs:
 
-- **LLM Semantic Caching** is designed to increase application throughput and reduce the cost of using LLM models in production by leveraging previously generated knowledge.
+### Rerankers
+[Integrate with popular reranking providers](https://www.redisvl.com/user_guide/rerankers_06.html) to improve the relevancy of the initial search results from Redis
 
-    ```python
-    from redisvl.extensions.llmcache import SemanticCache
 
-    # init cache with TTL (expiration) policy and semantic distance threshhold
-    llmcache = SemanticCache(
-        name="llmcache",
-        ttl=360,
-        redis_url="redis://localhost:6379"
+
+## 💫 Extensions
+We're excited to announce the support for **RedisVL Extensions**. These modules implement interfaces exposing best practices and design patterns for working with LLM memory and agents. We've taken the best from what we've learned from our users (that's you) as well as bleeding-edge customers, and packaged it up.
+
+*Have an idea for another extension? Open a PR or reach out to us at applied.ai@redis.com. We're always open to feedback.*
+
+### LLM Semantic Caching
+Increase application throughput and reduce the cost of using LLM models in production by leveraging previously generated knowledge with the [`SemanticCache`](https://www.redisvl.com/api/cache.html#semanticcache).
+
+```python
+from redisvl.extensions.llmcache import SemanticCache
+
+# init cache with TTL and semantic distance threshold
+llmcache = SemanticCache(
+    name="llmcache",
+    ttl=360,
+    redis_url="redis://localhost:6379",
+    distance_threshold=0.1
+)
+
+# store user queries and LLM responses in the semantic cache
+llmcache.store(
+    prompt="What is the capital city of France?",
+    response="Paris",
+    metadata={}
+)
+
+# quickly check the cache with a slightly different prompt (before invoking an LLM)
+response = llmcache.check(prompt="What is France's capital city?")
+print(response[0]["response"])
+```
+```stdout
+>>> "Paris"
+```
+
+> Learn more about [semantic caching]((https://www.redisvl.com/user_guide/llmcache_03.html)) for LLMs.
+
+### LLM Session Management
+
+Improve personalization and accuracy of LLM responses by providing user chat history as context. Manage access to the session data using recency or relevancy, *powered by vector search* with the [`SemanticSessionManager`]().
+
+```python
+from redisvl.extensions.session_manager import SemanticSessionManager
+
+session = SemanticSessionManager(
+    name="my-session",
+    redis_url="redis://localhost:6379"
+)
+
+session.add_messages([
+    {"role": "user", "content": "hello, how are you?"},
+    {"role": "assistant", "content": "I'm doing fine, thanks."},
+    {"role": "user", "content": "what is the weather going to be today?"},
+    {"role": "assistant", "content": "I don't know"}
+])
+```
+Get recent chat history:
+```python
+session.get_recent(top_k=1)
+```
+```stdout
+>>> {"role": "assistant", "content": "I don't know"}
+```
+Get relevant chat history (powered by vector search):
+```python
+session.get_relevant("weather", top_k=1)
+```
+```stdout
+>>> {"role": "user", "content": "what is the weather going to be today?"}
+```
+> Learn more about [LLM session management]((https://www.redisvl.com/user_guide/session_manager_07.html)).
+
+
+### LLM Semantic Routing
+Build fast decision models that run directly in Redis and route user queries to the nearest "route" or "topic".
+
+```python
+routes = [
+    Route(
+        name="greeting",
+        references=["hello", "hi"],
+        metadata={"type": "greeting"},
+        distance_threshold=0.3,
     )
-    llmcache.set_threshold(0.2) # can be changed on-demand
+    Route(
+        name="farewell",
+        references=["bye", "goodbye"],
+        metadata={"type": "farewell"},
+        distance_threshold=0.3,
+    ),
+]
 
-    # store user queries and LLM responses in the semantic cache
-    llmcache.store(
-        prompt="What is the capital city of France?",
-        response="Paris",
-        metadata={}
-    )
-
-    # quickly check the cache with a slightly different prompt (before invoking an LLM)
-    response = llmcache.check(prompt="What is France's capital city?")
-    print(response[0]["response"])
-    ```
-    ```stdout
-    >>> "Paris"
-    ```
-
-    > Learn more about Semantic Caching [here](https://www.redisvl.com/user_guide/llmcache_03.html).
-
-- **LLM Session Management (COMING SOON)** aims to improve personalization and accuracy of the LLM application by providing user chat session information and conversational memory.
-- **LLM Contextual Access Control (COMING SOON)** aims to improve security concerns by preventing malicious, irrelevant, or problematic user input from reaching LLMs and infrastructure.
+# build semantic router from routes
+router = SemanticRouter(
+    name="topic-router",
+    routes=routes,
+    redis_url="redis://localhost:6379",
+)
 
 
-## Helpful Links
+router("Hi, good morning")
+```
+```stdout
+>>> RouteMatch(name='greeting', distance=0.09384023)
+```
+> Learn more about [semantic routing](https://www.redisvl.com/user_guide/semantic_router_08.html).
 
-To get started, check out the following guides:
+## 🖥️ Command Line Interface
+Create, destroy, and manage Redis index configurations from a purpose-built CLI interface: `rvl`.
+
+```bash
+$ rvl -h
+
+usage: rvl <command> [<args>]
+
+Commands:
+        index       Index manipulation (create, delete, etc.)
+        version     Obtain the version of RedisVL
+        stats       Obtain statistics about an index
+```
+
+> Read more about using the [CLI](https://www.redisvl.com/user_guide/cli.html).
+
+## 😁 Helpful Links
+
+For additional help, check out the following resources:
  - [Getting Started Guide](https://www.redisvl.com/user_guide/getting_started_01.html)
  - [API Reference](https://www.redisvl.com/api/index.html)
  - [Example Gallery](https://www.redisvl.com/examples/index.html)
- - [Official Redis Vector Search Docs](https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/)
+ - [Redis AI Recipes](https://github.com/redis-developer/redis-ai-resources)
+ - [Official Redis Vector API Docs](https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/)
 
 
 ## 🫱🏼‍🫲🏽 Contributing
