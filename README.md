@@ -59,7 +59,7 @@ Install `redisvl` into your Python (>=3.8) environment using `pip`:
 ```bash
 pip install redisvl
 ```
-> For more instructions, visit the `redisvl` [installation guide](https://www.redisvl.com/overview/installation.html).
+> For more detailed instructions, visit the [installation guide](https://www.redisvl.com/overview/installation.html).
 
 ## Setting up Redis
 
@@ -81,9 +81,7 @@ Choose from multiple Redis deployment options:
 
 
 ## 🗃️ Redis Index Management
-1. [Design an `IndexSchema`](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis [data structures](https://www.redisvl.com/user_guide/hash_vs_json_05.html) (*Hash or JSON*) and indexable fields (*e.g. text, tags, numerics, geo, and vectors*).
-
-    [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a YAML file:
+1. [Design a schema for your use case](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis  and indexable fields (*e.g. text, tags, numerics, geo, and vectors*). [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a YAML file:
     ```yaml
     index:
         name: user-index-v1
@@ -159,7 +157,7 @@ and [fetch](https://www.redisvl.com/user_guide/getting_started_01.html#fetch-an-
     john = index.fetch("john")
     ```
 
-## 🔍 Realtime Search
+## 🔍 Retrieval
 
 Define queries and perform advanced searches over your indices, including the combination of vectors, metadata filters, and more.
 
@@ -198,22 +196,6 @@ Define queries and perform advanced searches over your indices, including the co
 > Read more about building [advanced Redis queries](https://www.redisvl.com/user_guide/hybrid_queries_02.html).
 
 
-## 🖥️ Command Line Interface
-Create, destroy, and manage Redis index configurations from a purpose-built CLI interface: `rvl`.
-
-```bash
-$ rvl -h
-
-usage: rvl <command> [<args>]
-
-Commands:
-        index       Index manipulation (create, delete, etc.)
-        version     Obtain the version of RedisVL
-        stats       Obtain statistics about an index
-```
-
-> Read more about using the `redisvl` [CLI](https://www.redisvl.com/user_guide/cli.html).
-
 ## 🔧  Utilities
 
 ### Vectorizers
@@ -243,16 +225,18 @@ embeddings = co.embed_many(
 )
 ```
 
-> Learn more about using `redisvl` [vectorizers]((https://www.redisvl.com/user_guide/vectorizers_04.html)) in your embedding workflows.
+> Learn more about using [vectorizers]((https://www.redisvl.com/user_guide/vectorizers_04.html)) in your embedding workflows.
 
 
 ### Rerankers
-Integrate with popular reranking providers to improve the relevancy of the initial search results from Redis:
+[Integrate with popular reranking providers](https://www.redisvl.com/user_guide/rerankers_06.html) to improve the relevancy of the initial search results from Redis
 
 
 
 ## 💫 Extensions
-To improve production performance in GenAI applications, `redisvl` provides some common extensions:
+We're excited to announce the support for **RedisVL Extensions**. These modules implement interfaces exposing best practices and design patterns for working with LLM memory and agents. We've taken the best from what we've learned from our users (that's you) as well as bleeding-edge customers, and packaged it up.
+
+*Have an idea for another extension? Open a PR or reach out to us at applied.ai@redis.com. We're always open to feedback.*
 
 ### LLM Semantic Caching
 Increase application throughput and reduce the cost of using LLM models in production by leveraging previously generated knowledge with the [`SemanticCache`](https://www.redisvl.com/api/cache.html#semanticcache).
@@ -283,7 +267,7 @@ print(response[0]["response"])
 >>> "Paris"
 ```
 
-> Learn more about [semantic caching]((https://www.redisvl.com/user_guide/llmcache_03.html)) for LLMs with `redisvl`.
+> Learn more about [semantic caching]((https://www.redisvl.com/user_guide/llmcache_03.html)) for LLMs.
 
 ### LLM Session Management
 
@@ -304,19 +288,21 @@ session.add_messages([
     {"role": "assistant", "content": "I don't know"}
 ])
 ```
+Get recent chat history:
 ```python
 session.get_recent(top_k=1)
 ```
 ```stdout
 >>> {"role": "assistant", "content": "I don't know"}
 ```
+Get relevant chat history (powered by vector search):
 ```python
 session.get_relevant("weather", top_k=1)
 ```
 ```stdout
 >>> {"role": "user", "content": "what is the weather going to be today?"}
 ```
-> Learn more about [LLM session management]((https://www.redisvl.com/user_guide/session_manager_07.html)) with `redisvl`.
+> Learn more about [LLM session management]((https://www.redisvl.com/user_guide/session_manager_07.html)).
 
 
 ### LLM Semantic Routing
@@ -351,7 +337,23 @@ router("Hi, good morning")
 ```stdout
 >>> RouteMatch(name='greeting', distance=0.09384023)
 ```
-> Learn more about [semantic routing](https://www.redisvl.com/user_guide/semantic_router_08.html) in `redisvl`.
+> Learn more about [semantic routing](https://www.redisvl.com/user_guide/semantic_router_08.html).
+
+## 🖥️ Command Line Interface
+Create, destroy, and manage Redis index configurations from a purpose-built CLI interface: `rvl`.
+
+```bash
+$ rvl -h
+
+usage: rvl <command> [<args>]
+
+Commands:
+        index       Index manipulation (create, delete, etc.)
+        version     Obtain the version of RedisVL
+        stats       Obtain statistics about an index
+```
+
+> Read more about using the [CLI](https://www.redisvl.com/user_guide/cli.html).
 
 ## 😁 Helpful Links
 
