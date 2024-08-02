@@ -1,0 +1,1611 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="../_static/favicon-32x32.png" sizes="32x32" rel="icon" type="image/png">
+    <link href="../_static/favicon-16x16.png" sizes="16x16" rel="icon" type="image/png">
+    <link rel="shortcut icon" sizes="any" href="../_static/favicon.ico" type="image/x-icon">
+    <link href="../_static/android-chrome-192x192.png" sizes="192x192" rel="icon" type="image/png">
+    <link rel="apple-touch-icon" href="../_static/apple-touch-icon.png" sizes="180x180" type="image/png">
+    <title>Search Index Classes &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css?v=be8a1c11" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../_static/documentation_options.js?v=a58bc63e"></script>
+    <script src="../_static/doctools.js?v=888ff710"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/searchindex';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.1.1';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../_static/js/sidebar.js?v=3e4ef29d"></script>
+    <link rel="icon" href="../_static/redis-cube-red-white-rgb.svg"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Query" href="query.html" />
+    <link rel="prev" title="Schema" href="schema.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">RedisVL API</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Search Index Classes</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="search-index-classes">
+<h1>Search Index Classes<a class="headerlink" href="#search-index-classes" title="Link to this heading">#</a></h1>
+<table class="table">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 75.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Class</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>SearchIndex</p></td>
+<td><p>Primary class to write, read, and search across data structures in Redis.</p></td>
+</tr>
+<tr class="row-odd"><td><p>AsyncSearchIndex</p></td>
+<td><p>Async version of the SearchIndex to write, read, and search across data structures in Redis.</p></td>
+</tr>
+</tbody>
+</table>
+<section id="id1">
+<h2>SearchIndex<a class="headerlink" href="#id1" title="Link to this heading">#</a></h2>
+<dl class="py class" id="searchindex-api">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SearchIndex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redis_client</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redis_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex" title="Link to this definition">#</a></dt>
+<dd><p>A search index class for interacting with Redis as a vector database.</p>
+<p>The SearchIndex is instantiated with a reference to a Redis database and an
+IndexSchema (YAML path or dictionary object) that describes the various
+settings and field configurations.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="c1"># initialize the index object with schema from file</span>
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;schemas/schema.yaml&quot;</span><span class="p">)</span>
+<span class="n">index</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+
+<span class="c1"># create the index</span>
+<span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># data is an iterable of dictionaries</span>
+<span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="c1"># delete index and data</span>
+<span class="n">index</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Initialize the RedisVL search index with a schema, Redis client
+(or URL string with other connection args), connection_args, and other
+kwargs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema</strong> (<a class="reference internal" href="schema.html#redisvl.schema.IndexSchema" title="redisvl.schema.IndexSchema"><em>IndexSchema</em></a>) – Index schema object.</p></li>
+<li><p><strong>redis_client</strong> (<em>Union</em><em>[</em><em>redis.Redis</em><em>, </em><em>aredis.Redis</em><em>]</em><em>, </em><em>optional</em>) – An
+instantiated redis client.</p></li>
+<li><p><strong>redis_url</strong> (<em>str</em><em>, </em><em>optional</em>) – The URL of the Redis server to
+connect to.</p></li>
+<li><p><strong>connection_args</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>, </em><em>optional</em>) – Redis client connection
+args.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.connect">
+<span class="sig-name descname"><span class="pre">connect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">redis_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.connect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.connect" title="Link to this definition">#</a></dt>
+<dd><p>Connect to a Redis instance using the provided <cite>redis_url</cite>, falling
+back to the <cite>REDIS_URL</cite> environment variable (if available).</p>
+<p>Note: Additional keyword arguments (<cite>**kwargs</cite>) can be used to provide
+extra options specific to the Redis connection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>redis_url</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – The URL of the Redis server to
+connect to. If not provided, the method defaults to using the
+<cite>REDIS_URL</cite> environment variable.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>redis.exceptions.ConnectionError</strong> – If the connection to the Redis
+    server fails.</p></li>
+<li><p><strong>ValueError</strong> – If the Redis URL is not provided nor accessible
+    through the <cite>REDIS_URL</cite> environment variable.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">index</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.create">
+<span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.create"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.create" title="Link to this definition">#</a></dt>
+<dd><p>Create an index in Redis with the current schema and properties.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>overwrite</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to overwrite the index if it
+already exists. Defaults to False.</p></li>
+<li><p><strong>drop</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to drop all keys associated with the
+index in the case of overwriting. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>RuntimeError</strong> – If the index already exists and ‘overwrite’ is False.</p></li>
+<li><p><strong>ValueError</strong> – If no fields are defined for the index.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># create an index in Redis; only if one does not exist with given name</span>
+<span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">()</span>
+
+<span class="c1"># overwrite an index in Redis without dropping associated data</span>
+<span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># overwrite an index in Redis; drop associated data (clean slate)</span>
+<span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.delete">
+<span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">drop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.delete"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.delete" title="Link to this definition">#</a></dt>
+<dd><p>Delete the search index while optionally dropping all keys associated
+with the index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>drop</strong> (<em>bool</em><em>, </em><em>optional</em>) – Delete the key / documents pairs in the
+index. Defaults to True.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>redis.exceptions.ResponseError</strong> – If the index does not exist.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.disconnect">
+<span class="sig-name descname"><span class="pre">disconnect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.SearchIndex.disconnect" title="Link to this definition">#</a></dt>
+<dd><p>Disconnect from the Redis database.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.exists">
+<span class="sig-name descname"><span class="pre">exists</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.exists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.exists" title="Link to this definition">#</a></dt>
+<dd><p>Check if the index exists in Redis.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True if the index exists, False otherwise.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.fetch">
+<span class="sig-name descname"><span class="pre">fetch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.fetch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.fetch" title="Link to this definition">#</a></dt>
+<dd><p>Fetch an object from Redis by id.</p>
+<p>The id is typically either a unique identifier,
+or derived from some domain-specific metadata combination
+(like a document id or chunk id).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>id</strong> (<em>str</em>) – The specified unique identifier for a particular
+document indexed in Redis.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fetched object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[str, Any]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema_dict</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.SearchIndex.from_dict" title="Link to this definition">#</a></dt>
+<dd><p>Create a SearchIndex from a dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – A dictionary containing the schema.</p></li>
+<li><p><strong>connection_args</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>, </em><em>optional</em>) – Redis client connection
+args.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A RedisVL SearchIndex object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#redisvl.index.SearchIndex" title="redisvl.index.SearchIndex">SearchIndex</a></p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_dict</span><span class="p">({</span>
+    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;my-index&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;prefix&quot;</span><span class="p">:</span> <span class="s2">&quot;rvl&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;storage_type&quot;</span><span class="p">:</span> <span class="s2">&quot;hash&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;doc-id&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;tag&quot;</span><span class="p">}</span>
+    <span class="p">]</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.from_yaml">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_yaml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema_path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.SearchIndex.from_yaml" title="Link to this definition">#</a></dt>
+<dd><p>Create a SearchIndex from a YAML schema file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>schema_path</strong> (<em>str</em>) – Path to the YAML schema file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A RedisVL SearchIndex object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#redisvl.index.SearchIndex" title="redisvl.index.SearchIndex">SearchIndex</a></p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;schemas/schema.yaml&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.info">
+<span class="sig-name descname"><span class="pre">info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.info" title="Link to this definition">#</a></dt>
+<dd><p>Get information about the index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A dictionary containing the information about the index.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.key">
+<span class="sig-name descname"><span class="pre">key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.SearchIndex.key" title="Link to this definition">#</a></dt>
+<dd><p>Construct a redis key as a combination of an index key prefix (optional)
+and specified id.</p>
+<p>The id is typically either a unique identifier, or
+derived from some domain-specific metadata combination (like a document
+id or chunk id).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>id</strong> (<em>str</em>) – The specified unique identifier for a particular
+document indexed in Redis.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The full Redis key including key prefix and value as a string.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.listall">
+<span class="sig-name descname"><span class="pre">listall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.listall"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.listall" title="Link to this definition">#</a></dt>
+<dd><p>List all search indices in Redis database.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The list of indices in the database.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keys</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ttl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preprocess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.load" title="Link to this definition">#</a></dt>
+<dd><p>Load objects to the Redis database. Returns the list of keys loaded
+to Redis.</p>
+<p>RedisVL automatically handles constructing the object keys, batching,
+optional preprocessing steps, and setting optional expiration
+(TTL policies) on keys.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>Iterable</em><em>[</em><em>Any</em><em>]</em>) – An iterable of objects to store.</p></li>
+<li><p><strong>id_field</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – Specified field used as the id
+portion of the redis key (after the prefix) for each
+object. Defaults to None.</p></li>
+<li><p><strong>keys</strong> (<em>Optional</em><em>[</em><em>Iterable</em><em>[</em><em>str</em><em>]</em><em>]</em><em>, </em><em>optional</em>) – Optional iterable of keys.
+Must match the length of objects if provided. Defaults to None.</p></li>
+<li><p><strong>ttl</strong> (<em>Optional</em><em>[</em><em>int</em><em>]</em><em>, </em><em>optional</em>) – Time-to-live in seconds for each key.
+Defaults to None.</p></li>
+<li><p><strong>preprocess</strong> (<em>Optional</em><em>[</em><em>Callable</em><em>]</em><em>, </em><em>optional</em>) – A function to preprocess
+objects before storage. Defaults to None.</p></li>
+<li><p><strong>batch_size</strong> (<em>Optional</em><em>[</em><em>int</em><em>]</em><em>, </em><em>optional</em>) – Number of objects to write in
+a single Redis pipeline execution. Defaults to class’s
+default batch size.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of keys loaded to Redis.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the length of provided keys does not match the length
+    of objects.</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;test&quot;</span><span class="p">:</span> <span class="s2">&quot;foo&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;test&quot;</span><span class="p">:</span> <span class="s2">&quot;bar&quot;</span><span class="p">}]</span>
+
+<span class="c1"># simple case</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="c1"># set 360 second ttl policy on data</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">360</span><span class="p">)</span>
+
+<span class="c1"># load data with predefined keys</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">keys</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;rvl:foo&quot;</span><span class="p">,</span> <span class="s2">&quot;rvl:bar&quot;</span><span class="p">])</span>
+
+<span class="c1"># load data with preprocessing step</span>
+<span class="k">def</span> <span class="nf">add_field</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+    <span class="n">d</span><span class="p">[</span><span class="s2">&quot;new_field&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">123</span>
+    <span class="k">return</span> <span class="n">d</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">preprocess</span><span class="o">=</span><span class="n">add_field</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.paginate">
+<span class="sig-name descname"><span class="pre">paginate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.paginate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.paginate" title="Link to this definition">#</a></dt>
+<dd><p>Execute a given query against the index and return results in
+paginated batches.</p>
+<p>This method accepts a RedisVL query instance, enabling pagination of
+results which allows for subsequent processing over each batch with a
+generator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> (<em>BaseQuery</em>) – The search query to be executed.</p></li>
+<li><p><strong>page_size</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of results to return in each
+batch. Defaults to 30.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p>A generator yielding batches of search results.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>TypeError</strong> – If the page_size argument is not of type int.</p></li>
+<li><p><strong>ValueError</strong> – If the page_size argument is less than or equal to zero.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Generator</em></p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Iterate over paginated search results in batches of 10</span>
+<span class="k">for</span> <span class="n">result_batch</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">paginate</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">page_size</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="c1"># Process each batch of results</span>
+    <span class="k">pass</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The page_size parameter controls the number of items each result
+batch contains. Adjust this value based on performance
+considerations and the expected volume of search results.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.query">
+<span class="sig-name descname"><span class="pre">query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.query"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.query" title="Link to this definition">#</a></dt>
+<dd><p>Execute a query on the index.</p>
+<p>This method takes a BaseQuery object directly, runs the search, and
+handles post-processing of the search.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>query</strong> (<em>BaseQuery</em>) – The query to run.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of search results.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[Result]</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.query</span> <span class="kn">import</span> <span class="n">VectorQuery</span>
+
+<span class="n">query</span> <span class="o">=</span> <span class="n">VectorQuery</span><span class="p">(</span>
+    <span class="n">vector</span><span class="o">=</span><span class="p">[</span><span class="mf">0.16</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.34</span><span class="p">,</span> <span class="mf">0.98</span><span class="p">,</span> <span class="mf">0.23</span><span class="p">],</span>
+    <span class="n">vector_field_name</span><span class="o">=</span><span class="s2">&quot;embedding&quot;</span><span class="p">,</span>
+    <span class="n">num_results</span><span class="o">=</span><span class="mi">3</span>
+<span class="p">)</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.search">
+<span class="sig-name descname"><span class="pre">search</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.search"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.search" title="Link to this definition">#</a></dt>
+<dd><p>Perform a search against the index.</p>
+<p>Wrapper around redis.search.Search that adds the index name
+to the search query and passes along the rest of the arguments
+to the redis-py ft.search() method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Raw Redis search results.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.set_client">
+<span class="sig-name descname"><span class="pre">set_client</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#SearchIndex.set_client"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.SearchIndex.set_client" title="Link to this definition">#</a></dt>
+<dd><p>Manually set the Redis client to use with the search index.</p>
+<p>This method configures the search index to use a specific Redis or
+Async Redis client. It is useful for cases where an external,
+custom-configured client is preferred instead of creating a new one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>client</strong> (<em>redis.Redis</em>) – A Redis or Async Redis
+client instance to be used for the connection.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the provided client is not valid.</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">redis</span>
+<span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">Redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;schemas/schema.yaml&quot;</span><span class="p">)</span>
+<span class="n">index</span><span class="o">.</span><span class="n">set_client</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.client">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">client</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Redis</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Redis</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#redisvl.index.SearchIndex.client" title="Link to this definition">#</a></dt>
+<dd><p>The underlying redis-py client object.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.key_separator">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">key_separator</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.index.SearchIndex.key_separator" title="Link to this definition">#</a></dt>
+<dd><p>The optional separator between a defined prefix and key value in
+forming a Redis key.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.index.SearchIndex.name" title="Link to this definition">#</a></dt>
+<dd><p>The name of the Redis search index.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.prefix">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">prefix</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.index.SearchIndex.prefix" title="Link to this definition">#</a></dt>
+<dd><p>The optional key prefix that comes before a unique key value in
+forming a Redis key.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.SearchIndex.storage_type">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">storage_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">StorageType</span></em><a class="headerlink" href="#redisvl.index.SearchIndex.storage_type" title="Link to this definition">#</a></dt>
+<dd><p>The underlying storage type for the search index; either
+hash or json.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="id2">
+<h2>AsyncSearchIndex<a class="headerlink" href="#id2" title="Link to this heading">#</a></h2>
+<dl class="py class" id="asyncsearchindex-api">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">AsyncSearchIndex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redis_client</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redis_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex" title="Link to this definition">#</a></dt>
+<dd><p>A search index class for interacting with Redis as a vector database in
+async-mode.</p>
+<p>The AsyncSearchIndex is instantiated with a reference to a Redis database
+and an IndexSchema (YAML path or dictionary object) that describes the
+various settings and field configurations.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">AsyncSearchIndex</span>
+
+<span class="c1"># initialize the index object with schema from file</span>
+<span class="n">index</span> <span class="o">=</span> <span class="n">AsyncSearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;schemas/schema.yaml&quot;</span><span class="p">)</span>
+<span class="n">index</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+
+<span class="c1"># create the index</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># data is an iterable of dictionaries</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="c1"># delete index and data</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Initialize the RedisVL search index with a schema, Redis client
+(or URL string with other connection args), connection_args, and other
+kwargs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema</strong> (<a class="reference internal" href="schema.html#redisvl.schema.IndexSchema" title="redisvl.schema.IndexSchema"><em>IndexSchema</em></a>) – Index schema object.</p></li>
+<li><p><strong>redis_client</strong> (<em>Union</em><em>[</em><em>redis.Redis</em><em>, </em><em>aredis.Redis</em><em>]</em><em>, </em><em>optional</em>) – An
+instantiated redis client.</p></li>
+<li><p><strong>redis_url</strong> (<em>str</em><em>, </em><em>optional</em>) – The URL of the Redis server to
+connect to.</p></li>
+<li><p><strong>connection_args</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>, </em><em>optional</em>) – Redis client connection
+args.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.connect">
+<span class="sig-name descname"><span class="pre">connect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">redis_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.connect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.connect" title="Link to this definition">#</a></dt>
+<dd><p>Connect to a Redis instance using the provided <cite>redis_url</cite>, falling
+back to the <cite>REDIS_URL</cite> environment variable (if available).</p>
+<p>Note: Additional keyword arguments (<cite>**kwargs</cite>) can be used to provide
+extra options specific to the Redis connection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>redis_url</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – The URL of the Redis server to
+connect to. If not provided, the method defaults to using the
+<cite>REDIS_URL</cite> environment variable.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>redis.exceptions.ConnectionError</strong> – If the connection to the Redis
+    server fails.</p></li>
+<li><p><strong>ValueError</strong> – If the Redis URL is not provided nor accessible
+    through the <cite>REDIS_URL</cite> environment variable.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">index</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.create">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">drop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.create"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.create" title="Link to this definition">#</a></dt>
+<dd><dl class="simple">
+<dt>Asynchronously create an index in Redis with the current schema</dt><dd><p>and properties.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>overwrite</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to overwrite the index if it
+already exists. Defaults to False.</p></li>
+<li><p><strong>drop</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to drop all keys associated with the
+index in the case of overwriting. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>RuntimeError</strong> – If the index already exists and ‘overwrite’ is False.</p></li>
+<li><p><strong>ValueError</strong> – If no fields are defined for the index.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># create an index in Redis; only if one does not exist with given name</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">()</span>
+
+<span class="c1"># overwrite an index in Redis without dropping associated data</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># overwrite an index in Redis; drop associated data (clean slate)</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.delete">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">drop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.delete"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.delete" title="Link to this definition">#</a></dt>
+<dd><p>Delete the search index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>drop</strong> (<em>bool</em><em>, </em><em>optional</em>) – Delete the documents in the index.
+Defaults to True.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>redis.exceptions.ResponseError</strong> – If the index does not exist.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.disconnect">
+<span class="sig-name descname"><span class="pre">disconnect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.disconnect" title="Link to this definition">#</a></dt>
+<dd><p>Disconnect from the Redis database.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.exists">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">exists</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.exists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.exists" title="Link to this definition">#</a></dt>
+<dd><p>Check if the index exists in Redis.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True if the index exists, False otherwise.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.fetch">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fetch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.fetch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.fetch" title="Link to this definition">#</a></dt>
+<dd><p>Asynchronously etch an object from Redis by id. The id is typically
+either a unique identifier, or derived from some domain-specific
+metadata combination (like a document id or chunk id).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>id</strong> (<em>str</em>) – The specified unique identifier for a particular
+document indexed in Redis.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fetched object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[str, Any]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema_dict</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.from_dict" title="Link to this definition">#</a></dt>
+<dd><p>Create a SearchIndex from a dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – A dictionary containing the schema.</p></li>
+<li><p><strong>connection_args</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>, </em><em>optional</em>) – Redis client connection
+args.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A RedisVL SearchIndex object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#redisvl.index.SearchIndex" title="redisvl.index.SearchIndex">SearchIndex</a></p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_dict</span><span class="p">({</span>
+    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;my-index&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;prefix&quot;</span><span class="p">:</span> <span class="s2">&quot;rvl&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;storage_type&quot;</span><span class="p">:</span> <span class="s2">&quot;hash&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;fields&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;doc-id&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;tag&quot;</span><span class="p">}</span>
+    <span class="p">]</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.from_yaml">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_yaml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema_path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.from_yaml" title="Link to this definition">#</a></dt>
+<dd><p>Create a SearchIndex from a YAML schema file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>schema_path</strong> (<em>str</em>) – Path to the YAML schema file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A RedisVL SearchIndex object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#redisvl.index.SearchIndex" title="redisvl.index.SearchIndex">SearchIndex</a></p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;schemas/schema.yaml&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.info">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.info" title="Link to this definition">#</a></dt>
+<dd><p>Get information about the index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A dictionary containing the information about the index.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.key">
+<span class="sig-name descname"><span class="pre">key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.key" title="Link to this definition">#</a></dt>
+<dd><p>Construct a redis key as a combination of an index key prefix (optional)
+and specified id.</p>
+<p>The id is typically either a unique identifier, or
+derived from some domain-specific metadata combination (like a document
+id or chunk id).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>id</strong> (<em>str</em>) – The specified unique identifier for a particular
+document indexed in Redis.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The full Redis key including key prefix and value as a string.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.listall">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">listall</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.listall"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.listall" title="Link to this definition">#</a></dt>
+<dd><p>List all search indices in Redis database.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The list of indices in the database.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.load">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keys</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ttl</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preprocess</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">concurrency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.load" title="Link to this definition">#</a></dt>
+<dd><p>Asynchronously load objects to Redis with concurrency control.
+Returns the list of keys loaded to Redis.</p>
+<p>RedisVL automatically handles constructing the object keys, batching,
+optional preprocessing steps, and setting optional expiration
+(TTL policies) on keys.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>Iterable</em><em>[</em><em>Any</em><em>]</em>) – An iterable of objects to store.</p></li>
+<li><p><strong>id_field</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – Specified field used as the id
+portion of the redis key (after the prefix) for each
+object. Defaults to None.</p></li>
+<li><p><strong>keys</strong> (<em>Optional</em><em>[</em><em>Iterable</em><em>[</em><em>str</em><em>]</em><em>]</em><em>, </em><em>optional</em>) – Optional iterable of keys.
+Must match the length of objects if provided. Defaults to None.</p></li>
+<li><p><strong>ttl</strong> (<em>Optional</em><em>[</em><em>int</em><em>]</em><em>, </em><em>optional</em>) – Time-to-live in seconds for each key.
+Defaults to None.</p></li>
+<li><p><strong>preprocess</strong> (<em>Optional</em><em>[</em><em>Callable</em><em>]</em><em>, </em><em>optional</em>) – An async function to
+preprocess objects before storage. Defaults to None.</p></li>
+<li><p><strong>concurrency</strong> (<em>Optional</em><em>[</em><em>int</em><em>]</em><em>, </em><em>optional</em>) – The maximum number of
+concurrent write operations. Defaults to class’s default
+concurrency level.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of keys loaded to Redis.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the length of provided keys does not match the
+    length of objects.</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;test&quot;</span><span class="p">:</span> <span class="s2">&quot;foo&quot;</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;test&quot;</span><span class="p">:</span> <span class="s2">&quot;bar&quot;</span><span class="p">}]</span>
+
+<span class="c1"># simple case</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="c1"># set 360 second ttl policy on data</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">ttl</span><span class="o">=</span><span class="mi">360</span><span class="p">)</span>
+
+<span class="c1"># load data with predefined keys</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">keys</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;rvl:foo&quot;</span><span class="p">,</span> <span class="s2">&quot;rvl:bar&quot;</span><span class="p">])</span>
+
+<span class="c1"># load data with preprocessing step</span>
+<span class="k">async</span> <span class="k">def</span> <span class="nf">add_field</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+    <span class="n">d</span><span class="p">[</span><span class="s2">&quot;new_field&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">123</span>
+    <span class="k">return</span> <span class="n">d</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">preprocess</span><span class="o">=</span><span class="n">add_field</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.paginate">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">paginate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.paginate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.paginate" title="Link to this definition">#</a></dt>
+<dd><p>Execute a given query against the index and return results in
+paginated batches.</p>
+<p>This method accepts a RedisVL query instance, enabling async pagination
+of results which allows for subsequent processing over each batch with a
+generator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> (<em>BaseQuery</em>) – The search query to be executed.</p></li>
+<li><p><strong>page_size</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of results to return in each
+batch. Defaults to 30.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Yields<span class="colon">:</span></dt>
+<dd class="field-even"><p>An async generator yielding batches of search results.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>TypeError</strong> – If the page_size argument is not of type int.</p></li>
+<li><p><strong>ValueError</strong> – If the page_size argument is less than or equal to zero.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>AsyncGenerator</em></p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Iterate over paginated search results in batches of 10</span>
+<span class="k">async</span> <span class="k">for</span> <span class="n">result_batch</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">paginate</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">page_size</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="c1"># Process each batch of results</span>
+    <span class="k">pass</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The page_size parameter controls the number of items each result
+batch contains. Adjust this value based on performance
+considerations and the expected volume of search results.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.query">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.query"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.query" title="Link to this definition">#</a></dt>
+<dd><p>Asynchronously execute a query on the index.</p>
+<p>This method takes a BaseQuery object directly, runs the search, and
+handles post-processing of the search.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>query</strong> (<em>BaseQuery</em>) – The query to run.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of search results.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[Result]</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.query</span> <span class="kn">import</span> <span class="n">VectorQuery</span>
+
+<span class="n">query</span> <span class="o">=</span> <span class="n">VectorQuery</span><span class="p">(</span>
+    <span class="n">vector</span><span class="o">=</span><span class="p">[</span><span class="mf">0.16</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.34</span><span class="p">,</span> <span class="mf">0.98</span><span class="p">,</span> <span class="mf">0.23</span><span class="p">],</span>
+    <span class="n">vector_field_name</span><span class="o">=</span><span class="s2">&quot;embedding&quot;</span><span class="p">,</span>
+    <span class="n">num_results</span><span class="o">=</span><span class="mi">3</span>
+<span class="p">)</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.search">
+<em class="property"><span class="pre">async</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">search</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.search"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.search" title="Link to this definition">#</a></dt>
+<dd><p>Perform a search on this index.</p>
+<p>Wrapper around redis.search.Search that adds the index name
+to the search query and passes along the rest of the arguments
+to the redis-py ft.search() method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Raw Redis search results.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Result</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.set_client">
+<span class="sig-name descname"><span class="pre">set_client</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/index/index.html#AsyncSearchIndex.set_client"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.set_client" title="Link to this definition">#</a></dt>
+<dd><p>Manually set the Redis client to use with the search index.</p>
+<p>This method configures the search index to use a specific
+Async Redis client. It is useful for cases where an external,
+custom-configured client is preferred instead of creating a new one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>client</strong> (<em>aredis.Redis</em>) – An Async Redis
+client instance to be used for the connection.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the provided client is not valid.</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">redis.asyncio</span> <span class="k">as</span> <span class="nn">aredis</span>
+<span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">AsyncSearchIndex</span>
+
+<span class="c1"># async Redis client and index</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">aredis</span><span class="o">.</span><span class="n">Redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+<span class="n">index</span> <span class="o">=</span> <span class="n">AsyncSearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;schemas/schema.yaml&quot;</span><span class="p">)</span>
+<span class="n">index</span><span class="o">.</span><span class="n">set_client</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.client">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">client</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Redis</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Redis</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.client" title="Link to this definition">#</a></dt>
+<dd><p>The underlying redis-py client object.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.key_separator">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">key_separator</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.key_separator" title="Link to this definition">#</a></dt>
+<dd><p>The optional separator between a defined prefix and key value in
+forming a Redis key.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.name" title="Link to this definition">#</a></dt>
+<dd><p>The name of the Redis search index.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.prefix">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">prefix</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.prefix" title="Link to this definition">#</a></dt>
+<dd><p>The optional key prefix that comes before a unique key value in
+forming a Redis key.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.index.AsyncSearchIndex.storage_type">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">storage_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">StorageType</span></em><a class="headerlink" href="#redisvl.index.AsyncSearchIndex.storage_type" title="Link to this definition">#</a></dt>
+<dd><p>The underlying storage type for the search index; either
+hash or json.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="schema.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Schema</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="query.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Query</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">SearchIndex</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex"><code class="docutils literal notranslate"><span class="pre">SearchIndex</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.connect"><code class="docutils literal notranslate"><span class="pre">SearchIndex.connect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.create"><code class="docutils literal notranslate"><span class="pre">SearchIndex.create()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.delete"><code class="docutils literal notranslate"><span class="pre">SearchIndex.delete()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.disconnect"><code class="docutils literal notranslate"><span class="pre">SearchIndex.disconnect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.exists"><code class="docutils literal notranslate"><span class="pre">SearchIndex.exists()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.fetch"><code class="docutils literal notranslate"><span class="pre">SearchIndex.fetch()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.from_dict"><code class="docutils literal notranslate"><span class="pre">SearchIndex.from_dict()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.from_yaml"><code class="docutils literal notranslate"><span class="pre">SearchIndex.from_yaml()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.info"><code class="docutils literal notranslate"><span class="pre">SearchIndex.info()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.key"><code class="docutils literal notranslate"><span class="pre">SearchIndex.key()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.listall"><code class="docutils literal notranslate"><span class="pre">SearchIndex.listall()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.load"><code class="docutils literal notranslate"><span class="pre">SearchIndex.load()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.paginate"><code class="docutils literal notranslate"><span class="pre">SearchIndex.paginate()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.query"><code class="docutils literal notranslate"><span class="pre">SearchIndex.query()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.search"><code class="docutils literal notranslate"><span class="pre">SearchIndex.search()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.set_client"><code class="docutils literal notranslate"><span class="pre">SearchIndex.set_client()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.client"><code class="docutils literal notranslate"><span class="pre">SearchIndex.client</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.key_separator"><code class="docutils literal notranslate"><span class="pre">SearchIndex.key_separator</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.name"><code class="docutils literal notranslate"><span class="pre">SearchIndex.name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.prefix"><code class="docutils literal notranslate"><span class="pre">SearchIndex.prefix</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.SearchIndex.storage_type"><code class="docutils literal notranslate"><span class="pre">SearchIndex.storage_type</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">AsyncSearchIndex</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.connect"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.connect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.create"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.create()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.delete"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.delete()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.disconnect"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.disconnect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.exists"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.exists()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.fetch"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.fetch()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.from_dict"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.from_dict()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.from_yaml"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.from_yaml()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.info"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.info()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.key"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.key()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.listall"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.listall()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.load"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.load()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.paginate"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.paginate()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.query"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.query()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.search"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.search()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.set_client"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.set_client()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.client"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.client</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.key_separator"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.key_separator</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.name"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.prefix"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.prefix</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.index.AsyncSearchIndex.storage_type"><code class="docutils literal notranslate"><span class="pre">AsyncSearchIndex.storage_type</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/RedisVentures/RedisVL/edit/main/docs/api/searchindex.rst">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/api/searchindex.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>

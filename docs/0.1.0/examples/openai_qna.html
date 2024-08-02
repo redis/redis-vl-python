@@ -1,0 +1,1378 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+    <link href="../_static/favicon-32x32.png" sizes="32x32" rel="icon" type="image/png">
+    <link href="../_static/favicon-16x16.png" sizes="16x16" rel="icon" type="image/png">
+    <link rel="shortcut icon" sizes="any" href="../_static/favicon.ico" type="image/x-icon">
+    <link href="../_static/android-chrome-192x192.png" sizes="192x192" rel="icon" type="image/png">
+    <link rel="apple-touch-icon" href="../_static/apple-touch-icon.png" sizes="180x180" type="image/png">
+    <title>Question and Answer with OpenAI and RedisVL &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../_static/doctools.js?v=888ff710"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'examples/openai_qna';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.1.0';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../_static/js/sidebar.js?v=3e4ef29d"></script>
+    <link rel="icon" href="../_static/redis-cube-red-white-rgb.svg"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="RedisVL API" href="../api/index.html" />
+    <link rel="prev" title="Example Gallery" href="index.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Example Gallery</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Question...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="question-and-answer-with-openai-and-redisvl">
+<h1>Question and Answer with OpenAI and RedisVL<a class="headerlink" href="#question-and-answer-with-openai-and-redisvl" title="Link to this heading">#</a></h1>
+<p>This example shows how to use RedisVL to create a question and answer system using OpenAI’s API.</p>
+<p>In this notebook we will</p>
+<ol class="arabic simple">
+<li><p>Download a dataset of wikipedia articles (thanks to OpenAI’s CDN)</p></li>
+<li><p>Create embeddings for each article</p></li>
+<li><p>Create a RedisVL index and store the embeddings with metadata</p></li>
+<li><p>Construct a simple QnA system using the index and GPT-3</p></li>
+<li><p>Improve the QnA system with LLM caching</p></li>
+</ol>
+<p>The image below shows the architecture of the system we will create in this notebook.</p>
+<p><img alt="Diagram" src="https://github.com/RedisVentures/redis-openai-qna/raw/main/app/assets/RedisOpenAI-QnA-Architecture.drawio.png" /></p>
+<section id="setup">
+<h2>Setup<a class="headerlink" href="#setup" title="Link to this heading">#</a></h2>
+<p>In order to run this example, you will need to have a Redis Stack running locally (or spin up for free on <a class="reference external" href="https://redis.com/try-free">Redis Cloud</a>). You can do this by running the following command in your terminal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>redis<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">6379</span>:6379<span class="w"> </span>-p<span class="w"> </span><span class="m">8001</span>:8001<span class="w"> </span>redis/redis-stack:latest
+</pre></div>
+</div>
+<p>This will also provide the RedisInsight GUI at http://localhost:8001</p>
+<p>Next, we will install the dependencies for this notebook.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># first we need to install a few things</span>
+
+<span class="o">%</span><span class="k">pip</span> install pandas wget tenacity tiktoken openai==0.28.1
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">wget</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="n">embeddings_url</span> <span class="o">=</span> <span class="s1">&#39;https://cdn.openai.com/API/examples/data/wikipedia_articles_2000.csv&#39;</span>
+
+<span class="n">wget</span><span class="o">.</span><span class="n">download</span><span class="p">(</span><span class="n">embeddings_url</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s1">&#39;wikipedia_articles_2000.csv&#39;</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;Unnamed: 0&#39;</span><span class="p">])</span>
+<span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>id</th>
+      <th>url</th>
+      <th>title</th>
+      <th>text</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>3661</td>
+      <td>https://simple.wikipedia.org/wiki/Photon</td>
+      <td>Photon</td>
+      <td>Photons  (from Greek φως, meaning light), in m...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>7796</td>
+      <td>https://simple.wikipedia.org/wiki/Thomas%20Dolby</td>
+      <td>Thomas Dolby</td>
+      <td>Thomas Dolby (born Thomas Morgan Robertson; 14...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>67912</td>
+      <td>https://simple.wikipedia.org/wiki/Embroidery</td>
+      <td>Embroidery</td>
+      <td>Embroidery is the art of decorating fabric or ...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>44309</td>
+      <td>https://simple.wikipedia.org/wiki/Consecutive%...</td>
+      <td>Consecutive integer</td>
+      <td>Consecutive numbers are numbers that follow ea...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>41741</td>
+      <td>https://simple.wikipedia.org/wiki/German%20Empire</td>
+      <td>German Empire</td>
+      <td>The German Empire ("Deutsches Reich" or "Deuts...</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+</section>
+<section id="data-preparation">
+<h2>Data Preparation<a class="headerlink" href="#data-preparation" title="Link to this heading">#</a></h2>
+<section id="text-chunking">
+<h3>Text Chunking<a class="headerlink" href="#text-chunking" title="Link to this heading">#</a></h3>
+<p>In order to create embeddings for the articles, we will need to chunk the text into smaller pieces. This is because there is a maximum length of text that can be sent to the OpenAI API. The code that follows pulls heavily from this <a class="reference external" href="https://github.com/openai/openai-cookbook/blob/main/apps/enterprise-knowledge-retrieval/enterprise_knowledge_retrieval.ipynb">notebook</a> by OpenAI</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">TEXT_EMBEDDING_CHUNK_SIZE</span> <span class="o">=</span> <span class="mi">1000</span>
+<span class="n">EMBEDDINGS_MODEL</span> <span class="o">=</span> <span class="s2">&quot;text-embedding-ada-002&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">chunks</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">):</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Yield successive n-sized chunks from text.</span>
+
+<span class="sd">    Split a text into smaller chunks of size n, preferably ending at the end of a sentence</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+        <span class="c1"># Find the nearest end of sentence within a range of 0.5 * n and 1.5 * n tokens</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="mf">1.5</span> <span class="o">*</span> <span class="n">n</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+        <span class="k">while</span> <span class="n">j</span> <span class="o">&gt;</span> <span class="n">i</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">n</span><span class="p">):</span>
+            <span class="c1"># Decode the tokens and check for full stop or newline</span>
+            <span class="n">chunk</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">j</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">chunk</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">chunk</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">):</span>
+                <span class="k">break</span>
+            <span class="n">j</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="c1"># If no end of sentence found, use n tokens as the chunk size</span>
+        <span class="k">if</span> <span class="n">j</span> <span class="o">==</span> <span class="n">i</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">j</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="n">n</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+        <span class="k">yield</span> <span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">j</span><span class="p">]</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">j</span>
+
+<span class="k">def</span> <span class="nf">get_unique_id_for_file_chunk</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="n">chunk_index</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">title</span><span class="o">+</span><span class="s2">&quot;-!&quot;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">chunk_index</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">chunk_text</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">):</span>
+    <span class="n">chunked_records</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">url</span> <span class="o">=</span> <span class="n">record</span><span class="p">[</span><span class="s1">&#39;url&#39;</span><span class="p">]</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="n">record</span><span class="p">[</span><span class="s1">&#39;title&#39;</span><span class="p">]</span>
+    <span class="n">file_body_string</span> <span class="o">=</span> <span class="n">record</span><span class="p">[</span><span class="s1">&#39;text&#39;</span><span class="p">]</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a list of tuples (text_chunk, embedding) for a text.&quot;&quot;&quot;</span>
+    <span class="n">token_chunks</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">chunks</span><span class="p">(</span><span class="n">file_body_string</span><span class="p">,</span> <span class="n">TEXT_EMBEDDING_CHUNK_SIZE</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">))</span>
+    <span class="n">text_chunks</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s1">&#39;Title: </span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s1">;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">+</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">token_chunks</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">text_chunk</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">text_chunks</span><span class="p">):</span>
+        <span class="n">doc_id</span> <span class="o">=</span> <span class="n">get_unique_id_for_file_chunk</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="n">chunked_records</span><span class="o">.</span><span class="n">append</span><span class="p">(({</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">doc_id</span><span class="p">,</span>
+                                <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="n">url</span><span class="p">,</span>
+                                <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="n">title</span><span class="p">,</span>
+                                <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">text_chunk</span><span class="p">,</span>
+                                <span class="s2">&quot;file_chunk_index&quot;</span><span class="p">:</span> <span class="n">i</span><span class="p">}))</span>
+    <span class="k">return</span> <span class="n">chunked_records</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Initialise tokenizer</span>
+<span class="kn">import</span> <span class="nn">tiktoken</span>
+<span class="n">oai_tokenizer</span> <span class="o">=</span> <span class="n">tiktoken</span><span class="o">.</span><span class="n">get_encoding</span><span class="p">(</span><span class="s2">&quot;cl100k_base&quot;</span><span class="p">)</span>
+
+<span class="n">records</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+    <span class="n">records</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">chunk_text</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">oai_tokenizer</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">chunked_data</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">records</span><span class="p">)</span>
+<span class="n">chunked_data</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>id</th>
+      <th>url</th>
+      <th>title</th>
+      <th>content</th>
+      <th>file_chunk_index</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Photon-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Photon</td>
+      <td>Photon</td>
+      <td>Title: Photon;\nPhotons  (from Greek φως, mean...</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Photon-!1</td>
+      <td>https://simple.wikipedia.org/wiki/Photon</td>
+      <td>Photon</td>
+      <td>Title: Photon;\nElementary particles</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Thomas Dolby-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Thomas%20Dolby</td>
+      <td>Thomas Dolby</td>
+      <td>Title: Thomas Dolby;\nThomas Dolby (born Thoma...</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Embroidery-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Embroidery</td>
+      <td>Embroidery</td>
+      <td>Title: Embroidery;\nEmbroidery is the art of d...</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Consecutive integer-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Consecutive%...</td>
+      <td>Consecutive integer</td>
+      <td>Title: Consecutive integer;\nConsecutive numbe...</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+</section>
+<section id="embedding-creation">
+<h3>Embedding Creation<a class="headerlink" href="#embedding-creation" title="Link to this heading">#</a></h3>
+<p>With the text broken up into chunks, we can create embeddings with the <a class="reference external" href="https://www.redisvl.com/user_guide/vectorizers_04.html#openai"><code class="docutils literal notranslate"><span class="pre">OpenAITextVectorizer</span></code></a>. This provider uses the OpenAI API to create embeddings for the text. The code below shows how to create embeddings for the text chunks.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">getpass</span>
+
+<span class="kn">from</span> <span class="nn">redisvl.utils.vectorize</span> <span class="kn">import</span> <span class="n">OpenAITextVectorizer</span>
+
+<span class="n">api_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="s2">&quot;Enter your OpenAI API key: &quot;</span><span class="p">)</span>
+<span class="n">oaip</span> <span class="o">=</span> <span class="n">OpenAITextVectorizer</span><span class="p">(</span><span class="n">EMBEDDINGS_MODEL</span><span class="p">,</span> <span class="n">api_config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;api_key&quot;</span><span class="p">:</span> <span class="n">api_key</span><span class="p">})</span>
+
+<span class="n">chunked_data</span><span class="p">[</span><span class="s2">&quot;embedding&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">oaip</span><span class="o">.</span><span class="n">embed_many</span><span class="p">(</span><span class="n">chunked_data</span><span class="p">[</span><span class="s2">&quot;content&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> <span class="n">as_buffer</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">chunked_data</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>id</th>
+      <th>url</th>
+      <th>title</th>
+      <th>content</th>
+      <th>file_chunk_index</th>
+      <th>embedding</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Photon-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Photon</td>
+      <td>Photon</td>
+      <td>Title: Photon;\nPhotons  (from Greek φως, mean...</td>
+      <td>0</td>
+      <td>b'\x9e\xbf\xc9;\xca\x8e\xfb;\x00\xf8P\xbc\xe5\...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Photon-!1</td>
+      <td>https://simple.wikipedia.org/wiki/Photon</td>
+      <td>Photon</td>
+      <td>Title: Photon;\nElementary particles</td>
+      <td>1</td>
+      <td>b'd\xda#\xbc\xb7\xf1\x8c&lt;\xea\xd0m\xbc\x13\x8b...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Thomas Dolby-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Thomas%20Dolby</td>
+      <td>Thomas Dolby</td>
+      <td>Title: Thomas Dolby;\nThomas Dolby (born Thoma...</td>
+      <td>0</td>
+      <td>b'NG\xce\xbck\xf0\xb2;\x81\xed\xd7\xbc\xb6\x94...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Embroidery-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Embroidery</td>
+      <td>Embroidery</td>
+      <td>Title: Embroidery;\nEmbroidery is the art of d...</td>
+      <td>0</td>
+      <td>b'\xa4\xba\xf5\xbcS\xf3\x02\xbc\xa1\x15O\xbc\x...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Consecutive integer-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Consecutive%...</td>
+      <td>Consecutive integer</td>
+      <td>Title: Consecutive integer;\nConsecutive numbe...</td>
+      <td>0</td>
+      <td>b'0(\xfa\xbb\x81\xd2\xd9;\xaf\x92\x9a;\xd3FL\x...</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>2688</th>
+      <td>Alanis Morissette-!1</td>
+      <td>https://simple.wikipedia.org/wiki/Alanis%20Mor...</td>
+      <td>Alanis Morissette</td>
+      <td>Title: Alanis Morissette;\nTwin people from Ca...</td>
+      <td>1</td>
+      <td>b'Ii4\xbc\x8e&gt;\xe0\xbc\x18]\x07\xbb%\xa0\x92\x...</td>
+    </tr>
+    <tr>
+      <th>2689</th>
+      <td>Brontosaurus-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Brontosaurus</td>
+      <td>Brontosaurus</td>
+      <td>Title: Brontosaurus;\nBrontosaurus  is a genus...</td>
+      <td>0</td>
+      <td>b'\xad\xa5\xdb\xbc\xa5\xa5\xba:\xb4"\x81\xbc\x...</td>
+    </tr>
+    <tr>
+      <th>2690</th>
+      <td>Work (physics)-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Work%20%28ph...</td>
+      <td>Work (physics)</td>
+      <td>Title: Work (physics);\nIn physics, a force do...</td>
+      <td>0</td>
+      <td>b'\x97\x82\xb9\xbbL\x90d\xbc\xb7G\x9c\xba\x94g...</td>
+    </tr>
+    <tr>
+      <th>2691</th>
+      <td>Syllable-!0</td>
+      <td>https://simple.wikipedia.org/wiki/Syllable</td>
+      <td>Syllable</td>
+      <td>Title: Syllable;\nA syllable is a unit of pron...</td>
+      <td>0</td>
+      <td>b'\xe4\xa3\x1c:\x83g\x90&lt;\x99=s;*[E\xbb\x10 "\...</td>
+    </tr>
+    <tr>
+      <th>2692</th>
+      <td>Syllable-!1</td>
+      <td>https://simple.wikipedia.org/wiki/Syllable</td>
+      <td>Syllable</td>
+      <td>Title: Syllable;\nGrammar</td>
+      <td>1</td>
+      <td>b'T,-\xbbS\xe5\x87;\x1c\x0f\x9d:\xc4\xd4\xcd:\...</td>
+    </tr>
+  </tbody>
+</table>
+<p>2693 rows × 6 columns</p>
+</div></div></div>
+</div>
+</section>
+</section>
+<section id="construct-the-searchindex">
+<h2>Construct the <code class="docutils literal notranslate"><span class="pre">SearchIndex</span></code><a class="headerlink" href="#construct-the-searchindex" title="Link to this heading">#</a></h2>
+<p>Now that we have the embeddings, we can create a <code class="docutils literal notranslate"><span class="pre">SearchIndex</span></code> to store them in Redis. We will use the <code class="docutils literal notranslate"><span class="pre">SearchIndex</span></code> to store the embeddings and metadata for each article.</p>
+<section id="define-the-wikipedia-indexschema">
+<h3>Define the wikipedia <code class="docutils literal notranslate"><span class="pre">IndexSchema</span></code><a class="headerlink" href="#define-the-wikipedia-indexschema" title="Link to this heading">#</a></h3>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="o">%%writefile</span> wiki_schema.yaml
+
+<span class="n">version</span><span class="p">:</span> <span class="s1">&#39;0.1.0&#39;</span>
+
+<span class="n">index</span><span class="p">:</span>
+    <span class="n">name</span><span class="p">:</span> <span class="n">wikipedia</span>
+    <span class="n">prefix</span><span class="p">:</span> <span class="n">chunk</span>
+
+<span class="n">fields</span><span class="p">:</span>
+    <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">content</span>
+      <span class="nb">type</span><span class="p">:</span> <span class="n">text</span>
+    <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">title</span>
+      <span class="nb">type</span><span class="p">:</span> <span class="n">text</span>
+    <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="nb">id</span>
+      <span class="nb">type</span><span class="p">:</span> <span class="n">tag</span>
+    <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">embedding</span>
+      <span class="nb">type</span><span class="p">:</span> <span class="n">vector</span>
+      <span class="n">attrs</span><span class="p">:</span>
+          <span class="n">dims</span><span class="p">:</span> <span class="mi">1536</span>
+          <span class="n">distance_metric</span><span class="p">:</span> <span class="n">cosine</span>
+          <span class="n">algorithm</span><span class="p">:</span> <span class="n">flat</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Overwriting wiki_schema.yaml
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">redis.asyncio</span> <span class="k">as</span> <span class="nn">redis</span>
+
+<span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">AsyncSearchIndex</span>
+<span class="kn">from</span> <span class="nn">redisvl.schema</span> <span class="kn">import</span> <span class="n">IndexSchema</span>
+
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">redis</span><span class="o">.</span><span class="n">Redis</span><span class="o">.</span><span class="n">from_url</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+<span class="n">schema</span> <span class="o">=</span> <span class="n">IndexSchema</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;wiki_schema.yaml&quot;</span><span class="p">)</span>
+
+<span class="n">index</span> <span class="o">=</span> <span class="n">AsyncSearchIndex</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">client</span><span class="p">)</span>
+
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="o">!</span>rvl<span class="w"> </span>index<span class="w"> </span>listall
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span><span class=" -Color -Color-Green">16:00:26</span> <span class=" -Color -Color-Blue">[RedisVL]</span> <span class=" -Color -Color-Bold -Color-Bold-Black">INFO</span>   Indices:
+<span class=" -Color -Color-Green">16:00:26</span> <span class=" -Color -Color-Blue">[RedisVL]</span> <span class=" -Color -Color-Bold -Color-Bold-Black">INFO</span>   1. wikipedia
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="load-the-wikipedia-dataset">
+<h3>Load the wikipedia dataset<a class="headerlink" href="#load-the-wikipedia-dataset" title="Link to this heading">#</a></h3>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">keys</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">chunked_data</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="n">orient</span><span class="o">=</span><span class="s2">&quot;records&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="build-a-simple-qna-system">
+<h2>Build a simple QnA System<a class="headerlink" href="#build-a-simple-qna-system" title="Link to this heading">#</a></h2>
+<p>Now that we have the data and the embeddings, we can build the QnA system. The system will perform three actions</p>
+<ol class="arabic simple">
+<li><p>Embed the user question and search for the most similar content</p></li>
+<li><p>Make a prompt with the query and retrieved content</p></li>
+<li><p>Send the prompt to the OpenAI API and return the answer</p></li>
+</ol>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">openai</span>
+
+<span class="kn">from</span> <span class="nn">redisvl.query</span> <span class="kn">import</span> <span class="n">VectorQuery</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">CHAT_MODEL</span> <span class="o">=</span> <span class="s2">&quot;gpt-3.5-turbo&quot;</span>
+
+<span class="k">def</span> <span class="nf">make_prompt</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+    <span class="n">retrieval_prompt</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;&#39;&#39;Use the content to answer the search query the customer has sent.</span>
+<span class="s1">    If you can&#39;t answer the user&#39;s question, do not guess. If there is no content, respond with &quot;I don&#39;t know&quot;.</span>
+
+<span class="s1">    Search query:</span>
+
+<span class="s1">    </span><span class="si">{</span><span class="n">query</span><span class="si">}</span>
+
+<span class="s1">    Content:</span>
+
+<span class="s1">    </span><span class="si">{</span><span class="n">content</span><span class="si">}</span>
+
+<span class="s1">    Answer:</span>
+<span class="s1">    &#39;&#39;&#39;</span>
+    <span class="k">return</span> <span class="n">retrieval_prompt</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">retrieve_context</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">AsyncSearchIndex</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="c1"># Embed the query</span>
+    <span class="n">query_embedding</span> <span class="o">=</span> <span class="k">await</span> <span class="n">oaip</span><span class="o">.</span><span class="n">aembed</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+
+    <span class="c1"># Get the top result from the index</span>
+    <span class="n">vector_query</span> <span class="o">=</span> <span class="n">VectorQuery</span><span class="p">(</span>
+        <span class="n">vector</span><span class="o">=</span><span class="n">query_embedding</span><span class="p">,</span>
+        <span class="n">vector_field_name</span><span class="o">=</span><span class="s2">&quot;embedding&quot;</span><span class="p">,</span>
+        <span class="n">return_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;content&quot;</span><span class="p">],</span>
+        <span class="n">num_results</span><span class="o">=</span><span class="mi">1</span>
+    <span class="p">)</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">vector_query</span><span class="p">)</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;content&quot;</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">content</span>
+
+<span class="k">async</span> <span class="k">def</span> <span class="nf">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">AsyncSearchIndex</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="c1"># Retrieve the context</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="k">await</span> <span class="n">retrieve_context</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
+
+    <span class="n">prompt</span> <span class="o">=</span> <span class="n">make_prompt</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span>
+    <span class="n">retrieval</span> <span class="o">=</span> <span class="k">await</span> <span class="n">openai</span><span class="o">.</span><span class="n">ChatCompletion</span><span class="o">.</span><span class="n">acreate</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="n">CHAT_MODEL</span><span class="p">,</span>
+        <span class="n">messages</span><span class="o">=</span><span class="p">[{</span><span class="s1">&#39;role&#39;</span><span class="p">:</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">}],</span>
+        <span class="n">max_tokens</span><span class="o">=</span><span class="mi">50</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Response provided by GPT-3.5</span>
+    <span class="k">return</span> <span class="n">retrieval</span><span class="p">[</span><span class="s1">&#39;choices&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;message&#39;</span><span class="p">][</span><span class="s1">&#39;content&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">textwrap</span>
+
+<span class="n">question</span> <span class="o">=</span> <span class="s2">&quot;What is a Brontosaurus?&quot;</span>
+<span class="n">textwrap</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="k">await</span> <span class="n">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">question</span><span class="p">),</span> <span class="n">width</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[&#39;A Brontosaurus, also known as Apatosaurus, is a type of large, long-necked&#39;,
+ &#39;dinosaur that lived during the Late Jurassic Period, about 150 million years&#39;,
+ &#39;ago. They were herbivores and belonged to the saurop&#39;]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Question that makes no sense</span>
+<span class="n">question</span> <span class="o">=</span> <span class="s2">&quot;What is a trackiosamidon?&quot;</span>
+<span class="k">await</span> <span class="n">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">question</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>&quot;I don&#39;t know.&quot;
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">question</span> <span class="o">=</span> <span class="s2">&quot;Tell me about the life of Alanis Morissette&quot;</span>
+<span class="n">textwrap</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="k">await</span> <span class="n">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">question</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[&#39;Alanis Morissette is a Canadian-American singer-songwriter and&#39;,
+ &#39;actress. She gained international fame with her third studio album,&#39;,
+ &#39;&quot;Jagged Little Pill,&quot; released in 1995. The album went on to become a&#39;,
+ &#39;massive success, selling over&#39;]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="improve-the-qna-system-with-llm-caching">
+<h2>Improve the QnA System with LLM caching<a class="headerlink" href="#improve-the-qna-system-with-llm-caching" title="Link to this heading">#</a></h2>
+<p>The QnA system we built above is pretty good, but we can use the <code class="docutils literal notranslate"><span class="pre">SemanticCache</span></code> to improve the throughput and stability. The <code class="docutils literal notranslate"><span class="pre">SemanticCache</span></code> will store the results of previous queries and return them if the query is similar enough to a previous query. This will reduce the number of round trip queries we need to send to the OpenAI API.</p>
+<blockquote>
+<div><p>Note this technique will work assuming we expect a similar profile of queries to be asked.</p>
+</div></blockquote>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.llmcache</span> <span class="kn">import</span> <span class="n">SemanticCache</span>
+
+<span class="n">cache</span> <span class="o">=</span> <span class="n">SemanticCache</span><span class="p">(</span><span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">,</span> <span class="n">distance_threshold</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">async</span> <span class="k">def</span> <span class="nf">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">AsyncSearchIndex</span><span class="p">,</span> <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+
+    <span class="c1"># check the cache</span>
+    <span class="k">if</span> <span class="n">result</span> <span class="o">:=</span> <span class="n">cache</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">prompt</span><span class="o">=</span><span class="n">query</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;response&#39;</span><span class="p">]</span>
+
+    <span class="c1"># Retrieve the context</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="k">await</span> <span class="n">retrieve_context</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
+
+    <span class="n">prompt</span> <span class="o">=</span> <span class="n">make_prompt</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span>
+    <span class="n">retrieval</span> <span class="o">=</span> <span class="k">await</span> <span class="n">openai</span><span class="o">.</span><span class="n">ChatCompletion</span><span class="o">.</span><span class="n">acreate</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="n">CHAT_MODEL</span><span class="p">,</span>
+        <span class="n">messages</span><span class="o">=</span><span class="p">[{</span><span class="s1">&#39;role&#39;</span><span class="p">:</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s1">&#39;content&#39;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">}],</span>
+        <span class="n">max_tokens</span><span class="o">=</span><span class="mi">500</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Response provided by GPT-3.5</span>
+    <span class="n">answer</span> <span class="o">=</span> <span class="n">retrieval</span><span class="p">[</span><span class="s1">&#39;choices&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;message&#39;</span><span class="p">][</span><span class="s1">&#39;content&#39;</span><span class="p">]</span>
+
+    <span class="c1"># cache the query_embedding and answer</span>
+    <span class="n">cache</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">answer</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">answer</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># ask a question to cache an answer</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+<span class="n">question</span> <span class="o">=</span> <span class="s2">&quot;Tell me about the life of Alanis Morissette&quot;</span>
+<span class="n">answer</span> <span class="o">=</span> <span class="k">await</span> <span class="n">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">question</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time taken: </span><span class="si">{</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">textwrap</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Time taken: 6.253775119781494
+</pre></div>
+</div>
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[&#39;Alanis Morissette is a Canadian singer, songwriter, and actress. She was born on&#39;,
+ &#39;June 1, 1974, in Ottawa, Ontario, Canada. Morissette began her career in the&#39;,
+ &#39;music industry as a child, releasing her first album &quot;Alanis&quot; in 1991. However,&#39;,
+ &#39;it was her third studio album, &quot;Jagged Little Pill,&quot; released in 1995, that&#39;,
+ &#39;brought her international fame and critical acclaim. The album sold over 33&#39;,
+ &#39;million copies worldwide and produced hit singles such as &quot;You Oughta Know,&quot;&#39;,
+ &#39;&quot;Ironic,&quot; and &quot;Hand in My Pocket.&quot;  Throughout her career, Morissette has&#39;,
+ &#39;continued to release successful albums and has received numerous awards,&#39;,
+ &#39;including Grammy Awards, Juno Awards, and Billboard Music Awards. Her music&#39;,
+ &#39;often explores themes of love, relationships, self-discovery, and spirituality.&#39;,
+ &#39;Some of her other notable albums include &quot;Supposed Former Infatuation Junkie,&quot;&#39;,
+ &#39;&quot;Under Rug Swept,&quot; and &quot;Flavors of Entanglement.&quot;  In addition to her music&#39;,
+ &#39;career, Alanis Morissette has also ventured into acting. She has appeared in&#39;,
+ &#39;films such as &quot;Dogma&quot; and &quot;Radio Free Albemuth,&quot; as well as on television shows&#39;,
+ &#39;like &quot;Weeds&quot; and &quot;Sex and the City.&quot;  Offstage, Morissette has been open about&#39;,
+ &#39;her struggles with mental health and has become an advocate for mental wellness.&#39;,
+ &#39;She has also expressed her views on feminism and spirituality in her music and&#39;,
+ &#39;interviews.  Overall, Alanis Morissette has had a successful and influential&#39;,
+ &#39;career in the music industry, with her powerful and emotional songs resonating&#39;,
+ &#39;with audiences around the world.&#39;]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Same question, return cached answer, save time, save money :)</span>
+<span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+<span class="n">answer</span> <span class="o">=</span> <span class="k">await</span> <span class="n">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">question</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time taken with cache: </span><span class="si">{</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">textwrap</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Time taken with cache: 0.3175082206726074
+</pre></div>
+</div>
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[&#39;Alanis Morissette is a Canadian-American singer, songwriter, and actress. She&#39;,
+ &#39;rose to fame in the 1990s with her breakthrough album &quot;Jagged Little Pill,&quot;&#39;,
+ &#39;which became one of the best-selling albums of all time. Born on June 1, 1974,&#39;,
+ &#39;in Ottawa, Ontario, Morissette began her career as a teen pop star in Canada&#39;,
+ &#39;before transitioning to alternative rock.  Throughout her career, Morissette has&#39;,
+ &#39;released several successful albums and has won numerous awards, including&#39;,
+ &#39;multiple Grammy Awards. Her music often explores themes of female empowerment,&#39;,
+ &#39;personal introspection, and social commentary. Some of her notable songs include&#39;,
+ &#39;&quot;Ironic,&quot; &quot;You Oughta Know,&quot; and &quot;Hand in My Pocket.&quot;   In addition to her music&#39;,
+ &#39;career, Morissette has also acted in various films and television shows. She is&#39;,
+ &#39;known for her roles in movies such as &quot;Dogma&quot; and &quot;Jay and Silent Bob Strike&#39;,
+ &#39;Back.&quot;  Morissette has been transparent about her personal struggles, including&#39;,
+ &#39;her experiences with eating disorders, depression, and postpartum depression.&#39;,
+ &#39;She has used her platform to advocate for mental health awareness and has been&#39;,
+ &#39;involved in various charitable causes.  Overall, Alanis Morissette has had a&#39;,
+ &#39;successful and influential career in the music industry while also making an&#39;,
+ &#39;impact beyond music.&#39;]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># ask a semantically similar question returns the same answer from the cache</span>
+<span class="c1"># but isn&#39;t exactly the same question. In this case, the semantic similarity between</span>
+<span class="c1"># the questions is greater than the threshold of 0.8 the cache is set to.</span>
+<span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+<span class="n">question</span> <span class="o">=</span> <span class="s2">&quot;Who is Alanis Morissette?&quot;</span>
+<span class="n">answer</span> <span class="o">=</span> <span class="k">await</span> <span class="n">answer_question</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">question</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Time taken with the cache: </span><span class="si">{</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">start</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">textwrap</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">answer</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">80</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Time taken with the cache: 0.26262593269348145
+</pre></div>
+</div>
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[&#39;Alanis Morissette is a Canadian-American singer, songwriter, and actress. She&#39;,
+ &#39;rose to fame in the 1990s with her breakthrough album &quot;Jagged Little Pill,&quot;&#39;,
+ &#39;which became one of the best-selling albums of all time. Born on June 1, 1974,&#39;,
+ &#39;in Ottawa, Ontario, Morissette began her career as a teen pop star in Canada&#39;,
+ &#39;before transitioning to alternative rock.  Throughout her career, Morissette has&#39;,
+ &#39;released several successful albums and has won numerous awards, including&#39;,
+ &#39;multiple Grammy Awards. Her music often explores themes of female empowerment,&#39;,
+ &#39;personal introspection, and social commentary. Some of her notable songs include&#39;,
+ &#39;&quot;Ironic,&quot; &quot;You Oughta Know,&quot; and &quot;Hand in My Pocket.&quot;   In addition to her music&#39;,
+ &#39;career, Morissette has also acted in various films and television shows. She is&#39;,
+ &#39;known for her roles in movies such as &quot;Dogma&quot; and &quot;Jay and Silent Bob Strike&#39;,
+ &#39;Back.&quot;  Morissette has been transparent about her personal struggles, including&#39;,
+ &#39;her experiences with eating disorders, depression, and postpartum depression.&#39;,
+ &#39;She has used her platform to advocate for mental health awareness and has been&#39;,
+ &#39;involved in various charitable causes.  Overall, Alanis Morissette has had a&#39;,
+ &#39;successful and influential career in the music industry while also making an&#39;,
+ &#39;impact beyond music.&#39;]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Cleanup</span>
+<span class="k">await</span> <span class="n">index</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Example Gallery</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../api/index.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">RedisVL API</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#setup">Setup</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#data-preparation">Data Preparation</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#text-chunking">Text Chunking</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#embedding-creation">Embedding Creation</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#construct-the-searchindex">Construct the <code class="docutils literal notranslate"><span class="pre">SearchIndex</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#define-the-wikipedia-indexschema">Define the wikipedia <code class="docutils literal notranslate"><span class="pre">IndexSchema</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#load-the-wikipedia-dataset">Load the wikipedia dataset</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-a-simple-qna-system">Build a simple QnA System</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#improve-the-qna-system-with-llm-caching">Improve the QnA System with LLM caching</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/RedisVentures/RedisVL/edit/main/docs/examples/openai_qna.ipynb">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/examples/openai_qna.ipynb.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>
