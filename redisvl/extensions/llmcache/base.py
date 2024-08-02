@@ -54,6 +54,13 @@ class BaseLLMCache:
         metadata."""
         raise NotImplementedError
 
-    def hash_input(self, prompt: str):
-        """Hashes the input using SHA256."""
+    def hash_input(self, prompt: str) -> str:
+        """Hashes the input prompt using SHA256.
+
+        Args:
+            prompt (str): Input string to be hashed.
+
+        Returns:
+            str: Hashed string.
+        """
         return hashify(prompt)

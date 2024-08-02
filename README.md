@@ -30,7 +30,7 @@
 
 # Introduction
 
-Welcome to the Redis Vector Library (`redisvl`) – the ultimate Python client designed for AI applications harnessing the power of [Redis](https://redis.io).
+Welcome to the Redis Vector Library – the ultimate Python client designed for AI applications harnessing the power of [Redis](https://redis.io).
 
 `redisvl` is your go-to tool for:
 
