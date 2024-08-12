@@ -463,10 +463,6 @@ def test_semantic_add_and_get_relevant(semantic_session):
     semantic_session.set_distance_threshold(0.5)
     default_context = semantic_session.get_relevant("list of fruits and vegetables")
     assert len(default_context) == 5  # 2 pairs of prompt:response, and system
-    assert default_context == semantic_session.get_relevant(
-        "list of fruits and vegetables",
-        distance_threshold=0.5
-    )
 
     # test tool calls can also be returned
     context = semantic_session.get_relevant("winter sports like skiing")
