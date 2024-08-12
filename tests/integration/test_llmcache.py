@@ -95,7 +95,7 @@ def test_store_and_check(cache, vectorizer):
     vector = vectorizer.embed(prompt)
 
     cache.store(prompt, response, vector=vector)
-    check_result = cache.check(vector=vector, distance_threshold=0.4)
+    check_result = cache.check(vector=vector)
 
     assert len(check_result) == 1
     print(check_result, flush=True)
