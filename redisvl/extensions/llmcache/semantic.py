@@ -300,8 +300,6 @@ class SemanticCache(BaseLLMCache):
             key = cache_search_result["id"]
             self._refresh_ttl(key)
 
-            # print(cache_search_result, flush=True)
-
             # Create cache hit
             cache_hit = CacheHit(**cache_search_result)
             cache_hit_dict = {
