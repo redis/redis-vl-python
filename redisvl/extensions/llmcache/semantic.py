@@ -233,6 +233,7 @@ class SemanticCache(BaseLLMCache):
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
         filter_expression: Optional[FilterExpression] = None,
+        distance_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -255,6 +256,8 @@ class SemanticCache(BaseLLMCache):
             filter_expression (Optional[FilterExpression]) : Optional filter expression
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
+            distance_threshold (Optional[float]): The threshold for semantic
+                vector distance.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -274,9 +277,12 @@ class SemanticCache(BaseLLMCache):
         if not (prompt or vector):
             raise ValueError("Either prompt or vector must be specified.")
 
-        vector = vector or self._vectorize_prompt(prompt)
-        self._check_vector_dims(vector)
+        # overrides
+        distance_threshold = distance_threshold or self._distance_threshold
         return_fields = return_fields or self.return_fields
+        vector = vector or self._vectorize_prompt(prompt)
+
+        self._check_vector_dims(vector)
 
         if not isinstance(return_fields, list):
             raise TypeError("return_fields must be a list of field names")
@@ -285,7 +291,7 @@ class SemanticCache(BaseLLMCache):
             vector=vector,
             vector_field_name=self.vector_field_name,
             return_fields=self.return_fields,
-            distance_threshold=self._distance_threshold,
+            distance_threshold=distance_threshold,
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,

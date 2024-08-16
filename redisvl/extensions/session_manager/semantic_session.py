@@ -137,6 +137,7 @@ class SemanticSessionManager(BaseSessionManager):
         fall_back: bool = False,
         session_tag: Optional[str] = None,
         raw: bool = False,
+        distance_threshold: Optional[float] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Searches the chat history for information semantically related to
         the specified prompt.
@@ -151,10 +152,12 @@ class SemanticSessionManager(BaseSessionManager):
             as_text (bool): Whether to return the prompts and responses as text
             or as JSON
             top_k (int): The number of previous messages to return. Default is 5.
-            fall_back (bool): Whether to drop back to recent conversation history
-                if no relevant context is found.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
                 session. Defaults to instance uuid.
+            distance_threshold (Optional[float]): The threshold for semantic
+                vector distance.
+            fall_back (bool): Whether to drop back to recent conversation history
+                if no relevant context is found.
             raw (bool): Whether to return the full Redis hash entry or just the
                 message.
 
@@ -168,6 +171,9 @@ class SemanticSessionManager(BaseSessionManager):
             raise ValueError("top_k must be an integer greater than or equal to -1")
         if top_k == 0:
             return []
+
+        # override distance threshold
+        distance_threshold = distance_threshold or self._distance_threshold
 
         return_fields = [
             self.session_field_name,
@@ -187,7 +193,7 @@ class SemanticSessionManager(BaseSessionManager):
             vector=self._vectorizer.embed(prompt),
             vector_field_name=self.vector_field_name,
             return_fields=return_fields,
-            distance_threshold=self._distance_threshold,
+            distance_threshold=distance_threshold,
             num_results=top_k,
             return_score=True,
             filter_expression=session_filter,
