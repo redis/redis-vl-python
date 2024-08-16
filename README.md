@@ -86,10 +86,10 @@ Choose from multiple Redis deployment options:
       - name: embedding
         type: vector
         attrs:
-        algorithm: flat
-        dims: 3
-        distance_metric: cosine
-        datatype: float32
+          algorithm: flat
+          dims: 4
+          distance_metric: cosine
+          datatype: float32
     ```
     ```python
     from redisvl.schema import IndexSchema
