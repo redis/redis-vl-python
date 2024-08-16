@@ -32,22 +32,12 @@
 
 Welcome to the Redis Vector Library – the ultimate Python client designed for AI applications harnessing the power of [Redis](https://redis.io).
 
-`redisvl` is your go-to tool for:
+[redisvl](https://pypi.org/project/redisvl/) is your go-to tool for:
 
 - Lightning-fast information retrieval & vector similarity search
 - Real-time RAG pipelines
 - Agentic memory structures
 - Smart recommendation engines
-
-## 🚀 Why RedisVL?
-
-In the age of GenAI, **vector databases** and **LLMs** are transforming information retrieval systems. With emerging and popular frameworks like [LangChain](https://github.com/langchain-ai/langchain) and [LlamaIndex](https://www.llamaindex.ai/), innovation is soaring. Yet, many organizations face the challenge of delivering AI solutions **quickly** and at **scale**.
-
-Enter [Redis](https://redis.io) – a cornerstone of the NoSQL world, renowned for its versatile [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/). Redis excels in real-time workloads like caching, session management, and search. It's also a powerhouse as a vector database for RAG, an LLM cache, and a chat session memory store for conversational AI.
-
-The Redis Vector Library bridges the gap between the AI-native developer ecosystem and Redis's robust capabilities. With a lightweight, elegant, and intuitive interface, RedisVL makes it easy to leverage Redis's power. Built on the [Redis Python](https://github.com/redis/redis-py/tree/master) client, `redisvl` transforms Redis's features into a grammar perfectly aligned with the needs of today's AI/ML Engineers and Data Scientists.
-
-Unleash the full potential of Redis for your AI projects with `redisvl`.
 
 
 # 💪 Getting Started
@@ -84,9 +74,9 @@ Choose from multiple Redis deployment options:
 1. [Design a schema for your use case](https://www.redisvl.com/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis  and indexable fields (*e.g. text, tags, numerics, geo, and vectors*). [Load a schema](https://www.redisvl.com/user_guide/getting_started_01.html#example-schema-creation) from a YAML file:
     ```yaml
     index:
-        name: user-index-v1
-        prefix: user
-        storage_type: json
+      name: user-idx
+      prefix: user
+      storage_type: json
 
     fields:
       - name: user
@@ -97,7 +87,7 @@ Choose from multiple Redis deployment options:
         type: vector
         attrs:
           algorithm: flat
-          dims: 3
+          dims: 4
           distance_metric: cosine
           datatype: float32
     ```
@@ -110,7 +100,7 @@ Choose from multiple Redis deployment options:
     ```python
     schema = IndexSchema.from_dict({
         "index": {
-            "name": "user-index-v1",
+            "name": "user-idx",
             "prefix": "user",
             "storage_type": "json"
         },
@@ -143,7 +133,7 @@ Choose from multiple Redis deployment options:
     # Create the index in Redis
     index.create()
     ```
-    > Async compliant search index class also available: `AsyncSearchIndex`
+    > Async compliant search index class also available: [AsyncSearchIndex](https://www.redisvl.com/api/searchindex.html#redisvl.index.AsyncSearchIndex).
 
 3. [Load](https://www.redisvl.com/user_guide/getting_started_01.html#load-data-to-searchindex)
 and [fetch](https://www.redisvl.com/user_guide/getting_started_01.html#fetch-an-object-from-redis) data to/from your Redis instance:
@@ -255,8 +245,7 @@ llmcache = SemanticCache(
 # store user queries and LLM responses in the semantic cache
 llmcache.store(
     prompt="What is the capital city of France?",
-    response="Paris",
-    metadata={}
+    response="Paris"
 )
 
 # quickly check the cache with a slightly different prompt (before invoking an LLM)
@@ -264,21 +253,22 @@ response = llmcache.check(prompt="What is France's capital city?")
 print(response[0]["response"])
 ```
 ```stdout
->>> "Paris"
+>>> Paris
 ```
 
 > Learn more about [semantic caching]((https://www.redisvl.com/user_guide/llmcache_03.html)) for LLMs.
 
 ### LLM Session Management
 
-Improve personalization and accuracy of LLM responses by providing user chat history as context. Manage access to the session data using recency or relevancy, *powered by vector search* with the [`SemanticSessionManager`]().
+Improve personalization and accuracy of LLM responses by providing user chat history as context. Manage access to the session data using recency or relevancy, *powered by vector search* with the [`SemanticSessionManager`](https://www.redisvl.com/api/session_manager.html).
 
 ```python
 from redisvl.extensions.session_manager import SemanticSessionManager
 
 session = SemanticSessionManager(
     name="my-session",
-    redis_url="redis://localhost:6379"
+    redis_url="redis://localhost:6379",
+    distance_threshold=0.7
 )
 
 session.add_messages([
@@ -293,14 +283,14 @@ Get recent chat history:
 session.get_recent(top_k=1)
 ```
 ```stdout
->>> {"role": "assistant", "content": "I don't know"}
+>>> [{"role": "assistant", "content": "I don't know"}]
 ```
 Get relevant chat history (powered by vector search):
 ```python
 session.get_relevant("weather", top_k=1)
 ```
 ```stdout
->>> {"role": "user", "content": "what is the weather going to be today?"}
+>>> [{"role": "user", "content": "what is the weather going to be today?"}]
 ```
 > Learn more about [LLM session management]((https://www.redisvl.com/user_guide/session_manager_07.html)).
 
@@ -309,13 +299,15 @@ session.get_relevant("weather", top_k=1)
 Build fast decision models that run directly in Redis and route user queries to the nearest "route" or "topic".
 
 ```python
+from redisvl.extensions.router import Route, SemanticRouter
+
 routes = [
     Route(
         name="greeting",
         references=["hello", "hi"],
         metadata={"type": "greeting"},
         distance_threshold=0.3,
-    )
+    ),
     Route(
         name="farewell",
         references=["bye", "goodbye"],
@@ -335,7 +327,7 @@ router = SemanticRouter(
 router("Hi, good morning")
 ```
 ```stdout
->>> RouteMatch(name='greeting', distance=0.09384023)
+>>> RouteMatch(name='greeting', distance=0.273891836405)
 ```
 > Learn more about [semantic routing](https://www.redisvl.com/user_guide/semantic_router_08.html).
 
@@ -353,7 +345,16 @@ Commands:
         stats       Obtain statistics about an index
 ```
 
-> Read more about using the [CLI](https://www.redisvl.com/user_guide/cli.html).
+> Read more about [using the CLI](https://www.redisvl.com/user_guide/cli.html).
+
+## 🚀 Why RedisVL?
+
+In the age of GenAI, **vector databases** and **LLMs** are transforming information retrieval systems. With emerging and popular frameworks like [LangChain](https://github.com/langchain-ai/langchain) and [LlamaIndex](https://www.llamaindex.ai/), innovation is rapid. Yet, many organizations face the challenge of delivering AI solutions **quickly** and at **scale**.
+
+Enter [Redis](https://redis.io) – a cornerstone of the NoSQL world, renowned for its versatile [data structures](https://redis.io/docs/data-types/) and [processing engines](https://redis.io/docs/interact/). Redis excels in real-time workloads like caching, session management, and search. It's also a powerhouse as a vector database for RAG, an LLM cache, and a chat session memory store for conversational AI.
+
+The Redis Vector Library bridges the gap between the AI-native developer ecosystem and Redis's robust capabilities. With a lightweight, elegant, and intuitive interface, RedisVL makes it easy to leverage Redis's power. Built on the [Redis Python](https://github.com/redis/redis-py/tree/master) client, `redisvl` transforms Redis's features into a grammar perfectly aligned with the needs of today's AI/ML Engineers and Data Scientists.
+
 
 ## 😁 Helpful Links
 
