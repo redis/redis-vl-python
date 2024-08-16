@@ -44,9 +44,9 @@ class CacheEntry(BaseModel):
     def to_dict(self) -> Dict:
         data = self.dict(exclude_none=True)
         data["prompt_vector"] = array_to_buffer(self.prompt_vector)
-        if self.metadata:
+        if self.metadata is not None:
             data["metadata"] = serialize(self.metadata)
-        if self.filters:
+        if self.filters is not None:
             data.update(self.filters)
             del data["filters"]
         return data

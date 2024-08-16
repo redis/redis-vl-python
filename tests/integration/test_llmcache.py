@@ -295,6 +295,22 @@ def test_store_with_metadata(cache, vectorizer):
     assert check_result[0]["prompt"] == prompt
 
 
+def test_store_with_empty_metadata(cache, vectorizer):
+    prompt = "This is another test prompt."
+    response = "This is another test response."
+    metadata = {}
+    vector = vectorizer.embed(prompt)
+
+    cache.store(prompt, response, vector=vector, metadata=metadata)
+    check_result = cache.check(vector=vector, num_results=1)
+
+    assert len(check_result) == 1
+    print(check_result, flush=True)
+    assert check_result[0]["response"] == response
+    assert check_result[0]["metadata"] == metadata
+    assert check_result[0]["prompt"] == prompt
+
+
 def test_store_with_invalid_metadata(cache, vectorizer):
     prompt = "This is another test prompt."
     response = "This is another test response."
