@@ -37,6 +37,7 @@ class SemanticCache(BaseLLMCache):
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
+        overwrite: bool = False,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -57,6 +58,8 @@ class SemanticCache(BaseLLMCache):
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
+            overwrite (bool): Whether or not to force overwrite the schema for
+                the semantic cache index. Defaults to false.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
@@ -99,10 +102,24 @@ class SemanticCache(BaseLLMCache):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
+        # Check for existing cache index?
+        if not overwrite:
+            if self._index.exists():
+                existing_index = SearchIndex.from_existing(
+                    name, redis_client=self._index.client
+                )
+                if existing_index.schema != self._index.schema:
+                    raise ValueError(
+                        f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
+                        "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                    )
+
         # Initialize other components
         self._set_vectorizer(vectorizer)
         self.set_threshold(distance_threshold)
-        self._index.create(overwrite=False)
+
+        # Create the index
+        self._index.create(overwrite=overwrite, drop=False)
 
     def _modify_schema(
         self,
