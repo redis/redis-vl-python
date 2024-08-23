@@ -522,8 +522,8 @@ def test_index_updating(redis_url):
     )
 
     cache_no_tags.store(
-        prompt="this prompt has no tags",
-        response="this response has no tags",
+        prompt="this prompt has tags",
+        response="this response has tags",
         filters={"some_tag": "abc"},
     )
 
@@ -531,7 +531,7 @@ def test_index_updating(redis_url):
     tag_filter = Tag("some_tag") == "abc"
 
     response = cache_no_tags.check(
-        prompt="this prompt has no tag",
+        prompt="this prompt has a tag",
         filter_expression=tag_filter,
     )
     assert response == []
@@ -551,8 +551,7 @@ def test_index_updating(redis_url):
     )
 
     response = cache_overwrite.check(
-        prompt="this prompt has no tag",
+        prompt="this prompt has a tag",
         filter_expression=tag_filter,
     )
-
     assert len(response) == 1
