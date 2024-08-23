@@ -65,6 +65,7 @@ class SemanticCache(BaseLLMCache):
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 1.
+            ValueError: If existing schema does not match new schema and overwrite is False.
         """
         super().__init__(ttl)
 
@@ -102,17 +103,16 @@ class SemanticCache(BaseLLMCache):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
-        # Check for existing cache index?
-        if not overwrite:
-            if self._index.exists():
-                existing_index = SearchIndex.from_existing(
-                    name, redis_client=self._index.client
+        # Check for existing cache index
+        if not overwrite and self._index.exists():
+            existing_index = SearchIndex.from_existing(
+                name, redis_client=self._index.client
+            )
+            if existing_index.schema != self._index.schema:
+                raise ValueError(
+                    f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
+                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
                 )
-                if existing_index.schema != self._index.schema:
-                    raise ValueError(
-                        f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
-                        "If you wish to overwrite the index schema, set overwrite=True during initialization."
-                    )
 
         # Initialize other components
         self._set_vectorizer(vectorizer)

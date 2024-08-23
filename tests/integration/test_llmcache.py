@@ -513,3 +513,46 @@ def test_complex_filters(cache_with_filters):
         "prompt 1", filter_expression=combined_filter, num_results=5
     )
     assert len(results) == 1
+
+
+def test_index_updating(redis_url):
+    cache_no_tags = SemanticCache(
+        name="test_cache",
+        redis_url=redis_url,
+    )
+
+    cache_no_tags.store(
+        prompt="this prompt has no tags",
+        response="this response has no tags",
+        filters={"some_tag": "abc"},
+    )
+
+    # filterable_fields not defined in schema, so no tags will match
+    tag_filter = Tag("some_tag") == "abc"
+
+    response = cache_no_tags.check(
+        prompt="this prompt has no tag",
+        filter_expression=tag_filter,
+    )
+    assert response == []
+
+    with pytest.raises(ValueError):
+        cache_with_tags = SemanticCache(
+            name="test_cache",
+            redis_url=redis_url,
+            filterable_fields=[{"name": "some_tag", "type": "tag"}],
+        )
+
+    cache_overwrite = SemanticCache(
+        name="test_cache",
+        redis_url=redis_url,
+        filterable_fields=[{"name": "some_tag", "type": "tag"}],
+        overwrite=True,
+    )
+
+    response = cache_overwrite.check(
+        prompt="this prompt has no tag",
+        filter_expression=tag_filter,
+    )
+
+    assert len(response) == 1
