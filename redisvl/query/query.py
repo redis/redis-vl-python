@@ -1,32 +1,19 @@
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-from redis.commands.search.query import Query
+from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
 
 
-class BaseQuery:
-    def __init__(
-        self,
-        return_fields: Optional[List[str]] = None,
-        num_results: int = 10,
-        dialect: int = 2,
-        sort_by: Optional[str] = None,
-        in_order: bool = False,
-    ):
-        """Base query class used to subclass many query types."""
-        self._return_fields = return_fields if return_fields is not None else []
-        self._num_results = num_results
-        self._dialect = dialect
-        self._first = 0
-        self._limit = num_results
-        self._sort_by = sort_by
-        self._in_order = in_order
+class BaseQuery(RedisQuery):
+    """Base query class used to subclass many query types."""
+
+    _filter: Optional[FilterExpression] = None
 
     def __str__(self) -> str:
-        return " ".join([str(x) for x in self.query.get_args()])
+        return " ".join([str(x) for x in self.get_args()])
 
     def set_filter(self, filter_expression: Optional[FilterExpression] = None):
         """Set the filter expression for the query.
@@ -56,81 +43,13 @@ class BaseQuery:
         """
         return self._filter
 
-    def set_paging(self, first: int, limit: int):
-        """Set the paging parameters for the query to limit the number of
-        results.
-
-        Args:
-            first (int): The zero-indexed offset for which to fetch query results
-            limit (int): The max number of results to include including the offset
-
-        Raises:
-            TypeError: If first or limit are NOT integers.
-        """
-        if not isinstance(first, int) or not isinstance(limit, int):
-            raise TypeError("Paging params must both be integers")
-
-        self._first = first
-        self._limit = limit
-
     @property
-    def query(self) -> Query:
+    def query(self) -> "BaseQuery":
         raise NotImplementedError
 
     @property
     def params(self) -> Dict[str, Any]:
         return {}
-
-
-class CountQuery(BaseQuery):
-    def __init__(
-        self,
-        filter_expression: FilterExpression,
-        dialect: int = 2,
-        params: Optional[Dict[str, Any]] = None,
-    ):
-        """A query for a simple count operation provided some filter expression.
-
-        Args:
-            filter_expression (FilterExpression): The filter expression to query for.
-            params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
-
-        Raises:
-            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-
-        .. code-block:: python
-
-            from redisvl.query import CountQuery
-            from redisvl.query.filter import Tag
-
-            t = Tag("brand") == "Nike"
-            query = CountQuery(filter_expression=t)
-
-            count = index.query(query)
-        """
-        super().__init__(num_results=0, dialect=dialect)
-        self.set_filter(filter_expression)
-        self._params = params or {}
-
-    @property
-    def query(self) -> Query:
-        """The loaded Redis-Py query.
-
-        Returns:
-            redis.commands.search.query.Query: The Redis-Py query object.
-        """
-        base_query = str(self._filter)
-        query = Query(base_query).no_content().paging(0, 0).dialect(self._dialect)
-        return query
-
-    @property
-    def params(self) -> Dict[str, Any]:
-        """The parameters for the query.
-
-        Returns:
-            Dict[str, Any]: The parameters for the query.
-        """
-        return self._params
 
 
 class FilterQuery(BaseQuery):
@@ -140,8 +59,8 @@ class FilterQuery(BaseQuery):
         return_fields: Optional[List[str]] = None,
         num_results: int = 10,
         dialect: int = 2,
-        sort_by: Optional[str] = None,
-        in_order: bool = False,
+        # sort_by: Optional[str] = None,
+        # in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
     ):
         """A query for a running a filtered search with a filter expression.
@@ -173,40 +92,92 @@ class FilterQuery(BaseQuery):
             q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
 
         """
-        super().__init__(return_fields, num_results, dialect, sort_by, in_order)
-        self.set_filter(filter_expression)
         self._params = params or {}
+        self._filter = filter_expression
+
+        super().__init__(str(self._filter))
+
+        self.return_fields(*return_fields).paging(0, num_results).dialect(dialect)
+
+        # if sort_by:
+        #     self.sort_by(sort_by)
+
+        # if in_order:
+        #     self.in_order()
+
 
     @property
-    def query(self) -> Query:
+    def query(self) -> "FilterQuery":
         """Return a Redis-Py Query object representing the query.
 
         Returns:
             redis.commands.search.query.Query: The Redis-Py query object.
         """
-        base_query = str(self._filter)
-        query = (
-            Query(base_query)
-            .return_fields(*self._return_fields)
-            .paging(self._first, self._limit)
-            .dialect(self._dialect)
-        )
-        if self._sort_by:
-            query = query.sort_by(self._sort_by)
+        return self
 
-        if self._in_order:
-            query = query.in_order()
 
-        return query
+
+
+
+class CountQuery(BaseQuery):
+    def __init__(
+        self,
+        filter_expression: FilterExpression,
+        dialect: int = 2,
+        params: Optional[Dict[str, Any]] = None,
+    ):
+        """A query for a simple count operation provided some filter expression.
+
+        Args:
+            filter_expression (FilterExpression): The filter expression to query for.
+            params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        .. code-block:: python
+
+            from redisvl.query import CountQuery
+            from redisvl.query.filter import Tag
+
+            t = Tag("brand") == "Nike"
+            query = CountQuery(filter_expression=t)
+
+            count = index.query(query)
+        """
+        self._params = params or {}
+        self._filter = filter_expression
+
+        super().__init__(str(self._filter))
+        self.no_content().paging(0, 0).dialect(dialect)
+
+    @property
+    def query(self) -> "BaseQuery":
+        """The loaded Redis-Py query.
+
+        Returns:
+            redis.commands.search.query.Query: The Redis-Py query object.
+        """
+        return self
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """The parameters for the query.
+
+        Returns:
+            Dict[str, Any]: The parameters for the query.
+        """
+        return self._params
+
 
 
 class BaseVectorQuery(BaseQuery):
-    DTYPES = {
+    DTYPES: Dict[str, np.dtype] = {
         "float32": np.float32,
         "float64": np.float64,
     }
-    DISTANCE_ID = "vector_distance"
-    VECTOR_PARAM = "vector"
+    DISTANCE_ID: str = "vector_distance"
+    VECTOR_PARAM: str = "vector"
 
     def __init__(
         self,
