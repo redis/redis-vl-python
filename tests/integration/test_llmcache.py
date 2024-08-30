@@ -19,7 +19,9 @@ def vectorizer():
 @pytest.fixture
 def cache(vectorizer, redis_url):
     cache_instance = SemanticCache(
-        vectorizer=vectorizer, distance_threshold=0.2, redis_url="redis://localhost:6379"
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        redis_url="redis://localhost:6379",
     )
     yield cache_instance
     cache_instance._index.delete(True)  # Clean up index

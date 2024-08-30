@@ -28,7 +28,7 @@ class BaseQuery(RedisQuery):
 
     def _build_query_string(self) -> str:
         """Build the full Redis query string."""
-        pass
+        raise NotImplementedError("Must be implemented by subclasses")
 
     def set_filter(self, filter_expression: Optional[FilterExpression] = None):
         """Set the filter expression for the query.
@@ -45,11 +45,12 @@ class BaseQuery(RedisQuery):
         elif isinstance(filter_expression, FilterExpression):
             self._filter_expression = filter_expression
         else:
-            raise TypeError("filter_expression must be of type FilterExpression or None")
+            raise TypeError(
+                "filter_expression must be of type FilterExpression or None"
+            )
 
         # Reset the query string
         self._query_string = self._build_query_string()
-
 
     @property
     def filter(self) -> FilterExpression:
@@ -167,8 +168,8 @@ class CountQuery(BaseQuery):
         return str(self._filter_expression)
 
 
-class BaseVectorQuery(BaseQuery):
-    DTYPES: Dict[str, np.dtype] = {
+class BaseVectorQuery:
+    DTYPES: Dict[str, Any] = {
         "float32": np.float32,
         "float64": np.float64,
     }
@@ -176,7 +177,7 @@ class BaseVectorQuery(BaseQuery):
     VECTOR_PARAM: str = "vector"
 
 
-class VectorQuery(BaseVectorQuery):
+class VectorQuery(BaseVectorQuery, BaseQuery):
     def __init__(
         self,
         vector: Union[List[float], bytes],
@@ -268,7 +269,7 @@ class VectorQuery(BaseVectorQuery):
         return {self.VECTOR_PARAM: vector}
 
 
-class VectorRangeQuery(BaseVectorQuery):
+class VectorRangeQuery(BaseVectorQuery, BaseQuery):
     DISTANCE_THRESHOLD_PARAM: str = "distance_threshold"
 
     def __init__(

@@ -1,5 +1,4 @@
 import pytest
-
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
@@ -124,9 +123,10 @@ def test_vector_query():
         ["field1", "field2"],
         dialect=3,
         num_results=10,
-        in_order=True
+        in_order=True,
     )
     assert vector_query._in_order
+
 
 def test_range_query():
     # Create a filter expression
@@ -182,7 +182,7 @@ def test_range_query():
         ["field1"],
         filter_expression,
         num_results=10,
-        in_order=True
+        in_order=True,
     )
     assert range_query._in_order
 
@@ -193,7 +193,7 @@ def test_range_query():
         CountQuery(),
         FilterQuery(),
         VectorQuery(vector=[1, 2, 3], vector_field_name="vector"),
-        RangeQuery(vector=[1, 2, 3], vector_field_name="vector")
+        RangeQuery(vector=[1, 2, 3], vector_field_name="vector"),
     ],
 )
 def test_query_modifiers(query):

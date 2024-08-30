@@ -13,5 +13,5 @@ __all__ = [
     "FilterQuery",
     "RangeQuery",
     "VectorRangeQuery",
-    "CountQuery"
+    "CountQuery",
 ]
