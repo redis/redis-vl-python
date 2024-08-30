@@ -710,7 +710,7 @@ class SearchIndex(BaseSearchIndex):
 
         offset = 0
         while True:
-            query.set_paging(offset, page_size)
+            query.paging(offset, page_size)
             results = self._query(query)
             if not results:
                 break
@@ -1194,7 +1194,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         first = 0
         while True:
-            query.set_paging(first, page_size)
+            query.paging(first, page_size)
             results = await self._query(query)
             if not results:
                 break
