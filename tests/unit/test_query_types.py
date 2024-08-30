@@ -1,3 +1,5 @@
+import pytest
+
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
@@ -18,7 +20,7 @@ def test_count_query():
     count_query = CountQuery(filter_expression)
 
     # Check properties
-    assert isinstance(count_query)
+    assert isinstance(count_query, Query)
     assert isinstance(count_query.query, Query)
     assert isinstance(count_query.params, dict)
     assert count_query.params == {}
@@ -84,7 +86,7 @@ def test_vector_query():
     assert vector_query._vector == sample_vector
     assert vector_query._vector_field_name == "vector_field"
     assert vector_query._num_results == 10
-    assert "field1" in vector_query._return_fields
+    assert vector_query._return_fields == ["field1", "field2", "vector_distance"]
     assert isinstance(vector_query, Query)
     assert isinstance(vector_query.query, Query)
     assert isinstance(vector_query.params, dict)
@@ -184,3 +186,69 @@ def test_range_query():
     )
     assert range_query._in_order
 
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        CountQuery(),
+        FilterQuery(),
+        VectorQuery(vector=[1, 2, 3], vector_field_name="vector"),
+        RangeQuery(vector=[1, 2, 3], vector_field_name="vector")
+    ],
+)
+def test_query_modifiers(query):
+    query.paging(3, 5)
+    assert query._offset == 3
+    assert query._num == 5
+
+    query.dialect(4)
+    assert query._dialect == 4
+
+    query.in_order()
+    assert query._in_order
+
+    query.sort_by("time")
+    assert query._sortby.args[0] == "time"
+
+    query.scorer("BM25")
+    assert query._scorer == "BM25"
+
+    query.timeout(20)
+    assert query._timeout == 20
+
+    query.slop(10)
+    assert query._slop == 10
+
+    query.verbatim()
+    assert query._verbatim
+
+    query.no_content()
+    assert query._no_content
+
+    query.no_stopwords()
+    assert query._no_stopwords
+
+    query.with_scores()
+    assert query._with_scores
+
+    query.limit_fields("test")
+    assert query._fields == ("test",)
+
+    f = Tag("test") == "foo"
+    query.set_filter(f)
+    assert query._filter_expression == f
+
+    # double check all other states
+    assert query._offset == 3
+    assert query._num == 5
+    assert query._dialect == 4
+    assert query._in_order
+    assert query._sortby.args[0] == "time"
+    assert query._scorer == "BM25"
+    assert query._timeout == 20
+    assert query._slop == 10
+    assert query._verbatim
+    assert query._no_content
+    assert query._no_stopwords
+    assert query._with_scores
+    assert query._fields == ("test",)
