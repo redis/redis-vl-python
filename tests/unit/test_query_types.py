@@ -28,7 +28,7 @@ def test_count_query():
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
     count_query.set_filter(new_filter_expression)
-    assert count_query.get_filter() == new_filter_expression
+    assert count_query.filter == new_filter_expression
 
     fake_result = Result([2], "")
     assert process_results(fake_result, count_query, "json") == 2
@@ -43,7 +43,7 @@ def test_filter_query():
     # Check properties
     assert filter_query._return_fields == return_fields
     assert filter_query._num_results == 10
-    assert filter_query.get_filter() == filter_expression
+    assert filter_query.filter == filter_expression
     assert isinstance(filter_query, Query)
     assert isinstance(filter_query.query, Query)
     assert isinstance(filter_query.params, dict)
@@ -55,7 +55,7 @@ def test_filter_query():
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
     filter_query.set_filter(new_filter_expression)
-    assert filter_query.get_filter() == new_filter_expression
+    assert filter_query.filter == new_filter_expression
 
     # Test paging functionality
     filter_query.paging(5, 7)
@@ -98,7 +98,7 @@ def test_vector_query():
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
     vector_query.set_filter(new_filter_expression)
-    assert vector_query.get_filter() == new_filter_expression
+    assert vector_query.filter == new_filter_expression
 
     # Test paging functionality
     vector_query.paging(5, 7)
@@ -156,7 +156,7 @@ def test_range_query():
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Outdoor"
     range_query.set_filter(new_filter_expression)
-    assert range_query.get_filter() == new_filter_expression
+    assert range_query.filter == new_filter_expression
 
     # Test paging functionality
     range_query.paging(5, 7)

@@ -50,13 +50,6 @@ class BaseQuery(RedisQuery):
         # Reset the query string
         self._query_string = self._build_query_string()
 
-    def get_filter(self) -> FilterExpression:
-        """Get the filter expression for the query.
-
-        Returns:
-            FilterExpression: The filter for the query.
-        """
-        return self.filter
 
     @property
     def filter(self) -> FilterExpression:

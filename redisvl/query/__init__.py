@@ -4,6 +4,14 @@ from redisvl.query.query import (
     FilterQuery,
     RangeQuery,
     VectorQuery,
+    VectorRangeQuery,
 )
 
-__all__ = ["BaseQuery", "VectorQuery", "FilterQuery", "RangeQuery", "CountQuery"]
+__all__ = [
+    "BaseQuery",
+    "VectorQuery",
+    "FilterQuery",
+    "RangeQuery",
+    "VectorRangeQuery",
+    "CountQuery"
+]
