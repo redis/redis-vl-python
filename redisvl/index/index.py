@@ -65,7 +65,7 @@ def process_results(
     unpack_json = (
         (storage_type == StorageType.JSON)
         and isinstance(query, FilterQuery)
-        and not query._return_fields # type: ignore
+        and not query._return_fields  # type: ignore
     )
 
     # Process records
