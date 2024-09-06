@@ -120,12 +120,8 @@ class SemanticSessionManager(BaseSessionManager):
             filter_expression=self._default_session_filter,
             return_fields=return_fields,
         )
-
-        sorted_query = query.query
-        sorted_query.sort_by(self.timestamp_field_name, asc=True)
-        messages = [
-            doc.__dict__ for doc in self._index.search(sorted_query, query.params).docs
-        ]
+        query.sort_by(self.timestamp_field_name, asc=True)
+        messages = self._index.query(query)
 
         return self._format_context(messages, as_text=False)
 
@@ -255,12 +251,8 @@ class SemanticSessionManager(BaseSessionManager):
             return_fields=return_fields,
             num_results=top_k,
         )
-
-        sorted_query = query.query
-        sorted_query.sort_by(self.timestamp_field_name, asc=False)
-        messages = [
-            doc.__dict__ for doc in self._index.search(sorted_query, query.params).docs
-        ]
+        query.sort_by(self.timestamp_field_name, asc=False)
+        messages = self._index.query(query)
 
         if raw:
             return messages[::-1]
