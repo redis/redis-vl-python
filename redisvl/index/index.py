@@ -1,4 +1,7 @@
+import asyncio
+import atexit
 import json
+import threading
 from functools import wraps
 from typing import (
     TYPE_CHECKING,
@@ -421,7 +424,6 @@ class SearchIndex(BaseSearchIndex):
             raise TypeError("Invalid Redis client instance")
 
         self._redis_client = redis_client
-
         return self
 
     def create(self, overwrite: bool = False, drop: bool = False) -> None:
@@ -813,6 +815,31 @@ class AsyncSearchIndex(BaseSearchIndex):
                 "Must use set_client() or connect() methods to provide a Redis connection to AsyncSearchIndex"
             )
 
+        atexit.register(self._cleanup_connection)
+
+    def _cleanup_connection(self):
+        if self._redis_client:
+
+            def run_in_thread():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self._redis_client.aclose())
+                    loop.close()
+                except RuntimeError:
+                    pass
+
+            # Run cleanup in a background thread to avoid event loop issues
+            thread = threading.Thread(target=run_in_thread)
+            thread.start()
+            thread.join()
+
+        self._redis_client = None
+
+    def disconnect(self):
+        """Disconnect and cleanup the underlying async redis connection."""
+        self._cleanup_connection()
+
     @classmethod
     async def from_existing(
         cls,
@@ -902,10 +929,13 @@ class AsyncSearchIndex(BaseSearchIndex):
             await index.set_client(client)
 
         """
-        if not isinstance(redis_client, aredis.Redis):
-            raise TypeError("Invalid Redis client instance")
-
-        self._redis_client = redis_client
+        if isinstance(redis_client, redis.Redis):
+            print("Setting client and converting from async", flush=True)
+            self._redis_client = RedisConnectionFactory.sync_to_async_redis(
+                redis_client
+            )
+        else:
+            self._redis_client = redis_client
 
         return self
 

@@ -152,9 +152,7 @@ async def test_search_index_client(async_client, index_schema):
 async def test_search_index_set_client(async_client, client, async_index):
     await async_index.set_client(async_client)
     assert async_index.client == async_client
-    # should not be able to set the sync client here
-    with pytest.raises(TypeError):
-        await async_index.set_client(client)
+    await async_index.set_client(client)
 
     async_index.disconnect()
     assert async_index.client == None
