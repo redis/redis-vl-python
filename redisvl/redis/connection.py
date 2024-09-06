@@ -1,8 +1,12 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from redis import Redis
+from redis.asyncio import Connection as AsyncConnection
+from redis.asyncio import ConnectionPool as AsyncConnectionPool
 from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio import SSLConnection as AsyncSSLConnection
+from redis.connection import AbstractConnection, SSLConnection
 from redis.exceptions import ResponseError
 
 from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES
@@ -225,6 +229,22 @@ class RedisConnectionFactory:
             return AsyncRedis.from_url(url, **kwargs)
         # fallback to env var REDIS_URL
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
+
+    @staticmethod
+    def sync_to_async_redis(redis_client: Redis) -> AsyncRedis:
+        # pick the right connection class
+        connection_class: Type[AbstractConnection] = (
+            AsyncSSLConnection
+            if redis_client.connection_pool.connection_class == SSLConnection
+            else AsyncConnection
+        )
+        # make async client
+        return AsyncRedis.from_pool(  # type: ignore
+            AsyncConnectionPool(
+                connection_class=connection_class,
+                **redis_client.connection_pool.connection_kwargs,
+            )
+        )
 
     @staticmethod
     def get_modules(client: Redis) -> Dict[str, Any]:
