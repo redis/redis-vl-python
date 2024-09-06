@@ -19,7 +19,9 @@ def vectorizer():
 @pytest.fixture
 def cache(vectorizer, redis_url):
     cache_instance = SemanticCache(
-        vectorizer=vectorizer, distance_threshold=0.2, redis_url=redis_url
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        redis_url=redis_url,
     )
     yield cache_instance
     cache_instance._index.delete(True)  # Clean up index
@@ -265,9 +267,6 @@ def test_check_no_match(cache, vectorizer):
 def test_check_invalid_input(cache):
     with pytest.raises(ValueError):
         cache.check()
-
-    with pytest.raises(TypeError):
-        cache.check(prompt="test", return_fields="bad value")
 
 
 def test_bad_connection_info(vectorizer):

@@ -296,13 +296,8 @@ class SemanticCache(BaseLLMCache):
 
         # overrides
         distance_threshold = distance_threshold or self._distance_threshold
-        return_fields = return_fields or self.return_fields
         vector = vector or self._vectorize_prompt(prompt)
-
         self._check_vector_dims(vector)
-
-        if not isinstance(return_fields, list):
-            raise TypeError("return_fields must be a list of field names")
 
         query = RangeQuery(
             vector=vector,
@@ -320,15 +315,18 @@ class SemanticCache(BaseLLMCache):
         cache_search_results = self._index.query(query)
 
         for cache_search_result in cache_search_results:
-            key = cache_search_result["id"]
-            self._refresh_ttl(key)
+            redis_key = cache_search_result.pop("id")
+            self._refresh_ttl(redis_key)
 
-            # Create cache hit
+            # Create and process cache hit
             cache_hit = CacheHit(**cache_search_result)
-            cache_hit_dict = {
-                k: v for k, v in cache_hit.to_dict().items() if k in return_fields
-            }
-            cache_hit_dict["key"] = key
+            cache_hit_dict = cache_hit.to_dict()
+            # Filter down to only selected return fields if needed
+            if isinstance(return_fields, list) and len(return_fields) > 0:
+                cache_hit_dict = {
+                    k: v for k, v in cache_hit_dict.items() if k in return_fields
+                }
+            cache_hit_dict[self.redis_key_field_name] = redis_key
             cache_hits.append(cache_hit_dict)
 
         return cache_hits

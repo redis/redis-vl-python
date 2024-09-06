@@ -65,7 +65,7 @@ def process_results(
     unpack_json = (
         (storage_type == StorageType.JSON)
         and isinstance(query, FilterQuery)
-        and not query._return_fields
+        and not query._return_fields  # type: ignore
     )
 
     # Process records
@@ -710,7 +710,7 @@ class SearchIndex(BaseSearchIndex):
 
         offset = 0
         while True:
-            query.set_paging(offset, page_size)
+            query.paging(offset, page_size)
             results = self._query(query)
             if not results:
                 break
@@ -1194,7 +1194,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         first = 0
         while True:
-            query.set_paging(first, page_size)
+            query.paging(first, page_size)
             results = await self._query(query)
             if not results:
                 break
