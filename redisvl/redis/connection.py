@@ -1,9 +1,11 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypeVar, Union, overload
+from urllib.parse import urlparse
 
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ResponseError
+from redis.sentinel import Sentinel
 
 from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
@@ -145,6 +147,9 @@ def validate_modules(
     )
 
 
+T = TypeVar("T", Redis, AsyncRedis)
+
+
 class RedisConnectionFactory:
     """Builds connections to a Redis database, supporting both synchronous and
     asynchronous clients.
@@ -200,9 +205,15 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         if url:
-            return Redis.from_url(url, **kwargs)
-        # fallback to env var REDIS_URL
-        return Redis.from_url(get_address_from_env(), **kwargs)
+            if url.startswith("redis+sentinel"):
+                return RedisConnectionFactory._redis_sentinel_client(
+                    url, Redis, **kwargs
+                )
+            else:
+                return Redis.from_url(url, **kwargs)
+        else:
+            # fallback to env var REDIS_URL
+            return Redis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
     def get_async_redis_connection(url: Optional[str] = None, **kwargs) -> AsyncRedis:
@@ -222,9 +233,15 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         if url:
-            return AsyncRedis.from_url(url, **kwargs)
-        # fallback to env var REDIS_URL
-        return AsyncRedis.from_url(get_address_from_env(), **kwargs)
+            if url.startswith("redis+sentinel"):
+                return RedisConnectionFactory._redis_sentinel_client(
+                    url, AsyncRedis, **kwargs
+                )
+            else:
+                return AsyncRedis.from_url(url, **kwargs)
+        else:
+            # fallback to env var REDIS_URL
+            return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
     @staticmethod
     def get_modules(client: Redis) -> Dict[str, Any]:
@@ -275,3 +292,60 @@ class RedisConnectionFactory:
 
         # Validate available modules
         validate_modules(installed_modules, required_modules)
+
+    @staticmethod
+    @overload
+    def _redis_sentinel_client(
+        redis_url: str, redis_class: type[Redis], **kwargs: Any
+    ) -> Redis: ...
+
+    @staticmethod
+    @overload
+    def _redis_sentinel_client(
+        redis_url: str, redis_class: type[AsyncRedis], **kwargs: Any
+    ) -> AsyncRedis: ...
+
+    @staticmethod
+    def _redis_sentinel_client(
+        redis_url: str, redis_class: Union[type[Redis], type[AsyncRedis]], **kwargs: Any
+    ) -> Union[Redis, AsyncRedis]:
+        sentinel_list, service_name, db, username, password = (
+            RedisConnectionFactory._parse_sentinel_url(redis_url)
+        )
+
+        sentinel_kwargs = {}
+        if username:
+            sentinel_kwargs["username"] = username
+            kwargs["username"] = username
+        if password:
+            sentinel_kwargs["password"] = password
+            kwargs["password"] = password
+        if db:
+            kwargs["db"] = db
+
+        sentinel = Sentinel(sentinel_list, sentinel_kwargs=sentinel_kwargs, **kwargs)
+        return sentinel.master_for(service_name, redis_class=redis_class, **kwargs)
+
+    @staticmethod
+    def _parse_sentinel_url(url: str) -> tuple:
+        parsed_url = urlparse(url)
+        hosts_part = parsed_url.netloc.split("@")[-1]
+        sentinel_hosts = hosts_part.split(",")
+
+        sentinel_list = []
+        for host in sentinel_hosts:
+            host_parts = host.split(":")
+            if len(host_parts) == 2:
+                sentinel_list.append((host_parts[0], int(host_parts[1])))
+            else:
+                sentinel_list.append((host_parts[0], 26379))
+
+        service_name = "mymaster"
+        db = None
+        if parsed_url.path:
+            path_parts = parsed_url.path.split("/")
+            service_name = path_parts[1] or "mymaster"
+            if len(path_parts) > 2:
+                db = path_parts[2]
+
+        return sentinel_list, service_name, db, parsed_url.username, parsed_url.password
