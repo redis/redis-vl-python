@@ -1,3 +1,4 @@
+import asyncio
 from collections import namedtuple
 from time import sleep, time
 
@@ -297,7 +298,7 @@ async def test_async_ttl_refresh(cache_with_ttl, vectorizer):
     await cache_with_ttl.astore(prompt, response, vector=vector)
 
     for _ in range(3):
-        sleep(1)
+        await asyncio.sleep(1)
         check_result = await cache_with_ttl.acheck(vector=vector)
 
     assert len(check_result) == 1
@@ -464,6 +465,9 @@ def test_check_no_match(cache, vectorizer):
 def test_check_invalid_input(cache):
     with pytest.raises(ValueError):
         cache.check()
+
+    with pytest.raises(TypeError):
+        cache.check(prompt="test", return_fields="bad value")
 
 
 @pytest.mark.asyncio
