@@ -106,6 +106,7 @@ async def test_get_async_index(cache):
 async def test_get_async_index_from_provided_client(cache_with_redis_client):
     aindex = await cache_with_redis_client._get_async_index()
     assert isinstance(aindex, AsyncSearchIndex)
+    assert aindex == cache_with_redis_client.aindex
 
 
 def test_delete(cache_no_cleanup):
@@ -273,6 +274,33 @@ async def test_async_ttl_expiration(cache_with_ttl, vectorizer):
 
     check_result = await cache_with_ttl.acheck(vector=vector)
     assert len(check_result) == 0
+
+
+def test_custom_ttl(cache_with_ttl, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    cache_with_ttl.store(prompt, response, vector=vector, ttl=5)
+    sleep(3)
+
+    check_result = cache_with_ttl.check(vector=vector)
+    assert len(check_result) != 0
+    assert cache_with_ttl.ttl == 2
+
+
+@pytest.mark.asyncio
+async def test_async_custom_ttl(cache_with_ttl, vectorizer):
+    prompt = "This is a test prompt."
+    response = "This is a test response."
+    vector = vectorizer.embed(prompt)
+
+    await cache_with_ttl.astore(prompt, response, vector=vector, ttl=5)
+    await asyncio.sleep(3)
+
+    check_result = await cache_with_ttl.acheck(vector=vector)
+    assert len(check_result) != 0
+    assert cache_with_ttl.ttl == 2
 
 
 def test_ttl_refresh(cache_with_ttl, vectorizer):

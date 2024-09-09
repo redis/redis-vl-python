@@ -186,6 +186,15 @@ class SemanticCache(BaseLLMCache):
         return self._index
 
     @property
+    def aindex(self) -> Optional[AsyncSearchIndex]:
+        """The underlying AsyncSearchIndex for the cache.
+
+        Returns:
+            AsyncSearchIndex: The async search index.
+        """
+        return self._aindex
+
+    @property
     def distance_threshold(self) -> float:
         """The semantic distance threshold for the cache.
 
@@ -481,6 +490,7 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         filters: Optional[Dict[str, Any]] = None,
+        ttl: Optional[int] = None,
     ) -> str:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -494,6 +504,8 @@ class SemanticCache(BaseLLMCache):
                 alongside the prompt and response. Defaults to None.
             filters (Optional[Dict[str, Any]]): The optional tag to assign to the cache entry.
                 Defaults to None.
+            ttl (Optional[int]): The optional TTL override to use on this individual cache
+                entry. Defaults to the global TTL setting.
 
         Returns:
             str: The Redis key for the entries added to the semantic cache.
@@ -513,7 +525,6 @@ class SemanticCache(BaseLLMCache):
         """
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
-
         self._check_vector_dims(vector)
 
         # Build cache entry for the cache
@@ -526,9 +537,10 @@ class SemanticCache(BaseLLMCache):
         )
 
         # Load cache entry with TTL
+        ttl = ttl or self._ttl
         keys = self._index.load(
             data=[cache_entry.to_dict()],
-            ttl=self._ttl,
+            ttl=ttl,
             id_field=self.entry_id_field_name,
         )
         return keys[0]
@@ -540,6 +552,7 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         filters: Optional[Dict[str, Any]] = None,
+        ttl: Optional[int] = None,
     ) -> str:
         """Async stores the specified key-value pair in the cache along with metadata.
 
@@ -553,6 +566,8 @@ class SemanticCache(BaseLLMCache):
                 alongside the prompt and response. Defaults to None.
             filters (Optional[Dict[str, Any]]): The optional tag to assign to the cache entry.
                 Defaults to None.
+            ttl (Optional[int]): The optional TTL override to use on this individual cache
+                entry. Defaults to the global TTL setting.
 
         Returns:
             str: The Redis key for the entries added to the semantic cache.
@@ -574,7 +589,6 @@ class SemanticCache(BaseLLMCache):
 
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
-
         self._check_vector_dims(vector)
 
         # Build cache entry for the cache
@@ -587,9 +601,10 @@ class SemanticCache(BaseLLMCache):
         )
 
         # Load cache entry with TTL
+        ttl = ttl or self._ttl
         keys = await aindex.load(
             data=[cache_entry.to_dict()],
-            ttl=self._ttl,
+            ttl=ttl,
             id_field=self.entry_id_field_name,
         )
         return keys[0]
