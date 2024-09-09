@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from redis import Redis
@@ -341,8 +342,10 @@ class SemanticCache(BaseLLMCache):
                 prompt="What is the captial city of France?"
             )
         """
-        if not (prompt or vector):
+        if not any([prompt, vector]):
             raise ValueError("Either prompt or vector must be specified.")
+        if return_fields and not isinstance(return_fields, list):
+            raise TypeError("Return fields must be a list of values.")
 
         # overrides
         distance_threshold = distance_threshold or self._distance_threshold
@@ -359,25 +362,14 @@ class SemanticCache(BaseLLMCache):
             filter_expression=filter_expression,
         )
 
-        cache_hits: List[Dict[Any, str]] = []
-
         # Search the cache!
         cache_search_results = self._index.query(query)
-
-        for cache_search_result in cache_search_results:
-            redis_key = cache_search_result.pop("id")
-            self._refresh_ttl(redis_key)
-
-            # Create and process cache hit
-            cache_hit = CacheHit(**cache_search_result)
-            cache_hit_dict = cache_hit.to_dict()
-            # Filter down to only selected return fields if needed
-            if isinstance(return_fields, list) and len(return_fields) > 0:
-                cache_hit_dict = {
-                    k: v for k, v in cache_hit_dict.items() if k in return_fields
-                }
-            cache_hit_dict[self.redis_key_field_name] = redis_key
-            cache_hits.append(cache_hit_dict)
+        redis_keys, cache_hits = self._process_cache_results(
+            cache_search_results, return_fields  # type: ignore
+        )
+        # Extend TTL on keys
+        for key in redis_keys:
+            self._refresh_ttl(key)
 
         return cache_hits
 
@@ -431,18 +423,15 @@ class SemanticCache(BaseLLMCache):
         """
         aindex = await self._get_async_index()
 
-        if not (prompt or vector):
+        if not any([prompt, vector]):
             raise ValueError("Either prompt or vector must be specified.")
+        if return_fields and not isinstance(return_fields, list):
+            raise TypeError("Return fields must be a list of values.")
 
         # overrides
         distance_threshold = distance_threshold or self._distance_threshold
-        return_fields = return_fields or self.return_fields
         vector = vector or await self._avectorize_prompt(prompt)
-
         self._check_vector_dims(vector)
-
-        if not isinstance(return_fields, list):
-            raise TypeError("return_fields must be a list of field names")
 
         query = RangeQuery(
             vector=vector,
@@ -454,24 +443,36 @@ class SemanticCache(BaseLLMCache):
             filter_expression=filter_expression,
         )
 
-        cache_hits: List[Dict[Any, str]] = []
-
         # Search the cache!
         cache_search_results = await aindex.query(query)
-
-        for cache_search_result in cache_search_results:
-            key = cache_search_result["id"]
-            await self._async_refresh_ttl(key)
-
-            # Create cache hit
-            cache_hit = CacheHit(**cache_search_result)
-            cache_hit_dict = {
-                k: v for k, v in cache_hit.to_dict().items() if k in return_fields
-            }
-            cache_hit_dict["key"] = key
-            cache_hits.append(cache_hit_dict)
+        redis_keys, cache_hits = self._process_cache_results(
+            cache_search_results, return_fields  # type: ignore
+        )
+        # Extend TTL on keys
+        asyncio.gather(*[self._async_refresh_ttl(key) for key in redis_keys])
 
         return cache_hits
+
+    def _process_cache_results(
+        self, cache_search_results: List[Dict[str, Any]], return_fields: List[str]
+    ):
+        redis_keys: List[str] = []
+        cache_hits: List[Dict[Any, str]] = []
+        for cache_search_result in cache_search_results:
+            # Pop the redis key from the result
+            redis_key = cache_search_result.pop("id")
+            redis_keys.append(redis_key)
+            # Create and process cache hit
+            cache_hit = CacheHit(**cache_search_result)
+            cache_hit_dict = cache_hit.to_dict()
+            # Filter down to only selected return fields if needed
+            if isinstance(return_fields, list) and len(return_fields) > 0:
+                cache_hit_dict = {
+                    k: v for k, v in cache_hit_dict.items() if k in return_fields
+                }
+            cache_hit_dict[self.redis_key_field_name] = redis_key
+            cache_hits.append(cache_hit_dict)
+        return redis_keys, cache_hits
 
     def store(
         self,
