@@ -60,6 +60,10 @@ def cohere_key():
     return os.getenv("COHERE_API_KEY")
 
 @pytest.fixture
+def mistral_key():
+    return os.getenv("MISTRAL_API_KEY")
+
+@pytest.fixture
 def gcp_location():
     return os.getenv("GCP_LOCATION")
 
@@ -134,3 +138,8 @@ def clear_db(redis):
     redis.flushall()
     yield
     redis.flushall()
+
+@pytest.fixture
+def app_name():
+    return "test_app"
+

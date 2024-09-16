@@ -4,14 +4,6 @@ const toc = [
         { title: "Install", path: "/overview/installation.html" },
         { title: "CLI", path: "/overview/cli.html" },
     ]},
-    { header: "User Guides", toc: [
-        { title: "Getting Started", path: "/user_guide/getting_started_01.html" },
-        { title: "Query and Filter", path: "/user_guide/hybrid_queries_02.html" },
-        { title: "JSON vs Hash Storage", path: "/user_guide/hash_vs_json_05.html" },
-        { title: "Vectorizers", path: "/user_guide/vectorizers_04.html" },
-        { title: "Rerankers", path: "/user_guide/rerankers_06.html"},
-        { title: "Semantic Caching", path: "/user_guide/llmcache_03.html" },
-    ]},
     { header: "API", toc: [
         { title: "Schema", path: "/api/schema.html"},
         { title: "Search Index", path: "/api/searchindex.html" },
@@ -19,8 +11,19 @@ const toc = [
         { title: "Filter", path: "/api/filter.html" },
         { title: "Vectorizers", path: "/api/vectorizer.html" },
         { title: "Rerankers", path: "/api/reranker.html" },
-        { title: "LLMCache", path: "/api/cache.html" }
-    ]}
+        { title: "LLM Cache", path: "/api/cache.html" },
+        { title: "LLM Session Manager", path: "/api/session_manager.html" },
+        { title: "Semantic Router", path: "/api/router.html" },
+    ]},
+    { header: "User Guides", toc: [
+        { title: "Getting Started", path: "/user_guide/getting_started_01.html" },
+        { title: "Query and Filter", path: "/user_guide/hybrid_queries_02.html" },
+        { title: "JSON vs Hash Storage", path: "/user_guide/hash_vs_json_05.html" },
+        { title: "Using Vectorizers", path: "/user_guide/vectorizers_04.html" },
+        { title: "Using Rerankers", path: "/user_guide/rerankers_06.html" },
+        { title: "Semantic Caching", path: "/user_guide/llmcache_03.html" },
+        { title: "Semantic Routing", path: "/user_guide/semantic_router_08.html" },
+    ]},
 ];
 
 document.addEventListener('DOMContentLoaded', function() {

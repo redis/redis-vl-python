@@ -49,7 +49,7 @@ json_schema = {
 async def test_simple(async_client, schema, sample_data):
     index = AsyncSearchIndex.from_dict(schema)
     # assign client (only for testing)
-    index.set_client(async_client)
+    await index.set_client(async_client)
     # create the index
     await index.create(overwrite=True, drop=True)
 
@@ -93,4 +93,11 @@ async def test_simple(async_client, schema, sample_data):
         for field in return_fields:
             assert getattr(doc1, field) == doc2[field]
 
+    count_deleted_keys = await index.clear()
+    assert count_deleted_keys == len(sample_data)
+
+    assert await index.exists() == True
+
     await index.delete()
+
+    assert await index.exists() == False

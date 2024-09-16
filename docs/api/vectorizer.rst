@@ -26,6 +26,18 @@ OpenAITextVectorizer
    :members:
 
 
+AzureOpenAITextVectorizer
+=========================
+
+.. _azureopenaitextvectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.text.azureopenai
+
+.. autoclass:: AzureOpenAITextVectorizer
+   :show-inheritance:
+   :members:
+
+
 VertexAITextVectorizer
 ======================
 
@@ -58,5 +70,17 @@ VoyageAITextVectorizer
 .. currentmodule:: redisvl.utils.vectorize.text.voyageai
 
 .. autoclass:: VoyageAITextVectorizer
+   :show-inheritance:
+   :members:
+
+
+CustomTextVectorizer
+====================
+
+.. _customtextvectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.text.custom
+
+.. autoclass:: CustomTextVectorizer
    :show-inheritance:
    :members:

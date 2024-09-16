@@ -1,34 +1,47 @@
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from redis import Redis
 
 from redisvl.extensions.llmcache.base import BaseLLMCache
-from redisvl.index import SearchIndex
+from redisvl.extensions.llmcache.schema import (
+    CacheEntry,
+    CacheHit,
+    SemanticCacheIndexSchema,
+)
+from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
-from redisvl.redis.utils import array_to_buffer
-from redisvl.schema.schema import IndexSchema
+from redisvl.query.filter import FilterExpression
+from redisvl.utils.utils import current_timestamp, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
 
-    entry_id_field_name: str = "id"
+    redis_key_field_name: str = "key"
+    entry_id_field_name: str = "entry_id"
     prompt_field_name: str = "prompt"
-    vector_field_name: str = "prompt_vector"
     response_field_name: str = "response"
+    vector_field_name: str = "prompt_vector"
+    inserted_at_field_name: str = "inserted_at"
+    updated_at_field_name: str = "updated_at"
     metadata_field_name: str = "metadata"
+
+    _index: SearchIndex
+    _aindex: Optional[AsyncSearchIndex] = None
 
     def __init__(
         self,
         name: str = "llmcache",
-        prefix: Optional[str] = None,
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
         vectorizer: Optional[BaseVectorizer] = None,
+        filterable_fields: Optional[List[Dict[str, Any]]] = None,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
-        connection_args: Dict[str, Any] = {},
+        connection_kwargs: Dict[str, Any] = {},
+        overwrite: bool = False,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -36,32 +49,40 @@ class SemanticCache(BaseLLMCache):
         Args:
             name (str, optional): The name of the semantic cache search index.
                 Defaults to "llmcache".
-            prefix (Optional[str], optional): The prefix for Redis keys
-                associated with the semantic cache search index. Defaults to
-                None, and the index name will be used as the key prefix.
             distance_threshold (float, optional): Semantic threshold for the
                 cache. Defaults to 0.1.
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
-            vectorizer (BaseVectorizer, optional): The vectorizer for the cache.
+            vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
                 Defaults to HFTextVectorizer.
-            redis_client(Redis, optional): A redis client connection instance.
+            filterable_fields (Optional[List[Dict[str, Any]]]): An optional list of RedisVL fields
+                that can be used to customize cache retrieval with filters.
+            redis_client(Optional[Redis], optional): A redis client connection instance.
                 Defaults to None.
-            redis_url (str, optional): The redis url. Defaults to
-                "redis://localhost:6379".
-            connection_args (Dict[str, Any], optional): The connection arguments
-                for the redis client. Defaults to None.
+            redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
+            connection_kwargs (Dict[str, Any]): The connection arguments
+                for the redis client. Defaults to empty {}.
+            overwrite (bool): Whether or not to force overwrite the schema for
+                the semantic cache index. Defaults to false.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
             ValueError: If the threshold is not between 0 and 1.
-            ValueError: If the index name is not provided
+            ValueError: If existing schema does not match new schema and overwrite is False.
         """
         super().__init__(ttl)
 
+        self.redis_kwargs = {
+            "redis_client": redis_client,
+            "redis_url": redis_url,
+            "connection_kwargs": connection_kwargs,
+        }
+
         # Use the index name as the key prefix by default
-        if prefix is None:
+        if "prefix" in kwargs:
+            prefix = kwargs["prefix"]
+        else:
             prefix = name
 
         # Set vectorizer default
@@ -70,47 +91,90 @@ class SemanticCache(BaseLLMCache):
                 model="sentence-transformers/all-mpnet-base-v2"
             )
 
-        # build cache index schema
-        schema = IndexSchema.from_dict({"index": {"name": name, "prefix": prefix}})
-        # add fields
-        schema.add_fields(
-            [
-                {"name": self.prompt_field_name, "type": "text"},
-                {"name": self.response_field_name, "type": "text"},
-                {
-                    "name": self.vector_field_name,
-                    "type": "vector",
-                    "attrs": {
-                        "dims": vectorizer.dims,
-                        "datatype": "float32",
-                        "distance_metric": "cosine",
-                        "algorithm": "flat",
-                    },
-                },
-            ]
-        )
-
-        # build search index
-        self._index = SearchIndex(schema=schema)
-
-        # handle redis connection
-        if redis_client:
-            self._index.set_client(redis_client)
-        else:
-            self._index.connect(redis_url=redis_url, **connection_args)
-
-        # initialize other components
-        self.default_return_fields = [
+        # Process fields and other settings
+        self.set_threshold(distance_threshold)
+        self.return_fields = [
             self.entry_id_field_name,
             self.prompt_field_name,
             self.response_field_name,
-            self.vector_field_name,
+            self.inserted_at_field_name,
+            self.updated_at_field_name,
             self.metadata_field_name,
         ]
-        self.set_vectorizer(vectorizer)
-        self.set_threshold(distance_threshold)
 
-        self._index.create(overwrite=False)
+        # Create semantic cache schema and index
+        schema = SemanticCacheIndexSchema.from_params(name, prefix, vectorizer.dims)
+        schema = self._modify_schema(schema, filterable_fields)
+        self._index = SearchIndex(schema=schema)
+
+        # Handle redis connection
+        if redis_client:
+            self._index.set_client(redis_client)
+        elif redis_url:
+            self._index.connect(redis_url=redis_url, **connection_kwargs)
+
+        # Check for existing cache index
+        if not overwrite and self._index.exists():
+            existing_index = SearchIndex.from_existing(
+                name, redis_client=self._index.client
+            )
+            if existing_index.schema != self._index.schema:
+                raise ValueError(
+                    f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
+                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                )
+
+        # Create the search index
+        self._index.create(overwrite=overwrite, drop=False)
+
+        # Initialize and validate vectorizer
+        if not isinstance(vectorizer, BaseVectorizer):
+            raise TypeError("Must provide a valid redisvl.vectorizer class.")
+
+        validate_vector_dims(
+            vectorizer.dims,
+            self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
+        )
+        self._vectorizer = vectorizer
+
+    def _modify_schema(
+        self,
+        schema: SemanticCacheIndexSchema,
+        filterable_fields: Optional[List[Dict[str, Any]]] = None,
+    ) -> SemanticCacheIndexSchema:
+        """Modify the base cache schema using the provided filterable fields"""
+
+        if filterable_fields is not None:
+            protected_field_names = set(
+                self.return_fields + [self.redis_key_field_name]
+            )
+            for filter_field in filterable_fields:
+                field_name = filter_field["name"]
+                if field_name in protected_field_names:
+                    raise ValueError(
+                        f"{field_name} is a reserved field name for the semantic cache schema"
+                    )
+                # Add to schema
+                schema.add_field(filter_field)
+                # Add to return fields too
+                self.return_fields.append(field_name)
+
+        return schema
+
+    async def _get_async_index(self) -> AsyncSearchIndex:
+        """Lazily construct the async search index class."""
+        if not self._aindex:
+            # Construct async index if necessary
+            self._aindex = AsyncSearchIndex(schema=self._index.schema)
+            # Connect Redis async client
+            redis_client = self.redis_kwargs["redis_client"]
+            redis_url = self.redis_kwargs["redis_url"]
+            connection_kwargs = self.redis_kwargs["connection_kwargs"]
+            if redis_client is not None:
+                await self._aindex.set_client(redis_client)
+            elif redis_url:
+                await self._aindex.connect(redis_url, **connection_kwargs)  # type: ignore
+        return self._aindex
 
     @property
     def index(self) -> SearchIndex:
@@ -120,6 +184,15 @@ class SemanticCache(BaseLLMCache):
             SearchIndex: The search index.
         """
         return self._index
+
+    @property
+    def aindex(self) -> Optional[AsyncSearchIndex]:
+        """The underlying AsyncSearchIndex for the cache.
+
+        Returns:
+            AsyncSearchIndex: The async search index.
+        """
+        return self._aindex
 
     @property
     def distance_threshold(self) -> float:
@@ -146,93 +219,89 @@ class SemanticCache(BaseLLMCache):
             )
         self._distance_threshold = float(distance_threshold)
 
-    def set_vectorizer(self, vectorizer: BaseVectorizer) -> None:
-        """Sets the vectorizer for the LLM cache.
-
-        Must be a valid subclass of BaseVectorizer and have equivalent
-        dimensions to the vector field defined in the schema.
-
-        Args:
-            vectorizer (BaseVectorizer): The RedisVL vectorizer to use for
-                vectorizing cache entries.
-
-        Raises:
-            TypeError: If the vectorizer is not a valid type.
-            ValueError: If the vector dimensions are mismatched.
-        """
-        if not isinstance(vectorizer, BaseVectorizer):
-            raise TypeError("Must provide a valid redisvl.vectorizer class.")
-
-        schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
-
-        if schema_vector_dims != vectorizer.dims:
-            raise ValueError(
-                "Invalid vector dimensions! "
-                f"Vectorizer has dims defined as {vectorizer.dims}",
-                f"Vector field has dims defined as {schema_vector_dims}",
-            )
-
-        self._vectorizer = vectorizer
-
     def clear(self) -> None:
         """Clear the cache of all keys while preserving the index."""
-        with self._index.client.pipeline(transaction=False) as pipe:  # type: ignore
-            for key in self._index.client.scan_iter(match=f"{self._index.prefix}:*"):  # type: ignore
-                pipe.delete(key)
-            pipe.execute()
+        self._index.clear()
+
+    async def aclear(self) -> None:
+        """"""
+        aindex = await self._get_async_index()
+        await aindex.clear()
 
     def delete(self) -> None:
         """Clear the semantic cache of all keys and remove the underlying search
         index."""
         self._index.delete(drop=True)
 
+    async def adelete(self) -> None:
+        """"""
+        aindex = await self._get_async_index()
+        await aindex.delete(drop=True)
+
+    def drop(
+        self, ids: Optional[List[str]] = None, keys: Optional[List[str]] = None
+    ) -> None:
+        """Manually expire specific entries from the cache by id or specific
+        Redis key.
+
+        Args:
+            ids (Optional[str]): The document ID or IDs to remove from the cache.
+            keys (Optional[str]): The Redis keys to remove from the cache.
+        """
+        if ids is not None:
+            self._index.drop_keys([self._index.key(id) for id in ids])
+        if keys is not None:
+            self._index.drop_keys(keys)
+
+    async def adrop(
+        self, ids: Optional[List[str]] = None, keys: Optional[List[str]] = None
+    ) -> None:
+        """Async expire specific entries from the cache by id or specific
+        Redis key.
+
+        Args:
+            ids (Optional[str]): The document ID or IDs to remove from the cache.
+            keys (Optional[str]): The Redis keys to remove from the cache.
+        """
+        aindex = await self._get_async_index()
+
+        if ids is not None:
+            await aindex.drop_keys([self._index.key(id) for id in ids])
+        if keys is not None:
+            await aindex.drop_keys(keys)
+
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
-        if self.ttl:
-            self._index.client.expire(key, self.ttl)  # type: ignore
+        if self._ttl:
+            self._index.client.expire(key, self._ttl)  # type: ignore
+
+    async def _async_refresh_ttl(self, key: str) -> None:
+        """Async refresh the time-to-live for the specified key."""
+        aindex = await self._get_async_index()
+        if self._ttl:
+            await aindex.client.expire(key, self._ttl)  # type: ignore
 
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
         configured vectorizer."""
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
+
         return self._vectorizer.embed(prompt)
 
-    def _search_cache(
-        self, vector: List[float], num_results: int, return_fields: Optional[List[str]]
-    ) -> List[Dict[str, Any]]:
-        """Searches the semantic cache for similar prompt vectors and returns
-        the specified return fields for each cache hit."""
-        # Setup and type checks
-        if not isinstance(vector, list):
-            raise TypeError("Vector must be a list of floats")
+    async def _avectorize_prompt(self, prompt: Optional[str]) -> List[float]:
+        """Converts a text prompt to its vector representation using the
+        configured vectorizer."""
+        if not isinstance(prompt, str):
+            raise TypeError("Prompt must be a string.")
 
-        return_fields = return_fields or self.default_return_fields
+        return await self._vectorizer.aembed(prompt)
 
-        if not isinstance(return_fields, list):
-            raise TypeError("return_fields must be a list of field names")
-
-        # Construct vector RangeQuery for the cache check
-        query = RangeQuery(
-            vector=vector,
-            vector_field_name=self.vector_field_name,
-            return_fields=return_fields,
-            distance_threshold=self._distance_threshold,
-            num_results=num_results,
-            return_score=True,
-        )
-
-        # Gather and return the cache hits
-        cache_hits: List[Dict[str, Any]] = self._index.query(query)
-        # Process cache hits
-        for hit in cache_hits:
-            self._refresh_ttl(hit[self.entry_id_field_name])
-            # Check for metadata and deserialize
-            if self.metadata_field_name in hit:
-                hit[self.metadata_field_name] = self.deserialize(
-                    hit[self.metadata_field_name]
-                )
-        return cache_hits
+    def _check_vector_dims(self, vector: List[float]):
+        """Checks the size of the provided vector and raises an error if it
+        doesn't match the search index vector dimensions."""
+        schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
+        validate_vector_dims(len(vector), schema_vector_dims)
 
     def check(
         self,
@@ -240,6 +309,8 @@ class SemanticCache(BaseLLMCache):
         vector: Optional[List[float]] = None,
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
+        filter_expression: Optional[FilterExpression] = None,
+        distance_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
@@ -259,6 +330,11 @@ class SemanticCache(BaseLLMCache):
             return_fields (Optional[List[str]], optional): The fields to include
                 in each returned result. If None, defaults to all available
                 fields in the cached entry.
+            filter_expression (Optional[FilterExpression]) : Optional filter expression
+                that can be used to filter cache results. Defaults to None and
+                the full cache will be searched.
+            distance_threshold (Optional[float]): The threshold for semantic
+                vector distance.
 
         Returns:
             List[Dict[str, Any]]: A list of dicts containing the requested
@@ -266,6 +342,7 @@ class SemanticCache(BaseLLMCache):
 
         Raises:
             ValueError: If neither a `prompt` nor a `vector` is specified.
+            ValueError: if 'vector' has incorrect dimensions.
             TypeError: If `return_fields` is not a list when provided.
 
         .. code-block:: python
@@ -274,22 +351,146 @@ class SemanticCache(BaseLLMCache):
                 prompt="What is the captial city of France?"
             )
         """
-        if not (prompt or vector):
+        if not any([prompt, vector]):
             raise ValueError("Either prompt or vector must be specified.")
+        if return_fields and not isinstance(return_fields, list):
+            raise TypeError("Return fields must be a list of values.")
 
-        # Use provided vector or create from prompt
+        # overrides
+        distance_threshold = distance_threshold or self._distance_threshold
         vector = vector or self._vectorize_prompt(prompt)
+        self._check_vector_dims(vector)
 
-        # Check for cache hits by searching the cache
-        cache_hits = self._search_cache(vector, num_results, return_fields)
+        query = RangeQuery(
+            vector=vector,
+            vector_field_name=self.vector_field_name,
+            return_fields=self.return_fields,
+            distance_threshold=distance_threshold,
+            num_results=num_results,
+            return_score=True,
+            filter_expression=filter_expression,
+        )
+
+        # Search the cache!
+        cache_search_results = self._index.query(query)
+        redis_keys, cache_hits = self._process_cache_results(
+            cache_search_results, return_fields  # type: ignore
+        )
+        # Extend TTL on keys
+        for key in redis_keys:
+            self._refresh_ttl(key)
+
         return cache_hits
+
+    async def acheck(
+        self,
+        prompt: Optional[str] = None,
+        vector: Optional[List[float]] = None,
+        num_results: int = 1,
+        return_fields: Optional[List[str]] = None,
+        filter_expression: Optional[FilterExpression] = None,
+        distance_threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Async check the semantic cache for results similar to the specified prompt
+        or vector.
+
+        This method searches the cache using vector similarity with
+        either a raw text prompt (converted to a vector) or a provided vector as
+        input. It checks for semantically similar prompts and fetches the cached
+        LLM responses.
+
+        Args:
+            prompt (Optional[str], optional): The text prompt to search for in
+                the cache.
+            vector (Optional[List[float]], optional): The vector representation
+                of the prompt to search for in the cache.
+            num_results (int, optional): The number of cached results to return.
+                Defaults to 1.
+            return_fields (Optional[List[str]], optional): The fields to include
+                in each returned result. If None, defaults to all available
+                fields in the cached entry.
+            filter_expression (Optional[FilterExpression]) : Optional filter expression
+                that can be used to filter cache results. Defaults to None and
+                the full cache will be searched.
+            distance_threshold (Optional[float]): The threshold for semantic
+                vector distance.
+
+        Returns:
+            List[Dict[str, Any]]: A list of dicts containing the requested
+                return fields for each similar cached response.
+
+        Raises:
+            ValueError: If neither a `prompt` nor a `vector` is specified.
+            ValueError: if 'vector' has incorrect dimensions.
+            TypeError: If `return_fields` is not a list when provided.
+
+        .. code-block:: python
+
+            response = await cache.acheck(
+                prompt="What is the captial city of France?"
+            )
+        """
+        aindex = await self._get_async_index()
+
+        if not any([prompt, vector]):
+            raise ValueError("Either prompt or vector must be specified.")
+        if return_fields and not isinstance(return_fields, list):
+            raise TypeError("Return fields must be a list of values.")
+
+        # overrides
+        distance_threshold = distance_threshold or self._distance_threshold
+        vector = vector or await self._avectorize_prompt(prompt)
+        self._check_vector_dims(vector)
+
+        query = RangeQuery(
+            vector=vector,
+            vector_field_name=self.vector_field_name,
+            return_fields=self.return_fields,
+            distance_threshold=distance_threshold,
+            num_results=num_results,
+            return_score=True,
+            filter_expression=filter_expression,
+        )
+
+        # Search the cache!
+        cache_search_results = await aindex.query(query)
+        redis_keys, cache_hits = self._process_cache_results(
+            cache_search_results, return_fields  # type: ignore
+        )
+        # Extend TTL on keys
+        asyncio.gather(*[self._async_refresh_ttl(key) for key in redis_keys])
+
+        return cache_hits
+
+    def _process_cache_results(
+        self, cache_search_results: List[Dict[str, Any]], return_fields: List[str]
+    ):
+        redis_keys: List[str] = []
+        cache_hits: List[Dict[Any, str]] = []
+        for cache_search_result in cache_search_results:
+            # Pop the redis key from the result
+            redis_key = cache_search_result.pop("id")
+            redis_keys.append(redis_key)
+            # Create and process cache hit
+            cache_hit = CacheHit(**cache_search_result)
+            cache_hit_dict = cache_hit.to_dict()
+            # Filter down to only selected return fields if needed
+            if isinstance(return_fields, list) and len(return_fields) > 0:
+                cache_hit_dict = {
+                    k: v for k, v in cache_hit_dict.items() if k in return_fields
+                }
+            cache_hit_dict[self.redis_key_field_name] = redis_key
+            cache_hits.append(cache_hit_dict)
+        return redis_keys, cache_hits
 
     def store(
         self,
         prompt: str,
         response: str,
         vector: Optional[List[float]] = None,
-        metadata: Optional[dict] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        ttl: Optional[int] = None,
     ) -> str:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -299,14 +500,19 @@ class SemanticCache(BaseLLMCache):
             vector (Optional[List[float]], optional): The prompt vector to
                 cache. Defaults to None, and the prompt vector is generated on
                 demand.
-            metadata (Optional[dict], optional): The optional metadata to cache
+            metadata (Optional[Dict[str, Any]], optional): The optional metadata to cache
                 alongside the prompt and response. Defaults to None.
+            filters (Optional[Dict[str, Any]]): The optional tag to assign to the cache entry.
+                Defaults to None.
+            ttl (Optional[int]): The optional TTL override to use on this individual cache
+                entry. Defaults to the global TTL setting.
 
         Returns:
             str: The Redis key for the entries added to the semantic cache.
 
         Raises:
             ValueError: If neither prompt nor vector is specified.
+            ValueError: if vector has incorrect dimensions.
             TypeError: If provided metadata is not a dictionary.
 
         .. code-block:: python
@@ -319,20 +525,171 @@ class SemanticCache(BaseLLMCache):
         """
         # Vectorize prompt if necessary and create cache payload
         vector = vector or self._vectorize_prompt(prompt)
-        # Construct semantic cache payload
-        id_field = self.entry_id_field_name
-        payload = {
-            id_field: self.hash_input(prompt),
-            self.prompt_field_name: prompt,
-            self.response_field_name: response,
-            self.vector_field_name: array_to_buffer(vector),
-        }
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise TypeError("If specified, cached metadata must be a dictionary.")
-            # Serialize the metadata dict and add to cache payload
-            payload[self.metadata_field_name] = self.serialize(metadata)
+        self._check_vector_dims(vector)
 
-        # Load LLMCache entry with TTL
-        keys = self._index.load(data=[payload], ttl=self._ttl, id_field=id_field)
+        # Build cache entry for the cache
+        cache_entry = CacheEntry(
+            prompt=prompt,
+            response=response,
+            prompt_vector=vector,
+            metadata=metadata,
+            filters=filters,
+        )
+
+        # Load cache entry with TTL
+        ttl = ttl or self._ttl
+        keys = self._index.load(
+            data=[cache_entry.to_dict()],
+            ttl=ttl,
+            id_field=self.entry_id_field_name,
+        )
         return keys[0]
+
+    async def astore(
+        self,
+        prompt: str,
+        response: str,
+        vector: Optional[List[float]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        ttl: Optional[int] = None,
+    ) -> str:
+        """Async stores the specified key-value pair in the cache along with metadata.
+
+        Args:
+            prompt (str): The user prompt to cache.
+            response (str): The LLM response to cache.
+            vector (Optional[List[float]], optional): The prompt vector to
+                cache. Defaults to None, and the prompt vector is generated on
+                demand.
+            metadata (Optional[Dict[str, Any]], optional): The optional metadata to cache
+                alongside the prompt and response. Defaults to None.
+            filters (Optional[Dict[str, Any]]): The optional tag to assign to the cache entry.
+                Defaults to None.
+            ttl (Optional[int]): The optional TTL override to use on this individual cache
+                entry. Defaults to the global TTL setting.
+
+        Returns:
+            str: The Redis key for the entries added to the semantic cache.
+
+        Raises:
+            ValueError: If neither prompt nor vector is specified.
+            ValueError: if vector has incorrect dimensions.
+            TypeError: If provided metadata is not a dictionary.
+
+        .. code-block:: python
+
+            key = await cache.astore(
+                prompt="What is the captial city of France?",
+                response="Paris",
+                metadata={"city": "Paris", "country": "France"}
+            )
+        """
+        aindex = await self._get_async_index()
+
+        # Vectorize prompt if necessary and create cache payload
+        vector = vector or self._vectorize_prompt(prompt)
+        self._check_vector_dims(vector)
+
+        # Build cache entry for the cache
+        cache_entry = CacheEntry(
+            prompt=prompt,
+            response=response,
+            prompt_vector=vector,
+            metadata=metadata,
+            filters=filters,
+        )
+
+        # Load cache entry with TTL
+        ttl = ttl or self._ttl
+        keys = await aindex.load(
+            data=[cache_entry.to_dict()],
+            ttl=ttl,
+            id_field=self.entry_id_field_name,
+        )
+        return keys[0]
+
+    def update(self, key: str, **kwargs) -> None:
+        """Update specific fields within an existing cache entry. If no fields
+        are passed, then only the document TTL is refreshed.
+
+        Args:
+            key (str): the key of the document to update using kwargs.
+
+        Raises:
+            ValueError if an incorrect mapping is provided as a kwarg.
+            TypeError if metadata is provided and not of type dict.
+
+        .. code-block:: python
+            key = cache.store('this is a prompt', 'this is a response')
+            cache.update(key, metadata={"hit_count": 1, "model_name": "Llama-2-7b"})
+            )
+        """
+        if kwargs:
+            for k, v in kwargs.items():
+
+                # Make sure the item is in the index schema
+                if k not in set(
+                    self._index.schema.field_names + [self.metadata_field_name]
+                ):
+                    raise ValueError(f"{k} is not a valid field within the cache entry")
+
+                # Check for metadata and deserialize
+                if k == self.metadata_field_name:
+                    if isinstance(v, dict):
+                        kwargs[k] = serialize(v)
+                    else:
+                        raise TypeError(
+                            "If specified, cached metadata must be a dictionary."
+                        )
+
+            kwargs.update({self.updated_at_field_name: current_timestamp()})
+
+            self._index.client.hset(key, mapping=kwargs)  # type: ignore
+
+        self._refresh_ttl(key)
+
+    async def aupdate(self, key: str, **kwargs) -> None:
+        """Async update specific fields within an existing cache entry. If no fields
+        are passed, then only the document TTL is refreshed.
+
+        Args:
+            key (str): the key of the document to update using kwargs.
+
+        Raises:
+            ValueError if an incorrect mapping is provided as a kwarg.
+            TypeError if metadata is provided and not of type dict.
+
+        .. code-block:: python
+
+            key = await cache.astore('this is a prompt', 'this is a response')
+            await cache.aupdate(
+                key,
+                metadata={"hit_count": 1, "model_name": "Llama-2-7b"}
+            )
+        """
+        aindex = await self._get_async_index()
+
+        if kwargs:
+            for k, v in kwargs.items():
+
+                # Make sure the item is in the index schema
+                if k not in set(
+                    self._index.schema.field_names + [self.metadata_field_name]
+                ):
+                    raise ValueError(f"{k} is not a valid field within the cache entry")
+
+                # Check for metadata and deserialize
+                if k == self.metadata_field_name:
+                    if isinstance(v, dict):
+                        kwargs[k] = serialize(v)
+                    else:
+                        raise TypeError(
+                            "If specified, cached metadata must be a dictionary."
+                        )
+
+            kwargs.update({self.updated_at_field_name: current_timestamp()})
+
+            await aindex.load(data=[kwargs], keys=[key])
+
+        await self._async_refresh_ttl(key)

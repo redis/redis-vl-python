@@ -55,7 +55,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key. Defaults to None.
+                API key and any additional OpenAI API options. Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
@@ -69,6 +69,9 @@ class OpenAITextVectorizer(BaseVectorizer):
         Setup the OpenAI clients using the provided API key or an
         environment variable.
         """
+        if api_config is None:
+            api_config = {}
+
         # Dynamic import of the openai module
         try:
             from openai import AsyncOpenAI, OpenAI
@@ -78,9 +81,9 @@ class OpenAITextVectorizer(BaseVectorizer):
                     Please install with `pip install openai`"
             )
 
-        # Fetch the API key from api_config or environment variable
+        # Pull the API key from api_config or environment variable
         api_key = (
-            api_config.get("api_key") if api_config else os.getenv("OPENAI_API_KEY")
+            api_config.pop("api_key") if api_config else os.getenv("OPENAI_API_KEY")
         )
         if not api_key:
             raise ValueError(
@@ -89,8 +92,8 @@ class OpenAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-        self._client = OpenAI(api_key=api_key)
-        self._aclient = AsyncOpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, **api_config)
+        self._aclient = AsyncOpenAI(api_key=api_key, **api_config)
 
     def _set_model_dims(self, model) -> int:
         try:
@@ -134,7 +137,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of embeddings.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -174,7 +177,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[float]: Embedding.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
@@ -212,7 +215,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of embeddings.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -254,7 +257,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             List[float]: Embedding.
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If the wrong input type is passed in for the text.
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
@@ -263,3 +266,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             text = preprocess(text)
         result = await self._aclient.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer)
+
+    @property
+    def type(self) -> str:
+        return "openai"

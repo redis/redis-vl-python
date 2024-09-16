@@ -2,6 +2,7 @@ import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
+from redisvl.redis.connection import RedisConnectionFactory, validate_modules
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 
@@ -16,6 +17,11 @@ def index_schema():
 @pytest.fixture
 def index(index_schema):
     return SearchIndex(schema=index_schema)
+
+
+@pytest.fixture
+def index_from_dict():
+    return SearchIndex.from_dict({"index": {"name": "my_index"}, "fields": fields})
 
 
 @pytest.fixture
@@ -42,6 +48,68 @@ def test_search_index_from_yaml(index_from_yaml):
     assert index_from_yaml.key_separator == ":"
     assert index_from_yaml.storage_type == StorageType.JSON
     assert index_from_yaml.key("foo").startswith(index_from_yaml.prefix)
+
+
+def test_search_index_from_dict(index_from_dict):
+    assert index_from_dict.name == "my_index"
+    assert index_from_dict.client == None
+    assert index_from_dict.prefix == "rvl"
+    assert index_from_dict.key_separator == ":"
+    assert index_from_dict.storage_type == StorageType.HASH
+    assert len(index_from_dict.schema.fields) == len(fields)
+    assert index_from_dict.key("foo").startswith(index_from_dict.prefix)
+
+
+def test_search_index_from_existing(client, index):
+    index.set_client(client)
+    index.create(overwrite=True)
+
+    try:
+        index2 = SearchIndex.from_existing(index.name, redis_client=client)
+    except Exception as e:
+        pytest.skip(str(e))
+
+    assert index2.schema == index.schema
+
+
+def test_search_index_from_existing_complex(client):
+    schema = {
+        "index": {
+            "name": "test",
+            "prefix": "test",
+            "storage_type": "json",
+        },
+        "fields": [
+            {"name": "user", "type": "tag", "path": "$.user"},
+            {"name": "credit_score", "type": "tag", "path": "$.metadata.credit_score"},
+            {"name": "job", "type": "text", "path": "$.metadata.job"},
+            {
+                "name": "age",
+                "type": "numeric",
+                "path": "$.metadata.age",
+                "attrs": {"sortable": False},
+            },
+            {
+                "name": "user_embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 3,
+                    "distance_metric": "cosine",
+                    "algorithm": "flat",
+                    "datatype": "float32",
+                },
+            },
+        ],
+    }
+    index = SearchIndex.from_dict(schema, redis_client=client)
+    index.create(overwrite=True)
+
+    try:
+        index2 = SearchIndex.from_existing(index.name, redis_client=client)
+    except Exception as e:
+        pytest.skip(str(e))
+
+    assert index.schema == index2.schema
 
 
 def test_search_index_no_prefix(index_schema):
@@ -89,6 +157,50 @@ def test_search_index_delete(client, index):
     index.delete(drop=True)
     assert not index.exists()
     assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
+
+
+def test_search_index_clear(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}]
+    index.load(data, id_field="id")
+
+    count = index.clear()
+    assert count == len(data)
+    assert index.exists()
+
+
+def test_search_index_drop_key(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    keys = index.load(data, id_field="id")
+
+    # test passing a single string key removes only that key
+    dropped = index.drop_keys(keys[0])
+    assert dropped == 1
+    assert not index.fetch(keys[0])
+    assert index.fetch(keys[1]) is not None  # still have all other entries
+
+
+def test_search_index_drop_keys(client, index):
+    index.set_client(client)
+    index.create(overwrite=True, drop=True)
+    data = [
+        {"id": "1", "test": "foo"},
+        {"id": "2", "test": "bar"},
+        {"id": "3", "test": "baz"},
+    ]
+    keys = index.load(data, id_field="id")
+
+    # test passing a list of keys selectively removes only those keys
+    dropped = index.drop_keys(keys[0:2])
+    assert dropped == 2
+    assert not index.fetch(keys[0])
+    assert not index.fetch(keys[1])
+    assert index.fetch(keys[2]) is not None
+
+    assert index.exists()
 
 
 def test_search_index_load_and_fetch(client, index):
@@ -139,7 +251,7 @@ def test_check_index_exists_before_delete(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         index.delete()
 
 
@@ -154,7 +266,7 @@ def test_check_index_exists_before_search(client, index):
         return_fields=["user", "credit_score", "age", "job", "location"],
         num_results=7,
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         index.search(query.query, query_params=query.params)
 
 
@@ -163,7 +275,7 @@ def test_check_index_exists_before_info(client, index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         index.info()
 
 

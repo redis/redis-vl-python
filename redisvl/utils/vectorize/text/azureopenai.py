@@ -36,7 +36,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 "api_key": "your_api_key", # OR set AZURE_OPENAI_API_KEY in your env
                 "api_version": "your_api_version", # OR set OPENAI_API_VERSION in your env
                 "azure_endpoint": "your_azure_endpoint", # OR set AZURE_OPENAI_ENDPOINT in your env
-                }
+            }
         )
         embedding = vectorizer.embed("Hello, world!")
 
@@ -61,7 +61,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 'Deployment name' not the 'Model name'. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key, API version and Azure endpoint. Defaults to None.
+                API key, API version, Azure endpoint, and any other API options.
+                Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
@@ -75,6 +76,9 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         Setup the OpenAI clients using the provided API key or an
         environment variable.
         """
+        if api_config is None:
+            api_config = {}
+
         # Dynamic import of the openai module
         try:
             from openai import AsyncAzureOpenAI, AzureOpenAI
@@ -86,7 +90,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         # Fetch the API key, version and endpoint from api_config or environment variable
         azure_endpoint = (
-            api_config.get("azure_endpoint")
+            api_config.pop("azure_endpoint")
             if api_config
             else os.getenv("AZURE_OPENAI_ENDPOINT")
         )
@@ -99,7 +103,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             )
 
         api_version = (
-            api_config.get("api_version")
+            api_config.pop("api_version")
             if api_config
             else os.getenv("OPENAI_API_VERSION")
         )
@@ -112,7 +116,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             )
 
         api_key = (
-            api_config.get("api_key")
+            api_config.pop("api_key")
             if api_config
             else os.getenv("AZURE_OPENAI_API_KEY")
         )
@@ -125,10 +129,16 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             )
 
         self._client = AzureOpenAI(
-            api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
+            api_key=api_key,
+            api_version=api_version,
+            azure_endpoint=azure_endpoint,
+            **api_config,
         )
         self._aclient = AsyncAzureOpenAI(
-            api_key=api_key, api_version=api_version, azure_endpoint=azure_endpoint
+            api_key=api_key,
+            api_version=api_version,
+            azure_endpoint=azure_endpoint,
+            **api_config,
         )
 
     def _set_model_dims(self, model) -> int:
@@ -302,3 +312,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             text = preprocess(text)
         result = await self._aclient.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer)
+
+    @property
+    def type(self) -> str:
+        return "azure_openai"

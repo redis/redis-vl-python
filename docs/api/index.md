@@ -18,5 +18,7 @@ filter
 vectorizer
 reranker
 cache
+session_manager
+router
 ```
 

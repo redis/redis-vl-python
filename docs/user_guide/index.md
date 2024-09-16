@@ -17,5 +17,7 @@ llmcache_03
 vectorizers_04
 hash_vs_json_05
 rerankers_06
+session_manager_07
+semantic_router_08
 ```
 
