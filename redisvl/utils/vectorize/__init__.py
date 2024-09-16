@@ -36,3 +36,5 @@ def vectorizer_from_dict(vectorizer: dict) -> BaseVectorizer:
         return MistralAITextVectorizer(model)
     elif vectorizer_type == Vectorizers.vertexai:
         return VertexAITextVectorizer(model)
+    elif vectorizer_type == Vectorizers.voyageai:
+        return VoyageAITextVectorizer(model)
