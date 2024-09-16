@@ -7,6 +7,7 @@ from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.utils.vectorize.base import BaseVectorizer
 
+
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"
 
@@ -207,7 +208,15 @@ class VoyageAITextVectorizer(BaseVectorizer):
             raise TypeError("Truncation (optional) parameter is a bool.")
 
         if batch_size is None:
-            batch_size = 72 if self.model in ["voyage-2", "voyage-02"] else 7
+            batch_size = (
+                72
+                if self.model in ["voyage-2", "voyage-02"]
+                else (
+                    30
+                    if self.model == "voyage-3-lite"
+                    else (10 if self.model == "voyage-3" else 7)
+                )
+            )
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -277,7 +286,15 @@ class VoyageAITextVectorizer(BaseVectorizer):
             raise TypeError("Truncation (optional) parameter is a bool.")
 
         if batch_size is None:
-            batch_size = 72 if self.model in ["voyage-2", "voyage-02"] else 7
+            batch_size = (
+                72
+                if self.model in ["voyage-2", "voyage-02"]
+                else (
+                    30
+                    if self.model == "voyage-3-lite"
+                    else (10 if self.model == "voyage-3" else 7)
+                )
+            )
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
