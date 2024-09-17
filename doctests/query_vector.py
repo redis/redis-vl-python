@@ -64,5 +64,5 @@ assert len(res) == 2
 
 # REMOVE_START
 # destroy index and data
-r.ft("idx:bicycle").dropindex(delete_documents=True)
+index.delete(drop=True)
 # REMOVE_END
