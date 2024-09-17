@@ -67,7 +67,7 @@ class StandardSessionIndexSchema(IndexSchema):
 class SemanticSessionIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vectorizer_dims: int):
+    def from_params(cls, name: str, prefix: str, vectorizer_dims: int, dtype: str = "float32"):
 
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
@@ -82,7 +82,7 @@ class SemanticSessionIndexSchema(IndexSchema):
                     "type": "vector",
                     "attrs": {
                         "dims": vectorizer_dims,
-                        "datatype": "float32",
+                        "datatype": dtype,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
                     },

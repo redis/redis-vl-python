@@ -88,7 +88,7 @@ class SemanticRouterIndexSchema(IndexSchema):
     """Customized index schema for SemanticRouter."""
 
     @classmethod
-    def from_params(cls, name: str, vector_dims: int) -> "SemanticRouterIndexSchema":
+    def from_params(cls, name: str, vector_dims: int, dtype: str= "float32") -> "SemanticRouterIndexSchema":
         """Create an index schema based on router name and vector dimensions.
 
         Args:
@@ -110,7 +110,7 @@ class SemanticRouterIndexSchema(IndexSchema):
                         "algorithm": "flat",
                         "dims": vector_dims,
                         "distance_metric": "cosine",
-                        "datatype": "float32",
+                        "datatype": dtype,
                     },
                 },
             ],

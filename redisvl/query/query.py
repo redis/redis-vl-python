@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
+from ml_dtypes import bfloat16
 from redis.commands.search.query import Query
 
 from redisvl.query.filter import FilterExpression
@@ -202,6 +203,8 @@ class FilterQuery(BaseQuery):
 
 class BaseVectorQuery(BaseQuery):
     DTYPES = {
+        "bfloat16": bfloat16,
+        "float16": np.float16,
         "float32": np.float32,
         "float64": np.float64,
     }

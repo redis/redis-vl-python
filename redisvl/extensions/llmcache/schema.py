@@ -105,7 +105,7 @@ class CacheHit(BaseModel):
 class SemanticCacheIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vector_dims: int):
+    def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str = "float32"):
 
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
@@ -119,7 +119,7 @@ class SemanticCacheIndexSchema(IndexSchema):
                     "type": "vector",
                     "attrs": {
                         "dims": vector_dims,
-                        "datatype": "float32",
+                        "datatype": dtype,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
                     },
