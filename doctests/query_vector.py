@@ -32,8 +32,7 @@ index.load(bicycles)
 # STEP_START vector1
 query = "Bike for small kids"
 query_vector = embed_text(model, query)
-# print(query_vector[:10]) # >>> b'\x02=c=\x93\x0e\xe0=aC'
-print(query_vector) # >>> b'\x02=c=\x93\x0e\xe0=aC'
+print(query_vector[:10]) # >>> b'\x02=c=\x93\x0e\xe0=aC'
 
 vquery = VectorQuery(
     vector=query_vector,
