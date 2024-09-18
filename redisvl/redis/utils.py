@@ -2,6 +2,14 @@ import hashlib
 from typing import Any, Dict, List
 
 import numpy as np
+from ml_dtypes import bfloat16
+
+VectorDataTypes = {
+    "BFLOAT16": bfloat16,
+    "FLOAT16": np.float16,
+    "FLOAT32": np.float32,
+    "FLOAT64": np.float64,
+}
 
 
 def make_dict(values: List[Any]) -> Dict[Any, Any]:
@@ -30,13 +38,25 @@ def convert_bytes(data: Any) -> Any:
     return data
 
 
-def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
+def array_to_buffer(array: List[float], dtype: str) -> bytes:
     """Convert a list of floats into a numpy byte string."""
+    try:
+        dtype = VectorDataTypes[dtype.upper()]
+    except KeyError:
+        raise ValueError(
+            f"Invalid data type: {dtype}. Supported types are: {VectorDataTypes.keys()}"
+        )
     return np.array(array).astype(dtype).tobytes()
 
 
-def buffer_to_array(buffer: bytes, dtype: Any = np.float32) -> List[float]:
+def buffer_to_array(buffer: bytes, dtype: str) -> List[float]:
     """Convert bytes into into a list of floats."""
+    try:
+        dtype = VectorDataTypes[dtype.upper()]
+    except KeyError:
+        raise ValueError(
+            f"Invalid data type: {dtype}. Supported types are: {VectorDataTypes.keys()}"
+        )
     return np.frombuffer(buffer, dtype=dtype).tolist()
 
 

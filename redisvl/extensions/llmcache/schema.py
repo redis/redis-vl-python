@@ -26,6 +26,8 @@ class CacheEntry(BaseModel):
     """Optional metadata stored on the cache entry"""
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
+    dtype: str = Field(default="float32")
+    """The data type for the prompt vector."""
 
     @root_validator(pre=True)
     @classmethod
@@ -43,7 +45,7 @@ class CacheEntry(BaseModel):
 
     def to_dict(self) -> Dict:
         data = self.dict(exclude_none=True)
-        data["prompt_vector"] = array_to_buffer(self.prompt_vector)
+        data["prompt_vector"] = array_to_buffer(self.prompt_vector, self.dtype)
         if self.metadata is not None:
             data["metadata"] = serialize(self.metadata)
         if self.filters is not None:
@@ -105,10 +107,10 @@ class CacheHit(BaseModel):
 class SemanticCacheIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str = "float32"):
+    def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str):
 
         return cls(
-            index={"name": name, "prefix": prefix},  # type: ignore
+            index={"name": name, "prefix": prefix, "dtype": dtype.upper()},  # type: ignore
             fields=[  # type: ignore
                 {"name": "prompt", "type": "text"},
                 {"name": "response", "type": "text"},

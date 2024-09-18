@@ -51,6 +51,7 @@ class SemanticSessionManager(BaseSessionManager):
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
+            dtype (str): The data type for the prompt vector. Defaults to "float32".
 
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
@@ -66,8 +67,9 @@ class SemanticSessionManager(BaseSessionManager):
 
         self.set_distance_threshold(distance_threshold)
 
+        dtype = kwargs.get("dtype", "float32")
         schema = SemanticSessionIndexSchema.from_params(
-            name, prefix, self._vectorizer.dims
+            name, prefix, self._vectorizer.dims, dtype
         )
 
         self._index = SearchIndex(schema=schema)

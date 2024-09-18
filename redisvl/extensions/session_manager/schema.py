@@ -24,6 +24,8 @@ class ChatMessage(BaseModel):
     """An optional identifier for a tool call associated with the message."""
     vector_field: Optional[List[float]] = Field(default=None)
     """The vector representation of the message content."""
+    dtype: Optional[str] = Field(default="float32")
+    """The data type for the prompt vector."""
 
     class Config:
         arbitrary_types_allowed = True
@@ -42,7 +44,7 @@ class ChatMessage(BaseModel):
 
         # handle optional fields
         if "vector_field" in data:
-            data["vector_field"] = array_to_buffer(data["vector_field"])
+            data["vector_field"] = array_to_buffer(data["vector_field"], self.dtype)  # type: ignore[arg-type]
 
         return data
 
@@ -67,10 +69,10 @@ class StandardSessionIndexSchema(IndexSchema):
 class SemanticSessionIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vectorizer_dims: int, dtype: str = "float32"):
+    def from_params(cls, name: str, prefix: str, vectorizer_dims: int, dtype: str):
 
         return cls(
-            index={"name": name, "prefix": prefix},  # type: ignore
+            index={"name": name, "prefix": prefix, "dtype": dtype.upper()},  # type: ignore
             fields=[  # type: ignore
                 {"name": "role", "type": "tag"},
                 {"name": "content", "type": "text"},

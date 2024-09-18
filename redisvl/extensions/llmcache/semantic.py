@@ -92,7 +92,10 @@ class SemanticCache(BaseLLMCache):
         ]
 
         # Create semantic cache schema and index
-        schema = SemanticCacheIndexSchema.from_params(name, prefix, vectorizer.dims)
+        dtype = kwargs.get("dtype", "float32")
+        schema = SemanticCacheIndexSchema.from_params(
+            name, prefix, vectorizer.dims, dtype
+        )
         schema = self._modify_schema(schema, filterable_fields)
 
         self._index = SearchIndex(schema=schema)
@@ -235,7 +238,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
 
-        return self._vectorizer.embed(prompt)
+        return self._vectorizer.embed(prompt, dtype=self.index.schema.index.dtype)
 
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it
@@ -312,6 +315,7 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
+            dtype=self.index.schema.index.dtype,
         )
 
         cache_hits: List[Dict[Any, str]] = []
@@ -382,6 +386,7 @@ class SemanticCache(BaseLLMCache):
             prompt_vector=vector,
             metadata=metadata,
             filters=filters,
+            dtype=self.index.schema.index.dtype,
         )
 
         # Load cache entry with TTL

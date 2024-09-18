@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from numpy import frombuffer
 from pydantic.v1 import BaseModel
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -393,17 +394,29 @@ class HashStorage(BaseStorage):
     """Hash data type for the index"""
 
     def _validate(self, obj: Dict[str, Any]):
-        """Validate that the given object is a dictionary, suitable for storage
-        as a Redis hash.
+        """Validate that the given object is a dictionary suitable for storage
+        as a Redis hash, and the vector byte string is of correct datatype.
 
         Args:
             obj (Dict[str, Any]): The object to validate.
 
         Raises:
             TypeError: If the object is not a dictionary.
+            ValueError: if the vector byte string is not of correct datatype.
         """
         if not isinstance(obj, dict):
             raise TypeError("Object must be a dictionary.")
+
+        try:
+            byte_string = obj["prompt_vector"]
+            vector = frombuffer(byte_string, dtype=obj["dtype"].lower())
+        except ValueError:
+            raise ValueError(
+                f"Could not convert byte string to vector of type {obj['dtype']}.",
+                "buffer size must be a multiple of element size",
+            )
+        except KeyError:
+            pass  # regular hash entry with no prompt_vector or dtype needed
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):

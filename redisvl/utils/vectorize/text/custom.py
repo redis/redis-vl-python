@@ -174,7 +174,7 @@ class CustomTextVectorizer(BaseVectorizer):
             text = preprocess(text)
         else:
             result = self._embed_func(text, **kwargs)
-        return self._process_embedding(result, as_buffer)
+        return self._process_embedding(result, as_buffer, **kwargs)
 
     def embed_many(
         self,
@@ -213,7 +213,9 @@ class CustomTextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             results = self._embed_many_func(batch, **kwargs)
-            embeddings += [self._process_embedding(r, as_buffer) for r in results]
+            embeddings += [
+                self._process_embedding(r, as_buffer, **kwargs) for r in results
+            ]
         return embeddings
 
     async def aembed(
@@ -249,7 +251,7 @@ class CustomTextVectorizer(BaseVectorizer):
             text = preprocess(text)
         else:
             result = await self._aembed_func(text, **kwargs)
-        return self._process_embedding(result, as_buffer)
+        return self._process_embedding(result, as_buffer, **kwargs)
 
     async def aembed_many(
         self,
@@ -288,7 +290,9 @@ class CustomTextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             results = await self._aembed_many_func(batch, **kwargs)
-            embeddings += [self._process_embedding(r, as_buffer) for r in results]
+            embeddings += [
+                self._process_embedding(r, as_buffer, **kwargs) for r in results
+            ]
         return embeddings
 
     @property

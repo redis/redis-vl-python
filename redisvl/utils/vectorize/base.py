@@ -81,7 +81,8 @@ class BaseVectorizer(BaseModel, ABC):
             else:
                 yield seq[pos : pos + size]
 
-    def _process_embedding(self, embedding: List[float], as_buffer: bool):
+    def _process_embedding(self, embedding: List[float], as_buffer: bool, **kwargs):
+        dtype = kwargs.get("dtype", "float32")
         if as_buffer:
-            return array_to_buffer(embedding)
+            return array_to_buffer(embedding, dtype)
         return embedding

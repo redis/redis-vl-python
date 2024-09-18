@@ -84,17 +84,23 @@ class SemanticRouter(BaseModel):
             vectorizer=vectorizer,
             routing_config=routing_config,
         )
-        self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
+        dtype = kwargs.get("dtype", "float32")
+        self._initialize_index(
+            redis_client, redis_url, overwrite, dtype, **connection_kwargs
+        )
 
     def _initialize_index(
         self,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
+        dtype: str = "float32",
         **connection_kwargs,
     ):
         """Initialize the search index and handle Redis connection."""
-        schema = SemanticRouterIndexSchema.from_params(self.name, self.vectorizer.dims)
+        schema = SemanticRouterIndexSchema.from_params(
+            self.name, self.vectorizer.dims, dtype
+        )
         self._index = SearchIndex(schema=schema)
 
         if redis_client:

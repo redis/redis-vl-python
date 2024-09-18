@@ -7,7 +7,7 @@ import yaml
 from pydantic.v1 import BaseModel, Field, root_validator
 from redis.commands.search.field import Field as RedisField
 
-from redisvl.schema.fields import BaseField, FieldFactory
+from redisvl.schema.fields import BaseField, FieldFactory, VectorDataType
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import model_to_dict
 
@@ -63,6 +63,8 @@ class IndexInfo(BaseModel):
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
+    dtype: VectorDataType = VectorDataType.FLOAT32
+    """The data type for the vector field in the index."""
 
 
 class IndexSchema(BaseModel):

@@ -88,7 +88,7 @@ class SemanticRouterIndexSchema(IndexSchema):
     """Customized index schema for SemanticRouter."""
 
     @classmethod
-    def from_params(cls, name: str, vector_dims: int, dtype: str= "float32") -> "SemanticRouterIndexSchema":
+    def from_params(cls, name: str, vector_dims: int, dtype: str):
         """Create an index schema based on router name and vector dimensions.
 
         Args:
@@ -99,7 +99,7 @@ class SemanticRouterIndexSchema(IndexSchema):
             SemanticRouterIndexSchema: The constructed index schema.
         """
         return cls(
-            index=IndexInfo(name=name, prefix=name),
+            index={"name": name, "prefix": name, "dtype": dtype.upper()},  # type: ignore
             fields=[  # type: ignore
                 {"name": "route_name", "type": "tag"},
                 {"name": "reference", "type": "text"},

@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-from ml_dtypes import bfloat16
 from redis.commands.search.query import Query
 
 from redisvl.query.filter import FilterExpression
@@ -202,12 +200,6 @@ class FilterQuery(BaseQuery):
 
 
 class BaseVectorQuery(BaseQuery):
-    DTYPES = {
-        "bfloat16": bfloat16,
-        "float16": np.float16,
-        "float32": np.float32,
-        "float64": np.float64,
-    }
     DISTANCE_ID = "vector_distance"
     VECTOR_PARAM = "vector"
 
@@ -228,7 +220,7 @@ class BaseVectorQuery(BaseQuery):
         self.set_filter(filter_expression)
         self._vector = vector
         self._field = vector_field_name
-        self._dtype = dtype.lower()
+        self._dtype = dtype
 
         if return_score:
             self._return_fields.append(self.DISTANCE_ID)
@@ -326,7 +318,7 @@ class VectorQuery(BaseVectorQuery):
         if isinstance(self._vector, bytes):
             vector_param = self._vector
         else:
-            vector_param = array_to_buffer(self._vector, dtype=self.DTYPES[self._dtype])
+            vector_param = array_to_buffer(self._vector, dtype=self._dtype)
 
         return {self.VECTOR_PARAM: vector_param}
 
@@ -460,7 +452,7 @@ class RangeQuery(BaseVectorQuery):
         if isinstance(self._vector, bytes):
             vector_param = self._vector
         else:
-            vector_param = array_to_buffer(self._vector, dtype=self.DTYPES[self._dtype])
+            vector_param = array_to_buffer(self._vector, dtype=self._dtype)
 
         return {
             self.VECTOR_PARAM: vector_param,

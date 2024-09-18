@@ -103,7 +103,7 @@ def test_chat_message_to_dict():
     assert data["content"] == content
     assert data["session_tag"] == session_tag
     assert data["timestamp"] == timestamp
-    assert data["vector_field"] == array_to_buffer(vector_field)
+    assert data["vector_field"] == array_to_buffer(vector_field, "float32")
 
 
 def test_chat_message_missing_fields():
