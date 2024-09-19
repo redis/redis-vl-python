@@ -40,6 +40,7 @@ class SemanticRouter(BaseModel):
     """The vectorizer used to embed route references."""
     routing_config: RoutingConfig = Field(default_factory=RoutingConfig)
     """Configuration for routing behavior."""
+    vector_field_name: str = "vector"
 
     _index: SearchIndex = PrivateAttr()
 
@@ -108,8 +109,18 @@ class SemanticRouter(BaseModel):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
+        # Check for existing session index
         existed = self._index.exists()
-        self._index.create(overwrite=overwrite)
+        if not overwrite and existed:
+            existing_index = SearchIndex.from_existing(
+                self.name, redis_client=self._index.client
+            )
+            if existing_index.schema != self._index.schema:
+                raise ValueError(
+                    f"Existing index {self.name} schema does not match the user provided schema for the semantic router. "
+                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                )
+        self._index.create(overwrite=overwrite, drop=False)
 
         if not existed or overwrite:
             # write the routes to Redis
@@ -158,7 +169,9 @@ class SemanticRouter(BaseModel):
         for route in routes:
             # embed route references as a single batch
             reference_vectors = self.vectorizer.embed_many(
-                [reference for reference in route.references], as_buffer=True
+                [reference for reference in route.references],
+                as_buffer=True,
+                dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
             )
             # set route references
             for i, reference in enumerate(route.references):
@@ -235,6 +248,7 @@ class SemanticRouter(BaseModel):
             vector_field_name="vector",
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
+            dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
         )
 
         aggregate_request = self._build_aggregate_request(
@@ -287,6 +301,7 @@ class SemanticRouter(BaseModel):
             vector_field_name="vector",
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
+            dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
         )
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k

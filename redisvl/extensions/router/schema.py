@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from pydantic.v1 import BaseModel, Field, validator
 
-from redisvl.schema import IndexInfo, IndexSchema
+from redisvl.schema import IndexSchema
 
 
 class Route(BaseModel):
