@@ -237,3 +237,53 @@ def test_bad_connection_info(routes):
             redis_url="redis://localhost:6389",  # bad connection url
             overwrite=False,
         )
+
+
+def test_different_vector_dtypes(routes):
+    bfloat_router = SemanticRouter(
+        name="bfloat_router",
+        routes=routes,
+        dtype="bfloat16",
+    )
+
+    float16_router = SemanticRouter(
+        name="float16_router",
+        routes=routes,
+        dtype="float16",
+    )
+
+    float32_router = SemanticRouter(
+        name="float32_router",
+        routes=routes,
+        dtype="float32",
+    )
+
+    float64_router = SemanticRouter(
+        name="float64_router",
+        routes=routes,
+        dtype="float64",
+    )
+
+    for router in [bfloat_router, float16_router, float32_router, float64_router]:
+        assert len(router.route_many("hello", max_k=5)) == 1
+
+
+def test_bad_dtype_connecting_to_exiting_router(routes):
+    router = SemanticRouter(
+        name="float64 router",
+        routes=routes,
+        dtype="float64",
+    )
+
+    same_type = SemanticRouter(
+        name="float64 router",
+        routes=routes,
+        dtype="float64",
+    )
+
+    with pytest.raises(ValueError):
+        bad_type = SemanticRouter(
+            name="float64 router",
+            routes=routes,
+            dtype="float16",
+        )
