@@ -202,9 +202,6 @@ class SemanticSessionManager(BaseSessionManager):
             else self._default_session_filter
         )
 
-        dtype = self._index.schema.fields[self.vector_field_name].attrs.datatype  # type: ignore[union-attr]
-        print("queryying dtype ", dtype, "for session ", prompt)
-
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
             vector_field_name=self.vector_field_name,
@@ -329,7 +326,6 @@ class SemanticSessionManager(BaseSessionManager):
         for message in messages:
 
             content_vector = self._vectorizer.embed(message[self.content_field_name])
-
             validate_vector_dims(
                 len(content_vector),
                 self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
