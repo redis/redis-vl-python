@@ -99,7 +99,7 @@ class SemanticRouterIndexSchema(IndexSchema):
             SemanticRouterIndexSchema: The constructed index schema.
         """
         return cls(
-            index={"name": name, "prefix": name, "dtype": dtype.upper()},  # type: ignore
+            index={"name": name, "prefix": name},  # type: ignore
             fields=[  # type: ignore
                 {"name": "route_name", "type": "tag"},
                 {"name": "reference", "type": "text"},

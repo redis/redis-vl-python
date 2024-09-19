@@ -72,7 +72,7 @@ class SemanticSessionIndexSchema(IndexSchema):
     def from_params(cls, name: str, prefix: str, vectorizer_dims: int, dtype: str):
 
         return cls(
-            index={"name": name, "prefix": prefix, "dtype": dtype.upper()},  # type: ignore
+            index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
                 {"name": "role", "type": "tag"},
                 {"name": "content", "type": "text"},

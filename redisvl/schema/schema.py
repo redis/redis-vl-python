@@ -63,8 +63,6 @@ class IndexInfo(BaseModel):
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
-    dtype: VectorDataType = VectorDataType.FLOAT32
-    """The data type for the vector field in the index."""
 
 
 class IndexSchema(BaseModel):

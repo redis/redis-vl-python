@@ -26,7 +26,7 @@ class CacheEntry(BaseModel):
     """Optional metadata stored on the cache entry"""
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
-    dtype: str = Field(default="float32")
+    dtype: str = Field(default="float32")  ### TODO don't have a default here
     """The data type for the prompt vector."""
 
     @root_validator(pre=True)
@@ -110,7 +110,7 @@ class SemanticCacheIndexSchema(IndexSchema):
     def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str):
 
         return cls(
-            index={"name": name, "prefix": prefix, "dtype": dtype.upper()},  # type: ignore
+            index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
                 {"name": "prompt", "type": "text"},
                 {"name": "response", "type": "text"},
