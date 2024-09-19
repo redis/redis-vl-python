@@ -26,7 +26,7 @@ class CacheEntry(BaseModel):
     """Optional metadata stored on the cache entry"""
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
-    dtype: str = Field(default="float32")  ### TODO don't have a default here
+    dtype: str = Field(default="float32")  ### TODO don't have a default here?
     """The data type for the prompt vector."""
 
     @root_validator(pre=True)

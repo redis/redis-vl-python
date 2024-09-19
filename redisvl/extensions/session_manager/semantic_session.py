@@ -27,6 +27,7 @@ class SemanticSessionManager(BaseSessionManager):
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
+        overwrite: bool = False,
         **kwargs,
     ):
         """Initialize session memory with index
@@ -80,7 +81,17 @@ class SemanticSessionManager(BaseSessionManager):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
-        self._index.create(overwrite=False)
+        # Check for existing session index
+        if not overwrite and self._index.exists():
+            existing_index = SearchIndex.from_existing(
+                name, redis_client=self._index.client
+            )
+            if existing_index.schema != self._index.schema:
+                raise ValueError(
+                    f"Existing index {name} schema does not match the user provided schema for the semantic session. "
+                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                )
+        self._index.create(overwrite=overwrite, drop=False)
 
         self._default_session_filter = Tag(self.session_field_name) == self._session_tag
 
@@ -191,6 +202,9 @@ class SemanticSessionManager(BaseSessionManager):
             else self._default_session_filter
         )
 
+        dtype = self._index.schema.fields[self.vector_field_name].attrs.datatype  # type: ignore[union-attr]
+        print("queryying dtype ", dtype, "for session ", prompt)
+
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
             vector_field_name=self.vector_field_name,
@@ -199,6 +213,7 @@ class SemanticSessionManager(BaseSessionManager):
             num_results=top_k,
             return_score=True,
             filter_expression=session_filter,
+            dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
         )
         messages = self._index.query(query)
 
@@ -325,6 +340,7 @@ class SemanticSessionManager(BaseSessionManager):
                 content=message[self.content_field_name],
                 session_tag=session_tag,
                 vector_field=content_vector,
+                dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
             )
 
             if self.tool_field_name in message:

@@ -555,3 +555,30 @@ def test_index_updating(redis_url):
         filter_expression=tag_filter,
     )
     assert len(response) == 1
+
+
+def test_create_cache_with_different_vector_types():
+    bfloat_cache = SemanticCache(name="bfloat_cache", dtype="bfloat16")
+    bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
+
+    float16_cache = SemanticCache(name="float16_cache", dtype="float16")
+    float16_cache.store("float16 prompt", "float16 response")
+
+    float32_cache = SemanticCache(name="float32_cache", dtype="float32")
+    float32_cache.store("float32 prompt", "float32 response")
+
+    float64_cache = SemanticCache(name="float64_cache", dtype="float64")
+    float64_cache.store("float64 prompt", "float64 response")
+
+    for cache in [bfloat_cache, float16_cache, float32_cache, float64_cache]:
+        cache.set_threshold(0.6)
+        assert len(cache.check("float prompt", num_results=5)) == 1
+
+
+def test_bad_dtype_connecting_to_existing_cache():
+    cache1 = SemanticCache(name="float64_cache", dtype="float64")
+
+    same_type = SemanticCache(name="float64_cache", dtype="float64")
+
+    with pytest.raises(ValueError):
+        bad_type = SemanticCache(name="float64_cache", dtype="float16")
