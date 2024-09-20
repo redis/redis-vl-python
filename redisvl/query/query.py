@@ -259,7 +259,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if isinstance(self._vector, bytes):
             vector = self._vector
         else:
-            vector= array_to_buffer(self._vector, dtype=self._dtype)
+            vector = array_to_buffer(self._vector, dtype=self._dtype)
 
         return {self.VECTOR_PARAM: vector}
 
