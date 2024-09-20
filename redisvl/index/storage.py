@@ -407,17 +407,6 @@ class HashStorage(BaseStorage):
         if not isinstance(obj, dict):
             raise TypeError("Object must be a dictionary.")
 
-        try:
-            byte_string = obj["prompt_vector"]
-            vector = frombuffer(byte_string, dtype=obj["dtype"].lower())
-        except ValueError:
-            raise ValueError(
-                f"Could not convert byte string to vector of type {obj['dtype']}.",
-                "buffer size must be a multiple of element size",
-            )
-        except KeyError:
-            pass  # regular hash entry with no prompt_vector or dtype needed
-
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):
         """Synchronously set a hash value in Redis for the given key.
