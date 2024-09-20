@@ -1,97 +1,138 @@
 from typing import Any, Dict, List, Optional, Union
 
-from redis.commands.search.query import Query
+from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
 
 
-class BaseQuery:
-    def __init__(
-        self,
-        return_fields: Optional[List[str]] = None,
-        num_results: int = 10,
-        dialect: int = 2,
-        sort_by: Optional[str] = None,
-        in_order: bool = False,
-    ):
-        """Base query class used to subclass many query types."""
-        self._return_fields = return_fields if return_fields is not None else []
-        self._num_results = num_results
-        self._dialect = dialect
-        self._first = 0
-        self._limit = num_results
-        self._sort_by = sort_by
-        self._in_order = in_order
+class BaseQuery(RedisQuery):
+    """Base query class used to subclass many query types."""
+
+    _params: Dict[str, Any] = {}
+    _filter_expression: FilterExpression = FilterExpression("*")
+
+    def __init__(self, query_string: str = "*"):
+        """
+        Initialize the BaseQuery class.
+
+        Args:
+            query_string (str, optional): The query string to use. Defaults to '*'.
+        """
+        super().__init__(query_string)
 
     def __str__(self) -> str:
-        return " ".join([str(x) for x in self.query.get_args()])
+        """Return the string representation of the query."""
+        return " ".join([str(x) for x in self.get_args()])
+
+    def _build_query_string(self) -> str:
+        """Build the full Redis query string."""
+        raise NotImplementedError("Must be implemented by subclasses")
 
     def set_filter(self, filter_expression: Optional[FilterExpression] = None):
         """Set the filter expression for the query.
 
         Args:
-            filter_expression (Optional[FilterExpression], optional): The filter
-                to apply to the query.
+            filter_expression (Optional[FilterExpression], optional): The filter to apply to the query.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
         """
         if filter_expression is None:
             # Default filter to match everything
-            self._filter = FilterExpression("*")
+            self._filter_expression = FilterExpression("*")
         elif isinstance(filter_expression, FilterExpression):
-            self._filter = filter_expression
+            self._filter_expression = filter_expression
         else:
             raise TypeError(
                 "filter_expression must be of type FilterExpression or None"
             )
 
-    def get_filter(self) -> FilterExpression:
-        """Get the filter expression for the query.
-
-        Returns:
-            FilterExpression: The filter for the query.
-        """
-        return self._filter
-
-    def set_paging(self, first: int, limit: int):
-        """Set the paging parameters for the query to limit the number of
-        results.
-
-        Args:
-            first (int): The zero-indexed offset for which to fetch query results
-            limit (int): The max number of results to include including the offset
-
-        Raises:
-            TypeError: If first or limit are NOT integers.
-        """
-        if not isinstance(first, int) or not isinstance(limit, int):
-            raise TypeError("Paging params must both be integers")
-
-        self._first = first
-        self._limit = limit
+        # Reset the query string
+        self._query_string = self._build_query_string()
 
     @property
-    def query(self) -> Query:
-        raise NotImplementedError
+    def filter(self) -> FilterExpression:
+        """The filter expression for the query."""
+        return self._filter_expression
+
+    @property
+    def query(self) -> "BaseQuery":
+        """Return self as the query object."""
+        return self
 
     @property
     def params(self) -> Dict[str, Any]:
-        return {}
+        """Return the query parameters."""
+        return self._params
+
+
+class FilterQuery(BaseQuery):
+    def __init__(
+        self,
+        filter_expression: Optional[FilterExpression] = None,
+        return_fields: Optional[List[str]] = None,
+        num_results: int = 10,
+        dialect: int = 2,
+        sort_by: Optional[str] = None,
+        in_order: bool = False,
+        params: Optional[Dict[str, Any]] = None,
+    ):
+        """A query for running a filtered search with a filter expression.
+
+        Args:
+            filter_expression (Optional[FilterExpression]): The optional filter
+                expression to query with. Defaults to '*'.
+            return_fields (Optional[List[str]], optional): The fields to return.
+            num_results (Optional[int], optional): The number of results to return. Defaults to 10.
+            dialect (int, optional): The query dialect. Defaults to 2.
+            sort_by (Optional[str], optional): The field to order the results by. Defaults to None.
+            in_order (bool, optional): Requires the terms in the field to have the same order as the terms in the query filter. Defaults to False.
+            params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+        """
+        if filter_expression:
+            self._filter_expression = filter_expression
+        if params:
+            self._params = params
+
+        self._num_results = num_results
+
+        # Initialize the base query with the full query string constructed from the filter expression
+        query_string = self._build_query_string()
+        super().__init__(query_string)
+
+        # Handle query settings
+        if return_fields:
+            self.return_fields(*return_fields)
+        self.paging(0, self._num_results).dialect(dialect)
+
+        if sort_by:
+            self.sort_by(sort_by)
+
+        if in_order:
+            self.in_order()
+
+    def _build_query_string(self) -> str:
+        """Build the full query string based on the filter and other components."""
+        # Example logic to build the full query string from filter and other parts
+        # This can be customized in child classes for more complex queries
+        return str(self._filter_expression)
 
 
 class CountQuery(BaseQuery):
     def __init__(
         self,
-        filter_expression: FilterExpression,
+        filter_expression: Optional[FilterExpression] = None,
         dialect: int = 2,
         params: Optional[Dict[str, Any]] = None,
     ):
         """A query for a simple count operation provided some filter expression.
 
         Args:
-            filter_expression (FilterExpression): The filter expression to query for.
+            filter_expression (Optional[FilterExpression]): The filter expression to query with. Defaults to None.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
 
         Raises:
@@ -107,126 +148,31 @@ class CountQuery(BaseQuery):
 
             count = index.query(query)
         """
-        super().__init__(num_results=0, dialect=dialect)
-        self.set_filter(filter_expression)
-        self._params = params or {}
+        if filter_expression:
+            self._filter_expression = filter_expression
+        if params:
+            self._params = params
 
-    @property
-    def query(self) -> Query:
-        """The loaded Redis-Py query.
+        # Initialize the base query with the full query string constructed from the filter expression
+        query_string = self._build_query_string()
+        super().__init__(query_string)
 
-        Returns:
-            redis.commands.search.query.Query: The Redis-Py query object.
-        """
-        base_query = str(self._filter)
-        query = Query(base_query).no_content().paging(0, 0).dialect(self._dialect)
-        return query
+        # Query specific modifications
+        self.no_content().paging(0, 0).dialect(dialect)
 
-    @property
-    def params(self) -> Dict[str, Any]:
-        """The parameters for the query.
-
-        Returns:
-            Dict[str, Any]: The parameters for the query.
-        """
-        return self._params
+    def _build_query_string(self) -> str:
+        """Build the full query string based on the filter and other components."""
+        # Example logic to build the full query string from filter and other parts
+        # This can be customized in child classes for more complex queries
+        return str(self._filter_expression)
 
 
-class FilterQuery(BaseQuery):
-    def __init__(
-        self,
-        filter_expression: FilterExpression,
-        return_fields: Optional[List[str]] = None,
-        num_results: int = 10,
-        dialect: int = 2,
-        sort_by: Optional[str] = None,
-        in_order: bool = False,
-        params: Optional[Dict[str, Any]] = None,
-    ):
-        """A query for a running a filtered search with a filter expression.
-
-        Args:
-            filter_expression (FilterExpression): The filter expression to
-                query for.
-            return_fields (Optional[List[str]], optional): The fields to return.
-            num_results (Optional[int], optional): The number of results to
-                return. Defaults to 10.
-            sort_by (Optional[str]): The field to order the results by. Defaults
-                to None. Results will be ordered by vector distance.
-            in_order (bool): Requires the terms in the field to have
-                the same order as the terms in the query filter, regardless of
-                the offsets between them. Defaults to False.
-            params (Optional[Dict[str, Any]], optional): The parameters for the
-                query. Defaults to None.
-
-        Raises:
-            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-
-        .. code-block:: python
+class BaseVectorQuery:
+    DISTANCE_ID: str = "vector_distance"
+    VECTOR_PARAM: str = "vector"
 
 
-            from redisvl.query import FilterQuery
-            from redisvl.query.filter import Tag
-
-            t = Tag("brand") == "Nike"
-            q = FilterQuery(return_fields=["brand", "price"], filter_expression=t)
-
-        """
-        super().__init__(return_fields, num_results, dialect, sort_by, in_order)
-        self.set_filter(filter_expression)
-        self._params = params or {}
-
-    @property
-    def query(self) -> Query:
-        """Return a Redis-Py Query object representing the query.
-
-        Returns:
-            redis.commands.search.query.Query: The Redis-Py query object.
-        """
-        base_query = str(self._filter)
-        query = (
-            Query(base_query)
-            .return_fields(*self._return_fields)
-            .paging(self._first, self._limit)
-            .dialect(self._dialect)
-        )
-        if self._sort_by:
-            query = query.sort_by(self._sort_by)
-
-        if self._in_order:
-            query = query.in_order()
-
-        return query
-
-
-class BaseVectorQuery(BaseQuery):
-    DISTANCE_ID = "vector_distance"
-    VECTOR_PARAM = "vector"
-
-    def __init__(
-        self,
-        vector: Union[List[float], bytes],
-        vector_field_name: str,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        dtype: str = "float32",
-        num_results: int = 10,
-        return_score: bool = True,
-        dialect: int = 2,
-        sort_by: Optional[str] = None,
-        in_order: bool = False,
-    ):
-        super().__init__(return_fields, num_results, dialect, sort_by, in_order)
-        self.set_filter(filter_expression)
-        self._vector = vector
-        self._field = vector_field_name
-        self._dtype = dtype
-
-        if return_score:
-            self._return_fields.append(self.DISTANCE_ID)
-
-
-class VectorQuery(BaseVectorQuery):
+class VectorQuery(BaseVectorQuery, BaseQuery):
     def __init__(
         self,
         vector: Union[List[float], bytes],
@@ -271,42 +217,37 @@ class VectorQuery(BaseVectorQuery):
         Note:
             Learn more about vector queries in Redis: https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search
         """
-        super().__init__(
-            vector,
-            vector_field_name,
-            return_fields,
-            filter_expression,
-            dtype,
-            num_results,
-            return_score,
-            dialect,
-            sort_by,
-            in_order,
-        )
+        if filter_expression:
+            self._filter_expression = filter_expression
 
-    @property
-    def query(self) -> Query:
-        """Return a Redis-Py Query object representing the query.
+        self._vector = vector
+        self._vector_field_name = vector_field_name
+        self._dtype = dtype
+        self._num_results = num_results
 
-        Returns:
-            redis.commands.search.query.Query: The Redis-Py query object.
-        """
-        base_query = f"{str(self._filter)}=>[KNN {self._num_results} @{self._field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
-        query = (
-            Query(base_query)
-            .return_fields(*self._return_fields)
-            .paging(self._first, self._limit)
-            .dialect(self._dialect)
-        )
-        if self._sort_by:
-            query = query.sort_by(self._sort_by)
+        query_string = self._build_query_string()
+        super().__init__(query_string)
+
+        # Handle query modifiers
+        if return_fields:
+            self.return_fields(*return_fields)
+
+        self.paging(0, self._num_results).dialect(dialect)
+
+        if return_score:
+            self.return_fields(self.DISTANCE_ID)
+
+        if sort_by:
+            self.sort_by(sort_by)
         else:
-            query = query.sort_by(self.DISTANCE_ID)
+            self.sort_by(self.DISTANCE_ID)
 
-        if self._in_order:
-            query = query.in_order()
+        if in_order:
+            self.in_order()
 
-        return query
+    def _build_query_string(self) -> str:
+        """Build the full query string for vector search with optional filtering."""
+        return f"{str(self._filter_expression)}=>[KNN {self._num_results} @{self._vector_field_name} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -316,15 +257,15 @@ class VectorQuery(BaseVectorQuery):
             Dict[str, Any]: The parameters for the query.
         """
         if isinstance(self._vector, bytes):
-            vector_param = self._vector
+            vector = self._vector
         else:
-            vector_param = array_to_buffer(self._vector, dtype=self._dtype)
+            vector= array_to_buffer(self._vector, dtype=self._dtype)
 
-        return {self.VECTOR_PARAM: vector_param}
+        return {self.VECTOR_PARAM: vector}
 
 
-class RangeQuery(BaseVectorQuery):
-    DISTANCE_THRESHOLD_PARAM = "distance_threshold"
+class VectorRangeQuery(BaseVectorQuery, BaseQuery):
+    DISTANCE_THRESHOLD_PARAM: str = "distance_threshold"
 
     def __init__(
         self,
@@ -375,22 +316,48 @@ class RangeQuery(BaseVectorQuery):
             Learn more about vector range queries: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
 
         """
-        super().__init__(
-            vector,
-            vector_field_name,
-            return_fields,
-            filter_expression,
-            dtype,
-            num_results,
-            return_score,
-            dialect,
-            sort_by,
-            in_order,
-        )
+        if filter_expression:
+            self._filter_expression = filter_expression
+
+        self._vector = vector
+        self._vector_field_name = vector_field_name
+        self._dtype = dtype
+        self._num_results = num_results
         self.set_distance_threshold(distance_threshold)
 
+        query_string = self._build_query_string()
+        super().__init__(query_string)
+
+        # Handle query modifiers
+        if return_fields:
+            self.return_fields(*return_fields)
+
+        self.paging(0, self._num_results).dialect(dialect)
+
+        if return_score:
+            self.return_fields(self.DISTANCE_ID)
+
+        if sort_by:
+            self.sort_by(sort_by)
+        else:
+            self.sort_by(self.DISTANCE_ID)
+
+        if in_order:
+            self.in_order()
+
+    def _build_query_string(self) -> str:
+        """Build the full query string for vector range queries with optional filtering"""
+        base_query = f"@{self._vector_field_name}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
+        _filter = str(self._filter_expression)
+        if _filter != "*":
+            return (
+                f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {_filter})"
+            )
+        else:
+            return f"{base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}}"
+
     def set_distance_threshold(self, distance_threshold: float):
-        """Set the distance treshold for the query.
+        """Set the distance threshold for the query.
 
         Args:
             distance_threshold (float): vector distance
@@ -409,40 +376,6 @@ class RangeQuery(BaseVectorQuery):
         return self._distance_threshold
 
     @property
-    def query(self) -> Query:
-        """Return a Redis-Py Query object representing the query.
-
-        Returns:
-            redis.commands.search.query.Query: The Redis-Py query object.
-        """
-        base_query = f"@{self._field}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
-
-        _filter = str(self._filter)
-
-        if _filter != "*":
-            base_query = (
-                f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {_filter})"
-            )
-        else:
-            base_query = f"{base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}}"
-
-        query = (
-            Query(base_query)
-            .return_fields(*self._return_fields)
-            .paging(self._first, self._limit)
-            .dialect(self._dialect)
-        )
-        if self._sort_by:
-            query = query.sort_by(self._sort_by)
-        else:
-            query = query.sort_by(self.DISTANCE_ID)
-
-        if self._in_order:
-            query = query.in_order()
-
-        return query
-
-    @property
     def params(self) -> Dict[str, Any]:
         """Return the parameters for the query.
 
@@ -458,3 +391,8 @@ class RangeQuery(BaseVectorQuery):
             self.VECTOR_PARAM: vector_param,
             self.DISTANCE_THRESHOLD_PARAM: self._distance_threshold,
         }
+
+
+class RangeQuery(VectorRangeQuery):
+    # keep for backwards compatibility
+    pass

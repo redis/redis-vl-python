@@ -53,7 +53,6 @@ class BaseVectorizer(BaseModel, ABC):
     ) -> List[float]:
         raise NotImplementedError
 
-    @abstractmethod
     async def aembed_many(
         self,
         texts: List[str],
@@ -62,9 +61,9 @@ class BaseVectorizer(BaseModel, ABC):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
-        raise NotImplementedError
+        # Fallback to standard embedding call if no async support
+        return self.embed_many(texts, preprocess, batch_size, as_buffer, **kwargs)
 
-    @abstractmethod
     async def aembed(
         self,
         text: str,
@@ -72,7 +71,8 @@ class BaseVectorizer(BaseModel, ABC):
         as_buffer: bool = False,
         **kwargs,
     ) -> List[float]:
-        raise NotImplementedError
+        # Fallback to standard embedding call if no async support
+        return self.embed(text, preprocess, as_buffer, **kwargs)
 
     def batchify(self, seq: list, size: int, preprocess: Optional[Callable] = None):
         for pos in range(0, len(seq), size):

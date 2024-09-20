@@ -31,7 +31,11 @@ class BaseLLMCache:
             self._ttl = None
 
     def clear(self) -> None:
-        """Clear the LLMCache of all keys in the index."""
+        """Clear the cache of all keys in the index."""
+        raise NotImplementedError
+
+    async def aclear(self) -> None:
+        """Async clear the cache of all keys in the index."""
         raise NotImplementedError
 
     def check(
@@ -41,6 +45,17 @@ class BaseLLMCache:
         num_results: int = 1,
         return_fields: Optional[List[str]] = None,
     ) -> List[dict]:
+        """Check the cache based on a prompt or vector."""
+        raise NotImplementedError
+
+    async def acheck(
+        self,
+        prompt: Optional[str] = None,
+        vector: Optional[List[float]] = None,
+        num_results: int = 1,
+        return_fields: Optional[List[str]] = None,
+    ) -> List[dict]:
+        """Async check the cache based on a prompt or vector."""
         raise NotImplementedError
 
     def store(
@@ -50,7 +65,18 @@ class BaseLLMCache:
         vector: Optional[List[float]] = None,
         metadata: Optional[dict] = {},
     ) -> str:
-        """Stores the specified key-value pair in the cache along with
+        """Store the specified key-value pair in the cache along with
+        metadata."""
+        raise NotImplementedError
+
+    async def astore(
+        self,
+        prompt: str,
+        response: str,
+        vector: Optional[List[float]] = None,
+        metadata: Optional[dict] = {},
+    ) -> str:
+        """Async store the specified key-value pair in the cache along with
         metadata."""
         raise NotImplementedError
 
