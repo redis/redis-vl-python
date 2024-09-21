@@ -40,11 +40,11 @@ def hfCrossEncoderRerankerWithCustomModel():
 
 
 # Test for basic ranking functionality
-def test_rank_documents_cohere(cohereReranker):
+def test_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
-    reranked_docs, scores = cohereReranker.rank(query, docs)
+    reranked_docs, scores = reranker.rank(query, docs)
 
     assert isinstance(reranked_docs, list)
     assert len(reranked_docs) == len(docs)  # Ensure we get back as many docs as we sent
