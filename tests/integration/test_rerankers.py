@@ -53,11 +53,11 @@ def test_rank_documents(reranker):
 
 # Test for asynchronous ranking functionality
 @pytest.mark.asyncio
-async def test_async_rank_documents_cohere(cohereReranker):
+async def test_async_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
-    reranked_docs, scores = await cohereReranker.arank(query, docs)
+    reranked_docs, scores = await reranker.arank(query, docs)
 
     assert isinstance(reranked_docs, list)
     assert len(reranked_docs) == len(docs)  # Ensure we get back as many docs as we sent
