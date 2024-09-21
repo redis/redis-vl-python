@@ -7,7 +7,6 @@ from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.utils.vectorize.base import BaseVectorizer
 
-
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"
 
