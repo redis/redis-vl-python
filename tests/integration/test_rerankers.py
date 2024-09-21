@@ -40,7 +40,7 @@ def hfCrossEncoderRerankerWithCustomModel():
 
 
 # Test for basic ranking functionality
-def test_rank_documents_cohere(reranker):
+def test_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 

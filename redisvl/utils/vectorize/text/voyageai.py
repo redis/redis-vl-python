@@ -36,11 +36,11 @@ class VoyageAITextVectorizer(BaseVectorizer):
         )
         query_embedding = vectorizer.embed(
             text="your input query text here",
-            input_type="search_query"
+            input_type="query"
         )
         doc_embeddings = vectorizer.embed_many(
             texts=["your document text", "more document text"],
-            input_type="search_document"
+            input_type="document"
         )
 
     """
