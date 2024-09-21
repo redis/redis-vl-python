@@ -53,7 +53,7 @@ def test_rank_documents(reranker):
 
 # Test for asynchronous ranking functionality
 @pytest.mark.asyncio
-async def test_async_rank_documents_cohere(reranker):
+async def test_async_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
