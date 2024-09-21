@@ -2,7 +2,11 @@ import os
 
 import pytest
 
-from redisvl.utils.rerank import CohereReranker, VoyageAIReranker, HFCrossEncoderReranker
+from redisvl.utils.rerank import (
+    CohereReranker,
+    HFCrossEncoderReranker,
+    VoyageAIReranker,
+)
 
 
 @pytest.fixture
