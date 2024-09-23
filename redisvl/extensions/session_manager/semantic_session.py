@@ -52,7 +52,8 @@ class SemanticSessionManager(BaseSessionManager):
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
-            dtype (str): The data type for the prompt vector. Defaults to "float32".
+            overwrite (bool): Whether or not to force overwrite the schema for
+                the semantic session index. Defaults to false.
 
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
