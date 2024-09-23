@@ -395,14 +395,13 @@ class HashStorage(BaseStorage):
 
     def _validate(self, obj: Dict[str, Any]):
         """Validate that the given object is a dictionary suitable for storage
-        as a Redis hash, and the vector byte string is of correct datatype.
+        as a Redis hash.
 
         Args:
             obj (Dict[str, Any]): The object to validate.
 
         Raises:
             TypeError: If the object is not a dictionary.
-            ValueError: if the vector byte string is not of correct datatype.
         """
         if not isinstance(obj, dict):
             raise TypeError("Object must be a dictionary.")

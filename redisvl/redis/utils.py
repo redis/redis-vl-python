@@ -35,7 +35,7 @@ def convert_bytes(data: Any) -> Any:
 
 def array_to_buffer(array: List[float], dtype: str) -> bytes:
     """Convert a list of floats into a numpy byte string."""
-    if dtype.upper() not in VectorDataType:
+    if dtype.upper() not in {v.value for v in VectorDataType}:
         raise ValueError(
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
@@ -44,7 +44,7 @@ def array_to_buffer(array: List[float], dtype: str) -> bytes:
 
 def buffer_to_array(buffer: bytes, dtype: str) -> List[float]:
     """Convert bytes into into a list of floats."""
-    if dtype.upper() not in VectorDataType:
+    if dtype.upper() not in {v.value for v in VectorDataType}:
         raise ValueError(
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )

@@ -109,7 +109,7 @@ class SemanticRouter(BaseModel):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
-        # Check for existing session index
+        # Check for existing router index
         existed = self._index.exists()
         if not overwrite and existed:
             existing_index = SearchIndex.from_existing(
