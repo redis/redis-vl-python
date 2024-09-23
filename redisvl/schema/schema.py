@@ -7,7 +7,7 @@ import yaml
 from pydantic.v1 import BaseModel, Field, root_validator
 from redis.commands.search.field import Field as RedisField
 
-from redisvl.schema.fields import BaseField, FieldFactory, VectorDataType
+from redisvl.schema.fields import BaseField, FieldFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import model_to_dict
 

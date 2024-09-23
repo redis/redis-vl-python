@@ -4,12 +4,7 @@ from typing import Any, Dict, List
 import numpy as np
 from ml_dtypes import bfloat16
 
-VectorDataTypes = {
-    "BFLOAT16": bfloat16,
-    "FLOAT16": np.float16,
-    "FLOAT32": np.float32,
-    "FLOAT64": np.float64,
-}
+from redisvl.schema.fields import VectorDataType
 
 
 def make_dict(values: List[Any]) -> Dict[Any, Any]:
@@ -40,24 +35,20 @@ def convert_bytes(data: Any) -> Any:
 
 def array_to_buffer(array: List[float], dtype: str) -> bytes:
     """Convert a list of floats into a numpy byte string."""
-    try:
-        dtype = VectorDataTypes[dtype.upper()]
-    except KeyError:
+    if dtype.upper() not in VectorDataType:
         raise ValueError(
-            f"Invalid data type: {dtype}. Supported types are: {VectorDataTypes.keys()}"
+            f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
-    return np.array(array).astype(dtype).tobytes()
+    return np.array(array).astype(dtype.lower()).tobytes()
 
 
 def buffer_to_array(buffer: bytes, dtype: str) -> List[float]:
     """Convert bytes into into a list of floats."""
-    try:
-        dtype = VectorDataTypes[dtype.upper()]
-    except KeyError:
+    if dtype.upper() not in VectorDataType:
         raise ValueError(
-            f"Invalid data type: {dtype}. Supported types are: {VectorDataTypes.keys()}"
+            f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
-    return np.frombuffer(buffer, dtype=dtype).tolist()
+    return np.frombuffer(buffer, dtype=dtype.lower()).tolist()
 
 
 def hashify(content: str) -> str:
