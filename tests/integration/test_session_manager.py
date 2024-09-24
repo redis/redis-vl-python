@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from redis.exceptions import ConnectionError
 
@@ -5,6 +7,13 @@ from redisvl.extensions.session_manager import (
     SemanticSessionManager,
     StandardSessionManager,
 )
+
+
+@pytest.fixture
+def skip_dtypes() -> bool:
+    # os.getenv returns a string
+    v = os.getenv("SKIP_DTYPES", "False").lower() == "true"
+    return v
 
 
 @pytest.fixture
@@ -538,7 +547,10 @@ def test_semantic_drop(semantic_session):
     ]
 
 
-def test_different_vector_dtypes():
+def test_different_vector_dtypes(skip_dtypes):
+    if skip_dtypes:
+        pytest.skip("Skipping dtype checking...")
+
     bfloat_sess = SemanticSessionManager(name="bfloat_session", dtype="bfloat16")
     bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
 

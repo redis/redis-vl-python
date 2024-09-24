@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections import namedtuple
 from time import sleep, time
 
@@ -15,6 +16,13 @@ from redisvl.utils.vectorize import HFTextVectorizer
 @pytest.fixture
 def vectorizer():
     return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
+
+
+@pytest.fixture
+def skip_dtypes() -> bool:
+    # os.getenv returns a string
+    v = os.getenv("SKIP_DTYPES", "False").lower() == "true"
+    return v
 
 
 @pytest.fixture
@@ -802,7 +810,10 @@ def test_index_updating(redis_url):
     assert len(response) == 1
 
 
-def test_create_cache_with_different_vector_types():
+def test_create_cache_with_different_vector_types(skip_dtypes):
+    if skip_dtypes:
+        pytest.skip("Skipping dtype checking...")
+
     bfloat_cache = SemanticCache(name="bfloat_cache", dtype="bfloat16")
     bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
 
@@ -821,7 +832,7 @@ def test_create_cache_with_different_vector_types():
 
 
 def test_bad_dtype_connecting_to_existing_cache():
-    cache1 = SemanticCache(name="float64_cache", dtype="float64")
+    cache = SemanticCache(name="float64_cache", dtype="float64")
 
     same_type = SemanticCache(name="float64_cache", dtype="float64")
 

@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import pytest
@@ -6,6 +7,13 @@ from redis.exceptions import ConnectionError
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import Route, RoutingConfig
 from redisvl.redis.connection import compare_versions
+
+
+@pytest.fixture
+def skip_dtypes() -> bool:
+    # os.getenv returns a string
+    v = os.getenv("SKIP_DTYPES", "False").lower() == "true"
+    return v
 
 
 def get_base_path():
@@ -239,7 +247,10 @@ def test_bad_connection_info(routes):
         )
 
 
-def test_different_vector_dtypes(routes):
+def test_different_vector_dtypes(routes, skip_dtypes):
+    if skip_dtypes:
+        pytest.skip("Skipping dtype checking...")
+
     bfloat_router = SemanticRouter(
         name="bfloat_router",
         routes=routes,
