@@ -279,7 +279,10 @@ def test_different_vector_dtypes(routes, skip_dtypes):
         assert len(router.route_many("hello", max_k=5)) == 1
 
 
-def test_bad_dtype_connecting_to_exiting_router(routes):
+def test_bad_dtype_connecting_to_exiting_router(routes, skip_dtypes):
+    if skip_dtypes:
+        pytest.skip("Skipping dtype checking...")
+
     router = SemanticRouter(
         name="float64 router",
         routes=routes,

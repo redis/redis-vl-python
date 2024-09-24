@@ -831,7 +831,10 @@ def test_create_cache_with_different_vector_types(skip_dtypes):
         assert len(cache.check("float prompt", num_results=5)) == 1
 
 
-def test_bad_dtype_connecting_to_existing_cache():
+def test_bad_dtype_connecting_to_existing_cache(skip_dtypes):
+    if skip_dtypes:
+        pytest.skip("Skipping dtype checking...")
+
     cache = SemanticCache(name="float64_cache", dtype="float64")
 
     same_type = SemanticCache(name="float64_cache", dtype="float64")

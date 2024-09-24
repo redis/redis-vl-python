@@ -568,7 +568,10 @@ def test_different_vector_dtypes(skip_dtypes):
         assert len(sess.get_relevant("float message")) == 1
 
 
-def test_bad_dtype_connecting_to_exiting_session():
+def test_bad_dtype_connecting_to_exiting_session(skip_dtypes):
+    if skip_dtypes:
+        pytest.skip("Skipping dtype checking...")
+
     session = SemanticSessionManager(name="float64 session", dtype="float64")
 
     same_type = SemanticSessionManager(name="float64 session", dtype="float64")
