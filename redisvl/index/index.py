@@ -354,7 +354,7 @@ class SearchIndex(BaseSearchIndex):
 
         # Validate modules
         installed_modules = RedisConnectionFactory.get_modules(redis_client)
-        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+        validate_modules(installed_modules, [{"name": "search", "ver": 20620}])
 
         # Fetch index info and convert to schema
         index_info = cls._info(name, redis_client)

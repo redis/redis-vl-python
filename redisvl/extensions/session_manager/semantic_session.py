@@ -13,11 +13,10 @@ from redisvl.query.filter import Tag
 from redisvl.utils.utils import validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
-VECTOR_FIELD_NAME = "vector_field"  ###
+VECTOR_FIELD_NAME = "vector_field"
 
 
 class SemanticSessionManager(BaseSessionManager):
-    ###vector_field_name: str = "vector_field"
 
     def __init__(
         self,

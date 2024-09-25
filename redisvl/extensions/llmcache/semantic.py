@@ -15,7 +15,7 @@ from redisvl.query.filter import FilterExpression
 from redisvl.utils.utils import current_timestamp, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
-VECTOR_FIELD_NAME = "prompt_vector"  ###
+VECTOR_FIELD_NAME = "prompt_vector"
 
 
 class SemanticCache(BaseLLMCache):
@@ -25,7 +25,6 @@ class SemanticCache(BaseLLMCache):
     entry_id_field_name: str = "entry_id"
     prompt_field_name: str = "prompt"
     response_field_name: str = "response"
-    ###vector_field_name: str = "prompt_vector"
     inserted_at_field_name: str = "inserted_at"
     updated_at_field_name: str = "updated_at"
     metadata_field_name: str = "metadata"

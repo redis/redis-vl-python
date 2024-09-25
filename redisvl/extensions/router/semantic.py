@@ -28,7 +28,7 @@ from redisvl.utils.vectorize import (
 
 logger = get_logger(__name__)
 
-VECTOR_FIELD_NAME = "vector"  ###
+VECTOR_FIELD_NAME = "vector"
 
 
 class SemanticRouter(BaseModel):
@@ -42,7 +42,6 @@ class SemanticRouter(BaseModel):
     """The vectorizer used to embed route references."""
     routing_config: RoutingConfig = Field(default_factory=RoutingConfig)
     """Configuration for routing behavior."""
-    ### vector_field_name: str = "vector"
 
     _index: SearchIndex = PrivateAttr()
 
