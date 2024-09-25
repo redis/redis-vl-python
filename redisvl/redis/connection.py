@@ -90,7 +90,9 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
 
     def parse_vector_attrs(attrs):
         vector_attrs = {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
-        vector_attrs["dims"] = int(vector_attrs.pop("dim"))
+        vector_attrs["dims"] = int(
+            vector_attrs.pop("dim" if "dim" in vector_attrs else "dims")
+        )
         vector_attrs["distance_metric"] = vector_attrs.pop("distance_metric").lower()
         vector_attrs["algorithm"] = vector_attrs.pop("algorithm").lower()
         vector_attrs["datatype"] = vector_attrs.pop("data_type").lower()
