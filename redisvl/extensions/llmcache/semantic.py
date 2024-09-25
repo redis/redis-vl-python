@@ -15,6 +15,8 @@ from redisvl.query.filter import FilterExpression
 from redisvl.utils.utils import current_timestamp, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
+VECTOR_FIELD_NAME = "prompt_vector"  ###
+
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
@@ -23,7 +25,7 @@ class SemanticCache(BaseLLMCache):
     entry_id_field_name: str = "entry_id"
     prompt_field_name: str = "prompt"
     response_field_name: str = "response"
-    vector_field_name: str = "prompt_vector"
+    ###vector_field_name: str = "prompt_vector"
     inserted_at_field_name: str = "inserted_at"
     updated_at_field_name: str = "updated_at"
     metadata_field_name: str = "metadata"
@@ -136,9 +138,10 @@ class SemanticCache(BaseLLMCache):
 
         validate_vector_dims(
             vectorizer.dims,
-            self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
+            self._index.schema.fields[VECTOR_FIELD_NAME].attrs.dims,  # type: ignore
         )
         self._vectorizer = vectorizer
+        self._dtype = self.index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype  # type: ignore[union-attr]
 
     def _modify_schema(
         self,
@@ -290,8 +293,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
 
-        dtype = self.index.schema.fields[self.vector_field_name].attrs.datatype  # type: ignore[union-attr]
-        return self._vectorizer.embed(prompt, dtype=dtype)
+        return self._vectorizer.embed(prompt, dtype=self._dtype)
 
     async def _avectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
@@ -304,7 +306,7 @@ class SemanticCache(BaseLLMCache):
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it
         doesn't match the search index vector dimensions."""
-        schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
+        schema_vector_dims = self._index.schema.fields[VECTOR_FIELD_NAME].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
     def check(
@@ -367,13 +369,13 @@ class SemanticCache(BaseLLMCache):
 
         query = RangeQuery(
             vector=vector,
-            vector_field_name=self.vector_field_name,
+            vector_field_name=VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
             distance_threshold=distance_threshold,
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
-            dtype=self.index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._dtype,
         )
 
         # Search the cache!
@@ -449,7 +451,7 @@ class SemanticCache(BaseLLMCache):
 
         query = RangeQuery(
             vector=vector,
-            vector_field_name=self.vector_field_name,
+            vector_field_name=VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
             distance_threshold=distance_threshold,
             num_results=num_results,
@@ -539,13 +541,12 @@ class SemanticCache(BaseLLMCache):
             prompt_vector=vector,
             metadata=metadata,
             filters=filters,
-            dtype=self.index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
         )
 
         # Load cache entry with TTL
         ttl = ttl or self._ttl
         keys = self._index.load(
-            data=[cache_entry.to_dict()],
+            data=[cache_entry.to_dict(self._dtype)],
             ttl=ttl,
             id_field=self.entry_id_field_name,
         )
@@ -604,13 +605,12 @@ class SemanticCache(BaseLLMCache):
             prompt_vector=vector,
             metadata=metadata,
             filters=filters,
-            dtype=self.index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
         )
 
         # Load cache entry with TTL
         ttl = ttl or self._ttl
         keys = await aindex.load(
-            data=[cache_entry.to_dict()],
+            data=[cache_entry.to_dict(self._dtype)],
             ttl=ttl,
             id_field=self.entry_id_field_name,
         )

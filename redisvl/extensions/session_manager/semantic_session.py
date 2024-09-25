@@ -13,9 +13,11 @@ from redisvl.query.filter import Tag
 from redisvl.utils.utils import validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
+VECTOR_FIELD_NAME = "vector_field"  ###
+
 
 class SemanticSessionManager(BaseSessionManager):
-    vector_field_name: str = "vector_field"
+    ###vector_field_name: str = "vector_field"
 
     def __init__(
         self,
@@ -201,13 +203,13 @@ class SemanticSessionManager(BaseSessionManager):
 
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
-            vector_field_name=self.vector_field_name,
+            vector_field_name=VECTOR_FIELD_NAME,
             return_fields=return_fields,
             distance_threshold=distance_threshold,
             num_results=top_k,
             return_score=True,
             filter_expression=session_filter,
-            dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         messages = self._index.query(query)
 
@@ -321,7 +323,7 @@ class SemanticSessionManager(BaseSessionManager):
             content_vector = self._vectorizer.embed(message[self.content_field_name])
             validate_vector_dims(
                 len(content_vector),
-                self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
+                self._index.schema.fields[VECTOR_FIELD_NAME].attrs.dims,  # type: ignore
             )
 
             chat_message = ChatMessage(
@@ -329,7 +331,7 @@ class SemanticSessionManager(BaseSessionManager):
                 content=message[self.content_field_name],
                 session_tag=session_tag,
                 vector_field=content_vector,
-                dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
+                dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
             )
 
             if self.tool_field_name in message:

@@ -26,8 +26,6 @@ class CacheEntry(BaseModel):
     """Optional metadata stored on the cache entry"""
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
-    dtype: str
-    """The data type for the prompt vector."""
 
     @root_validator(pre=True)
     @classmethod
@@ -43,9 +41,9 @@ class CacheEntry(BaseModel):
             raise TypeError("Metadata must be a dictionary.")
         return v
 
-    def to_dict(self) -> Dict:
+    def to_dict(self, dtype: str) -> Dict:
         data = self.dict(exclude_none=True)
-        data["prompt_vector"] = array_to_buffer(self.prompt_vector, self.dtype)
+        data["prompt_vector"] = array_to_buffer(self.prompt_vector, dtype)
         if self.metadata is not None:
             data["metadata"] = serialize(self.metadata)
         if self.filters is not None:

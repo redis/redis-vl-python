@@ -28,6 +28,8 @@ from redisvl.utils.vectorize import (
 
 logger = get_logger(__name__)
 
+VECTOR_FIELD_NAME = "vector"  ###
+
 
 class SemanticRouter(BaseModel):
     """Semantic Router for managing and querying route vectors."""
@@ -40,7 +42,7 @@ class SemanticRouter(BaseModel):
     """The vectorizer used to embed route references."""
     routing_config: RoutingConfig = Field(default_factory=RoutingConfig)
     """Configuration for routing behavior."""
-    vector_field_name: str = "vector"
+    ### vector_field_name: str = "vector"
 
     _index: SearchIndex = PrivateAttr()
 
@@ -171,7 +173,7 @@ class SemanticRouter(BaseModel):
             reference_vectors = self.vectorizer.embed_many(
                 [reference for reference in route.references],
                 as_buffer=True,
-                dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
+                dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
             )
             # set route references
             for i, reference in enumerate(route.references):
@@ -248,7 +250,7 @@ class SemanticRouter(BaseModel):
             vector_field_name="vector",
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
-            dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
 
         aggregate_request = self._build_aggregate_request(
@@ -301,7 +303,7 @@ class SemanticRouter(BaseModel):
             vector_field_name="vector",
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
-            dtype=self._index.schema.fields[self.vector_field_name].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k

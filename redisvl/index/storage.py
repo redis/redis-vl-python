@@ -2,7 +2,6 @@ import asyncio
 import uuid
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from numpy import frombuffer
 from pydantic.v1 import BaseModel
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -394,7 +393,7 @@ class HashStorage(BaseStorage):
     """Hash data type for the index"""
 
     def _validate(self, obj: Dict[str, Any]):
-        """Validate that the given object is a dictionary suitable for storage
+        """Validate that the given object is a dictionary, suitable for storage
         as a Redis hash.
 
         Args:

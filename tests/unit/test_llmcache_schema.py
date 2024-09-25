@@ -12,7 +12,6 @@ def test_valid_cache_entry_creation():
         prompt="What is AI?",
         response="AI is artificial intelligence.",
         prompt_vector=[0.1, 0.2, 0.3],
-        dtype="float16",
     )
     assert entry.entry_id == hashify("What is AI?")
     assert entry.prompt == "What is AI?"
@@ -26,7 +25,6 @@ def test_cache_entry_with_given_entry_id():
         prompt="What is AI?",
         response="AI is artificial intelligence.",
         prompt_vector=[0.1, 0.2, 0.3],
-        dtype="float16",
     )
     assert entry.entry_id == "custom_id"
 
@@ -38,7 +36,6 @@ def test_cache_entry_with_invalid_metadata():
             response="AI is artificial intelligence.",
             prompt_vector=[0.1, 0.2, 0.3],
             metadata="invalid_metadata",
-            dtype="float64",
         )
 
 
@@ -49,9 +46,8 @@ def test_cache_entry_to_dict():
         prompt_vector=[0.1, 0.2, 0.3],
         metadata={"author": "John"},
         filters={"category": "technology"},
-        dtype="float32",
     )
-    result = entry.to_dict()
+    result = entry.to_dict(dtype="float32")
     assert result["entry_id"] == hashify("What is AI?")
     assert result["metadata"] == json.dumps({"author": "John"})
     assert result["prompt_vector"] == array_to_buffer([0.1, 0.2, 0.3], "float32")
@@ -112,9 +108,8 @@ def test_cache_entry_with_empty_optional_fields():
         prompt="What is AI?",
         response="AI is artificial intelligence.",
         prompt_vector=[0.1, 0.2, 0.3],
-        dtype="bfloat16",
     )
-    result = entry.to_dict()
+    result = entry.to_dict(dtype="float32")
     assert "metadata" not in result
     assert "filters" not in result
 
