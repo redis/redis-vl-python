@@ -43,6 +43,6 @@ def buffer_to_array(buffer: bytes, dtype: Any = np.float32) -> List[float]:
 def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:
     """Create a secure hash of some arbitrary input text and optional dictionary."""
     if extras:
-        extra_string = " ".join([str(k) + str(v) for k, v in extras.items()])
+        extra_string = " ".join([str(k) + str(v) for k, v in sorted(extras.items())])
         content = content + extra_string
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
