@@ -40,15 +40,11 @@ class ChatMessage(BaseModel):
     @root_validator(pre=True)
     @classmethod
     def generate_id(cls, values):
-        ###if "timestamp" not in values:
-        ###    values["timestamp"] = current_timestamp()
-        if TIMESTAMP_FIELD_NAME not in values:  ###
-            values[TIMESTAMP_FIELD_NAME] = current_timestamp()  ###
-        ###if "entry_id" not in values:
-        ###    values["entry_id"] = f'{values["session_tag"]}:{values["timestamp"]}'
-        if ID_FIELD_NAME not in values:  ###
+        if TIMESTAMP_FIELD_NAME not in values:
+            values[TIMESTAMP_FIELD_NAME] = current_timestamp()
+        if ID_FIELD_NAME not in values:
             values[ID_FIELD_NAME] = (
-                f"{values[SESSION_FIELD_NAME]}:{values[TIMESTAMP_FIELD_NAME]}"  ###
+                f"{values[SESSION_FIELD_NAME]}:{values[TIMESTAMP_FIELD_NAME]}"
             )
         return values
 
@@ -56,8 +52,6 @@ class ChatMessage(BaseModel):
         data = self.dict(exclude_none=True)
 
         # handle optional fields
-        ###if "vector_field" in data:
-        ###    data["vector_field"] = array_to_buffer(data["vector_field"])
         if SESSION_VECTOR_FIELD_NAME in data:
             data[SESSION_VECTOR_FIELD_NAME] = array_to_buffer(
                 data[SESSION_VECTOR_FIELD_NAME]

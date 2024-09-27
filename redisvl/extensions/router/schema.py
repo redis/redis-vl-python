@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from pydantic.v1 import BaseModel, Field, validator
 
+from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.schema import IndexInfo, IndexSchema
 
 
@@ -104,7 +105,7 @@ class SemanticRouterIndexSchema(IndexSchema):
                 {"name": "route_name", "type": "tag"},
                 {"name": "reference", "type": "text"},
                 {
-                    "name": "vector",
+                    "name": ROUTE_VECTOR_FIELD_NAME,
                     "type": "vector",
                     "attrs": {
                         "algorithm": "flat",
