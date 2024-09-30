@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional
 
-from redisvl.redis.utils import hashify
-
 
 class BaseLLMCache:
     def __init__(self, ttl: Optional[int] = None):
@@ -79,14 +77,3 @@ class BaseLLMCache:
         """Async store the specified key-value pair in the cache along with
         metadata."""
         raise NotImplementedError
-
-    def hash_input(self, prompt: str) -> str:
-        """Hashes the input prompt using SHA256.
-
-        Args:
-            prompt (str): Input string to be hashed.
-
-        Returns:
-            str: Hashed string.
-        """
-        return hashify(prompt)

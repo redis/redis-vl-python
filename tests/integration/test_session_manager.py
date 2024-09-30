@@ -3,6 +3,7 @@ import os
 import pytest
 from redis.exceptions import ConnectionError
 
+from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.session_manager import (
     SemanticSessionManager,
     StandardSessionManager,
@@ -270,7 +271,7 @@ def test_standard_drop(standard_session):
 
     # test drop(id) removes the specified element
     context = standard_session.get_recent(top_k=10, raw=True)
-    middle_id = context[3][standard_session.id_field_name]
+    middle_id = context[3][ID_FIELD_NAME]
     standard_session.drop(middle_id)
     context = standard_session.get_recent(top_k=6)
     assert context == [
@@ -536,7 +537,7 @@ def test_semantic_drop(semantic_session):
 
     # test drop(id) removes the specified element
     context = semantic_session.get_recent(top_k=5, raw=True)
-    middle_id = context[2][semantic_session.id_field_name]
+    middle_id = context[2][ID_FIELD_NAME]
     semantic_session.drop(middle_id)
     context = semantic_session.get_recent(top_k=4)
     assert context == [

@@ -8,6 +8,7 @@ from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
+from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
     Route,
@@ -27,8 +28,6 @@ from redisvl.utils.vectorize import (
 )
 
 logger = get_logger(__name__)
-
-VECTOR_FIELD_NAME = "vector"
 
 
 class SemanticRouter(BaseModel):
@@ -172,7 +171,7 @@ class SemanticRouter(BaseModel):
             reference_vectors = self.vectorizer.embed_many(
                 [reference for reference in route.references],
                 as_buffer=True,
-                dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
+                dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
             )
             # set route references
             for i, reference in enumerate(route.references):
@@ -246,10 +245,10 @@ class SemanticRouter(BaseModel):
         """Classify to a single route using a vector."""
         vector_range_query = RangeQuery(
             vector=vector,
-            vector_field_name="vector",
+            vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
-            dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
 
         aggregate_request = self._build_aggregate_request(
@@ -299,10 +298,10 @@ class SemanticRouter(BaseModel):
         """Classify to multiple routes, up to max_k (int), using a vector."""
         vector_range_query = RangeQuery(
             vector=vector,
-            vector_field_name="vector",
+            vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
-            dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k

@@ -96,7 +96,7 @@ def test_chat_message_to_dict():
         vector_field=vector_field,
     )
 
-    data = chat_message.to_dict()
+    data = chat_message.to_dict(dtype="float32")
 
     assert data["entry_id"] == f"{session_tag}:{timestamp}"
     assert data["role"] == "user"
