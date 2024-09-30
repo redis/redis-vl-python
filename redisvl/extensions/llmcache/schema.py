@@ -39,7 +39,7 @@ class CacheEntry(BaseModel):
     def generate_id(cls, values):
         # Ensure entry_id is set
         if not values.get("entry_id"):
-            values["entry_id"] = hashify(values["prompt"])
+            values["entry_id"] = hashify(values["prompt"], values.get("filters"))
         return values
 
     @validator("metadata")
