@@ -2,6 +2,13 @@ from typing import Any, Dict, List, Optional
 
 from pydantic.v1 import BaseModel, Field, root_validator, validator
 
+from redisvl.extensions.constants import (
+    CACHE_VECTOR_FIELD_NAME,
+    INSERTED_AT_FIELD_NAME,
+    PROMPT_FIELD_NAME,
+    RESPONSE_FIELD_NAME,
+    UPDATED_AT_FIELD_NAME,
+)
 from redisvl.redis.utils import array_to_buffer, hashify
 from redisvl.schema import IndexSchema
 from redisvl.utils.utils import current_timestamp, deserialize, serialize
@@ -110,12 +117,12 @@ class SemanticCacheIndexSchema(IndexSchema):
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
-                {"name": "prompt", "type": "text"},
-                {"name": "response", "type": "text"},
-                {"name": "inserted_at", "type": "numeric"},
-                {"name": "updated_at", "type": "numeric"},
+                {"name": PROMPT_FIELD_NAME, "type": "text"},
+                {"name": RESPONSE_FIELD_NAME, "type": "text"},
+                {"name": INSERTED_AT_FIELD_NAME, "type": "numeric"},
+                {"name": UPDATED_AT_FIELD_NAME, "type": "numeric"},
                 {
-                    "name": "prompt_vector",
+                    "name": CACHE_VECTOR_FIELD_NAME,
                     "type": "vector",
                     "attrs": {
                         "dims": vector_dims,
