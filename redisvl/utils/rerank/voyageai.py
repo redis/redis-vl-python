@@ -109,6 +109,9 @@ class VoyageAIReranker(BaseReranker):
         return_score = kwargs.get("return_score", self.return_score)
         truncation = kwargs.get("truncation")
 
+        if not isinstance(docs, list):
+            raise ValueError("Docs to rerank should either be a list of str or dict.")
+
         if all(isinstance(doc, dict) and "content" in doc for doc in docs):
             texts = [
                 str(doc["content"])
