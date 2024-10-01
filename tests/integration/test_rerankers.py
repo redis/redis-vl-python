@@ -79,10 +79,11 @@ def test_bad_input_cohere(cohereReranker):
     with pytest.raises(Exception):
         cohereReranker.rank("valid query", "not a list")  # Invalid type for documents
 
-    with pytest.raises(Exception):
-        cohereReranker.rank(
-            "valid query", [{"field": "valid document"}], rank_by=["invalid_field"]
-        )  # Invalid rank_by field
+    if isinstance(reranker, CohereReranker):
+        with pytest.raises(Exception):
+            reranker.rank(
+                "valid query", [{"field": "valid document"}], rank_by=["invalid_field"]
+            )  # Invalid rank_by field
 
 
 def test_rank_documents_cross_encoder(hfCrossEncoderReranker):
