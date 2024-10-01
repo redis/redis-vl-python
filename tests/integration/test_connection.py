@@ -102,12 +102,22 @@ def test_convert_index_info_to_schema():
     assert schema.index.name == index_info["index_name"]
 
 
-def test_validate_modules_exist():
+def test_validate_modules_exist_search():
     validate_modules(
         installed_modules={"search": 20811},
         required_modules=[
             {"name": "search", "ver": 20600},
             {"name": "searchlight", "ver": 20600},
+        ],
+    )
+
+
+def test_validate_modules_exist_searchlight():
+    validate_modules(
+        installed_modules={"searchlight": 20819},
+        required_modules=[
+            {"name": "search", "ver": 20810},
+            {"name": "searchlight", "ver": 20810},
         ],
     )
 

@@ -354,7 +354,10 @@ class SearchIndex(BaseSearchIndex):
 
         # Validate modules
         installed_modules = RedisConnectionFactory.get_modules(redis_client)
-        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+        validate_modules(
+            installed_modules,
+            [{"name": "search", "ver": 20810}, {"name": "searchlight", "ver": 20810}]
+        )
 
         # Fetch index info and convert to schema
         index_info = cls._info(name, redis_client)
@@ -860,7 +863,10 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         # Validate modules
         installed_modules = await RedisConnectionFactory.get_modules_async(redis_client)
-        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+        validate_modules(
+            installed_modules,
+            [{"name": "search", "ver": 20810}, {"name": "searchlight", "ver": 20810}]
+        )
 
         # Fetch index info and convert to schema
         index_info = await cls._info(name, redis_client)
