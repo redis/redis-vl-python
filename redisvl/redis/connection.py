@@ -9,6 +9,7 @@ from redis.asyncio import SSLConnection as AsyncSSLConnection
 from redis.connection import AbstractConnection, SSLConnection
 from redis.exceptions import ResponseError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
 from redisvl.version import __version__
@@ -143,10 +144,17 @@ def validate_modules(
             if int(installed_version) >= int(required_module["ver"]):  # type: ignore
                 return
 
-    raise ValueError(
-        f"Required Redis database module {required_module['name']} with version >= {required_module['ver']} not installed. "
-        "See Redis Stack documentation: https://redis.io/docs/stack/"
+    error_message = "Required Redis db module "
+
+    error_message += " OR ".join(
+        [f'{module["name"]} >= {module["ver"]}' for module in required_modules]
     )
+
+    error_message += (
+        " not installed. See Redis Stack docs at https://redis.io/docs/stack/."
+    )
+
+    raise RedisModuleVersionError(error_message)
 
 
 class RedisConnectionFactory:

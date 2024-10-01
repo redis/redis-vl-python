@@ -5,6 +5,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     compare_versions,
@@ -123,7 +124,7 @@ def test_validate_modules_exist_searchlight():
 
 
 def test_validate_modules_not_exist():
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisModuleVersionError):
         validate_modules(
             installed_modules={"search": 20811},
             required_modules=[
