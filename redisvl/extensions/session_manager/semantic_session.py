@@ -22,8 +22,6 @@ from redisvl.query.filter import Tag
 from redisvl.utils.utils import validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
-VECTOR_FIELD_NAME = "vector_field"
-
 
 class SemanticSessionManager(BaseSessionManager):
 
@@ -217,7 +215,7 @@ class SemanticSessionManager(BaseSessionManager):
             num_results=top_k,
             return_score=True,
             filter_expression=session_filter,
-            dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         messages = self._index.query(query)
 
@@ -343,7 +341,7 @@ class SemanticSessionManager(BaseSessionManager):
             if TOOL_FIELD_NAME in message:
                 chat_message.tool_call_id = message[TOOL_FIELD_NAME]
 
-            chat_messages.append(chat_message.to_dict(dtype=self._index.schema.fields[VECTOR_FIELD_NAME].attrs.datatype))  # type: ignore[union-attr]
+            chat_messages.append(chat_message.to_dict(dtype=self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.datatype))  # type: ignore[union-attr]
 
         self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
 
