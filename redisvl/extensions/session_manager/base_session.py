@@ -1,16 +1,15 @@
 from typing import Any, Dict, List, Optional, Union
 
+from redisvl.extensions.constants import (
+    CONTENT_FIELD_NAME,
+    ROLE_FIELD_NAME,
+    TOOL_FIELD_NAME,
+)
 from redisvl.extensions.session_manager.schema import ChatMessage
 from redisvl.utils.utils import create_uuid
 
 
 class BaseSessionManager:
-    id_field_name: str = "entry_id"
-    role_field_name: str = "role"
-    content_field_name: str = "content"
-    tool_field_name: str = "tool_call_id"
-    timestamp_field_name: str = "timestamp"
-    session_field_name: str = "session_tag"
 
     def __init__(
         self,
@@ -107,11 +106,11 @@ class BaseSessionManager:
                 context.append(chat_message.content)
             else:
                 chat_message_dict = {
-                    self.role_field_name: chat_message.role,
-                    self.content_field_name: chat_message.content,
+                    ROLE_FIELD_NAME: chat_message.role,
+                    CONTENT_FIELD_NAME: chat_message.content,
                 }
                 if chat_message.tool_call_id is not None:
-                    chat_message_dict[self.tool_field_name] = chat_message.tool_call_id
+                    chat_message_dict[TOOL_FIELD_NAME] = chat_message.tool_call_id
 
                 context.append(chat_message_dict)  # type: ignore
 

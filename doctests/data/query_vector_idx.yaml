@@ -1,0 +1,17 @@
+version: '0.1.0'
+
+index:
+  name: idx:bicycle
+  prefix: bicycle
+  storage_type: json
+
+fields:
+    - name: description
+      type: text
+    - name: description_embeddings
+      type: vector
+      attrs:
+        algorithm: flat
+        dims: 384
+        distance_metric: cosine
+        datatype: float32

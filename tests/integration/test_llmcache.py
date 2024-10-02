@@ -800,3 +800,46 @@ def test_index_updating(redis_url):
         filter_expression=tag_filter,
     )
     assert len(response) == 1
+
+
+def test_no_key_collision_on_identical_prompts(redis_url):
+    private_cache = SemanticCache(
+        name="private_cache",
+        redis_url=redis_url,
+        filterable_fields=[
+            {"name": "user_id", "type": "tag"},
+            {"name": "zip_code", "type": "numeric"},
+        ],
+    )
+
+    private_cache.store(
+        prompt="What is the phone number linked to my account?",
+        response="The number on file is 123-555-0000",
+        filters={"user_id": "gabs"},
+    )
+
+    private_cache.store(
+        prompt="What's the phone number linked in my account?",
+        response="The number on file is 123-555-9999",
+        ###filters={"user_id": "cerioni"},
+        filters={"user_id": "cerioni", "zip_code": 90210},
+    )
+
+    private_cache.store(
+        prompt="What's the phone number linked in my account?",
+        response="The number on file is 123-555-1111",
+        filters={"user_id": "bart"},
+    )
+
+    results = private_cache.check(
+        "What's the phone number linked in my account?", num_results=5
+    )
+    assert len(results) == 3
+
+    zip_code_filter = Num("zip_code") != 90210
+    filtered_results = private_cache.check(
+        "what's the phone number linked in my account?",
+        num_results=5,
+        filter_expression=zip_code_filter,
+    )
+    assert len(filtered_results) == 2

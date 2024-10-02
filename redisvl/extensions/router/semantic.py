@@ -8,6 +8,7 @@ from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
+from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
     Route,
@@ -226,7 +227,7 @@ class SemanticRouter(BaseModel):
         """Classify to a single route using a vector."""
         vector_range_query = RangeQuery(
             vector=vector,
-            vector_field_name="vector",
+            vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
         )
@@ -278,7 +279,7 @@ class SemanticRouter(BaseModel):
         """Classify to multiple routes, up to max_k (int), using a vector."""
         vector_range_query = RangeQuery(
             vector=vector,
-            vector_field_name="vector",
+            vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
         )

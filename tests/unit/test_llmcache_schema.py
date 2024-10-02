@@ -48,7 +48,7 @@ def test_cache_entry_to_dict():
         filters={"category": "technology"},
     )
     result = entry.to_dict()
-    assert result["entry_id"] == hashify("What is AI?")
+    assert result["entry_id"] == hashify("What is AI?", {"category": "technology"})
     assert result["metadata"] == json.dumps({"author": "John"})
     assert result["prompt_vector"] == array_to_buffer([0.1, 0.2, 0.3])
     assert result["category"] == "technology"

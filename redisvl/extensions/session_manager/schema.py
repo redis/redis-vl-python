@@ -2,6 +2,15 @@ from typing import Dict, List, Optional
 
 from pydantic.v1 import BaseModel, Field, root_validator
 
+from redisvl.extensions.constants import (
+    CONTENT_FIELD_NAME,
+    ID_FIELD_NAME,
+    ROLE_FIELD_NAME,
+    SESSION_FIELD_NAME,
+    SESSION_VECTOR_FIELD_NAME,
+    TIMESTAMP_FIELD_NAME,
+    TOOL_FIELD_NAME,
+)
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 from redisvl.utils.utils import current_timestamp
@@ -31,18 +40,22 @@ class ChatMessage(BaseModel):
     @root_validator(pre=True)
     @classmethod
     def generate_id(cls, values):
-        if "timestamp" not in values:
-            values["timestamp"] = current_timestamp()
-        if "entry_id" not in values:
-            values["entry_id"] = f'{values["session_tag"]}:{values["timestamp"]}'
+        if TIMESTAMP_FIELD_NAME not in values:
+            values[TIMESTAMP_FIELD_NAME] = current_timestamp()
+        if ID_FIELD_NAME not in values:
+            values[ID_FIELD_NAME] = (
+                f"{values[SESSION_FIELD_NAME]}:{values[TIMESTAMP_FIELD_NAME]}"
+            )
         return values
 
     def to_dict(self) -> Dict:
         data = self.dict(exclude_none=True)
 
         # handle optional fields
-        if "vector_field" in data:
-            data["vector_field"] = array_to_buffer(data["vector_field"])
+        if SESSION_VECTOR_FIELD_NAME in data:
+            data[SESSION_VECTOR_FIELD_NAME] = array_to_buffer(
+                data[SESSION_VECTOR_FIELD_NAME]
+            )
 
         return data
 
@@ -55,11 +68,11 @@ class StandardSessionIndexSchema(IndexSchema):
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
-                {"name": "role", "type": "tag"},
-                {"name": "content", "type": "text"},
-                {"name": "tool_call_id", "type": "tag"},
-                {"name": "timestamp", "type": "numeric"},
-                {"name": "session_tag", "type": "tag"},
+                {"name": ROLE_FIELD_NAME, "type": "tag"},
+                {"name": CONTENT_FIELD_NAME, "type": "text"},
+                {"name": TOOL_FIELD_NAME, "type": "tag"},
+                {"name": TIMESTAMP_FIELD_NAME, "type": "numeric"},
+                {"name": SESSION_FIELD_NAME, "type": "tag"},
             ],
         )
 
@@ -72,13 +85,13 @@ class SemanticSessionIndexSchema(IndexSchema):
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
-                {"name": "role", "type": "tag"},
-                {"name": "content", "type": "text"},
-                {"name": "tool_call_id", "type": "tag"},
-                {"name": "timestamp", "type": "numeric"},
-                {"name": "session_tag", "type": "tag"},
+                {"name": ROLE_FIELD_NAME, "type": "tag"},
+                {"name": CONTENT_FIELD_NAME, "type": "text"},
+                {"name": TOOL_FIELD_NAME, "type": "tag"},
+                {"name": TIMESTAMP_FIELD_NAME, "type": "numeric"},
+                {"name": SESSION_FIELD_NAME, "type": "tag"},
                 {
-                    "name": "vector_field",
+                    "name": SESSION_VECTOR_FIELD_NAME,
                     "type": "vector",
                     "attrs": {
                         "dims": vectorizer_dims,

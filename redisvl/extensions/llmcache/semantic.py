@@ -3,6 +3,16 @@ from typing import Any, Dict, List, Optional
 
 from redis import Redis
 
+from redisvl.extensions.constants import (
+    CACHE_VECTOR_FIELD_NAME,
+    ENTRY_ID_FIELD_NAME,
+    INSERTED_AT_FIELD_NAME,
+    METADATA_FIELD_NAME,
+    PROMPT_FIELD_NAME,
+    REDIS_KEY_FIELD_NAME,
+    RESPONSE_FIELD_NAME,
+    UPDATED_AT_FIELD_NAME,
+)
 from redisvl.extensions.llmcache.base import BaseLLMCache
 from redisvl.extensions.llmcache.schema import (
     CacheEntry,
@@ -18,15 +28,6 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
-
-    redis_key_field_name: str = "key"
-    entry_id_field_name: str = "entry_id"
-    prompt_field_name: str = "prompt"
-    response_field_name: str = "response"
-    vector_field_name: str = "prompt_vector"
-    inserted_at_field_name: str = "inserted_at"
-    updated_at_field_name: str = "updated_at"
-    metadata_field_name: str = "metadata"
 
     _index: SearchIndex
     _aindex: Optional[AsyncSearchIndex] = None
@@ -94,12 +95,12 @@ class SemanticCache(BaseLLMCache):
         # Process fields and other settings
         self.set_threshold(distance_threshold)
         self.return_fields = [
-            self.entry_id_field_name,
-            self.prompt_field_name,
-            self.response_field_name,
-            self.inserted_at_field_name,
-            self.updated_at_field_name,
-            self.metadata_field_name,
+            ENTRY_ID_FIELD_NAME,
+            PROMPT_FIELD_NAME,
+            RESPONSE_FIELD_NAME,
+            INSERTED_AT_FIELD_NAME,
+            UPDATED_AT_FIELD_NAME,
+            METADATA_FIELD_NAME,
         ]
 
         # Create semantic cache schema and index
@@ -133,7 +134,7 @@ class SemanticCache(BaseLLMCache):
 
         validate_vector_dims(
             vectorizer.dims,
-            self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
+            self._index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.dims,  # type: ignore
         )
         self._vectorizer = vectorizer
 
@@ -145,9 +146,7 @@ class SemanticCache(BaseLLMCache):
         """Modify the base cache schema using the provided filterable fields"""
 
         if filterable_fields is not None:
-            protected_field_names = set(
-                self.return_fields + [self.redis_key_field_name]
-            )
+            protected_field_names = set(self.return_fields + [REDIS_KEY_FIELD_NAME])
             for filter_field in filterable_fields:
                 field_name = filter_field["name"]
                 if field_name in protected_field_names:
@@ -300,7 +299,7 @@ class SemanticCache(BaseLLMCache):
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it
         doesn't match the search index vector dimensions."""
-        schema_vector_dims = self._index.schema.fields[self.vector_field_name].attrs.dims  # type: ignore
+        schema_vector_dims = self._index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
     def check(
@@ -363,7 +362,7 @@ class SemanticCache(BaseLLMCache):
 
         query = RangeQuery(
             vector=vector,
-            vector_field_name=self.vector_field_name,
+            vector_field_name=CACHE_VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
             distance_threshold=distance_threshold,
             num_results=num_results,
@@ -444,7 +443,7 @@ class SemanticCache(BaseLLMCache):
 
         query = RangeQuery(
             vector=vector,
-            vector_field_name=self.vector_field_name,
+            vector_field_name=CACHE_VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
             distance_threshold=distance_threshold,
             num_results=num_results,
@@ -479,7 +478,7 @@ class SemanticCache(BaseLLMCache):
                 cache_hit_dict = {
                     k: v for k, v in cache_hit_dict.items() if k in return_fields
                 }
-            cache_hit_dict[self.redis_key_field_name] = redis_key
+            cache_hit_dict[REDIS_KEY_FIELD_NAME] = redis_key
             cache_hits.append(cache_hit_dict)
         return redis_keys, cache_hits
 
@@ -541,7 +540,7 @@ class SemanticCache(BaseLLMCache):
         keys = self._index.load(
             data=[cache_entry.to_dict()],
             ttl=ttl,
-            id_field=self.entry_id_field_name,
+            id_field=ENTRY_ID_FIELD_NAME,
         )
         return keys[0]
 
@@ -605,7 +604,7 @@ class SemanticCache(BaseLLMCache):
         keys = await aindex.load(
             data=[cache_entry.to_dict()],
             ttl=ttl,
-            id_field=self.entry_id_field_name,
+            id_field=ENTRY_ID_FIELD_NAME,
         )
         return keys[0]
 
@@ -629,13 +628,11 @@ class SemanticCache(BaseLLMCache):
             for k, v in kwargs.items():
 
                 # Make sure the item is in the index schema
-                if k not in set(
-                    self._index.schema.field_names + [self.metadata_field_name]
-                ):
+                if k not in set(self._index.schema.field_names + [METADATA_FIELD_NAME]):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
 
                 # Check for metadata and deserialize
-                if k == self.metadata_field_name:
+                if k == METADATA_FIELD_NAME:
                     if isinstance(v, dict):
                         kwargs[k] = serialize(v)
                     else:
@@ -643,7 +640,7 @@ class SemanticCache(BaseLLMCache):
                             "If specified, cached metadata must be a dictionary."
                         )
 
-            kwargs.update({self.updated_at_field_name: current_timestamp()})
+            kwargs.update({UPDATED_AT_FIELD_NAME: current_timestamp()})
 
             self._index.client.hset(key, mapping=kwargs)  # type: ignore
 
@@ -674,13 +671,11 @@ class SemanticCache(BaseLLMCache):
             for k, v in kwargs.items():
 
                 # Make sure the item is in the index schema
-                if k not in set(
-                    self._index.schema.field_names + [self.metadata_field_name]
-                ):
+                if k not in set(self._index.schema.field_names + [METADATA_FIELD_NAME]):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
 
                 # Check for metadata and deserialize
-                if k == self.metadata_field_name:
+                if k == METADATA_FIELD_NAME:
                     if isinstance(v, dict):
                         kwargs[k] = serialize(v)
                     else:
@@ -688,7 +683,7 @@ class SemanticCache(BaseLLMCache):
                             "If specified, cached metadata must be a dictionary."
                         )
 
-            kwargs.update({self.updated_at_field_name: current_timestamp()})
+            kwargs.update({UPDATED_AT_FIELD_NAME: current_timestamp()})
 
             await aindex.load(data=[kwargs], keys=[key])
 

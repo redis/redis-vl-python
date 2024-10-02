@@ -2,6 +2,15 @@ from typing import Any, Dict, List, Optional, Union
 
 from redis import Redis
 
+from redisvl.extensions.constants import (
+    CONTENT_FIELD_NAME,
+    ID_FIELD_NAME,
+    ROLE_FIELD_NAME,
+    SESSION_FIELD_NAME,
+    SESSION_VECTOR_FIELD_NAME,
+    TIMESTAMP_FIELD_NAME,
+    TOOL_FIELD_NAME,
+)
 from redisvl.extensions.session_manager import BaseSessionManager
 from redisvl.extensions.session_manager.schema import (
     ChatMessage,
@@ -80,7 +89,7 @@ class SemanticSessionManager(BaseSessionManager):
 
         self._index.create(overwrite=False)
 
-        self._default_session_filter = Tag(self.session_field_name) == self._session_tag
+        self._default_session_filter = Tag(SESSION_FIELD_NAME) == self._session_tag
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -98,7 +107,7 @@ class SemanticSessionManager(BaseSessionManager):
                 If None then the last entry is deleted.
         """
         if id is None:
-            id = self.get_recent(top_k=1, raw=True)[0][self.id_field_name]  # type: ignore
+            id = self.get_recent(top_k=1, raw=True)[0][ID_FIELD_NAME]  # type: ignore
 
         self._index.client.delete(self._index.key(id))  # type: ignore
 
@@ -108,19 +117,19 @@ class SemanticSessionManager(BaseSessionManager):
         # TODO raw or as_text?
         # TODO refactor method to use get_recent and support other session tags
         return_fields = [
-            self.id_field_name,
-            self.session_field_name,
-            self.role_field_name,
-            self.content_field_name,
-            self.tool_field_name,
-            self.timestamp_field_name,
+            ID_FIELD_NAME,
+            SESSION_FIELD_NAME,
+            ROLE_FIELD_NAME,
+            CONTENT_FIELD_NAME,
+            TOOL_FIELD_NAME,
+            TIMESTAMP_FIELD_NAME,
         ]
 
         query = FilterQuery(
             filter_expression=self._default_session_filter,
             return_fields=return_fields,
         )
-        query.sort_by(self.timestamp_field_name, asc=True)
+        query.sort_by(TIMESTAMP_FIELD_NAME, asc=True)
         messages = self._index.query(query)
 
         return self._format_context(messages, as_text=False)
@@ -172,22 +181,22 @@ class SemanticSessionManager(BaseSessionManager):
         distance_threshold = distance_threshold or self._distance_threshold
 
         return_fields = [
-            self.session_field_name,
-            self.role_field_name,
-            self.content_field_name,
-            self.timestamp_field_name,
-            self.tool_field_name,
+            SESSION_FIELD_NAME,
+            ROLE_FIELD_NAME,
+            CONTENT_FIELD_NAME,
+            TIMESTAMP_FIELD_NAME,
+            TOOL_FIELD_NAME,
         ]
 
         session_filter = (
-            Tag(self.session_field_name) == session_tag
+            Tag(SESSION_FIELD_NAME) == session_tag
             if session_tag
             else self._default_session_filter
         )
 
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
-            vector_field_name=self.vector_field_name,
+            vector_field_name=SESSION_VECTOR_FIELD_NAME,
             return_fields=return_fields,
             distance_threshold=distance_threshold,
             num_results=top_k,
@@ -232,16 +241,16 @@ class SemanticSessionManager(BaseSessionManager):
             raise ValueError("top_k must be an integer greater than or equal to 0")
 
         return_fields = [
-            self.id_field_name,
-            self.session_field_name,
-            self.role_field_name,
-            self.content_field_name,
-            self.tool_field_name,
-            self.timestamp_field_name,
+            ID_FIELD_NAME,
+            SESSION_FIELD_NAME,
+            ROLE_FIELD_NAME,
+            CONTENT_FIELD_NAME,
+            TOOL_FIELD_NAME,
+            TIMESTAMP_FIELD_NAME,
         ]
 
         session_filter = (
-            Tag(self.session_field_name) == session_tag
+            Tag(SESSION_FIELD_NAME) == session_tag
             if session_tag
             else self._default_session_filter
         )
@@ -251,7 +260,7 @@ class SemanticSessionManager(BaseSessionManager):
             return_fields=return_fields,
             num_results=top_k,
         )
-        query.sort_by(self.timestamp_field_name, asc=False)
+        query.sort_by(TIMESTAMP_FIELD_NAME, asc=False)
         messages = self._index.query(query)
 
         if raw:
@@ -280,8 +289,8 @@ class SemanticSessionManager(BaseSessionManager):
         """
         self.add_messages(
             [
-                {self.role_field_name: "user", self.content_field_name: prompt},
-                {self.role_field_name: "llm", self.content_field_name: response},
+                {ROLE_FIELD_NAME: "user", CONTENT_FIELD_NAME: prompt},
+                {ROLE_FIELD_NAME: "llm", CONTENT_FIELD_NAME: response},
             ],
             session_tag,
         )
@@ -302,27 +311,25 @@ class SemanticSessionManager(BaseSessionManager):
         chat_messages: List[Dict[str, Any]] = []
 
         for message in messages:
-
-            content_vector = self._vectorizer.embed(message[self.content_field_name])
-
+            content_vector = self._vectorizer.embed(message[CONTENT_FIELD_NAME])
             validate_vector_dims(
                 len(content_vector),
-                self._index.schema.fields[self.vector_field_name].attrs.dims,  # type: ignore
+                self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.dims,  # type: ignore
             )
 
             chat_message = ChatMessage(
-                role=message[self.role_field_name],
-                content=message[self.content_field_name],
+                role=message[ROLE_FIELD_NAME],
+                content=message[CONTENT_FIELD_NAME],
                 session_tag=session_tag,
                 vector_field=content_vector,
             )
 
-            if self.tool_field_name in message:
-                chat_message.tool_call_id = message[self.tool_field_name]
+            if TOOL_FIELD_NAME in message:
+                chat_message.tool_call_id = message[TOOL_FIELD_NAME]
 
             chat_messages.append(chat_message.to_dict())
 
-        self._index.load(data=chat_messages, id_field=self.id_field_name)
+        self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
 
     def add_message(
         self, message: Dict[str, str], session_tag: Optional[str] = None
