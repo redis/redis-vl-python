@@ -7,6 +7,7 @@ import pytest
 from pydantic.v1 import ValidationError
 from redis.exceptions import ConnectionError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
@@ -782,7 +783,8 @@ def test_index_updating(redis_url):
     )
     assert response == []
 
-    with pytest.raises(ValueError):
+    with pytest.raises((RedisModuleVersionError, ValueError)):
+
         cache_with_tags = SemanticCache(
             name="test_cache",
             redis_url=redis_url,
