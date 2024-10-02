@@ -4,6 +4,7 @@ import pathlib
 import pytest
 from redis.exceptions import ConnectionError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import Route, RoutingConfig
 from redisvl.redis.connection import compare_versions
@@ -285,7 +286,8 @@ def test_bad_dtype_connecting_to_exiting_router(routes):
             routes=routes,
             dtype="float64",
         )
-    except ValueError:
+        # under the hood uses from_existing
+    except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):

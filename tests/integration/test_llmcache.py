@@ -7,6 +7,7 @@ import pytest
 from pydantic.v1 import ValidationError
 from redis.exceptions import ConnectionError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
@@ -782,7 +783,8 @@ def test_index_updating(redis_url):
     )
     assert response == []
 
-    with pytest.raises(ValueError):
+    with pytest.raises((RedisModuleVersionError, ValueError)):
+
         cache_with_tags = SemanticCache(
             name="test_cache",
             redis_url=redis_url,
@@ -870,7 +872,8 @@ def test_bad_dtype_connecting_to_existing_cache():
     try:
         cache = SemanticCache(name="float64_cache", dtype="float64")
         same_type = SemanticCache(name="float64_cache", dtype="float64")
-    except ValueError:
+        # under the hood uses from_existing
+    except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):

@@ -25,6 +25,7 @@ import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
@@ -354,7 +355,17 @@ class SearchIndex(BaseSearchIndex):
 
         # Validate modules
         installed_modules = RedisConnectionFactory.get_modules(redis_client)
-        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+
+        try:
+            required_modules = [
+                {"name": "search", "ver": 20810},
+                {"name": "searchlight", "ver": 20810},
+            ]
+            validate_modules(installed_modules, required_modules)
+        except RedisModuleVersionError as e:
+            raise RedisModuleVersionError(
+                f"Loading from existing index failed. {str(e)}"
+            )
 
         # Fetch index info and convert to schema
         index_info = cls._info(name, redis_client)
@@ -860,7 +871,17 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         # Validate modules
         installed_modules = await RedisConnectionFactory.get_modules_async(redis_client)
-        validate_modules(installed_modules, [{"name": "search", "ver": 20810}])
+
+        try:
+            required_modules = [
+                {"name": "search", "ver": 20810},
+                {"name": "searchlight", "ver": 20810},
+            ]
+            validate_modules(installed_modules, required_modules)
+        except RedisModuleVersionError as e:
+            raise RedisModuleVersionError(
+                f"Loading from existing index failed. {str(e)}"
+            ) from e
 
         # Fetch index info and convert to schema
         index_info = await cls._info(name, redis_client)
