@@ -625,6 +625,7 @@ class SemanticCache(BaseLLMCache):
             TypeError if metadata is provided and not of type dict.
 
         .. code-block:: python
+
             key = cache.store('this is a prompt', 'this is a response')
             cache.update(key, metadata={"hit_count": 1, "model_name": "Llama-2-7b"})
             )
