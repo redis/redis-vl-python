@@ -48,9 +48,9 @@ class CacheEntry(BaseModel):
             raise TypeError("Metadata must be a dictionary.")
         return v
 
-    def to_dict(self) -> Dict:
+    def to_dict(self, dtype: str) -> Dict:
         data = self.dict(exclude_none=True)
-        data["prompt_vector"] = array_to_buffer(self.prompt_vector)
+        data["prompt_vector"] = array_to_buffer(self.prompt_vector, dtype)
         if self.metadata is not None:
             data["metadata"] = serialize(self.metadata)
         if self.filters is not None:
@@ -112,7 +112,7 @@ class CacheHit(BaseModel):
 class SemanticCacheIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vector_dims: int):
+    def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str):
 
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
@@ -126,7 +126,7 @@ class SemanticCacheIndexSchema(IndexSchema):
                     "type": "vector",
                     "attrs": {
                         "dims": vector_dims,
-                        "datatype": "float32",
+                        "datatype": dtype,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
                     },

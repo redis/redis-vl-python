@@ -104,7 +104,10 @@ class SemanticCache(BaseLLMCache):
         ]
 
         # Create semantic cache schema and index
-        schema = SemanticCacheIndexSchema.from_params(name, prefix, vectorizer.dims)
+        dtype = kwargs.get("dtype", "float32")
+        schema = SemanticCacheIndexSchema.from_params(
+            name, prefix, vectorizer.dims, dtype
+        )
         schema = self._modify_schema(schema, filterable_fields)
         self._index = SearchIndex(schema=schema)
 
@@ -137,6 +140,7 @@ class SemanticCache(BaseLLMCache):
             self._index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.dims,  # type: ignore
         )
         self._vectorizer = vectorizer
+        self._dtype = self.index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.datatype  # type: ignore[union-attr]
 
     def _modify_schema(
         self,
@@ -286,7 +290,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
 
-        return self._vectorizer.embed(prompt)
+        return self._vectorizer.embed(prompt, dtype=self._dtype)
 
     async def _avectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
@@ -368,6 +372,7 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
+            dtype=self._dtype,
         )
 
         # Search the cache!
@@ -538,7 +543,7 @@ class SemanticCache(BaseLLMCache):
         # Load cache entry with TTL
         ttl = ttl or self._ttl
         keys = self._index.load(
-            data=[cache_entry.to_dict()],
+            data=[cache_entry.to_dict(self._dtype)],
             ttl=ttl,
             id_field=ENTRY_ID_FIELD_NAME,
         )
@@ -602,7 +607,7 @@ class SemanticCache(BaseLLMCache):
         # Load cache entry with TTL
         ttl = ttl or self._ttl
         keys = await aindex.load(
-            data=[cache_entry.to_dict()],
+            data=[cache_entry.to_dict(self._dtype)],
             ttl=ttl,
             id_field=ENTRY_ID_FIELD_NAME,
         )

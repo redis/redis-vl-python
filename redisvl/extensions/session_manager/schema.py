@@ -48,15 +48,14 @@ class ChatMessage(BaseModel):
             )
         return values
 
-    def to_dict(self) -> Dict:
+    def to_dict(self, dtype: Optional[str] = None) -> Dict:
         data = self.dict(exclude_none=True)
 
         # handle optional fields
         if SESSION_VECTOR_FIELD_NAME in data:
             data[SESSION_VECTOR_FIELD_NAME] = array_to_buffer(
-                data[SESSION_VECTOR_FIELD_NAME]
+                data[SESSION_VECTOR_FIELD_NAME], dtype  # type: ignore[arg-type]
             )
-
         return data
 
 
@@ -80,7 +79,7 @@ class StandardSessionIndexSchema(IndexSchema):
 class SemanticSessionIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vectorizer_dims: int):
+    def from_params(cls, name: str, prefix: str, vectorizer_dims: int, dtype: str):
 
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
@@ -95,7 +94,7 @@ class SemanticSessionIndexSchema(IndexSchema):
                     "type": "vector",
                     "attrs": {
                         "dims": vectorizer_dims,
-                        "datatype": "float32",
+                        "datatype": dtype,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
                     },

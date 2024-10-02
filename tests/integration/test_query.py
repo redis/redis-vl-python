@@ -103,7 +103,10 @@ def index(sample_data, redis_url):
 
     # Prepare and load the data
     def hash_preprocess(item: dict) -> dict:
-        return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
 
     index.load(sample_data, preprocess=hash_preprocess)
 

@@ -100,7 +100,7 @@ class HFTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
         embedding = self._client.encode([text])[0]
-        return self._process_embedding(embedding.tolist(), as_buffer)
+        return self._process_embedding(embedding.tolist(), as_buffer, **kwargs)
 
     def embed_many(
         self,
@@ -138,7 +138,7 @@ class HFTextVectorizer(BaseVectorizer):
             batch_embeddings = self._client.encode(batch)
             embeddings.extend(
                 [
-                    self._process_embedding(embedding.tolist(), as_buffer)
+                    self._process_embedding(embedding.tolist(), as_buffer, **kwargs)
                     for embedding in batch_embeddings
                 ]
             )

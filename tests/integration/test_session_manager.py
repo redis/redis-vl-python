@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from redis.exceptions import ConnectionError
 
@@ -17,7 +19,7 @@ def standard_session(app_name, client):
 
 @pytest.fixture
 def semantic_session(app_name, client):
-    session = SemanticSessionManager(app_name, redis_client=client)
+    session = SemanticSessionManager(app_name, redis_client=client, overwrite=True)
     yield session
     session.clear()
     session.delete()
@@ -285,7 +287,7 @@ def test_standard_clear(standard_session):
 # test semantic session manager
 def test_semantic_specify_client(client):
     session = SemanticSessionManager(
-        name="test_app", session_tag="abc", redis_client=client
+        name="test_app", session_tag="abc", redis_client=client, overwrite=True
     )
     assert isinstance(session._index.client, type(client))
 
@@ -537,3 +539,35 @@ def test_semantic_drop(semantic_session):
         {"role": "llm", "content": "third response"},
         {"role": "user", "content": "fourth prompt"},
     ]
+
+
+def test_different_vector_dtypes():
+    try:
+        bfloat_sess = SemanticSessionManager(name="bfloat_session", dtype="bfloat16")
+        bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
+
+        float16_sess = SemanticSessionManager(name="float16_session", dtype="float16")
+        float16_sess.add_message({"role": "user", "content": "float16 message"})
+
+        float32_sess = SemanticSessionManager(name="float32_session", dtype="float32")
+        float32_sess.add_message({"role": "user", "content": "float32 message"})
+
+        float64_sess = SemanticSessionManager(name="float64_session", dtype="float64")
+        float64_sess.add_message({"role": "user", "content": "float64 message"})
+
+        for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
+            sess.set_distance_threshold(0.7)
+            assert len(sess.get_relevant("float message")) == 1
+    except:
+        pytest.skip("Not using a late enough version of Redis")
+
+
+def test_bad_dtype_connecting_to_exiting_session():
+    try:
+        session = SemanticSessionManager(name="float64 session", dtype="float64")
+        same_type = SemanticSessionManager(name="float64 session", dtype="float64")
+    except ValueError:
+        pytest.skip("Not using a late enough version of Redis")
+
+    with pytest.raises(ValueError):
+        bad_type = SemanticSessionManager(name="float64 session", dtype="float16")

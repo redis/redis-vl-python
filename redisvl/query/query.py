@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
@@ -169,10 +168,6 @@ class CountQuery(BaseQuery):
 
 
 class BaseVectorQuery:
-    DTYPES: Dict[str, Any] = {
-        "float32": np.float32,
-        "float64": np.float64,
-    }
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
 
@@ -264,7 +259,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if isinstance(self._vector, bytes):
             vector = self._vector
         else:
-            vector = array_to_buffer(self._vector, dtype=self.DTYPES[self._dtype])
+            vector = array_to_buffer(self._vector, dtype=self._dtype)
 
         return {self.VECTOR_PARAM: vector}
 
@@ -390,7 +385,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         if isinstance(self._vector, bytes):
             vector_param = self._vector
         else:
-            vector_param = array_to_buffer(self._vector, dtype=self.DTYPES[self._dtype])
+            vector_param = array_to_buffer(self._vector, dtype=self._dtype)
 
         return {
             self.VECTOR_PARAM: vector_param,
