@@ -194,6 +194,7 @@ Integrate with popular embedding providers to greatly simplify the process of ve
 - [Cohere](https://www.redisvl.com/api/vectorizer.html#coheretextvectorizer)
 - [Custom](https://www.redisvl.com/api/vectorizer.html#customtextvectorizer)
 - [GCP VertexAI](https://www.redisvl.com/api/vectorizer.html#vertexaitextvectorizer)
+- [VoyageAI](https://www.redisvl.com/api/vectorizer/html#voyageaitextvectorizer)
 - [HuggingFace](https://www.redisvl.com/api/vectorizer.html#hftextvectorizer)
 - [Mistral](https://www.redisvl.com/api/vectorizer/html#mistralaitextvectorizer)
 - [OpenAI](https://www.redisvl.com/api/vectorizer.html#openaitextvectorizer)

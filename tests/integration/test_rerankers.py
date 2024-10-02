@@ -2,16 +2,35 @@ import os
 
 import pytest
 
-from redisvl.utils.rerank import CohereReranker, HFCrossEncoderReranker
+from redisvl.utils.rerank import (
+    CohereReranker,
+    HFCrossEncoderReranker,
+    VoyageAIReranker,
+)
+
+
+@pytest.fixture
+def skip_reranker() -> bool:
+    # os.getenv returns a string
+    v = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
+    return v
 
 
 # Fixture for the reranker instance
-@pytest.fixture
-def cohereReranker():
-    skip_reranker = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
+@pytest.fixture(
+    params=[
+        CohereReranker,
+        VoyageAIReranker,
+    ]
+)
+def reranker(request, skip_reranker):
     if skip_reranker:
         pytest.skip("Skipping reranker instantiation...")
-    return CohereReranker()
+
+    if request.param == CohereReranker:
+        return request.param()
+    elif request.param == VoyageAIReranker:
+        return request.param(model="rerank-lite-1")
 
 
 @pytest.fixture
@@ -25,11 +44,11 @@ def hfCrossEncoderRerankerWithCustomModel():
 
 
 # Test for basic ranking functionality
-def test_rank_documents_cohere(cohereReranker):
+def test_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
-    reranked_docs, scores = cohereReranker.rank(query, docs)
+    reranked_docs, scores = reranker.rank(query, docs)
 
     assert isinstance(reranked_docs, list)
     assert len(reranked_docs) == len(docs)  # Ensure we get back as many docs as we sent
@@ -38,11 +57,11 @@ def test_rank_documents_cohere(cohereReranker):
 
 # Test for asynchronous ranking functionality
 @pytest.mark.asyncio
-async def test_async_rank_documents_cohere(cohereReranker):
+async def test_async_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
 
-    reranked_docs, scores = await cohereReranker.arank(query, docs)
+    reranked_docs, scores = await reranker.arank(query, docs)
 
     assert isinstance(reranked_docs, list)
     assert len(reranked_docs) == len(docs)  # Ensure we get back as many docs as we sent
@@ -50,20 +69,21 @@ async def test_async_rank_documents_cohere(cohereReranker):
 
 
 # Test handling of bad input
-def test_bad_input_cohere(cohereReranker):
+def test_bad_input(reranker):
     with pytest.raises(Exception):
-        cohereReranker.rank("", [])  # Empty query or documents
+        reranker.rank("", [])  # Empty query or documents
 
     with pytest.raises(Exception):
-        cohereReranker.rank(123, ["valid document"])  # Invalid type for query
+        reranker.rank(123, ["valid document"])  # Invalid type for query
 
     with pytest.raises(Exception):
-        cohereReranker.rank("valid query", "not a list")  # Invalid type for documents
+        reranker.rank("valid query", "not a list")  # Invalid type for documents
 
-    with pytest.raises(Exception):
-        cohereReranker.rank(
-            "valid query", [{"field": "valid document"}], rank_by=["invalid_field"]
-        )  # Invalid rank_by field
+    if isinstance(reranker, CohereReranker):
+        with pytest.raises(Exception):
+            reranker.rank(
+                "valid query", [{"field": "valid document"}], rank_by=["invalid_field"]
+            )  # Invalid rank_by field
 
 
 def test_rank_documents_cross_encoder(hfCrossEncoderReranker):
