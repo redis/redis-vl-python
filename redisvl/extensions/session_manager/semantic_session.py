@@ -24,7 +24,6 @@ from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticSessionManager(BaseSessionManager):
-    vector_field_name: str = "vector_field"
 
     def __init__(
         self,
@@ -36,6 +35,7 @@ class SemanticSessionManager(BaseSessionManager):
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
+        overwrite: bool = False,
         **kwargs,
     ):
         """Initialize session memory with index
@@ -60,6 +60,8 @@ class SemanticSessionManager(BaseSessionManager):
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
+            overwrite (bool): Whether or not to force overwrite the schema for
+                the semantic session index. Defaults to false.
 
         The proposed schema will support a single vector embedding constructed
         from either the prompt or response in a single string.
@@ -75,8 +77,9 @@ class SemanticSessionManager(BaseSessionManager):
 
         self.set_distance_threshold(distance_threshold)
 
+        dtype = kwargs.get("dtype", "float32")
         schema = SemanticSessionIndexSchema.from_params(
-            name, prefix, self._vectorizer.dims
+            name, prefix, self._vectorizer.dims, dtype
         )
 
         self._index = SearchIndex(schema=schema)
@@ -87,7 +90,17 @@ class SemanticSessionManager(BaseSessionManager):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
-        self._index.create(overwrite=False)
+        # Check for existing session index
+        if not overwrite and self._index.exists():
+            existing_index = SearchIndex.from_existing(
+                name, redis_client=self._index.client
+            )
+            if existing_index.schema != self._index.schema:
+                raise ValueError(
+                    f"Existing index {name} schema does not match the user provided schema for the semantic session. "
+                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                )
+        self._index.create(overwrite=overwrite, drop=False)
 
         self._default_session_filter = Tag(SESSION_FIELD_NAME) == self._session_tag
 
@@ -202,6 +215,7 @@ class SemanticSessionManager(BaseSessionManager):
             num_results=top_k,
             return_score=True,
             filter_expression=session_filter,
+            dtype=self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         messages = self._index.query(query)
 
@@ -327,7 +341,7 @@ class SemanticSessionManager(BaseSessionManager):
             if TOOL_FIELD_NAME in message:
                 chat_message.tool_call_id = message[TOOL_FIELD_NAME]
 
-            chat_messages.append(chat_message.to_dict())
+            chat_messages.append(chat_message.to_dict(dtype=self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.datatype))  # type: ignore[union-attr]
 
         self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
 

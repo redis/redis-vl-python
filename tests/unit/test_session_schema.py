@@ -96,14 +96,14 @@ def test_chat_message_to_dict():
         vector_field=vector_field,
     )
 
-    data = chat_message.to_dict()
+    data = chat_message.to_dict(dtype="float32")
 
     assert data["entry_id"] == f"{session_tag}:{timestamp}"
     assert data["role"] == "user"
     assert data["content"] == content
     assert data["session_tag"] == session_tag
     assert data["timestamp"] == timestamp
-    assert data["vector_field"] == array_to_buffer(vector_field)
+    assert data["vector_field"] == array_to_buffer(vector_field, "float32")
 
 
 def test_chat_message_missing_fields():

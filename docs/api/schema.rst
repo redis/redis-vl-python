@@ -88,7 +88,7 @@ Each field type supports specific attributes that customize its behavior. Below 
 
 - `dims`: Dimensionality of the vector.
 - `algorithm`: Indexing algorithm (`flat` or `hnsw`).
-- `datatype`: Float datatype of the vector (`float32` or `float64`).
+- `datatype`: Float datatype of the vector (`bfloat16`, `float16`, `float32`, `float64`).
 - `distance_metric`: Metric for measuring query relevance (`COSINE`, `L2`, `IP`).
 
 **HNSW Vector Field Specific Attributes**:

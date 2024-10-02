@@ -26,6 +26,8 @@ class VectorDistanceMetric(str, Enum):
 
 
 class VectorDataType(str, Enum):
+    BFLOAT16 = "BFLOAT16"
+    FLOAT16 = "FLOAT16"
     FLOAT32 = "FLOAT32"
     FLOAT64 = "FLOAT64"
 

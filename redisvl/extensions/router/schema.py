@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from pydantic.v1 import BaseModel, Field, validator
 
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
-from redisvl.schema import IndexInfo, IndexSchema
+from redisvl.schema import IndexSchema
 
 
 class Route(BaseModel):
@@ -89,7 +89,7 @@ class SemanticRouterIndexSchema(IndexSchema):
     """Customized index schema for SemanticRouter."""
 
     @classmethod
-    def from_params(cls, name: str, vector_dims: int) -> "SemanticRouterIndexSchema":
+    def from_params(cls, name: str, vector_dims: int, dtype: str):
         """Create an index schema based on router name and vector dimensions.
 
         Args:
@@ -100,7 +100,7 @@ class SemanticRouterIndexSchema(IndexSchema):
             SemanticRouterIndexSchema: The constructed index schema.
         """
         return cls(
-            index=IndexInfo(name=name, prefix=name),
+            index={"name": name, "prefix": name},  # type: ignore
             fields=[  # type: ignore
                 {"name": "route_name", "type": "tag"},
                 {"name": "reference", "type": "text"},
@@ -111,7 +111,7 @@ class SemanticRouterIndexSchema(IndexSchema):
                         "algorithm": "flat",
                         "dims": vector_dims,
                         "distance_metric": "cosine",
-                        "datatype": "float32",
+                        "datatype": dtype,
                     },
                 },
             ],

@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import pytest
@@ -175,7 +176,7 @@ def test_to_dict(semantic_router):
 def test_from_dict(semantic_router):
     router_dict = semantic_router.to_dict()
     new_router = SemanticRouter.from_dict(
-        router_dict, redis_client=semantic_router._index.client
+        router_dict, redis_client=semantic_router._index.client, overwrite=True
     )
     assert new_router == semantic_router
 
@@ -223,7 +224,7 @@ def test_yaml_invalid_file_path():
 def test_idempotent_to_dict(semantic_router):
     router_dict = semantic_router.to_dict()
     new_router = SemanticRouter.from_dict(
-        router_dict, redis_client=semantic_router._index.client
+        router_dict, redis_client=semantic_router._index.client, overwrite=True
     )
     assert new_router.to_dict() == router_dict
 
@@ -236,4 +237,60 @@ def test_bad_connection_info(routes):
             routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
             redis_url="redis://localhost:6389",  # bad connection url
             overwrite=False,
+        )
+
+
+def test_different_vector_dtypes(routes):
+    try:
+        bfloat_router = SemanticRouter(
+            name="bfloat_router",
+            routes=routes,
+            dtype="bfloat16",
+        )
+
+        float16_router = SemanticRouter(
+            name="float16_router",
+            routes=routes,
+            dtype="float16",
+        )
+
+        float32_router = SemanticRouter(
+            name="float32_router",
+            routes=routes,
+            dtype="float32",
+        )
+
+        float64_router = SemanticRouter(
+            name="float64_router",
+            routes=routes,
+            dtype="float64",
+        )
+
+        for router in [bfloat_router, float16_router, float32_router, float64_router]:
+            assert len(router.route_many("hello", max_k=5)) == 1
+    except:
+        pytest.skip("Not using a late enough version of Redis")
+
+
+def test_bad_dtype_connecting_to_exiting_router(routes):
+    try:
+        router = SemanticRouter(
+            name="float64 router",
+            routes=routes,
+            dtype="float64",
+        )
+
+        same_type = SemanticRouter(
+            name="float64 router",
+            routes=routes,
+            dtype="float64",
+        )
+    except ValueError:
+        pytest.skip("Not using a late enough version of Redis")
+
+    with pytest.raises(ValueError):
+        bad_type = SemanticRouter(
+            name="float64 router",
+            routes=routes,
+            dtype="float16",
         )

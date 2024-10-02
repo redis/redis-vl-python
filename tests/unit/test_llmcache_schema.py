@@ -47,10 +47,10 @@ def test_cache_entry_to_dict():
         metadata={"author": "John"},
         filters={"category": "technology"},
     )
-    result = entry.to_dict()
+    result = entry.to_dict(dtype="float32")
     assert result["entry_id"] == hashify("What is AI?", {"category": "technology"})
     assert result["metadata"] == json.dumps({"author": "John"})
-    assert result["prompt_vector"] == array_to_buffer([0.1, 0.2, 0.3])
+    assert result["prompt_vector"] == array_to_buffer([0.1, 0.2, 0.3], "float32")
     assert result["category"] == "technology"
     assert "filters" not in result
 
@@ -109,7 +109,7 @@ def test_cache_entry_with_empty_optional_fields():
         response="AI is artificial intelligence.",
         prompt_vector=[0.1, 0.2, 0.3],
     )
-    result = entry.to_dict()
+    result = entry.to_dict(dtype="float32")
     assert "metadata" not in result
     assert "filters" not in result
 

@@ -2,6 +2,9 @@ import hashlib
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from ml_dtypes import bfloat16
+
+from redisvl.schema.fields import VectorDataType
 
 
 def make_dict(values: List[Any]) -> Dict[Any, Any]:
@@ -30,14 +33,26 @@ def convert_bytes(data: Any) -> Any:
     return data
 
 
-def array_to_buffer(array: List[float], dtype: Any = np.float32) -> bytes:
+def array_to_buffer(array: List[float], dtype: str) -> bytes:
     """Convert a list of floats into a numpy byte string."""
-    return np.array(array).astype(dtype).tobytes()
+    try:
+        VectorDataType(dtype.upper())
+    except ValueError:
+        raise ValueError(
+            f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
+        )
+    return np.array(array).astype(dtype.lower()).tobytes()
 
 
-def buffer_to_array(buffer: bytes, dtype: Any = np.float32) -> List[float]:
+def buffer_to_array(buffer: bytes, dtype: str) -> List[float]:
     """Convert bytes into into a list of floats."""
-    return np.frombuffer(buffer, dtype=dtype).tolist()
+    try:
+        VectorDataType(dtype.upper())
+    except ValueError:
+        raise ValueError(
+            f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
+        )
+    return np.frombuffer(buffer, dtype=dtype.lower()).tolist()
 
 
 def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:

@@ -148,7 +148,8 @@ class OpenAITextVectorizer(BaseVectorizer):
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embeddings.create(input=batch, model=self.model)
             embeddings += [
-                self._process_embedding(r.embedding, as_buffer) for r in response.data
+                self._process_embedding(r.embedding, as_buffer, **kwargs)
+                for r in response.data
             ]
         return embeddings
 
@@ -185,7 +186,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
         result = self._client.embeddings.create(input=[text], model=self.model)
-        return self._process_embedding(result.data[0].embedding, as_buffer)
+        return self._process_embedding(result.data[0].embedding, as_buffer, **kwargs)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -228,7 +229,8 @@ class OpenAITextVectorizer(BaseVectorizer):
                 input=batch, model=self.model
             )
             embeddings += [
-                self._process_embedding(r.embedding, as_buffer) for r in response.data
+                self._process_embedding(r.embedding, as_buffer, **kwargs)
+                for r in response.data
             ]
         return embeddings
 
@@ -265,7 +267,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
         result = await self._aclient.embeddings.create(input=[text], model=self.model)
-        return self._process_embedding(result.data[0].embedding, as_buffer)
+        return self._process_embedding(result.data[0].embedding, as_buffer, **kwargs)
 
     @property
     def type(self) -> str:

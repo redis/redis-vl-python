@@ -85,17 +85,23 @@ class SemanticRouter(BaseModel):
             vectorizer=vectorizer,
             routing_config=routing_config,
         )
-        self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
+        dtype = kwargs.get("dtype", "float32")
+        self._initialize_index(
+            redis_client, redis_url, overwrite, dtype, **connection_kwargs
+        )
 
     def _initialize_index(
         self,
         redis_client: Optional[Redis] = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
+        dtype: str = "float32",
         **connection_kwargs,
     ):
         """Initialize the search index and handle Redis connection."""
-        schema = SemanticRouterIndexSchema.from_params(self.name, self.vectorizer.dims)
+        schema = SemanticRouterIndexSchema.from_params(
+            self.name, self.vectorizer.dims, dtype
+        )
         self._index = SearchIndex(schema=schema)
 
         if redis_client:
@@ -103,8 +109,18 @@ class SemanticRouter(BaseModel):
         elif redis_url:
             self._index.connect(redis_url=redis_url, **connection_kwargs)
 
+        # Check for existing router index
         existed = self._index.exists()
-        self._index.create(overwrite=overwrite)
+        if not overwrite and existed:
+            existing_index = SearchIndex.from_existing(
+                self.name, redis_client=self._index.client
+            )
+            if existing_index.schema != self._index.schema:
+                raise ValueError(
+                    f"Existing index {self.name} schema does not match the user provided schema for the semantic router. "
+                    "If you wish to overwrite the index schema, set overwrite=True during initialization."
+                )
+        self._index.create(overwrite=overwrite, drop=False)
 
         if not existed or overwrite:
             # write the routes to Redis
@@ -153,7 +169,9 @@ class SemanticRouter(BaseModel):
         for route in routes:
             # embed route references as a single batch
             reference_vectors = self.vectorizer.embed_many(
-                [reference for reference in route.references], as_buffer=True
+                [reference for reference in route.references],
+                as_buffer=True,
+                dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
             )
             # set route references
             for i, reference in enumerate(route.references):
@@ -230,6 +248,7 @@ class SemanticRouter(BaseModel):
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
+            dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
 
         aggregate_request = self._build_aggregate_request(
@@ -282,6 +301,7 @@ class SemanticRouter(BaseModel):
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
+            dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k

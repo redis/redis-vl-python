@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from ml_dtypes import bfloat16
 
 from redisvl.redis.utils import (
     array_to_buffer,
@@ -50,27 +51,22 @@ def test_simple_byte_buffer_to_floats():
     """Test conversion of a simple byte buffer into floats"""
     buffer = np.array([1.0, 2.0, 3.0], dtype=np.float32).tobytes()
     expected = [1.0, 2.0, 3.0]
-    assert buffer_to_array(buffer, dtype=np.float32) == expected
+    assert buffer_to_array(buffer, dtype="float32") == expected
 
 
-def test_different_data_types():
+def test_converting_different_data_types():
     """Test conversion with different data types"""
-    # Integer test
-    buffer = np.array([1, 2, 3], dtype=np.int32).tobytes()
-    expected = [1, 2, 3]
-    assert buffer_to_array(buffer, dtype=np.int32) == expected
-
     # Float64 test
     buffer = np.array([1.0, 2.0, 3.0], dtype=np.float64).tobytes()
     expected = [1.0, 2.0, 3.0]
-    assert buffer_to_array(buffer, dtype=np.float64) == expected
+    assert buffer_to_array(buffer, dtype="float64") == expected
 
 
 def test_empty_byte_buffer():
     """Test conversion of an empty byte buffer"""
     buffer = b""
     expected = []
-    assert buffer_to_array(buffer, dtype=np.float32) == expected
+    assert buffer_to_array(buffer, dtype="float32") == expected
 
 
 def test_plain_bytes_to_string():
@@ -119,7 +115,7 @@ def test_simple_list_to_bytes_default_dtype():
     """Test conversion of a simple list of floats to bytes using the default dtype"""
     array = [1.0, 2.0, 3.0]
     expected = np.array(array, dtype=np.float32).tobytes()
-    assert array_to_buffer(array) == expected
+    assert array_to_buffer(array, "float32") == expected
 
 
 def test_list_to_bytes_non_default_dtype():
@@ -127,17 +123,17 @@ def test_list_to_bytes_non_default_dtype():
     array = [1.0, 2.0, 3.0]
     dtype = np.float64
     expected = np.array(array, dtype=dtype).tobytes()
-    assert array_to_buffer(array, dtype=dtype) == expected
+    assert array_to_buffer(array, dtype="float64") == expected
 
 
 def test_empty_list_to_bytes():
     """Test conversion of an empty list"""
     array = []
     expected = np.array(array, dtype=np.float32).tobytes()
-    assert array_to_buffer(array) == expected
+    assert array_to_buffer(array, dtype="float32") == expected
 
 
-@pytest.mark.parametrize("dtype", [np.int32, np.float64])
+@pytest.mark.parametrize("dtype", ["float64", "float32", "float16", "bfloat16"])
 def test_conversion_with_various_dtypes(dtype):
     """Test conversion of a list of floats to bytes with various dtypes"""
     array = [1.0, -2.0, 3.5]
@@ -148,5 +144,5 @@ def test_conversion_with_various_dtypes(dtype):
 def test_conversion_with_invalid_floats():
     """Test conversion with invalid float values (numpy should handle them)"""
     array = [float("inf"), float("-inf"), float("nan")]
-    result = array_to_buffer(array)
+    result = array_to_buffer(array, "float16")
     assert len(result) > 0  # Simple check to ensure it returns anything

@@ -51,7 +51,10 @@ def test_simple(client, schema, sample_data):
 
     # Prepare and load the data based on storage type
     def hash_preprocess(item: dict) -> dict:
-        return {**item, "user_embedding": array_to_buffer(item["user_embedding"])}
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
 
     if index.storage_type == StorageType.HASH:
         index.load(sample_data, preprocess=hash_preprocess, id_field="user")

@@ -160,7 +160,7 @@ class CohereTextVectorizer(BaseVectorizer):
         embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
         ).embeddings[0]
-        return self._process_embedding(embedding, as_buffer)
+        return self._process_embedding(embedding, as_buffer, **kwargs)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -230,7 +230,7 @@ class CohereTextVectorizer(BaseVectorizer):
                 texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
-                self._process_embedding(embedding, as_buffer)
+                self._process_embedding(embedding, as_buffer, **kwargs)
                 for embedding in response.embeddings
             ]
         return embeddings
