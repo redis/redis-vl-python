@@ -144,14 +144,13 @@ def validate_modules(
             if int(installed_version) >= int(required_module["ver"]):  # type: ignore
                 return
 
-    error_message = "Required Redis db module "
-
-    error_message += " OR ".join(
+    # Build the error message dynamically
+    required_modules_str = " OR ".join(
         [f'{module["name"]} >= {module["ver"]}' for module in required_modules]
     )
-
-    error_message += (
-        " not installed. See Redis Stack docs at https://redis.io/docs/stack/."
+    error_message = (
+        f"Required Redis db module {required_modules_str} not installed. "
+        "See Redis Stack docs at https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/."
     )
 
     raise RedisModuleVersionError(error_message)

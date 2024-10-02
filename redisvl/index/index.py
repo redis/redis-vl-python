@@ -871,6 +871,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         # Validate modules
         installed_modules = await RedisConnectionFactory.get_modules_async(redis_client)
+
         try:
             required_modules = [
                 {"name": "search", "ver": 20810},
@@ -880,7 +881,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         except RedisModuleVersionError as e:
             raise RedisModuleVersionError(
                 f"Loading from existing index failed. {str(e)}"
-            )
+            ) from e
 
         # Fetch index info and convert to schema
         index_info = await cls._info(name, redis_client)
