@@ -70,12 +70,7 @@ jobs:
         poetry run test-cov
 
     - name: Run tests
-      if: matrix.redis-stack-version == '6.2.6-v9'
-      run: |
-        SKIP_DTYPES=True SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-cov
-
-    - name: Run tests
-      if: matrix.redis-stack-version == 'edge' || (matrix.connection == 'hiredis' && matrix.redis-stack-version == 'latest')
+      if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
       run: |
         SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-cov
 

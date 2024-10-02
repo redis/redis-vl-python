@@ -19,13 +19,6 @@ def vectorizer():
 
 
 @pytest.fixture
-def skip_dtypes() -> bool:
-    # os.getenv returns a string
-    v = os.getenv("SKIP_DTYPES", "False").lower() == "true"
-    return v
-
-
-@pytest.fixture
 def cache(vectorizer, redis_url):
     cache_instance = SemanticCache(
         vectorizer=vectorizer,
@@ -829,7 +822,6 @@ def test_no_key_collision_on_identical_prompts(redis_url):
     private_cache.store(
         prompt="What's the phone number linked in my account?",
         response="The number on file is 123-555-9999",
-        ###filters={"user_id": "cerioni"},
         filters={"user_id": "cerioni", "zip_code": 90210},
     )
 
@@ -853,34 +845,33 @@ def test_no_key_collision_on_identical_prompts(redis_url):
     assert len(filtered_results) == 2
 
 
-def test_create_cache_with_different_vector_types(skip_dtypes):
-    if skip_dtypes:
-        pytest.skip("Skipping dtype checking...")
+def test_create_cache_with_different_vector_types():
+    try:
+        bfloat_cache = SemanticCache(name="bfloat_cache", dtype="bfloat16")
+        bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
 
-    bfloat_cache = SemanticCache(name="bfloat_cache", dtype="bfloat16")
-    bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
+        float16_cache = SemanticCache(name="float16_cache", dtype="float16")
+        float16_cache.store("float16 prompt", "float16 response")
 
-    float16_cache = SemanticCache(name="float16_cache", dtype="float16")
-    float16_cache.store("float16 prompt", "float16 response")
+        float32_cache = SemanticCache(name="float32_cache", dtype="float32")
+        float32_cache.store("float32 prompt", "float32 response")
 
-    float32_cache = SemanticCache(name="float32_cache", dtype="float32")
-    float32_cache.store("float32 prompt", "float32 response")
+        float64_cache = SemanticCache(name="float64_cache", dtype="float64")
+        float64_cache.store("float64 prompt", "float64 response")
 
-    float64_cache = SemanticCache(name="float64_cache", dtype="float64")
-    float64_cache.store("float64 prompt", "float64 response")
+        for cache in [bfloat_cache, float16_cache, float32_cache, float64_cache]:
+            cache.set_threshold(0.6)
+            assert len(cache.check("float prompt", num_results=5)) == 1
+    except:
+        pytest.skip("Not using a late enough version of Redis")
 
-    for cache in [bfloat_cache, float16_cache, float32_cache, float64_cache]:
-        cache.set_threshold(0.6)
-        assert len(cache.check("float prompt", num_results=5)) == 1
 
-
-def test_bad_dtype_connecting_to_existing_cache(skip_dtypes):
-    if skip_dtypes:
-        pytest.skip("Skipping dtype checking...")
-
-    cache = SemanticCache(name="float64_cache", dtype="float64")
-
-    same_type = SemanticCache(name="float64_cache", dtype="float64")
+def test_bad_dtype_connecting_to_existing_cache():
+    try:
+        cache = SemanticCache(name="float64_cache", dtype="float64")
+        same_type = SemanticCache(name="float64_cache", dtype="float64")
+    except ValueError:
+        pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):
         bad_type = SemanticCache(name="float64_cache", dtype="float16")

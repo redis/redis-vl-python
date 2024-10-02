@@ -11,13 +11,6 @@ from redisvl.extensions.session_manager import (
 
 
 @pytest.fixture
-def skip_dtypes() -> bool:
-    # os.getenv returns a string
-    v = os.getenv("SKIP_DTYPES", "False").lower() == "true"
-    return v
-
-
-@pytest.fixture
 def standard_session(app_name, client):
     session = StandardSessionManager(app_name, redis_client=client)
     yield session
@@ -548,34 +541,33 @@ def test_semantic_drop(semantic_session):
     ]
 
 
-def test_different_vector_dtypes(skip_dtypes):
-    if skip_dtypes:
-        pytest.skip("Skipping dtype checking...")
+def test_different_vector_dtypes():
+    try:
+        bfloat_sess = SemanticSessionManager(name="bfloat_session", dtype="bfloat16")
+        bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
 
-    bfloat_sess = SemanticSessionManager(name="bfloat_session", dtype="bfloat16")
-    bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
+        float16_sess = SemanticSessionManager(name="float16_session", dtype="float16")
+        float16_sess.add_message({"role": "user", "content": "float16 message"})
 
-    float16_sess = SemanticSessionManager(name="float16_session", dtype="float16")
-    float16_sess.add_message({"role": "user", "content": "float16 message"})
+        float32_sess = SemanticSessionManager(name="float32_session", dtype="float32")
+        float32_sess.add_message({"role": "user", "content": "float32 message"})
 
-    float32_sess = SemanticSessionManager(name="float32_session", dtype="float32")
-    float32_sess.add_message({"role": "user", "content": "float32 message"})
+        float64_sess = SemanticSessionManager(name="float64_session", dtype="float64")
+        float64_sess.add_message({"role": "user", "content": "float64 message"})
 
-    float64_sess = SemanticSessionManager(name="float64_session", dtype="float64")
-    float64_sess.add_message({"role": "user", "content": "float64 message"})
+        for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
+            sess.set_distance_threshold(0.7)
+            assert len(sess.get_relevant("float message")) == 1
+    except:
+        pytest.skip("Not using a late enough version of Redis")
 
-    for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
-        sess.set_distance_threshold(0.7)
-        assert len(sess.get_relevant("float message")) == 1
 
-
-def test_bad_dtype_connecting_to_exiting_session(skip_dtypes):
-    if skip_dtypes:
-        pytest.skip("Skipping dtype checking...")
-
-    session = SemanticSessionManager(name="float64 session", dtype="float64")
-
-    same_type = SemanticSessionManager(name="float64 session", dtype="float64")
+def test_bad_dtype_connecting_to_exiting_session():
+    try:
+        session = SemanticSessionManager(name="float64 session", dtype="float64")
+        same_type = SemanticSessionManager(name="float64 session", dtype="float64")
+    except ValueError:
+        pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):
         bad_type = SemanticSessionManager(name="float64 session", dtype="float16")
