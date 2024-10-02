@@ -872,7 +872,8 @@ def test_bad_dtype_connecting_to_existing_cache():
     try:
         cache = SemanticCache(name="float64_cache", dtype="float64")
         same_type = SemanticCache(name="float64_cache", dtype="float64")
-    except ValueError:
+        # under the hood uses from_existing
+    except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):

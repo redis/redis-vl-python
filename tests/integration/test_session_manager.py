@@ -3,6 +3,7 @@ import os
 import pytest
 from redis.exceptions import ConnectionError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.session_manager import (
     SemanticSessionManager,
@@ -566,7 +567,8 @@ def test_bad_dtype_connecting_to_exiting_session():
     try:
         session = SemanticSessionManager(name="float64 session", dtype="float64")
         same_type = SemanticSessionManager(name="float64 session", dtype="float64")
-    except ValueError:
+        # under the hood uses from_existing
+    except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):
