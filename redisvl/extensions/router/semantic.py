@@ -256,9 +256,9 @@ class SemanticRouter(BaseModel):
         )
 
         try:
-            aggregation_result: AggregateResult = self._index.client.ft(  # type: ignore
-                self._index.name
-            ).aggregate(aggregate_request, vector_range_query.params)
+            aggregation_result: AggregateResult = self._index.aggregate(
+                aggregate_request, vector_range_query.params
+            )
         except ResponseError as e:
             if "VSS is not yet supported on FT.AGGREGATE" in str(e):
                 raise RuntimeError(
@@ -308,9 +308,9 @@ class SemanticRouter(BaseModel):
         )
 
         try:
-            aggregation_result: AggregateResult = self._index.client.ft(  # type: ignore
-                self._index.name
-            ).aggregate(aggregate_request, vector_range_query.params)
+            aggregation_result: AggregateResult = self._index.aggregate(
+                aggregate_request, vector_range_query.params
+            )
         except ResponseError as e:
             if "VSS is not yet supported on FT.AGGREGATE" in str(e):
                 raise RuntimeError(

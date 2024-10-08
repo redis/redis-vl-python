@@ -17,6 +17,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
+    from redis.commands.search.aggregation import AggregateResult
     from redis.commands.search.document import Document
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
@@ -629,7 +630,7 @@ class SearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
-    def aggregate(self, *args, **kwargs) -> List[List[Any]]:
+    def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
 
         Wrapper around the aggregation API that adds the index name
@@ -1167,7 +1168,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
-    async def aggregate(self, *args, **kwargs) -> List[List[Any]]:
+    async def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
 
         Wrapper around the aggregation API that adds the index name
