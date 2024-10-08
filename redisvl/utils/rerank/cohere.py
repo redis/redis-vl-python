@@ -83,7 +83,7 @@ class CohereReranker(BaseReranker):
             from cohere import AsyncClient, Client
         except ImportError:
             raise ImportError(
-                "Cohere vectorizer requires the cohere library. \
+                "Cohere reranker requires the cohere library. \
                     Please install with `pip install cohere`"
             )
 
