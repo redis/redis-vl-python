@@ -124,36 +124,6 @@ def setup_async_redis():
     return decorator
 
 
-def check_index_exists():
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if not self.exists():
-                raise RuntimeError(
-                    f"Index has not been created. Must be created before calling {func.__name__}"
-                )
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def check_async_index_exists():
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            if not await self.exists():
-                raise ValueError(
-                    f"Index has not been created. Must be created before calling {func.__name__}"
-                )
-            return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 class BaseSearchIndex:
     """Base search engine class"""
 
@@ -487,7 +457,6 @@ class SearchIndex(BaseSearchIndex):
             logger.exception("Error while trying to create the index")
             raise
 
-    @check_index_exists()
     def delete(self, drop: bool = True):
         """Delete the search index while optionally dropping all keys associated
         with the index.
@@ -503,8 +472,8 @@ class SearchIndex(BaseSearchIndex):
             self._redis_client.ft(self.schema.index.name).dropindex(  # type: ignore
                 delete_documents=drop
             )
-        except:
-            logger.exception("Error while deleting index")
+        except Exception as e:
+            raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
     def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
@@ -644,7 +613,7 @@ class SearchIndex(BaseSearchIndex):
             return self._redis_client.ft(self.schema.index.name).aggregate(  # type: ignore
                 *args, **kwargs
             )
-       except Exception as e:
+        except Exception as e:
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
     def search(self, *args, **kwargs) -> "Result":
@@ -661,7 +630,7 @@ class SearchIndex(BaseSearchIndex):
             return self._redis_client.ft(self.schema.index.name).search(  # type: ignore
                 *args, **kwargs
             )
-       except Exception as e:
+        except Exception as e:
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
 
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
@@ -768,11 +737,11 @@ class SearchIndex(BaseSearchIndex):
         """Run FT.INFO to fetch information about the index."""
         try:
             return convert_bytes(redis_client.ft(name).info())  # type: ignore
-        except:
-            logger.exception(f"Error while fetching {name} index info")
-            raise
+        except Exception as e:
+            raise RedisSearchError(
+                f"Error while fetching {name} index info: {str(e)}"
+            ) from e
 
-    @check_index_exists()
     def info(self, name: Optional[str] = None) -> Dict[str, Any]:
         """Get information about the index.
 
@@ -1026,7 +995,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             logger.exception("Error while trying to create the index")
             raise
 
-    @check_async_index_exists()
     async def delete(self, drop: bool = True):
         """Delete the search index.
 
@@ -1041,9 +1009,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             await self._redis_client.ft(self.schema.index.name).dropindex(  # type: ignore
                 delete_documents=drop
             )
-        except:
-            logger.exception("Error while deleting index")
-            raise
+        except Exception as e:
+            raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
     async def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
@@ -1306,11 +1273,11 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _info(name: str, redis_client: aredis.Redis) -> Dict[str, Any]:
         try:
             return convert_bytes(await redis_client.ft(name).info())  # type: ignore
-        except:
-            logger.exception(f"Error while fetching {name} index info")
-            raise
+        except Exception as e:
+            raise RedisSearchError(
+                f"Error while fetching {name} index info: {str(e)}"
+            ) from e
 
-    @check_async_index_exists()
     async def info(self, name: Optional[str] = None) -> Dict[str, Any]:
         """Get information about the index.
 

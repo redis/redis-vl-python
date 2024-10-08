@@ -1,5 +1,6 @@
 import pytest
 
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.redis.connection import RedisConnectionFactory, validate_modules
@@ -251,7 +252,7 @@ def test_check_index_exists_before_delete(client, index):
     index.set_client(client)
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RedisSearchError):
         index.delete()
 
 
@@ -266,7 +267,7 @@ def test_check_index_exists_before_search(client, index):
         return_fields=["user", "credit_score", "age", "job", "location"],
         num_results=7,
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RedisSearchError):
         index.search(query.query, query_params=query.params)
 
 
@@ -275,7 +276,7 @@ def test_check_index_exists_before_info(client, index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RedisSearchError):
         index.info()
 
 
