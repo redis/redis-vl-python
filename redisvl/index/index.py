@@ -25,7 +25,7 @@ import redis
 import redis.asyncio as aredis
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.exceptions import RedisModuleVersionError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
@@ -643,11 +643,9 @@ class SearchIndex(BaseSearchIndex):
             return self._redis_client.ft(self.schema.index.name).aggregate(  # type: ignore
                 *args, **kwargs
             )
-        except:
-            logger.exception("Error while searching")
-            raise
+       except Exception as e:
+            raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
-    @check_index_exists()
     def search(self, *args, **kwargs) -> "Result":
         """Perform a search against the index.
 
@@ -662,9 +660,8 @@ class SearchIndex(BaseSearchIndex):
             return self._redis_client.ft(self.schema.index.name).search(  # type: ignore
                 *args, **kwargs
             )
-        except:
-            logger.exception("Error while searching")
-            raise
+       except Exception as e:
+            raise RedisSearchError(f"Error while searching: {str(e)}") from e
 
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
@@ -1184,11 +1181,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             return await self._redis_client.ft(self.schema.index.name).aggregate(  # type: ignore
                 *args, **kwargs
             )
-        except:
-            logger.exception("Error while searching")
-            raise
+        except Exception as e:
+            raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
-    @check_async_index_exists()
     async def search(self, *args, **kwargs) -> "Result":
         """Perform a search on this index.
 
@@ -1203,9 +1198,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             return await self._redis_client.ft(self.schema.index.name).search(  # type: ignore
                 *args, **kwargs
             )
-        except:
-            logger.exception("Error while searching")
-            raise
+        except Exception as e:
+            raise RedisSearchError(f"Error while searching: {str(e)}") from e
 
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""
