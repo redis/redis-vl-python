@@ -1,5 +1,6 @@
 import pytest
 
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
 from redisvl.redis.utils import convert_bytes
@@ -291,7 +292,7 @@ async def test_check_index_exists_before_delete(async_client, async_index):
     await async_index.set_client(async_client)
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisSearchError):
         await async_index.delete()
 
 
@@ -307,7 +308,7 @@ async def test_check_index_exists_before_search(async_client, async_index):
         return_fields=["user", "credit_score", "age", "job", "location"],
         num_results=7,
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisSearchError):
         await async_index.search(query.query, query_params=query.params)
 
 
@@ -317,5 +318,5 @@ async def test_check_index_exists_before_info(async_client, async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisSearchError):
         await async_index.info()
