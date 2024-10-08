@@ -629,13 +629,31 @@ class SearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
+    def aggregate(self, *args, **kwargs) -> List[List[Any]]:
+        """Perform an aggregation operation against the index.
+
+        Wrapper around the aggregation API that adds the index name
+        to the query and passes along the rest of the arguments
+        to the redis-py ft().aggregate() method.
+
+        Returns:
+            Result: Raw Redis aggregation results.
+        """
+        try:
+            return self._redis_client.ft(self.schema.index.name).aggregate(  # type: ignore
+                *args, **kwargs
+            )
+        except:
+            logger.exception("Error while searching")
+            raise
+
     @check_index_exists()
     def search(self, *args, **kwargs) -> "Result":
         """Perform a search against the index.
 
-        Wrapper around redis.search.Search that adds the index name
-        to the search query and passes along the rest of the arguments
-        to the redis-py ft.search() method.
+        Wrapper around the search API that adds the index name
+        to the query and passes along the rest of the arguments
+        to the redis-py ft().search() method.
 
         Returns:
             Result: Raw Redis search results.
@@ -1151,6 +1169,24 @@ class AsyncSearchIndex(BaseSearchIndex):
         if obj:
             return convert_bytes(obj[0])
         return None
+
+    async def aggregate(self, *args, **kwargs) -> List[List[Any]]:
+        """Perform an aggregation operation against the index.
+
+        Wrapper around the aggregation API that adds the index name
+        to the query and passes along the rest of the arguments
+        to the redis-py ft().aggregate() method.
+
+        Returns:
+            Result: Raw Redis aggregation results.
+        """
+        try:
+            return await self._redis_client.ft(self.schema.index.name).aggregate(  # type: ignore
+                *args, **kwargs
+            )
+        except:
+            logger.exception("Error while searching")
+            raise
 
     @check_async_index_exists()
     async def search(self, *args, **kwargs) -> "Result":
