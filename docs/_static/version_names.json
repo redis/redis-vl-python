@@ -1,9 +1,14 @@
 [
   {
-    "name": "0.3.4 (stable)",
-    "version": "0.3.4",
+    "name": "0.3.5 (stable)",
+    "version": "0.3.5",
     "url": "/",
     "preferred": true
+  },
+  {
+    "name": "0.3.4",
+    "version": "0.3.4",
+    "url": "/0.3.4/"
   },
   {
     "name": "0.3.3",
