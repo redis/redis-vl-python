@@ -29,7 +29,9 @@ class BaseQuery(RedisQuery):
         """Build the full Redis query string."""
         raise NotImplementedError("Must be implemented by subclasses")
 
-    def set_filter(self, filter_expression: Optional[Union[str, FilterExpression]] = None):
+    def set_filter(
+        self, filter_expression: Optional[Union[str, FilterExpression]] = None
+    ):
         """Set the filter expression for the query.
 
         Args:
@@ -355,9 +357,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         if filter_expression == "*":
             return f"{base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}}"
-        return (
-            f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {filter_expression})"
-        )
+        return f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {filter_expression})"
 
     def set_distance_threshold(self, distance_threshold: float):
         """Set the distance threshold for the query.
