@@ -312,8 +312,52 @@ def test_filters(index, query):
     t = Text("job") % ""
     search(query, index, t, 7)
 
-    t = Text("job") % None
-    search(query, index, t, 7)
+
+def test_manual_string_filters(index, query):
+    # Simple Tag Filter
+    t = "@credit_score:{high}"
+    search(query, index, t, 4, credit_check="high")
+
+    # Multiple Tags
+    t = "@credit_score:{high|low}"
+    search(query, index, t, 6)
+
+    # Simple Numeric Filter
+    n1 = "@age:[18 +inf]"
+    search(query, index, n1, 4, age_range=(18, 100))
+
+    # intersection of rules
+    n2 = "@age:[18 (100]"
+    search(query, index, n2, 3, age_range=(18, 99))
+
+    n3 = "(@age:[-inf (18] | @age:[(94 +inf])"
+    search(query, index, n3, 4, age_range=(95, 17))
+
+    n4 = "(-@age:[18 18])"
+    search(query, index, n4, 6, age_range=(0, 0, 18))
+
+    # Geographic filters
+    g = "@location:[-122.4194 37.7749 1 m]"
+    search(query, index, g, 3, location="-122.4194,37.7749")
+
+    g = "(-@location:[-122.4194 37.7749 1 m])"
+    search(query, index, g, 4, location="-110.0839,37.3861")
+
+    # Text filters
+    t = "@job:engineer"
+    search(query, index, t, 2)
+
+    t = "(-@job:engineer)"
+    search(query, index, t, 5)
+
+    t = "@job:enginee*"
+    search(query, index, t, 2)
+
+    t = "@job:(engine*|doctor)"
+    search(query, index, t, 4)
+
+    t = "@job:*engine*"
+    search(query, index, t, 2)
 
 
 def test_filter_combinations(index, query):

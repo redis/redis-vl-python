@@ -10,7 +10,7 @@ class BaseQuery(RedisQuery):
     """Base query class used to subclass many query types."""
 
     _params: Dict[str, Any] = {}
-    _filter_expression: FilterExpression = FilterExpression("*")
+    _filter_expression: Union[str, FilterExpression] = FilterExpression("*")
 
     def __init__(self, query_string: str = "*"):
         """
@@ -29,30 +29,33 @@ class BaseQuery(RedisQuery):
         """Build the full Redis query string."""
         raise NotImplementedError("Must be implemented by subclasses")
 
-    def set_filter(self, filter_expression: Optional[FilterExpression] = None):
+    def set_filter(
+        self, filter_expression: Optional[Union[str, FilterExpression]] = None
+    ):
         """Set the filter expression for the query.
 
         Args:
-            filter_expression (Optional[FilterExpression], optional): The filter to apply to the query.
+            filter_expression (Optional[Union[str, FilterExpression]], optional): The filter
+                expression or query string to use on the query.
 
         Raises:
-            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+            TypeError: If filter_expression is not a valid FilterExpression or string.
         """
         if filter_expression is None:
             # Default filter to match everything
             self._filter_expression = FilterExpression("*")
-        elif isinstance(filter_expression, FilterExpression):
+        elif isinstance(filter_expression, (FilterExpression, str)):
             self._filter_expression = filter_expression
         else:
             raise TypeError(
-                "filter_expression must be of type FilterExpression or None"
+                "filter_expression must be of type FilterExpression or string or None"
             )
 
         # Reset the query string
         self._query_string = self._build_query_string()
 
     @property
-    def filter(self) -> FilterExpression:
+    def filter(self) -> Union[str, FilterExpression]:
         """The filter expression for the query."""
         return self._filter_expression
 
@@ -70,7 +73,7 @@ class BaseQuery(RedisQuery):
 class FilterQuery(BaseQuery):
     def __init__(
         self,
-        filter_expression: Optional[FilterExpression] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
         return_fields: Optional[List[str]] = None,
         num_results: int = 10,
         dialect: int = 2,
@@ -81,7 +84,7 @@ class FilterQuery(BaseQuery):
         """A query for running a filtered search with a filter expression.
 
         Args:
-            filter_expression (Optional[FilterExpression]): The optional filter
+            filter_expression (Optional[Union[str, FilterExpression]]): The optional filter
                 expression to query with. Defaults to '*'.
             return_fields (Optional[List[str]], optional): The fields to return.
             num_results (Optional[int], optional): The number of results to return. Defaults to 10.
@@ -93,8 +96,8 @@ class FilterQuery(BaseQuery):
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
         """
-        if filter_expression:
-            self._filter_expression = filter_expression
+        self.set_filter(filter_expression)
+
         if params:
             self._params = params
 
@@ -117,22 +120,22 @@ class FilterQuery(BaseQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string based on the filter and other components."""
-        # Example logic to build the full query string from filter and other parts
-        # This can be customized in child classes for more complex queries
-        return str(self._filter_expression)
+        if isinstance(self._filter_expression, FilterExpression):
+            return str(self._filter_expression)
+        return self._filter_expression
 
 
 class CountQuery(BaseQuery):
     def __init__(
         self,
-        filter_expression: Optional[FilterExpression] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
         dialect: int = 2,
         params: Optional[Dict[str, Any]] = None,
     ):
         """A query for a simple count operation provided some filter expression.
 
         Args:
-            filter_expression (Optional[FilterExpression]): The filter expression to query with. Defaults to None.
+            filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to query with. Defaults to None.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
 
         Raises:
@@ -148,8 +151,8 @@ class CountQuery(BaseQuery):
 
             count = index.query(query)
         """
-        if filter_expression:
-            self._filter_expression = filter_expression
+        self.set_filter(filter_expression)
+
         if params:
             self._params = params
 
@@ -162,9 +165,9 @@ class CountQuery(BaseQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string based on the filter and other components."""
-        # Example logic to build the full query string from filter and other parts
-        # This can be customized in child classes for more complex queries
-        return str(self._filter_expression)
+        if isinstance(self._filter_expression, FilterExpression):
+            return str(self._filter_expression)
+        return self._filter_expression
 
 
 class BaseVectorQuery:
@@ -178,7 +181,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         vector: Union[List[float], bytes],
         vector_field_name: str,
         return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
         dtype: str = "float32",
         num_results: int = 10,
         return_score: bool = True,
@@ -195,7 +198,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 against in the database.
             return_fields (List[str]): The declared fields to return with search
                 results.
-            filter_expression (FilterExpression, optional): A filter to apply
+            filter_expression (Union[str, FilterExpression], optional): A filter to apply
                 along with the vector search. Defaults to None.
             dtype (str, optional): The dtype of the vector. Defaults to
                 "float32".
@@ -217,15 +220,13 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         Note:
             Learn more about vector queries in Redis: https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search
         """
-        if filter_expression:
-            self._filter_expression = filter_expression
-
         self._vector = vector
         self._vector_field_name = vector_field_name
         self._dtype = dtype
         self._num_results = num_results
-
+        self.set_filter(filter_expression)
         query_string = self._build_query_string()
+
         super().__init__(query_string)
 
         # Handle query modifiers
@@ -247,7 +248,10 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string for vector search with optional filtering."""
-        return f"{str(self._filter_expression)}=>[KNN {self._num_results} @{self._vector_field_name} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
+        filter_expression = self._filter_expression
+        if isinstance(filter_expression, FilterExpression):
+            filter_expression = str(filter_expression)
+        return f"{filter_expression}=>[KNN {self._num_results} @{self._vector_field_name} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -272,7 +276,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         vector: Union[List[float], bytes],
         vector_field_name: str,
         return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
         dtype: str = "float32",
         distance_threshold: float = 0.2,
         num_results: int = 10,
@@ -290,7 +294,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 against in the database.
             return_fields (List[str]): The declared fields to return with search
                 results.
-            filter_expression (FilterExpression, optional): A filter to apply
+            filter_expression (Union[str, FilterExpression], optional): A filter to apply
                 along with the range query. Defaults to None.
             dtype (str, optional): The dtype of the vector. Defaults to
                 "float32".
@@ -316,16 +320,14 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             Learn more about vector range queries: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
 
         """
-        if filter_expression:
-            self._filter_expression = filter_expression
-
         self._vector = vector
         self._vector_field_name = vector_field_name
         self._dtype = dtype
         self._num_results = num_results
         self.set_distance_threshold(distance_threshold)
-
+        self.set_filter(filter_expression)
         query_string = self._build_query_string()
+
         super().__init__(query_string)
 
         # Handle query modifiers
@@ -348,13 +350,14 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
     def _build_query_string(self) -> str:
         """Build the full query string for vector range queries with optional filtering"""
         base_query = f"@{self._vector_field_name}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
-        _filter = str(self._filter_expression)
-        if _filter != "*":
-            return (
-                f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {_filter})"
-            )
-        else:
+
+        filter_expression = self._filter_expression
+        if isinstance(filter_expression, FilterExpression):
+            filter_expression = str(filter_expression)
+
+        if filter_expression == "*":
             return f"{base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}}"
+        return f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {filter_expression})"
 
     def set_distance_threshold(self, distance_threshold: float):
         """Set the distance threshold for the query.
