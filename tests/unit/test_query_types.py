@@ -252,3 +252,28 @@ def test_query_modifiers(query):
     assert query._no_stopwords
     assert query._with_scores
     assert query._fields == ("test",)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        CountQuery(),
+        FilterQuery(),
+        VectorQuery(vector=[1, 2, 3], vector_field_name="vector"),
+        RangeQuery(vector=[1, 2, 3], vector_field_name="vector"),
+    ],
+)
+def test_string_filter_expressions(query):
+    # No filter
+    query.set_filter("*")
+    assert query._filter_expression == "*"
+
+    # Simple full text search
+    query.set_filter("hello world")
+    assert query._filter_expression == "hello world"
+    assert query.query_string().__contains__("hello world")
+
+    # Optional flag
+    query.set_filter("~(@desciption:(hello | world))")
+    assert query._filter_expression == "~(@desciption:(hello | world))"
+    assert query.query_string().__contains__("~(@desciption:(hello | world))")
