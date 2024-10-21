@@ -172,9 +172,11 @@ class CustomTextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        else:
-            result = self._embed_func(text, **kwargs)
-        return self._process_embedding(result, as_buffer, **kwargs)
+
+        dtype = kwargs.pop("dtype", None)
+
+        result = self._embed_func(text, **kwargs)
+        return self._process_embedding(result, as_buffer, dtype)
 
     def embed_many(
         self,
@@ -210,11 +212,13 @@ class CustomTextVectorizer(BaseVectorizer):
         if not self._embed_many_func:
             raise NotImplementedError
 
+        dtype = kwargs.pop("dtype", None)
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             results = self._embed_many_func(batch, **kwargs)
             embeddings += [
-                self._process_embedding(r, as_buffer, **kwargs) for r in results
+                self._process_embedding(r, as_buffer, dtype) for r in results
             ]
         return embeddings
 
@@ -249,9 +253,11 @@ class CustomTextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        else:
-            result = await self._aembed_func(text, **kwargs)
-        return self._process_embedding(result, as_buffer, **kwargs)
+
+        dtype = kwargs.pop("dtype", None)
+
+        result = await self._aembed_func(text, **kwargs)
+        return self._process_embedding(result, as_buffer, dtype)
 
     async def aembed_many(
         self,
@@ -287,11 +293,13 @@ class CustomTextVectorizer(BaseVectorizer):
         if not self._aembed_many_func:
             raise NotImplementedError
 
+        dtype = kwargs.pop("dtype", None)
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             results = await self._aembed_many_func(batch, **kwargs)
             embeddings += [
-                self._process_embedding(r, as_buffer, **kwargs) for r in results
+                self._process_embedding(r, as_buffer, dtype) for r in results
             ]
         return embeddings
 

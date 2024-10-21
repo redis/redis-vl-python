@@ -81,11 +81,13 @@ class BaseVectorizer(BaseModel, ABC):
             else:
                 yield seq[pos : pos + size]
 
-    def _process_embedding(self, embedding: List[float], as_buffer: bool, **kwargs):
+    def _process_embedding(
+        self, embedding: List[float], as_buffer: bool, dtype: Optional[str]
+    ):
         if as_buffer:
-            if "dtype" not in kwargs:
+            if not dtype:
                 raise RuntimeError(
                     "dtype is required if converting from float to byte string."
                 )
-            return array_to_buffer(embedding, kwargs["dtype"])
+            return array_to_buffer(embedding, dtype)
         return embedding
