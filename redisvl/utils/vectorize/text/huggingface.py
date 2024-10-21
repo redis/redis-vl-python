@@ -135,7 +135,7 @@ class HFTextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        
+
         dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []

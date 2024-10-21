@@ -155,12 +155,12 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Must pass in a str value for cohere embedding input_type. \
                     See https://docs.cohere.com/reference/embed."
             )
-        
+
         if preprocess:
             text = preprocess(text)
-        
+
         dtype = kwargs.pop("dtype", None)
-    
+
         embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
         ).embeddings[0]
@@ -227,7 +227,7 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Must pass in a str value for cohere embedding input_type.\
                     See https://docs.cohere.com/reference/embed."
             )
-        
+
         dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []

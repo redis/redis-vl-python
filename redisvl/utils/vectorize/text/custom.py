@@ -211,7 +211,7 @@ class CustomTextVectorizer(BaseVectorizer):
 
         if not self._embed_many_func:
             raise NotImplementedError
-        
+
         dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []
@@ -253,7 +253,7 @@ class CustomTextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        
+
         dtype = kwargs.pop("dtype", None)
 
         result = await self._aembed_func(text, **kwargs)
@@ -292,9 +292,9 @@ class CustomTextVectorizer(BaseVectorizer):
 
         if not self._aembed_many_func:
             raise NotImplementedError
-        
+
         dtype = kwargs.pop("dtype", None)
-        
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             results = await self._aembed_many_func(batch, **kwargs)

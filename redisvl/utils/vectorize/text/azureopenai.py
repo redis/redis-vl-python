@@ -189,7 +189,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        
+
         dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []
@@ -233,7 +233,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        
+
         dtype = kwargs.pop("dtype", None)
 
         result = self._client.embeddings.create(input=[text], model=self.model)
@@ -273,7 +273,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        
+
         dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []
@@ -319,7 +319,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        
+
         dtype = kwargs.pop("dtype", None)
 
         result = await self._aclient.embeddings.create(input=[text], model=self.model)

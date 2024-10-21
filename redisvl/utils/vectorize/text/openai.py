@@ -143,9 +143,9 @@ class OpenAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        
+
         dtype = kwargs.pop("dtype", None)
-        
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embeddings.create(input=batch, model=self.model)
@@ -187,7 +187,7 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        
+
         dtype = kwargs.pop("dtype", None)
 
         result = self._client.embeddings.create(input=[text], model=self.model)
@@ -227,7 +227,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-        
+
         dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []
@@ -273,7 +273,7 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
-        
+
         dtype = kwargs.pop("dtype", None)
 
         result = await self._aclient.embeddings.create(input=[text], model=self.model)
