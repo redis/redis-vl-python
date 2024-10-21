@@ -1,0 +1,549 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Semantic Caching for LLMs\n",
+    "\n",
+    "RedisVL provides an ``SemanticCache`` interface utilize Redis' built-in caching capabilities AND vector search in order to store responses from previously-answered questions. This reduces the number of requests and tokens sent to the Large Language Models (LLM) service, decreasing costs and enhancing application throughput (by reducing the time taken to generate responses).\n",
+    "\n",
+    "This notebook will go over how to use Redis as a Semantic Cache for your applications"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "First, we will import [OpenAI](https://platform.openai.com) to use their API for responding to user prompts. We will also create a simple `ask_openai` helper method to assist."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "import openai\n",
+    "import getpass\n",
+    "import time\n",
+    "\n",
+    "import numpy as np\n",
+    "\n",
+    "os.environ[\"TOKENIZERS_PARALLELISM\"] = \"False\"\n",
+    "\n",
+    "api_key = os.getenv(\"OPENAI_API_KEY\") or getpass.getpass(\"Enter your OpenAI API key: \")\n",
+    "\n",
+    "openai.api_key = api_key\n",
+    "\n",
+    "def ask_openai(question: str) -> str:\n",
+    "    response = openai.Completion.create(\n",
+    "      engine=\"gpt-3.5-turbo-instruct\",\n",
+    "      prompt=question,\n",
+    "      max_tokens=200\n",
+    "    )\n",
+    "    return response.choices[0].text.strip()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "The capital of France is Paris.\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Test\n",
+    "print(ask_openai(\"What is the capital of France?\"))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Initializing ``SemanticCache``\n",
+    "\n",
+    "``SemanticCache`` will automatically create an index within Redis upon initialization for the semantic cache content."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from redisvl.extensions.llmcache import SemanticCache\n",
+    "\n",
+    "llmcache = SemanticCache(\n",
+    "    name=\"llmcache\",                     # underlying search index name\n",
+    "    prefix=\"llmcache\",                   # redis key prefix for hash entries\n",
+    "    redis_url=\"redis://localhost:6379\",  # redis connection url string\n",
+    "    distance_threshold=0.1               # semantic cache distance threshold\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "\n",
+      "Index Information:\n",
+      "╭──────────────┬────────────────┬──────────────┬─────────────────┬────────────╮\n",
+      "│ Index Name   │ Storage Type   │ Prefixes     │ Index Options   │   Indexing │\n",
+      "├──────────────┼────────────────┼──────────────┼─────────────────┼────────────┤\n",
+      "│ llmcache     │ HASH           │ ['llmcache'] │ []              │          0 │\n",
+      "╰──────────────┴────────────────┴──────────────┴─────────────────┴────────────╯\n",
+      "Index Fields:\n",
+      "╭───────────────┬───────────────┬────────┬────────────────┬────────────────╮\n",
+      "│ Name          │ Attribute     │ Type   │ Field Option   │   Option Value │\n",
+      "├───────────────┼───────────────┼────────┼────────────────┼────────────────┤\n",
+      "│ prompt        │ prompt        │ TEXT   │ WEIGHT         │              1 │\n",
+      "│ response      │ response      │ TEXT   │ WEIGHT         │              1 │\n",
+      "│ prompt_vector │ prompt_vector │ VECTOR │                │                │\n",
+      "╰───────────────┴───────────────┴────────┴────────────────┴────────────────╯\n"
+     ]
+    }
+   ],
+   "source": [
+    "# look at the index specification created for the semantic cache lookup\n",
+    "!rvl index info -i llmcache"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Basic Cache Usage"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "question = \"What is the capital of France?\""
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Empty cache\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Check the semantic cache -- should be empty\n",
+    "if response := llmcache.check(prompt=question):\n",
+    "    print(response)\n",
+    "else:\n",
+    "    print(\"Empty cache\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Our initial cache check should be empty since we have not yet stored anything in the cache. Below, store the `question`,\n",
+    "proper `response`, and any arbitrary `metadata` (as a python dictionary object) in the cache."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'llmcache:115049a298532be2f181edb03f766770c0db84c22aff39003fec340deaec7545'"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Cache the question, answer, and arbitrary metadata\n",
+    "llmcache.store(\n",
+    "    prompt=question,\n",
+    "    response=\"Paris\",\n",
+    "    metadata={\"city\": \"Paris\", \"country\": \"france\"}\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now we will check the cache again with the same question and with a semantically similar question:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[{'id': 'llmcache:115049a298532be2f181edb03f766770c0db84c22aff39003fec340deaec7545', 'vector_distance': '8.34465026855e-07', 'prompt': 'What is the capital of France?', 'response': 'Paris', 'metadata': {'city': 'Paris', 'country': 'france'}}]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Check the cache again\n",
+    "if response := llmcache.check(prompt=question, return_fields=[\"prompt\", \"response\", \"metadata\"]):\n",
+    "    print(response)\n",
+    "else:\n",
+    "    print(\"Empty cache\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'Paris'"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Check for a semantically similar result\n",
+    "question = \"What actually is the capital of France?\"\n",
+    "llmcache.check(prompt=question)[0]['response']"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Customize the Distance Threshhold\n",
+    "\n",
+    "For most use cases, the right semantic similarity threshhold is not a fixed quantity. Depending on the choice of embedding model,\n",
+    "the properties of the input query, and even business use case -- the threshhold might need to change. \n",
+    "\n",
+    "Fortunately, you can seamlessly adjust the threshhold at any point like below:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Widen the semantic distance threshold\n",
+    "llmcache.set_threshold(0.3)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'Paris'"
+      ]
+     },
+     "execution_count": 11,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Really try to trick it by asking around the point\n",
+    "# But is able to slip just under our new threshold\n",
+    "question = \"What is the capital city of the country in Europe that also has a city named Nice?\"\n",
+    "llmcache.check(prompt=question)[0]['response']"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[]"
+      ]
+     },
+     "execution_count": 12,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# Invalidate the cache completely by clearing it out\n",
+    "llmcache.clear()\n",
+    "\n",
+    "# should be empty now\n",
+    "llmcache.check(prompt=question)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Utilize TTL\n",
+    "\n",
+    "Redis uses TTL policies (optional) to expire individual keys at points in time in the future.\n",
+    "This allows you to focus on your data flow and business logic without bothering with complex cleanup tasks.\n",
+    "\n",
+    "A TTL policy set on the `SemanticCache` allows you to temporarily hold onto cache entries. Below, we will set the TTL policy to 5 seconds."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "llmcache.set_ttl(5) # 5 seconds"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "llmcache.store(\"This is a TTL test\", \"This is a TTL test response\")\n",
+    "\n",
+    "time.sleep(5)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# confirm that the cache has cleared by now on it's own\n",
+    "result = llmcache.check(\"This is a TTL test\")\n",
+    "\n",
+    "print(result)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Reset the TTL to null (long lived data)\n",
+    "llmcache.set_ttl()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Simple Performance Testing\n",
+    "\n",
+    "Next, we will measure the speedup obtained by using ``SemanticCache``. We will use the ``time`` module to measure the time taken to generate responses with and without ``SemanticCache``."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def answer_question(question: str) -> str:\n",
+    "    \"\"\"Helper function to answer a simple question using OpenAI with a wrapper\n",
+    "    check for the answer in the semantic cache first.\n",
+    "\n",
+    "    Args:\n",
+    "        question (str): User input question.\n",
+    "\n",
+    "    Returns:\n",
+    "        str: Response.\n",
+    "    \"\"\"\n",
+    "    results = llmcache.check(prompt=question)\n",
+    "    if results:\n",
+    "        return results[0][\"response\"]\n",
+    "    else:\n",
+    "        answer = ask_openai(question)\n",
+    "        return answer"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Without caching, a call to openAI to answer this simple question took 0.984370231628418 seconds.\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "'llmcache:67e0f6e28fe2a61c0022fd42bf734bb8ffe49d3e375fd69d692574295a20fc1a'"
+      ]
+     },
+     "execution_count": 24,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "start = time.time()\n",
+    "# asking a question -- openai response time\n",
+    "question = \"What was the name of the first US President?\"\n",
+    "answer = answer_question(question)\n",
+    "end = time.time()\n",
+    "\n",
+    "print(f\"Without caching, a call to openAI to answer this simple question took {end-start} seconds.\")\n",
+    "\n",
+    "# add the entry to our LLM cache\n",
+    "llmcache.store(prompt=question, response=\"George Washington\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Avg time taken with LLM cache enabled: 0.5094501972198486\n",
+      "Percentage of time saved: 48.25%\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Calculate the avg latency for caching over LLM usage\n",
+    "times = []\n",
+    "\n",
+    "for _ in range(10):\n",
+    "    cached_start = time.time()\n",
+    "    cached_answer = answer_question(question)\n",
+    "    cached_end = time.time()\n",
+    "    times.append(cached_end-cached_start)\n",
+    "\n",
+    "avg_time_with_cache = np.mean(times)\n",
+    "print(f\"Avg time taken with LLM cache enabled: {avg_time_with_cache}\")\n",
+    "print(f\"Percentage of time saved: {round(((end - start) - avg_time_with_cache) / (end - start) * 100, 2)}%\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\n",
+      "Statistics:\n",
+      "╭─────────────────────────────┬─────────────╮\n",
+      "│ Stat Key                    │ Value       │\n",
+      "├─────────────────────────────┼─────────────┤\n",
+      "│ num_docs                    │ 0           │\n",
+      "│ num_terms                   │ 19          │\n",
+      "│ max_doc_id                  │ 5           │\n",
+      "│ num_records                 │ 36          │\n",
+      "│ percent_indexed             │ 1           │\n",
+      "│ hash_indexing_failures      │ 0           │\n",
+      "│ number_of_uses              │ 40          │\n",
+      "│ bytes_per_record_avg        │ 5.27778     │\n",
+      "│ doc_table_size_mb           │ 0           │\n",
+      "│ inverted_sz_mb              │ 0.000181198 │\n",
+      "│ key_table_size_mb           │ 0           │\n",
+      "│ offset_bits_per_record_avg  │ 8           │\n",
+      "│ offset_vectors_sz_mb        │ 3.33786e-05 │\n",
+      "│ offsets_per_term_avg        │ 0.972222    │\n",
+      "│ records_per_doc_avg         │ inf         │\n",
+      "│ sortable_values_size_mb     │ 0           │\n",
+      "│ total_indexing_time         │ 3.074       │\n",
+      "│ total_inverted_index_blocks │ 19          │\n",
+      "│ vector_index_sz_mb          │ 0.000389099 │\n",
+      "╰─────────────────────────────┴─────────────╯\n"
+     ]
+    }
+   ],
+   "source": [
+    "# check the stats of the index\n",
+    "!rvl stats -i llmcache"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Clear the cache AND delete the underlying index\n",
+    "llmcache.delete()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "rvl",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.12"
+  },
+  "orig_nbformat": 4
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}

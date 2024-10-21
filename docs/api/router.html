@@ -1,0 +1,1038 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="../_static/Redis_Favicon_32x32_Red.png" sizes="32x32" rel="icon" type="image/png">
+    <link href="../_static/Redis_Favicon_16x16_Red.png" sizes="16x16" rel="icon" type="image/png">
+    <link href="../_static/Redis_Favicon_144x144_Red.png" sizes="80x80" rel="icon" type="image/png">
+    <title>Semantic Router &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../_static/documentation_options.js?v=71af5d5d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/router';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.3.5';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../_static/js/sidebar.js?v=e96da022"></script>
+    <link rel="icon" href="../_static/Redis_Favicon_32x32_Red.png"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="LLM Session Manager" href="session_manager.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/Redis_Favicon_32x32_Red.png" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/redis/redis-vl-python" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/redis/redis-vl-python" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">RedisVL API</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Semantic Router</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="semantic-router">
+<h1>Semantic Router<a class="headerlink" href="#semantic-router" title="Link to this heading">#</a></h1>
+<section id="semantic-router-api">
+<span id="id1"></span><h2>Semantic Router<a class="headerlink" href="#semantic-router-api" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SemanticRouter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vectorizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">routing_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redis_client</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">redis_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'redis://localhost:6379'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter" title="Link to this definition">#</a></dt>
+<dd><p>Semantic Router for managing and querying route vectors.</p>
+<p>Initialize the SemanticRouter.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – The name of the semantic router.</p></li>
+<li><p><strong>routes</strong> (<em>List</em><em>[</em><a class="reference internal" href="#redisvl.extensions.router.Route" title="redisvl.extensions.router.Route"><em>Route</em></a><em>]</em>) – List of Route objects.</p></li>
+<li><p><strong>vectorizer</strong> (<em>BaseVectorizer</em><em>, </em><em>optional</em>) – The vectorizer used to embed route references. Defaults to default HFTextVectorizer.</p></li>
+<li><p><strong>routing_config</strong> (<a class="reference internal" href="#redisvl.extensions.router.RoutingConfig" title="redisvl.extensions.router.RoutingConfig"><em>RoutingConfig</em></a><em>, </em><em>optional</em>) – Configuration for routing behavior. Defaults to the default RoutingConfig.</p></li>
+<li><p><strong>redis_client</strong> (<em>Optional</em><em>[</em><em>Redis</em><em>]</em><em>, </em><em>optional</em>) – Redis client for connection. Defaults to None.</p></li>
+<li><p><strong>redis_url</strong> (<em>str</em><em>, </em><em>optional</em>) – The redis url. Defaults to redis://localhost:6379.</p></li>
+<li><p><strong>overwrite</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to overwrite existing index. Defaults to False.</p></li>
+<li><p><strong>connection_kwargs</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – The connection arguments
+for the redis client. Defaults to empty {}.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.clear">
+<span class="sig-name descname"><span class="pre">clear</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.clear"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.clear" title="Link to this definition">#</a></dt>
+<dd><p>Flush all routes from the semantic router index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.delete">
+<span class="sig-name descname"><span class="pre">delete</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.delete"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.delete" title="Link to this definition">#</a></dt>
+<dd><p>Delete the semantic router index.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.from_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.from_dict" title="Link to this definition">#</a></dt>
+<dd><p>Create a SemanticRouter from a dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – The dictionary containing the semantic router data.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The semantic router instance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#redisvl.extensions.router.SemanticRouter" title="redisvl.extensions.router.SemanticRouter">SemanticRouter</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If required data is missing or invalid.</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">SemanticRouter</span>
+<span class="n">router_data</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;example_router&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;routes&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;route1&quot;</span><span class="p">,</span> <span class="s2">&quot;references&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ref1&quot;</span><span class="p">],</span> <span class="s2">&quot;distance_threshold&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">}],</span>
+    <span class="s2">&quot;vectorizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;openai&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;text-embedding-ada-002&quot;</span><span class="p">},</span>
+<span class="p">}</span>
+<span class="n">router</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">router_data</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.from_yaml">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_yaml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.from_yaml"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.from_yaml" title="Link to this definition">#</a></dt>
+<dd><p>Create a SemanticRouter from a YAML file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_path</strong> (<em>str</em>) – The path to the YAML file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The semantic router instance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#redisvl.extensions.router.SemanticRouter" title="redisvl.extensions.router.SemanticRouter">SemanticRouter</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If the file path is invalid.</p></li>
+<li><p><strong>FileNotFoundError</strong> – If the file does not exist.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">SemanticRouter</span>
+<span class="n">router</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;router.yaml&quot;</span><span class="p">,</span> <span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">route_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.get"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.get" title="Link to this definition">#</a></dt>
+<dd><p>Get a route by its name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>route_name</strong> (<em>str</em>) – Name of the route.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The selected Route object or None if not found.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[<a class="reference internal" href="#redisvl.extensions.router.Route" title="redisvl.extensions.router.Route">Route</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.remove_route">
+<span class="sig-name descname"><span class="pre">remove_route</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">route_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.remove_route"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.remove_route" title="Link to this definition">#</a></dt>
+<dd><p>Remove a route and all references from the semantic router.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>route_name</strong> (<em>str</em>) – Name of the route to remove.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.route_many">
+<span class="sig-name descname"><span class="pre">route_many</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">statement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vector</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.route_many"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.route_many" title="Link to this definition">#</a></dt>
+<dd><p>Query the semantic router with a given statement or vector for multiple matches.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>statement</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – The input statement to be queried.</p></li>
+<li><p><strong>vector</strong> (<em>Optional</em><em>[</em><em>List</em><em>[</em><em>float</em><em>]</em><em>]</em>) – The input vector to be queried.</p></li>
+<li><p><strong>max_k</strong> (<em>Optional</em><em>[</em><em>int</em><em>]</em>) – The maximum number of top matches to return.</p></li>
+<li><p><strong>distance_threshold</strong> (<em>Optional</em><em>[</em><em>float</em><em>]</em>) – The threshold for semantic distance.</p></li>
+<li><p><strong>aggregation_method</strong> (<em>Optional</em><em>[</em><a class="reference internal" href="#redisvl.extensions.router.schema.DistanceAggregationMethod" title="redisvl.extensions.router.schema.DistanceAggregationMethod"><em>DistanceAggregationMethod</em></a><em>]</em>) – The aggregation method used for vector distances.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The matching routes and their details.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[<a class="reference internal" href="#redisvl.extensions.router.schema.RouteMatch" title="redisvl.extensions.router.schema.RouteMatch">RouteMatch</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.to_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.to_dict" title="Link to this definition">#</a></dt>
+<dd><p>Convert the SemanticRouter instance to a dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The dictionary representation of the SemanticRouter.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dict[str, Any]</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">SemanticRouter</span>
+<span class="n">router</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;example_router&quot;</span><span class="p">,</span> <span class="n">routes</span><span class="o">=</span><span class="p">[],</span> <span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+<span class="n">router_dict</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.to_yaml">
+<span class="sig-name descname"><span class="pre">to_yaml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.to_yaml"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.to_yaml" title="Link to this definition">#</a></dt>
+<dd><p>Write the semantic router to a YAML file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file_path</strong> (<em>str</em>) – The path to the YAML file.</p></li>
+<li><p><strong>overwrite</strong> (<em>bool</em>) – Whether to overwrite the file if it already exists.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>FileExistsError</strong> – If the file already exists and overwrite is False.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">SemanticRouter</span>
+<span class="n">router</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;example_router&quot;</span><span class="p">,</span>
+    <span class="n">routes</span><span class="o">=</span><span class="p">[],</span>
+    <span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span>
+<span class="p">)</span>
+<span class="n">router</span><span class="o">.</span><span class="n">to_yaml</span><span class="p">(</span><span class="s2">&quot;router.yaml&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.update_routing_config">
+<span class="sig-name descname"><span class="pre">update_routing_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">routing_config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/semantic.html#SemanticRouter.update_routing_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.update_routing_config" title="Link to this definition">#</a></dt>
+<dd><p>Update the routing configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>routing_config</strong> (<a class="reference internal" href="#redisvl.extensions.router.RoutingConfig" title="redisvl.extensions.router.RoutingConfig"><em>RoutingConfig</em></a>) – The new routing configuration.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.name" title="Link to this definition">#</a></dt>
+<dd><p>The name of the semantic router.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.route_names">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">route_names</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.route_names" title="Link to this definition">#</a></dt>
+<dd><p>Get the list of route names.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of route names.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.route_thresholds">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">route_thresholds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.route_thresholds" title="Link to this definition">#</a></dt>
+<dd><p>Get the distance thresholds for each route.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of route names and their distance thresholds.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dict[str, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.routes">
+<span class="sig-name descname"><span class="pre">routes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#redisvl.extensions.router.Route" title="redisvl.extensions.router.schema.Route"><span class="pre">Route</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.routes" title="Link to this definition">#</a></dt>
+<dd><p>List of Route objects.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.routing_config">
+<span class="sig-name descname"><span class="pre">routing_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#redisvl.extensions.router.RoutingConfig" title="redisvl.extensions.router.schema.RoutingConfig"><span class="pre">RoutingConfig</span></a></em><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.routing_config" title="Link to this definition">#</a></dt>
+<dd><p>Configuration for routing behavior.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.SemanticRouter.vectorizer">
+<span class="sig-name descname"><span class="pre">vectorizer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">BaseVectorizer</span></em><a class="headerlink" href="#redisvl.extensions.router.SemanticRouter.vectorizer" title="Link to this definition">#</a></dt>
+<dd><p>The vectorizer used to embed route references.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="routing-config">
+<h2>Routing Config<a class="headerlink" href="#routing-config" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.extensions.router.RoutingConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">RoutingConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_k</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregation_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DistanceAggregationMethod.avg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/schema.html#RoutingConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.RoutingConfig" title="Link to this definition">#</a></dt>
+<dd><p>Configuration for routing behavior.</p>
+<p>Create a new model by parsing and validating input data from keyword arguments.</p>
+<p>Raises ValidationError if the input data cannot be parsed to form a valid model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>distance_threshold</strong> (<em>float</em>)</p></li>
+<li><p><strong>max_k</strong> (<em>int</em>)</p></li>
+<li><p><strong>aggregation_method</strong> (<a class="reference internal" href="#redisvl.extensions.router.schema.DistanceAggregationMethod" title="redisvl.extensions.router.schema.DistanceAggregationMethod"><em>DistanceAggregationMethod</em></a>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.RoutingConfig.aggregation_method">
+<span class="sig-name descname"><span class="pre">aggregation_method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#redisvl.extensions.router.schema.DistanceAggregationMethod" title="redisvl.extensions.router.schema.DistanceAggregationMethod"><span class="pre">DistanceAggregationMethod</span></a></em><a class="headerlink" href="#redisvl.extensions.router.RoutingConfig.aggregation_method" title="Link to this definition">#</a></dt>
+<dd><p>Aggregation method to use to classify queries.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.RoutingConfig.distance_threshold">
+<span class="sig-name descname"><span class="pre">distance_threshold</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#redisvl.extensions.router.RoutingConfig.distance_threshold" title="Link to this definition">#</a></dt>
+<dd><p>The threshold for semantic distance.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.RoutingConfig.max_k">
+<span class="sig-name descname"><span class="pre">max_k</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#redisvl.extensions.router.RoutingConfig.max_k" title="Link to this definition">#</a></dt>
+<dd><p>The maximum number of top matches to return.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="route">
+<h2>Route<a class="headerlink" href="#route" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.extensions.router.Route">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">Route</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">references</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/schema.html#Route"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.Route" title="Link to this definition">#</a></dt>
+<dd><p>Model representing a routing path with associated metadata and thresholds.</p>
+<p>Create a new model by parsing and validating input data from keyword arguments.</p>
+<p>Raises ValidationError if the input data cannot be parsed to form a valid model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>)</p></li>
+<li><p><strong>references</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>)</p></li>
+<li><p><strong>metadata</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em>]</em>)</p></li>
+<li><p><strong>distance_threshold</strong> (<em>float</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.Route.distance_threshold">
+<span class="sig-name descname"><span class="pre">distance_threshold</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#redisvl.extensions.router.Route.distance_threshold" title="Link to this definition">#</a></dt>
+<dd><p>Distance threshold for matching the route.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.Route.metadata">
+<span class="sig-name descname"><span class="pre">metadata</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.extensions.router.Route.metadata" title="Link to this definition">#</a></dt>
+<dd><p>Metadata associated with the route.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.Route.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#redisvl.extensions.router.Route.name" title="Link to this definition">#</a></dt>
+<dd><p>The name of the route.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.Route.references">
+<span class="sig-name descname"><span class="pre">references</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.extensions.router.Route.references" title="Link to this definition">#</a></dt>
+<dd><p>List of reference phrases for the route.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="route-match">
+<h2>Route Match<a class="headerlink" href="#route-match" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.RouteMatch">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">RouteMatch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/schema.html#RouteMatch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.schema.RouteMatch" title="Link to this definition">#</a></dt>
+<dd><p>Model representing a matched route with distance information.</p>
+<p>Create a new model by parsing and validating input data from keyword arguments.</p>
+<p>Raises ValidationError if the input data cannot be parsed to form a valid model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>distance</strong> (<em>float</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.RouteMatch.distance">
+<span class="sig-name descname"><span class="pre">distance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#redisvl.extensions.router.schema.RouteMatch.distance" title="Link to this definition">#</a></dt>
+<dd><p>The vector distance between the statement and the matched route.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.RouteMatch.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#redisvl.extensions.router.schema.RouteMatch.name" title="Link to this definition">#</a></dt>
+<dd><p>The matched route name.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="distance-aggregation-method">
+<h2>Distance Aggregation Method<a class="headerlink" href="#distance-aggregation-method" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.DistanceAggregationMethod">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">DistanceAggregationMethod</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qualname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">boundary</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/extensions/router/schema.html#DistanceAggregationMethod"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.extensions.router.schema.DistanceAggregationMethod" title="Link to this definition">#</a></dt>
+<dd><p>Enumeration for distance aggregation methods.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.DistanceAggregationMethod.avg">
+<span class="sig-name descname"><span class="pre">avg</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'avg'</span></em><a class="headerlink" href="#redisvl.extensions.router.schema.DistanceAggregationMethod.avg" title="Link to this definition">#</a></dt>
+<dd><p>Compute the average of the vector distances.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.DistanceAggregationMethod.min">
+<span class="sig-name descname"><span class="pre">min</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'min'</span></em><a class="headerlink" href="#redisvl.extensions.router.schema.DistanceAggregationMethod.min" title="Link to this definition">#</a></dt>
+<dd><p>Compute the minimum of the vector distances.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="redisvl.extensions.router.schema.DistanceAggregationMethod.sum">
+<span class="sig-name descname"><span class="pre">sum</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'sum'</span></em><a class="headerlink" href="#redisvl.extensions.router.schema.DistanceAggregationMethod.sum" title="Link to this definition">#</a></dt>
+<dd><p>Compute the sum of the vector distances.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="session_manager.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">LLM Session Manager</p>
+      </div>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#semantic-router-api">Semantic Router</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter"><code class="docutils literal notranslate"><span class="pre">SemanticRouter</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.clear"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.clear()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.delete"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.delete()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.from_dict"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.from_dict()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.from_yaml"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.from_yaml()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.get"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.get()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.remove_route"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.remove_route()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.route_many"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.route_many()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.to_dict"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.to_dict()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.to_yaml"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.to_yaml()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.update_routing_config"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.update_routing_config()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.name"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.route_names"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.route_names</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.route_thresholds"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.route_thresholds</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.routes"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.routes</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.routing_config"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.routing_config</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.SemanticRouter.vectorizer"><code class="docutils literal notranslate"><span class="pre">SemanticRouter.vectorizer</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#routing-config">Routing Config</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.RoutingConfig"><code class="docutils literal notranslate"><span class="pre">RoutingConfig</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.RoutingConfig.aggregation_method"><code class="docutils literal notranslate"><span class="pre">RoutingConfig.aggregation_method</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.RoutingConfig.distance_threshold"><code class="docutils literal notranslate"><span class="pre">RoutingConfig.distance_threshold</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.RoutingConfig.max_k"><code class="docutils literal notranslate"><span class="pre">RoutingConfig.max_k</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#route">Route</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.Route"><code class="docutils literal notranslate"><span class="pre">Route</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.Route.distance_threshold"><code class="docutils literal notranslate"><span class="pre">Route.distance_threshold</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.Route.metadata"><code class="docutils literal notranslate"><span class="pre">Route.metadata</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.Route.name"><code class="docutils literal notranslate"><span class="pre">Route.name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.Route.references"><code class="docutils literal notranslate"><span class="pre">Route.references</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#route-match">Route Match</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.RouteMatch"><code class="docutils literal notranslate"><span class="pre">RouteMatch</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.RouteMatch.distance"><code class="docutils literal notranslate"><span class="pre">RouteMatch.distance</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.RouteMatch.name"><code class="docutils literal notranslate"><span class="pre">RouteMatch.name</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#distance-aggregation-method">Distance Aggregation Method</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.DistanceAggregationMethod"><code class="docutils literal notranslate"><span class="pre">DistanceAggregationMethod</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.DistanceAggregationMethod.avg"><code class="docutils literal notranslate"><span class="pre">DistanceAggregationMethod.avg</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.DistanceAggregationMethod.min"><code class="docutils literal notranslate"><span class="pre">DistanceAggregationMethod.min</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.extensions.router.schema.DistanceAggregationMethod.sum"><code class="docutils literal notranslate"><span class="pre">DistanceAggregationMethod.sum</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/Redis Applied AI/RedisVL/edit/main/docs/api/router.rst">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/api/router.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.3.7.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>

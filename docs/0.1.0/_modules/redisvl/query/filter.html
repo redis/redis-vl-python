@@ -1,0 +1,1152 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>redisvl.query.filter &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../../../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../../../_static/doctools.js?v=888ff710"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/redisvl/query/filter';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.1.0';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../../../_static/js/sidebar.js?v=3e4ef29d"></script>
+    <link rel="icon" href="../../../_static/redis-cube-red-white-rgb.svg"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/redis-cube-red-white-rgb.svg" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../../../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">redisvl.query.filter</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for redisvl.query.filter</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">wraps</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">from</span> <span class="nn">redisvl.utils.token_escaper</span> <span class="kn">import</span> <span class="n">TokenEscaper</span>
+
+<span class="c1"># disable mypy error for dunder method overrides</span>
+<span class="c1"># mypy: disable-error-code=&quot;override&quot;</span>
+
+
+<span class="k">class</span> <span class="nc">FilterOperator</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+    <span class="n">EQ</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">NE</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">LT</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">GT</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="n">LE</span> <span class="o">=</span> <span class="mi">5</span>
+    <span class="n">GE</span> <span class="o">=</span> <span class="mi">6</span>
+    <span class="n">OR</span> <span class="o">=</span> <span class="mi">7</span>
+    <span class="n">AND</span> <span class="o">=</span> <span class="mi">8</span>
+    <span class="n">LIKE</span> <span class="o">=</span> <span class="mi">9</span>
+    <span class="n">IN</span> <span class="o">=</span> <span class="mi">10</span>
+
+
+<span class="k">class</span> <span class="nc">FilterField</span><span class="p">:</span>
+    <span class="n">escaper</span><span class="p">:</span> <span class="n">TokenEscaper</span> <span class="o">=</span> <span class="n">TokenEscaper</span><span class="p">()</span>
+    <span class="n">OPERATORS</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_field</span> <span class="o">=</span> <span class="n">field</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">:</span> <span class="n">FilterOperator</span> <span class="o">=</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span>
+
+    <span class="k">def</span> <span class="nf">equals</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s2">&quot;FilterField&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_field</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_field</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_value</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">_value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_set_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">val</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+        <span class="n">val_type</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">type</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">type</span><span class="p">,</span> <span class="o">...</span><span class="p">]],</span>
+        <span class="n">operator</span><span class="p">:</span> <span class="n">FilterOperator</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="c1"># check that the operator is supported by this class</span>
+        <span class="k">if</span> <span class="n">operator</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPERATORS</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Operator </span><span class="si">{</span><span class="n">operator</span><span class="si">}</span><span class="s2"> not supported by </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">. &quot;</span>
+                <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;Supported operators are </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">OPERATORS</span><span class="o">.</span><span class="n">values</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># check that the value is of the proper type</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">val_type</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Right side argument passed to operator </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">OPERATORS</span><span class="p">[</span><span class="n">operator</span><span class="p">]</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;with left side &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;argument </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> must be of type </span><span class="si">{</span><span class="n">val_type</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_value</span> <span class="o">=</span> <span class="n">val</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span> <span class="o">=</span> <span class="n">operator</span>
+
+
+<span class="k">def</span> <span class="nf">check_operator_misuse</span><span class="p">(</span><span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
+    <span class="nd">@wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">wrapper</span><span class="p">(</span><span class="n">instance</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="c1"># Extracting &#39;other&#39; from positional arguments or keyword arguments</span>
+        <span class="n">other</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;other&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;other&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">other</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)):</span>
+                    <span class="n">other</span> <span class="o">=</span> <span class="n">arg</span>
+                    <span class="k">break</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">instance</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Equality operators are overridden for FilterExpression creation. Use &quot;</span>
+                <span class="s2">&quot;.equals() for equality checks&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">instance</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+
+<div class="viewcode-block" id="Tag">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Tag">[docs]</a>
+<span class="k">class</span> <span class="nc">Tag</span><span class="p">(</span><span class="n">FilterField</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A Tag filter can be applied to Tag fields&quot;&quot;&quot;</span>
+
+    <span class="n">OPERATORS</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;==&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;!=&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">IN</span><span class="p">:</span> <span class="s2">&quot;==&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">OPERATOR_MAP</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:{</span><span class="si">%s</span><span class="s2">}&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;(-@</span><span class="si">%s</span><span class="s2">:{</span><span class="si">%s</span><span class="s2">})&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">IN</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:{</span><span class="si">%s</span><span class="s2">}&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">SUPPORTED_VAL_TYPES</span> <span class="o">=</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">set</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_set_tag_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">],</span> <span class="n">operator</span><span class="p">:</span> <span class="n">FilterOperator</span>
+    <span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">set</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># &quot;if val&quot; clause removes non-truthy values from list</span>
+                <span class="n">other</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">other</span> <span class="k">if</span> <span class="n">val</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;All tags within collection must be strings&quot;</span><span class="p">)</span>
+        <span class="c1"># above to catch the &quot;&quot; case</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">other</span><span class="p">:</span>
+            <span class="n">other</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">other</span> <span class="o">=</span> <span class="p">[</span><span class="n">other</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">operator</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Tag.__eq__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Tag.__eq__">[docs]</a>
+    <span class="nd">@check_operator_misuse</span>
+    <span class="k">def</span> <span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Tag equality filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (Union[List[str], str]): The tag(s) to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Tag</span>
+
+<span class="sd">            f = Tag(&quot;brand&quot;) == &quot;nike&quot;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_tag_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Tag.__ne__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Tag.__ne__">[docs]</a>
+    <span class="nd">@check_operator_misuse</span>
+    <span class="k">def</span> <span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Tag inequality filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (Union[List[str], str]): The tag(s) to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Tag</span>
+<span class="sd">            f = Tag(&quot;brand&quot;) != &quot;nike&quot;</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_tag_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">_formatted_tag_value</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;|&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">escaper</span><span class="o">.</span><span class="n">escape</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">])</span>
+
+<div class="viewcode-block" id="Tag.__str__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Tag.__str__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the Redis Query string for the Tag filter&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;*&quot;</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPERATOR_MAP</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">]</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_field</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_formatted_tag_value</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span> <span class="nc">GeoSpec</span><span class="p">:</span>
+    <span class="n">GEO_UNITS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;m&quot;</span><span class="p">,</span> <span class="s2">&quot;km&quot;</span><span class="p">,</span> <span class="s2">&quot;mi&quot;</span><span class="p">,</span> <span class="s2">&quot;ft&quot;</span><span class="p">]</span>
+
+    <span class="c1"># class for the operand for FilterExpressions with Geo</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">longitude</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">latitude</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;km&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">unit</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">GEO_UNITS</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unit must be one of </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">GEO_UNITS</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_longitude</span> <span class="o">=</span> <span class="n">longitude</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_latitude</span> <span class="o">=</span> <span class="n">latitude</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unit</span> <span class="o">=</span> <span class="n">unit</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="GeoRadius">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.GeoRadius">[docs]</a>
+<span class="k">class</span> <span class="nc">GeoRadius</span><span class="p">(</span><span class="n">GeoSpec</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A GeoRadius is a GeoSpec representing a geographic radius.&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="GeoRadius.__init__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.GeoRadius.__init__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">longitude</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">latitude</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">radius</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;km&quot;</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a GeoRadius specification (GeoSpec)</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            longitude (float): The longitude of the center of the radius.</span>
+<span class="sd">            latitude (float): The latitude of the center of the radius.</span>
+<span class="sd">            radius (int, optional): The radius of the circle. Defaults to 1.</span>
+<span class="sd">            unit (str, optional): The unit of the radius. Defaults to &quot;km&quot;.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the unit is not one of &quot;m&quot;, &quot;km&quot;, &quot;mi&quot;, or &quot;ft&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">longitude</span><span class="p">,</span> <span class="n">latitude</span><span class="p">,</span> <span class="n">unit</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_radius</span> <span class="o">=</span> <span class="n">radius</span></div>
+
+
+    <span class="k">def</span> <span class="nf">get_args</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_longitude</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_latitude</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_radius</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unit</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="Geo">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Geo">[docs]</a>
+<span class="k">class</span> <span class="nc">Geo</span><span class="p">(</span><span class="n">FilterField</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A Geo is a FilterField representing a geographic (lat/lon) field in a</span>
+<span class="sd">    Redis index.&quot;&quot;&quot;</span>
+
+    <span class="n">OPERATORS</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;==&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;!=&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">OPERATOR_MAP</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:[</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%i</span><span class="s2"> </span><span class="si">%s</span><span class="s2">]&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;(-@</span><span class="si">%s</span><span class="s2">:[</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> </span><span class="si">%i</span><span class="s2"> </span><span class="si">%s</span><span class="s2">])&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">SUPPORTED_VAL_TYPES</span> <span class="o">=</span> <span class="p">(</span><span class="n">GeoSpec</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Geo.__eq__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Geo.__eq__">[docs]</a>
+    <span class="nd">@check_operator_misuse</span>
+    <span class="k">def</span> <span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a geographic filter within a specified GeoRadius.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (GeoRadius): The geographic spec to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Geo, GeoRadius</span>
+
+<span class="sd">            f = Geo(&quot;location&quot;) == GeoRadius(-122.4194, 37.7749, 1, unit=&quot;m&quot;)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">)</span>  <span class="c1"># type: ignore</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Geo.__ne__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Geo.__ne__">[docs]</a>
+    <span class="nd">@check_operator_misuse</span>
+    <span class="k">def</span> <span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a geographic filter outside of a specified GeoRadius.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (GeoRadius): The geographic spec to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Geo, GeoRadius</span>
+
+<span class="sd">            f = Geo(&quot;location&quot;) != GeoRadius(-122.4194, 37.7749, 1, unit=&quot;m&quot;)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">)</span>  <span class="c1"># type: ignore</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Geo.__str__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Geo.__str__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the Redis Query string for the Geo filter&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;*&quot;</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPERATOR_MAP</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">]</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_field</span><span class="p">,</span>
+            <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="o">.</span><span class="n">get_args</span><span class="p">(),</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="Num">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num">[docs]</a>
+<span class="k">class</span> <span class="nc">Num</span><span class="p">(</span><span class="n">FilterField</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A Num is a FilterField representing a numeric field in a Redis index.&quot;&quot;&quot;</span>
+
+    <span class="n">OPERATORS</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;==&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;!=&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LT</span><span class="p">:</span> <span class="s2">&quot;&lt;&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">GT</span><span class="p">:</span> <span class="s2">&quot;&gt;&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LE</span><span class="p">:</span> <span class="s2">&quot;&lt;=&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">GE</span><span class="p">:</span> <span class="s2">&quot;&gt;=&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">OPERATOR_MAP</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:[</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">]&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;(-@</span><span class="si">%s</span><span class="s2">:[</span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">])&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">GT</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:[(</span><span class="si">%s</span><span class="s2"> +inf]&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LT</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:[-inf (</span><span class="si">%s</span><span class="s2">]&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">GE</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:[</span><span class="si">%s</span><span class="s2"> +inf]&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LE</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:[-inf </span><span class="si">%s</span><span class="s2">]&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">SUPPORTED_VAL_TYPES</span> <span class="o">=</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Num.__eq__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__eq__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Numeric equality filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (int): The value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Num</span>
+<span class="sd">            f = Num(&quot;zipcode&quot;) == 90210</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Num.__ne__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__ne__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Numeric inequality filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (int): The value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Num</span>
+
+<span class="sd">            f = Num(&quot;zipcode&quot;) != 90210</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Num.__gt__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__gt__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__gt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Numeric greater than filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (int): The value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Num</span>
+
+<span class="sd">            f = Num(&quot;age&quot;) &gt; 18</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">GT</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Num.__lt__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__lt__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__lt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Numeric less than filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (int): The value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Num</span>
+
+<span class="sd">            f = Num(&quot;age&quot;) &lt; 18</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LT</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Num.__ge__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__ge__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__ge__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Numeric greater than or equal to filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (int): The value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Num</span>
+
+<span class="sd">            f = Num(&quot;age&quot;) &gt;= 18</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">GE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Num.__le__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__le__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__le__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Numeric less than or equal to filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (int): The value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Num</span>
+
+<span class="sd">            f = Num(&quot;age&quot;) &lt;= 18</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Num.__str__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Num.__str__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the Redis Query string for the Numeric filter&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;*&quot;</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span> <span class="o">==</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span> <span class="o">==</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPERATOR_MAP</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">]</span> <span class="o">%</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_field</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPERATOR_MAP</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">]</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_field</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="Text">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Text">[docs]</a>
+<span class="k">class</span> <span class="nc">Text</span><span class="p">(</span><span class="n">FilterField</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A Text is a FilterField representing a text field in a Redis index.&quot;&quot;&quot;</span>
+
+    <span class="n">OPERATORS</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;==&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s2">&quot;!=&quot;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LIKE</span><span class="p">:</span> <span class="s2">&quot;%&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">OPERATOR_MAP</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s1">&#39;@</span><span class="si">%s</span><span class="s1">:(&quot;</span><span class="si">%s</span><span class="s1">&quot;)&#39;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">:</span> <span class="s1">&#39;(-@</span><span class="si">%s</span><span class="s1">:&quot;</span><span class="si">%s</span><span class="s1">&quot;)&#39;</span><span class="p">,</span>
+        <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LIKE</span><span class="p">:</span> <span class="s2">&quot;@</span><span class="si">%s</span><span class="s2">:(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">SUPPORTED_VAL_TYPES</span> <span class="o">=</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Text.__eq__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Text.__eq__">[docs]</a>
+    <span class="nd">@check_operator_misuse</span>
+    <span class="k">def</span> <span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Text equality filter expression. These expressions yield</span>
+<span class="sd">        filters that enforce an exact match on the supplied term(s).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (str): The text value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Text</span>
+
+<span class="sd">            f = Text(&quot;job&quot;) == &quot;engineer&quot;</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">EQ</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Text.__ne__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Text.__ne__">[docs]</a>
+    <span class="nd">@check_operator_misuse</span>
+    <span class="k">def</span> <span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Text inequality filter expression. These expressions yield</span>
+<span class="sd">        negated filters on exact matches on the supplied term(s). Opposite of an</span>
+<span class="sd">        equality filter expression.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (str): The text value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Text</span>
+
+<span class="sd">            f = Text(&quot;job&quot;) != &quot;engineer&quot;</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">NE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Text.__mod__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Text.__mod__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__mod__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a Text &quot;LIKE&quot; filter expression. A flexible expression that</span>
+<span class="sd">        yields filters that can use a variety of additional operators like</span>
+<span class="sd">        wildcards (*), fuzzy matches (%%), or combinatorics (|) of the supplied</span>
+<span class="sd">        term(s).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (str): The text value to filter on.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.query.filter import Text</span>
+
+<span class="sd">            f = Text(&quot;job&quot;) % &quot;engine*&quot;         # suffix wild card match</span>
+<span class="sd">            f = Text(&quot;job&quot;) % &quot;%%engine%%&quot;      # fuzzy match w/ Levenshtein Distance</span>
+<span class="sd">            f = Text(&quot;job&quot;) % &quot;engineer|doctor&quot; # contains either term in field</span>
+<span class="sd">            f = Text(&quot;job&quot;) % &quot;engineer doctor&quot; # contains both terms in field</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_value</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SUPPORTED_VAL_TYPES</span><span class="p">,</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">LIKE</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="Text.__str__">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.Text.__str__">[docs]</a>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the Redis Query string for the Text filter&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;*&quot;</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">OPERATOR_MAP</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">]</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_field</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_value</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FilterExpression">
+<a class="viewcode-back" href="../../../api/filter.html#redisvl.query.filter.FilterExpression">[docs]</a>
+<span class="k">class</span> <span class="nc">FilterExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A FilterExpression is a logical combination of filters in RedisVL.</span>
+
+<span class="sd">    FilterExpressions can be combined using the &amp; and | operators to create</span>
+<span class="sd">    complex expressions that evaluate to the Redis Query language.</span>
+
+<span class="sd">    This presents an interface by which users can create complex queries</span>
+<span class="sd">    without having to know the Redis Query language.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        from redisvl.query.filter import Tag, Num</span>
+
+<span class="sd">        brand_is_nike = Tag(&quot;brand&quot;) == &quot;nike&quot;</span>
+<span class="sd">        price_is_over_100 = Num(&quot;price&quot;) &lt; 100</span>
+<span class="sd">        f = brand_is_nike &amp; price_is_over_100</span>
+
+<span class="sd">        print(str(f))</span>
+
+<span class="sd">        &gt;&gt;&gt; (@brand:{nike} @price:[-inf (100)])</span>
+
+<span class="sd">    This can be combined with the VectorQuery class to create a query:</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        from redisvl.query import VectorQuery</span>
+
+<span class="sd">        v = VectorQuery(</span>
+<span class="sd">            vector=[0.1, 0.1, 0.5, ...],</span>
+<span class="sd">            vector_field_name=&quot;product_embedding&quot;,</span>
+<span class="sd">            return_fields=[&quot;product_id&quot;, &quot;brand&quot;, &quot;price&quot;],</span>
+<span class="sd">            filter_expression=f,</span>
+<span class="sd">        )</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        Filter expressions are typically not called directly. Instead they are</span>
+<span class="sd">        built by combining filter statements using the &amp; and | operators.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">_filter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">operator</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">FilterOperator</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">left</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;FilterExpression&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">right</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;FilterExpression&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_filter</span> <span class="o">=</span> <span class="n">_filter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span> <span class="o">=</span> <span class="n">operator</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_left</span> <span class="o">=</span> <span class="n">left</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_right</span> <span class="o">=</span> <span class="n">right</span>
+
+    <span class="k">def</span> <span class="fm">__and__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="n">operator</span><span class="o">=</span><span class="n">FilterOperator</span><span class="o">.</span><span class="n">AND</span><span class="p">,</span> <span class="n">left</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">right</span><span class="o">=</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__or__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FilterExpression&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">FilterExpression</span><span class="p">(</span><span class="n">operator</span><span class="o">=</span><span class="n">FilterOperator</span><span class="o">.</span><span class="n">OR</span><span class="p">,</span> <span class="n">left</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">right</span><span class="o">=</span><span class="n">other</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">format_expression</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">,</span> <span class="n">operator_str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">_left</span><span class="p">,</span> <span class="n">_right</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">left</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">right</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">_left</span> <span class="o">==</span> <span class="n">_right</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_left</span>
+        <span class="k">if</span> <span class="n">_left</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span> <span class="o">!=</span> <span class="n">_right</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_right</span>
+        <span class="k">if</span> <span class="n">_right</span> <span class="o">==</span> <span class="s2">&quot;*&quot;</span> <span class="o">!=</span> <span class="n">_left</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_left</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="n">_left</span><span class="si">}{</span><span class="n">operator_str</span><span class="si">}{</span><span class="n">_right</span><span class="si">}</span><span class="s2">)&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="c1"># top level check that allows recursive calls to __str__</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_filter</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Improperly initialized FilterExpression&quot;</span><span class="p">)</span>
+
+        <span class="c1"># if theres an operator, combine expressions accordingly</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_left</span><span class="p">,</span> <span class="n">FilterExpression</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_right</span><span class="p">,</span> <span class="n">FilterExpression</span>
+            <span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                    <span class="s2">&quot;Improper combination of filters. Both left and right should be type FilterExpression&quot;</span>
+                <span class="p">)</span>
+
+            <span class="n">operator_str</span> <span class="o">=</span> <span class="s2">&quot; | &quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operator</span> <span class="o">==</span> <span class="n">FilterOperator</span><span class="o">.</span><span class="n">OR</span> <span class="k">else</span> <span class="s2">&quot; &quot;</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">format_expression</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_left</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_right</span><span class="p">,</span> <span class="n">operator_str</span><span class="p">)</span>
+
+        <span class="c1"># check that base case, the filter is set</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_filter</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Improperly initialized FilterExpression&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_filter</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>

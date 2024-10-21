@@ -1,0 +1,1059 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>redisvl.schema.schema &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../../../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../../../_static/doctools.js?v=888ff710"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/redisvl/schema/schema';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.1.0';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../../../_static/js/sidebar.js?v=3e4ef29d"></script>
+    <link rel="icon" href="../../../_static/redis-cube-red-white-rgb.svg"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/redis-cube-red-white-rgb.svg" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../../../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../../../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">redisvl.sche...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for redisvl.schema.schema</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span>
+
+<span class="kn">import</span> <span class="nn">yaml</span>
+<span class="kn">from</span> <span class="nn">pydantic.v1</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">root_validator</span>
+<span class="kn">from</span> <span class="nn">redis.commands.search.field</span> <span class="kn">import</span> <span class="n">Field</span> <span class="k">as</span> <span class="n">RedisField</span>
+
+<span class="kn">from</span> <span class="nn">redisvl.schema.fields</span> <span class="kn">import</span> <span class="n">BaseField</span><span class="p">,</span> <span class="n">FieldFactory</span>
+<span class="kn">from</span> <span class="nn">redisvl.utils.log</span> <span class="kn">import</span> <span class="n">get_logger</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">SCHEMA_VERSION</span> <span class="o">=</span> <span class="s2">&quot;0.1.0&quot;</span>
+
+
+<span class="k">class</span> <span class="nc">StorageType</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Enumeration for the storage types supported in Redis.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        HASH (str): Represents the &#39;hash&#39; storage type in Redis.</span>
+<span class="sd">        JSON (str): Represents the &#39;json&#39; storage type in Redis.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">HASH</span> <span class="o">=</span> <span class="s2">&quot;hash&quot;</span>
+    <span class="n">JSON</span> <span class="o">=</span> <span class="s2">&quot;json&quot;</span>
+
+
+<span class="k">class</span> <span class="nc">IndexInfo</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Index info includes the essential details regarding index settings,</span>
+<span class="sd">    such as its name, prefix, key separator, and storage type in Redis.</span>
+
+<span class="sd">    In yaml format, the index info section looks like:</span>
+
+<span class="sd">    .. code-block:: yaml</span>
+
+<span class="sd">        index:</span>
+<span class="sd">            name: user-index</span>
+<span class="sd">            prefix: user</span>
+<span class="sd">            key_separtor: &#39;:&#39;</span>
+<span class="sd">            storage_type: json</span>
+
+<span class="sd">    In dict format, the index info section looks like:</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        {&quot;index&quot;: {</span>
+<span class="sd">            &quot;name&quot;: &quot;user-index&quot;,</span>
+<span class="sd">            &quot;prefix&quot;: &quot;user&quot;,</span>
+<span class="sd">            &quot;key_separator&quot;: &quot;:&quot;,</span>
+<span class="sd">            &quot;storage_type&quot;: &quot;json&quot;</span>
+<span class="sd">        }}</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The unique name of the index.&quot;&quot;&quot;</span>
+    <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rvl&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The prefix used for Redis keys associated with this index.&quot;&quot;&quot;</span>
+    <span class="n">key_separator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;:&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The separator character used in designing Redis keys.&quot;&quot;&quot;</span>
+    <span class="n">storage_type</span><span class="p">:</span> <span class="n">StorageType</span> <span class="o">=</span> <span class="n">StorageType</span><span class="o">.</span><span class="n">HASH</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The storage type used in Redis (e.g., &#39;hash&#39; or &#39;json&#39;).&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="s2">&quot;prefix&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">,</span>
+            <span class="s2">&quot;key_separator&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">key_separator</span><span class="p">,</span>
+            <span class="s2">&quot;storage_type&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">storage_type</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+        <span class="p">}</span>
+
+
+<div class="viewcode-block" id="IndexSchema">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema">[docs]</a>
+<span class="k">class</span> <span class="nc">IndexSchema</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A schema definition for a search index in Redis, used in RedisVL for</span>
+<span class="sd">    configuring index settings and organizing vector and metadata fields.</span>
+
+<span class="sd">    The class offers methods to create an index schema from a YAML file or a</span>
+<span class="sd">    Python dictionary, supporting flexible schema definitions and easy</span>
+<span class="sd">    integration into various workflows.</span>
+
+<span class="sd">    An example `schema.yaml` file might look like this:</span>
+
+<span class="sd">    .. code-block:: yaml</span>
+
+<span class="sd">        version: &#39;0.1.0&#39;</span>
+
+<span class="sd">        index:</span>
+<span class="sd">            name: user-index</span>
+<span class="sd">            prefix: user</span>
+<span class="sd">            key_separator: &quot;:&quot;</span>
+<span class="sd">            storage_type: json</span>
+
+<span class="sd">        fields:</span>
+<span class="sd">            - name: user</span>
+<span class="sd">              type: tag</span>
+<span class="sd">            - name: credit_score</span>
+<span class="sd">              type: tag</span>
+<span class="sd">            - name: embedding</span>
+<span class="sd">              type: vector</span>
+<span class="sd">              attrs:</span>
+<span class="sd">                algorithm: flat</span>
+<span class="sd">                dims: 3</span>
+<span class="sd">                distance_metric: cosine</span>
+<span class="sd">                datatype: float32</span>
+
+<span class="sd">    Loading the schema for RedisVL from yaml is as simple as:</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        from redisvl.schema import IndexSchema</span>
+
+<span class="sd">        schema = IndexSchema.from_yaml(&quot;schema.yaml&quot;)</span>
+
+<span class="sd">    Loading the schema for RedisVL from dict is as simple as:</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        from redisvl.schema import IndexSchema</span>
+
+<span class="sd">        schema = IndexSchema.from_dict({</span>
+<span class="sd">            &quot;index&quot;: {</span>
+<span class="sd">                &quot;name&quot;: &quot;user-index&quot;,</span>
+<span class="sd">                &quot;prefix&quot;: &quot;user&quot;,</span>
+<span class="sd">                &quot;key_separator&quot;: &quot;:&quot;,</span>
+<span class="sd">                &quot;storage_type&quot;: &quot;json&quot;,</span>
+<span class="sd">            },</span>
+<span class="sd">            &quot;fields&quot;: [</span>
+<span class="sd">                {&quot;name&quot;: &quot;user&quot;, &quot;type&quot;: &quot;tag&quot;},</span>
+<span class="sd">                {&quot;name&quot;: &quot;credit_score&quot;, &quot;type&quot;: &quot;tag&quot;},</span>
+<span class="sd">                {</span>
+<span class="sd">                    &quot;name&quot;: &quot;embedding&quot;,</span>
+<span class="sd">                    &quot;type&quot;: &quot;vector&quot;,</span>
+<span class="sd">                    &quot;attrs&quot;: {</span>
+<span class="sd">                        &quot;algorithm&quot;: &quot;flat&quot;,</span>
+<span class="sd">                        &quot;dims&quot;: 3,</span>
+<span class="sd">                        &quot;distance_metric&quot;: &quot;cosine&quot;,</span>
+<span class="sd">                        &quot;datatype&quot;: &quot;float32&quot;</span>
+<span class="sd">                    }</span>
+<span class="sd">                }</span>
+<span class="sd">            ]</span>
+<span class="sd">        })</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        The `fields` attribute in the schema must contain unique field names to ensure</span>
+<span class="sd">        correct and unambiguous field references.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">index</span><span class="p">:</span> <span class="n">IndexInfo</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Details of the basic index configurations.&quot;&quot;&quot;</span>
+    <span class="n">fields</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BaseField</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fields associated with the search index and their properties&quot;&quot;&quot;</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">SCHEMA_VERSION</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Version of the underlying index schema.&quot;&quot;&quot;</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_make_field</span><span class="p">(</span><span class="n">storage_type</span><span class="p">,</span> <span class="o">**</span><span class="n">field_inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BaseField</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse raw field inputs derived from YAML or dict.</span>
+
+<span class="sd">        Validates and sets the &#39;path&#39; attribute for fields when using JSON storage type.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Create field from inputs</span>
+        <span class="n">field</span> <span class="o">=</span> <span class="n">FieldFactory</span><span class="o">.</span><span class="n">create_field</span><span class="p">(</span><span class="o">**</span><span class="n">field_inputs</span><span class="p">)</span>
+        <span class="c1"># Handle field path and storage type</span>
+        <span class="k">if</span> <span class="n">storage_type</span> <span class="o">==</span> <span class="n">StorageType</span><span class="o">.</span><span class="n">JSON</span><span class="p">:</span>
+            <span class="n">field</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">path</span> <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">path</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;$.</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Path attribute for field &#39;</span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&#39; will be ignored for HASH storage type.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">field</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">field</span>
+
+    <span class="nd">@root_validator</span><span class="p">(</span><span class="n">pre</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">validate_and_create_fields</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate uniqueness of field names and create valid field instances.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">IndexInfo</span><span class="p">(</span><span class="o">**</span><span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;index&quot;</span><span class="p">))</span>
+        <span class="n">input_fields</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fields&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">prepared_fields</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BaseField</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1"># Handle old fields format temporarily</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_fields</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;New schema format introduced; please update schema spec.&quot;</span><span class="p">)</span>
+        <span class="c1"># Process and create fields</span>
+        <span class="k">for</span> <span class="n">field_input</span> <span class="ow">in</span> <span class="n">input_fields</span><span class="p">:</span>
+            <span class="n">field</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_make_field</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">storage_type</span><span class="p">,</span> <span class="o">**</span><span class="n">field_input</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">prepared_fields</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Duplicate field name: </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">. Field names must be unique across all fields.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">prepared_fields</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span>
+
+        <span class="n">values</span><span class="p">[</span><span class="s2">&quot;fields&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">prepared_fields</span>
+        <span class="n">values</span><span class="p">[</span><span class="s2">&quot;index&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">index</span>
+        <span class="k">return</span> <span class="n">values</span>
+
+<div class="viewcode-block" id="IndexSchema.from_yaml">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.from_yaml">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_yaml</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;IndexSchema&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create an IndexSchema from a YAML file.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            file_path (str): The path to the YAML file.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            IndexSchema: The index schema.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.schema import IndexSchema</span>
+<span class="sd">            schema = IndexSchema.from_yaml(&quot;schema.yaml&quot;)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid file path: </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">fp</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Schema file </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> does not exist&quot;</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">yaml_data</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="o">**</span><span class="n">yaml_data</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="IndexSchema.from_dict">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.from_dict">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;IndexSchema&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create an IndexSchema from a dictionary.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            data (Dict[str, Any]): The index schema data.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            IndexSchema: The index schema.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            from redisvl.schema import IndexSchema</span>
+
+<span class="sd">            schema = IndexSchema.from_dict({</span>
+<span class="sd">                &quot;index&quot;: {</span>
+<span class="sd">                    &quot;name&quot;: &quot;docs-index&quot;,</span>
+<span class="sd">                    &quot;prefix&quot;: &quot;docs&quot;,</span>
+<span class="sd">                    &quot;storage_type&quot;: &quot;hash&quot;,</span>
+<span class="sd">                },</span>
+<span class="sd">                &quot;fields&quot;: [</span>
+<span class="sd">                    {</span>
+<span class="sd">                        &quot;name&quot;: &quot;doc-id&quot;,</span>
+<span class="sd">                        &quot;type&quot;: &quot;tag&quot;</span>
+<span class="sd">                    },</span>
+<span class="sd">                    {</span>
+<span class="sd">                        &quot;name&quot;: &quot;doc-embedding&quot;,</span>
+<span class="sd">                        &quot;type&quot;: &quot;vector&quot;,</span>
+<span class="sd">                        &quot;attrs&quot;: {</span>
+<span class="sd">                            &quot;algorithm&quot;: &quot;flat&quot;,</span>
+<span class="sd">                            &quot;dims&quot;: 1536</span>
+<span class="sd">                        }</span>
+<span class="sd">                    }</span>
+<span class="sd">                ]</span>
+<span class="sd">            })</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="o">**</span><span class="n">data</span><span class="p">)</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">field_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A list of field names associated with the index schema.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List[str]: A list of field names from the schema.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">redis_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">RedisField</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A list of core redis-py field definitions based on the</span>
+<span class="sd">        current schema fields.</span>
+
+<span class="sd">        Converts RedisVL field definitions into a format suitable for use with</span>
+<span class="sd">        redis-py, facilitating the creation and management of index structures in</span>
+<span class="sd">        the Redis database.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List[RedisField]: A list of redis-py field definitions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">redis_fields</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">RedisField</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">field</span><span class="o">.</span><span class="n">as_redis_field</span><span class="p">()</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="n">redis_fields</span>
+
+<div class="viewcode-block" id="IndexSchema.add_field">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.add_field">[docs]</a>
+    <span class="k">def</span> <span class="nf">add_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_inputs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Adds a single field to the index schema based on the specified field</span>
+<span class="sd">        type and attributes.</span>
+
+<span class="sd">        This method allows for the addition of individual fields to the schema,</span>
+<span class="sd">        providing flexibility in defining the structure of the index.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            field_inputs (Dict[str, Any]): A field to add.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the field name or type are not provided or if the name</span>
+<span class="sd">                already exists within the schema.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            # Add a tag field</span>
+<span class="sd">            schema.add_field({&quot;name&quot;: &quot;user&quot;, &quot;type&quot;: &quot;tag})</span>
+
+<span class="sd">            # Add a vector field</span>
+<span class="sd">            schema.add_field({</span>
+<span class="sd">                &quot;name&quot;: &quot;user-embedding&quot;,</span>
+<span class="sd">                &quot;type&quot;: &quot;vector&quot;,</span>
+<span class="sd">                &quot;attrs&quot;: {</span>
+<span class="sd">                    &quot;dims&quot;: 1024,</span>
+<span class="sd">                    &quot;algorithm&quot;: &quot;flat&quot;,</span>
+<span class="sd">                    &quot;datatype&quot;: &quot;float32&quot;</span>
+<span class="sd">                }</span>
+<span class="sd">            })</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Parse field inputs</span>
+        <span class="n">field</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_field</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">storage_type</span><span class="p">,</span> <span class="o">**</span><span class="n">field_inputs</span><span class="p">)</span>
+        <span class="c1"># Check for duplicates</span>
+        <span class="k">if</span> <span class="n">field</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Duplicate field name: </span><span class="si">{</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">. Field names must be unique across all fields for this index.&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># Add field</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span></div>
+
+
+<div class="viewcode-block" id="IndexSchema.add_fields">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.add_fields">[docs]</a>
+    <span class="k">def</span> <span class="nf">add_fields</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extends the schema with additional fields.</span>
+
+<span class="sd">        This method allows dynamically adding new fields to the index schema. It</span>
+<span class="sd">        processes a list of field definitions.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            fields (List[Dict[str, Any]]): A list of fields to add.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If a field with the same name already exists in the</span>
+<span class="sd">                schema.</span>
+
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            schema.add_fields([</span>
+<span class="sd">                {&quot;name&quot;: &quot;user&quot;, &quot;type&quot;: &quot;tag&quot;},</span>
+<span class="sd">                {&quot;name&quot;: &quot;bio&quot;, &quot;type&quot;: &quot;text&quot;},</span>
+<span class="sd">                {</span>
+<span class="sd">                    &quot;name&quot;: &quot;user-embedding&quot;,</span>
+<span class="sd">                    &quot;type&quot;: &quot;vector&quot;,</span>
+<span class="sd">                    &quot;attrs&quot;: {</span>
+<span class="sd">                        &quot;dims&quot;: 1024,</span>
+<span class="sd">                        &quot;algorithm&quot;: &quot;flat&quot;,</span>
+<span class="sd">                        &quot;datatype&quot;: &quot;float32&quot;</span>
+<span class="sd">                    }</span>
+<span class="sd">                }</span>
+<span class="sd">            ])</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_field</span><span class="p">(</span><span class="n">field</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="IndexSchema.remove_field">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.remove_field">[docs]</a>
+    <span class="k">def</span> <span class="nf">remove_field</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Removes a field from the schema based on the specified name.</span>
+
+<span class="sd">        This method is useful for dynamically altering the schema by removing</span>
+<span class="sd">        existing fields.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            field_name (str): The name of the field to be removed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">field_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Field &#39;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&#39; does not exist in the schema&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">fields</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span></div>
+
+
+    <span class="k">def</span> <span class="nf">generate_fields</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+        <span class="n">strict</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">ignore_fields</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generates a list of extracted field specs from a sample data point.</span>
+
+<span class="sd">        This method simplifies the process of creating a schema by inferring</span>
+<span class="sd">        field types and attributes from sample data. It&#39;s particularly useful</span>
+<span class="sd">        during the development process while dealing with datasets containing</span>
+<span class="sd">        numerous fields, reducing the need for manual specification.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            data (Dict[str, Any]): Sample data used to infer field definitions.</span>
+<span class="sd">            strict (bool, optional): If True, raises an error on failing to</span>
+<span class="sd">                infer a field type. Defaults to False.</span>
+<span class="sd">            ignore_fields (List[str], optional): A list of field names to</span>
+<span class="sd">                exclude from processing. Defaults to an empty list.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dict[str, List[Dict[str, Any]]]: A dictionary with inferred field</span>
+<span class="sd">                types and attributes.</span>
+
+<span class="sd">        Notes:</span>
+<span class="sd">            - Vector fields are not generated by this method.</span>
+<span class="sd">            - This method employs heuristics and may not always correctly infer</span>
+<span class="sd">                field types.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fields</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="n">ignore_fields</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">field_type</span> <span class="o">=</span> <span class="n">TypeInferrer</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                <span class="n">fields</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">FieldFactory</span><span class="o">.</span><span class="n">create_field</span><span class="p">(</span>
+                        <span class="n">field_type</span><span class="p">,</span>
+                        <span class="n">field_name</span><span class="p">,</span>
+                    <span class="p">)</span><span class="o">.</span><span class="n">dict</span><span class="p">()</span>
+                <span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+                    <span class="k">raise</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                        <span class="n">message</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Error inferring field type for </span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+        <span class="k">return</span> <span class="n">fields</span>
+
+<div class="viewcode-block" id="IndexSchema.to_dict">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.to_dict">[docs]</a>
+    <span class="k">def</span> <span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert the index schema to a dictionary.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dict[str, Any]: The index schema as a dictionary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dict_schema</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dict</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># cast fields back to a pure list</span>
+        <span class="n">dict_schema</span><span class="p">[</span><span class="s2">&quot;fields&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">field</span> <span class="k">for</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">dict_schema</span><span class="p">[</span><span class="s2">&quot;fields&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="n">dict_schema</span></div>
+
+
+<div class="viewcode-block" id="IndexSchema.to_yaml">
+<a class="viewcode-back" href="../../../api/schema.html#redisvl.schema.IndexSchema.to_yaml">[docs]</a>
+    <span class="k">def</span> <span class="nf">to_yaml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Write the index schema to a YAML file.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            file_path (str): The path to the YAML file.</span>
+<span class="sd">            overwrite (bool): Whether to overwrite the file if it already exists.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            FileExistsError: If the file already exists and overwrite is False.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">fp</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">overwrite</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileExistsError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Schema file </span><span class="si">{</span><span class="n">file_path</span><span class="si">}</span><span class="s2"> already exists.&quot;</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">yaml_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+            <span class="n">yaml</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">yaml_data</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">class</span> <span class="nc">TypeInferrer</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Infers the type of a field based on its value.&quot;&quot;&quot;</span>
+
+    <span class="n">GEO_PATTERN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+        <span class="sa">r</span><span class="s2">&quot;^\s*[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)\s*$&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">TYPE_METHOD_MAP</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;numeric&quot;</span><span class="p">:</span> <span class="s2">&quot;_is_numeric&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;geo&quot;</span><span class="p">:</span> <span class="s2">&quot;_is_geographic&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tag&quot;</span><span class="p">:</span> <span class="s2">&quot;_is_tag&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;_is_text&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">infer</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Infers the field type for a given value.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            value: The value to infer the type of.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The inferred field type as a string.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the type cannot be inferred.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">type_name</span><span class="p">,</span> <span class="n">method_name</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">TYPE_METHOD_MAP</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">method_name</span><span class="p">)(</span><span class="n">value</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">type_name</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unable to infer type for value: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_is_numeric</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the value is numeric.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_is_tag</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the value is a tag.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">set</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">value</span>
+        <span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_is_text</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the value is text.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_is_geographic</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the value is a geographic coordinate.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">cls</span><span class="o">.</span><span class="n">GEO_PATTERN</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>
