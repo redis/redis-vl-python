@@ -155,12 +155,16 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Must pass in a str value for cohere embedding input_type. \
                     See https://docs.cohere.com/reference/embed."
             )
+        
         if preprocess:
             text = preprocess(text)
+        
+        dtype = kwargs.pop("dtype", None)
+    
         embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
         ).embeddings[0]
-        return self._process_embedding(embedding, as_buffer, **kwargs)
+        return self._process_embedding(embedding, as_buffer, dtype)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -223,6 +227,8 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Must pass in a str value for cohere embedding input_type.\
                     See https://docs.cohere.com/reference/embed."
             )
+        
+        dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -230,7 +236,7 @@ class CohereTextVectorizer(BaseVectorizer):
                 texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
-                self._process_embedding(embedding, as_buffer, **kwargs)
+                self._process_embedding(embedding, as_buffer, dtype)
                 for embedding in response.embeddings
             ]
         return embeddings

@@ -139,12 +139,14 @@ class MistralAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
-
+        
+        dtype = kwargs.pop("dtype", None)
+        
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embeddings(model=self.model, input=batch)
             embeddings += [
-                self._process_embedding(r.embedding, as_buffer, **kwargs)
+                self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
             ]
         return embeddings
@@ -181,8 +183,11 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
+        
+        dtype = kwargs.pop("dtype", None)
+
         result = self._client.embeddings(model=self.model, input=[text])
-        return self._process_embedding(result.data[0].embedding, as_buffer, **kwargs)
+        return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -218,12 +223,14 @@ class MistralAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
+        
+        dtype = kwargs.pop("dtype", None)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._aclient.embeddings(model=self.model, input=batch)
             embeddings += [
-                self._process_embedding(r.embedding, as_buffer, **kwargs)
+                self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
             ]
         return embeddings
@@ -260,8 +267,11 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         if preprocess:
             text = preprocess(text)
+        
+        dtype = kwargs.pop("dtype", None)
+
         result = await self._aclient.embeddings(model=self.model, input=[text])
-        return self._process_embedding(result.data[0].embedding, as_buffer, **kwargs)
+        return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @property
     def type(self) -> str:
