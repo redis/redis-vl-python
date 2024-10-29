@@ -14,6 +14,9 @@ fields = [
         "type": "text",
         "attrs": {"no_stem": True, "sortable": True},
     },
+    {"name": "test_tag", "type": "tag", "attrs": {"case_sensitive": True}},
+    {"name": "test_numeric", "type": "numeric"},
+    {"name": "test_numeric_attrs", "type": "numeric", "attrs": {"sortable": True}},
 ]
 
 

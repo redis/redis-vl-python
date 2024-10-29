@@ -98,17 +98,22 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         return vector_attrs
 
     def parse_attrs(attrs):
-        # 'SORTABLE', 'UNF', 'NOSTEM' don't have corresponding values.
+        # 'SORTABLE', 'NOSTEM' don't have corresponding values.
         # Their presence indicates boolean True
+        # TODO 'WITHSUFFIXTRIE' is another boolean attr, but is not returned by ft.info
         original = attrs.copy()
         parsed_attrs = {}
         if "NOSTEM" in attrs:
             parsed_attrs["no_stem"] = True
             attrs.remove("NOSTEM")
-        for special_attr in ["SORTABLE", "UNF"]:
-            if special_attr in attrs:
-                parsed_attrs[special_attr.lower()] = True
-                attrs.remove(special_attr)
+        if "CASESENSITIVE" in attrs:
+            parsed_attrs["case_sensitive"] = True
+            attrs.remove("CASESENSITIVE")
+        if "SORTABLE" in attrs:
+            parsed_attrs["sortable"] = True
+            attrs.remove("SORTABLE")
+            if "UNF" in attrs:
+                attrs.remove("UNF")  # UNF present on sortable numeric fields only
 
         try:
             parsed_attrs.update(
