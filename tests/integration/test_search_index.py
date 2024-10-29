@@ -6,7 +6,15 @@ from redisvl.redis.connection import RedisConnectionFactory, validate_modules
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 
-fields = [{"name": "test", "type": "tag"}]
+fields = [
+    {"name": "test", "type": "tag"},
+    {"name": "test_text", "type": "text"},
+    {
+        "name": "test_text_attrs",
+        "type": "text",
+        "attrs": {"no_stem": True, "sortable": True},
+    },
+]
 
 
 @pytest.fixture
@@ -87,7 +95,7 @@ def test_search_index_from_existing_complex(client):
                 "name": "age",
                 "type": "numeric",
                 "path": "$.metadata.age",
-                "attrs": {"sortable": False},
+                "attrs": {"sortable": True},
             },
             {
                 "name": "user_embedding",

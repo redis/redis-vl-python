@@ -98,7 +98,25 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         return vector_attrs
 
     def parse_attrs(attrs):
-        return {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
+        # 'SORTABLE', 'UNF', 'NOSTEM' don't have corresponding values.
+        # Their presence indicates boolean True
+        original = attrs.copy()
+        parsed_attrs = {}
+        if "NOSTEM" in attrs:
+            parsed_attrs["no_stem"] = True
+            attrs.remove("NOSTEM")
+        for special_attr in ["SORTABLE", "UNF"]:
+            if special_attr in attrs:
+                parsed_attrs[special_attr.lower()] = True
+                attrs.remove(special_attr)
+
+        try:
+            parsed_attrs.update(
+                {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
+            )
+        except IndexError as e:
+            raise IndexError(f"Error parsing index attributes {original}, {str(e)}")
+        return parsed_attrs
 
     schema_fields = []
 
