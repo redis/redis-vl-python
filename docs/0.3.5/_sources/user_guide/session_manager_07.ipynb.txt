@@ -1,0 +1,349 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# LLM Session Memory"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Large Language Models are inherently stateless and have no knowledge of previous interactions with a user, or even of previous parts of the current conversation. While this may not be noticable when asking simple questions, it becomes a hinderance when engaging in long running conversations that rely on conversational context.\n",
+    "\n",
+    "The solution to this problem is to append the previous conversation history to each subsequent call to the LLM.\n",
+    "\n",
+    "This notebook will show how to use Redis to structure and store and retrieve this conversational session memory."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "12:24:11 redisvl.index.index INFO   Index already exists, not overwriting.\n"
+     ]
+    }
+   ],
+   "source": [
+    "from redisvl.extensions.session_manager import StandardSessionManager\n",
+    "chat_session = StandardSessionManager(name='student tutor')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "To align with common LLM APIs, Redis stores messages with `role` and `content` fields.\n",
+    "The supported roles are \"system\", \"user\" and \"llm\".\n",
+    "\n",
+    "You can store messages one at a time or all at once."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "chat_session.add_message({\"role\":\"system\", \"content\":\"You are a helpful geography tutor, giving simple and short answers to questions about Europen countries.\"})\n",
+    "chat_session.add_messages([\n",
+    "    {\"role\":\"user\", \"content\":\"What is the capital of France?\"},\n",
+    "    {\"role\":\"llm\", \"content\":\"The capital is Paris.\"},\n",
+    "    {\"role\":\"user\", \"content\":\"And what is the capital of Spain?\"},\n",
+    "    {\"role\":\"llm\", \"content\":\"The capital is Madrid.\"},\n",
+    "    {\"role\":\"user\", \"content\":\"What is the population of Great Britain?\"},\n",
+    "    {\"role\":\"llm\", \"content\":\"As of 2023 the population of Great Britain is approximately 67 million people.\"},]\n",
+    "    )"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "At any point we can retrieve the recent history of the conversation. It will be ordered by entry time."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'role': 'llm', 'content': 'The capital is Paris.'}\n",
+      "{'role': 'user', 'content': 'And what is the capital of Spain?'}\n",
+      "{'role': 'llm', 'content': 'The capital is Madrid.'}\n",
+      "{'role': 'user', 'content': 'What is the population of Great Britain?'}\n",
+      "{'role': 'llm', 'content': 'As of 2023 the population of Great Britain is approximately 67 million people.'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "context = chat_session.get_recent()\n",
+    "for message in context:\n",
+    "    print(message)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In many LLM flows the conversation progresses in a series of prompt and response pairs. session managers offer a convienience function `store()` to add these simply."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'role': 'user', 'content': 'And what is the capital of Spain?'}\n",
+      "{'role': 'llm', 'content': 'The capital is Madrid.'}\n",
+      "{'role': 'user', 'content': 'What is the population of Great Britain?'}\n",
+      "{'role': 'llm', 'content': 'As of 2023 the population of Great Britain is approximately 67 million people.'}\n",
+      "{'role': 'user', 'content': 'what is the size of England compared to Portugal?'}\n",
+      "{'role': 'llm', 'content': 'England is larger in land area than Portal by about 15000 square miles.'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "prompt = \"what is the size of England compared to Portugal?\"\n",
+    "response = \"England is larger in land area than Portal by about 15000 square miles.\"\n",
+    "chat_session.store(prompt, response)\n",
+    "\n",
+    "context = chat_session.get_recent(top_k=6)\n",
+    "for message in context:\n",
+    "    print(message)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Managing multiple users and conversations"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "For applications that need to handle multiple conversations concurrently, Redis supports tagging messages to keep conversations separated."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'role': 'system', 'content': 'You are a helpful algebra tutor, giving simple answers to math problems.'}\n",
+      "{'role': 'user', 'content': 'What is the value of x in the equation 2x + 3 = 7?'}\n",
+      "{'role': 'llm', 'content': 'The value of x is 2.'}\n",
+      "{'role': 'user', 'content': 'What is the value of y in the equation 3y - 5 = 7?'}\n",
+      "{'role': 'llm', 'content': 'The value of y is 4.'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "chat_session.add_message({\"role\":\"system\", \"content\":\"You are a helpful algebra tutor, giving simple answers to math problems.\"}, session_tag='student two')\n",
+    "chat_session.add_messages([\n",
+    "    {\"role\":\"user\", \"content\":\"What is the value of x in the equation 2x + 3 = 7?\"},\n",
+    "    {\"role\":\"llm\", \"content\":\"The value of x is 2.\"},\n",
+    "    {\"role\":\"user\", \"content\":\"What is the value of y in the equation 3y - 5 = 7?\"},\n",
+    "    {\"role\":\"llm\", \"content\":\"The value of y is 4.\"}],\n",
+    "    session_tag='student two'\n",
+    "    )\n",
+    "\n",
+    "for math_message in chat_session.get_recent(session_tag='student two'):\n",
+    "    print(math_message)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Semantic conversation memory\n",
+    "For longer conversations our list of messages keeps growing. Since LLMs are stateless we have to continue to pass this conversation history on each subsequent call to ensure the LLM has the correct context.\n",
+    "\n",
+    "A typical flow looks like this:\n",
+    "```\n",
+    "while True:\n",
+    "    prompt = input('enter your next question')\n",
+    "    context = chat_session.get_recent()\n",
+    "    response = LLM_api_call(prompt=prompt, context=context)\n",
+    "    chat_session.store(prompt, response)\n",
+    "```\n",
+    "\n",
+    "This works, but as context keeps growing so too does our LLM token count, which increases latency and cost.\n",
+    "\n",
+    "Conversation histories can be truncated, but that can lead to losing relevant information that appeared early on.\n",
+    "\n",
+    "A better solution is to pass only the relevant conversational context on each subsequent call.\n",
+    "\n",
+    "For this, RedisVL has the `SemanticSessionManager`, which uses vector similarity search to return only semantically relevant sections of the conversation."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "12:24:15 redisvl.index.index INFO   Index already exists, not overwriting.\n"
+     ]
+    }
+   ],
+   "source": [
+    "from redisvl.extensions.session_manager import SemanticSessionManager\n",
+    "semantic_session = SemanticSessionManager(name='tutor')\n",
+    "\n",
+    "semantic_session.add_messages(chat_session.get_recent(top_k=8))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'role': 'user', 'content': 'what is the size of England compared to Portugal?'}\n",
+      "{'role': 'llm', 'content': 'England is larger in land area than Portal by about 15000 square miles.'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "prompt = \"what have I learned about the size of England?\"\n",
+    "semantic_session.set_distance_threshold(0.35)\n",
+    "context = semantic_session.get_relevant(prompt)\n",
+    "for message in context:\n",
+    "    print(message)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "You can adjust the degree of semantic similarity needed to be included in your context.\n",
+    "\n",
+    "Setting a distance threshold close to 0.0 will require an exact semantic match, while a distance threshold of 1.0 will include everthing."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'role': 'user', 'content': 'what is the size of England compared to Portugal?'}\n",
+      "{'role': 'llm', 'content': 'England is larger in land area than Portal by about 15000 square miles.'}\n",
+      "{'role': 'user', 'content': 'What is the population of Great Britain?'}\n",
+      "{'role': 'llm', 'content': 'As of 2023 the population of Great Britain is approximately 67 million people.'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "semantic_session.set_distance_threshold(0.7)\n",
+    "\n",
+    "larger_context = semantic_session.get_relevant(prompt)\n",
+    "for message in larger_context:\n",
+    "    print(message)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Conversation control\n",
+    "\n",
+    "LLMs can hallucinate on occasion and when this happens it can be useful to prune incorrect information from conversational histories so this incorrect information doesn't continue to be passed as context."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'role': 'user', 'content': 'What is the population of Great Britain?'}\n",
+      "{'role': 'llm', 'content': 'As of 2023 the population of Great Britain is approximately 67 million people.'}\n",
+      "{'role': 'user', 'content': 'what is the size of England compared to Portugal?'}\n",
+      "{'role': 'llm', 'content': 'England is larger in land area than Portal by about 15000 square miles.'}\n",
+      "{'role': 'user', 'content': 'what is the smallest country in Europe?'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "semantic_session.store(\n",
+    "    prompt=\"what is the smallest country in Europe?\",\n",
+    "    response=\"Monaco is the smallest country in Europe at 0.78 square miles.\" # Incorrect. Vatican City is the smallest country in Europe\n",
+    "    )\n",
+    "\n",
+    "# get the key of the incorrect message\n",
+    "context = semantic_session.get_recent(top_k=1, raw=True)\n",
+    "bad_key = context[0]['entry_id']\n",
+    "semantic_session.drop(bad_key)\n",
+    "\n",
+    "corrected_context = semantic_session.get_recent()\n",
+    "for message in corrected_context:\n",
+    "    print(message)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "chat_session.clear()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.12.2"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}

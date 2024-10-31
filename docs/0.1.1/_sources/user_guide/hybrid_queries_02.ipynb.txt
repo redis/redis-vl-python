@@ -1,0 +1,1205 @@
+{
+ "cells": [
+  {
+   "attachments": {},
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Querying with RedisVL\n",
+    "\n",
+    "In this notebook, we will explore more complex queries that can be performed with ``redisvl``\n",
+    "\n",
+    "Before running this notebook, be sure to\n",
+    "1. Have installed ``redisvl`` and have that environment active for this notebook.\n",
+    "2. Have a running Redis instance with RediSearch > 2.4 running."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>user</th><th>age</th><th>job</th><th>credit_score</th><th>office_location</th><th>user_embedding</th></tr><tr><td>john</td><td>18</td><td>engineer</td><td>high</td><td>-122.4194,37.7749</td><td>b'\\xcd\\xcc\\xcc=\\xcd\\xcc\\xcc=\\x00\\x00\\x00?'</td></tr><tr><td>derrick</td><td>14</td><td>doctor</td><td>low</td><td>-122.4194,37.7749</td><td>b'\\xcd\\xcc\\xcc=\\xcd\\xcc\\xcc=\\x00\\x00\\x00?'</td></tr><tr><td>nancy</td><td>94</td><td>doctor</td><td>high</td><td>-122.4194,37.7749</td><td>b'333?\\xcd\\xcc\\xcc=\\x00\\x00\\x00?'</td></tr><tr><td>tyler</td><td>100</td><td>engineer</td><td>high</td><td>-122.0839,37.3861</td><td>b'\\xcd\\xcc\\xcc=\\xcd\\xcc\\xcc>\\x00\\x00\\x00?'</td></tr><tr><td>tim</td><td>12</td><td>dermatologist</td><td>high</td><td>-122.0839,37.3861</td><td>b'\\xcd\\xcc\\xcc>\\xcd\\xcc\\xcc>\\x00\\x00\\x00?'</td></tr><tr><td>taimur</td><td>15</td><td>CEO</td><td>low</td><td>-122.0839,37.3861</td><td>b'\\x9a\\x99\\x19?\\xcd\\xcc\\xcc=\\x00\\x00\\x00?'</td></tr><tr><td>joe</td><td>35</td><td>dentist</td><td>medium</td><td>-122.0839,37.3861</td><td>b'fff?fff?\\xcd\\xcc\\xcc='</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "import pickle\n",
+    "from jupyterutils import table_print, result_print\n",
+    "\n",
+    "# load in the example data and printing utils\n",
+    "data = pickle.load(open(\"hybrid_example_data.pkl\", \"rb\"))\n",
+    "table_print(data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "schema = {\n",
+    "    \"index\": {\n",
+    "        \"name\": \"user_queries\",\n",
+    "        \"prefix\": \"user_queries_docs\",\n",
+    "        \"storage_type\": \"hash\", # default setting -- HASH\n",
+    "    },\n",
+    "    \"fields\": [\n",
+    "        {\"name\": \"user\", \"type\": \"tag\"},\n",
+    "        {\"name\": \"credit_score\", \"type\": \"tag\"},\n",
+    "        {\"name\": \"job\", \"type\": \"text\"},\n",
+    "        {\"name\": \"age\", \"type\": \"numeric\"},\n",
+    "        {\"name\": \"office_location\", \"type\": \"geo\"},\n",
+    "        {\n",
+    "            \"name\": \"user_embedding\",\n",
+    "            \"type\": \"vector\",\n",
+    "            \"attrs\": {\n",
+    "                \"dims\": 3,\n",
+    "                \"distance_metric\": \"cosine\",\n",
+    "                \"algorithm\": \"flat\",\n",
+    "                \"datatype\": \"float32\"\n",
+    "            }\n",
+    "\n",
+    "        }\n",
+    "    ],\n",
+    "}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from redisvl.index import SearchIndex\n",
+    "\n",
+    "# construct a search index from the schema\n",
+    "index = SearchIndex.from_dict(schema)\n",
+    "\n",
+    "# connect to local redis instance\n",
+    "index.connect(\"redis://localhost:6379\")\n",
+    "\n",
+    "# create the index (no data yet)\n",
+    "index.create(overwrite=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\u001b[32m08:48:47\u001b[0m \u001b[34m[RedisVL]\u001b[0m \u001b[1;30mINFO\u001b[0m   Indices:\n",
+      "\u001b[32m08:48:47\u001b[0m \u001b[34m[RedisVL]\u001b[0m \u001b[1;30mINFO\u001b[0m   1. user_queries\n"
+     ]
+    }
+   ],
+   "source": [
+    "# use the CLI to see the created index\n",
+    "!rvl index listall"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "keys = index.load(data)"
+   ]
+  },
+  {
+   "attachments": {},
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Hybrid Queries\n",
+    "\n",
+    "Hybrid queries are queries that combine multiple types of filters. For example, you may want to search for a user that is a certain age, has a certain job, and is within a certain distance of a location. This is a hybrid query that combines numeric, tag, and geographic filters."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Tag Filters\n",
+    "\n",
+    "Tag filters are filters that are applied to tag fields. These are fields that are not tokenized and are used to store a single categorical value."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from redisvl.query import VectorQuery\n",
+    "from redisvl.query.filter import Tag\n",
+    "\n",
+    "t = Tag(\"credit_score\") == \"high\"\n",
+    "\n",
+    "v = VectorQuery([0.1, 0.1, 0.5],\n",
+    "                \"user_embedding\",\n",
+    "                return_fields=[\"user\", \"credit_score\", \"age\", \"job\", \"office_location\"],\n",
+    "                filter_expression=t)\n",
+    "\n",
+    "\n",
+    "results = index.query(v)\n",
+    "result_print(results)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# negation\n",
+    "t = Tag(\"credit_score\") != \"high\"\n",
+    "\n",
+    "v.set_filter(t)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# use multiple tags as a list\n",
+    "t = Tag(\"credit_score\") == [\"high\", \"medium\"]\n",
+    "\n",
+    "v.set_filter(t)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# use multiple tags as a set (to enforce uniqueness)\n",
+    "t = Tag(\"credit_score\") == set([\"high\", \"high\", \"medium\"])\n",
+    "\n",
+    "v.set_filter(t)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "What about scenarios where you might want to dynamically generate a list of tags? Have no fear. RedisVL allows you to do this gracefully without having to check for the **empty case**. The **empty case** is when you attempt to run a Tag filter on a field with no defined values to match:\n",
+    "\n",
+    "`Tag(\"credit_score\") == []`\n",
+    "\n",
+    "An empty filter like the one above will yield a `*` Redis query filter which implies the base case -- there is no filter here to use."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# gracefully fallback to \"*\" filter if empty case\n",
+    "empty_case = Tag(\"credit_score\") == []\n",
+    "\n",
+    "v.set_filter(empty_case)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Numeric Filters\n",
+    "\n",
+    "Numeric filters are filters that are applied to numeric fields and can be used to isolate a range of values for a given field."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from redisvl.query.filter import Num\n",
+    "\n",
+    "numeric_filter = Num(\"age\") > 15\n",
+    "\n",
+    "v.set_filter(numeric_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# exact match query\n",
+    "numeric_filter = Num(\"age\") == 14\n",
+    "\n",
+    "v.set_filter(numeric_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# negation\n",
+    "numeric_filter = Num(\"age\") != 14\n",
+    "\n",
+    "v.set_filter(numeric_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Text Filters\n",
+    "\n",
+    "Text filters are filters that are applied to text fields. These filters are applied to the entire text field. For example, if you have a text field that contains the text \"The quick brown fox jumps over the lazy dog\", a text filter of \"quick\" will match this text field."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from redisvl.query.filter import Text\n",
+    "\n",
+    "# exact match filter -- document must contain the exact word doctor\n",
+    "text_filter = Text(\"job\") == \"doctor\"\n",
+    "\n",
+    "v.set_filter(text_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# negation -- document must not contain the exact word doctor\n",
+    "negate_text_filter = Text(\"job\") != \"doctor\"\n",
+    "\n",
+    "v.set_filter(negate_text_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# wildcard match filter\n",
+    "wildcard_filter = Text(\"job\") % \"doct*\"\n",
+    "\n",
+    "v.set_filter(wildcard_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# fuzzy match filter\n",
+    "fuzzy_match = Text(\"job\") % \"%%engine%%\"\n",
+    "\n",
+    "v.set_filter(fuzzy_match)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# conditional -- match documents with job field containing engineer OR doctor\n",
+    "conditional = Text(\"job\") % \"engineer|doctor\"\n",
+    "\n",
+    "v.set_filter(conditional)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# gracefully fallback to \"*\" filter if empty case\n",
+    "empty_case = Text(\"job\") % \"\"\n",
+    "\n",
+    "v.set_filter(empty_case)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Geographic Filters\n",
+    "\n",
+    "Geographic filters are filters that are applied to geographic fields. These filters are used to find results that are within a certain distance of a given point. The distance is specified in kilometers, miles, meters, or feet. A radius can also be specified to find results within a certain radius of a given point."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from redisvl.query.filter import Geo, GeoRadius\n",
+    "\n",
+    "# within 10 km of San Francisco office\n",
+    "geo_filter = Geo(\"office_location\") == GeoRadius(-122.4194, 37.7749, 10, \"km\")\n",
+    "\n",
+    "v.set_filter(geo_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# within 100 km Radius of San Francisco office\n",
+    "geo_filter = Geo(\"office_location\") == GeoRadius(-122.4194, 37.7749, 100, \"km\")\n",
+    "\n",
+    "v.set_filter(geo_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# not within 10 km Radius of San Francisco office\n",
+    "geo_filter = Geo(\"office_location\") != GeoRadius(-122.4194, 37.7749, 10, \"km\")\n",
+    "\n",
+    "v.set_filter(geo_filter)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Combining Filters\n",
+    "\n",
+    "In this example, we will combine a numeric filter with a tag filter. We will search for users that are between the ages of 20 and 30 and have a job of \"engineer\".\n",
+    "\n",
+    "### Intersection (\"and\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "t = Tag(\"credit_score\") == \"high\"\n",
+    "low = Num(\"age\") >= 18\n",
+    "high = Num(\"age\") <= 100\n",
+    "\n",
+    "combined = t & low & high\n",
+    "\n",
+    "v = VectorQuery([0.1, 0.1, 0.5],\n",
+    "                \"user_embedding\",\n",
+    "                return_fields=[\"user\", \"credit_score\", \"age\", \"job\",  \"office_location\"],\n",
+    "                filter_expression=combined)\n",
+    "\n",
+    "\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Union (\"or\")\n",
+    "\n",
+    "The union of two queries is the set of all results that are returned by either of the two queries. The union of two queries is performed using the `|` operator."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "low = Num(\"age\") < 18\n",
+    "high = Num(\"age\") > 93\n",
+    "\n",
+    "combined = low | high\n",
+    "\n",
+    "v.set_filter(combined)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Dynamic Combination\n",
+    "\n",
+    "There are often situations where you may or may not want to use a filter in a\n",
+    "given query. As shown above, filters will except the ``None`` type and revert\n",
+    "to a wildcard filter essentially returning all results.\n",
+    "\n",
+    "The same goes for filter combinations which enables rapid reuse of filters in\n",
+    "requests with different parameters as shown below. This removes the need for\n",
+    "a number of \"if-then\" conditionals to test for the empty case.\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def make_filter(age=None, credit=None, job=None):\n",
+    "    flexible_filter = (\n",
+    "        (Num(\"age\") > age) &\n",
+    "        (Tag(\"credit_score\") == credit) &\n",
+    "        (Text(\"job\") % job)\n",
+    "    )\n",
+    "    return flexible_filter\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# all parameters\n",
+    "combined = make_filter(age=18, credit=\"high\", job=\"engineer\")\n",
+    "v.set_filter(combined)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# just age and credit_score\n",
+    "combined = make_filter(age=18, credit=\"high\")\n",
+    "v.set_filter(combined)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# just age\n",
+    "combined = make_filter(age=18)\n",
+    "v.set_filter(combined)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th><th>office_location</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr><tr><td>0.217882037163</td><td>taimur</td><td>low</td><td>15</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>nancy</td><td>high</td><td>94</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>joe</td><td>medium</td><td>35</td><td>dentist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# no filters\n",
+    "combined = make_filter()\n",
+    "v.set_filter(combined)\n",
+    "result_print(index.query(v))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Filter Queries\n",
+    "\n",
+    "In some cases, you may not want to run a vector query, but just use a ``FilterExpression`` similar to a SQL query. The ``FilterQuery`` class enable this functionality. It is similar to the ``VectorQuery`` class but soley takes a ``FilterExpression``."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>user</th><th>credit_score</th><th>age</th><th>job</th></tr><tr><td>derrick</td><td>low</td><td>14</td><td>doctor</td></tr><tr><td>taimur</td><td>low</td><td>15</td><td>CEO</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from redisvl.query import FilterQuery\n",
+    "\n",
+    "has_low_credit = Tag(\"credit_score\") == \"low\"\n",
+    "\n",
+    "filter_query = FilterQuery(\n",
+    "    return_fields=[\"user\", \"credit_score\", \"age\", \"job\", \"location\"],\n",
+    "    filter_expression=has_low_credit\n",
+    ")\n",
+    "\n",
+    "results = index.query(filter_query)\n",
+    "\n",
+    "result_print(results)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Count Queries\n",
+    "\n",
+    "In some cases, you may need to use a ``FilterExpression`` to execute a ``CountQuery`` that simply returns the count of the number of entities in the pertaining set. It is similar to the ``FilterQuery`` class but does not return the values of the underlying data."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "2 records match the filter expression @credit_score:{low} for the given index.\n"
+     ]
+    }
+   ],
+   "source": [
+    "from redisvl.query import CountQuery\n",
+    "\n",
+    "has_low_credit = Tag(\"credit_score\") == \"low\"\n",
+    "\n",
+    "filter_query = CountQuery(filter_expression=has_low_credit)\n",
+    "\n",
+    "count = index.query(filter_query)\n",
+    "\n",
+    "print(f\"{count} records match the filter expression {str(has_low_credit)} for the given index.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Range Queries\n",
+    "\n",
+    "Range Queries are a useful method to perform a vector search where only results within a vector ``distance_threshold`` are returned. This enables the user to find all records within their dataset that are similar to a query vector where \"similar\" is defined by a quantitative value."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td></tr><tr><td>0.109129190445</td><td>tyler</td><td>high</td><td>100</td><td>engineer</td></tr><tr><td>0.158808946609</td><td>tim</td><td>high</td><td>12</td><td>dermatologist</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from redisvl.query import RangeQuery\n",
+    "\n",
+    "range_query = RangeQuery(\n",
+    "    vector=[0.1, 0.1, 0.5],\n",
+    "    vector_field_name=\"user_embedding\",\n",
+    "    return_fields=[\"user\", \"credit_score\", \"age\", \"job\", \"location\"],\n",
+    "    distance_threshold=0.2\n",
+    ")\n",
+    "\n",
+    "# same as the vector query or filter query\n",
+    "results = index.query(range_query)\n",
+    "\n",
+    "result_print(results)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "We can also change the distance threshold of the query object between uses if we like. Here we will set ``distance_threshold==0.1``. This means that the query object will return all matches that are within 0.1 of the query object. This is a small distance, so we expect to get fewer matches than before."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td></tr><tr><td>0</td><td>derrick</td><td>low</td><td>14</td><td>doctor</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "range_query.set_distance_threshold(0.1)\n",
+    "\n",
+    "result_print(index.query(range_query))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Range queries can also be used with filters like any other query type. The following limits the results to only include records with a ``job`` of ``engineer`` while also being within the vector range (aka distance)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>user</th><th>credit_score</th><th>age</th><th>job</th></tr><tr><td>0</td><td>john</td><td>high</td><td>18</td><td>engineer</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "is_engineer = Text(\"job\") == \"engineer\"\n",
+    "\n",
+    "range_query.set_filter(is_engineer)\n",
+    "\n",
+    "result_print(index.query(range_query))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Other Redis Queries\n",
+    "\n",
+    "Sometimes there may be a case where RedisVL does not cover the explicit functionality required by the query either because of new releases that haven't been implemented in the client, or because of a very specific use case. In these cases, it is possible to use the ``SearchIndex.search`` method to execute query with a redis-py ``Query`` object or through a raw redis string.\n",
+    "\n",
+    "For example\n",
+    "\n",
+    "### Redis-Py"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table><tr><th>vector_distance</th><th>age</th><th>user</th><th>credit_score</th><th>job</th><th>office_location</th></tr><tr><td>0.109129190445</td><td>100</td><td>tyler</td><td>high</td><td>engineer</td><td>-122.0839,37.3861</td></tr><tr><td>0.266666650772</td><td>94</td><td>nancy</td><td>high</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.653301358223</td><td>35</td><td>joe</td><td>medium</td><td>dentist</td><td>-122.0839,37.3861</td></tr><tr><td>0</td><td>18</td><td>john</td><td>high</td><td>engineer</td><td>-122.4194,37.7749</td></tr><tr><td>0.217882037163</td><td>15</td><td>taimur</td><td>low</td><td>CEO</td><td>-122.0839,37.3861</td></tr><tr><td>0</td><td>14</td><td>derrick</td><td>low</td><td>doctor</td><td>-122.4194,37.7749</td></tr><tr><td>0.158808946609</td><td>12</td><td>tim</td><td>high</td><td>dermatologist</td><td>-122.0839,37.3861</td></tr></table>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Manipulate the Redis-py Query object\n",
+    "redis_py_query = v.query\n",
+    "\n",
+    "# choose to sort by age instead of vector distance\n",
+    "redis_py_query.sort_by(\"age\", asc=False)\n",
+    "\n",
+    "# run the query with the ``SearchIndex.search`` method\n",
+    "result = index.search(redis_py_query, v.params)\n",
+    "result_print(result)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Raw Redis Query String\n",
+    "\n",
+    "So one case might be where you simply want to have a search that only filters on a tag field and don't need other functionality. Conversely, you may need to have a query that is more complex than what is currently supported by RedisVL. In these cases, you can use the ``SearchIndex.search`` again with just a raw redis query string."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'@credit_score:{high}'"
+      ]
+     },
+     "execution_count": 36,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "t = Tag(\"credit_score\") == \"high\"\n",
+    "\n",
+    "str(t)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "{'id': 'user_queries_docs:0e511391dcf346639669bdba70a189c0', 'payload': None, 'user': 'john', 'age': '18', 'job': 'engineer', 'credit_score': 'high', 'office_location': '-122.4194,37.7749', 'user_embedding': '==\\x00\\x00\\x00?'}\n",
+      "{'id': 'user_queries_docs:d204e8e5df90467dbff5b2fb6f800a78', 'payload': None, 'user': 'nancy', 'age': '94', 'job': 'doctor', 'credit_score': 'high', 'office_location': '-122.4194,37.7749', 'user_embedding': '333?=\\x00\\x00\\x00?'}\n",
+      "{'id': 'user_queries_docs:7cf3d6b1a4044966b4f0c5d3725a5e03', 'payload': None, 'user': 'tyler', 'age': '100', 'job': 'engineer', 'credit_score': 'high', 'office_location': '-122.0839,37.3861', 'user_embedding': '=>\\x00\\x00\\x00?'}\n",
+      "{'id': 'user_queries_docs:f6581edaaeaf432a85c1d1df8fdf5edc', 'payload': None, 'user': 'tim', 'age': '12', 'job': 'dermatologist', 'credit_score': 'high', 'office_location': '-122.0839,37.3861', 'user_embedding': '>>\\x00\\x00\\x00?'}\n"
+     ]
+    }
+   ],
+   "source": [
+    "results = index.search(str(t))\n",
+    "for r in results.docs:\n",
+    "    print(r.__dict__)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Inspecting Queries\n",
+    "\n",
+    "In this example, we will show how to inspect the query that is generated by RedisVL. This can be useful for debugging purposes or for understanding how the query is being executed.\n",
+    "\n",
+    "Let's again take the example of a query that combines a numeric filter with a tag filter. This will search for users that are between the ages of between 18 and 100, have a high credit score, and sort by closest vector distance to the query vector."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'((@credit_score:{high} @age:[18 +inf]) @age:[-inf 100])=>[KNN 10 @user_embedding $vector AS vector_distance] RETURN 6 user credit_score age job office_location vector_distance SORTBY vector_distance ASC DIALECT 2 LIMIT 0 10'"
+      ]
+     },
+     "execution_count": 38,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "t = Tag(\"credit_score\") == \"high\"\n",
+    "low = Num(\"age\") >= 18\n",
+    "high = Num(\"age\") <= 100\n",
+    "\n",
+    "combined = t & low & high\n",
+    "\n",
+    "v.set_filter(combined)\n",
+    "\n",
+    "# Using the str() method, you can see what Redis Query this will emit.\n",
+    "str(v)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Cleanup\n",
+    "index.delete()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3.8.13 ('redisvl2')",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.12"
+  },
+  "orig_nbformat": 4,
+  "vscode": {
+   "interpreter": {
+    "hash": "9b1e6e9c2967143209c2f955cb869d1d3234f92dc4787f49f155f3abbdfb1316"
+   }
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}

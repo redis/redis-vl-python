@@ -1,0 +1,2052 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="../_static/Redis_Favicon_32x32_Red.png" sizes="32x32" rel="icon" type="image/png">
+    <link href="../_static/Redis_Favicon_16x16_Red.png" sizes="16x16" rel="icon" type="image/png">
+    <link href="../_static/Redis_Favicon_144x144_Red.png" sizes="80x80" rel="icon" type="image/png">
+    <title>Query &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../_static/documentation_options.js?v=71af5d5d"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/query';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.3.6';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../_static/js/sidebar.js?v=e96da022"></script>
+    <link rel="icon" href="../_static/Redis_Favicon_32x32_Red.png"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Filter" href="filter.html" />
+    <link rel="prev" title="Search Index Classes" href="searchindex.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/Redis_Favicon_32x32_Red.png" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/redis/redis-vl-python" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../user_guide/index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/redis/redis-vl-python" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">RedisVL API</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Query</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="query">
+<h1>Query<a class="headerlink" href="#query" title="Link to this heading">#</a></h1>
+<p>Query classes in RedisVL provide a structured way to define simple or complex
+queries for different use cases. Each query class wraps the <code class="docutils literal notranslate"><span class="pre">redis-py</span></code> Query module
+<a class="github reference external" href="https://github.com/redis/redis-py/blob/master/redis/commands/search/query.py">redis/redis-py</a> with extended functionality for ease-of-use.</p>
+<section id="vectorquery">
+<h2>VectorQuery<a class="headerlink" href="#vectorquery" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">VectorQuery</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vector</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vector_field_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'float32'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_results</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_score</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dialect</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/query/query.html#VectorQuery"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.query.VectorQuery" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseVectorQuery</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseQuery</span></code></p>
+<p>A query for running a vector search along with an optional filter
+expression.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vector</strong> (<em>List</em><em>[</em><em>float</em><em>]</em>) – The vector to perform the vector search with.</p></li>
+<li><p><strong>vector_field_name</strong> (<em>str</em>) – The name of the vector field to search
+against in the database.</p></li>
+<li><p><strong>return_fields</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – The declared fields to return with search
+results.</p></li>
+<li><p><strong>filter_expression</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>, </em><em>optional</em>) – A filter to apply
+along with the vector search. Defaults to None.</p></li>
+<li><p><strong>dtype</strong> (<em>str</em><em>, </em><em>optional</em>) – The dtype of the vector. Defaults to
+“float32”.</p></li>
+<li><p><strong>num_results</strong> (<em>int</em><em>, </em><em>optional</em>) – The top k results to return from the
+vector search. Defaults to 10.</p></li>
+<li><p><strong>return_score</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return the vector
+distance. Defaults to True.</p></li>
+<li><p><strong>dialect</strong> (<em>int</em><em>, </em><em>optional</em>) – The RediSearch query dialect.
+Defaults to 2.</p></li>
+<li><p><strong>sort_by</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – The field to order the results by. Defaults
+to None. Results will be ordered by vector distance.</p></li>
+<li><p><strong>in_order</strong> (<em>bool</em>) – Requires the terms in the field to have
+the same order as the terms in the query filter, regardless of
+the offsets between them. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not of type redisvl.query.FilterExpression</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Learn more about vector queries in Redis: <a class="reference external" href="https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search">https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search</a></p>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.dialect">
+<span class="sig-name descname"><span class="pre">dialect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dialect</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.dialect" title="Link to this definition">#</a></dt>
+<dd><p>Add a dialect field to the query.</p>
+<ul class="simple">
+<li><p><strong>dialect</strong> - dialect version to execute the query under</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dialect</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.expander">
+<span class="sig-name descname"><span class="pre">expander</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">expander</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.expander" title="Link to this definition">#</a></dt>
+<dd><p>Add a expander field to the query.</p>
+<ul class="simple">
+<li><p><strong>expander</strong> - the name of the expander</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>expander</strong> (<em>str</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.in_order">
+<span class="sig-name descname"><span class="pre">in_order</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.in_order" title="Link to this definition">#</a></dt>
+<dd><p>Match only documents where the query terms appear in
+the same order in the document.
+i.e. for the query “hello world”, we do not match “world hello”</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.language">
+<span class="sig-name descname"><span class="pre">language</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">language</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.language" title="Link to this definition">#</a></dt>
+<dd><p>Analyze the query as being in the specified language.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>language</strong> (<em>str</em>) – The language (e.g. <cite>chinese</cite> or <cite>english</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.limit_fields">
+<span class="sig-name descname"><span class="pre">limit_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.limit_fields" title="Link to this definition">#</a></dt>
+<dd><p>Limit the search to specific TEXT fields only.</p>
+<ul class="simple">
+<li><p><strong>fields</strong>: A list of strings, case sensitive field names</p></li>
+</ul>
+<p>from the defined schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fields</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.limit_ids">
+<span class="sig-name descname"><span class="pre">limit_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.limit_ids" title="Link to this definition">#</a></dt>
+<dd><p>Limit the results to a specific set of pre-known document
+ids of any length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.no_content">
+<span class="sig-name descname"><span class="pre">no_content</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.no_content" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to only return ids and not the document content.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.no_stopwords">
+<span class="sig-name descname"><span class="pre">no_stopwords</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.no_stopwords" title="Link to this definition">#</a></dt>
+<dd><p>Prevent the query from being filtered for stopwords.
+Only useful in very big queries that you are certain contain
+no stopwords.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.paging">
+<span class="sig-name descname"><span class="pre">paging</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.paging" title="Link to this definition">#</a></dt>
+<dd><p>Set the paging for the query (defaults to 0..10).</p>
+<ul class="simple">
+<li><p><strong>offset</strong>: Paging offset for the results. Defaults to 0</p></li>
+<li><p><strong>num</strong>: How many results do we want</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>offset</strong> (<em>int</em>)</p></li>
+<li><p><strong>num</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.query_string">
+<span class="sig-name descname"><span class="pre">query_string</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.query_string" title="Link to this definition">#</a></dt>
+<dd><p>Return the query string of this query only.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.return_fields">
+<span class="sig-name descname"><span class="pre">return_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.return_fields" title="Link to this definition">#</a></dt>
+<dd><p>Add fields to return fields.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.scorer">
+<span class="sig-name descname"><span class="pre">scorer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scorer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.scorer" title="Link to this definition">#</a></dt>
+<dd><p>Use a different scoring function to evaluate document relevance.
+Default is <cite>TFIDF</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>scorer</strong> (<em>str</em>) – The scoring function to use
+(e.g. <cite>TFIDF.DOCNORM</cite> or <cite>BM25</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.set_filter">
+<span class="sig-name descname"><span class="pre">set_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.set_filter" title="Link to this definition">#</a></dt>
+<dd><p>Set the filter expression for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter_expression</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>]</em><em>, </em><em>optional</em>) – The filter
+expression or query string to use on the query.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not a valid FilterExpression or string.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.slop">
+<span class="sig-name descname"><span class="pre">slop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">slop</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.slop" title="Link to this definition">#</a></dt>
+<dd><p>Allow a maximum of N intervening non matched terms between
+phrase terms (0 means exact phrase).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>slop</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.sort_by">
+<span class="sig-name descname"><span class="pre">sort_by</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">asc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.sort_by" title="Link to this definition">#</a></dt>
+<dd><p>Add a sortby field to the query.</p>
+<ul class="simple">
+<li><p><strong>field</strong> - the name of the field to sort by</p></li>
+<li><p><strong>asc</strong> - when <cite>True</cite>, sorting will be done in asceding order</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field</strong> (<em>str</em>)</p></li>
+<li><p><strong>asc</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.timeout" title="Link to this definition">#</a></dt>
+<dd><p>overrides the timeout parameter of the module</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>timeout</strong> (<em>float</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.verbatim">
+<span class="sig-name descname"><span class="pre">verbatim</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.verbatim" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to be verbatim, i.e. use no query expansion
+or stemming.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.with_payloads">
+<span class="sig-name descname"><span class="pre">with_payloads</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.with_payloads" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document payloads.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.with_scores">
+<span class="sig-name descname"><span class="pre">with_scores</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorQuery.with_scores" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document search scores.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.filter">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><span class="pre">FilterExpression</span></a></em><a class="headerlink" href="#redisvl.query.VectorQuery.filter" title="Link to this definition">#</a></dt>
+<dd><p>The filter expression for the query.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.params">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.query.VectorQuery.params" title="Link to this definition">#</a></dt>
+<dd><p>Return the parameters for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The parameters for the query.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dict[str, Any]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorQuery.query">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">BaseQuery</span></em><a class="headerlink" href="#redisvl.query.VectorQuery.query" title="Link to this definition">#</a></dt>
+<dd><p>Return self as the query object.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="vectorrangequery">
+<h2>VectorRangeQuery<a class="headerlink" href="#vectorrangequery" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">VectorRangeQuery</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vector</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vector_field_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'float32'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_results</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_score</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dialect</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/query/query.html#VectorRangeQuery"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.query.VectorRangeQuery" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseVectorQuery</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseQuery</span></code></p>
+<p>A query for running a filtered vector search based on semantic
+distance threshold.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vector</strong> (<em>List</em><em>[</em><em>float</em><em>]</em>) – The vector to perform the range query with.</p></li>
+<li><p><strong>vector_field_name</strong> (<em>str</em>) – The name of the vector field to search
+against in the database.</p></li>
+<li><p><strong>return_fields</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – The declared fields to return with search
+results.</p></li>
+<li><p><strong>filter_expression</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>, </em><em>optional</em>) – A filter to apply
+along with the range query. Defaults to None.</p></li>
+<li><p><strong>dtype</strong> (<em>str</em><em>, </em><em>optional</em>) – The dtype of the vector. Defaults to
+“float32”.</p></li>
+<li><p><strong>distance_threshold</strong> (<em>str</em><em>, </em><em>float</em>) – The threshold for vector distance.
+A smaller threshold indicates a stricter semantic search.
+Defaults to 0.2.</p></li>
+<li><p><strong>num_results</strong> (<em>int</em>) – The MAX number of results to return.
+Defaults to 10.</p></li>
+<li><p><strong>return_score</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return the vector
+distance. Defaults to True.</p></li>
+<li><p><strong>dialect</strong> (<em>int</em><em>, </em><em>optional</em>) – The RediSearch query dialect.
+Defaults to 2.</p></li>
+<li><p><strong>sort_by</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – The field to order the results by. Defaults
+to None. Results will be ordered by vector distance.</p></li>
+<li><p><strong>in_order</strong> (<em>bool</em>) – Requires the terms in the field to have
+the same order as the terms in the query filter, regardless of
+the offsets between them. Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not of type redisvl.query.FilterExpression</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Learn more about vector range queries: <a class="reference external" href="https://redis.io/docs/interact/search-and-query/search/vectors/#range-query">https://redis.io/docs/interact/search-and-query/search/vectors/#range-query</a></p>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.dialect">
+<span class="sig-name descname"><span class="pre">dialect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dialect</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.dialect" title="Link to this definition">#</a></dt>
+<dd><p>Add a dialect field to the query.</p>
+<ul class="simple">
+<li><p><strong>dialect</strong> - dialect version to execute the query under</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dialect</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.expander">
+<span class="sig-name descname"><span class="pre">expander</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">expander</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.expander" title="Link to this definition">#</a></dt>
+<dd><p>Add a expander field to the query.</p>
+<ul class="simple">
+<li><p><strong>expander</strong> - the name of the expander</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>expander</strong> (<em>str</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.in_order">
+<span class="sig-name descname"><span class="pre">in_order</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.in_order" title="Link to this definition">#</a></dt>
+<dd><p>Match only documents where the query terms appear in
+the same order in the document.
+i.e. for the query “hello world”, we do not match “world hello”</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.language">
+<span class="sig-name descname"><span class="pre">language</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">language</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.language" title="Link to this definition">#</a></dt>
+<dd><p>Analyze the query as being in the specified language.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>language</strong> (<em>str</em>) – The language (e.g. <cite>chinese</cite> or <cite>english</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.limit_fields">
+<span class="sig-name descname"><span class="pre">limit_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.limit_fields" title="Link to this definition">#</a></dt>
+<dd><p>Limit the search to specific TEXT fields only.</p>
+<ul class="simple">
+<li><p><strong>fields</strong>: A list of strings, case sensitive field names</p></li>
+</ul>
+<p>from the defined schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fields</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.limit_ids">
+<span class="sig-name descname"><span class="pre">limit_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.limit_ids" title="Link to this definition">#</a></dt>
+<dd><p>Limit the results to a specific set of pre-known document
+ids of any length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.no_content">
+<span class="sig-name descname"><span class="pre">no_content</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.no_content" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to only return ids and not the document content.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.no_stopwords">
+<span class="sig-name descname"><span class="pre">no_stopwords</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.no_stopwords" title="Link to this definition">#</a></dt>
+<dd><p>Prevent the query from being filtered for stopwords.
+Only useful in very big queries that you are certain contain
+no stopwords.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.paging">
+<span class="sig-name descname"><span class="pre">paging</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.paging" title="Link to this definition">#</a></dt>
+<dd><p>Set the paging for the query (defaults to 0..10).</p>
+<ul class="simple">
+<li><p><strong>offset</strong>: Paging offset for the results. Defaults to 0</p></li>
+<li><p><strong>num</strong>: How many results do we want</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>offset</strong> (<em>int</em>)</p></li>
+<li><p><strong>num</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.query_string">
+<span class="sig-name descname"><span class="pre">query_string</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.query_string" title="Link to this definition">#</a></dt>
+<dd><p>Return the query string of this query only.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.return_fields">
+<span class="sig-name descname"><span class="pre">return_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.return_fields" title="Link to this definition">#</a></dt>
+<dd><p>Add fields to return fields.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.scorer">
+<span class="sig-name descname"><span class="pre">scorer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scorer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.scorer" title="Link to this definition">#</a></dt>
+<dd><p>Use a different scoring function to evaluate document relevance.
+Default is <cite>TFIDF</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>scorer</strong> (<em>str</em>) – The scoring function to use
+(e.g. <cite>TFIDF.DOCNORM</cite> or <cite>BM25</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.set_distance_threshold">
+<span class="sig-name descname"><span class="pre">set_distance_threshold</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distance_threshold</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/query/query.html#VectorRangeQuery.set_distance_threshold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.query.VectorRangeQuery.set_distance_threshold" title="Link to this definition">#</a></dt>
+<dd><p>Set the distance threshold for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>distance_threshold</strong> (<em>float</em>) – vector distance</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.set_filter">
+<span class="sig-name descname"><span class="pre">set_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.set_filter" title="Link to this definition">#</a></dt>
+<dd><p>Set the filter expression for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter_expression</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>]</em><em>, </em><em>optional</em>) – The filter
+expression or query string to use on the query.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not a valid FilterExpression or string.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.slop">
+<span class="sig-name descname"><span class="pre">slop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">slop</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.slop" title="Link to this definition">#</a></dt>
+<dd><p>Allow a maximum of N intervening non matched terms between
+phrase terms (0 means exact phrase).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>slop</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.sort_by">
+<span class="sig-name descname"><span class="pre">sort_by</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">asc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.sort_by" title="Link to this definition">#</a></dt>
+<dd><p>Add a sortby field to the query.</p>
+<ul class="simple">
+<li><p><strong>field</strong> - the name of the field to sort by</p></li>
+<li><p><strong>asc</strong> - when <cite>True</cite>, sorting will be done in asceding order</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field</strong> (<em>str</em>)</p></li>
+<li><p><strong>asc</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.timeout" title="Link to this definition">#</a></dt>
+<dd><p>overrides the timeout parameter of the module</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>timeout</strong> (<em>float</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.verbatim">
+<span class="sig-name descname"><span class="pre">verbatim</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.verbatim" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to be verbatim, i.e. use no query expansion
+or stemming.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.with_payloads">
+<span class="sig-name descname"><span class="pre">with_payloads</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.with_payloads" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document payloads.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.with_scores">
+<span class="sig-name descname"><span class="pre">with_scores</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.VectorRangeQuery.with_scores" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document search scores.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.distance_threshold">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">distance_threshold</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#redisvl.query.VectorRangeQuery.distance_threshold" title="Link to this definition">#</a></dt>
+<dd><p>Return the distance threshold for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The distance threshold for the query.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.filter">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><span class="pre">FilterExpression</span></a></em><a class="headerlink" href="#redisvl.query.VectorRangeQuery.filter" title="Link to this definition">#</a></dt>
+<dd><p>The filter expression for the query.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.params">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.query.VectorRangeQuery.params" title="Link to this definition">#</a></dt>
+<dd><p>Return the parameters for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The parameters for the query.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dict[str, Any]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.VectorRangeQuery.query">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">BaseQuery</span></em><a class="headerlink" href="#redisvl.query.VectorRangeQuery.query" title="Link to this definition">#</a></dt>
+<dd><p>Return self as the query object.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="filterquery">
+<h2>FilterQuery<a class="headerlink" href="#filterquery" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">FilterQuery</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_results</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dialect</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/query/query.html#FilterQuery"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.query.FilterQuery" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseQuery</span></code></p>
+<p>A query for running a filtered search with a filter expression.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filter_expression</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>]</em>) – The optional filter
+expression to query with. Defaults to ‘*’.</p></li>
+<li><p><strong>return_fields</strong> (<em>Optional</em><em>[</em><em>List</em><em>[</em><em>str</em><em>]</em><em>]</em><em>, </em><em>optional</em>) – The fields to return.</p></li>
+<li><p><strong>num_results</strong> (<em>Optional</em><em>[</em><em>int</em><em>]</em><em>, </em><em>optional</em>) – The number of results to return. Defaults to 10.</p></li>
+<li><p><strong>dialect</strong> (<em>int</em><em>, </em><em>optional</em>) – The query dialect. Defaults to 2.</p></li>
+<li><p><strong>sort_by</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – The field to order the results by. Defaults to None.</p></li>
+<li><p><strong>in_order</strong> (<em>bool</em><em>, </em><em>optional</em>) – Requires the terms in the field to have the same order as the terms in the query filter. Defaults to False.</p></li>
+<li><p><strong>params</strong> (<em>Optional</em><em>[</em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>, </em><em>optional</em>) – The parameters for the query. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not of type redisvl.query.FilterExpression</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.dialect">
+<span class="sig-name descname"><span class="pre">dialect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dialect</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.dialect" title="Link to this definition">#</a></dt>
+<dd><p>Add a dialect field to the query.</p>
+<ul class="simple">
+<li><p><strong>dialect</strong> - dialect version to execute the query under</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dialect</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.expander">
+<span class="sig-name descname"><span class="pre">expander</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">expander</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.expander" title="Link to this definition">#</a></dt>
+<dd><p>Add a expander field to the query.</p>
+<ul class="simple">
+<li><p><strong>expander</strong> - the name of the expander</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>expander</strong> (<em>str</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.in_order">
+<span class="sig-name descname"><span class="pre">in_order</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.in_order" title="Link to this definition">#</a></dt>
+<dd><p>Match only documents where the query terms appear in
+the same order in the document.
+i.e. for the query “hello world”, we do not match “world hello”</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.language">
+<span class="sig-name descname"><span class="pre">language</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">language</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.language" title="Link to this definition">#</a></dt>
+<dd><p>Analyze the query as being in the specified language.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>language</strong> (<em>str</em>) – The language (e.g. <cite>chinese</cite> or <cite>english</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.limit_fields">
+<span class="sig-name descname"><span class="pre">limit_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.limit_fields" title="Link to this definition">#</a></dt>
+<dd><p>Limit the search to specific TEXT fields only.</p>
+<ul class="simple">
+<li><p><strong>fields</strong>: A list of strings, case sensitive field names</p></li>
+</ul>
+<p>from the defined schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fields</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.limit_ids">
+<span class="sig-name descname"><span class="pre">limit_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.limit_ids" title="Link to this definition">#</a></dt>
+<dd><p>Limit the results to a specific set of pre-known document
+ids of any length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.no_content">
+<span class="sig-name descname"><span class="pre">no_content</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.no_content" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to only return ids and not the document content.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.no_stopwords">
+<span class="sig-name descname"><span class="pre">no_stopwords</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.no_stopwords" title="Link to this definition">#</a></dt>
+<dd><p>Prevent the query from being filtered for stopwords.
+Only useful in very big queries that you are certain contain
+no stopwords.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.paging">
+<span class="sig-name descname"><span class="pre">paging</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.paging" title="Link to this definition">#</a></dt>
+<dd><p>Set the paging for the query (defaults to 0..10).</p>
+<ul class="simple">
+<li><p><strong>offset</strong>: Paging offset for the results. Defaults to 0</p></li>
+<li><p><strong>num</strong>: How many results do we want</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>offset</strong> (<em>int</em>)</p></li>
+<li><p><strong>num</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.query_string">
+<span class="sig-name descname"><span class="pre">query_string</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.query_string" title="Link to this definition">#</a></dt>
+<dd><p>Return the query string of this query only.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.return_fields">
+<span class="sig-name descname"><span class="pre">return_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.return_fields" title="Link to this definition">#</a></dt>
+<dd><p>Add fields to return fields.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.scorer">
+<span class="sig-name descname"><span class="pre">scorer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scorer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.scorer" title="Link to this definition">#</a></dt>
+<dd><p>Use a different scoring function to evaluate document relevance.
+Default is <cite>TFIDF</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>scorer</strong> (<em>str</em>) – The scoring function to use
+(e.g. <cite>TFIDF.DOCNORM</cite> or <cite>BM25</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.set_filter">
+<span class="sig-name descname"><span class="pre">set_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.set_filter" title="Link to this definition">#</a></dt>
+<dd><p>Set the filter expression for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter_expression</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>]</em><em>, </em><em>optional</em>) – The filter
+expression or query string to use on the query.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not a valid FilterExpression or string.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.slop">
+<span class="sig-name descname"><span class="pre">slop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">slop</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.slop" title="Link to this definition">#</a></dt>
+<dd><p>Allow a maximum of N intervening non matched terms between
+phrase terms (0 means exact phrase).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>slop</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.sort_by">
+<span class="sig-name descname"><span class="pre">sort_by</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">asc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.sort_by" title="Link to this definition">#</a></dt>
+<dd><p>Add a sortby field to the query.</p>
+<ul class="simple">
+<li><p><strong>field</strong> - the name of the field to sort by</p></li>
+<li><p><strong>asc</strong> - when <cite>True</cite>, sorting will be done in asceding order</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field</strong> (<em>str</em>)</p></li>
+<li><p><strong>asc</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.timeout" title="Link to this definition">#</a></dt>
+<dd><p>overrides the timeout parameter of the module</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>timeout</strong> (<em>float</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.verbatim">
+<span class="sig-name descname"><span class="pre">verbatim</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.verbatim" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to be verbatim, i.e. use no query expansion
+or stemming.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.with_payloads">
+<span class="sig-name descname"><span class="pre">with_payloads</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.with_payloads" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document payloads.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.with_scores">
+<span class="sig-name descname"><span class="pre">with_scores</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.FilterQuery.with_scores" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document search scores.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.filter">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><span class="pre">FilterExpression</span></a></em><a class="headerlink" href="#redisvl.query.FilterQuery.filter" title="Link to this definition">#</a></dt>
+<dd><p>The filter expression for the query.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.params">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.query.FilterQuery.params" title="Link to this definition">#</a></dt>
+<dd><p>Return the query parameters.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.FilterQuery.query">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">BaseQuery</span></em><a class="headerlink" href="#redisvl.query.FilterQuery.query" title="Link to this definition">#</a></dt>
+<dd><p>Return self as the query object.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="countquery">
+<h2>CountQuery<a class="headerlink" href="#countquery" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">CountQuery</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dialect</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/redisvl/query/query.html#CountQuery"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#redisvl.query.CountQuery" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseQuery</span></code></p>
+<p>A query for a simple count operation provided some filter expression.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filter_expression</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>]</em>) – The filter expression to query with. Defaults to None.</p></li>
+<li><p><strong>params</strong> (<em>Optional</em><em>[</em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>, </em><em>optional</em>) – The parameters for the query. Defaults to None.</p></li>
+<li><p><strong>dialect</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not of type redisvl.query.FilterExpression</p>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.query</span> <span class="kn">import</span> <span class="n">CountQuery</span>
+<span class="kn">from</span> <span class="nn">redisvl.query.filter</span> <span class="kn">import</span> <span class="n">Tag</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">Tag</span><span class="p">(</span><span class="s2">&quot;brand&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;Nike&quot;</span>
+<span class="n">query</span> <span class="o">=</span> <span class="n">CountQuery</span><span class="p">(</span><span class="n">filter_expression</span><span class="o">=</span><span class="n">t</span><span class="p">)</span>
+
+<span class="n">count</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.dialect">
+<span class="sig-name descname"><span class="pre">dialect</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dialect</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.dialect" title="Link to this definition">#</a></dt>
+<dd><p>Add a dialect field to the query.</p>
+<ul class="simple">
+<li><p><strong>dialect</strong> - dialect version to execute the query under</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dialect</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.expander">
+<span class="sig-name descname"><span class="pre">expander</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">expander</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.expander" title="Link to this definition">#</a></dt>
+<dd><p>Add a expander field to the query.</p>
+<ul class="simple">
+<li><p><strong>expander</strong> - the name of the expander</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>expander</strong> (<em>str</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.in_order">
+<span class="sig-name descname"><span class="pre">in_order</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.in_order" title="Link to this definition">#</a></dt>
+<dd><p>Match only documents where the query terms appear in
+the same order in the document.
+i.e. for the query “hello world”, we do not match “world hello”</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.language">
+<span class="sig-name descname"><span class="pre">language</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">language</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.language" title="Link to this definition">#</a></dt>
+<dd><p>Analyze the query as being in the specified language.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>language</strong> (<em>str</em>) – The language (e.g. <cite>chinese</cite> or <cite>english</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.limit_fields">
+<span class="sig-name descname"><span class="pre">limit_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.limit_fields" title="Link to this definition">#</a></dt>
+<dd><p>Limit the search to specific TEXT fields only.</p>
+<ul class="simple">
+<li><p><strong>fields</strong>: A list of strings, case sensitive field names</p></li>
+</ul>
+<p>from the defined schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fields</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.limit_ids">
+<span class="sig-name descname"><span class="pre">limit_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.limit_ids" title="Link to this definition">#</a></dt>
+<dd><p>Limit the results to a specific set of pre-known document
+ids of any length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.no_content">
+<span class="sig-name descname"><span class="pre">no_content</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.no_content" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to only return ids and not the document content.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.no_stopwords">
+<span class="sig-name descname"><span class="pre">no_stopwords</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.no_stopwords" title="Link to this definition">#</a></dt>
+<dd><p>Prevent the query from being filtered for stopwords.
+Only useful in very big queries that you are certain contain
+no stopwords.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.paging">
+<span class="sig-name descname"><span class="pre">paging</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.paging" title="Link to this definition">#</a></dt>
+<dd><p>Set the paging for the query (defaults to 0..10).</p>
+<ul class="simple">
+<li><p><strong>offset</strong>: Paging offset for the results. Defaults to 0</p></li>
+<li><p><strong>num</strong>: How many results do we want</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>offset</strong> (<em>int</em>)</p></li>
+<li><p><strong>num</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.query_string">
+<span class="sig-name descname"><span class="pre">query_string</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.query_string" title="Link to this definition">#</a></dt>
+<dd><p>Return the query string of this query only.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.return_fields">
+<span class="sig-name descname"><span class="pre">return_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">fields</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.return_fields" title="Link to this definition">#</a></dt>
+<dd><p>Add fields to return fields.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.scorer">
+<span class="sig-name descname"><span class="pre">scorer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scorer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.scorer" title="Link to this definition">#</a></dt>
+<dd><p>Use a different scoring function to evaluate document relevance.
+Default is <cite>TFIDF</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>scorer</strong> (<em>str</em>) – The scoring function to use
+(e.g. <cite>TFIDF.DOCNORM</cite> or <cite>BM25</cite>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.set_filter">
+<span class="sig-name descname"><span class="pre">set_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filter_expression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.set_filter" title="Link to this definition">#</a></dt>
+<dd><p>Set the filter expression for the query.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filter_expression</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><em>FilterExpression</em></a><em>]</em><em>]</em><em>, </em><em>optional</em>) – The filter
+expression or query string to use on the query.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If filter_expression is not a valid FilterExpression or string.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.slop">
+<span class="sig-name descname"><span class="pre">slop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">slop</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.slop" title="Link to this definition">#</a></dt>
+<dd><p>Allow a maximum of N intervening non matched terms between
+phrase terms (0 means exact phrase).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>slop</strong> (<em>int</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.sort_by">
+<span class="sig-name descname"><span class="pre">sort_by</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">asc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.sort_by" title="Link to this definition">#</a></dt>
+<dd><p>Add a sortby field to the query.</p>
+<ul class="simple">
+<li><p><strong>field</strong> - the name of the field to sort by</p></li>
+<li><p><strong>asc</strong> - when <cite>True</cite>, sorting will be done in asceding order</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field</strong> (<em>str</em>)</p></li>
+<li><p><strong>asc</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.timeout">
+<span class="sig-name descname"><span class="pre">timeout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.timeout" title="Link to this definition">#</a></dt>
+<dd><p>overrides the timeout parameter of the module</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>timeout</strong> (<em>float</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.verbatim">
+<span class="sig-name descname"><span class="pre">verbatim</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.verbatim" title="Link to this definition">#</a></dt>
+<dd><p>Set the query to be verbatim, i.e. use no query expansion
+or stemming.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.with_payloads">
+<span class="sig-name descname"><span class="pre">with_payloads</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.with_payloads" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document payloads.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.with_scores">
+<span class="sig-name descname"><span class="pre">with_scores</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#redisvl.query.CountQuery.with_scores" title="Link to this definition">#</a></dt>
+<dd><p>Ask the engine to return document search scores.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Query</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.filter">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">filter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="filter.html#redisvl.query.filter.FilterExpression" title="redisvl.query.filter.FilterExpression"><span class="pre">FilterExpression</span></a></em><a class="headerlink" href="#redisvl.query.CountQuery.filter" title="Link to this definition">#</a></dt>
+<dd><p>The filter expression for the query.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.params">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#redisvl.query.CountQuery.params" title="Link to this definition">#</a></dt>
+<dd><p>Return the query parameters.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="redisvl.query.CountQuery.query">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">BaseQuery</span></em><a class="headerlink" href="#redisvl.query.CountQuery.query" title="Link to this definition">#</a></dt>
+<dd><p>Return self as the query object.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="searchindex.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Search Index Classes</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="filter.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Filter</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#vectorquery">VectorQuery</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery"><code class="docutils literal notranslate"><span class="pre">VectorQuery</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.dialect"><code class="docutils literal notranslate"><span class="pre">VectorQuery.dialect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.expander"><code class="docutils literal notranslate"><span class="pre">VectorQuery.expander()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.in_order"><code class="docutils literal notranslate"><span class="pre">VectorQuery.in_order()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.language"><code class="docutils literal notranslate"><span class="pre">VectorQuery.language()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.limit_fields"><code class="docutils literal notranslate"><span class="pre">VectorQuery.limit_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.limit_ids"><code class="docutils literal notranslate"><span class="pre">VectorQuery.limit_ids()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.no_content"><code class="docutils literal notranslate"><span class="pre">VectorQuery.no_content()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.no_stopwords"><code class="docutils literal notranslate"><span class="pre">VectorQuery.no_stopwords()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.paging"><code class="docutils literal notranslate"><span class="pre">VectorQuery.paging()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.query_string"><code class="docutils literal notranslate"><span class="pre">VectorQuery.query_string()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.return_fields"><code class="docutils literal notranslate"><span class="pre">VectorQuery.return_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.scorer"><code class="docutils literal notranslate"><span class="pre">VectorQuery.scorer()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.set_filter"><code class="docutils literal notranslate"><span class="pre">VectorQuery.set_filter()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.slop"><code class="docutils literal notranslate"><span class="pre">VectorQuery.slop()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.sort_by"><code class="docutils literal notranslate"><span class="pre">VectorQuery.sort_by()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.timeout"><code class="docutils literal notranslate"><span class="pre">VectorQuery.timeout()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.verbatim"><code class="docutils literal notranslate"><span class="pre">VectorQuery.verbatim()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.with_payloads"><code class="docutils literal notranslate"><span class="pre">VectorQuery.with_payloads()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.with_scores"><code class="docutils literal notranslate"><span class="pre">VectorQuery.with_scores()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.filter"><code class="docutils literal notranslate"><span class="pre">VectorQuery.filter</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.params"><code class="docutils literal notranslate"><span class="pre">VectorQuery.params</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorQuery.query"><code class="docutils literal notranslate"><span class="pre">VectorQuery.query</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#vectorrangequery">VectorRangeQuery</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.dialect"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.dialect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.expander"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.expander()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.in_order"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.in_order()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.language"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.language()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.limit_fields"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.limit_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.limit_ids"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.limit_ids()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.no_content"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.no_content()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.no_stopwords"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.no_stopwords()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.paging"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.paging()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.query_string"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.query_string()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.return_fields"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.return_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.scorer"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.scorer()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.set_distance_threshold"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.set_distance_threshold()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.set_filter"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.set_filter()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.slop"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.slop()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.sort_by"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.sort_by()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.timeout"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.timeout()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.verbatim"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.verbatim()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.with_payloads"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.with_payloads()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.with_scores"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.with_scores()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.distance_threshold"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.distance_threshold</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.filter"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.filter</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.params"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.params</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.VectorRangeQuery.query"><code class="docutils literal notranslate"><span class="pre">VectorRangeQuery.query</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#filterquery">FilterQuery</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery"><code class="docutils literal notranslate"><span class="pre">FilterQuery</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.dialect"><code class="docutils literal notranslate"><span class="pre">FilterQuery.dialect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.expander"><code class="docutils literal notranslate"><span class="pre">FilterQuery.expander()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.in_order"><code class="docutils literal notranslate"><span class="pre">FilterQuery.in_order()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.language"><code class="docutils literal notranslate"><span class="pre">FilterQuery.language()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.limit_fields"><code class="docutils literal notranslate"><span class="pre">FilterQuery.limit_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.limit_ids"><code class="docutils literal notranslate"><span class="pre">FilterQuery.limit_ids()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.no_content"><code class="docutils literal notranslate"><span class="pre">FilterQuery.no_content()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.no_stopwords"><code class="docutils literal notranslate"><span class="pre">FilterQuery.no_stopwords()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.paging"><code class="docutils literal notranslate"><span class="pre">FilterQuery.paging()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.query_string"><code class="docutils literal notranslate"><span class="pre">FilterQuery.query_string()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.return_fields"><code class="docutils literal notranslate"><span class="pre">FilterQuery.return_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.scorer"><code class="docutils literal notranslate"><span class="pre">FilterQuery.scorer()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.set_filter"><code class="docutils literal notranslate"><span class="pre">FilterQuery.set_filter()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.slop"><code class="docutils literal notranslate"><span class="pre">FilterQuery.slop()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.sort_by"><code class="docutils literal notranslate"><span class="pre">FilterQuery.sort_by()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.timeout"><code class="docutils literal notranslate"><span class="pre">FilterQuery.timeout()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.verbatim"><code class="docutils literal notranslate"><span class="pre">FilterQuery.verbatim()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.with_payloads"><code class="docutils literal notranslate"><span class="pre">FilterQuery.with_payloads()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.with_scores"><code class="docutils literal notranslate"><span class="pre">FilterQuery.with_scores()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.filter"><code class="docutils literal notranslate"><span class="pre">FilterQuery.filter</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.params"><code class="docutils literal notranslate"><span class="pre">FilterQuery.params</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.FilterQuery.query"><code class="docutils literal notranslate"><span class="pre">FilterQuery.query</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#countquery">CountQuery</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery"><code class="docutils literal notranslate"><span class="pre">CountQuery</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.dialect"><code class="docutils literal notranslate"><span class="pre">CountQuery.dialect()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.expander"><code class="docutils literal notranslate"><span class="pre">CountQuery.expander()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.in_order"><code class="docutils literal notranslate"><span class="pre">CountQuery.in_order()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.language"><code class="docutils literal notranslate"><span class="pre">CountQuery.language()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.limit_fields"><code class="docutils literal notranslate"><span class="pre">CountQuery.limit_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.limit_ids"><code class="docutils literal notranslate"><span class="pre">CountQuery.limit_ids()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.no_content"><code class="docutils literal notranslate"><span class="pre">CountQuery.no_content()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.no_stopwords"><code class="docutils literal notranslate"><span class="pre">CountQuery.no_stopwords()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.paging"><code class="docutils literal notranslate"><span class="pre">CountQuery.paging()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.query_string"><code class="docutils literal notranslate"><span class="pre">CountQuery.query_string()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.return_fields"><code class="docutils literal notranslate"><span class="pre">CountQuery.return_fields()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.scorer"><code class="docutils literal notranslate"><span class="pre">CountQuery.scorer()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.set_filter"><code class="docutils literal notranslate"><span class="pre">CountQuery.set_filter()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.slop"><code class="docutils literal notranslate"><span class="pre">CountQuery.slop()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.sort_by"><code class="docutils literal notranslate"><span class="pre">CountQuery.sort_by()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.timeout"><code class="docutils literal notranslate"><span class="pre">CountQuery.timeout()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.verbatim"><code class="docutils literal notranslate"><span class="pre">CountQuery.verbatim()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.with_payloads"><code class="docutils literal notranslate"><span class="pre">CountQuery.with_payloads()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.with_scores"><code class="docutils literal notranslate"><span class="pre">CountQuery.with_scores()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.filter"><code class="docutils literal notranslate"><span class="pre">CountQuery.filter</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.params"><code class="docutils literal notranslate"><span class="pre">CountQuery.params</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#redisvl.query.CountQuery.query"><code class="docutils literal notranslate"><span class="pre">CountQuery.query</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/Redis Applied AI/RedisVL/edit/main/docs/api/query.rst">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/api/query.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.3.7.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>

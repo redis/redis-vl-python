@@ -1,0 +1,980 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="../_static/favicon-32x32.png" sizes="32x32" rel="icon" type="image/png">
+    <link href="../_static/favicon-16x16.png" sizes="16x16" rel="icon" type="image/png">
+    <link rel="shortcut icon" sizes="any" href="../_static/favicon.ico" type="image/x-icon">
+    <link href="../_static/android-chrome-192x192.png" sizes="192x192" rel="icon" type="image/png">
+    <link rel="apple-touch-icon" href="../_static/apple-touch-icon.png" sizes="180x180" type="image/png">
+    <title>Vectorizers &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css?v=be8a1c11" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../_static/documentation_options.js?v=a58bc63e"></script>
+    <script src="../_static/doctools.js?v=888ff710"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'user_guide/vectorizers_04';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.1.1';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../_static/js/sidebar.js?v=3e4ef29d"></script>
+    <link rel="icon" href="../_static/redis-cube-red-white-rgb.svg"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Hash vs JSON Storage" href="hash_vs_json_05.html" />
+    <link rel="prev" title="Semantic Caching for LLMs" href="llmcache_03.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/RedisVentures/RedisVL" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">User Guides</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Vectorizers</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="vectorizers">
+<h1>Vectorizers<a class="headerlink" href="#vectorizers" title="Link to this heading">#</a></h1>
+<p>In this notebook, we will show how to use RedisVL to create embeddings using the built-in text embedding vectorizers. Today RedisVL supports:</p>
+<ol class="arabic simple">
+<li><p>OpenAI</p></li>
+<li><p>HuggingFace</p></li>
+<li><p>Vertex AI</p></li>
+<li><p>Cohere</p></li>
+</ol>
+<p>Before running this notebook, be sure to</p>
+<ol class="arabic simple">
+<li><p>Have installed <code class="docutils literal notranslate"><span class="pre">redisvl</span></code> and have that environment active for this notebook.</p></li>
+<li><p>Have a running Redis Stack instance with RediSearch &gt; 2.4 active.</p></li>
+</ol>
+<p>For example, you can run Redis Stack locally with Docker:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">6379</span>:6379<span class="w"> </span>-p<span class="w"> </span><span class="m">8001</span>:8001<span class="w"> </span>redis/redis-stack:latest
+</pre></div>
+</div>
+<p>This will run Redis on port 6379 and RedisInsight at http://localhost:8001.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># import necessary modules</span>
+<span class="kn">import</span> <span class="nn">os</span>
+</pre></div>
+</div>
+</div>
+</div>
+<section id="creating-text-embeddings">
+<h2>Creating Text Embeddings<a class="headerlink" href="#creating-text-embeddings" title="Link to this heading">#</a></h2>
+<p>This example will show how to create an embedding from 3 simple sentences with a number of different text vectorizers in RedisVL.</p>
+<ul class="simple">
+<li><p>“That is a happy dog”</p></li>
+<li><p>“That is a happy person”</p></li>
+<li><p>“Today is a nice day”</p></li>
+</ul>
+<section id="openai">
+<h3>OpenAI<a class="headerlink" href="#openai" title="Link to this heading">#</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">OpenAITextVectorizer</span></code> makes it simple to use RedisVL with the embeddings models at OpenAI. For this you will need to install <code class="docutils literal notranslate"><span class="pre">openai</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>openai
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">getpass</span>
+
+<span class="c1"># setup the API Key</span>
+<span class="n">api_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPENAI_API_KEY&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="s2">&quot;Enter your OpenAI API key: &quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.utils.vectorize</span> <span class="kn">import</span> <span class="n">OpenAITextVectorizer</span>
+
+<span class="c1"># create a vectorizer</span>
+<span class="n">oai</span> <span class="o">=</span> <span class="n">OpenAITextVectorizer</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;text-embedding-ada-002&quot;</span><span class="p">,</span>
+    <span class="n">api_config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;api_key&quot;</span><span class="p">:</span> <span class="n">api_key</span><span class="p">},</span>
+<span class="p">)</span>
+
+<span class="n">test</span> <span class="o">=</span> <span class="n">oai</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="s2">&quot;This is a test sentence.&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Vector dimensions: &quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">))</span>
+<span class="n">test</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Vector dimensions:  1536
+</pre></div>
+</div>
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[-0.001025049015879631,
+ -0.0030993607360869646,
+ 0.0024536605924367905,
+ -0.004484387580305338,
+ -0.010331203229725361,
+ 0.012700922787189484,
+ -0.005368996877223253,
+ -0.0029411641880869865,
+ -0.0070833307690918446,
+ -0.03386051580309868]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Create many embeddings at once</span>
+<span class="n">sentences</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;That is a happy dog&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;That is a happy person&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Today is a sunny day&quot;</span>
+<span class="p">]</span>
+
+<span class="n">embeddings</span> <span class="o">=</span> <span class="n">oai</span><span class="o">.</span><span class="n">embed_many</span><span class="p">(</span><span class="n">sentences</span><span class="p">)</span>
+<span class="n">embeddings</span><span class="p">[</span><span class="mi">0</span><span class="p">][:</span><span class="mi">10</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[-0.01747742109000683,
+ -5.228330701356754e-05,
+ 0.0013870716793462634,
+ -0.025637786835432053,
+ -0.01985435001552105,
+ 0.016117358580231667,
+ -0.0037306349258869886,
+ 0.0008945261361077428,
+ 0.006577865686267614,
+ -0.025091219693422318]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># openai also supports asyncronous requests, which we can use to speed up the vectorization process.</span>
+<span class="n">embeddings</span> <span class="o">=</span> <span class="k">await</span> <span class="n">oai</span><span class="o">.</span><span class="n">aembed_many</span><span class="p">(</span><span class="n">sentences</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of Embeddings:&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">embeddings</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Number of Embeddings: 3
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="huggingface">
+<h3>Huggingface<a class="headerlink" href="#huggingface" title="Link to this heading">#</a></h3>
+<p><a class="reference external" href="https://huggingface.co/models">Huggingface</a> is a popular NLP platform that has a number of pre-trained models you can use off the shelf. RedisVL supports using Huggingface “Sentence Transformers” to create embeddings from text. To use Huggingface, you will need to install the <code class="docutils literal notranslate"><span class="pre">sentence-transformers</span></code> library.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>sentence-transformers
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;TOKENIZERS_PARALLELISM&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;false&quot;</span>
+<span class="kn">from</span> <span class="nn">redisvl.utils.vectorize</span> <span class="kn">import</span> <span class="n">HFTextVectorizer</span>
+
+
+<span class="c1"># create a vectorizer</span>
+<span class="c1"># choose your model from the huggingface website</span>
+<span class="n">hf</span> <span class="o">=</span> <span class="n">HFTextVectorizer</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;sentence-transformers/all-mpnet-base-v2&quot;</span><span class="p">)</span>
+
+<span class="c1"># embed a sentence</span>
+<span class="n">test</span> <span class="o">=</span> <span class="n">hf</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="s2">&quot;This is a test sentence.&quot;</span><span class="p">)</span>
+<span class="n">test</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>/Users/tyler.hutcherson/RedisVentures/redisvl/.venv/lib/python3.9/site-packages/torch/_utils.py:831: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  return self.fget.__get__(instance, owner)()
+</pre></div>
+</div>
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[0.00037810884532518685,
+ -0.05080341175198555,
+ -0.03514723479747772,
+ -0.02325104922056198,
+ -0.044158220291137695,
+ 0.020487844944000244,
+ 0.0014617963461205363,
+ 0.031261757016181946,
+ 0.05605152249336243,
+ 0.018815357238054276]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># You can also create many embeddings at once</span>
+<span class="n">embeddings</span> <span class="o">=</span> <span class="n">hf</span><span class="o">.</span><span class="n">embed_many</span><span class="p">(</span><span class="n">sentences</span><span class="p">,</span> <span class="n">as_buffer</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="vertexai">
+<h3>VertexAI<a class="headerlink" href="#vertexai" title="Link to this heading">#</a></h3>
+<p><a class="reference external" href="https://cloud.google.com/vertex-ai/docs/generative-ai/embeddings/get-text-embeddings">VertexAI</a> is GCP’s fully-featured AI platform including a number of pretrained LLMs. RedisVL supports using VertexAI to create embeddings from these models. To use VertexAI, you will first need to install the <code class="docutils literal notranslate"><span class="pre">google-cloud-aiplatform</span></code> library.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>google-cloud-aiplatform&gt;<span class="o">=</span><span class="m">1</span>.26
+</pre></div>
+</div>
+<ol class="arabic simple">
+<li><p>Then you need to gain access to a <a class="reference external" href="https://cloud.google.com/gcp?hl=en">Google Cloud Project</a> and provide <a class="reference external" href="https://cloud.google.com/docs/authentication/application-default-credentials">access to credentials</a>. This is accomplished by setting the <code class="docutils literal notranslate"><span class="pre">GOOGLE_APPLICATION_CREDENTIALS</span></code> environment variable pointing to the path of a JSON key file downloaded from your service account on GCP.</p></li>
+<li><p>Lastly, you need to find your <a class="reference external" href="https://support.google.com/googleapi/answer/7014113?hl=en">project ID</a> and <a class="reference external" href="https://cloud.google.com/vertex-ai/docs/general/locations">geographic region for VertexAI</a>.</p></li>
+</ol>
+<p><strong>Make sure the following env vars are set:</strong></p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GOOGLE_APPLICATION_CREDENTIALS</span><span class="o">=&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">your</span> <span class="n">gcp</span> <span class="n">JSON</span> <span class="n">creds</span><span class="o">&gt;</span>
+<span class="n">GCP_PROJECT_ID</span><span class="o">=&lt;</span><span class="n">your</span> <span class="n">gcp</span> <span class="n">project</span> <span class="nb">id</span><span class="o">&gt;</span>
+<span class="n">GCP_LOCATION</span><span class="o">=&lt;</span><span class="n">your</span> <span class="n">gcp</span> <span class="n">geo</span> <span class="n">region</span> <span class="k">for</span> <span class="n">vertex</span> <span class="n">ai</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.utils.vectorize</span> <span class="kn">import</span> <span class="n">VertexAITextVectorizer</span>
+
+
+<span class="c1"># create a vectorizer</span>
+<span class="n">vtx</span> <span class="o">=</span> <span class="n">VertexAITextVectorizer</span><span class="p">(</span><span class="n">api_config</span><span class="o">=</span><span class="p">{</span>
+    <span class="s2">&quot;project_id&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GCP_PROJECT_ID&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="s2">&quot;Enter your GCP Project ID: &quot;</span><span class="p">),</span>
+    <span class="s2">&quot;location&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GCP_LOCATION&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="s2">&quot;Enter your GCP Location: &quot;</span><span class="p">),</span>
+    <span class="s2">&quot;google_application_credentials&quot;</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GOOGLE_APPLICATION_CREDENTIALS&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="s2">&quot;Enter your Google App Credentials path: &quot;</span><span class="p">)</span>
+<span class="p">})</span>
+
+<span class="c1"># embed a sentence</span>
+<span class="n">test</span> <span class="o">=</span> <span class="n">vtx</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="s2">&quot;This is a test sentence.&quot;</span><span class="p">)</span>
+<span class="n">test</span><span class="p">[:</span><span class="mi">10</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[0.04373306408524513,
+ -0.05040992051362991,
+ -0.011946038343012333,
+ -0.043528858572244644,
+ 0.021510830149054527,
+ 0.028604144230484962,
+ 0.014770914800465107,
+ -0.01610461436212063,
+ -0.0036560404114425182,
+ 0.013746795244514942]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="cohere">
+<h3>Cohere<a class="headerlink" href="#cohere" title="Link to this heading">#</a></h3>
+<p><a class="reference external" href="https://dashboard.cohere.ai/">Cohere</a> allows you to implement language AI into your product. The <code class="docutils literal notranslate"><span class="pre">CohereTextVectorizer</span></code> makes it simple to use RedisVL with the embeddings models at Cohere. For this you will need to install <code class="docutils literal notranslate"><span class="pre">cohere</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>cohere
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">getpass</span>
+<span class="c1"># setup the API Key</span>
+<span class="n">api_key</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;COHERE_API_KEY&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getpass</span><span class="p">(</span><span class="s2">&quot;Enter your Cohere API key: &quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>Special attention needs to be paid to the <code class="docutils literal notranslate"><span class="pre">input_type</span></code> parameter for each <code class="docutils literal notranslate"><span class="pre">embed</span></code> call. For example, for embedding
+queries, you should set <code class="docutils literal notranslate"><span class="pre">input_type='search_query'</span></code>; for embedding documents, set <code class="docutils literal notranslate"><span class="pre">input_type='search_document'</span></code>. See
+more information <a class="reference external" href="https://docs.cohere.com/reference/embed">here</a></p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.utils.vectorize</span> <span class="kn">import</span> <span class="n">CohereTextVectorizer</span>
+
+<span class="c1"># create a vectorizer</span>
+<span class="n">co</span> <span class="o">=</span> <span class="n">CohereTextVectorizer</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;embed-english-v3.0&quot;</span><span class="p">,</span>
+    <span class="n">api_config</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;api_key&quot;</span><span class="p">:</span> <span class="n">api_key</span><span class="p">},</span>
+<span class="p">)</span>
+
+<span class="c1"># embed a search query</span>
+<span class="n">test</span> <span class="o">=</span> <span class="n">co</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="s2">&quot;This is a test sentence.&quot;</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="s1">&#39;search_query&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Vector dimensions: &quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">test</span><span class="p">[:</span><span class="mi">10</span><span class="p">])</span>
+
+<span class="c1"># embed a document</span>
+<span class="n">test</span> <span class="o">=</span> <span class="n">co</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="s2">&quot;This is a test sentence.&quot;</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="s1">&#39;search_document&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Vector dimensions: &quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">test</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">test</span><span class="p">[:</span><span class="mi">10</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Vector dimensions:  1024
+[-0.010856628, -0.019683838, -0.0062179565, 0.003545761, -0.047943115, 0.0009365082, -0.005924225, 0.016174316, -0.03289795, 0.049194336]
+Vector dimensions:  1024
+[-0.009712219, -0.016036987, 2.8073788e-05, -0.022491455, -0.041259766, 0.002281189, -0.033294678, -0.00057029724, -0.026260376, 0.0579834]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="search-with-provider-embeddings">
+<h2>Search with Provider Embeddings<a class="headerlink" href="#search-with-provider-embeddings" title="Link to this heading">#</a></h2>
+<p>Now that we’ve created our embeddings, we can use them to search for similar sentences. We will use the same 3 sentences from above and search for similar sentences.</p>
+<p>First, we need to create the schema for our index.</p>
+<p>Here’s what the schema for the example looks like in yaml for the HuggingFace vectorizer:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.1.0&#39;</span>
+
+<span class="nt">index</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vectorizers</span>
+<span class="w">    </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">doc</span>
+<span class="w">    </span><span class="nt">storage_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hash</span>
+
+<span class="nt">fields</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sentence</span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">embedding</span>
+<span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vector</span>
+<span class="w">      </span><span class="nt">attrs</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">768</span>
+<span class="w">        </span><span class="nt">algorithm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">flat</span>
+<span class="w">        </span><span class="nt">distance_metric</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cosine</span>
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.index</span> <span class="kn">import</span> <span class="n">SearchIndex</span>
+
+<span class="c1"># construct a search index from the schema</span>
+<span class="n">index</span> <span class="o">=</span> <span class="n">SearchIndex</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;./schema.yaml&quot;</span><span class="p">)</span>
+
+<span class="c1"># connect to local redis instance</span>
+<span class="n">index</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+
+<span class="c1"># create the index (no data yet)</span>
+<span class="n">index</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># use the CLI to see the created index</span>
+<span class="o">!</span>rvl<span class="w"> </span>index<span class="w"> </span>listall
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span><span class=" -Color -Color-Green">20:22:42</span> <span class=" -Color -Color-Blue">[RedisVL]</span> <span class=" -Color -Color-Bold -Color-Bold-Black">INFO</span>   Indices:
+<span class=" -Color -Color-Green">20:22:42</span> <span class=" -Color -Color-Blue">[RedisVL]</span> <span class=" -Color -Color-Bold -Color-Bold-Black">INFO</span>   1. vectorizers
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># load expects an iterable of dictionaries where</span>
+<span class="c1"># the vector is stored as a bytes buffer</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">t</span><span class="p">,</span>
+         <span class="s2">&quot;embedding&quot;</span><span class="p">:</span> <span class="n">v</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sentences</span><span class="p">,</span> <span class="n">embeddings</span><span class="p">)]</span>
+
+<span class="n">index</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[&#39;doc:17c401b679ce43cb82f3ab2280ad02f2&#39;,
+ &#39;doc:3fc0502bec434b17a3f06e20824b2e59&#39;,
+ &#39;doc:199f17b0e5d24dcaa1fd4fb41558150c&#39;]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.query</span> <span class="kn">import</span> <span class="n">VectorQuery</span>
+
+<span class="c1"># use the HuggingFace vectorizer again to create a query embedding</span>
+<span class="n">query_embedding</span> <span class="o">=</span> <span class="n">hf</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="s2">&quot;That is a happy cat&quot;</span><span class="p">)</span>
+
+<span class="n">query</span> <span class="o">=</span> <span class="n">VectorQuery</span><span class="p">(</span>
+    <span class="n">vector</span><span class="o">=</span><span class="n">query_embedding</span><span class="p">,</span>
+    <span class="n">vector_field_name</span><span class="o">=</span><span class="s2">&quot;embedding&quot;</span><span class="p">,</span>
+    <span class="n">return_fields</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span>
+    <span class="n">num_results</span><span class="o">=</span><span class="mi">3</span>
+<span class="p">)</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">doc</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">],</span> <span class="n">doc</span><span class="p">[</span><span class="s2">&quot;vector_distance&quot;</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>That is a happy dog 0.160862326622
+That is a happy person 0.273598492146
+Today is a sunny day 0.744559407234
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># cleanup</span>
+<span class="n">index</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="llmcache_03.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Semantic Caching for LLMs</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="hash_vs_json_05.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Hash vs JSON Storage</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#creating-text-embeddings">Creating Text Embeddings</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openai">OpenAI</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#huggingface">Huggingface</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vertexai">VertexAI</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cohere">Cohere</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#search-with-provider-embeddings">Search with Provider Embeddings</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/RedisVentures/RedisVL/edit/main/docs/user_guide/vectorizers_04.ipynb">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/user_guide/vectorizers_04.ipynb.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>

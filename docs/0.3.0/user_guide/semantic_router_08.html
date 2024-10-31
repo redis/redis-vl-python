@@ -1,0 +1,905 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="../_static/Redis_Favicon_32x32_Red.png" sizes="32x32" rel="icon" type="image/png">
+    <link href="../_static/Redis_Favicon_16x16_Red.png" sizes="16x16" rel="icon" type="image/png">
+    <link href="../_static/Redis_Favicon_144x144_Red.png" sizes="80x80" rel="icon" type="image/png">
+    <title>Semantic Routing &#8212; RedisVL</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.1/css/all.min.css?digest=8d27b9dea8ad943066ae" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.1/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/design-style.1e8bd061cd6da7fc9cf755528e8ffc24.min.css?v=0a3b3ea7" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=8302abb0" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/sidebar.css?v=6da03eb1" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae" />
+  <script src="../_static/vendor/fontawesome/6.5.1/js/all.min.js?digest=8d27b9dea8ad943066ae"></script>
+
+    <script src="../_static/documentation_options.js?v=e259d695"></script>
+    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=36754332"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'user_guide/semantic_router_08';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.2';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/version_names.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.3.0';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = false;
+        </script>
+    <script src="../_static/js/sidebar.js?v=e96da022"></script>
+    <link rel="icon" href="../_static/Redis_Favicon_32x32_Red.png"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Example Gallery" href="../examples/index.html" />
+    <link rel="prev" title="LLM Session Memory" href="session_manager_07.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <a id="pst-skip-link" class="skip-link" href="#main-content">Skip to main content</a>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>
+    Back to top
+  </button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__primary"
+          id="__primary"/>
+  <label class="overlay overlay-primary" for="__primary"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          name="__secondary"
+          id="__secondary"/>
+  <label class="overlay overlay-secondary" for="__secondary"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar">
+<div class="bd-header__inner bd-page-width">
+  <label class="sidebar-toggle primary-toggle" for="__primary">
+    <span class="fa-solid fa-bars"></span>
+  </label>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/Redis_Favicon_32x32_Red.png" class="logo__image only-light" alt="RedisVL"/>
+    <script>document.write(`<img src="../_static/redis-cube-red-white-rgb.svg" class="logo__image only-dark" alt="RedisVL"/>`);</script>
+  
+  
+    <p class="title logo__title">RedisVL</p>
+  
+</a></div>
+    
+      <div class="navbar-item">
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm navbar-btn dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/redis/redis-vl-python" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+ <script>
+ document.write(`
+   <button class="btn navbar-btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script>
+    </div>
+  
+
+  
+    <label class="sidebar-toggle secondary-toggle" for="__secondary" tabindex="0">
+      <span class="fa-solid fa-outdent"></span>
+    </label>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          <div class="navbar-item">
+<nav class="navbar-nav">
+  <ul class="bd-navbar-elements navbar-nav">
+    
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../overview/index.html">
+                        Overview
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item current active">
+                      <a class="nav-link nav-internal" href="index.html">
+                        User Guides
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../examples/index.html">
+                        Example Gallery
+                      </a>
+                    </li>
+                
+
+                    <li class="nav-item">
+                      <a class="nav-link nav-internal" href="../api/index.html">
+                        API
+                      </a>
+                    </li>
+                
+  </ul>
+</nav></div>
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm navbar-btn theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="theme-switch nav-link" data-mode="light"><i class="fa-solid fa-sun fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="dark"><i class="fa-solid fa-moon fa-lg"></i></span>
+    <span class="theme-switch nav-link" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg"></i></span>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links navbar-nav"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/redis/redis-vl-python" title="GitHub" class="nav-link" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><span><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i></span>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item"><div id="sidebar" class="custom_sidebar">
+    <ul id="toc"></ul>
+</div>
+
+<script src="sidebar.js"></script></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">User Guides</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Semantic Routing</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="semantic-routing">
+<h1>Semantic Routing<a class="headerlink" href="#semantic-routing" title="Link to this heading">#</a></h1>
+<p>RedisVL provides a <code class="docutils literal notranslate"><span class="pre">SemanticRouter</span></code> interface to utilize Redis’ built-in search &amp; aggregation in order to perform
+KNN-style classification over a set of <code class="docutils literal notranslate"><span class="pre">Route</span></code> references to determine the best match.</p>
+<p>This notebook will go over how to use Redis as a Semantic Router for your applications</p>
+<section id="define-the-routes">
+<h2>Define the Routes<a class="headerlink" href="#define-the-routes" title="Link to this heading">#</a></h2>
+<p>Below we define 3 different routes. One for <code class="docutils literal notranslate"><span class="pre">technology</span></code>, one for <code class="docutils literal notranslate"><span class="pre">sports</span></code>, and
+another for <code class="docutils literal notranslate"><span class="pre">entertainment</span></code>. Now for this example, the goal here is
+surely topic “classification”. But you can create routes and references for
+almost anything.</p>
+<p>Each route has a set of references that cover the “semantic surface area” of the
+route. The incoming query from a user needs to be semantically similar to one or
+more of the references in order to “match” on the route.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">Route</span>
+
+
+<span class="c1"># Define routes for the semantic router</span>
+<span class="n">technology</span> <span class="o">=</span> <span class="n">Route</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;technology&quot;</span><span class="p">,</span>
+    <span class="n">references</span><span class="o">=</span><span class="p">[</span>
+        <span class="s2">&quot;what are the latest advancements in AI?&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tell me about the newest gadgets&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;what&#39;s trending in tech?&quot;</span>
+    <span class="p">],</span>
+    <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;tech&quot;</span><span class="p">,</span> <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="n">sports</span> <span class="o">=</span> <span class="n">Route</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;sports&quot;</span><span class="p">,</span>
+    <span class="n">references</span><span class="o">=</span><span class="p">[</span>
+        <span class="s2">&quot;who won the game last night?&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tell me about the upcoming sports events&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;what&#39;s the latest in the world of sports?&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sports&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;basketball and football&quot;</span>
+    <span class="p">],</span>
+    <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;sports&quot;</span><span class="p">,</span> <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="n">entertainment</span> <span class="o">=</span> <span class="n">Route</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;entertainment&quot;</span><span class="p">,</span>
+    <span class="n">references</span><span class="o">=</span><span class="p">[</span>
+        <span class="s2">&quot;what are the top movies right now?&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;who won the best actor award?&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;what&#39;s new in the entertainment industry?&quot;</span>
+    <span class="p">],</span>
+    <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;category&quot;</span><span class="p">:</span> <span class="s2">&quot;entertainment&quot;</span><span class="p">,</span> <span class="s2">&quot;priority&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="initialize-the-semanticrouter">
+<h2>Initialize the SemanticRouter<a class="headerlink" href="#initialize-the-semanticrouter" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">SemanticRouter</span></code> will automatically create an index within Redis upon initialization for the route references. By default, it uses the <code class="docutils literal notranslate"><span class="pre">HFTextVectorizer</span></code> to
+generate embeddings for each route reference.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">SemanticRouter</span>
+<span class="kn">from</span> <span class="nn">redisvl.utils.vectorize</span> <span class="kn">import</span> <span class="n">HFTextVectorizer</span>
+
+<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;TOKENIZERS_PARALLELISM&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;false&quot;</span>
+
+<span class="c1"># Initialize the SemanticRouter</span>
+<span class="n">router</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;topic-router&quot;</span><span class="p">,</span>
+    <span class="n">vectorizer</span><span class="o">=</span><span class="n">HFTextVectorizer</span><span class="p">(),</span>
+    <span class="n">routes</span><span class="o">=</span><span class="p">[</span><span class="n">technology</span><span class="p">,</span> <span class="n">sports</span><span class="p">,</span> <span class="n">entertainment</span><span class="p">],</span>
+    <span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span> <span class="c1"># Blow away any other routing index with this name</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">router</span><span class="o">.</span><span class="n">vectorizer</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>HFTextVectorizer(model=&#39;sentence-transformers/all-mpnet-base-v2&#39;, dims=768)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># look at the index specification created for the semantic router</span>
+<span class="o">!</span>rvl<span class="w"> </span>index<span class="w"> </span>info<span class="w"> </span>-i<span class="w"> </span>topic-router
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Index Information:
+╭──────────────┬────────────────┬──────────────────┬─────────────────┬────────────╮
+│ Index Name   │ Storage Type   │ Prefixes         │ Index Options   │   Indexing │
+├──────────────┼────────────────┼──────────────────┼─────────────────┼────────────┤
+│ topic-router │ HASH           │ [&#39;topic-router&#39;] │ []              │          0 │
+╰──────────────┴────────────────┴──────────────────┴─────────────────┴────────────╯
+Index Fields:
+╭────────────┬─────────────┬────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬─────────────────┬────────────────╮
+│ Name       │ Attribute   │ Type   │ Field Option   │ Option Value   │ Field Option   │ Option Value   │ Field Option   │   Option Value │ Field Option    │ Option Value   │
+├────────────┼─────────────┼────────┼────────────────┼────────────────┼────────────────┼────────────────┼────────────────┼────────────────┼─────────────────┼────────────────┤
+│ route_name │ route_name  │ TAG    │ SEPARATOR      │ ,              │                │                │                │                │                 │                │
+│ reference  │ reference   │ TEXT   │ WEIGHT         │ 1              │                │                │                │                │                 │                │
+│ vector     │ vector      │ VECTOR │ algorithm      │ FLAT           │ data_type      │ FLOAT32        │ dim            │            768 │ distance_metric │ COSINE         │
+╰────────────┴─────────────┴────────┴────────────────┴────────────────┴────────────────┴────────────────┴────────────────┴────────────────┴─────────────────┴────────────────╯
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="simple-routing">
+<h2>Simple routing<a class="headerlink" href="#simple-routing" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Query the router with a statement</span>
+<span class="n">route_match</span> <span class="o">=</span> <span class="n">router</span><span class="p">(</span><span class="s2">&quot;Can you tell me about the latest in artificial intelligence?&quot;</span><span class="p">)</span>
+<span class="n">route_match</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>RouteMatch(name=&#39;technology&#39;, distance=0.119614243507)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Query the router with a statement and return a miss</span>
+<span class="n">route_match</span> <span class="o">=</span> <span class="n">router</span><span class="p">(</span><span class="s2">&quot;are aliens real?&quot;</span><span class="p">)</span>
+<span class="n">route_match</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>RouteMatch(name=None, distance=None)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Toggle the runtime distance threshold</span>
+<span class="n">route_match</span> <span class="o">=</span> <span class="n">router</span><span class="p">(</span><span class="s2">&quot;Which basketball team will win the NBA finals?&quot;</span><span class="p">,</span> <span class="n">distance_threshold</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+<span class="n">route_match</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>RouteMatch(name=&#39;sports&#39;, distance=0.554210186005)
+</pre></div>
+</div>
+</div>
+</div>
+<p>We can also route a statement to many routes and order them by distance:</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Perform multi-class classification with route_many() -- toggle the max_k and the distance_threshold</span>
+<span class="n">route_matches</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">route_many</span><span class="p">(</span><span class="s2">&quot;Lebron James&quot;</span><span class="p">,</span> <span class="n">distance_threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">max_k</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">route_matches</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[RouteMatch(name=&#39;sports&#39;, distance=0.758580708504),
+ RouteMatch(name=&#39;entertainment&#39;, distance=0.812423825264),
+ RouteMatch(name=&#39;technology&#39;, distance=0.88423516353)]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Toggle the aggregation method -- note the different distances in the result</span>
+<span class="kn">from</span> <span class="nn">redisvl.extensions.router.schema</span> <span class="kn">import</span> <span class="n">DistanceAggregationMethod</span>
+
+<span class="n">route_matches</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">route_many</span><span class="p">(</span><span class="s2">&quot;Lebron James&quot;</span><span class="p">,</span> <span class="n">aggregation_method</span><span class="o">=</span><span class="n">DistanceAggregationMethod</span><span class="o">.</span><span class="n">min</span><span class="p">,</span> <span class="n">distance_threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">max_k</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">route_matches</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[RouteMatch(name=&#39;sports&#39;, distance=0.663253903389),
+ RouteMatch(name=&#39;entertainment&#39;, distance=0.712985396385),
+ RouteMatch(name=&#39;technology&#39;, distance=0.832674384117)]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Note the different route match distances. This is because we used the <code class="docutils literal notranslate"><span class="pre">min</span></code> aggregation method instead of the default <code class="docutils literal notranslate"><span class="pre">avg</span></code> approach.</p>
+</section>
+<section id="update-the-routing-config">
+<h2>Update the routing config<a class="headerlink" href="#update-the-routing-config" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">redisvl.extensions.router</span> <span class="kn">import</span> <span class="n">RoutingConfig</span>
+
+<span class="n">router</span><span class="o">.</span><span class="n">update_routing_config</span><span class="p">(</span>
+    <span class="n">RoutingConfig</span><span class="p">(</span><span class="n">distance_threshold</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">aggregation_method</span><span class="o">=</span><span class="n">DistanceAggregationMethod</span><span class="o">.</span><span class="n">min</span><span class="p">,</span> <span class="n">max_k</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">route_matches</span> <span class="o">=</span> <span class="n">router</span><span class="o">.</span><span class="n">route_many</span><span class="p">(</span><span class="s2">&quot;Lebron James&quot;</span><span class="p">)</span>
+<span class="n">route_matches</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[RouteMatch(name=&#39;sports&#39;, distance=0.663253903389),
+ RouteMatch(name=&#39;entertainment&#39;, distance=0.712985396385),
+ RouteMatch(name=&#39;technology&#39;, distance=0.832674384117)]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="router-serialization">
+<h2>Router serialization<a class="headerlink" href="#router-serialization" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">router</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>{&#39;name&#39;: &#39;topic-router&#39;,
+ &#39;routes&#39;: [{&#39;name&#39;: &#39;technology&#39;,
+   &#39;references&#39;: [&#39;what are the latest advancements in AI?&#39;,
+    &#39;tell me about the newest gadgets&#39;,
+    &quot;what&#39;s trending in tech?&quot;],
+   &#39;metadata&#39;: {&#39;category&#39;: &#39;tech&#39;, &#39;priority&#39;: &#39;1&#39;}},
+  {&#39;name&#39;: &#39;sports&#39;,
+   &#39;references&#39;: [&#39;who won the game last night?&#39;,
+    &#39;tell me about the upcoming sports events&#39;,
+    &quot;what&#39;s the latest in the world of sports?&quot;,
+    &#39;sports&#39;,
+    &#39;basketball and football&#39;],
+   &#39;metadata&#39;: {&#39;category&#39;: &#39;sports&#39;, &#39;priority&#39;: &#39;2&#39;}},
+  {&#39;name&#39;: &#39;entertainment&#39;,
+   &#39;references&#39;: [&#39;what are the top movies right now?&#39;,
+    &#39;who won the best actor award?&#39;,
+    &quot;what&#39;s new in the entertainment industry?&quot;],
+   &#39;metadata&#39;: {&#39;category&#39;: &#39;entertainment&#39;, &#39;priority&#39;: &#39;3&#39;}}],
+ &#39;vectorizer&#39;: {&#39;type&#39;: &#39;hf&#39;,
+  &#39;model&#39;: &#39;sentence-transformers/all-mpnet-base-v2&#39;},
+ &#39;routing_config&#39;: {&#39;distance_threshold&#39;: 1.0,
+  &#39;max_k&#39;: 3,
+  &#39;aggregation_method&#39;: &#39;min&#39;}}
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">router2</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">router</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+
+<span class="k">assert</span> <span class="n">router2</span> <span class="o">==</span> <span class="n">router</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>15:16:28 redisvl.index.index INFO   Index already exists, not overwriting.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">router</span><span class="o">.</span><span class="n">to_yaml</span><span class="p">(</span><span class="s2">&quot;router.yaml&quot;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">router3</span> <span class="o">=</span> <span class="n">SemanticRouter</span><span class="o">.</span><span class="n">from_yaml</span><span class="p">(</span><span class="s2">&quot;router.yaml&quot;</span><span class="p">,</span> <span class="n">redis_url</span><span class="o">=</span><span class="s2">&quot;redis://localhost:6379&quot;</span><span class="p">)</span>
+
+<span class="k">assert</span> <span class="n">router3</span> <span class="o">==</span> <span class="n">router2</span> <span class="o">==</span> <span class="n">router</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>15:17:42 redisvl.index.index INFO   Index already exists, not overwriting.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="clean-up-the-router">
+<h2>Clean up the router<a class="headerlink" href="#clean-up-the-router" title="Link to this heading">#</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Use clear to flush all routes from the index</span>
+<span class="n">router</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Use delete to clear the index and remove it completely</span>
+<span class="n">router</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="session_manager_07.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">LLM Session Memory</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../examples/index.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Example Gallery</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#define-the-routes">Define the Routes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#initialize-the-semanticrouter">Initialize the SemanticRouter</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#simple-routing">Simple routing</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#update-the-routing-config">Update the routing config</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#router-serialization">Router serialization</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#clean-up-the-router">Clean up the router</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/Redis Applied AI/RedisVL/edit/main/docs/user_guide/semantic_router_08.ipynb">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="../_sources/user_guide/semantic_router_08.ipynb.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=8d27b9dea8ad943066ae"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=8d27b9dea8ad943066ae"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2024, Redis Inc..
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.3.7.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.2.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-2EW85FTY8C"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-2EW85FTY8C');
+</script>
+
+  </body>
+</html>
