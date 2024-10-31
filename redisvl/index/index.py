@@ -314,6 +314,16 @@ class SearchIndex(BaseSearchIndex):
         redis_url: Optional[str] = None,
         **kwargs,
     ):
+        """
+        Initialize from an existing search index in Redis by index name.
+
+        Args:
+            name (str): Name of the search index in Redis.
+            redis_client(Optional[redis.Redis]): An
+                instantiated redis client.
+            redis_url (Optional[str]): The URL of the Redis server to
+                connect to.
+        """
         # Handle redis instance
         if redis_url:
             redis_client = RedisConnectionFactory.connect(
@@ -844,6 +854,16 @@ class AsyncSearchIndex(BaseSearchIndex):
         redis_url: Optional[str] = None,
         **kwargs,
     ):
+        """
+        Initialize from an existing search index in Redis by index name.
+
+        Args:
+            name (str): Name of the search index in Redis.
+            redis_client(Optional[redis.Redis]): An
+                instantiated redis client.
+            redis_url (Optional[str]): The URL of the Redis server to
+                connect to.
+        """
         if redis_url:
             redis_client = RedisConnectionFactory.connect(
                 redis_url=redis_url, use_async=True, **kwargs
