@@ -79,8 +79,8 @@ html_context = {
 html_logo = "_static/Redis_Favicon_32x32_Red.png"
 html_favicon = "_static/Redis_Favicon_32x32_Red.png"
 html_context = {
-    "github_user": "Redis Applied AI",
-    "github_repo": "RedisVL",
+    "github_user": "Redis",
+    "github_repo": "Redis-VL-python",
     "github_version": "main",
     "doc_path": "docs",
 }
