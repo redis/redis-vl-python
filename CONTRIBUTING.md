@@ -44,7 +44,7 @@ Check formatting, linting, and typing:
 ```bash
 poetry run format
 poetry run sort-imports
-poetry run mypy
+poetry run check-mypy
 ```
 
 #### TestContainers
