@@ -43,4 +43,4 @@ jobs:
         poetry run check-format
     - name: check-mypy
       run: |
-        poetry run mypy
+        poetry run check-mypy
