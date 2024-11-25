@@ -61,6 +61,16 @@ CohereTextVectorizer
    :show-inheritance:
    :members:
 
+BedrockTextVectorizer
+=====================
+
+.. _bedrocktextvectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.text.bedrock
+
+.. autoclass:: BedrockTextVectorizer
+   :show-inheritance:
+   :members:
 
 CustomTextVectorizer
 ====================
