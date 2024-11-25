@@ -4,6 +4,7 @@ import pytest
 
 from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
+    BedrockTextVectorizer,
     CohereTextVectorizer,
     CustomTextVectorizer,
     HFTextVectorizer,
@@ -15,7 +16,6 @@ from redisvl.utils.vectorize import (
 
 @pytest.fixture
 def skip_vectorizer() -> bool:
-    # os.getenv returns a string
     v = os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
     return v
 
@@ -27,6 +27,7 @@ def skip_vectorizer() -> bool:
         VertexAITextVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
         # MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
@@ -49,6 +50,10 @@ def vectorizer(request, skip_vectorizer):
         return request.param(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
         )
+    elif request.param == BedrockTextVectorizer:
+        return request.param(
+            model_id=os.getenv("BEDROCK_MODEL_ID", "amazon.titan-embed-text-v2:0")
+        )
     elif request.param == CustomTextVectorizer:
 
         def embed(text):
@@ -58,6 +63,16 @@ def vectorizer(request, skip_vectorizer):
             return [[1.1, 2.2, 3.3, 4.4]] * len(texts)
 
         return request.param(embed=embed, embed_many=embed_many)
+
+
+@pytest.fixture
+def bedrock_vectorizer(skip_vectorizer):
+    if skip_vectorizer:
+        pytest.skip("Skipping Bedrock vectorizer tests...")
+
+    return BedrockTextVectorizer(
+        model_id=os.getenv("BEDROCK_MODEL_ID", "amazon.titan-embed-text-v2:0")
+    )
 
 
 @pytest.fixture
@@ -125,25 +140,37 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
+def test_bedrock_bad_credentials():
+    with pytest.raises(ValueError):
+        BedrockTextVectorizer(
+            api_config={
+                "aws_access_key_id": "invalid",
+                "aws_secret_access_key": "invalid",
+            }
+        )
+
+
+def test_bedrock_invalid_model(bedrock_vectorizer):
+    with pytest.raises(ValueError):
+        bedrock = BedrockTextVectorizer(model_id="invalid-model")
+        bedrock.embed("test")
+
+
 def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
-    # test we can pass a stand alone function as embedder callable
     custom_wrapper = CustomTextVectorizer(embed=custom_embed_func)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == [1.1, 2.2, 3.3, 4.4]
 
-    # test we can pass an instance of a class method as embedder callable
     custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == [1.1, 2.2, 3.3, 4.4]
 
-    # test we can pass additional parameters and kwargs to embedding methods
     custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed_with_args)
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=4)
     assert embedding == [1.1, 2.2, 3.3, 4.4]
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=2)
     assert embedding == [1.1, 2.2]
 
-    # test that correct error is raised if a non-callable is passed
     with pytest.raises(TypeError):
         bad_wrapper = CustomTextVectorizer(embed="hello")
 
@@ -153,7 +180,6 @@ def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
     with pytest.raises(TypeError):
         bad_wrapper = CustomTextVectorizer(embed={"foo": "bar"})
 
-    # test that correct error is raised if passed function has incorrect types
     def bad_arg_type(value: int):
         return [value]
 
@@ -168,21 +194,18 @@ def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
 
 
 def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
-    # test we can pass a stand alone function as embed_many callable
     custom_wrapper = CustomTextVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-    # test we can pass a class method as embedder callable
     custom_wrapper = CustomTextVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-    # test we can pass additional parameters and kwargs to embedding methods
     custom_wrapper = CustomTextVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many_with_args
     )
@@ -191,7 +214,6 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     embeddings = custom_wrapper.embed_many(["test one.", "test two"], param=False)
     assert embeddings == [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
-    # test that correct error is raised if a non-callable is passed
     with pytest.raises(TypeError):
         bad_wrapper = CustomTextVectorizer(custom_embed_func, embed_many="hello")
 
@@ -201,7 +223,6 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     with pytest.raises(TypeError):
         bad_wrapper = CustomTextVectorizer(custom_embed_func, embed_many={"foo": "bar"})
 
-    # test that correct error is raised if passed function has incorrect types
     def bad_arg_type(value: int):
         return [value]
 
@@ -220,6 +241,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 @pytest.fixture(
     params=[
         OpenAITextVectorizer,
+        BedrockTextVectorizer,
         # MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
@@ -228,14 +250,13 @@ def avectorizer(request, skip_vectorizer):
     if skip_vectorizer:
         pytest.skip("Skipping vectorizer instantiation...")
 
-    # Here we use actual models for integration test
     if request.param == OpenAITextVectorizer:
+        return request.param()
+    elif request.param == BedrockTextVectorizer:
         return request.param()
     elif request.param == MistralAITextVectorizer:
         return request.param()
-
-    # Here we use actual models for integration test
-    if request.param == CustomTextVectorizer:
+    elif request.param == CustomTextVectorizer:
 
         def embed_func(text):
             return [1.1, 2.2, 3.3, 4.4]
