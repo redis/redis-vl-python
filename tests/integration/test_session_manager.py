@@ -563,13 +563,19 @@ def test_different_vector_dtypes():
         pytest.skip("Not using a late enough version of Redis")
 
 
-def test_bad_dtype_connecting_to_exiting_session():
+def test_bad_dtype_connecting_to_exiting_session(redis_url):
     try:
-        session = SemanticSessionManager(name="float64 session", dtype="float64")
-        same_type = SemanticSessionManager(name="float64 session", dtype="float64")
+        session = SemanticSessionManager(
+            name="float64 session", dtype="float64", redis_url=redis_url
+        )
+        same_type = SemanticSessionManager(
+            name="float64 session", dtype="float64", redis_url=redis_url
+        )
         # under the hood uses from_existing
     except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):
-        bad_type = SemanticSessionManager(name="float64 session", dtype="float16")
+        bad_type = SemanticSessionManager(
+            name="float64 session", dtype="float16", redis_url=redis_url
+        )

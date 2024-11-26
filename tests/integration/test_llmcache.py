@@ -868,13 +868,19 @@ def test_create_cache_with_different_vector_types():
         pytest.skip("Not using a late enough version of Redis")
 
 
-def test_bad_dtype_connecting_to_existing_cache():
+def test_bad_dtype_connecting_to_existing_cache(redis_url):
     try:
-        cache = SemanticCache(name="float64_cache", dtype="float64")
-        same_type = SemanticCache(name="float64_cache", dtype="float64")
+        cache = SemanticCache(
+            name="float64_cache", dtype="float64", redis_url=redis_url
+        )
+        same_type = SemanticCache(
+            name="float64_cache", dtype="float64", redis_url=redis_url
+        )
         # under the hood uses from_existing
     except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):
-        bad_type = SemanticCache(name="float64_cache", dtype="float16")
+        bad_type = SemanticCache(
+            name="float64_cache", dtype="float16", redis_url=redis_url
+        )

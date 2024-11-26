@@ -241,30 +241,34 @@ def test_bad_connection_info(routes):
         )
 
 
-def test_different_vector_dtypes(routes):
+def test_different_vector_dtypes(redis_url, routes):
     try:
         bfloat_router = SemanticRouter(
             name="bfloat_router",
             routes=routes,
             dtype="bfloat16",
+            redis_url=redis_url,
         )
 
         float16_router = SemanticRouter(
             name="float16_router",
             routes=routes,
             dtype="float16",
+            redis_url=redis_url,
         )
 
         float32_router = SemanticRouter(
             name="float32_router",
             routes=routes,
             dtype="float32",
+            redis_url=redis_url,
         )
 
         float64_router = SemanticRouter(
             name="float64_router",
             routes=routes,
             dtype="float64",
+            redis_url=redis_url,
         )
 
         for router in [bfloat_router, float16_router, float32_router, float64_router]:
@@ -273,18 +277,20 @@ def test_different_vector_dtypes(routes):
         pytest.skip("Not using a late enough version of Redis")
 
 
-def test_bad_dtype_connecting_to_exiting_router(routes):
+def test_bad_dtype_connecting_to_exiting_router(redis_url, routes):
     try:
         router = SemanticRouter(
             name="float64 router",
             routes=routes,
             dtype="float64",
+            redis_url=redis_url,
         )
 
         same_type = SemanticRouter(
             name="float64 router",
             routes=routes,
             dtype="float64",
+            redis_url=redis_url,
         )
         # under the hood uses from_existing
     except RedisModuleVersionError:
@@ -295,4 +301,5 @@ def test_bad_dtype_connecting_to_exiting_router(routes):
             name="float64 router",
             routes=routes,
             dtype="float16",
+            redis_url=redis_url,
         )
