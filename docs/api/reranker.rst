@@ -12,3 +12,15 @@ CohereReranker
 .. autoclass:: CohereReranker
    :show-inheritance:
    :members:
+
+
+HFCrossEncoderReranker
+========================
+
+.. _hfcrossencoderreranker_api:
+
+.. currentmodule:: redisvl.utils.rerank.hf_cross_encoder
+
+.. autoclass:: HFCrossEncoderReranker
+   :show-inheritance:
+   :members:

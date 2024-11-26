@@ -8,15 +8,15 @@ Search Index Classes
 
    * - Class
      - Description
-   * - `SearchIndex <#searchindex_api>`_
+   * - :ref:`searchindex_api`
      - Primary class to write, read, and search across data structures in Redis.
-   * - `AsyncSearchIndex <#asyncsearchindex_api>`_
+   * - :ref:`asyncsearchindex_api`
      - Async version of the SearchIndex to write, read, and search across data structures in Redis.
+
+.. _searchindex_api:
 
 SearchIndex
 ===========
-
-.. _searchindex_api:
 
 .. currentmodule:: redisvl.index
 
@@ -24,10 +24,10 @@ SearchIndex
    :inherited-members:
    :members:
 
+.. _asyncsearchindex_api:
+
 AsyncSearchIndex
 ================
-
-.. _asyncsearchindex_api:
 
 .. currentmodule:: redisvl.index
 
