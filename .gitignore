@@ -12,3 +12,4 @@ docs/_build/
 .env
 coverage.xml
 dist/
+.vscode/settings.json
