@@ -88,6 +88,8 @@ jobs:
         AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
         AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
         OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: |
         cd docs/ && poetry run treon -v --exclude="./examples/openai_qna.ipynb"
 
