@@ -19,10 +19,12 @@ print(f"Python version: {sys.version}", flush=True)
 
 # -- Project information -----------------------------------------------------
 
+from redisvl.version import __version__
+
 project = 'RedisVL'
 copyright = '2024, Redis Inc.'
 author = 'Redis Applied AI'
-version = '4'
+version = __version__
 
 # The full version, including alpha/beta/rc tags
 release = version
