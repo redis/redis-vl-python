@@ -61,7 +61,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 'Deployment name' not the 'Model name'. Defaults to
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
-                API key, API version, Azure endpoint, and any other API options.
+                API key, API version, Azure endpoint, Azure deployment, and any other API options.
                 Defaults to None.
 
         Raises:
@@ -125,6 +125,19 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             raise ValueError(
                 "AzureOpenAI API key is required. "
                 "Provide it in api_config or set the AZURE_OPENAI_API_KEY\
+                    environment variable."
+            )
+        
+        azure_deployment = (
+            api_config.pop("azure_deployment")
+            if api_config
+            else os.getenv("AZURE_OPENAI_DEPLOYMENT")
+        )
+
+        if not azure_deployment:
+            raise ValueError(
+                "AzureOpenAI API deployment is required. "
+                "Provide it in api_config or set the AZURE_OPENAI_DEPLOYMENT\
                     environment variable."
             )
 
