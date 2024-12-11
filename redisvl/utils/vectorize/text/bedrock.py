@@ -145,7 +145,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         response_body = json.loads(response["body"].read())
         embedding = response_body["embedding"]
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
         return self._process_embedding(embedding, as_buffer, dtype)
 
     @retry(
@@ -181,7 +181,7 @@ class BedrockTextVectorizer(BaseVectorizer):
             raise TypeError("Texts must be a list of strings")
 
         embeddings: List[List[float]] = []
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         for batch in self.batchify(texts, batch_size, preprocess):
             # Process each text in the batch individually since Bedrock
