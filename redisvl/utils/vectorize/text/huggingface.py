@@ -100,7 +100,7 @@ class HFTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embedding = self._client.encode([text], **kwargs)[0]
         return self._process_embedding(embedding.tolist(), as_buffer, dtype)
@@ -136,7 +136,7 @@ class HFTextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

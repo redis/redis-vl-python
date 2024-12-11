@@ -173,7 +173,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         result = self._embed_func(text, **kwargs)
         return self._process_embedding(result, as_buffer, dtype)
@@ -212,7 +212,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if not self._embed_many_func:
             raise NotImplementedError
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -254,7 +254,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         result = await self._aembed_func(text, **kwargs)
         return self._process_embedding(result, as_buffer, dtype)
@@ -293,7 +293,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if not self._aembed_many_func:
             raise NotImplementedError
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

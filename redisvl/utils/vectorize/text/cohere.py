@@ -159,7 +159,7 @@ class CohereTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
@@ -228,7 +228,7 @@ class CohereTextVectorizer(BaseVectorizer):
                     See https://docs.cohere.com/reference/embed."
             )
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

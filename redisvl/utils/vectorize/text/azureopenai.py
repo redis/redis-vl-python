@@ -190,7 +190,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -234,7 +234,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         result = self._client.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
@@ -274,7 +274,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -320,7 +320,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         result = await self._aclient.embeddings.create(input=[text], model=self.model)
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)

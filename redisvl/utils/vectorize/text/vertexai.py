@@ -151,7 +151,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -194,7 +194,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", "float32")
 
         result = self._client.get_embeddings([text])
         return self._process_embedding(result[0].values, as_buffer, dtype)
