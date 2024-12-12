@@ -1,7 +1,9 @@
 import os
 
+import numpy as np
 import pytest
 
+from redisvl.redis.utils import buffer_to_array
 from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
     BedrockTextVectorizer,
@@ -236,6 +238,29 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         bad_wrapper = CustomTextVectorizer(
             custom_embed_func, embed_many=bad_return_type
         )
+
+
+def test_dtypes(vectorizer):
+    words = "hello"
+
+    raw = vectorizer.embed(words, as_buffer=False)
+
+    default = vectorizer.embed(words, as_buffer=True)
+    assert buffer_to_array(default, dtype="float32") == raw
+
+    float16 = vectorizer.embed(words, as_buffer=True, dtype="float16")
+    # assert buffer_to_array(float16, dtype="float16") == raw # fails
+    assert np.allclose(buffer_to_array(float16, dtype="float16"), raw, atol=1e-04)
+
+    float32 = vectorizer.embed(words, as_buffer=True, dtype="float32")
+    assert buffer_to_array(float32, dtype="float32") == raw
+
+    float64 = vectorizer.embed(words, as_buffer=True, dtype="float64")
+    assert buffer_to_array(float64, dtype="float64") == raw
+
+    bfloat16 = vectorizer.embed(words, as_buffer=True, dtype="bfloat16")
+    # assert buffer_to_array(bfloat16, dtype="bfloat16") == raw # fails
+    assert np.allclose(buffer_to_array(bfloat16, dtype="bfloat16"), raw, atol=1e-03)
 
 
 @pytest.fixture(
