@@ -1,6 +1,6 @@
 import os
-import numpy as np
 
+import numpy as np
 import pytest
 
 from redisvl.redis.utils import buffer_to_array
@@ -239,28 +239,20 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
             custom_embed_func, embed_many=bad_return_type
         )
 
+
 def test_dtypes(vectorizer):
     if isinstance(vectorizer, CustomTextVectorizer):
         pytest.skip("skipping custom text vectorizer")
     words = "hello"
-    raw = vectorizer.embed(words, as_buffer=False)
+    raw = vectorizer.embed(words, as_buffer=False, input_type="search_query")
 
-    default = vectorizer.embed(words, as_buffer=True)
-    assert buffer_to_array(default, dtype="float32") == raw
-
-    float16 = vectorizer.embed(words, as_buffer=True, dtype="float16")
-    # assert buffer_to_array(float16, dtype="float16") == raw # fails
-    assert np.allclose(buffer_to_array(float16, dtype="float16"), raw, atol=1e-03)
-
-    float32 = vectorizer.embed(words, as_buffer=True, dtype="float32")
-    assert buffer_to_array(float32, dtype="float32") == raw
-
-    float64 = vectorizer.embed(words, as_buffer=True, dtype="float64")
-    assert buffer_to_array(float64, dtype="float64") == raw
-
-    bfloat16 = vectorizer.embed(words, as_buffer=True, dtype="bfloat16")
-    # assert buffer_to_array(bfloat16, dtype="bfloat16") == raw # fails
-    assert np.allclose(buffer_to_array(bfloat16, dtype="bfloat16"), raw, atol=1e-03)
+    default = vectorizer.embed(words, as_buffer=True, input_type="search_query")
+    assert np.allclose(buffer_to_array(default, dtype="float32"), raw, atol=1e-03)
+    for dtype in ["float16", "float32", "float64", "bfloat16"]:
+        embedding = vectorizer.embed(
+            words, as_buffer=True, dtype=dtype, input_type="search_query"
+        )
+        assert np.allclose(buffer_to_array(embedding, dtype=dtype), raw, atol=1e-03)
 
 
 @pytest.fixture(
