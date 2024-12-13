@@ -240,19 +240,59 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         )
 
 
-def test_dtypes(vectorizer):
-    if isinstance(vectorizer, CustomTextVectorizer):
-        pytest.skip("skipping custom text vectorizer")
-    words = "hello"
-    raw = vectorizer.embed(words, as_buffer=False, input_type="search_query")
+@pytest.mark.parametrize(
+    "vector_class",
+    [
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        CohereTextVectorizer,
+        CustomTextVectorizer,
+        HFTextVectorizer,
+        MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+    ],
+)
+def test_dtypes(vector_class):
+    words = "test sentence"
 
-    default = vectorizer.embed(words, as_buffer=True, input_type="search_query")
-    assert np.allclose(buffer_to_array(default, dtype="float32"), raw, atol=1e-03)
+    # test dtype defaults to float32
+    if issubclass(vector_class, CustomTextVectorizer):
+        vectorizer = vector_class(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
+    else:
+        vectorizer = vector_class()
+    assert vectorizer.dtype == "float32"
+
+    # test that the dtype can be overwriten in the method calls
+    raw = vectorizer.embed(words, as_buffer=False, input_type="search_query")
+    embedding = vectorizer.embed(
+        words, as_buffer=True, dtype="bfloat16", input_type="search_query"
+    )
+    assert np.allclose(buffer_to_array(embedding, dtype="bfloat16"), raw, atol=1e-03)
+
+    # test that over writing in method calls does not change initialized dtype
+    assert vectorizer.dtype == "float32"
+
+    # test initializing dtype in constructor
     for dtype in ["float16", "float32", "float64", "bfloat16"]:
-        embedding = vectorizer.embed(
-            words, as_buffer=True, dtype=dtype, input_type="search_query"
-        )
-        assert np.allclose(buffer_to_array(embedding, dtype=dtype), raw, atol=1e-03)
+        if issubclass(vector_class, CustomTextVectorizer):
+            vectorizer = vector_class(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
+        else:
+            vectorizer = vector_class(dtype=dtype)
+        assert vectorizer.dtype == dtype
+
+    # test validation of dtype on init
+    if issubclass(vector_class, CustomTextVectorizer):
+        pytest.skip("skipping custom text vectorizer")
+
+    with pytest.raises(ValueError):
+        vectorizer = vector_class(dtype="float25")
+
+    with pytest.raises(ValueError):
+        vectorizer = vector_class(dtype=7)
+
+    with pytest.raises(ValueError):
+        vectorizer = vector_class(dtype=None)
 
 
 @pytest.fixture(

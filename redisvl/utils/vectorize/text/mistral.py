@@ -46,7 +46,12 @@ class MistralAITextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
     _aclient: Any = PrivateAttr()
 
-    def __init__(self, model: str = "mistral-embed", api_config: Optional[Dict] = None):
+    def __init__(
+        self,
+        model: str = "mistral-embed",
+        api_config: Optional[Dict] = None,
+        dtype: str = "float32",
+    ):
         """Initialize the MistralAI vectorizer.
 
         Args:
@@ -54,13 +59,17 @@ class MistralAITextVectorizer(BaseVectorizer):
                 'text-embedding-ada-002'.
             api_config (Optional[Dict], optional): Dictionary containing the
                 API key. Defaults to None.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ImportError: If the mistralai library is not installed.
             ValueError: If the Mistral API key is not provided.
+            ValueError: If an invalid dtype is provided.
         """
         self._initialize_clients(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model))
+        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
 
     def _initialize_clients(self, api_config: Optional[Dict]):
         """
@@ -140,7 +149,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -184,7 +193,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         result = self._client.embeddings(model=self.model, input=[text])
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
@@ -224,7 +233,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -268,7 +277,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         result = await self._aclient.embeddings(model=self.model, input=[text])
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)

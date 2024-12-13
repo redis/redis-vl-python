@@ -44,7 +44,10 @@ class VertexAITextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
 
     def __init__(
-        self, model: str = "textembedding-gecko", api_config: Optional[Dict] = None
+        self,
+        model: str = "textembedding-gecko",
+        api_config: Optional[Dict] = None,
+        dtype: str = "float32",
     ):
         """Initialize the VertexAI vectorizer.
 
@@ -53,13 +56,17 @@ class VertexAITextVectorizer(BaseVectorizer):
                 'textembedding-gecko'.
             api_config (Optional[Dict], optional): Dictionary containing the
                 API config details. Defaults to None.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ImportError: If the google-cloud-aiplatform library is not installed.
             ValueError: If the API key is not provided.
+            ValueError: If an invalid dtype is provided.
         """
         self._initialize_client(model, api_config)
-        super().__init__(model=model, dims=self._set_model_dims())
+        super().__init__(model=model, dims=self._set_model_dims(), dtype=dtype)
 
     def _initialize_client(self, model: str, api_config: Optional[Dict]):
         """
@@ -151,7 +158,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -194,7 +201,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         result = self._client.get_embeddings([text])
         return self._process_embedding(result[0].values, as_buffer, dtype)
