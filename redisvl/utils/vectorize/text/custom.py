@@ -7,7 +7,7 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class CustomTextVectorizer(BaseVectorizer):
-    """The CustomTextVectorizer class wraps user-defined embeding methods to create
+    """The CustomTextVectorizer class wraps user-defined embedding methods to create
     embeddings for text data.
 
     This vectorizer is designed to accept a provided callable text vectorizer and
@@ -44,6 +44,7 @@ class CustomTextVectorizer(BaseVectorizer):
         embed_many: Optional[Callable] = None,
         aembed: Optional[Callable] = None,
         aembed_many: Optional[Callable] = None,
+        dtype: str = "float32",
     ):
         """Initialize the Custom vectorizer.
 
@@ -52,10 +53,14 @@ class CustomTextVectorizer(BaseVectorizer):
             embed_many (Optional[Callable)]: a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
             aembed (Optional[Callable]): an asyncronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
             aembed_many (Optional[Callable]):  an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
-            ValueError if any of the provided functions accept or return incorrect types.
-            TypeError if any of the provided functions are not Callable objects.
+            ValueError: if any of the provided functions accept or return incorrect types.
+            TypeError: if any of the provided functions are not Callable objects.
+            ValueError: If an invalid dtype is provided.
         """
 
         self._validate_embed(embed)
@@ -71,7 +76,7 @@ class CustomTextVectorizer(BaseVectorizer):
             self._validate_aembed_many(aembed_many)
             self._aembed_many_func = aembed_many
 
-        super().__init__(model=self.type, dims=self._set_model_dims())
+        super().__init__(model=self.type, dims=self._set_model_dims(), dtype=dtype)
 
     def _validate_embed(self, func: Callable):
         """calls the func with dummy input and validates that it returns a vector"""
@@ -173,7 +178,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         result = self._embed_func(text, **kwargs)
         return self._process_embedding(result, as_buffer, dtype)
@@ -212,7 +217,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if not self._embed_many_func:
             raise NotImplementedError
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
@@ -254,7 +259,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         result = await self._aembed_func(text, **kwargs)
         return self._process_embedding(result, as_buffer, dtype)
@@ -293,7 +298,7 @@ class CustomTextVectorizer(BaseVectorizer):
         if not self._aembed_many_func:
             raise NotImplementedError
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

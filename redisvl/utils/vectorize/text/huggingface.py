@@ -33,7 +33,10 @@ class HFTextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
 
     def __init__(
-        self, model: str = "sentence-transformers/all-mpnet-base-v2", **kwargs
+        self,
+        model: str = "sentence-transformers/all-mpnet-base-v2",
+        dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the Hugging Face text vectorizer.
 
@@ -41,13 +44,17 @@ class HFTextVectorizer(BaseVectorizer):
             model (str): The pre-trained model from Hugging Face's Sentence
                 Transformers to be used for embedding. Defaults to
                 'sentence-transformers/all-mpnet-base-v2'.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ImportError: If the sentence-transformers library is not installed.
             ValueError: If there is an error setting the embedding model dimensions.
+            ValueError: If an invalid dtype is provided.
         """
         self._initialize_client(model)
-        super().__init__(model=model, dims=self._set_model_dims())
+        super().__init__(model=model, dims=self._set_model_dims(), dtype=dtype)
 
     def _initialize_client(self, model: str):
         """Setup the HuggingFace client"""
@@ -100,7 +107,7 @@ class HFTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embedding = self._client.encode([text], **kwargs)[0]
         return self._process_embedding(embedding.tolist(), as_buffer, dtype)
@@ -136,7 +143,7 @@ class HFTextVectorizer(BaseVectorizer):
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", "float32")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
