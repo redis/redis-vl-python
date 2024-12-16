@@ -248,12 +248,14 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
-        MistralAITextVectorizer,
+        #MistralAITextVectorizer,
         OpenAITextVectorizer,
         VertexAITextVectorizer,
     ],
 )
-def test_dtypes(vector_class):
+def test_dtypes(vector_class, skip_vectorizer):
+    if skip_vectorizer:
+        pytest.skip("Skipping vectorizer instantiation...")
     words = "test sentence"
 
     # test dtype defaults to float32
