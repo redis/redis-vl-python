@@ -47,7 +47,10 @@ class CohereTextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
 
     def __init__(
-        self, model: str = "embed-english-v3.0", api_config: Optional[Dict] = None
+        self,
+        model: str = "embed-english-v3.0",
+        api_config: Optional[Dict] = None,
+        dtype: str = "float32",
     ):
         """Initialize the Cohere vectorizer.
 
@@ -57,14 +60,17 @@ class CohereTextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding. Defaults to 'embed-english-v3.0'.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ImportError: If the cohere library is not installed.
             ValueError: If the API key is not provided.
-
+            ValueError: If an invalid dtype is provided.
         """
         self._initialize_client(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model))
+        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
 
     def _initialize_client(self, api_config: Optional[Dict]):
         """
@@ -159,7 +165,7 @@ class CohereTextVectorizer(BaseVectorizer):
         if preprocess:
             text = preprocess(text)
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embedding = self._client.embed(
             texts=[text], model=self.model, input_type=input_type
@@ -228,7 +234,7 @@ class CohereTextVectorizer(BaseVectorizer):
                     See https://docs.cohere.com/reference/embed."
             )
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", self.dtype)
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):

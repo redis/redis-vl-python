@@ -1,7 +1,9 @@
 import os
 
+import numpy as np
 import pytest
 
+from redisvl.redis.utils import buffer_to_array
 from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
     BedrockTextVectorizer,
@@ -236,6 +238,73 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         bad_wrapper = CustomTextVectorizer(
             custom_embed_func, embed_many=bad_return_type
         )
+
+
+@pytest.mark.parametrize(
+    "vector_class",
+    [
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        CohereTextVectorizer,
+        CustomTextVectorizer,
+        HFTextVectorizer,
+        # MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+    ],
+)
+def test_dtypes(vector_class, skip_vectorizer):
+    if skip_vectorizer:
+        pytest.skip("Skipping vectorizer instantiation...")
+    words = "test sentence"
+
+    # test dtype defaults to float32
+    if issubclass(vector_class, CustomTextVectorizer):
+        vectorizer = vector_class(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
+    elif issubclass(vector_class, AzureOpenAITextVectorizer):
+        vectorizer = vector_class(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
+        )
+    else:
+        vectorizer = vector_class()
+    assert vectorizer.dtype == "float32"
+
+    # test that the dtype can be overwriten in the method calls
+    raw = vectorizer.embed(words, as_buffer=False, input_type="search_query")
+    embedding = vectorizer.embed(
+        words, as_buffer=True, dtype="bfloat16", input_type="search_query"
+    )
+    assert np.allclose(buffer_to_array(embedding, dtype="bfloat16"), raw, atol=1e-03)
+
+    # test that over writing in method calls does not change initialized dtype
+    assert vectorizer.dtype == "float32"
+
+    # test initializing dtype in constructor
+    for dtype in ["float16", "float32", "float64", "bfloat16"]:
+        if issubclass(vector_class, CustomTextVectorizer):
+            vectorizer = vector_class(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
+        elif issubclass(vector_class, AzureOpenAITextVectorizer):
+            vectorizer = vector_class(
+                model=os.getenv(
+                    "AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"
+                )
+            )
+        else:
+            vectorizer = vector_class(dtype=dtype)
+        assert vectorizer.dtype == dtype
+
+    # test validation of dtype on init
+    if issubclass(vector_class, CustomTextVectorizer):
+        pytest.skip("skipping custom text vectorizer")
+
+    with pytest.raises(ValueError):
+        vectorizer = vector_class(dtype="float25")
+
+    with pytest.raises(ValueError):
+        vectorizer = vector_class(dtype=7)
+
+    with pytest.raises(ValueError):
+        vectorizer = vector_class(dtype=None)
 
 
 @pytest.fixture(
