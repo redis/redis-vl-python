@@ -248,7 +248,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
-        #MistralAITextVectorizer,
+        # MistralAITextVectorizer,
         OpenAITextVectorizer,
         VertexAITextVectorizer,
     ],
@@ -261,6 +261,10 @@ def test_dtypes(vector_class, skip_vectorizer):
     # test dtype defaults to float32
     if issubclass(vector_class, CustomTextVectorizer):
         vectorizer = vector_class(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
+    elif issubclass(vector_class, AzureOpenAITextVectorizer):
+        vectorizer = vector_class(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
+        )
     else:
         vectorizer = vector_class()
     assert vectorizer.dtype == "float32"
@@ -279,6 +283,12 @@ def test_dtypes(vector_class, skip_vectorizer):
     for dtype in ["float16", "float32", "float64", "bfloat16"]:
         if issubclass(vector_class, CustomTextVectorizer):
             vectorizer = vector_class(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
+        elif issubclass(vector_class, AzureOpenAITextVectorizer):
+            vectorizer = vector_class(
+                model=os.getenv(
+                    "AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"
+                )
+            )
         else:
             vectorizer = vector_class(dtype=dtype)
         assert vectorizer.dtype == dtype
