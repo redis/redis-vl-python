@@ -60,6 +60,7 @@ class BedrockTextVectorizer(BaseVectorizer):
                 If not provided, will use environment variables.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ValueError: If credentials are not provided in config or environment.
