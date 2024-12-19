@@ -49,6 +49,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         self,
         model: str = "amazon.titan-embed-text-v2:0",
         api_config: Optional[Dict[str, str]] = None,
+        dtype: str = "float32",
     ) -> None:
         """Initialize the AWS Bedrock Vectorizer.
 
@@ -57,10 +58,14 @@ class BedrockTextVectorizer(BaseVectorizer):
             api_config (Optional[Dict[str, str]]): AWS credentials and config.
                 Can include: aws_access_key_id, aws_secret_access_key, aws_region
                 If not provided, will use environment variables.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ValueError: If credentials are not provided in config or environment.
             ImportError: If boto3 is not installed.
+            ValueError: If an invalid dtype is provided.
         """
         try:
             import boto3  # type: ignore
@@ -94,7 +99,7 @@ class BedrockTextVectorizer(BaseVectorizer):
             region_name=aws_region,
         )
 
-        super().__init__(model=model, dims=self._set_model_dims(model))
+        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
 
     def _set_model_dims(self, model: str) -> int:
         """Initialize model and determine embedding dimensions."""
@@ -145,7 +150,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         response_body = json.loads(response["body"].read())
         embedding = response_body["embedding"]
 
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", self.dtype)
         return self._process_embedding(embedding, as_buffer, dtype)
 
     @retry(
@@ -181,7 +186,7 @@ class BedrockTextVectorizer(BaseVectorizer):
             raise TypeError("Texts must be a list of strings")
 
         embeddings: List[List[float]] = []
-        dtype = kwargs.pop("dtype", None)
+        dtype = kwargs.pop("dtype", self.dtype)
 
         for batch in self.batchify(texts, batch_size, preprocess):
             # Process each text in the batch individually since Bedrock
