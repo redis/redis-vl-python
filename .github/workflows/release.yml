@@ -9,7 +9,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  POETRY_VERSION: "1.4.2"
+  POETRY_VERSION: "1.8.3"
 
 jobs:
   build:
@@ -25,6 +25,8 @@ jobs:
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
+        with:
+          version: 1.8.3
 
       - name: Set Version
         run: poetry version ${{ github.event.inputs.version }}
