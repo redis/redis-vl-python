@@ -30,6 +30,7 @@ ml-dtypes = "^0.4.0"
 openai = { version = ">=1.13.0", optional = true }
 sentence-transformers = { version = ">=2.2.2", optional = true }
 google-cloud-aiplatform = { version = ">=1.26", optional = true }
+protobuf = { version = ">=5.29.1,<6.0.0.dev0", optional = true }
 cohere = { version = ">=4.44", optional = true }
 mistralai = { version = ">=0.2.0", optional = true }
 boto3 = { version = ">=1.34.0", optional = true }
@@ -37,7 +38,7 @@ boto3 = { version = ">=1.34.0", optional = true }
 [tool.poetry.extras]
 openai = ["openai"]
 sentence-transformers = ["sentence-transformers"]
-google_cloud_aiplatform = ["google_cloud_aiplatform"]
+vertexai = ["google_cloud_aiplatform", "protobuf"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
 bedrock = ["boto3"]
@@ -89,7 +90,7 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.black]
-target-version = ['py38', 'py39', 'py310', 'py311']
+target-version = ['py39', 'py310', 'py311']
 exclude = '''
 (
   | \.egg
