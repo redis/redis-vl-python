@@ -28,7 +28,7 @@ def skip_vectorizer() -> bool:
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
         BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
 )
@@ -242,7 +242,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     params=[
         OpenAITextVectorizer,
         BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
 )
