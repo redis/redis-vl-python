@@ -44,7 +44,6 @@ class MistralAITextVectorizer(BaseVectorizer):
     """
 
     _client: Any = PrivateAttr()
-    _aclient: Any = PrivateAttr()
 
     def __init__(self, model: str = "mistral-embed", api_config: Optional[Dict] = None):
         """Initialize the MistralAI vectorizer.
@@ -69,8 +68,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         """
         # Dynamic import of the mistralai module
         try:
-            from mistralai.async_client import MistralAsyncClient
-            from mistralai.client import MistralClient
+            from mistralai import Mistral
         except ImportError:
             raise ImportError(
                 "MistralAI vectorizer requires the mistralai library. \
@@ -88,13 +86,12 @@ class MistralAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-        self._client = MistralClient(api_key=api_key)
-        self._aclient = MistralAsyncClient(api_key=api_key)
+        self._client = Mistral(api_key=api_key)
 
     def _set_model_dims(self, model) -> int:
         try:
             embedding = (
-                self._client.embeddings(model=model, input=["dimension test"])
+                self._client.embeddings.create(model=model, inputs=["dimension test"])
                 .data[0]
                 .embedding
             )
@@ -144,7 +141,7 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings(model=self.model, input=batch)
+            response = self._client.embeddings.create(model=self.model, inputs=batch)
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
@@ -186,7 +183,7 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", None)
 
-        result = self._client.embeddings(model=self.model, input=[text])
+        result = self._client.embeddings.create(model=self.model, inputs=[text])
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @retry(
@@ -228,7 +225,9 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self._aclient.embeddings(model=self.model, input=batch)
+            response = await self._client.embeddings.create_async(
+                model=self.model, inputs=batch
+            )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
@@ -270,7 +269,9 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", None)
 
-        result = await self._aclient.embeddings(model=self.model, input=[text])
+        result = await self._client.embeddings.create_async(
+            model=self.model, inputs=[text]
+        )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @property
