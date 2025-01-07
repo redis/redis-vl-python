@@ -28,7 +28,7 @@ def skip_vectorizer() -> bool:
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
         BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
 )
@@ -299,7 +299,7 @@ def test_dtypes(vector_class, skip_vectorizer):
     params=[
         OpenAITextVectorizer,
         BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
     ]
 )
