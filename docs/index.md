@@ -47,7 +47,6 @@ docker run -d --name redis -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 
 This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/) at `http://localhost:8001`.
 
-> Read more about `redisvl` installation [here](https://redisvl.com/overview/installation.html)
 
 ## Table of Contents
 

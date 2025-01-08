@@ -1,16 +1,17 @@
-
 - title: Arxiv Paper Search
-  website: https://docsearch.redisvl.com
-  img-bottom: ../_static/gallery-images/arxiv-search.png
+  website: https://github.com/redis-developer/redis-arxiv-search
+  # img-bottom: ../_static/gallery-images/arxiv-search.png
+- title: eCommerce Search
+  website: https://github.com/redis-developer/redis-product-search
 - title: Real-Time Embeddings with Redis and Bytewax
   website: https://github.com/awmatheson/real-time-embeddings
-  img-bottom: ../_static/gallery-images/bytewax-redis.png
-- title: Question and Answer with OpenAI
-  website: https://www.redisvl.com/docs/html/examples/openai_qna.html
-  img-bottom: ../_static/gallery-images/RedisOpenAI-QnA.png
+  # img-bottom: ../_static/gallery-images/bytewax-redis.png
+- title: Redis RAG Workbench
+  website: https://github.com/redis-developer/redis-rag-workbench
+  # img-bottom: ../_static/gallery-images/RedisOpenAI-QnA.png
 - title: LLM Recommender for Hotels
-  website: https://github.com/RedisVentures/LLM-Recommender
-  img-bottom: ../_static/gallery-images/hotel-recommender.png
-- title: Chat YOUR PDF
-  website: https://github.com/RedisVentures/gcp-redis-llm-stack/tree/main/examples/chat-your-pdf
-  img-bottom: ../_static/gallery-images/chat-your-pdf.png
+  website: https://github.com/redis-applied-ai/LLM-Recommender
+  # img-bottom: ../_static/gallery-images/hotel-recommender.png
+- title: Agentic RAG
+  website: https://github.com/redis-developer/agentic-rag
+  # img-bottom: ../_static/gallery-images/chat-your-pdf.png

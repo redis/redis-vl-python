@@ -7,8 +7,10 @@ myst:
 
 # RedisVL API
 
+Reference documentation for the RedisVL API.
+
 ```{toctree}
-:caption: RedisVL
+:caption: RedisVL API
 :maxdepth: 2
 
 schema

@@ -72,8 +72,7 @@ html_theme = "pydata_sphinx_theme"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files=["css/custom.css", "css/sidebar.css"]
-html_js_files=["js/sidebar.js"]
+html_css_files=["css/custom.css"]#, "css/sidebar.css"]
 html_title = "RedisVL"
 html_context = {
    "default_mode": "dark"
@@ -87,8 +86,7 @@ html_context = {
     "doc_path": "docs",
 }
 
-import redisvl
-version = redisvl.__version__
+
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 3
@@ -96,20 +94,16 @@ myst_heading_anchors = 3
 html_theme_options = {
     "logo": {
         "text": "RedisVL",
-        "image_dark": "_static/redis-cube-red-white-rgb.svg",
+        "image_dark": "_static/Redis_Logo_Red_RGB.svg",
         "alt_text": "RedisVL",
     },
     "use_edit_page_button": True,
     "show_toc_level": 4,
-    "show_nav_level": 3,
+    "show_nav_level": 2,
     "navigation_depth": 5,
     "navbar_align": "content",  # [left, content, right] For testing that the navbar items align properly
-    "secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
-    "switcher": {
-        "json_url": "_static/version_names.json",
-        "version_match": version,
-    },
-    "navbar_start": ["navbar-logo", "version-switcher"],
+    #"secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
+    "navbar_start": ["navbar-logo"],
     "icon_links": [
         {
             "name": "GitHub",
@@ -120,9 +114,6 @@ html_theme_options = {
     ]
 }
 
-html_sidebars = {
-    "**": ["custom_sidebar.html"]
-}
 
 autoclass_content = 'both'
 add_module_names = False
