@@ -9,6 +9,7 @@ myst:
 
 
 ```{toctree}
+:caption: Overview
 :maxdepth: 2
 
 installation

@@ -85,7 +85,9 @@ html_context = {
     "github_version": "main",
     "doc_path": "docs",
 }
-
+html_sidebars = {
+    'examples': []
+}
 
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
