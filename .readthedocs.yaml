@@ -13,11 +13,9 @@ build:
     post_create_environment:
       # Install poetry
       - python -m pip install poetry==1.8.3
-      # Tell poetry to not use a virtual environment
-      - poetry config virtualenvs.create false
     post_install:
       # Install dependencies
-      - poetry install --with docs
+      - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH poetry install --with docs
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
