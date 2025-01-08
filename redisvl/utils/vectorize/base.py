@@ -5,6 +5,7 @@ from typing import Callable, List, Optional
 from pydantic.v1 import BaseModel, validator
 
 from redisvl.redis.utils import array_to_buffer
+from redisvl.schema.fields import VectorDataType
 
 
 class Vectorizers(Enum):
@@ -19,10 +20,21 @@ class Vectorizers(Enum):
 class BaseVectorizer(BaseModel, ABC):
     model: str
     dims: int
+    dtype: str
 
     @property
     def type(self) -> str:
         return "base"
+
+    @validator("dtype")
+    def check_dtype(dtype):
+        try:
+            VectorDataType(dtype.upper())
+        except ValueError:
+            raise ValueError(
+                f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
+            )
+        return dtype
 
     @validator("dims")
     @classmethod
@@ -81,13 +93,7 @@ class BaseVectorizer(BaseModel, ABC):
             else:
                 yield seq[pos : pos + size]
 
-    def _process_embedding(
-        self, embedding: List[float], as_buffer: bool, dtype: Optional[str]
-    ):
+    def _process_embedding(self, embedding: List[float], as_buffer: bool, dtype: str):
         if as_buffer:
-            if not dtype:
-                raise RuntimeError(
-                    "dtype is required if converting from float to byte string."
-                )
             return array_to_buffer(embedding, dtype)
         return embedding
