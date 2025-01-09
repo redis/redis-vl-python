@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/redis/redis-vl-python"
 repository = "https://github.com/redis/redis-vl-python"
-documentation = "https://www.redisvl.com"
+documentation = "https://docs.redisvl.com"
 keywords = ["ai", "redis", "redis-client", "vector-database", "vector-search"]
 classifiers = [
   "Programming Language :: Python :: 3.9",

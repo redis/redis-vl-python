@@ -89,6 +89,7 @@ html_sidebars = {
     'examples': []
 }
 
+
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 3
@@ -104,7 +105,9 @@ html_theme_options = {
     "show_nav_level": 2,
     "navigation_depth": 5,
     "navbar_align": "content",  # [left, content, right] For testing that the navbar items align properly
-    #"secondary_sidebar_items": ["page-toc", "edit-this-page", "sourcelink"],
+    "secondary_sidebar_items": {
+        "examples": [],
+    },
     "navbar_start": ["navbar-logo"],
     "icon_links": [
         {
