@@ -62,9 +62,9 @@ Choose from multiple Redis deployment options:
     docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
     ```
 3. [Redis Enterprise](https://redis.io/enterprise/): Commercial, self-hosted database
-4. [Azure Cache for Redis Enterprise](https://learn.microsoft.com/azure/azure-cache-for-redis/quickstart-create-redis-enterprise): Fully managed Redis Enterprise on Azure
+4. [Azure Managed Redis](https://azure.microsoft.com/en-us/products/managed-redis): Fully managed Redis Enterprise on Azure
 
-> Enhance your experience and observability with the free [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/).
+> Enhance your experience and observability with the free [Redis Insight GUI](https://redis.io/insight/).
 
 
 # Overview
@@ -371,4 +371,4 @@ For additional help, check out the following resources:
 Please help us by contributing PRs, opening GitHub issues for bugs or new feature ideas, improving documentation, or increasing test coverage. [Read more about how to contribute!](CONTRIBUTING.md)
 
 ## 🚧 Maintenance
-This project is supported by [Redis, Inc](https://redis.com) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/redis/redis-vl-python/issues).
+This project is supported by [Redis, Inc](https://redis.io) on a good faith effort basis. To report bugs, request features, or receive assistance, please [file an issue](https://github.com/redis/redis-vl-python/issues).

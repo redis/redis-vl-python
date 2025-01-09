@@ -87,13 +87,13 @@ poetry run serve-docs
 
 ### Getting Redis
 
-In order for your applications to use RedisVL, you must have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
+In order for your applications to use RedisVL, you must have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.io/cloud/) or locally in docker with [Redis Stack](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/docker/):
 
 ```bash
 docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 ```
 
-This will also spin up the [FREE RedisInsight GUI](https://redis.com/redis-enterprise/redis-insight/) at `http://localhost:8001`.
+This will also spin up the [FREE RedisInsight GUI](https://redis.io/insight/) at `http://localhost:8001`.
 
 ## How to Report a Bug
 
