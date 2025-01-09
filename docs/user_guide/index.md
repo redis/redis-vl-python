@@ -20,5 +20,4 @@ hash_vs_json_05
 rerankers_06
 session_manager_07
 semantic_router_08
-openai_qna_09
 ```
