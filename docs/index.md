@@ -9,7 +9,7 @@ html_theme.sidebar_secondary.remove: false
 
 # Redis Vector Library (RedisVL)
 
-RedisVL provides a powerful, dedicated Python client library for using Redis as a [Vector Database](https://redis.com/solutions/use-cases/vector-database). Leverage the speed and reliability of Redis along with vector-based semantic search capabilities to supercharge your application!
+A powerful, AI-native Python client library for [Redis](https://redis.io). Leverage the speed, flexibility, and reliability of Redis for real-time data to supercharge your AI application.
 
 ```{gallery-grid}
 :grid-columns: 1 2 2 3
@@ -39,15 +39,14 @@ Install `redisvl` into your Python (>=3.8) environment using `pip`:
 pip install redisvl
 ```
 
-Then make sure to have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.com/try-free) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
+Then make sure to have [Redis](https://redis.io) accessible with Search & Query features enabled on [Redis Cloud](https://redis.io/cloud) or locally in docker with [Redis Stack](https://redis.io/docs/getting-started/install-stack/docker/):
 
 ```bash
 docker run -d --name redis -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 ```
 
-This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterprise/redis-insight/) at `http://localhost:8001`.
+This will also spin up the [Redis Insight GUI](https://redis.io/insight/) at `http://localhost:8001`.
 
-> Read more about `redisvl` installation [here](https://redisvl.com/overview/installation.html)
 
 ## Table of Contents
 
@@ -55,7 +54,13 @@ This will also spin up the [Redis Insight GUI](https://redis.com/redis-enterpris
 :maxdepth: 2
 
 Overview <overview/index>
+API <api/index>
 User Guides <user_guide/index>
 Example Gallery <examples/index>
-API <api/index>
+```
+
+```{toctree}
+:hidden:
+
+Changelog <https://github.com/redis/redis-vl-python/releases>
 ```

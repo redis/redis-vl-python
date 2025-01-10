@@ -8,6 +8,8 @@ myst:
 
 # Example Gallery
 
+Explore community examples of RedisVL in the wild.
+
 ```{note}
 If you are using RedisVL, please consider adding your example to this page by
 opening a Pull Request on [GitHub](https://github.com/redis/redis-vl-python)
@@ -17,9 +19,3 @@ opening a Pull Request on [GitHub](https://github.com/redis/redis-vl-python)
 :grid-columns: "1 1 2 2"
 ```
 
-```{toctree}
-:hidden:
-
-openai_qna
-
-```
