@@ -47,7 +47,9 @@ class VoyageAITextVectorizer(BaseVectorizer):
     _client: Any = PrivateAttr()
     _aclient: Any = PrivateAttr()
 
-    def __init__(self, model: str, api_config: Optional[Dict] = None):
+    def __init__(
+        self, model: str, api_config: Optional[Dict] = None, dtype: str = "float32"
+    ):
         """Initialize the VoyageAI vectorizer.
 
         Visit https://docs.voyageai.com/docs/embeddings to learn about embeddings and check the available models.
@@ -56,6 +58,9 @@ class VoyageAITextVectorizer(BaseVectorizer):
             model (str): Model to use for embedding.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
 
         Raises:
             ImportError: If the voyageai library is not installed.
@@ -63,7 +68,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
 
         """
         self._initialize_client(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model))
+        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
 
     def _initialize_client(self, api_config: Optional[Dict]):
         """
@@ -192,6 +197,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         input_type = kwargs.get("input_type")
         truncation = kwargs.get("truncation")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -223,7 +229,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
                 texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
-                self._process_embedding(embedding, as_buffer)
+                self._process_embedding(embedding, as_buffer, dtype)
                 for embedding in response.embeddings
             ]
         return embeddings
@@ -270,6 +276,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         input_type = kwargs.get("input_type")
         truncation = kwargs.get("truncation")
+        dtype = kwargs.pop("dtype", self.dtype)
 
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -301,7 +308,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
                 texts=batch, model=self.model, input_type=input_type
             )
             embeddings += [
-                self._process_embedding(embedding, as_buffer)
+                self._process_embedding(embedding, as_buffer, dtype)
                 for embedding in response.embeddings
             ]
         return embeddings

@@ -257,7 +257,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         MistralAITextVectorizer,
         OpenAITextVectorizer,
         VertexAITextVectorizer,
-        VoyageAITextVectorizer
+        VoyageAITextVectorizer,
     ],
 )
 def test_dtypes(vector_class, skip_vectorizer):
@@ -310,7 +310,7 @@ def test_dtypes(vector_class, skip_vectorizer):
         BedrockTextVectorizer,
         MistralAITextVectorizer,
         CustomTextVectorizer,
-        VoyageAITextVectorizer
+        VoyageAITextVectorizer,
     ]
 )
 def avectorizer(request, skip_vectorizer):
