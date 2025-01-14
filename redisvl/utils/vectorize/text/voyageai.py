@@ -48,14 +48,17 @@ class VoyageAITextVectorizer(BaseVectorizer):
     _aclient: Any = PrivateAttr()
 
     def __init__(
-        self, model: str, api_config: Optional[Dict] = None, dtype: str = "float32"
+        self,
+        model: str = "voyage-large-2",
+        api_config: Optional[Dict] = None,
+        dtype: str = "float32",
     ):
         """Initialize the VoyageAI vectorizer.
 
         Visit https://docs.voyageai.com/docs/embeddings to learn about embeddings and check the available models.
 
         Args:
-            model (str): Model to use for embedding.
+            model (str): Model to use for embedding. Defaults to "voyage-large-2".
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.

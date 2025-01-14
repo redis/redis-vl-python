@@ -273,6 +273,7 @@ def test_dtypes(vector_class, skip_vectorizer):
         )
     else:
         vectorizer = vector_class()
+
     assert vectorizer.dtype == "float32"
 
     # test initializing dtype in constructor
@@ -288,6 +289,7 @@ def test_dtypes(vector_class, skip_vectorizer):
             )
         else:
             vectorizer = vector_class(dtype=dtype)
+
         assert vectorizer.dtype == dtype
 
     # test validation of dtype on init
@@ -317,13 +319,7 @@ def avectorizer(request, skip_vectorizer):
     if skip_vectorizer:
         pytest.skip("Skipping vectorizer instantiation...")
 
-    if request.param == OpenAITextVectorizer:
-        return request.param()
-    elif request.param == BedrockTextVectorizer:
-        return request.param()
-    elif request.param == MistralAITextVectorizer:
-        return request.param()
-    elif request.param == CustomTextVectorizer:
+    if request.param == CustomTextVectorizer:
 
         def embed_func(text):
             return [1.1, 2.2, 3.3, 4.4]
@@ -337,8 +333,8 @@ def avectorizer(request, skip_vectorizer):
         return request.param(
             embed=embed_func, aembed=aembed_func, aembed_many=aembed_many_func
         )
-    elif request.param == VoyageAITextVectorizer:
-        return request.param(model="voyage-large-2")
+    else:
+        return request.param()
 
 
 @pytest.mark.asyncio
