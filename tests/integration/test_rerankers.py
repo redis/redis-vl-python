@@ -34,11 +34,6 @@ def reranker(request, skip_reranker):
 
 
 @pytest.fixture
-def cohereReranker():
-    return CohereReranker()
-
-
-@pytest.fixture
 def hfCrossEncoderReranker():
     return HFCrossEncoderReranker()
 
@@ -74,15 +69,15 @@ async def test_async_rank_documents(reranker):
 
 
 # Test handling of bad input
-def test_bad_input_cohere(cohereReranker):
+def test_bad_input(reranker):
     with pytest.raises(Exception):
-        cohereReranker.rank("", [])  # Empty query or documents
+        reranker.rank("", [])  # Empty query or documents
 
     with pytest.raises(Exception):
-        cohereReranker.rank(123, ["valid document"])  # Invalid type for query
+        reranker.rank(123, ["valid document"])  # Invalid type for query
 
     with pytest.raises(Exception):
-        cohereReranker.rank("valid query", "not a list")  # Invalid type for documents
+        reranker.rank("valid query", "not a list")  # Invalid type for documents
 
     with pytest.raises(Exception):
         reranker.rank(
