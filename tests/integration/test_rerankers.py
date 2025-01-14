@@ -37,6 +37,7 @@ def reranker(request, skip_reranker):
 def cohereReranker():
     return CohereReranker()
 
+
 @pytest.fixture
 def hfCrossEncoderReranker():
     return HFCrossEncoderReranker()
