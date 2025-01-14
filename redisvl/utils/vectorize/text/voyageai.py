@@ -195,7 +195,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of embeddings.
 
         Raises:
-            TypeError: In an invalid input_type is provided.
+            TypeError: If an invalid input_type is provided.
 
         """
         input_type = kwargs.get("input_type")
