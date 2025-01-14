@@ -147,7 +147,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             List[float]: Embedding.
 
         Raises:
-            TypeError: In an invalid input_type is provided.
+            TypeError: If an invalid input_type is provided.
         """
         return self.embed_many(
             texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
