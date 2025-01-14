@@ -124,7 +124,7 @@ class HFCrossEncoderReranker(BaseReranker):
         scores = scores[:limit]
 
         if return_score:
-            return reranked_docs, scores
+            return reranked_docs, scores  # type: ignore
         return reranked_docs
 
     async def arank(

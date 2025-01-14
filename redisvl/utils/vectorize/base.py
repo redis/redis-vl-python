@@ -15,6 +15,7 @@ class Vectorizers(Enum):
     mistral = "mistral"
     vertexai = "vertexai"
     hf = "hf"
+    voyageai = "voyageai"
 
 
 class BaseVectorizer(BaseModel, ABC):
