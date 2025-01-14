@@ -340,10 +340,7 @@ def avectorizer(request, skip_vectorizer):
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
-    if isinstance(avectorizer, VoyageAITextVectorizer):
-        embedding = await avectorizer.aembed(text)
-    else:
-        embedding = await avectorizer.aembed(text)
+    embedding = await avectorizer.aembed(text)
 
     assert isinstance(embedding, list)
     assert len(embedding) == avectorizer.dims
@@ -352,10 +349,7 @@ async def test_vectorizer_aembed(avectorizer):
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
-    if isinstance(avectorizer, VoyageAITextVectorizer):
-        embeddings = await avectorizer.aembed_many(texts)
-    else:
-        embeddings = await avectorizer.aembed_many(texts)
+    embeddings = await avectorizer.aembed_many(texts)
 
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)
