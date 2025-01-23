@@ -462,7 +462,7 @@ class SemanticCache(BaseLLMCache):
             cache_search_results, return_fields  # type: ignore
         )
         # Extend TTL on keys
-        asyncio.gather(*[self._async_refresh_ttl(key) for key in redis_keys])
+        await asyncio.gather(*[self._async_refresh_ttl(key) for key in redis_keys])
 
         return cache_hits
 
