@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Callable, List, Optional
 
-from pydantic.v1 import BaseModel, validator
+from pydantic.v1 import BaseModel, Field, validator
 
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
@@ -21,7 +21,7 @@ class Vectorizers(Enum):
 class BaseVectorizer(BaseModel, ABC):
     model: str
     dims: int
-    dtype: str
+    dtype: str = Field(default="float32")
 
     @property
     def type(self) -> str:
