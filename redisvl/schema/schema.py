@@ -170,7 +170,7 @@ class IndexSchema(BaseModel):
 
     @root_validator(pre=True)
     @classmethod
-    def validate_and_create_ields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_and_create_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate uniqueness of field names and create valid field instances.
         """
