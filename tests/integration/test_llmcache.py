@@ -272,7 +272,7 @@ async def test_async_ttl_expiration(cache_with_ttl, vectorizer):
     vector = vectorizer.embed(prompt)
 
     await cache_with_ttl.astore(prompt, response, vector=vector)
-    sleep(3)
+    await asyncio.sleep(3)
 
     check_result = await cache_with_ttl.acheck(vector=vector)
     assert len(check_result) == 0
@@ -442,7 +442,7 @@ async def test_async_updating_document(cache):
     check_result = await cache.acheck(prompt=prompt, return_fields=["updated_at"])
     key = check_result[0]["key"]
 
-    sleep(1)
+    await asyncio.sleep(1)
 
     metadata = {"foo": "bar"}
     await cache.aupdate(key=key, metadata=metadata)
@@ -479,7 +479,7 @@ async def test_async_ttl_expiration_after_update(cache_with_ttl, vectorizer):
     assert cache_with_ttl.ttl == 4
 
     await cache_with_ttl.astore(prompt, response, vector=vector)
-    sleep(5)
+    await asyncio.sleep(5)
 
     check_result = await cache_with_ttl.acheck(vector=vector)
     assert len(check_result) == 0
