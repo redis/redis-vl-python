@@ -1,11 +1,8 @@
-name: Release
+name: Publish Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version of this deployment'
-        required: true
+  release:
+    types: [published]
 
 env:
   PYTHON_VERSION: "3.11"
@@ -26,10 +23,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
-          version: 1.8.3
-
-      - name: Set Version
-        run: poetry version ${{ github.event.inputs.version }}
+          version: ${{ env.POETRY_VERSION }}
 
       - name: Build package
         run: poetry build
@@ -40,56 +34,8 @@ jobs:
           name: dist
           path: dist/
 
-  # test-pypi-publish:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-  #     - uses: actions/checkout@v4
-
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
-
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
-
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: dist
-  #         path: dist/
-
-  #     - name: Publish to TestPyPI
-  #       env:
-  #         POETRY_PYPI_TOKEN_TESTPYPI: ${{ secrets.TESTPYPI }}
-  #       run: poetry config repositories.test-pypi https://test.pypi.org/legacy/; poetry config pypi-token.test-pypi $POETRY_PYPI_TOKEN_TESTPYPI; poetry publish --repository test-pypi
-
-  # pre-release-checks:
-  #   needs: test-pypi-publish
-  #   runs-on: ubuntu-latest
-
-  #   steps:
-  #     - uses: actions/checkout@v4
-
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
-
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
-
-  #     - name: Install dependencies
-  #       run: |
-  #         poetry install --all-extras
-
-  #     - name: Install published package from TestPyPI
-  #       run:
-  #         poetry run pip install --index-url https://test.pypi.org/simple/ --no-deps redisvl; SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-cov
-
   publish:
-    needs: build #pre-release-checks
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
@@ -102,6 +48,8 @@ jobs:
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -112,25 +60,3 @@ jobs:
         env:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI }}
         run: poetry publish
-
-  create-release:
-    needs: publish
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: "dist/*"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          draft: false
-          generateReleaseNotes: true
-          tag: ${{ github.event.inputs.version }}
-          commit: main

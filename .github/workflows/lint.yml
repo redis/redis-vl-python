@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+env:
+  POETRY_VERSION: "1.8.3"
+
 jobs:
   check:
     name: Style-check ${{ matrix.python-version }}
@@ -33,7 +36,7 @@ jobs:
     - name: Install Poetry
       uses: snok/install-poetry@v1
       with:
-        version: 1.8.3
+        version: ${{ env.POETRY_VERSION }}
     - name: Install dependencies
       run: |
         poetry install --all-extras

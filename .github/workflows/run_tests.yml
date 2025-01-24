@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+env:
+  POETRY_VERSION: "1.8.3"
+
 jobs:
   test:
     name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis-stack ${{matrix.redis-stack-version}}]
@@ -36,7 +39,7 @@ jobs:
     - name: Install Poetry
       uses: snok/install-poetry@v1
       with:
-        version: 1.8.3
+        version: ${{ env.POETRY_VERSION }}
 
     - name: Install dependencies
       run: |
@@ -96,10 +99,3 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: |
         cd docs/ && poetry run treon -v
-
-    - name: Publish coverage results
-      uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage.xml
-        fail_ci_if_error: false
