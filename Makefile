@@ -21,10 +21,10 @@ lint: format check-types
 test:
 	SKIP_RERANKERS=true SKIP_VECTORIZERS=true poetry run test-cov
 	
-check: lint test
-	
-integration-test:
+test-all:
 	poetry run test-cov
+
+check: lint test
 
 docs-build:
 	poetry run build-docs
