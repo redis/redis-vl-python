@@ -38,6 +38,25 @@ Then install the required libraries:
 poetry install --all-extras
 ```
 
+### Optional Makefile
+
+If you use `make`, we've created shortcuts for running the commands in this document.
+
+| Command | Description |
+|---------|-------------|
+| make install | Installs all dependencies using Poetry|
+| make redis-start | Starts Redis Stack in a Docker container on ports 6379 and 8001 |
+| make redis-stop | Stops the Redis Stack Docker container |
+| make format | Runs code formatting and import sorting |
+| make check-types | Runs mypy type checking |
+| make lint | Runs formatting, import sorting, and type checking |
+| make test | Runs tests, excluding those that require API keys and/or remote network calls)|
+| make test-all | Runs all tests, including those that require API keys and/or remote network calls)|
+| make check | Runs all linting targets and a subset of tests |
+| make docs-build | Builds the documentation |
+| make docs-serve | Serves the documentation locally |
+| make clean | Removes all generated files (cache, coverage, build artifacts, etc.) |
+
 ### Linting and Tests
 
 Check formatting, linting, and typing:
