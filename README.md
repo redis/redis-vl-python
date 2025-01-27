@@ -1,20 +1,20 @@
 <div align="center" style="margin-bottom: 20px;">
-    <div><img src="docs/_static/Redis_Logo_Red_RGB.svg" style="width: 200px; margin-bottom: 20px;"></div>
+    <div><img src="https://raw.githubusercontent.com/redis/redis-vl-python/main/docs/_static/Redis_Logo_Red_RGB.svg" style="width: 250px; margin-bottom: 20px;"></div>
     <h1>🔥 Vector Library</h1>
 </div>
 
 <div align="center" style="margin-top: 20px;">
-    <span style="display: block; margin-bottom: 10px;">the *AI-native* Redis Python client</span>
+    <span style="display: block; margin-bottom: 10px;">The *AI-native* Redis Python client</span>
     <br />
 
 
-[![Codecov](https://img.shields.io/codecov/c/github/redis/redis-vl-python/dev?label=Codecov&logo=codecov&token=E30WxqBeJJ)](https://codecov.io/gh/redis/redis-vl-python)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![Language](https://img.shields.io/github/languages/top/redis/redis-vl-python)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![GitHub last commit](https://img.shields.io/github/last-commit/redis/redis-vl-python)
-![GitHub deployments](https://img.shields.io/github/deployments/redis/redis-vl-python/github-pages?label=doc%20build)
 [![pypi](https://badge.fury.io/py/redisvl.svg)](https://pypi.org/project/redisvl/)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/redisvl)
+[![GitHub stars](https://img.shields.io/github/stars/redis/redis-vl-python)](https://github.com/redis/redis-vl-python/stargazers)
 
 </div>
 
@@ -30,9 +30,9 @@
 
 # Introduction
 
-Welcome to the Redis Vector Library – the ultimate Python client designed for AI applications harnessing the power of [Redis](https://redis.io).
+Redis Vector Library is the ultimate Python client designed for AI-native applications harnessing the power of [Redis](https://redis.io).
 
-[redisvl](https://pypi.org/project/redisvl/) is your go-to tool for:
+[redisvl](https://pypi.org/project/redisvl/) is your go-to client for:
 
 - Lightning-fast information retrieval & vector similarity search
 - Real-time RAG pipelines
