@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "redisvl"
-version = "0.3.8"
+version = "0.3.9"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = ["Redis Inc. <applied.ai@redis.com>"]
 license = "MIT"
