@@ -101,13 +101,6 @@ class SemanticCache(BaseLLMCache):
 
         self._vectorizer = vectorizer
 
-        # Create semantic cache schema and index
-        schema = SemanticCacheIndexSchema.from_params(
-            name, prefix, vectorizer.dims, vectorizer.dtype
-        )
-        schema = self._modify_schema(schema, filterable_fields)
-        self._index = SearchIndex(schema=schema)
-
         # Process fields and other settings
         self.set_threshold(distance_threshold)
         self.return_fields = [
@@ -118,6 +111,13 @@ class SemanticCache(BaseLLMCache):
             UPDATED_AT_FIELD_NAME,
             METADATA_FIELD_NAME,
         ]
+
+        # Create semantic cache schema and index
+        schema = SemanticCacheIndexSchema.from_params(
+            name, prefix, vectorizer.dims, vectorizer.dtype
+        )
+        schema = self._modify_schema(schema, filterable_fields)
+        self._index = SearchIndex(schema=schema)
 
         # Handle redis connection
         if redis_client:
