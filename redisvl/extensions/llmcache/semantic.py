@@ -86,11 +86,27 @@ class SemanticCache(BaseLLMCache):
         else:
             prefix = name
 
-        # Set vectorizer default
-        if vectorizer is None:
+        # Validate a provided vectorizer or set the default
+        if vectorizer:
+            if not isinstance(vectorizer, BaseVectorizer):
+                raise TypeError("Must provide a valid redisvl.vectorizer class.")
+        else:
+            dtype = kwargs.get("dtype")
+            vectorizer_kwargs = {"dtype": dtype} if dtype else {}
+
             vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-mpnet-base-v2"
+                model="sentence-transformers/all-mpnet-base-v2",
+                **vectorizer_kwargs,
             )
+
+        self._vectorizer = vectorizer
+
+        # Create semantic cache schema and index
+        schema = SemanticCacheIndexSchema.from_params(
+            name, prefix, vectorizer.dims, vectorizer.dtype
+        )
+        schema = self._modify_schema(schema, filterable_fields)
+        self._index = SearchIndex(schema=schema)
 
         # Process fields and other settings
         self.set_threshold(distance_threshold)
@@ -102,14 +118,6 @@ class SemanticCache(BaseLLMCache):
             UPDATED_AT_FIELD_NAME,
             METADATA_FIELD_NAME,
         ]
-
-        # Create semantic cache schema and index
-        dtype = kwargs.get("dtype", "float32")
-        schema = SemanticCacheIndexSchema.from_params(
-            name, prefix, vectorizer.dims, dtype
-        )
-        schema = self._modify_schema(schema, filterable_fields)
-        self._index = SearchIndex(schema=schema)
 
         # Handle redis connection
         if redis_client:
@@ -128,19 +136,8 @@ class SemanticCache(BaseLLMCache):
                     "If you wish to overwrite the index schema, set overwrite=True during initialization."
                 )
 
-        # Create the search index
+        # Create the search index in Redis
         self._index.create(overwrite=overwrite, drop=False)
-
-        # Initialize and validate vectorizer
-        if not isinstance(vectorizer, BaseVectorizer):
-            raise TypeError("Must provide a valid redisvl.vectorizer class.")
-
-        validate_vector_dims(
-            vectorizer.dims,
-            self._index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.dims,  # type: ignore
-        )
-        self._vectorizer = vectorizer
-        self._dtype = self.index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.datatype  # type: ignore[union-attr]
 
     def _modify_schema(
         self,
@@ -290,7 +287,7 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
 
-        return self._vectorizer.embed(prompt, dtype=self._dtype)
+        return self._vectorizer.embed(prompt)
 
     async def _avectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
@@ -372,7 +369,7 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
-            dtype=self._dtype,
+            dtype=self._vectorizer.dtype,
         )
 
         # Search the cache!
@@ -543,7 +540,7 @@ class SemanticCache(BaseLLMCache):
         # Load cache entry with TTL
         ttl = ttl or self._ttl
         keys = self._index.load(
-            data=[cache_entry.to_dict(self._dtype)],
+            data=[cache_entry.to_dict(self._vectorizer.dtype)],
             ttl=ttl,
             id_field=ENTRY_ID_FIELD_NAME,
         )
@@ -607,7 +604,7 @@ class SemanticCache(BaseLLMCache):
         # Load cache entry with TTL
         ttl = ttl or self._ttl
         keys = await aindex.load(
-            data=[cache_entry.to_dict(self._dtype)],
+            data=[cache_entry.to_dict(self._vectorizer.dtype)],
             ttl=ttl,
             id_field=ENTRY_ID_FIELD_NAME,
         )

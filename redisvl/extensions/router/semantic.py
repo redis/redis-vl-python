@@ -74,7 +74,9 @@ class SemanticRouter(BaseModel):
         """
         # Set vectorizer default
         if vectorizer is None:
-            vectorizer = HFTextVectorizer()
+            dtype = kwargs.get("dtype")
+            vectorizer_kwargs = {"dtype": dtype} if dtype else {}
+            vectorizer = HFTextVectorizer(**vectorizer_kwargs)
 
         if routing_config is None:
             routing_config = RoutingConfig()
@@ -85,9 +87,8 @@ class SemanticRouter(BaseModel):
             vectorizer=vectorizer,
             routing_config=routing_config,
         )
-        dtype = kwargs.get("dtype", "float32")
         self._initialize_index(
-            redis_client, redis_url, overwrite, dtype, **connection_kwargs
+            redis_client, redis_url, overwrite, vectorizer.dtype, **connection_kwargs
         )
 
     def _initialize_index(
