@@ -22,7 +22,12 @@ from redisvl.extensions.llmcache.schema import (
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
-from redisvl.utils.utils import current_timestamp, deprecated_argument, serialize, validate_vector_dims
+from redisvl.utils.utils import (
+    current_timestamp,
+    deprecated_argument,
+    serialize,
+    validate_vector_dims,
+)
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 

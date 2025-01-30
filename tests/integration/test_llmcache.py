@@ -885,6 +885,7 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url):
             name="float64_cache", dtype="float16", redis_url=redis_url
         )
 
+
 def test_vectorizer_dtype_mismatch():
     with pytest.raises(ValueError):
         SemanticCache(
