@@ -20,7 +20,7 @@ from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import model_to_dict
+from redisvl.utils.utils import deprecated_argument, model_to_dict
 from redisvl.utils.vectorize import (
     BaseVectorizer,
     HFTextVectorizer,
@@ -47,6 +47,7 @@ class SemanticRouter(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+    @deprecated_argument("dtype", "vectorizer")
     def __init__(
         self,
         name: str,
@@ -72,9 +73,17 @@ class SemanticRouter(BaseModel):
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
         """
-        # Set vectorizer default
-        if vectorizer is None:
-            dtype = kwargs.get("dtype")
+        dtype = kwargs.get("dtype")
+
+        # Validate a provided vectorizer or set the default
+        if vectorizer:
+            if not isinstance(vectorizer, BaseVectorizer):
+                raise TypeError("Must provide a valid redisvl.vectorizer class.")
+            if dtype and vectorizer.dtype != dtype:
+                raise ValueError(
+                    f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
+                )
+        else:
             vectorizer_kwargs = {"dtype": dtype} if dtype else {}
             vectorizer = HFTextVectorizer(**vectorizer_kwargs)
 
@@ -87,10 +96,9 @@ class SemanticRouter(BaseModel):
             vectorizer=vectorizer,
             routing_config=routing_config,
         )
-        self._initialize_index(
-            redis_client, redis_url, overwrite, vectorizer.dtype, **connection_kwargs
-        )
+        self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
 
+    @deprecated_argument("dtype")
     def _initialize_index(
         self,
         redis_client: Optional[Redis] = None,
@@ -101,7 +109,7 @@ class SemanticRouter(BaseModel):
     ):
         """Initialize the search index and handle Redis connection."""
         schema = SemanticRouterIndexSchema.from_params(
-            self.name, self.vectorizer.dims, dtype
+            self.name, self.vectorizer.dims, self.vectorizer.dtype
         )
         self._index = SearchIndex(schema=schema)
 
@@ -170,9 +178,7 @@ class SemanticRouter(BaseModel):
         for route in routes:
             # embed route references as a single batch
             reference_vectors = self.vectorizer.embed_many(
-                [reference for reference in route.references],
-                as_buffer=True,
-                dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
+                [reference for reference in route.references], as_buffer=True
             )
             # set route references
             for i, reference in enumerate(route.references):
@@ -249,7 +255,6 @@ class SemanticRouter(BaseModel):
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
-            dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
 
         aggregate_request = self._build_aggregate_request(
@@ -302,7 +307,6 @@ class SemanticRouter(BaseModel):
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
-            dtype=self._index.schema.fields[ROUTE_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
         )
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k

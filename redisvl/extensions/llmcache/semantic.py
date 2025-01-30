@@ -22,7 +22,7 @@ from redisvl.extensions.llmcache.schema import (
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
-from redisvl.utils.utils import current_timestamp, serialize, validate_vector_dims
+from redisvl.utils.utils import current_timestamp, deprecated_argument, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
@@ -32,6 +32,7 @@ class SemanticCache(BaseLLMCache):
     _index: SearchIndex
     _aindex: Optional[AsyncSearchIndex] = None
 
+    @deprecated_argument("dtype", "vectorizer")
     def __init__(
         self,
         name: str = "llmcache",

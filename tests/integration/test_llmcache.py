@@ -885,11 +885,10 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url):
             name="float64_cache", dtype="float16", redis_url=redis_url
         )
 
-
 def test_vectorizer_dtype_mismatch():
     with pytest.raises(ValueError):
         SemanticCache(
-            name="test_cache",
+            name="test_dtype_mismatch",
             dtype="float32",
             vectorizer=HFTextVectorizer(dtype="float16"),
         )
@@ -898,12 +897,17 @@ def test_vectorizer_dtype_mismatch():
 def test_invalid_vectorizer():
     with pytest.raises(TypeError):
         SemanticCache(
-            name="test_cache",
+            name="test_invalid_vectorizer",
             vectorizer="invalid_vectorizer",  # type: ignore
         )
 
 
 def test_passes_through_dtype_to_default_vectorizer():
     # The default is float32, so we should see float64 if we pass it in.
-    cache = SemanticCache(name="test_cache", dtype="float64")
+    cache = SemanticCache(name="test_pass_through_dtype)", dtype="float64")
     assert cache._vectorizer.dtype == "float64"
+
+
+def test_deprecated_dtype_argument():
+    with pytest.warns(DeprecationWarning):
+        SemanticCache(name="test_deprecated_dtype", dtype="float32")
