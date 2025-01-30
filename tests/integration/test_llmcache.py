@@ -884,3 +884,26 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url):
         bad_type = SemanticCache(
             name="float64_cache", dtype="float16", redis_url=redis_url
         )
+
+
+def test_vectorizer_dtype_mismatch():
+    with pytest.raises(ValueError):
+        SemanticCache(
+            name="test_cache",
+            dtype="float32",
+            vectorizer=HFTextVectorizer(dtype="float16"),
+        )
+
+
+def test_invalid_vectorizer():
+    with pytest.raises(TypeError):
+        SemanticCache(
+            name="test_cache",
+            vectorizer="invalid_vectorizer",  # type: ignore
+        )
+
+
+def test_passes_through_dtype_to_default_vectorizer():
+    # The default is float32, so we should see float64 if we pass it in.
+    cache = SemanticCache(name="test_cache", dtype="float64")
+    assert cache._vectorizer.dtype == "float64"

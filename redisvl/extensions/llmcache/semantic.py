@@ -86,12 +86,17 @@ class SemanticCache(BaseLLMCache):
         else:
             prefix = name
 
+        dtype = kwargs.get("dtype")
+
         # Validate a provided vectorizer or set the default
         if vectorizer:
             if not isinstance(vectorizer, BaseVectorizer):
                 raise TypeError("Must provide a valid redisvl.vectorizer class.")
+            if dtype and vectorizer.dtype != dtype:
+                raise ValueError(
+                    f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
+                )
         else:
-            dtype = kwargs.get("dtype")
             vectorizer_kwargs = {"dtype": dtype} if dtype else {}
 
             vectorizer = HFTextVectorizer(
