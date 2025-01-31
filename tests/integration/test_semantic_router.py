@@ -1,13 +1,16 @@
 import os
 import pathlib
+import warnings
 
 import pytest
 from redis.exceptions import ConnectionError
 
 from redisvl.exceptions import RedisModuleVersionError
+from redisvl.extensions.llmcache.semantic import SemanticCache
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import Route, RoutingConfig
 from redisvl.redis.connection import compare_versions
+from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 
 def get_base_path():
@@ -43,6 +46,13 @@ def semantic_router(client, routes):
     )
     yield router
     router.delete()
+
+
+@pytest.fixture(autouse=True)
+def disable_deprecation_warnings():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        yield
 
 
 def test_initialize_router(semantic_router):
@@ -302,4 +312,45 @@ def test_bad_dtype_connecting_to_exiting_router(redis_url, routes):
             routes=routes,
             dtype="float16",
             redis_url=redis_url,
+        )
+
+
+def test_vectorizer_dtype_mismatch(routes):
+    with pytest.raises(ValueError):
+        SemanticRouter(
+            name="test_dtype_mismatch",
+            routes=routes,
+            dtype="float32",
+            vectorizer=HFTextVectorizer(dtype="float16"),
+            overwrite=True,
+        )
+
+
+def test_invalid_vectorizer(routes):
+    with pytest.raises(TypeError):
+        SemanticRouter(
+            name="test_invalid_vectorizer",
+            vectorizer="invalid_vectorizer",  # type: ignore
+            overwrite=True,
+        )
+
+
+def test_passes_through_dtype_to_default_vectorizer(routes):
+    # The default is float32, so we should see float64 if we pass it in.
+    router = SemanticRouter(
+        name="test_pass_through_dtype",
+        routes=routes,
+        dtype="float64",
+        overwrite=True,
+    )
+    assert router.vectorizer.dtype == "float64"
+
+
+def test_deprecated_dtype_argument(routes):
+    with pytest.warns(DeprecationWarning):
+        SemanticRouter(
+            name="test_deprecated_dtype",
+            routes=routes,
+            dtype="float32",
+            overwrite=True,
         )

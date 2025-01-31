@@ -1,8 +1,10 @@
 import json
 from enum import Enum
+from functools import wraps
 from time import time
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 from uuid import uuid4
+from warnings import warn
 
 from pydantic.v1 import BaseModel
 
@@ -57,3 +59,32 @@ def serialize(data: Dict[str, Any]) -> str:
 def deserialize(data: str) -> Dict[str, Any]:
     """Deserialize the input from a string."""
     return json.loads(data)
+
+
+def deprecated_argument(argument: str, replacement: Optional[str] = None) -> Callable:
+    """
+    Decorator to warn if a deprecated argument is passed.
+
+    When the wrapped function is called, the decorator will warn if the
+    deprecated argument is passed as an argument or keyword argument.
+    """
+
+    message = f"Argument {argument} is deprecated and will be removed in the next major release."
+    if replacement:
+        message += f" Use {replacement} instead."
+
+    def wrapper(func):
+        @wraps(func)
+        def inner(*args, **kwargs):
+            argument_names = func.__code__.co_varnames
+
+            if argument in argument_names:
+                warn(message, DeprecationWarning, stacklevel=2)
+            elif argument in kwargs:
+                warn(message, DeprecationWarning, stacklevel=2)
+
+            return func(*args, **kwargs)
+
+        return inner
+
+    return wrapper

@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from ml_dtypes import bfloat16
 
 from redisvl.redis.utils import (
     array_to_buffer,
@@ -8,6 +7,7 @@ from redisvl.redis.utils import (
     convert_bytes,
     make_dict,
 )
+from redisvl.utils.utils import deprecated_argument
 
 
 def test_even_number_of_elements():
@@ -146,3 +146,94 @@ def test_conversion_with_invalid_floats():
     array = [float("inf"), float("-inf"), float("nan")]
     result = array_to_buffer(array, "float16")
     assert len(result) > 0  # Simple check to ensure it returns anything
+
+
+class TestDeprecatedArgument:
+    def test_deprecation_warning_text_with_replacement(self):
+        @deprecated_argument("dtype", "vectorizer")
+        def test_func(dtype=None, vectorizer=None):
+            pass
+
+        with pytest.warns(DeprecationWarning) as record:
+            test_func(dtype="float32")
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Argument dtype is deprecated and will be removed"
+            " in the next major release. Use vectorizer instead."
+        )
+
+    def test_deprecation_warning_text_without_replacement(self):
+        @deprecated_argument("dtype")
+        def test_func(dtype=None):
+            pass
+
+        with pytest.warns(DeprecationWarning) as record:
+            test_func(dtype="float32")
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Argument dtype is deprecated and will be removed"
+            " in the next major release."
+        )
+
+    def test_function_argument(self):
+        @deprecated_argument("dtype", "vectorizer")
+        def test_func(dtype=None, vectorizer=None):
+            pass
+
+        with pytest.warns(DeprecationWarning):
+            test_func(dtype="float32")
+
+    def test_function_keyword_argument(self):
+        @deprecated_argument("dtype", "vectorizer")
+        def test_func(dtype=None, vectorizer=None):
+            pass
+
+        with pytest.warns(DeprecationWarning):
+            test_func(vectorizer="float32")
+
+    def test_class_method_argument(self):
+        class TestClass:
+            @deprecated_argument("dtype", "vectorizer")
+            def test_method(self, dtype=None, vectorizer=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass().test_method(dtype="float32")
+
+    def test_class_method_keyword_argument(self):
+        class TestClass:
+            @deprecated_argument("dtype", "vectorizer")
+            def test_method(self, dtype=None, vectorizer=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass().test_method(vectorizer="float32")
+
+    def test_class_init_argument(self):
+        class TestClass:
+            @deprecated_argument("dtype", "vectorizer")
+            def __init__(self, dtype=None, vectorizer=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass(dtype="float32")
+
+    def test_class_init_keyword_argument(self):
+        class TestClass:
+            @deprecated_argument("dtype", "vectorizer")
+            def __init__(self, dtype=None, vectorizer=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass(dtype="float32")
+
+    async def test_async_function_argument(self):
+        @deprecated_argument("dtype", "vectorizer")
+        async def test_func(dtype=None, vectorizer=None):
+            return 1
+
+        with pytest.warns(DeprecationWarning):
+            result = await test_func(dtype="float32")
+        assert result == 1

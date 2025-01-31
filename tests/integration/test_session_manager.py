@@ -1,4 +1,4 @@
-import os
+import warnings
 
 import pytest
 from redis.exceptions import ConnectionError
@@ -9,6 +9,7 @@ from redisvl.extensions.session_manager import (
     SemanticSessionManager,
     StandardSessionManager,
 )
+from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 
 @pytest.fixture
@@ -24,6 +25,13 @@ def semantic_session(app_name, client):
     yield session
     session.clear()
     session.delete()
+
+
+@pytest.fixture(autouse=True)
+def disable_deprecation_warnings():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        yield
 
 
 # test standard session manager
@@ -579,3 +587,35 @@ def test_bad_dtype_connecting_to_exiting_session(redis_url):
         bad_type = SemanticSessionManager(
             name="float64 session", dtype="float16", redis_url=redis_url
         )
+
+
+def test_vectorizer_dtype_mismatch():
+    with pytest.raises(ValueError):
+        SemanticSessionManager(
+            name="test_dtype_mismatch",
+            dtype="float32",
+            vectorizer=HFTextVectorizer(dtype="float16"),
+            overwrite=True,
+        )
+
+
+def test_invalid_vectorizer():
+    with pytest.raises(TypeError):
+        SemanticSessionManager(
+            name="test_invalid_vectorizer",
+            vectorizer="invalid_vectorizer",  # type: ignore
+            overwrite=True,
+        )
+
+
+def test_passes_through_dtype_to_default_vectorizer():
+    # The default is float32, so we should see float64 if we pass it in.
+    cache = SemanticSessionManager(
+        name="test_pass_through_dtype", dtype="float64", overwrite=True
+    )
+    assert cache._vectorizer.dtype == "float64"
+
+
+def test_deprecated_dtype_argument():
+    with pytest.warns(DeprecationWarning):
+        SemanticSessionManager(name="float64 session", dtype="float64", overwrite=True)

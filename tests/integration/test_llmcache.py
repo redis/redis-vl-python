@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections import namedtuple
 from time import sleep, time
+import warnings
 
 import pytest
 from pydantic.v1 import ValidationError
@@ -69,6 +70,13 @@ def cache_with_redis_client(vectorizer, client):
     yield cache_instance
     cache_instance.clear()  # Clear cache after each test
     cache_instance._index.delete(True)  # Clean up index
+
+
+@pytest.fixture(autouse=True)
+def disable_deprecation_warnings():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        yield
 
 
 def test_bad_ttl(cache):
@@ -884,3 +892,35 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url):
         bad_type = SemanticCache(
             name="float64_cache", dtype="float16", redis_url=redis_url
         )
+
+
+def test_vectorizer_dtype_mismatch():
+    with pytest.raises(ValueError):
+        SemanticCache(
+            name="test_dtype_mismatch",
+            dtype="float32",
+            vectorizer=HFTextVectorizer(dtype="float16"),
+            overwrite=True,
+        )
+
+
+def test_invalid_vectorizer():
+    with pytest.raises(TypeError):
+        SemanticCache(
+            name="test_invalid_vectorizer",
+            vectorizer="invalid_vectorizer",  # type: ignore
+            overwrite=True,
+        )
+
+
+def test_passes_through_dtype_to_default_vectorizer():
+    # The default is float32, so we should see float64 if we pass it in.
+    cache = SemanticCache(
+        name="test_pass_through_dtype", dtype="float64", overwrite=True
+    )
+    assert cache._vectorizer.dtype == "float64"
+
+
+def test_deprecated_dtype_argument():
+    with pytest.warns(DeprecationWarning):
+        SemanticCache(name="test_deprecated_dtype", dtype="float32", overwrite=True)

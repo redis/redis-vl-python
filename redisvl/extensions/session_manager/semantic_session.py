@@ -19,12 +19,13 @@ from redisvl.extensions.session_manager.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
-from redisvl.utils.utils import validate_vector_dims
+from redisvl.utils.utils import deprecated_argument, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
 class SemanticSessionManager(BaseSessionManager):
 
+    @deprecated_argument("dtype", "vectorizer")
     def __init__(
         self,
         name: str,
@@ -70,16 +71,30 @@ class SemanticSessionManager(BaseSessionManager):
         super().__init__(name, session_tag)
 
         prefix = prefix or name
+        dtype = kwargs.get("dtype")
 
-        self._vectorizer = vectorizer or HFTextVectorizer(
-            model="sentence-transformers/msmarco-distilbert-cos-v5"
-        )
+        # Validate a provided vectorizer or set the default
+        if vectorizer:
+            if not isinstance(vectorizer, BaseVectorizer):
+                raise TypeError("Must provide a valid redisvl.vectorizer class.")
+            if dtype and vectorizer.dtype != dtype:
+                raise ValueError(
+                    f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
+                )
+        else:
+            vectorizer_kwargs = {"dtype": dtype} if dtype else {}
+
+            vectorizer = HFTextVectorizer(
+                model="sentence-transformers/msmarco-distilbert-cos-v5",
+                **vectorizer_kwargs,
+            )
+
+        self._vectorizer = vectorizer
 
         self.set_distance_threshold(distance_threshold)
 
-        dtype = kwargs.get("dtype", "float32")
         schema = SemanticSessionIndexSchema.from_params(
-            name, prefix, self._vectorizer.dims, dtype
+            name, prefix, self._vectorizer.dims, vectorizer.dtype
         )
 
         self._index = SearchIndex(schema=schema)
@@ -215,7 +230,7 @@ class SemanticSessionManager(BaseSessionManager):
             num_results=top_k,
             return_score=True,
             filter_expression=session_filter,
-            dtype=self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.datatype,  # type: ignore[union-attr]
+            dtype=self._vectorizer.dtype,
         )
         messages = self._index.query(query)
 
@@ -341,7 +356,7 @@ class SemanticSessionManager(BaseSessionManager):
             if TOOL_FIELD_NAME in message:
                 chat_message.tool_call_id = message[TOOL_FIELD_NAME]
 
-            chat_messages.append(chat_message.to_dict(dtype=self._index.schema.fields[SESSION_VECTOR_FIELD_NAME].attrs.datatype))  # type: ignore[union-attr]
+            chat_messages.append(chat_message.to_dict(dtype=self._vectorizer.dtype))
 
         self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
 
