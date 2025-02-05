@@ -315,42 +315,46 @@ def test_bad_dtype_connecting_to_exiting_router(redis_url, routes):
         )
 
 
-def test_vectorizer_dtype_mismatch(routes):
+def test_vectorizer_dtype_mismatch(routes, redis_url):
     with pytest.raises(ValueError):
         SemanticRouter(
             name="test_dtype_mismatch",
             routes=routes,
             dtype="float32",
             vectorizer=HFTextVectorizer(dtype="float16"),
+            redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_invalid_vectorizer(routes):
+def test_invalid_vectorizer(routes, redis_url):
     with pytest.raises(TypeError):
         SemanticRouter(
             name="test_invalid_vectorizer",
             vectorizer="invalid_vectorizer",  # type: ignore
+            redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_passes_through_dtype_to_default_vectorizer(routes):
+def test_passes_through_dtype_to_default_vectorizer(routes, redis_url):
     # The default is float32, so we should see float64 if we pass it in.
     router = SemanticRouter(
         name="test_pass_through_dtype",
         routes=routes,
         dtype="float64",
+        redis_url=redis_url,
         overwrite=True,
     )
     assert router.vectorizer.dtype == "float64"
 
 
-def test_deprecated_dtype_argument(routes):
+def test_deprecated_dtype_argument(routes, redis_url):
     with pytest.warns(DeprecationWarning):
         SemanticRouter(
             name="test_deprecated_dtype",
             routes=routes,
             dtype="float32",
+            redis_url=redis_url,
             overwrite=True,
         )

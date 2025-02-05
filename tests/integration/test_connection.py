@@ -20,10 +20,6 @@ from redisvl.version import __version__
 EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
 
 
-def test_get_address_from_env(redis_url):
-    assert get_address_from_env() == redis_url
-
-
 def test_unpack_redis_modules():
     module_list = [
         {

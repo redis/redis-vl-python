@@ -589,33 +589,35 @@ def test_bad_dtype_connecting_to_exiting_session(redis_url):
         )
 
 
-def test_vectorizer_dtype_mismatch():
+def test_vectorizer_dtype_mismatch(redis_url):
     with pytest.raises(ValueError):
         SemanticSessionManager(
             name="test_dtype_mismatch",
             dtype="float32",
             vectorizer=HFTextVectorizer(dtype="float16"),
+            redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_invalid_vectorizer():
+def test_invalid_vectorizer(redis_url):
     with pytest.raises(TypeError):
         SemanticSessionManager(
             name="test_invalid_vectorizer",
             vectorizer="invalid_vectorizer",  # type: ignore
+            redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_passes_through_dtype_to_default_vectorizer():
+def test_passes_through_dtype_to_default_vectorizer(redis_url):
     # The default is float32, so we should see float64 if we pass it in.
     cache = SemanticSessionManager(
-        name="test_pass_through_dtype", dtype="float64", overwrite=True
+        name="test_pass_through_dtype", dtype="float64", redis_url=redis_url, overwrite=True
     )
     assert cache._vectorizer.dtype == "float64"
 
 
-def test_deprecated_dtype_argument():
+def test_deprecated_dtype_argument(redis_url):
     with pytest.warns(DeprecationWarning):
-        SemanticSessionManager(name="float64 session", dtype="float64", overwrite=True)
+        SemanticSessionManager(name="float64 session", dtype="float64", redis_url=redis_url, overwrite=True)
