@@ -235,6 +235,7 @@ class GeoField(BaseField):
 
 class FlatVectorField(BaseField):
     "Vector field with a FLAT index (brute force nearest neighbors search)"
+
     type: str = Field(default="vector", const=True)
     attrs: FlatVectorFieldAttributes
 

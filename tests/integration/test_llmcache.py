@@ -1,8 +1,8 @@
 import asyncio
 import os
+import warnings
 from collections import namedtuple
 from time import sleep, time
-import warnings
 
 import pytest
 from pydantic.v1 import ValidationError
@@ -918,11 +918,19 @@ def test_invalid_vectorizer(redis_url):
 def test_passes_through_dtype_to_default_vectorizer(redis_url):
     # The default is float32, so we should see float64 if we pass it in.
     cache = SemanticCache(
-        name="test_pass_through_dtype", dtype="float64", redis_url=redis_url, overwrite=True
+        name="test_pass_through_dtype",
+        dtype="float64",
+        redis_url=redis_url,
+        overwrite=True,
     )
     assert cache._vectorizer.dtype == "float64"
 
 
 def test_deprecated_dtype_argument(redis_url):
     with pytest.warns(DeprecationWarning):
-        SemanticCache(name="test_deprecated_dtype", dtype="float32", redis_url=redis_url, overwrite=True)
+        SemanticCache(
+            name="test_deprecated_dtype",
+            dtype="float32",
+            redis_url=redis_url,
+            overwrite=True,
+        )
