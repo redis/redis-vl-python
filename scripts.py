@@ -29,12 +29,12 @@ def check_mypy():
 
 
 def test():
-    subprocess.run(["python", "-m", "pytest", "--log-level=CRITICAL"], check=True)
+    subprocess.run(["python", "-m", "pytest", "-n", "6", "--log-level=CRITICAL"], check=True)
 
 
 def test_verbose():
     subprocess.run(
-        ["python", "-m", "pytest", "-vv", "-s", "--log-level=CRITICAL"], check=True
+        ["python", "-m", "pytest", "-n", "6", "-vv", "-s", "--log-level=CRITICAL"], check=True
     )
 
 
@@ -44,6 +44,8 @@ def test_cov():
             "python",
             "-m",
             "pytest",
+            "-n",
+            "6",
             "-vv",
             "--cov=./redisvl",
             "--cov-report=xml",
