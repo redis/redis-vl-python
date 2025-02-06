@@ -29,7 +29,7 @@ def check_mypy():
 
 
 def test():
-    subprocess.run(["python", "-m", "pytest", "-n", "6", "--log-level=CRITICAL"], check=True)
+    subprocess.run(["python", "-m", "pytest", "-n", "auto", "--log-level=CRITICAL"], check=True)
 
 
 def test_verbose():

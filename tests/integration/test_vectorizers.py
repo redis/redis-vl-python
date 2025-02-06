@@ -89,7 +89,7 @@ def custom_embed_func():
 
 @pytest.fixture
 def custom_embed_class():
-    class embedder:
+    class MyEmbedder:
         def embed(self, text: str):
             return [1.1, 2.2, 3.3, 4.4]
 
@@ -105,7 +105,7 @@ def custom_embed_class():
             else:
                 return [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
-    return embedder
+    return MyEmbedder
 
 
 def test_vectorizer_embed(vectorizer):

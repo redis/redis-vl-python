@@ -1,10 +1,8 @@
 import os
 import pytest
-import asyncio
 
 from redisvl.redis.connection import RedisConnectionFactory
 from testcontainers.compose import DockerCompose
-
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -13,8 +11,7 @@ def redis_container(request):
     Create a unique Compose project for each xdist worker by setting
     COMPOSE_PROJECT_NAME. That prevents collisions on container/volume names.
     """
-    # In xdist, the config has "workerid" in workerinput.  For the main (non-xdist)
-    # process, 'workerid' is often 'master' or something similar.
+    # In xdist, the config has "workerid" in workerinput
     worker_id = request.config.workerinput.get("workerid", "master")
 
     # Set the Compose project name so containers do not clash across workers
@@ -26,21 +23,11 @@ def redis_container(request):
         compose_file_name="docker-compose.yml",
         pull=True,
     )
-
     compose.start()
-
-    # If you mapped the container port 6379:6379 in docker-compose.yml,
-    # you might have collisions across workers. If you rely on ephemeral
-    # host ports, remove the `ports:` block in docker-compose.yml and do:
-    redis_host, redis_port = compose.get_service_host_and_port("redis", 6379)
-    #redis_url = f"redis://{redis_host}:{redis_port}"
-    #os.environ["REDIS_URL"] = redis_url
 
     yield compose
 
     compose.stop()
-    # Optionally, clean up the COMPOSE_PROJECT_NAME you set:
-    os.environ.pop("COMPOSE_PROJECT_NAME", None)
 
 
 @pytest.fixture(scope="session")
