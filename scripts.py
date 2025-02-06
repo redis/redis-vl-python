@@ -34,7 +34,7 @@ def test():
 
 def test_verbose():
     subprocess.run(
-        ["python", "-m", "pytest", "-n", "6", "-vv", "-s", "--log-level=CRITICAL"], check=True
+        ["python", "-m", "pytest", "-n", "auto", "-vv", "-s", "--log-level=CRITICAL"], check=True
     )
 
 
