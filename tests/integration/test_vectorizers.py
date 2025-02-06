@@ -24,14 +24,14 @@ def skip_vectorizer() -> bool:
 @pytest.fixture(
     params=[
         HFTextVectorizer,
-        # OpenAITextVectorizer,
-        # VertexAITextVectorizer,
-        # CohereTextVectorizer,
-        # AzureOpenAITextVectorizer,
-        # BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        CohereTextVectorizer,
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
-        # VoyageAITextVectorizer,
+        VoyageAITextVectorizer,
     ]
 )
 def vectorizer(request, skip_vectorizer):
@@ -253,20 +253,20 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 @pytest.mark.parametrize(
     "vector_class",
     [
-        # AzureOpenAITextVectorizer,
-        # BedrockTextVectorizer,
-        # CohereTextVectorizer,
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
-        # MistralAITextVectorizer,
-        # OpenAITextVectorizer,
-        # VertexAITextVectorizer,
-        # VoyageAITextVectorizer,
+        MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        VoyageAITextVectorizer,
     ],
 )
 def test_dtypes(vector_class, skip_vectorizer):
-    # if skip_vectorizer:
-    #     pytest.skip("Skipping vectorizer instantiation...")
+    if skip_vectorizer:
+        pytest.skip("Skipping vectorizer instantiation...")
 
     # test dtype defaults to float32
     if issubclass(vector_class, CustomTextVectorizer):
@@ -312,11 +312,11 @@ def test_dtypes(vector_class, skip_vectorizer):
 
 @pytest.fixture(
     params=[
-        # OpenAITextVectorizer,
-        # BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        BedrockTextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
-        # VoyageAITextVectorizer,
+        VoyageAITextVectorizer,
     ]
 )
 def avectorizer(request, skip_vectorizer):
