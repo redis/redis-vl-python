@@ -33,7 +33,7 @@ def routes():
             name="farewell",
             references=["bye", "goodbye"],
             metadata={"type": "farewell"},
-            distance_threshold=0.3,
+            distance_threshold=0.2,
         ),
     ]
 
@@ -43,12 +43,26 @@ def semantic_router(client, routes):
     router = SemanticRouter(
         name="test-router",
         routes=routes,
-        routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
+        routing_config=RoutingConfig(distance_threshold=0.7, max_k=2),
         redis_client=client,
         overwrite=False,
     )
     yield router
     router.delete()
+
+
+@pytest.fixture
+def test_data():
+    return [
+        {
+            "query": "hey",
+            "query_match": "greeting",
+        },
+        {
+            "query": "bye bye",
+            "query_match": "farewell",
+        },
+    ]
 
 
 @pytest.fixture(autouse=True)

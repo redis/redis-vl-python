@@ -1,6 +1,8 @@
+import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
+import numpy as np
 import redis.commands.search.reducers as reducers
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -28,6 +30,11 @@ from redisvl.utils.vectorize import (
 )
 
 logger = get_logger(__name__)
+
+
+class TestData(BaseModel):
+    query: str
+    query_match: str | None
 
 
 class SemanticRouter(BaseModel):
@@ -160,6 +167,18 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
+    def update_route_thresholds(self, route_thresholds: Dict[str, float]):
+        """Update the distance thresholds for each route.
+
+        Args:
+            route_thresholds (Dict[str, float]): Dictionary of route names and their distance thresholds.
+        """
+        for route in self.routes:
+            if route.name in route_thresholds:
+                route.distance_threshold = route_thresholds[route.name]
+
+        print(f"{[(r.name, r.distance_threshold) for r in self.routes]}")
+
     def _route_ref_key(self, route_name: str, reference: str) -> str:
         """Generate the route reference key."""
         reference_hash = hashify(reference)
@@ -261,20 +280,19 @@ class SemanticRouter(BaseModel):
         self,
         vector: List[float],
         aggregation_method: DistanceAggregationMethod,
-        max_k: int = 1,
-    ) -> List[RouteMatch]:
-        """Get the route matches for a given vector and aggregation method."""
+    ) -> RouteMatch:
+        """Classify to a single route using a vector."""
 
-        thresholds = [route.distance_threshold for route in self.routes]
-        if thresholds:
-            distance_threshold = max(thresholds)
-        else:
-            raise ValueError("No distance thresholds provided for the semantic router")
+        # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
+        # therefore you might take the max_threshold and further refine from there.
+        distance_threshold = max(
+            [distance_threshold] + [route.distance_threshold for route in self.routes]
+        )
 
         vector_range_query = RangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
-            distance_threshold=distance_threshold,
+            distance_threshold=float(distance_threshold),
             return_fields=["route_name"],
         )
 
@@ -582,3 +600,52 @@ class SemanticRouter(BaseModel):
         with open(fp, "w") as f:
             yaml_data = self.to_dict()
             yaml.dump(yaml_data, f, sort_keys=False)
+
+    def _eval_accuracy(self, test_data: List[TestData]) -> float:
+        correct = 0
+        # if init a new router for each that would be a lot of routers
+        for data in test_data:
+            route_match = self(data.query)
+            if route_match.name == data.query_match:
+                correct += 1
+        return correct / len(test_data)
+
+    def _random_search(
+        self, route_names: List[str], route_thresholds: dict, search_step=0.05
+    ):
+
+        score_threshold_values = []
+        for route in route_names:
+            score_threshold_values.append(
+                np.linspace(
+                    start=max(route_thresholds[route] - search_step, 0),
+                    stop=route_thresholds[route] + search_step,
+                    num=100,
+                )
+            )
+
+        return {
+            route: random.choice(score_threshold_values[i])
+            for i, route in enumerate(route_names)
+        }
+
+    def optimize_thresholds(self, test_data: List[dict], max_iterations: int = 300):
+        test_data = [TestData(**data) for data in test_data]  # validate with pydantic
+
+        # starting condition for search
+        best_acc = self._eval_accuracy(test_data)
+        best_thresholds = self.route_thresholds
+
+        for _ in range(max_iterations):
+            route_names = self.route_names
+            route_thresholds = self.route_thresholds
+            thresholds = self._random_search(
+                route_names=route_names, route_thresholds=route_thresholds
+            )
+            self.update_route_thresholds(thresholds)
+            acc = self._eval_accuracy(test_data)
+            if acc > best_acc:
+                best_acc = acc
+                best_thresholds = thresholds
+
+        self.update_route_thresholds(best_thresholds)
