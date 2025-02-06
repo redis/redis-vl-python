@@ -38,28 +38,6 @@ def test_verbose():
     )
 
 
-def test_cov():
-    subprocess.run(
-        [
-            "python",
-            "-m",
-            "pytest",
-            "-n",
-            "6",
-            "-vv",
-            "--cov=./redisvl",
-            "--cov-report=xml",
-            "--log-level=CRITICAL",
-        ],
-        check=True,
-    )
-
-
-def cov():
-    subprocess.run(["coverage", "html"], check=True)
-    print("If data was present, coverage report is in ./htmlcov/index.html")
-
-
 def test_notebooks():
     subprocess.run(["cd", "docs/", "&&", "poetry run treon", "-v"], check=True)
 
