@@ -5,6 +5,12 @@ from redisvl.redis.connection import RedisConnectionFactory
 from testcontainers.compose import DockerCompose
 
 
+@pytest.fixture(autouse=True)
+def set_tokenizers_parallelism():
+    """Disable tokenizers parallelism in tests to avoid deadlocks"""
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def redis_container(request):
     """
