@@ -56,10 +56,29 @@ def validate_async(method):
 
 
 class CustomTextVectorizer(BaseVectorizer):
-    """
-    CustomTextVectorizer handles user-provided embedding callables (sync and async).
-    Synchronous methods are validated during initialization to determine dimensions.
-    Asynchronous methods are validated lazily on first usage.
+    """The CustomTextVectorizer class wraps user-defined embedding methods to create
+    embeddings for text data.
+
+    This vectorizer is designed to accept a provided callable text vectorizer and
+    provides a class definition to allow for compatibility with RedisVL.
+    The vectorizer may support both synchronous and asynchronous operations which
+    allows for batch processing of texts, but at a minimum only syncronous embedding
+    is required to satisfy the 'embed()' method.
+
+    .. code-block:: python
+
+        # Synchronous embedding of a single text
+        vectorizer = CustomTextVectorizer(
+            embed = my_vectorizer.generate_embedding
+        )
+        embedding = vectorizer.embed("Hello, world!")
+
+        # Asynchronous batch embedding of multiple texts
+        embeddings = await vectorizer.aembed_many(
+            ["Hello, world!", "How are you?"],
+            batch_size=2
+        )
+
     """
 
     # User-provided callables
@@ -80,11 +99,19 @@ class CustomTextVectorizer(BaseVectorizer):
         aembed_many: Optional[Callable] = None,
         dtype: str = "float32",
     ):
-        """
-        1. Store the provided functions for synergy or lazy usage.
-        2. Manually validate the sync callables to discover the embedding dimension.
-        3. Call the base initializer with the discovered dimension and provided dtype.
-        4. Async callables remain lazy until first call.
+        """Initialize the Custom vectorizer.
+
+        Args:
+            embed (Callable): a Callable function that accepts a string object and returns a list of floats.
+            embed_many (Optional[Callable)]: a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+            aembed (Optional[Callable]): an asyncronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
+            aembed_many (Optional[Callable]):  an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+            dtype (str): the default datatype to use when embedding text as byte arrays.
+                Used when setting `as_buffer=True` in calls to embed() and embed_many().
+                Defaults to 'float32'.
+
+        Raises:
+            ValueError: if embedding validation fails.
         """
         # Store user-provided callables
         self._embed = embed
