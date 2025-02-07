@@ -2,8 +2,7 @@ repos:
   - repo: local
     hooks:
       - id: poetry-checks
-        name: Run check_lint, check_mypy, and format via Poetry
-        # The following command will run the three checks sequentially.
+        name: Run pre-commit checks (format, sort-imports, check-mypy)
         entry: bash -c 'poetry run format && poetry run sort-imports && poetry run check-mypy'
         language: system
         pass_filenames: false
