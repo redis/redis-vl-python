@@ -58,6 +58,7 @@ types-redis = "*"
 types-pyyaml = "*"
 types-tabulate = "*"
 treon = "*"
+pre-commit = "^4.1.0"
 
 [tool.poetry.group.test.dependencies]
 testcontainers = "^4.3.1"
