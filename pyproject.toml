@@ -14,22 +14,31 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "License :: OSI Approved :: MIT License",
 ]
 packages = [{ include = "redisvl", from = "." }]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
-numpy = "*"
+python = ">=3.9,<3.14"
+numpy = [
+  { version = ">=1.26.4,<2.0", python = "<3.12" },
+  { version = ">=1.26.4,<3.0", python = ">=3.12,<3.13" },
+  { version = ">=2.1.0,<3.0", python = ">=3.13" }
+]
 pyyaml = ">=5.4,<7.0"
 coloredlogs = "^15.0"
 redis = "^5.0"
 pydantic = { version = ">=2,<3" }
 tenacity = ">=8.2.2"
 tabulate = { version = ">=0.9.0,<1" }
-ml-dtypes = "0.4.0"
+ml-dtypes = "^0.4.0"
 openai = { version = ">=1.13.0", optional = true }
 sentence-transformers = { version = ">=2.2.2", optional = true }
+scipy = [
+  { version = "<1.15", python = "<3.10", optional = true },
+  { version = "^1.15", python = ">=3.10", optional = true }
+]
 google-cloud-aiplatform = { version = ">=1.26", optional = true }
 protobuf = { version = ">=5.29.1,<6.0.0.dev0", optional = true }
 cohere = { version = ">=4.44", optional = true }
@@ -39,7 +48,7 @@ voyageai = { version = ">=0.2.2", optional = true }
 
 [tool.poetry.extras]
 openai = ["openai"]
-sentence-transformers = ["sentence-transformers"]
+sentence-transformers = ["sentence-transformers", "scipy"]
 vertexai = ["google_cloud_aiplatform", "protobuf"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
@@ -90,7 +99,7 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.black]
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
 exclude = '''
 (
   | \.egg
@@ -110,15 +119,6 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
-
-[tool.coverage.run]
-source = ["redisvl"]
-
-[tool.coverage.report]
-ignore_errors = true
-
-[tool.coverage.html]
-directory = "htmlcov"
 
 [tool.mypy]
 warn_unused_configs = true
