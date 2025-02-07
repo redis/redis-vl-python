@@ -1,34 +1,55 @@
 import os
 import pytest
-import asyncio
 
 from redisvl.redis.connection import RedisConnectionFactory
 from testcontainers.compose import DockerCompose
 
 
+@pytest.fixture(autouse=True)
+def set_tokenizers_parallelism():
+    """Disable tokenizers parallelism in tests to avoid deadlocks"""
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 
 @pytest.fixture(scope="session", autouse=True)
-def redis_container():
-    # Set the default Redis version if not already set
+def redis_container(request):
+    """
+    Create a unique Compose project for each xdist worker by setting
+    COMPOSE_PROJECT_NAME. That prevents collisions on container/volume names.
+    """
+    # In xdist, the config has "workerid" in workerinput
+    worker_id = request.config.workerinput.get("workerid", "master")
+
+    # Set the Compose project name so containers do not clash across workers
+    os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
     os.environ.setdefault("REDIS_VERSION", "edge")
 
-    compose = DockerCompose("tests", compose_file_name="docker-compose.yml", pull=True)
+    compose = DockerCompose(
+        context="tests",
+        compose_file_name="docker-compose.yml",
+        pull=True,
+    )
     compose.start()
-
-    redis_host, redis_port = compose.get_service_host_and_port("redis", 6379)
-    redis_url = f"redis://{redis_host}:{redis_port}"
-    os.environ["REDIS_URL"] = redis_url
 
     yield compose
 
     compose.stop()
 
+
 @pytest.fixture(scope="session")
-def redis_url():
-    return os.getenv("REDIS_URL", "redis://localhost:6379")
+def redis_url(redis_container):
+    """
+    Use the `DockerCompose` fixture to get host/port of the 'redis' service
+    on container port 6379 (mapped to an ephemeral port on the host).
+    """
+    host, port = redis_container.get_service_host_and_port("redis", 6379)
+    return f"redis://{host}:{port}"
 
 @pytest.fixture
 async def async_client(redis_url):
+    """
+    An async Redis client that uses the dynamic `redis_url`.
+    """
     client = await RedisConnectionFactory.get_async_redis_connection(redis_url)
     yield client
     try:
@@ -38,8 +59,11 @@ async def async_client(redis_url):
             raise
 
 @pytest.fixture
-def client():
-    conn = RedisConnectionFactory.get_redis_connection(os.environ["REDIS_URL"])
+def client(redis_url):
+    """
+    A sync Redis client that uses the dynamic `redis_url`.
+    """
+    conn = RedisConnectionFactory.get_redis_connection(redis_url)
     yield conn
     conn.close()
 

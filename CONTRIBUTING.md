@@ -78,17 +78,17 @@ To run Testcontainers-based tests you need a local Docker installation such as:
 
 Tests w/ vectorizers:
 ```bash
-poetry run test-cov
+poetry run test-verbose
 ```
 
 Tests w/out vectorizers:
 ```bash
-SKIP_VECTORIZERS=true poetry run test-cov
+SKIP_VECTORIZERS=true poetry run test-verbose
 ```
 
 Tests w/out rerankers:
 ```bash
-SKIP_RERANKERS=true poetry run test-cov
+SKIP_RERANKERS=true poetry run test-verbose
 ```
 
 ### Documentation

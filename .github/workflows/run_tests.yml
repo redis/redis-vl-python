@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.9, '3.10', 3.11]
+        python-version: [3.9, '3.10', 3.11, 3.12]
         connection: ['hiredis', 'plain']
         redis-stack-version: ['6.2.6-v9', 'latest', 'edge']
 
@@ -75,12 +75,12 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       run: |
-        poetry run test-cov
+        poetry run test-verbose
 
     - name: Run tests
       if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
       run: |
-        SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-cov
+        SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-verbose
 
     - name: Run notebooks
       if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'

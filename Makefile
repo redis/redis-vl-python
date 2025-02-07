@@ -19,10 +19,10 @@ check-types:
 lint: format check-types
 	
 test:
-	SKIP_RERANKERS=true SKIP_VECTORIZERS=true poetry run test-cov
+	SKIP_RERANKERS=true SKIP_VECTORIZERS=true poetry run test-verbose
 	
 test-all:
-	poetry run test-cov
+	poetry run test-verbose
 
 check: lint test
 

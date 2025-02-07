@@ -89,7 +89,7 @@ def custom_embed_func():
 
 @pytest.fixture
 def custom_embed_class():
-    class embedder:
+    class MyEmbedder:
         def embed(self, text: str):
             return [1.1, 2.2, 3.3, 4.4]
 
@@ -105,7 +105,7 @@ def custom_embed_class():
             else:
                 return [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
-    return embedder
+    return MyEmbedder
 
 
 def test_vectorizer_embed(vectorizer):
@@ -179,26 +179,26 @@ def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=2)
     assert embedding == [1.1, 2.2]
 
-    with pytest.raises(TypeError):
-        bad_wrapper = CustomTextVectorizer(embed="hello")
+    with pytest.raises(ValueError):
+        invalid_vectorizer = CustomTextVectorizer(embed="hello")
 
-    with pytest.raises(TypeError):
-        bad_wrapper = CustomTextVectorizer(embed=42)
+    with pytest.raises(ValueError):
+        invalid_vectorizer = CustomTextVectorizer(embed=42)
 
-    with pytest.raises(TypeError):
-        bad_wrapper = CustomTextVectorizer(embed={"foo": "bar"})
+    with pytest.raises(ValueError):
+        invalid_vectorizer = CustomTextVectorizer(embed={"foo": "bar"})
 
     def bad_arg_type(value: int):
         return [value]
 
     with pytest.raises(ValueError):
-        bad_wrapper = CustomTextVectorizer(embed=bad_arg_type)
+        invalid_vectorizer = CustomTextVectorizer(embed=bad_arg_type)
 
     def bad_return_type(text: str) -> str:
         return text
 
     with pytest.raises(ValueError):
-        bad_wrapper = CustomTextVectorizer(embed=bad_return_type)
+        invalid_vectorizer = CustomTextVectorizer(embed=bad_return_type)
 
 
 def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
@@ -222,26 +222,30 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     embeddings = custom_wrapper.embed_many(["test one.", "test two"], param=False)
     assert embeddings == [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
-    with pytest.raises(TypeError):
-        bad_wrapper = CustomTextVectorizer(custom_embed_func, embed_many="hello")
+    with pytest.raises(ValueError):
+        invalid_vectorizer = CustomTextVectorizer(custom_embed_func, embed_many="hello")
 
-    with pytest.raises(TypeError):
-        bad_wrapper = CustomTextVectorizer(custom_embed_func, embed_many=42)
+    with pytest.raises(ValueError):
+        invalid_vectorizer = CustomTextVectorizer(custom_embed_func, embed_many=42)
 
-    with pytest.raises(TypeError):
-        bad_wrapper = CustomTextVectorizer(custom_embed_func, embed_many={"foo": "bar"})
+    with pytest.raises(ValueError):
+        invalid_vectorizer = CustomTextVectorizer(
+            custom_embed_func, embed_many={"foo": "bar"}
+        )
 
     def bad_arg_type(value: int):
         return [value]
 
     with pytest.raises(ValueError):
-        bad_wrapper = CustomTextVectorizer(custom_embed_func, embed_many=bad_arg_type)
+        invalid_vectorizer = CustomTextVectorizer(
+            custom_embed_func, embed_many=bad_arg_type
+        )
 
     def bad_return_type(text: str) -> str:
         return text
 
     with pytest.raises(ValueError):
-        bad_wrapper = CustomTextVectorizer(
+        invalid_vectorizer = CustomTextVectorizer(
             custom_embed_func, embed_many=bad_return_type
         )
 

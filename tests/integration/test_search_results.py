@@ -16,7 +16,7 @@ def filter_query():
 
 
 @pytest.fixture
-def index(sample_data):
+def index(sample_data, redis_url):
     fields_spec = [
         {"name": "credit_score", "type": "tag"},
         {"name": "user", "type": "tag"},
@@ -47,7 +47,7 @@ def index(sample_data):
     index = SearchIndex.from_dict(json_schema)
 
     # connect to local redis instance
-    index.connect(os.environ["REDIS_URL"])
+    index.connect(redis_url=redis_url)
 
     # create the index (no data yet)
     index.create(overwrite=True)

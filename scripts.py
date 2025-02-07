@@ -29,33 +29,13 @@ def check_mypy():
 
 
 def test():
-    subprocess.run(["python", "-m", "pytest", "--log-level=CRITICAL"], check=True)
+    subprocess.run(["python", "-m", "pytest", "-n", "auto", "--log-level=CRITICAL"], check=True)
 
 
 def test_verbose():
     subprocess.run(
-        ["python", "-m", "pytest", "-vv", "-s", "--log-level=CRITICAL"], check=True
+        ["python", "-m", "pytest", "-n", "auto", "-vv", "-s", "--log-level=CRITICAL"], check=True
     )
-
-
-def test_cov():
-    subprocess.run(
-        [
-            "python",
-            "-m",
-            "pytest",
-            "-vv",
-            "--cov=./redisvl",
-            "--cov-report=xml",
-            "--log-level=CRITICAL",
-        ],
-        check=True,
-    )
-
-
-def cov():
-    subprocess.run(["coverage", "html"], check=True)
-    print("If data was present, coverage report is in ./htmlcov/index.html")
 
 
 def test_notebooks():
