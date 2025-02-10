@@ -16,7 +16,7 @@ class Route(BaseModel):
     """List of reference phrases for the route."""
     metadata: Dict[str, str] = Field(default={})
     """Metadata associated with the route."""
-    distance_threshold: Optional[float] = Field(default=None)
+    distance_threshold: Optional[float] = Field(default=0.5)
     """Distance threshold for matching the route."""
 
     @validator("name")
@@ -63,7 +63,7 @@ class DistanceAggregationMethod(Enum):
 class RoutingConfig(BaseModel):
     """Configuration for routing behavior."""
 
-    distance_threshold: float = Field(default=0.5)
+    # distance_threshold: float = Field(default=0.5)
     """The threshold for semantic distance."""
     max_k: int = Field(default=1)
     """The maximum number of top matches to return."""

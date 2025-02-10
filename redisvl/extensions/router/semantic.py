@@ -302,12 +302,17 @@ class SemanticRouter(BaseModel):
         aggregation_method: DistanceAggregationMethod,
     ) -> List[RouteMatch]:
         """Classify to multiple routes, up to max_k (int), using a vector."""
+
+        # Set range query distance threshold to get all possible results to be further filtered
+        distance_threshold = max(route.distance_threshold for route in self.routes)
+
         vector_range_query = RangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=distance_threshold,
             return_fields=["route_name"],
         )
+
         aggregate_request = self._build_aggregate_request(
             vector_range_query, aggregation_method, max_k
         )
@@ -368,7 +373,9 @@ class SemanticRouter(BaseModel):
         self,
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
-        distance_threshold: Optional[float] = None,
+        distance_threshold: Optional[
+            float
+        ] = None,  # TODO: does this get removed if route becomes the owner of a distance threshold? Or do we apply to all?
         aggregation_method: Optional[DistanceAggregationMethod] = None,
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
