@@ -1,4 +1,4 @@
-.PHONY: install format lint test clean redis-start redis-stop check-types integration-test docs-build docs-serve check
+.PHONY: install format lint test test-all clean redis-start redis-stop check-types docs-build docs-serve check
 
 install:
 	poetry install --all-extras
