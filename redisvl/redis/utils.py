@@ -41,7 +41,7 @@ def array_to_buffer(array: List[float], dtype: str) -> bytes:
         raise ValueError(
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
-    return np.array(array).astype(dtype.lower()).tobytes()
+    return np.array(array, dtype.lower()).tobytes()
 
 
 def buffer_to_array(buffer: bytes, dtype: str) -> List[float]:

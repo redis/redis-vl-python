@@ -281,7 +281,7 @@ def test_dtypes(vector_class, skip_vectorizer):
     assert vectorizer.dtype == "float32"
 
     # test initializing dtype in constructor
-    for dtype in ["float16", "float32", "float64", "bfloat16"]:
+    for dtype in ["float16", "float32", "float64", "bfloat16", "int8", "uint8"]:
         if issubclass(vector_class, CustomTextVectorizer):
             vectorizer = vector_class(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
         elif issubclass(vector_class, AzureOpenAITextVectorizer):
