@@ -360,7 +360,7 @@ def test_deprecated_dtype_argument(routes, redis_url):
         )
 
 
-def test_deprecated_distance_threshold_argument(routes, redis_url):
+def test_deprecated_distance_threshold_argument(semantic_router, routes, redis_url):
     redis_version = semantic_router._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
@@ -375,7 +375,9 @@ def test_deprecated_distance_threshold_argument(routes, redis_url):
         router("hello", distance_threshold=0.3)
 
 
-def test_routes_different_distance_thresholds_get_two(routes, redis_url):
+def test_routes_different_distance_thresholds_get_two(
+    semantic_router, routes, redis_url
+):
     redis_version = semantic_router._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
@@ -395,7 +397,9 @@ def test_routes_different_distance_thresholds_get_two(routes, redis_url):
     assert matches[1].name == "farewell"
 
 
-def test_routes_different_distance_thresholds_get_one(routes, redis_url):
+def test_routes_different_distance_thresholds_get_one(
+    semantic_router, routes, redis_url
+):
     redis_version = semantic_router._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
