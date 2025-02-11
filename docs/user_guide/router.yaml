@@ -8,6 +8,7 @@ routes:
   metadata:
     category: tech
     priority: '1'
+  distance_threshold: 1.0
 - name: sports
   references:
   - who won the game last night?
@@ -18,6 +19,7 @@ routes:
   metadata:
     category: sports
     priority: '2'
+  distance_threshold: 0.5
 - name: entertainment
   references:
   - what are the top movies right now?
@@ -26,10 +28,11 @@ routes:
   metadata:
     category: entertainment
     priority: '3'
+  distance_threshold: 0.7
 vectorizer:
   type: hf
   model: sentence-transformers/all-mpnet-base-v2
 routing_config:
-  distance_threshold: 1.0
+  distance_threshold: 0.5
   max_k: 3
   aggregation_method: min

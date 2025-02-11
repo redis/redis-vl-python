@@ -16,7 +16,7 @@ class Route(BaseModel):
     """List of reference phrases for the route."""
     metadata: Dict[str, str] = Field(default={})
     """Metadata associated with the route."""
-    distance_threshold: Optional[float] = Field(default=0.5)
+    distance_threshold: float = Field(default=0.5)
     """Distance threshold for matching the route."""
 
     @validator("name")
@@ -70,18 +70,18 @@ class RoutingConfig(BaseModel):
     aggregation_method: DistanceAggregationMethod = Field(
         default=DistanceAggregationMethod.avg
     )
+    distance_threshold: float = Field(
+        default=0.5,
+        deprecated=True,
+        description="Global distance threshold is deprecated all distance_thresholds now apply at route level.",
+    )
+
     """Aggregation method to use to classify queries."""
 
     @validator("max_k")
     def max_k_must_be_positive(cls, v):
         if v <= 0:
             raise ValueError("max_k must be a positive integer")
-        return v
-
-    @validator("distance_threshold")
-    def distance_threshold_must_be_valid(cls, v):
-        if v <= 0 or v > 1:
-            raise ValueError("distance_threshold must be between 0 and 1")
         return v
 
 
