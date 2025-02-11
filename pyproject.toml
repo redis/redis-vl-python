@@ -53,6 +53,7 @@ vertexai = ["google_cloud_aiplatform", "protobuf"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
 voyageai = ["voyageai"]
+bedrock = ["boto3"]
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

@@ -1,8 +1,9 @@
 import os
+
 import pytest
+from testcontainers.compose import DockerCompose
 
 from redisvl.redis.connection import RedisConnectionFactory
-from testcontainers.compose import DockerCompose
 
 
 @pytest.fixture(autouse=True)
