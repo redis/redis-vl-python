@@ -64,7 +64,6 @@ def test_route_valid_no_threshold():
     assert route.name == "Test Route"
     assert route.references == ["reference1", "reference2"]
     assert route.metadata == {"key": "value"}
-    assert route.distance_threshold is None
 
 
 def test_route_invalid_threshold_zero():
@@ -108,18 +107,12 @@ def test_distance_aggregation_method():
 
 
 def test_routing_config_valid():
-    config = RoutingConfig(distance_threshold=0.6, max_k=5)
-    assert config.distance_threshold == 0.6
+    config = RoutingConfig(aggregation_method=DistanceAggregationMethod.min, max_k=5)
+    assert config.aggregation_method == DistanceAggregationMethod("min")
     assert config.max_k == 5
 
 
 def test_routing_config_invalid_max_k():
     with pytest.raises(ValidationError) as excinfo:
-        RoutingConfig(distance_threshold=0.6, max_k=0)
+        RoutingConfig(max_k=0)
     assert "max_k must be a positive integer" in str(excinfo.value)
-
-
-def test_routing_config_invalid_distance_threshold():
-    with pytest.raises(ValidationError) as excinfo:
-        RoutingConfig(distance_threshold=1.5, max_k=5)
-    assert "distance_threshold must be between 0 and 1" in str(excinfo.value)
