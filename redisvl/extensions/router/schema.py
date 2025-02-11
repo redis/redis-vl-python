@@ -66,17 +66,18 @@ class RoutingConfig(BaseModel):
     # distance_threshold: float = Field(default=0.5)
     """The threshold for semantic distance."""
     max_k: int = Field(default=1)
-    """The maximum number of top matches to return."""
+
+    """Aggregation method to use to classify queries."""
     aggregation_method: DistanceAggregationMethod = Field(
         default=DistanceAggregationMethod.avg
     )
+
+    """The maximum number of top matches to return."""
     distance_threshold: float = Field(
         default=0.5,
         deprecated=True,
         description="Global distance threshold is deprecated all distance_thresholds now apply at route level.",
     )
-
-    """Aggregation method to use to classify queries."""
 
     @validator("max_k")
     def max_k_must_be_positive(cls, v):
