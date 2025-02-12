@@ -17,6 +17,14 @@ from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
 
+class FieldTypes(str, Enum):
+    TAG = "tag"
+    TEXT = "text"
+    NUMERIC = "numeric"
+    GEO = "geo"
+    VECTOR = "vector"
+
+
 class VectorDistanceMetric(str, Enum):
     COSINE = "COSINE"
     L2 = "L2"
@@ -167,7 +175,7 @@ class BaseField(BaseModel):
 class TextField(BaseField):
     """Text field supporting a full text search index"""
 
-    type: Literal["text"] = "text"
+    type: Literal[FieldTypes.TEXT] = FieldTypes.TEXT
     attrs: TextFieldAttributes = Field(default_factory=TextFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -185,7 +193,7 @@ class TextField(BaseField):
 class TagField(BaseField):
     """Tag field for simple boolean-style filtering"""
 
-    type: Literal["tag"] = "tag"
+    type: Literal[FieldTypes.TAG] = FieldTypes.TAG
     attrs: TagFieldAttributes = Field(default_factory=TagFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -202,7 +210,7 @@ class TagField(BaseField):
 class NumericField(BaseField):
     """Numeric field for numeric range filtering"""
 
-    type: Literal["numeric"] = "numeric"
+    type: Literal[FieldTypes.NUMERIC] = FieldTypes.NUMERIC
     attrs: NumericFieldAttributes = Field(default_factory=NumericFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -217,7 +225,7 @@ class NumericField(BaseField):
 class GeoField(BaseField):
     """Geo field with a geo-spatial index for location based search"""
 
-    type: Literal["geo"] = "geo"
+    type: Literal[FieldTypes.GEO] = FieldTypes.GEO
     attrs: GeoFieldAttributes = Field(default_factory=GeoFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -232,7 +240,7 @@ class GeoField(BaseField):
 class FlatVectorField(BaseField):
     "Vector field with a FLAT index (brute force nearest neighbors search)"
 
-    type: Literal["vector"] = "vector"
+    type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: FlatVectorFieldAttributes
 
     def as_redis_field(self) -> RedisField:
