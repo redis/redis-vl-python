@@ -1,11 +1,11 @@
 import asyncio
-import uuid
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from pydantic.v1 import BaseModel
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
+from ulid import ULID
 
 from redisvl.redis.utils import convert_bytes
 
@@ -64,7 +64,7 @@ class BaseStorage(BaseModel):
             ValueError: If the id_field is not found in the object.
         """
         if id_field is None:
-            key_value = uuid.uuid4().hex
+            key_value = str(ULID())
         else:
             try:
                 key_value = obj[id_field]  # type: ignore
