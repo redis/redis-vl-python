@@ -288,13 +288,13 @@ def test_dtypes(vectorizer_):
         assert vectorizer.dtype == dtype
 
     with pytest.raises(ValueError):
-        vectorizer = vectorizer(dtype="float25")
+        vectorizer = vectorizer_(dtype="float25")
 
     with pytest.raises(ValueError):
-        vectorizer = vectorizer(dtype=7)
+        vectorizer = vectorizer_(dtype=7)
 
     with pytest.raises(ValueError):
-        vectorizer = vectorizer(dtype=None)
+        vectorizer = vectorizer_(dtype=None)
 
 
 @pytest.fixture(
