@@ -266,7 +266,7 @@ class SemanticRouter(BaseModel):
     ) -> List[RouteMatch]:
         """Get the route matches for a given vector and aggregation method."""
 
-        thresholds: List[float] = [route.distance_threshold for route in self.routes]
+        thresholds = [route.distance_threshold for route in self.routes]
         if thresholds:
             distance_threshold = max(thresholds)
         else:
