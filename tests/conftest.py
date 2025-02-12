@@ -54,13 +54,10 @@ async def async_client(redis_url):
     """
     An async Redis client that uses the dynamic `redis_url`.
     """
-    client = await RedisConnectionFactory.get_async_redis_connection(redis_url)
-    yield client
-    try:
-        await client.aclose()
-    except RuntimeError as e:
-        if "Event loop is closed" not in str(e):
-            raise
+    async with await RedisConnectionFactory.get_async_redis_connection(
+        redis_url
+    ) as client:
+        yield client
 
 
 @pytest.fixture
@@ -70,51 +67,6 @@ def client(redis_url):
     """
     conn = RedisConnectionFactory.get_redis_connection(redis_url)
     yield conn
-    conn.close()
-
-
-@pytest.fixture
-def openai_key():
-    return os.getenv("OPENAI_API_KEY")
-
-
-@pytest.fixture
-def openai_version():
-    return os.getenv("OPENAI_API_VERSION")
-
-
-@pytest.fixture
-def azure_endpoint():
-    return os.getenv("AZURE_OPENAI_ENDPOINT")
-
-
-@pytest.fixture
-def cohere_key():
-    return os.getenv("COHERE_API_KEY")
-
-
-@pytest.fixture
-def mistral_key():
-    return os.getenv("MISTRAL_API_KEY")
-
-
-@pytest.fixture
-def gcp_location():
-    return os.getenv("GCP_LOCATION")
-
-
-@pytest.fixture
-def gcp_project_id():
-    return os.getenv("GCP_PROJECT_ID")
-
-
-@pytest.fixture
-def aws_credentials():
-    return {
-        "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID"),
-        "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "aws_region": os.getenv("AWS_REGION", "us-east-1"),
-    }
 
 
 @pytest.fixture
@@ -179,13 +131,31 @@ def sample_data():
     ]
 
 
-@pytest.fixture
-def clear_db(redis):
-    redis.flushall()
-    yield
-    redis.flushall()
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--run-api-tests",
+        action="store_true",
+        default=False,
+        help="Run tests that require API keys",
+    )
 
 
-@pytest.fixture
-def app_name():
-    return "test_app"
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers", "requires_api_keys: mark test as requiring API keys"
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    if config.getoption("--run-api-tests"):
+        return
+
+    # Otherwise skip all tests requiring an API key
+    skip_api = pytest.mark.skip(
+        reason="Skipping test because API keys are not provided. Use --run-api-tests to run these tests."
+    )
+    for item in items:
+        if item.get_closest_marker("requires_api_keys"):
+            item.add_marker(skip_api)

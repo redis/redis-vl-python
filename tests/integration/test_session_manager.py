@@ -13,6 +13,11 @@ from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 
 @pytest.fixture
+def app_name():
+    return "test_app"
+
+
+@pytest.fixture
 def standard_session(app_name, client):
     session = StandardSessionManager(app_name, redis_client=client)
     yield session

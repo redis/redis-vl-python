@@ -83,12 +83,12 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          poetry run test-verbose
+          make test-all
 
       - name: Run tests
         if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
         run: |
-          SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-verbose
+          make test
 
       - name: Run notebooks
         if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
@@ -106,7 +106,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          cd docs/ && poetry run pytest --nbval-lax ./user_guide -vv 
+          make test-notebooks 
 
   docs:
     runs-on: ubuntu-latest
