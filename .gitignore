@@ -220,3 +220,5 @@ pip-selfcheck.json
 libs/redis/docs/.Trash*
 .python-version
 .idea/*
+.vscode/settings.json
+.python-version
