@@ -50,8 +50,9 @@ If you use `make`, we've created shortcuts for running the commands in this docu
 | make format | Runs code formatting and import sorting |
 | make check-types | Runs mypy type checking |
 | make lint | Runs formatting, import sorting, and type checking |
-| make test | Runs tests, excluding those that require API keys and/or remote network calls)|
-| make test-all | Runs all tests, including those that require API keys and/or remote network calls)|
+| make test | Runs tests, excluding those that require API keys and/or remote network calls|
+| make test-all | Runs all tests, including those that require API keys and/or remote network calls|
+| make test-notebooks | Runs all notebook tests|
 | make check | Runs all linting targets and a subset of tests |
 | make docs-build | Builds the documentation |
 | make docs-serve | Serves the documentation locally |
@@ -76,19 +77,14 @@ To run Testcontainers-based tests you need a local Docker installation such as:
 
 #### Running the Tests
 
-Tests w/ vectorizers:
+Tests w/ external APIs:
+```bash
+poetry run test-verbose --run-api-tests
+```
+
+Tests w/out external APIs:
 ```bash
 poetry run test-verbose
-```
-
-Tests w/out vectorizers:
-```bash
-SKIP_VECTORIZERS=true poetry run test-verbose
-```
-
-Tests w/out rerankers:
-```bash
-SKIP_RERANKERS=true poetry run test-verbose
 ```
 
 ### Documentation
@@ -110,6 +106,17 @@ In order for your applications to use RedisVL, you must have [Redis](https://red
 
 ```bash
 docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+```
+
+Or from your makefile simply run:
+
+```bash
+make redis-start
+```
+
+And then:
+```bash
+make redis-stop
 ```
 
 This will also spin up the [FREE RedisInsight GUI](https://redis.io/insight/) at `http://localhost:8001`.
