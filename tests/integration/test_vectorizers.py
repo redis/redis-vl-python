@@ -262,7 +262,7 @@ def test_dtypes(vectorizer_):
     # test dtype defaults to float32
     if issubclass(vectorizer_, CustomTextVectorizer):
         vectorizer = vectorizer_(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
-    elif issubclass(vectorizer, AzureOpenAITextVectorizer):
+    elif issubclass(vectorizer_, AzureOpenAITextVectorizer):
         vectorizer = vectorizer_(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
         )
