@@ -87,6 +87,11 @@ Tests w/out external APIs:
 poetry run test-verbose
 ```
 
+Run a test on a specific file:
+```bash
+poetry run test-verbose tests/unit/test_fields.py
+```
+
 ### Documentation
 Docs are served from the `docs/` directory.
 
