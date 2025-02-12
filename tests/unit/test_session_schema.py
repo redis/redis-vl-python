@@ -1,15 +1,13 @@
-from uuid import uuid4
-
 import pytest
 from pydantic.v1 import ValidationError
 
 from redisvl.extensions.session_manager.schema import ChatMessage
 from redisvl.redis.utils import array_to_buffer
-from redisvl.utils.utils import create_uuid, current_timestamp
+from redisvl.utils.utils import create_ulid, current_timestamp
 
 
 def test_chat_message_creation():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
 
@@ -31,7 +29,7 @@ def test_chat_message_creation():
 
 
 def test_chat_message_default_id_generation():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
 
@@ -46,10 +44,10 @@ def test_chat_message_default_id_generation():
 
 
 def test_chat_message_with_tool_call_id():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
-    tool_call_id = create_uuid()
+    tool_call_id = create_ulid()
 
     chat_message = ChatMessage(
         entry_id=f"{session_tag}:{timestamp}",
@@ -64,7 +62,7 @@ def test_chat_message_with_tool_call_id():
 
 
 def test_chat_message_with_vector_field():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
     vector_field = [0.1, 0.2, 0.3]
@@ -82,7 +80,7 @@ def test_chat_message_with_vector_field():
 
 
 def test_chat_message_to_dict():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
     vector_field = [0.1, 0.2, 0.3]
@@ -107,7 +105,7 @@ def test_chat_message_to_dict():
 
 
 def test_chat_message_missing_fields():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
 
@@ -120,7 +118,7 @@ def test_chat_message_missing_fields():
 
 
 def test_chat_message_invalid_role():
-    session_tag = create_uuid()
+    session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
 
