@@ -48,7 +48,7 @@ def test_verbose():
 
 
 def test_notebooks():
-    subprocess.run(["cd", "docs/", "&&", "poetry run pytest --nbval-lax ./user_guide", "-vv"], check=True)
+    subprocess.run("cd docs/ && python -m pytest --nbval-lax ./user_guide -vv", shell=True, check=True)
 
 
 def build_docs():
