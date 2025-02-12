@@ -6,8 +6,8 @@ from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
-from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.utils import deprecated_argument
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class BedrockTextVectorizer(BaseVectorizer):

@@ -2,8 +2,8 @@ from typing import Any, Callable, List, Optional
 
 from pydantic.v1 import PrivateAttr
 
-from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.utils import deprecated_argument
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class HFTextVectorizer(BaseVectorizer):

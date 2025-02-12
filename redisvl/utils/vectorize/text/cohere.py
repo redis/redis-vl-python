@@ -5,8 +5,8 @@ from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
-from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.utils import deprecated_argument
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that cohere isn't imported
 # mypy: disable-error-code="name-defined"
@@ -112,7 +112,7 @@ class CohereTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
-    @deprecated_argument('dtype')
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -179,7 +179,7 @@ class CohereTextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument('dtype')
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],
