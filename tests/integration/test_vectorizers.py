@@ -258,7 +258,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         VoyageAITextVectorizer,
     ],
 )
-def test_dtypes(vectorizer_):
+def test_default_dtype(vectorizer_):
     # test dtype defaults to float32
     if issubclass(vectorizer_, CustomTextVectorizer):
         vectorizer = vectorizer_(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
@@ -271,6 +271,23 @@ def test_dtypes(vectorizer_):
 
     assert vectorizer.dtype == "float32"
 
+
+@pytest.mark.requires_api_keys
+@pytest.mark.parametrize(
+    "vectorizer_",
+    [
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        CohereTextVectorizer,
+        CustomTextVectorizer,
+        HFTextVectorizer,
+        MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        VoyageAITextVectorizer,
+    ],
+)
+def test_other_dtypes(vectorizer_):
     # test initializing dtype in constructor
     for dtype in ["float16", "float32", "float64", "bfloat16"]:
         if issubclass(vectorizer_, CustomTextVectorizer):
@@ -287,14 +304,30 @@ def test_dtypes(vectorizer_):
 
         assert vectorizer.dtype == dtype
 
+
+@pytest.mark.requires_api_keys
+@pytest.mark.parametrize(
+    "vectorizer_",
+    [
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        CohereTextVectorizer,
+        HFTextVectorizer,
+        MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        VoyageAITextVectorizer,
+    ],
+)
+def test_bad_dtypes(vectorizer_):
     with pytest.raises(ValueError):
-        vectorizer = vectorizer_(dtype="float25")
+        vectorizer_(dtype="float25")
 
     with pytest.raises(ValueError):
-        vectorizer = vectorizer_(dtype=7)
+        vectorizer_(dtype=7)
 
     with pytest.raises(ValueError):
-        vectorizer = vectorizer_(dtype=None)
+        vectorizer_(dtype=None)
 
 
 @pytest.fixture(
