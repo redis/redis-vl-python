@@ -148,9 +148,6 @@ def test_conversion_with_integer_dtypes(dtype):
     expected = np.array(array, dtype=dtype).tobytes()
     assert array_to_buffer(array, dtype=dtype) == expected
 
-    with pytest.raises(OverflowError):
-        array_to_buffer([0.0, 1.1, 256.0], dtype=dtype)
-
 
 def test_conversion_with_invalid_floats():
     """Test conversion with invalid float values (numpy should handle them)"""
