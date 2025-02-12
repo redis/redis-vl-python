@@ -13,6 +13,7 @@ on:
   workflow_dispatch:
 
 env:
+  PYTHON_VERSION: "3.11"
   POETRY_VERSION: "1.8.3"
 
 jobs:
@@ -34,73 +35,100 @@ jobs:
           - 6379:6379
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
+      - name: Check out repository
+        uses: actions/checkout@v3
 
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: ${{ env.POETRY_VERSION }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
-    - name: Install dependencies
-      run: |
-        poetry install --all-extras
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
 
-    - name: Install hiredis if needed
-      if: matrix.connection == 'hiredis'
-      run: |
-        poetry add hiredis
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
 
-    - name: Set Redis version
-      run: |
-        echo "REDIS_VERSION=${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
+      - name: Install hiredis if needed
+        if: matrix.connection == 'hiredis'
+        run: |
+          poetry add hiredis
 
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+      - name: Set Redis version
+        run: |
+          echo "REDIS_VERSION=${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
 
-    - name: Run tests
-      if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
-        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-        MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-        VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-        AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
-        AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
-        AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
-        OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      run: |
-        poetry run test-verbose
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
-    - name: Run tests
-      if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
-      run: |
-        SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-verbose
+      - name: Run tests
+        if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
+          AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
+          OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          poetry run test-verbose
 
-    - name: Run notebooks
-      if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
-        GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-        MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-        VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-        AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
-        AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
-        AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
-        OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      run: |
-        cd docs/ && poetry run pytest --nbval-lax ./user_guide -vv 
+      - name: Run tests
+        if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
+        run: |
+          SKIP_VECTORIZERS=True SKIP_RERANKERS=True poetry run test-verbose
+
+      - name: Run notebooks
+        if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
+          AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
+          OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          cd docs/ && poetry run pytest --nbval-lax ./user_guide -vv 
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+  
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
+
+      - name: Build docs
+        run: |
+          make docs-build 
