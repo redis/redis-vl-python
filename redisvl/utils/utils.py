@@ -3,15 +3,15 @@ from enum import Enum
 from functools import wraps
 from time import time
 from typing import Any, Callable, Dict, Optional
-from uuid import uuid4
 from warnings import warn
 
 from pydantic.v1 import BaseModel
+from ulid import ULID
 
 
 def create_uuid() -> str:
     """Generate a unique indentifier to group related Redis documents."""
-    return str(uuid4())
+    return str(ULID())
 
 
 def current_timestamp() -> float:
