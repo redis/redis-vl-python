@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-all clean redis-start redis-stop check-types docs-build docs-serve check
+.PHONY: install format lint test test-all test-notebooks clean redis-start redis-stop check-types docs-build docs-serve check
 
 install:
 	poetry install --all-extras
@@ -19,10 +19,13 @@ check-types:
 lint: format check-types
 	
 test:
-	SKIP_RERANKERS=true SKIP_VECTORIZERS=true poetry run test-verbose
+	poetry run test-verbose 
 	
 test-all:
-	poetry run test-verbose
+	poetry run test-verbose --run-api-tests
+
+test-notebooks:
+	poetry run test-notebooks
 
 check: lint test
 

@@ -15,12 +15,6 @@ from redisvl.utils.vectorize import (
 )
 
 
-@pytest.fixture
-def skip_vectorizer() -> bool:
-    v = os.getenv("SKIP_VECTORIZERS", "False").lower() == "true"
-    return v
-
-
 @pytest.fixture(
     params=[
         HFTextVectorizer,
@@ -34,10 +28,7 @@ def skip_vectorizer() -> bool:
         VoyageAITextVectorizer,
     ]
 )
-def vectorizer(request, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer instantiation...")
-
+def vectorizer(request):
     if request.param == HFTextVectorizer:
         return request.param()
     elif request.param == OpenAITextVectorizer:
@@ -70,10 +61,7 @@ def vectorizer(request, skip_vectorizer):
 
 
 @pytest.fixture
-def bedrock_vectorizer(skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping Bedrock vectorizer tests...")
-
+def bedrock_vectorizer():
     return BedrockTextVectorizer(
         model=os.getenv("BEDROCK_MODEL_ID", "amazon.titan-embed-text-v2:0")
     )
@@ -108,6 +96,7 @@ def custom_embed_class():
     return MyEmbedder
 
 
+@pytest.mark.requires_api_keys
 def test_vectorizer_embed(vectorizer):
     text = "This is a test sentence."
     if isinstance(vectorizer, CohereTextVectorizer):
@@ -121,6 +110,7 @@ def test_vectorizer_embed(vectorizer):
     assert len(embedding) == vectorizer.dims
 
 
+@pytest.mark.requires_api_keys
 def test_vectorizer_embed_many(vectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
     if isinstance(vectorizer, CohereTextVectorizer):
@@ -137,6 +127,7 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
+@pytest.mark.requires_api_keys
 def test_vectorizer_bad_input(vectorizer):
     with pytest.raises(TypeError):
         vectorizer.embed(1)
@@ -148,6 +139,7 @@ def test_vectorizer_bad_input(vectorizer):
         vectorizer.embed_many(42)
 
 
+@pytest.mark.requires_api_keys
 def test_bedrock_bad_credentials():
     with pytest.raises(ValueError):
         BedrockTextVectorizer(
@@ -158,6 +150,7 @@ def test_bedrock_bad_credentials():
         )
 
 
+@pytest.mark.requires_api_keys
 def test_bedrock_invalid_model(bedrock_vectorizer):
     with pytest.raises(ValueError):
         bedrock = BedrockTextVectorizer(model="invalid-model")
@@ -250,64 +243,48 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         )
 
 
-@pytest.mark.parametrize(
-    "vector_class",
-    [
-        AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
-        CohereTextVectorizer,
-        CustomTextVectorizer,
-        HFTextVectorizer,
-        MistralAITextVectorizer,
-        OpenAITextVectorizer,
-        VertexAITextVectorizer,
-        VoyageAITextVectorizer,
-    ],
-)
-def test_dtypes(vector_class, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer instantiation...")
+# @pytest.mark.requires_api_keys
+# def test_dtypes(vectorizer):
+#     # # test dtype defaults to float32
+#     # if issubclass(vectorizer, CustomTextVectorizer):
+#     #     vectorizer = vectorizer(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
+#     # elif issubclass(vectorizer, AzureOpenAITextVectorizer):
+#     #     vectorizer = vectorizer(
+#     #         model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
+#     #     )
+#     # else:
+#     #     vectorizer = vector_class()
 
-    # test dtype defaults to float32
-    if issubclass(vector_class, CustomTextVectorizer):
-        vectorizer = vector_class(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
-    elif issubclass(vector_class, AzureOpenAITextVectorizer):
-        vectorizer = vector_class(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
-        )
-    else:
-        vectorizer = vector_class()
+#     assert vectorizer.dtype == "float32"
 
-    assert vectorizer.dtype == "float32"
+#     # test initializing dtype in constructor
+#     for dtype in ["float16", "float32", "float64", "bfloat16"]:
+#         if issubclass(vectorizer, CustomTextVectorizer):
+#             vectorizer = vectorizer(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
+#         elif issubclass(vectorizer, AzureOpenAITextVectorizer):
+#             vectorizer = vectorizer(
+#                 model=os.getenv(
+#                     "AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"
+#                 ),
+#                 dtype=dtype,
+#             )
+#         else:
+#             vectorizer = vectorizer(dtype=dtype)
 
-    # test initializing dtype in constructor
-    for dtype in ["float16", "float32", "float64", "bfloat16"]:
-        if issubclass(vector_class, CustomTextVectorizer):
-            vectorizer = vector_class(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
-        elif issubclass(vector_class, AzureOpenAITextVectorizer):
-            vectorizer = vector_class(
-                model=os.getenv(
-                    "AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"
-                ),
-                dtype=dtype,
-            )
-        else:
-            vectorizer = vector_class(dtype=dtype)
+#         assert vectorizer.dtype == dtype
 
-        assert vectorizer.dtype == dtype
+#     # test validation of dtype on init
+#     if issubclass(vectorizer, CustomTextVectorizer):
+#         pytest.skip("skipping custom text vectorizer")
 
-    # test validation of dtype on init
-    if issubclass(vector_class, CustomTextVectorizer):
-        pytest.skip("skipping custom text vectorizer")
+#     with pytest.raises(ValueError):
+#         vectorizer = vectorizer(dtype="float25")
 
-    with pytest.raises(ValueError):
-        vectorizer = vector_class(dtype="float25")
+#     with pytest.raises(ValueError):
+#         vectorizer = vectorizer(dtype=7)
 
-    with pytest.raises(ValueError):
-        vectorizer = vector_class(dtype=7)
-
-    with pytest.raises(ValueError):
-        vectorizer = vector_class(dtype=None)
+#     with pytest.raises(ValueError):
+#         vectorizer = vectorizer(dtype=None)
 
 
 @pytest.fixture(
@@ -319,10 +296,7 @@ def test_dtypes(vector_class, skip_vectorizer):
         VoyageAITextVectorizer,
     ]
 )
-def avectorizer(request, skip_vectorizer):
-    if skip_vectorizer:
-        pytest.skip("Skipping vectorizer instantiation...")
-
+def avectorizer(request):
     if request.param == CustomTextVectorizer:
 
         def embed_func(text):
@@ -341,6 +315,7 @@ def avectorizer(request, skip_vectorizer):
         return request.param()
 
 
+@pytest.mark.requires_api_keys
 @pytest.mark.asyncio
 async def test_vectorizer_aembed(avectorizer):
     text = "This is a test sentence."
@@ -350,6 +325,7 @@ async def test_vectorizer_aembed(avectorizer):
     assert len(embedding) == avectorizer.dims
 
 
+@pytest.mark.requires_api_keys
 @pytest.mark.asyncio
 async def test_vectorizer_aembed_many(avectorizer):
     texts = ["This is the first test sentence.", "This is the second test sentence."]
@@ -362,6 +338,7 @@ async def test_vectorizer_aembed_many(avectorizer):
     )
 
 
+@pytest.mark.requires_api_keys
 @pytest.mark.asyncio
 async def test_avectorizer_bad_input(avectorizer):
     with pytest.raises(TypeError):

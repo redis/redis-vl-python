@@ -9,13 +9,6 @@ from redisvl.utils.rerank import (
 )
 
 
-@pytest.fixture
-def skip_reranker() -> bool:
-    # os.getenv returns a string
-    v = os.getenv("SKIP_RERANKERS", "False").lower() == "true"
-    return v
-
-
 # Fixture for the reranker instance
 @pytest.fixture(
     params=[
@@ -23,10 +16,7 @@ def skip_reranker() -> bool:
         VoyageAIReranker,
     ]
 )
-def reranker(request, skip_reranker):
-    if skip_reranker:
-        pytest.skip("Skipping reranker instantiation...")
-
+def reranker(request):
     if request.param == CohereReranker:
         return request.param()
     elif request.param == VoyageAIReranker:
@@ -43,7 +33,7 @@ def hfCrossEncoderRerankerWithCustomModel():
     return HFCrossEncoderReranker("cross-encoder/stsb-distilroberta-base")
 
 
-# Test for basic ranking functionality
+@pytest.mark.requires_api_keys
 def test_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
     query = "search query"
@@ -55,7 +45,7 @@ def test_rank_documents(reranker):
     assert all(isinstance(score, float) for score in scores)  # Scores should be floats
 
 
-# Test for asynchronous ranking functionality
+@pytest.mark.requires_api_keys
 @pytest.mark.asyncio
 async def test_async_rank_documents(reranker):
     docs = ["document one", "document two", "document three"]
@@ -68,7 +58,7 @@ async def test_async_rank_documents(reranker):
     assert all(isinstance(score, float) for score in scores)  # Scores should be floats
 
 
-# Test handling of bad input
+@pytest.mark.requires_api_keys
 def test_bad_input(reranker):
     with pytest.raises(Exception):
         reranker.rank("", [])  # Empty query or documents
