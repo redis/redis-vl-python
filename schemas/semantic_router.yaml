@@ -18,6 +18,5 @@ vectorizer:
   type: hf
   model: sentence-transformers/all-mpnet-base-v2
 routing_config:
-  distance_threshold: 0.3
   max_k: 2
   aggregation_method: avg

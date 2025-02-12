@@ -12,12 +12,12 @@ User guides provide helpful resources for using RedisVL and its different compon
 :caption: User Guides
 :maxdepth: 2
 
-getting_started_01
-hybrid_queries_02
-llmcache_03
-vectorizers_04
-hash_vs_json_05
-rerankers_06
-session_manager_07
-semantic_router_08
+01_getting_started
+02_hybrid_queries
+03_llmcache
+04_vectorizers
+05_hash_vs_json
+06_rerankers
+07_session_manager
+08_semantic_router
 ```

@@ -50,7 +50,7 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             name (str): The name of the session manager index.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
             prefix (Optional[str]): Prefix for the keys for this session data.
                 Defaults to None and will be replaced with the index name.
             vectorizer (Optional[BaseVectorizer]): The vectorizer used to create embeddings.
@@ -186,7 +186,7 @@ class SemanticSessionManager(BaseSessionManager):
             or as JSON
             top_k (int): The number of previous messages to return. Default is 5.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
             distance_threshold (Optional[float]): The threshold for semantic
                 vector distance.
             fall_back (bool): Whether to drop back to recent conversation history
@@ -257,7 +257,7 @@ class SemanticSessionManager(BaseSessionManager):
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
@@ -314,7 +314,7 @@ class SemanticSessionManager(BaseSessionManager):
             prompt (str): The user prompt to the LLM.
             response (str): The corresponding LLM response.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
         """
         self.add_messages(
             [
@@ -334,7 +334,7 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             messages (List[Dict[str, str]]): The list of user prompts and LLM responses.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
         """
         session_tag = session_tag or self._session_tag
         chat_messages: List[Dict[str, Any]] = []
@@ -370,6 +370,6 @@ class SemanticSessionManager(BaseSessionManager):
         Args:
             message (Dict[str,str]): The user prompt or LLM response.
             session_tag (Optional[str]): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
         """
         self.add_messages([message], session_tag)

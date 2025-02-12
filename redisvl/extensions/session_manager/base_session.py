@@ -6,7 +6,7 @@ from redisvl.extensions.constants import (
     TOOL_FIELD_NAME,
 )
 from redisvl.extensions.session_manager.schema import ChatMessage
-from redisvl.utils.utils import create_uuid
+from redisvl.utils.utils import create_ulid
 
 
 class BaseSessionManager:
@@ -26,10 +26,10 @@ class BaseSessionManager:
         Args:
             name (str): The name of the session manager index.
             session_tag (str): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
         """
         self._name = name
-        self._session_tag = session_tag or create_uuid()
+        self._session_tag = session_tag or create_ulid()
 
     def clear(self) -> None:
         """Clears the chat session history."""
@@ -70,7 +70,7 @@ class BaseSessionManager:
             raw (bool): Whether to return the full Redis hash entry or just the
                 prompt and response
             session_tag (str): Tag to be added to entries to link to a specific
-                session. Defaults to instance uuid.
+                session. Defaults to instance ULID.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session

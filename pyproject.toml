@@ -14,53 +14,60 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "License :: OSI Approved :: MIT License",
 ]
 packages = [{ include = "redisvl", from = "." }]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
-numpy = "*"
-pyyaml = "*"
-coloredlogs = "*"
-redis = ">=5.0.0"
-pydantic = { version = ">=2,<3" }
+python = ">=3.9,<3.14"
+numpy = [
+  { version = "^1", python = "<3.12" },
+  { version = ">=1.26.0,<3", python = ">=3.12" },
+]
+pyyaml = ">=5.4,<7.0"
+coloredlogs = "^15.0"
+redis = "^5.0"
+pydantic = "^2"
 tenacity = ">=8.2.2"
-tabulate = { version = ">=0.9.0,<1" }
+tabulate = "^0.9.0"
 ml-dtypes = "^0.4.0"
-openai = { version = ">=1.13.0", optional = true }
-sentence-transformers = { version = ">=2.2.2", optional = true }
-google-cloud-aiplatform = { version = ">=1.26", optional = true }
-protobuf = { version = ">=5.29.1,<6.0.0.dev0", optional = true }
+python-ulid = "^3.0.0"
+openai = { version = "^1.13.0", optional = true }
+sentence-transformers = { version = "^3.4.0", optional = true }
+scipy = [
+  { version = "<1.15", python = "<3.10", optional = true },
+  { version = "^1.15", python = ">=3.10", optional = true }
+]
+google-cloud-aiplatform = { version = "^1.26", optional = true }
+protobuf = { version = "^5.29.1", optional = true }
 cohere = { version = ">=4.44", optional = true }
 mistralai = { version = ">=1.0.0", optional = true }
-boto3 = { version = ">=1.34.0", optional = true }
 voyageai = { version = ">=0.2.2", optional = true }
-pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
+boto3 = { version = "^1.36.0", optional = true, extras = ["bedrock"] }
 
 [tool.poetry.extras]
 openai = ["openai"]
-sentence-transformers = ["sentence-transformers"]
+sentence-transformers = ["sentence-transformers", "scipy"]
 vertexai = ["google_cloud_aiplatform", "protobuf"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
-bedrock = ["boto3"]
 voyageai = ["voyageai"]
+bedrock = ["boto3"]
 
 [tool.poetry.group.dev.dependencies]
-black = ">=20.8b1"
-isort = ">=5.6.4"
-pylint = "3.1.0"
-pytest = "8.1.1"
-pytest-asyncio = "0.23.6"
+black = "^25.1.0"
+isort = "^5.6.4"
+pylint = "^3.1.0"
+pytest = "^8.1.1"
+pytest-asyncio = "^0.23.6"
+pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
+pre-commit = "^4.1.0"
 mypy = "1.9.0"
+nbval = "^0.11.0"
 types-redis = "*"
 types-pyyaml = "*"
 types-tabulate = "*"
-treon = "*"
-pre-commit = "^4.1.0"
-
-[tool.poetry.group.test.dependencies]
 testcontainers = "^4.3.1"
 
 [tool.poetry.group.docs.dependencies]
@@ -92,7 +99,7 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.black]
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
 exclude = '''
 (
   | \.egg
@@ -112,15 +119,6 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
-
-[tool.coverage.run]
-source = ["redisvl"]
-
-[tool.coverage.report]
-ignore_errors = true
-
-[tool.coverage.html]
-directory = "htmlcov"
 
 [tool.mypy]
 warn_unused_configs = true

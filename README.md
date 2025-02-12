@@ -71,7 +71,7 @@ Choose from multiple Redis deployment options:
 
 
 ## 🗃️ Redis Index Management
-1. [Design a schema for your use case](https://docs.redisvl.com/en/stable/user_guide/getting_started_01.html#define-an-indexschema) that models your dataset with built-in Redis  and indexable fields (*e.g. text, tags, numerics, geo, and vectors*). [Load a schema](https://docs.redisvl.com/en/stable/user_guide/getting_started_01.html#example-schema-creation) from a YAML file:
+1. [Design a schema for your use case](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#define-an-indexschema) that models your dataset with built-in Redis  and indexable fields (*e.g. text, tags, numerics, geo, and vectors*). [Load a schema](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#example-schema-creation) from a YAML file:
     ```yaml
     index:
       name: user-idx
@@ -121,7 +121,7 @@ Choose from multiple Redis deployment options:
     })
     ```
 
-2. [Create a SearchIndex](https://docs.redisvl.com/en/stable/user_guide/getting_started_01.html#create-a-searchindex) class with an input schema and client connection in order to perform admin and search operations on your index in Redis:
+2. [Create a SearchIndex](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#create-a-searchindex) class with an input schema and client connection in order to perform admin and search operations on your index in Redis:
     ```python
     from redis import Redis
     from redisvl.index import SearchIndex
@@ -135,8 +135,8 @@ Choose from multiple Redis deployment options:
     ```
     > Async compliant search index class also available: [AsyncSearchIndex](https://docs.redisvl.com/en/stable/api/searchindex.html#redisvl.index.AsyncSearchIndex).
 
-3. [Load](https://docs.redisvl.com/en/stable/user_guide/getting_started_01.html#load-data-to-searchindex)
-and [fetch](https://docs.redisvl.com/en/stable/user_guide/getting_started_01.html#fetch-an-object-from-redis) data to/from your Redis instance:
+3. [Load](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#load-data-to-searchindex)
+and [fetch](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#fetch-an-object-from-redis) data to/from your Redis instance:
     ```python
     data = {"user": "john", "credit_score": "high", "embedding": [0.23, 0.49, -0.18, 0.95]}
 
@@ -183,7 +183,7 @@ Define queries and perform advanced searches over your indices, including the co
 - [FilterQuery](https://docs.redisvl.com/en/stable/api/query.html#filterquery) - Standard search using filters and the full-text search
 - [CountQuery](https://docs.redisvl.com/en/stable/api/query.html#countquery) - Count the number of indexed records given attributes
 
-> Read more about building [advanced Redis queries](https://docs.redisvl.com/en/stable/user_guide/hybrid_queries_02.html).
+> Read more about building [advanced Redis queries](https://docs.redisvl.com/en/stable/user_guide/02_hybrid_queries.html).
 
 
 ## 🔧  Utilities
@@ -216,11 +216,11 @@ embeddings = co.embed_many(
 )
 ```
 
-> Learn more about using [vectorizers]((https://docs.redisvl.com/en/stable/user_guide/vectorizers_04.html)) in your embedding workflows.
+> Learn more about using [vectorizers]((https://docs.redisvl.com/en/stable/user_guide/04_vectorizers.html)) in your embedding workflows.
 
 
 ### Rerankers
-[Integrate with popular reranking providers](https://docs.redisvl.com/en/stable/user_guide/rerankers_06.html) to improve the relevancy of the initial search results from Redis
+[Integrate with popular reranking providers](https://docs.redisvl.com/en/stable/user_guide/06_rerankers.html) to improve the relevancy of the initial search results from Redis
 
 
 
@@ -257,7 +257,7 @@ print(response[0]["response"])
 >>> Paris
 ```
 
-> Learn more about [semantic caching]((https://docs.redisvl.com/en/stable/user_guide/llmcache_03.html)) for LLMs.
+> Learn more about [semantic caching]((https://docs.redisvl.com/en/stable/user_guide/03_llmcache.html)) for LLMs.
 
 ### LLM Session Management
 
@@ -293,7 +293,7 @@ session.get_relevant("weather", top_k=1)
 ```stdout
 >>> [{"role": "user", "content": "what is the weather going to be today?"}]
 ```
-> Learn more about [LLM session management]((https://docs.redisvl.com/en/stable/user_guide/session_manager_07.html)).
+> Learn more about [LLM session management]((https://docs.redisvl.com/en/stable/user_guide/07_session_manager.html)).
 
 
 ### LLM Semantic Routing
@@ -330,7 +330,7 @@ router("Hi, good morning")
 ```stdout
 >>> RouteMatch(name='greeting', distance=0.273891836405)
 ```
-> Learn more about [semantic routing](https://docs.redisvl.com/en/stable/user_guide/semantic_router_08.html).
+> Learn more about [semantic routing](https://docs.redisvl.com/en/stable/user_guide/08_semantic_router.html).
 
 ## 🖥️ Command Line Interface
 Create, destroy, and manage Redis index configurations from a purpose-built CLI interface: `rvl`.
@@ -360,7 +360,7 @@ The Redis Vector Library bridges the gap between the AI-native developer ecosyst
 ## 😁 Helpful Links
 
 For additional help, check out the following resources:
- - [Getting Started Guide](https://docs.redisvl.com/en/stable/user_guide/getting_started_01.html)
+ - [Getting Started Guide](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html)
  - [API Reference](https://docs.redisvl.com/en/stable/api/index.html)
  - [Example Gallery](https://docs.redisvl.com/en/stable/examples/index.html)
  - [Redis AI Recipes](https://github.com/redis-developer/redis-ai-resources)
