@@ -6,6 +6,8 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.utils.vectorize.base import BaseVectorizer
+from redisvl.utils.utils import deprecated_argument
+
 
 # ignore that openai isn't imported
 # mypy: disable-error-code="name-defined"
@@ -167,6 +169,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument('dtype')
     def embed_many(
         self,
         texts: List[str],
@@ -213,6 +216,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument('dtype')
     def embed(
         self,
         text: str,
@@ -251,6 +255,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument('dtype')
     async def aembed_many(
         self,
         texts: List[str],
@@ -299,6 +304,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument('dtype')
     async def aembed(
         self,
         text: str,

@@ -3,6 +3,7 @@ from typing import Any, Callable, List, Optional
 from pydantic.v1 import PrivateAttr
 
 from redisvl.utils.vectorize.base import BaseVectorizer
+from redisvl.utils.utils import deprecated_argument
 
 
 class HFTextVectorizer(BaseVectorizer):
@@ -79,6 +80,7 @@ class HFTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -112,6 +114,7 @@ class HFTextVectorizer(BaseVectorizer):
         embedding = self._client.encode([text], **kwargs)[0]
         return self._process_embedding(embedding.tolist(), as_buffer, dtype)
 
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],
