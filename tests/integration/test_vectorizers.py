@@ -243,48 +243,58 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         )
 
 
-# @pytest.mark.requires_api_keys
-# def test_dtypes(vectorizer):
-#     # # test dtype defaults to float32
-#     # if issubclass(vectorizer, CustomTextVectorizer):
-#     #     vectorizer = vectorizer(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
-#     # elif issubclass(vectorizer, AzureOpenAITextVectorizer):
-#     #     vectorizer = vectorizer(
-#     #         model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
-#     #     )
-#     # else:
-#     #     vectorizer = vector_class()
+@pytest.mark.requires_api_keys
+@pytest.mark.parametrize(
+    "vectorizer_",
+    [
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        CohereTextVectorizer,
+        CustomTextVectorizer,
+        HFTextVectorizer,
+        MistralAITextVectorizer,
+        OpenAITextVectorizer,
+        VertexAITextVectorizer,
+        VoyageAITextVectorizer,
+    ],
+)
+def test_dtypes(vectorizer_):
+    # test dtype defaults to float32
+    if issubclass(vectorizer_, CustomTextVectorizer):
+        vectorizer = vectorizer_(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
+    elif issubclass(vectorizer, AzureOpenAITextVectorizer):
+        vectorizer = vectorizer_(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
+        )
+    else:
+        vectorizer = vectorizer_()
 
-#     assert vectorizer.dtype == "float32"
+    assert vectorizer.dtype == "float32"
 
-#     # test initializing dtype in constructor
-#     for dtype in ["float16", "float32", "float64", "bfloat16"]:
-#         if issubclass(vectorizer, CustomTextVectorizer):
-#             vectorizer = vectorizer(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
-#         elif issubclass(vectorizer, AzureOpenAITextVectorizer):
-#             vectorizer = vectorizer(
-#                 model=os.getenv(
-#                     "AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"
-#                 ),
-#                 dtype=dtype,
-#             )
-#         else:
-#             vectorizer = vectorizer(dtype=dtype)
+    # test initializing dtype in constructor
+    for dtype in ["float16", "float32", "float64", "bfloat16"]:
+        if issubclass(vectorizer_, CustomTextVectorizer):
+            vectorizer = vectorizer_(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
+        elif issubclass(vectorizer_, AzureOpenAITextVectorizer):
+            vectorizer = vectorizer_(
+                model=os.getenv(
+                    "AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"
+                ),
+                dtype=dtype,
+            )
+        else:
+            vectorizer = vectorizer_(dtype=dtype)
 
-#         assert vectorizer.dtype == dtype
+        assert vectorizer.dtype == dtype
 
-#     # test validation of dtype on init
-#     if issubclass(vectorizer, CustomTextVectorizer):
-#         pytest.skip("skipping custom text vectorizer")
+    with pytest.raises(ValueError):
+        vectorizer = vectorizer(dtype="float25")
 
-#     with pytest.raises(ValueError):
-#         vectorizer = vectorizer(dtype="float25")
+    with pytest.raises(ValueError):
+        vectorizer = vectorizer(dtype=7)
 
-#     with pytest.raises(ValueError):
-#         vectorizer = vectorizer(dtype=7)
-
-#     with pytest.raises(ValueError):
-#         vectorizer = vectorizer(dtype=None)
+    with pytest.raises(ValueError):
+        vectorizer = vectorizer(dtype=None)
 
 
 @pytest.fixture(
