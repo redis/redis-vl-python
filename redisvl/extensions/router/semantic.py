@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Type
 
 import redis.commands.search.reducers as reducers
 import yaml
-from pydantic.v1 import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
@@ -44,8 +44,7 @@ class SemanticRouter(BaseModel):
 
     _index: SearchIndex = PrivateAttr()
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @deprecated_argument("dtype", "vectorizer")
     def __init__(

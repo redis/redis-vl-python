@@ -8,7 +8,7 @@ from time import time
 from typing import Any, Callable, Dict, Optional
 from warnings import warn
 
-from pydantic.v1 import BaseModel
+from pydantic import BaseModel
 from ulid import ULID
 
 
@@ -38,7 +38,7 @@ def model_to_dict(model: BaseModel) -> Dict[str, Any]:
         else:
             return item
 
-    serialized_data = model.dict(exclude_none=True)
+    serialized_data = model.model_dump(exclude_none=True)
     for key, value in serialized_data.items():
         serialized_data[key] = serialize_item(value)
     return serialized_data

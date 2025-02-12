@@ -1,5 +1,5 @@
 import pytest
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,

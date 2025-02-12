@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from pydantic.v1 import BaseModel, Field, root_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
@@ -33,11 +33,9 @@ class ChatMessage(BaseModel):
     """An optional identifier for a tool call associated with the message."""
     vector_field: Optional[List[float]] = Field(default=None)
     """The vector representation of the message content."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    class Config:
-        arbitrary_types_allowed = True
-
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     @classmethod
     def generate_id(cls, values):
         if TIMESTAMP_FIELD_NAME not in values:
@@ -49,7 +47,7 @@ class ChatMessage(BaseModel):
         return values
 
     def to_dict(self, dtype: Optional[str] = None) -> Dict:
-        data = self.dict(exclude_none=True)
+        data = self.model_dump(exclude_none=True)
 
         # handle optional fields
         if SESSION_VECTOR_FIELD_NAME in data:

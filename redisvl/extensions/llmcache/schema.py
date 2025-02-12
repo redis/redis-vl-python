@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic.v1 import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
@@ -34,7 +34,7 @@ class CacheEntry(BaseModel):
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     @classmethod
     def generate_id(cls, values):
         # Ensure entry_id is set
@@ -42,14 +42,15 @@ class CacheEntry(BaseModel):
             values["entry_id"] = hashify(values["prompt"], values.get("filters"))
         return values
 
-    @validator("metadata")
+    @field_validator("metadata")
+    @classmethod
     def non_empty_metadata(cls, v):
         if v is not None and not isinstance(v, dict):
             raise TypeError("Metadata must be a dictionary.")
         return v
 
     def to_dict(self, dtype: str) -> Dict:
-        data = self.dict(exclude_none=True)
+        data = self.model_dump(exclude_none=True)
         data["prompt_vector"] = array_to_buffer(self.prompt_vector, dtype)
         if self.metadata is not None:
             data["metadata"] = serialize(self.metadata)
@@ -79,7 +80,7 @@ class CacheHit(BaseModel):
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     @classmethod
     def validate_cache_hit(cls, values):
         # Deserialize metadata if necessary
@@ -87,10 +88,10 @@ class CacheHit(BaseModel):
             values["metadata"] = deserialize(values["metadata"])
 
         # Separate filters from other fields
-        known_fields = set(cls.__fields__.keys())
+        known_fields = set(cls.model_fields.keys())
         filters = {k: v for k, v in values.items() if k not in known_fields}
 
-        # Add filters to values
+        # Add filters to valuesgiy s
         if filters:
             values["filters"] = filters
 
@@ -101,7 +102,7 @@ class CacheHit(BaseModel):
         return values
 
     def to_dict(self) -> Dict:
-        data = self.dict(exclude_none=True)
+        data = self.model_dump(exclude_none=True)
         if self.filters:
             data.update(self.filters)
             del data["filters"]

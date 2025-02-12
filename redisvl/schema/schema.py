@@ -1,10 +1,10 @@
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 
 import yaml
-from pydantic.v1 import BaseModel, Field, root_validator
+from pydantic import BaseModel, model_validator
 from redis.commands.search.field import Field as RedisField
 
 from redisvl.schema.fields import BaseField, FieldFactory
@@ -12,7 +12,6 @@ from redisvl.utils.log import get_logger
 from redisvl.utils.utils import model_to_dict
 
 logger = get_logger(__name__)
-SCHEMA_VERSION = "0.1.0"
 
 
 class StorageType(Enum):
@@ -145,7 +144,7 @@ class IndexSchema(BaseModel):
     """Details of the basic index configurations."""
     fields: Dict[str, BaseField] = {}
     """Fields associated with the search index and their properties"""
-    version: str = Field(default=SCHEMA_VERSION, const=True)
+    version: Literal["0.1.0"] = "0.1.0"
     """Version of the underlying index schema."""
 
     @staticmethod
@@ -168,7 +167,7 @@ class IndexSchema(BaseModel):
             field.path = None
         return field
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     @classmethod
     def validate_and_create_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -222,7 +221,7 @@ class IndexSchema(BaseModel):
 
         with open(fp, "r") as f:
             yaml_data = yaml.safe_load(f)
-            return cls(**yaml_data)
+            return cls.model_validate(yaml_data)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
@@ -260,7 +259,7 @@ class IndexSchema(BaseModel):
                 ]
             })
         """
-        return cls(**data)
+        return cls.model_validate(data)
 
     @property
     def field_names(self) -> List[str]:
@@ -413,7 +412,7 @@ class IndexSchema(BaseModel):
                     FieldFactory.create_field(
                         field_type,
                         field_name,
-                    ).dict()
+                    ).model_dump()
                 )
             except ValueError as e:
                 if strict:

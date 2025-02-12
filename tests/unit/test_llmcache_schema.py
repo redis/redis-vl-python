@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from pydantic.v1 import ValidationError
+from pydantic import ValidationError
 
 from redisvl.extensions.llmcache.schema import CacheEntry, CacheHit
 from redisvl.redis.utils import array_to_buffer, hashify

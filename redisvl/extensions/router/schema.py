@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Dict, List, Optional
 
-from pydantic.v1 import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.schema import IndexSchema
@@ -19,13 +19,15 @@ class Route(BaseModel):
     distance_threshold: float = Field(default=0.5)
     """Distance threshold for matching the route."""
 
-    @validator("name")
+    @field_validator("name")
+    @classmethod
     def name_must_not_be_empty(cls, v):
         if not v or not v.strip():
             raise ValueError("Route name must not be empty")
         return v
 
-    @validator("references")
+    @field_validator("references")
+    @classmethod
     def references_must_not_be_empty(cls, v):
         if not v:
             raise ValueError("References must not be empty")
@@ -33,7 +35,8 @@ class Route(BaseModel):
             raise ValueError("All references must be non-empty strings")
         return v
 
-    @validator("distance_threshold")
+    @field_validator("distance_threshold")
+    @classmethod
     def distance_threshold_must_be_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("Route distance threshold must be greater than zero")
@@ -79,7 +82,8 @@ class RoutingConfig(BaseModel):
         description="Global distance threshold is deprecated all distance_thresholds now apply at route level.",
     )
 
-    @validator("max_k")
+    @field_validator("max_k")
+    @classmethod
     def max_k_must_be_positive(cls, v):
         if v <= 0:
             raise ValueError("max_k must be a positive integer")
