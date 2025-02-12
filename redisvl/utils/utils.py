@@ -9,7 +9,7 @@ from pydantic.v1 import BaseModel
 from ulid import ULID
 
 
-def create_uuid() -> str:
+def create_ulid() -> str:
     """Generate a unique indentifier to group related Redis documents."""
     return str(ULID())
 
