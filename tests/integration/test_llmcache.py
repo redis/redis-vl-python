@@ -770,7 +770,7 @@ def test_complex_filters(cache_with_filters):
     assert len(results) == 1
 
 
-def test_index_updating(redis_url):
+def test_cache_index_overwrite(redis_url):
     cache_no_tags = SemanticCache(
         name="test_cache",
         redis_url=redis_url,
@@ -785,15 +785,22 @@ def test_index_updating(redis_url):
     # filterable_fields not defined in schema, so no tags will match
     tag_filter = Tag("some_tag") == "abc"
 
-    response = cache_no_tags.check(
-        prompt="this prompt has a tag",
-        filter_expression=tag_filter,
-    )
+    try:
+        response = cache_no_tags.check(
+            prompt="this prompt has a tag",
+            filter_expression=tag_filter,
+        )
+    except Exception as e:
+        # This will fail in Redis 8+ on query dialect 2
+        if "Unknown field" in str(e):
+            response = []
+        else:
+            raise
+
     assert response == []
 
     with pytest.raises((RedisModuleVersionError, ValueError)):
-
-        cache_with_tags = SemanticCache(
+        SemanticCache(
             name="test_cache",
             redis_url=redis_url,
             filterable_fields=[{"name": "some_tag", "type": "tag"}],

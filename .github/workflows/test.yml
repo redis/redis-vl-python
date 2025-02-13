@@ -18,7 +18,7 @@ env:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis-stack ${{matrix.redis-stack-version}}]
+    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis ${{ matrix.redis-version }}]
     runs-on: ubuntu-latest
 
     strategy:
@@ -26,13 +26,7 @@ jobs:
       matrix:
         python-version: [3.9, '3.10', 3.11, 3.12, 3.13]
         connection: ['hiredis', 'plain']
-        redis-stack-version: ['6.2.6-v9', 'latest', 'edge']
-
-    services:
-      redis:
-        image: redis/redis-stack-server:${{matrix.redis-stack-version}}
-        ports:
-          - 6379:6379
+        redis-version: ['6.2.6-v9', 'latest', '8.0-M03']
 
     steps:
       - name: Check out repository
@@ -58,9 +52,13 @@ jobs:
         run: |
           poetry add hiredis
 
-      - name: Set Redis version
+      - name: Set Redis image name
         run: |
-          echo "REDIS_VERSION=${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
+          if [[ "${{ matrix.redis-version }}" == "8.0-M03" ]]; then
+            echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
+          else
+            echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
+          fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
@@ -68,7 +66,7 @@ jobs:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Run tests
-        if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
+        if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
@@ -86,12 +84,12 @@ jobs:
           make test-all
 
       - name: Run tests
-        if: matrix.connection != 'plain' || matrix.redis-stack-version != 'latest'
+        if: matrix.connection != 'plain' || matrix.redis-version != 'latest'
         run: |
           make test
 
       - name: Run notebooks
-        if: matrix.connection == 'plain' && matrix.redis-stack-version == 'latest'
+        if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
@@ -106,6 +104,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
+          docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
           make test-notebooks 
 
   docs:
