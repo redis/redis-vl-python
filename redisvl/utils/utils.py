@@ -1,3 +1,4 @@
+import inspect
 import json
 from enum import Enum
 from functools import wraps
@@ -76,7 +77,7 @@ def deprecated_argument(argument: str, replacement: Optional[str] = None) -> Cal
     def wrapper(func):
         @wraps(func)
         def inner(*args, **kwargs):
-            argument_names = func.__code__.co_varnames
+            argument_names = list(inspect.signature(func).parameters.keys())
 
             if argument in argument_names:
                 warn(message, DeprecationWarning, stacklevel=2)

@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import pytest
 
@@ -237,3 +238,15 @@ class TestDeprecatedArgument:
         with pytest.warns(DeprecationWarning):
             result = await test_func(dtype="float32")
         assert result == 1
+        
+    async def test_ignores_local_variable(self):
+        @deprecated_argument("dtype")
+        async def test_func(vectorizer=None):
+            # The presence of this variable should not trigger a warning
+            dtype = "float32"
+            return 1
+
+        # This will raise an error if any warning is emitted
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            await test_func()
