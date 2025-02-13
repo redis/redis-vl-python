@@ -44,15 +44,15 @@ def array_to_buffer(array: List[float], dtype: str) -> bytes:
     return np.array(array).astype(dtype.lower()).tobytes()
 
 
-def buffer_to_array(buffer: bytes, dtype: str) -> List[float]:
-    """Convert bytes into into a list of floats."""
+def buffer_to_array(buffer: bytes, dtype: str) -> List[Any]:
+    """Convert bytes into into a list of numerics."""
     try:
         VectorDataType(dtype.upper())
     except ValueError:
         raise ValueError(
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
-    return np.frombuffer(buffer, dtype=dtype.lower()).tolist()
+    return np.frombuffer(buffer, dtype=dtype.lower()).tolist()  # type: ignore[return-value]
 
 
 def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:

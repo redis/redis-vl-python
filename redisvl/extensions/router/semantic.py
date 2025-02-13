@@ -215,6 +215,17 @@ class SemanticRouter(BaseModel):
             name=route_dict["route_name"], distance=float(route_dict["distance"])
         )
 
+    def _distance_threshold_filter(self) -> str:
+        """Apply distance threshold on a route by route basis."""
+        filter = ""
+        for i, route in enumerate(self.routes):
+            filter_str = f"(@route_name == '{route.name}' && @distance < {route.distance_threshold})"
+            if i > 0:
+                filter += " || "
+            filter += filter_str
+
+        return filter
+
     def _build_aggregate_request(
         self,
         vector_range_query: RangeQuery,
@@ -241,15 +252,26 @@ class SemanticRouter(BaseModel):
             .dialect(2)
         )
 
+        filter = self._distance_threshold_filter()
+
+        aggregate_request.filter(filter)
+
         return aggregate_request
 
-    def _classify_route(
+    def _get_route_matches(
         self,
         vector: List[float],
-        distance_threshold: float,
         aggregation_method: DistanceAggregationMethod,
-    ) -> RouteMatch:
-        """Classify to a single route using a vector."""
+        max_k: int = 1,
+    ) -> List[RouteMatch]:
+        """Get the route matches for a given vector and aggregation method."""
+
+        thresholds = [route.distance_threshold for route in self.routes]
+        if thresholds:
+            distance_threshold = max(thresholds)
+        else:
+            raise ValueError("No distance thresholds provided for the semantic router")
+
         vector_range_query = RangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
@@ -258,7 +280,7 @@ class SemanticRouter(BaseModel):
         )
 
         aggregate_request = self._build_aggregate_request(
-            vector_range_query, aggregation_method, max_k=1
+            vector_range_query, aggregation_method, max_k=max_k
         )
 
         try:
@@ -273,103 +295,63 @@ class SemanticRouter(BaseModel):
             raise e
 
         # process aggregation results into route matches
-        route_matches = [
+        return [
             self._process_route(route_match) for route_match in aggregation_result.rows
         ]
 
-        # process route matches
-        if route_matches:
-            top_route_match = route_matches[0]
-            if top_route_match.name is not None:
-                if route := self.get(top_route_match.name):
-                    # use the matched route's distance threshold
-                    _distance_threshold = route.distance_threshold or distance_threshold
-                    if self._pass_threshold(top_route_match, _distance_threshold):
-                        return top_route_match
-                else:
-                    raise ValueError(
-                        f"{top_route_match.name} not a supported route for the {self.name} semantic router."
-                    )
+    def _classify_route(
+        self,
+        vector: List[float],
+        aggregation_method: DistanceAggregationMethod,
+    ) -> RouteMatch:
+        """Classify to a single route using a vector."""
 
-        # fallback to empty route match if no hits
-        return RouteMatch()
+        # take max route as distance threshold
+        route_matches = self._get_route_matches(vector, aggregation_method)
+
+        if not route_matches:
+            return RouteMatch()
+
+        # process route matches
+        top_route_match = route_matches[0]
+
+        if top_route_match.name is not None:
+            return top_route_match
+        else:
+            raise ValueError(
+                f"{top_route_match.name} not a supported route for the {self.name} semantic router."
+            )
 
     def _classify_multi_route(
         self,
         vector: List[float],
         max_k: int,
-        distance_threshold: float,
         aggregation_method: DistanceAggregationMethod,
     ) -> List[RouteMatch]:
         """Classify to multiple routes, up to max_k (int), using a vector."""
-        vector_range_query = RangeQuery(
-            vector=vector,
-            vector_field_name=ROUTE_VECTOR_FIELD_NAME,
-            distance_threshold=distance_threshold,
-            return_fields=["route_name"],
-        )
-        aggregate_request = self._build_aggregate_request(
-            vector_range_query, aggregation_method, max_k
-        )
 
-        try:
-            aggregation_result: AggregateResult = self._index.aggregate(
-                aggregate_request, vector_range_query.params
-            )
-        except ResponseError as e:
-            if "VSS is not yet supported on FT.AGGREGATE" in str(e):
-                raise RuntimeError(
-                    "Semantic routing is only available on Redis version 7.x.x or greater"
-                )
-            raise e
-
-        # process aggregation results into route matches
-        route_matches = [
-            self._process_route(route_match) for route_match in aggregation_result.rows
-        ]
+        route_matches = self._get_route_matches(vector, aggregation_method, max_k)
 
         # process route matches
         top_route_matches: List[RouteMatch] = []
         if route_matches:
             for route_match in route_matches:
                 if route_match.name is not None:
-                    if route := self.get(route_match.name):
-                        # use the matched route's distance threshold
-                        _distance_threshold = (
-                            route.distance_threshold or distance_threshold
-                        )
-                        if self._pass_threshold(route_match, _distance_threshold):
-                            top_route_matches.append(route_match)
-                    else:
-                        raise ValueError(
-                            f"{route_match.name} not a supported route for the {self.name} semantic router."
-                        )
+                    top_route_matches.append(route_match)
+                else:
+                    raise ValueError(
+                        f"{route_match.name} not a supported route for the {self.name} semantic router."
+                    )
 
         return top_route_matches
 
-    def _pass_threshold(
-        self, route_match: Optional[RouteMatch], distance_threshold: float
-    ) -> bool:
-        """Check if a route match passes the distance threshold.
-
-        Args:
-            route_match (Optional[RouteMatch]): The route match to check.
-            distance_threshold (float): The fallback distance threshold to use if not assigned to a route.
-
-        Returns:
-            bool: True if the route match passes the threshold, False otherwise.
-        """
-        if route_match and distance_threshold:
-            if route_match.distance is not None:
-                return route_match.distance <= distance_threshold
-        return False
-
+    @deprecated_argument("distance_threshold")
     def __call__(
         self,
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
-        distance_threshold: Optional[float] = None,
         aggregation_method: Optional[DistanceAggregationMethod] = None,
+        distance_threshold: Optional[float] = None,
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
 
@@ -387,20 +369,15 @@ class SemanticRouter(BaseModel):
                 raise ValueError("Must provide a vector or statement to the router")
             vector = self.vectorizer.embed(statement)
 
-        # override routing config
-        distance_threshold = (
-            distance_threshold or self.routing_config.distance_threshold
-        )
         aggregation_method = (
             aggregation_method or self.routing_config.aggregation_method
         )
 
         # perform route classification
-        top_route_match = self._classify_route(
-            vector, distance_threshold, aggregation_method
-        )
+        top_route_match = self._classify_route(vector, aggregation_method)
         return top_route_match
 
+    @deprecated_argument("distance_threshold")
     def route_many(
         self,
         statement: Optional[str] = None,
@@ -426,10 +403,6 @@ class SemanticRouter(BaseModel):
                 raise ValueError("Must provide a vector or statement to the router")
             vector = self.vectorizer.embed(statement)
 
-        # override routing config defaults
-        distance_threshold = (
-            distance_threshold or self.routing_config.distance_threshold
-        )
         max_k = max_k or self.routing_config.max_k
         aggregation_method = (
             aggregation_method or self.routing_config.aggregation_method
@@ -437,8 +410,9 @@ class SemanticRouter(BaseModel):
 
         # classify routes
         top_route_matches = self._classify_multi_route(
-            vector, max_k, distance_threshold, aggregation_method
+            vector, max_k, aggregation_method
         )
+
         return top_route_matches
 
     def remove_route(self, route_name: str) -> None:

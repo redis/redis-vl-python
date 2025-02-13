@@ -358,3 +358,64 @@ def test_deprecated_dtype_argument(routes, redis_url):
             redis_url=redis_url,
             overwrite=True,
         )
+
+
+def test_deprecated_distance_threshold_argument(semantic_router, routes, redis_url):
+    redis_version = semantic_router._index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    router = SemanticRouter(
+        name="test_pass_through_dtype",
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+    )
+    with pytest.warns(DeprecationWarning):
+        router("hello", distance_threshold=0.3)
+
+
+def test_routes_different_distance_thresholds_get_two(
+    semantic_router, routes, redis_url
+):
+    redis_version = semantic_router._index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+    routes[0].distance_threshold = 0.5
+    routes[1].distance_threshold = 0.7
+
+    router = SemanticRouter(
+        name="test_routes_different_distance_thresholds",
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+    )
+
+    matches = router.route_many("hello", max_k=2)
+    assert len(matches) == 2
+    assert matches[0].name == "greeting"
+    assert matches[1].name == "farewell"
+
+
+def test_routes_different_distance_thresholds_get_one(
+    semantic_router, routes, redis_url
+):
+    redis_version = semantic_router._index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    routes[0].distance_threshold = 0.5
+
+    # don't match on second
+    routes[1].distance_threshold = 0.3
+
+    router = SemanticRouter(
+        name="test_routes_different_distance_thresholds",
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+    )
+
+    matches = router.route_many("hello", max_k=2)
+    assert len(matches) == 1
+    assert matches[0].name == "greeting"
