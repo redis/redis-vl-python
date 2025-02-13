@@ -74,7 +74,7 @@ def test_route_invalid_threshold_zero():
             metadata={"key": "value"},
             distance_threshold=0,
         )
-    assert "Route distance threshold must be greater than zero" in str(excinfo.value)
+    assert "Input should be greater than 0" in str(excinfo.value)
 
 
 def test_route_invalid_threshold_negative():
@@ -85,7 +85,7 @@ def test_route_invalid_threshold_negative():
             metadata={"key": "value"},
             distance_threshold=-0.1,
         )
-    assert "Route distance threshold must be greater than zero" in str(excinfo.value)
+    assert "Input should be greater than 0" in str(excinfo.value)
 
 
 def test_route_match():
@@ -115,4 +115,4 @@ def test_routing_config_valid():
 def test_routing_config_invalid_max_k():
     with pytest.raises(ValidationError) as excinfo:
         RoutingConfig(max_k=0)
-    assert "max_k must be a positive integer" in str(excinfo.value)
+    assert "Input should be greater than 0" in str(excinfo.value)

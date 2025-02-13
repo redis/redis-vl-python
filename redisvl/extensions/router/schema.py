@@ -1,7 +1,9 @@
+import warnings
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import Annotated
 
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.schema import IndexSchema
@@ -16,7 +18,7 @@ class Route(BaseModel):
     """List of reference phrases for the route."""
     metadata: Dict[str, str] = Field(default={})
     """Metadata associated with the route."""
-    distance_threshold: float = Field(default=0.5)
+    distance_threshold: Annotated[float, Field(strict=True, default=0.5, gt=0, le=1)]
     """Distance threshold for matching the route."""
 
     @field_validator("name")
@@ -33,13 +35,6 @@ class Route(BaseModel):
             raise ValueError("References must not be empty")
         if any(not ref.strip() for ref in v):
             raise ValueError("All references must be non-empty strings")
-        return v
-
-    @field_validator("distance_threshold")
-    @classmethod
-    def distance_threshold_must_be_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Route distance threshold must be greater than zero")
         return v
 
 
@@ -66,28 +61,26 @@ class DistanceAggregationMethod(Enum):
 class RoutingConfig(BaseModel):
     """Configuration for routing behavior."""
 
-    # distance_threshold: float = Field(default=0.5)
-    """The threshold for semantic distance."""
-    max_k: int = Field(default=1)
-
+    """The maximum number of top matches to return."""
+    max_k: Annotated[int, Field(strict=True, default=1, gt=0)] = 1
     """Aggregation method to use to classify queries."""
     aggregation_method: DistanceAggregationMethod = Field(
         default=DistanceAggregationMethod.avg
     )
 
-    """The maximum number of top matches to return."""
-    distance_threshold: float = Field(
-        default=0.5,
-        deprecated=True,
-        description="Global distance threshold is deprecated all distance_thresholds now apply at route level.",
-    )
+    model_config = ConfigDict(extra="ignore")
 
-    @field_validator("max_k")
+    @model_validator(mode="before")
     @classmethod
-    def max_k_must_be_positive(cls, v):
-        if v <= 0:
-            raise ValueError("max_k must be a positive integer")
-        return v
+    def remove_distance_threshold(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if "distance_threshold" in values:
+            warnings.warn(
+                "The 'distance_threshold' field is deprecated and will be ignored. Set distance_threshold per Route.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            values.pop("distance_threshold")
+        return values
 
 
 class SemanticRouterIndexSchema(IndexSchema):

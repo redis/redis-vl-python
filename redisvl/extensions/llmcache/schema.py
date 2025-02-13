@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
@@ -80,33 +80,33 @@ class CacheHit(BaseModel):
     filters: Optional[Dict[str, Any]] = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
 
+    # Allow extra fields to simplify handling filters
+    model_config = ConfigDict(extra="allow")
+
     @model_validator(mode="before")
     @classmethod
-    def validate_cache_hit(cls, values):
+    def validate_cache_hit(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         # Deserialize metadata if necessary
         if "metadata" in values and isinstance(values["metadata"], str):
             values["metadata"] = deserialize(values["metadata"])
 
-        # Separate filters from other fields
-        known_fields = set(cls.model_fields.keys())
-        filters = {k: v for k, v in values.items() if k not in known_fields}
-
-        # Add filters to valuesgiy s
-        if filters:
-            values["filters"] = filters
-
-        # Remove filter fields from the main values
-        for k in filters:
-            values.pop(k)
+        # Collect any extra fields and store them as filters
+        extra_data = values.pop("__pydantic_extra__", {}) or {}
+        if extra_data:
+            current_filters = values.get("filters") or {}
+            if not isinstance(current_filters, dict):
+                current_filters = {}
+            current_filters.update(extra_data)
+            values["filters"] = current_filters
 
         return values
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert this model to a dictionary, merging filters into the result."""
         data = self.model_dump(exclude_none=True)
-        if self.filters:
-            data.update(self.filters)
+        if data.get("filters"):
+            data.update(data["filters"])
             del data["filters"]
-
         return data
 
 

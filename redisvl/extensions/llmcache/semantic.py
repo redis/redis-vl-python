@@ -141,7 +141,7 @@ class SemanticCache(BaseLLMCache):
             existing_index = SearchIndex.from_existing(
                 name, redis_client=self._index.client
             )
-            if existing_index.schema != self._index.schema:
+            if existing_index.schema.to_dict() != self._index.schema.to_dict():
                 raise ValueError(
                     f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
                     "If you wish to overwrite the index schema, set overwrite=True during initialization."

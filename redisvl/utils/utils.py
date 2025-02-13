@@ -1,7 +1,7 @@
 import inspect
 import json
 import warnings
-from contextlib import ContextDecorator, contextmanager
+from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
