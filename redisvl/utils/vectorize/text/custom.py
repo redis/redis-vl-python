@@ -2,6 +2,7 @@ from typing import Any, Callable, List, Optional
 
 from pydantic.v1 import PrivateAttr
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -155,6 +156,7 @@ class CustomTextVectorizer(BaseVectorizer):
 
         return dims
 
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -191,6 +193,7 @@ class CustomTextVectorizer(BaseVectorizer):
 
         return self._process_embedding(result, as_buffer, dtype)
 
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],
@@ -239,6 +242,7 @@ class CustomTextVectorizer(BaseVectorizer):
         return embeddings
 
     @validate_async
+    @deprecated_argument("dtype")
     async def aembed(
         self,
         text: str,
@@ -280,6 +284,7 @@ class CustomTextVectorizer(BaseVectorizer):
         return self._process_embedding(result, as_buffer, dtype)
 
     @validate_async
+    @deprecated_argument("dtype")
     async def aembed_many(
         self,
         texts: List[str],

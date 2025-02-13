@@ -6,6 +6,7 @@ from pydantic.v1 import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -118,6 +119,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -158,6 +160,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],

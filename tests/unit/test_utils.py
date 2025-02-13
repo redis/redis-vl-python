@@ -141,6 +141,14 @@ def test_conversion_with_various_dtypes(dtype):
     assert array_to_buffer(array, dtype=dtype) == expected
 
 
+@pytest.mark.parametrize("dtype", ["int8", "uint8"])
+def test_conversion_with_integer_dtypes(dtype):
+    """Test conversion of a list of floats to bytes with various dtypes"""
+    array = [0.0, 1.0, 2.2, 3.5]
+    expected = np.array(array, dtype=dtype).tobytes()
+    assert array_to_buffer(array, dtype=dtype) == expected
+
+
 def test_conversion_with_invalid_floats():
     """Test conversion with invalid float values (numpy should handle them)"""
     array = [float("inf"), float("-inf"), float("nan")]

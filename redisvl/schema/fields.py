@@ -30,6 +30,8 @@ class VectorDataType(str, Enum):
     FLOAT16 = "FLOAT16"
     FLOAT32 = "FLOAT32"
     FLOAT64 = "FLOAT64"
+    INT8 = "INT8"
+    UINT8 = "UINT8"
 
 
 class VectorIndexAlgorithm(str, Enum):
