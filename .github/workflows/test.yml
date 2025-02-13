@@ -26,13 +26,13 @@ jobs:
       matrix:
         python-version: [3.9, '3.10', 3.11, 3.12, 3.13]
         connection: ['hiredis', 'plain']
-        redis-stack-version: ['6.2.6-v9', 'latest', 'edge']
+        redis-stack-version: ['6.2.6-v9', 'latest', 'edge', '8.0-M03']
 
-    services:
-      redis:
-        image: redis/redis-stack-server:${{matrix.redis-stack-version}}
-        ports:
-          - 6379:6379
+    # services:
+    #   redis:
+    #     image: ${{ env.REDIS_IMAGE }}
+    #     ports:
+    #       - 6379:6379
 
     steps:
       - name: Check out repository
@@ -58,9 +58,12 @@ jobs:
         run: |
           poetry add hiredis
 
-      - name: Set Redis version
+      - name: Set Redis image name
         run: |
-          echo "REDIS_VERSION=${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
+          if [[ ${{ matrix.redis-stack-version }} == '8.0-M03']]; then
+            echo "REDIS_IMAGE=redis:${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
+          else
+            echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
