@@ -793,11 +793,11 @@ def test_cache_index_overwrite(redis_url):
     except Exception as e:
         # This will fail in Redis 8+ on query dialect 2
         if "Unknown field" in str(e):
-            pytest.skip("Skipping test due to unknown field error: " + str(e))
+            response = []
         else:
             raise
-    else:
-        assert response == []
+
+    assert response == []
 
     with pytest.raises((RedisModuleVersionError, ValueError)):
         SemanticCache(
