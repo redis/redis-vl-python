@@ -14,9 +14,9 @@ from typing import (
     List,
     Optional,
     Union,
+    cast,
 )
 import warnings
-
 from redisvl.utils.utils import deprecated_function
 
 if TYPE_CHECKING:
@@ -797,11 +797,6 @@ class AsyncSearchIndex(BaseSearchIndex):
 
     """
 
-    # TODO: The `aredis.Redis` type is not working for type checks.
-    _redis_client: Optional[redis.asyncio.Redis] = None
-    _redis_url: Optional[str] = None
-    _redis_kwargs: Dict[str, Any] = {}
-
     def __init__(
         self,
         schema: IndexSchema,
@@ -842,7 +837,6 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def disconnect(self):
         """Asynchronously disconnect and cleanup the underlying async redis connection."""
         if self._redis_client is not None:
-            print(self._redis_client)
             await self._redis_client.aclose()  # type: ignore
         self._redis_client = None
 
@@ -867,7 +861,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         if redis_client and redis_url:
             raise ValueError("Cannot provide both redis_client and redis_url")
         elif redis_url:
-            redis_client = RedisConnectionFactory.get_async_redis_connection(url=redis_url, **kwargs)
+            redis_client = RedisConnectionFactory.get_async_redis_connection(
+                url=redis_url, **kwargs
+            )
         elif redis_client:
             pass
         else:
@@ -895,46 +891,36 @@ class AsyncSearchIndex(BaseSearchIndex):
         schema = IndexSchema.from_dict(schema_dict)
         return cls(schema, redis_client=redis_client, **kwargs)
 
-    @deprecated_function("client", "Use await self.get_client()")
     @property
-    def client(self) -> aredis.Redis:
+    def client(self) -> Optional[aredis.Redis]:
         """The underlying redis-py client object."""
-        if self._redis_client is None:
-            if asyncio.current_task() is not None:
-                warnings.warn("Risk of deadlock! Use await self.get_client() if you are "
-                              "in an async context.")
-            redis_client = asyncio.run_coroutine_threadsafe(self.get_client(), asyncio.get_event_loop())
-            client = redis_client.result()
-        else:
-            client = self._redis_client
-        return client
+        return self._redis_client
 
+    @deprecated_function("connect", "Pass connection parameters in __init__.")
     async def connect(self, redis_url: Optional[str] = None, **kwargs):
         """[DEPRECATED] Connect to a Redis instance. Use connection parameters in __init__."""
-        import warnings
-
         warnings.warn(
             "connect() is deprecated; pass connection parameters in __init__",
             DeprecationWarning,
         )
-        client = RedisConnectionFactory.connect(
+        client: redis.asyncio.Redis = RedisConnectionFactory.connect(
             redis_url=redis_url, use_async=True, **kwargs
-        )
+        )  # type: ignore
         return await self.set_client(client)
 
-    @deprecated_function("set_client", "Pass connection parameters in __init__")
-    async def set_client(self, redis_client: Optional[aredis.Redis]):
+    @deprecated_function("set_client", "Pass connection parameters in __init__.")
+    async def set_client(self, redis_client: aredis.Redis):
         """
         [DEPRECATED] Manually set the Redis client to use with the search index.
         This method is deprecated; please provide connection parameters in __init__.
         """
-        if self._redis_client is not None:
-            await self._redis_client.aclose()  # type: ignore
+        redis_client = await self._validate_client(redis_client)
+        await self.disconnect()
         async with self._lock:
             self._redis_client = redis_client
         return self
 
-    async def get_client(self) -> aredis.Redis:
+    async def _get_client(self):
         """Lazily instantiate and return the async Redis client."""
         if self._redis_client is None:
             async with self._lock:
@@ -950,6 +936,23 @@ class AsyncSearchIndex(BaseSearchIndex):
                 self._redis_client, self._lib_name
             )
         return self._redis_client
+
+    async def get_client(self) -> aredis.Redis:
+        """Return this index's async Redis client."""
+        return await self._get_client()
+
+    async def _validate_client(self, redis_client: aredis.Redis) -> aredis.Redis:
+        if isinstance(redis_client, redis.Redis):
+            warnings.warn(
+                "Converting sync Redis client to async client is deprecated "
+                "and will be removed in the next major version. Please use an "
+                "async Redis client instead.",
+                DeprecationWarning,
+            )
+            redis_client = RedisConnectionFactory.sync_to_async_redis(redis_client)
+        elif not isinstance(redis_client, aredis.Redis):
+            raise ValueError("Invalid client type: must be redis.asyncio.Redis")
+        return redis_client
 
     async def create(self, overwrite: bool = False, drop: bool = False) -> None:
         """Asynchronously create an index in Redis with the current schema
@@ -1171,7 +1174,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self.get_client()
         try:
-            return client.ft(self.schema.index.name).search(*args, **kwargs)
+            return await client.ft(self.schema.index.name).search(*args, **kwargs)
         except Exception as e:
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
 
@@ -1262,7 +1265,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             List[str]: The list of indices in the database.
         """
-        client: aredis.Redis = await self.get_client()
+        client = await self.get_client()
         return convert_bytes(await client.execute_command("FT._LIST"))
 
     async def exists(self) -> bool:
@@ -1283,7 +1286,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             dict: A dictionary containing the information about the index.
         """
-        client: aredis.Redis = await self.get_client()
+        client = await self.get_client()
         index_name = name or self.schema.index.name
         return await type(self)._info(index_name, client)
 

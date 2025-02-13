@@ -100,7 +100,7 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
     def decorator(func):
         fn_name = name or func.__name__
         warning_message = f"Function {fn_name} is deprecated and will be " \
-            "removed in the next major release."
+            "removed in the next major release. "
         if replacement:
             warning_message += replacement
 

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 from redis import Redis
 from redis.asyncio import Connection as AsyncConnection
@@ -12,6 +12,7 @@ from redis.exceptions import ResponseError
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES
 from redisvl.redis.utils import convert_bytes
+from redisvl.utils.utils import deprecated_function
 from redisvl.version import __version__
 
 
@@ -191,7 +192,7 @@ class RedisConnectionFactory:
     @classmethod
     def connect(
         cls, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
-    ) -> None:
+    ) -> Union[Redis, AsyncRedis]:
         """Create a connection to the Redis database based on a URL and some
         connection kwargs.
 
@@ -260,6 +261,7 @@ class RedisConnectionFactory:
         # fallback to env var REDIS_URL
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
+    @deprecated_function("sync_to_async_redis", "Please use an async Redis client instead.")
     @staticmethod
     def sync_to_async_redis(redis_client: Redis) -> AsyncRedis:
         # pick the right connection class
@@ -267,7 +269,7 @@ class RedisConnectionFactory:
             AsyncSSLConnection
             if redis_client.connection_pool.connection_class == SSLConnection
             else AsyncConnection
-        )
+        ) # type: ignore
         # make async client
         return AsyncRedis.from_pool(  # type: ignore
             AsyncConnectionPool(

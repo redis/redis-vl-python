@@ -176,14 +176,12 @@ class SemanticCache(BaseLLMCache):
         """Lazily construct the async search index class."""
         # Construct async index if necessary
         if not self._aindex:
-            redis_client = self.redis_kwargs["redis_client"]
-            redis_url = self.redis_kwargs["redis_url"]
-            connection_kwargs = self.redis_kwargs["connection_kwargs"]
-            
-            self._aindex = AsyncSearchIndex(schema=self._index.schema,
-                                            redis_client=redis_client,
-                                            redis_url=redis_url,
-                                            **connection_kwargs)
+            self._aindex = AsyncSearchIndex(
+                schema=self._index.schema,
+                redis_client=self.redis_kwargs["redis_client"],
+                redis_url=self.redis_kwargs["redis_url"],
+                **self.redis_kwargs["connection_kwargs"]
+            )
         return self._aindex
 
     @property

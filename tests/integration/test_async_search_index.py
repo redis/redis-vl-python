@@ -33,7 +33,7 @@ def test_search_index_properties(index_schema, async_index):
     assert async_index.schema == index_schema
     # custom settings
     assert async_index.name == index_schema.index.name == "my_index"
-    assert async_index.client == None
+    assert async_index.client is None
     # default settings
     assert async_index.prefix == index_schema.index.prefix == "rvl"
     assert async_index.key_separator == index_schema.index.key_separator == ":"
@@ -45,7 +45,7 @@ def test_search_index_properties(index_schema, async_index):
 
 def test_search_index_from_yaml(async_index_from_yaml):
     assert async_index_from_yaml.name == "json-test"
-    assert async_index_from_yaml.client == None
+    assert async_index_from_yaml.client is None
     assert async_index_from_yaml.prefix == "json"
     assert async_index_from_yaml.key_separator == ":"
     assert async_index_from_yaml.storage_type == StorageType.JSON
@@ -54,7 +54,7 @@ def test_search_index_from_yaml(async_index_from_yaml):
 
 def test_search_index_from_dict(async_index_from_dict):
     assert async_index_from_dict.name == "my_index"
-    assert async_index_from_dict.client == None
+    assert async_index_from_dict.client is None
     assert async_index_from_dict.prefix == "rvl"
     assert async_index_from_dict.key_separator == ":"
     assert async_index_from_dict.storage_type == StorageType.HASH
@@ -156,7 +156,7 @@ async def test_search_index_set_client(async_client, client, async_index):
     await async_index.set_client(client)
 
     await async_index.disconnect()
-    assert async_index.client == None
+    assert async_index.client is None
 
 
 @pytest.mark.asyncio
