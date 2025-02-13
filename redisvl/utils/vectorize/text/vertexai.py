@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -49,6 +49,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         model: str = "textembedding-gecko",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the VertexAI vectorizer.
 
@@ -66,10 +67,13 @@ class VertexAITextVectorizer(BaseVectorizer):
             ValueError: If the API key is not provided.
             ValueError: If an invalid dtype is provided.
         """
-        self._initialize_client(model, api_config)
-        super().__init__(model=model, dims=self._set_model_dims(), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_client(api_config, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
 
-    def _initialize_client(self, model: str, api_config: Optional[Dict]):
+    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the VertexAI clients using the provided API key or an
         environment variable.
@@ -112,11 +116,11 @@ class VertexAITextVectorizer(BaseVectorizer):
                 "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
 
-        self._client = TextEmbeddingModel.from_pretrained(model)
+        self._client = TextEmbeddingModel.from_pretrained(self.model)
 
     def _set_model_dims(self) -> int:
         try:
-            embedding = self._client.get_embeddings(["dimension test"])[0].values
+            embedding = self.embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except

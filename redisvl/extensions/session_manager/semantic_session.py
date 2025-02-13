@@ -94,7 +94,7 @@ class SemanticSessionManager(BaseSessionManager):
         self.set_distance_threshold(distance_threshold)
 
         schema = SemanticSessionIndexSchema.from_params(
-            name, prefix, self._vectorizer.dims, vectorizer.dtype
+            name, prefix, vectorizer.dims, vectorizer.dtype  # type: ignore
         )
 
         self._index = SearchIndex(schema=schema)

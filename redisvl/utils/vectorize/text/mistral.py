@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -51,6 +51,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         model: str = "mistral-embed",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the MistralAI vectorizer.
 
@@ -68,14 +69,20 @@ class MistralAITextVectorizer(BaseVectorizer):
             ValueError: If the Mistral API key is not provided.
             ValueError: If an invalid dtype is provided.
         """
-        self._initialize_clients(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_client(api_config, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
 
-    def _initialize_clients(self, api_config: Optional[Dict]):
+    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the Mistral clients using the provided API key or an
         environment variable.
         """
+        if api_config is None:
+            api_config = {}
+
         # Dynamic import of the mistralai module
         try:
             from mistralai import Mistral
@@ -96,15 +103,11 @@ class MistralAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-        self._client = Mistral(api_key=api_key)
+        self._client = Mistral(api_key=api_key, **kwargs)
 
-    def _set_model_dims(self, model) -> int:
+    def _set_model_dims(self) -> int:
         try:
-            embedding = (
-                self._client.embeddings.create(model=model, inputs=["dimension test"])
-                .data[0]
-                .embedding
-            )
+            embedding = self.embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the MISTRAL API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except

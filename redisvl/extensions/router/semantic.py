@@ -108,7 +108,7 @@ class SemanticRouter(BaseModel):
     ):
         """Initialize the search index and handle Redis connection."""
         schema = SemanticRouterIndexSchema.from_params(
-            self.name, self.vectorizer.dims, self.vectorizer.dtype
+            self.name, self.vectorizer.dims, self.vectorizer.dtype  # type: ignore
         )
         self._index = SearchIndex(schema=schema)
 

@@ -125,7 +125,7 @@ class SemanticCache(BaseLLMCache):
 
         # Create semantic cache schema and index
         schema = SemanticCacheIndexSchema.from_params(
-            name, prefix, vectorizer.dims, vectorizer.dtype
+            name, prefix, vectorizer.dims, vectorizer.dtype  # type: ignore
         )
         schema = self._modify_schema(schema, filterable_fields)
         self._index = SearchIndex(schema=schema)

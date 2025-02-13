@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -52,6 +52,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         model: str = "text-embedding-ada-002",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the OpenAI vectorizer.
 
@@ -69,10 +70,13 @@ class OpenAITextVectorizer(BaseVectorizer):
             ValueError: If the OpenAI API key is not provided.
             ValueError: If an invalid dtype is provided.
         """
-        self._initialize_clients(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init clients
+        self._initialize_clients(api_config, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
 
-    def _initialize_clients(self, api_config: Optional[Dict]):
+    def _initialize_clients(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the OpenAI clients using the provided API key or an
         environment variable.
@@ -89,7 +93,6 @@ class OpenAITextVectorizer(BaseVectorizer):
                     Please install with `pip install openai`"
             )
 
-        # Pull the API key from api_config or environment variable
         api_key = (
             api_config.pop("api_key") if api_config else os.getenv("OPENAI_API_KEY")
         )
@@ -100,16 +103,12 @@ class OpenAITextVectorizer(BaseVectorizer):
                     environment variable."
             )
 
-        self._client = OpenAI(api_key=api_key, **api_config)
-        self._aclient = AsyncOpenAI(api_key=api_key, **api_config)
+        self._client = OpenAI(api_key=api_key, **api_config, **kwargs)
+        self._aclient = AsyncOpenAI(api_key=api_key, **api_config, **kwargs)
 
-    def _set_model_dims(self, model) -> int:
+    def _set_model_dims(self) -> int:
         try:
-            embedding = (
-                self._client.embeddings.create(input=["dimension test"], model=model)
-                .data[0]
-                .embedding
-            )
+            embedding = self.embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except

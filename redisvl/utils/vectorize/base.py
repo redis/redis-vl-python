@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Callable, List, Optional
 
-from pydantic.v1 import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
@@ -19,16 +19,19 @@ class Vectorizers(Enum):
 
 
 class BaseVectorizer(BaseModel, ABC):
+    """Base vectorizer interface."""
+
     model: str
-    dims: int
-    dtype: str = Field(default="float32")
+    dtype: str = "float32"
+    dims: Optional[int] = None
 
     @property
     def type(self) -> str:
         return "base"
 
-    @validator("dtype")
-    def check_dtype(dtype):
+    @field_validator("dtype")
+    @classmethod
+    def check_dtype(cls, dtype):
         try:
             VectorDataType(dtype.upper())
         except ValueError:
@@ -37,7 +40,7 @@ class BaseVectorizer(BaseModel, ABC):
             )
         return dtype
 
-    @validator("dims")
+    @field_validator("dims")
     @classmethod
     def check_dims(cls, value):
         """Ensures the dims are a positive integer."""
