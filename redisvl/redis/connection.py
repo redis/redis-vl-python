@@ -261,7 +261,9 @@ class RedisConnectionFactory:
         # fallback to env var REDIS_URL
         return AsyncRedis.from_url(get_address_from_env(), **kwargs)
 
-    @deprecated_function("sync_to_async_redis", "Please use an async Redis client instead.")
+    @deprecated_function(
+        "sync_to_async_redis", "Please use an async Redis client instead."
+    )
     @staticmethod
     def sync_to_async_redis(redis_client: Redis) -> AsyncRedis:
         # pick the right connection class
@@ -269,7 +271,7 @@ class RedisConnectionFactory:
             AsyncSSLConnection
             if redis_client.connection_pool.connection_class == SSLConnection
             else AsyncConnection
-        ) # type: ignore
+        )  # type: ignore
         # make async client
         return AsyncRedis.from_pool(  # type: ignore
             AsyncConnectionPool(

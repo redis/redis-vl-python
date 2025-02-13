@@ -180,7 +180,7 @@ class SemanticCache(BaseLLMCache):
                 schema=self._index.schema,
                 redis_client=self.redis_kwargs["redis_client"],
                 redis_url=self.redis_kwargs["redis_url"],
-                **self.redis_kwargs["connection_kwargs"]
+                **self.redis_kwargs["connection_kwargs"],
             )
         return self._aindex
 

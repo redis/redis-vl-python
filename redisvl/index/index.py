@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import json
 import threading
+import warnings
 from functools import wraps
 from typing import (
     TYPE_CHECKING,
@@ -16,7 +17,7 @@ from typing import (
     Union,
     cast,
 )
-import warnings
+
 from redisvl.utils.utils import deprecated_function
 
 if TYPE_CHECKING:

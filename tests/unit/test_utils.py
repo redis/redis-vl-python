@@ -239,7 +239,6 @@ class TestDeprecatedArgument:
         assert result == 1
 
 
-
 class TestDeprecatedFunction:
     def test_deprecated_function_warning(self):
         @deprecated_function("new_func", "Use new_func2")

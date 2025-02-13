@@ -97,10 +97,13 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
     When the wrapped function is called, the decorator will log a deprecation
     warning.
     """
+
     def decorator(func):
         fn_name = name or func.__name__
-        warning_message = f"Function {fn_name} is deprecated and will be " \
+        warning_message = (
+            f"Function {fn_name} is deprecated and will be "
             "removed in the next major release. "
+        )
         if replacement:
             warning_message += replacement
 
