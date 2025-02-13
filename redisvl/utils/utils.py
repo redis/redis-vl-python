@@ -52,7 +52,7 @@ def validate_vector_dims(v1: int, v2: int) -> None:
 
 
 def serialize(data: Dict[str, Any]) -> str:
-    """Serlize the input into a string."""
+    """Serialize the input into a string."""
     return json.dumps(data)
 
 
@@ -88,3 +88,27 @@ def deprecated_argument(argument: str, replacement: Optional[str] = None) -> Cal
         return inner
 
     return wrapper
+
+
+def deprecated_function(name: Optional[str] = None, replacement: Optional[str] = None):
+    """
+    Decorator to mark a function as deprecated.
+
+    When the wrapped function is called, the decorator will log a deprecation
+    warning.
+    """
+    def decorator(func):
+        fn_name = name or func.__name__
+        warning_message = f"Function {fn_name} is deprecated and will be " \
+            "removed in the next major release."
+        if replacement:
+            warning_message += replacement
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            warn(warning_message, category=DeprecationWarning, stacklevel=3)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

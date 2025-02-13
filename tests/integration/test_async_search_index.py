@@ -137,7 +137,7 @@ async def test_search_index_redis_url(redis_url, index_schema):
     )
     assert async_index.client
 
-    async_index.disconnect()
+    await async_index.disconnect()
     assert async_index.client == None
 
 
@@ -155,7 +155,7 @@ async def test_search_index_set_client(async_client, client, async_index):
     assert async_index.client == async_client
     await async_index.set_client(client)
 
-    async_index.disconnect()
+    await async_index.disconnect()
     assert async_index.client == None
 
 

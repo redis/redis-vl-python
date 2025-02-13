@@ -174,17 +174,16 @@ class SemanticCache(BaseLLMCache):
 
     async def _get_async_index(self) -> AsyncSearchIndex:
         """Lazily construct the async search index class."""
+        # Construct async index if necessary
         if not self._aindex:
-            # Construct async index if necessary
-            self._aindex = AsyncSearchIndex(schema=self._index.schema)
-            # Connect Redis async client
             redis_client = self.redis_kwargs["redis_client"]
             redis_url = self.redis_kwargs["redis_url"]
             connection_kwargs = self.redis_kwargs["connection_kwargs"]
-            if redis_client is not None:
-                await self._aindex.set_client(redis_client)
-            elif redis_url:
-                await self._aindex.connect(redis_url, **connection_kwargs)  # type: ignore
+            
+            self._aindex = AsyncSearchIndex(schema=self._index.schema,
+                                            redis_client=redis_client,
+                                            redis_url=redis_url,
+                                            **connection_kwargs)
         return self._aindex
 
     @property
@@ -290,7 +289,8 @@ class SemanticCache(BaseLLMCache):
         """Async refresh the time-to-live for the specified key."""
         aindex = await self._get_async_index()
         if self._ttl:
-            await aindex.client.expire(key, self._ttl)  # type: ignore
+            client = await aindex.get_client()
+            await client.expire(key, self._ttl)  # type: ignore
 
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
