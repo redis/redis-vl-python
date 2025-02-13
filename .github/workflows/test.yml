@@ -18,14 +18,8 @@ env:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis ${{matrix.redis-version}}]
+    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis ${{ matrix.redis-version }}]
     runs-on: ubuntu-latest
-
-    services:
-      redis:
-        image: redis/redis-stack-server:${{matrix.redis-version}}
-        ports:
-          - 6379:6379
 
     strategy:
       fail-fast: false
@@ -110,6 +104,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
+          docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
           make test-notebooks 
 
   docs:
