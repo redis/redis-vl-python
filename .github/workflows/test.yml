@@ -60,10 +60,11 @@ jobs:
 
       - name: Set Redis image name
         run: |
-          if [[ ${{ matrix.redis-stack-version }} == '8.0-M03']]; then
+          if [[ "${{ matrix.redis-stack-version }}" == "8.0-M03" ]]; then
             echo "REDIS_IMAGE=redis:${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
           else
             echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-stack-version }}" >> $GITHUB_ENV
+          fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
