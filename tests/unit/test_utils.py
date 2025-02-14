@@ -1,4 +1,6 @@
 import warnings
+from functools import wraps
+
 import numpy as np
 import pytest
 
@@ -8,7 +10,7 @@ from redisvl.redis.utils import (
     convert_bytes,
     make_dict,
 )
-from redisvl.utils.utils import deprecated_argument
+from redisvl.utils.utils import assert_no_warnings, deprecated_argument
 
 
 def test_even_number_of_elements():
@@ -149,104 +151,252 @@ def test_conversion_with_invalid_floats():
     assert len(result) > 0  # Simple check to ensure it returns anything
 
 
+def decorator(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print("boop")
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
 class TestDeprecatedArgument:
     def test_deprecation_warning_text_with_replacement(self):
-        @deprecated_argument("dtype", "vectorizer")
-        def test_func(dtype=None, vectorizer=None):
+        @deprecated_argument("old_arg", "new_arg")
+        def test_func(old_arg=None, new_arg=None, neutral_arg=None):
             pass
 
+        # Test that passing the deprecated argument as a keyword triggers the warning.
         with pytest.warns(DeprecationWarning) as record:
-            test_func(dtype="float32")
+            test_func(old_arg="float32")
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument dtype is deprecated and will be removed"
-            " in the next major release. Use vectorizer instead."
+            "Argument old_arg is deprecated and will be removed in the next major release. Use new_arg instead."
         )
 
-    def test_deprecation_warning_text_without_replacement(self):
-        @deprecated_argument("dtype")
-        def test_func(dtype=None):
-            pass
-
+        # Test that passing the deprecated argument as a positional argument also triggers the warning.
         with pytest.warns(DeprecationWarning) as record:
-            test_func(dtype="float32")
+            test_func("float32", neutral_arg="test_vector")
 
         assert len(record) == 1
         assert str(record[0].message) == (
-            "Argument dtype is deprecated and will be removed"
+            "Argument old_arg is deprecated and will be removed in the next major release. Use new_arg instead."
+        )
+
+        with assert_no_warnings():
+            test_func(new_arg="float32")
+            test_func(new_arg="float32", neutral_arg="test_vector")
+
+    def test_deprecation_warning_text_without_replacement(self):
+        @deprecated_argument("old_arg")
+        def test_func(old_arg=None, neutral_arg=None):
+            pass
+
+        # As a kwarg
+        with pytest.warns(DeprecationWarning) as record:
+            test_func(old_arg="float32")
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Argument old_arg is deprecated and will be removed"
             " in the next major release."
         )
 
-    def test_function_argument(self):
-        @deprecated_argument("dtype", "vectorizer")
-        def test_func(dtype=None, vectorizer=None):
+        # As a positional arg
+        with pytest.warns(DeprecationWarning):
+            test_func("float32", neutral_arg="test_vector")
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Argument old_arg is deprecated and will be removed"
+            " in the next major release."
+        )
+
+        with assert_no_warnings():
+            test_func(neutral_arg="test_vector")
+
+    def test_function_positional_argument_required(self):
+        """
+        NOTE: In this situation, it's not possible to avoid a deprecation
+        warning because the argument is currently required.
+        """
+
+        @deprecated_argument("old_arg")
+        def test_func(old_arg, neutral_arg):
             pass
 
         with pytest.warns(DeprecationWarning):
-            test_func(dtype="float32")
+            test_func("float32", "bob")
+
+    def test_function_positional_argument_optional(self):
+        @deprecated_argument("old_arg")
+        def test_func(neutral_arg, old_arg=None):
+            pass
+
+        with pytest.warns(DeprecationWarning):
+            test_func("bob", "float32")
+
+        with assert_no_warnings():
+            test_func("bob")
 
     def test_function_keyword_argument(self):
-        @deprecated_argument("dtype", "vectorizer")
-        def test_func(dtype=None, vectorizer=None):
+        @deprecated_argument("old_arg", "new_arg")
+        def test_func(old_arg=None, new_arg=None):
             pass
 
         with pytest.warns(DeprecationWarning):
-            test_func(vectorizer="float32")
+            test_func(old_arg="float32")
 
-    def test_class_method_argument(self):
+        with assert_no_warnings():
+            test_func(new_arg="float32")
+
+    def test_function_keyword_argument_multiple_decorators(self):
+        @deprecated_argument("old_arg", "new_arg")
+        @decorator
+        def test_func(old_arg=None, new_arg=None):
+            pass
+
+        with pytest.warns(DeprecationWarning):
+            test_func(old_arg="float32")
+
+        with assert_no_warnings():
+            test_func(new_arg="float32")
+
+    def test_method_positional_argument_optional(self):
         class TestClass:
-            @deprecated_argument("dtype", "vectorizer")
-            def test_method(self, dtype=None, vectorizer=None):
+            @deprecated_argument("old_arg", "new_arg")
+            def test_method(self, new_arg=None, old_arg=None):
                 pass
 
         with pytest.warns(DeprecationWarning):
-            TestClass().test_method(dtype="float32")
+            TestClass().test_method("float32", "bob")
 
-    def test_class_method_keyword_argument(self):
+        with assert_no_warnings():
+            TestClass().test_method("float32")
+
+    def test_method_positional_argument_required(self):
+        """
+        NOTE: In this situation, it's not possible to avoid a deprecation
+        warning because the argument is currently required.
+        """
+
         class TestClass:
-            @deprecated_argument("dtype", "vectorizer")
-            def test_method(self, dtype=None, vectorizer=None):
+            @deprecated_argument("old_arg", "new_arg")
+            def test_method(self, old_arg, new_arg):
                 pass
 
         with pytest.warns(DeprecationWarning):
-            TestClass().test_method(vectorizer="float32")
+            TestClass().test_method("float32", new_arg="bob")
+
+    def test_method_keyword_argument(self):
+        class TestClass:
+            @deprecated_argument("old_arg", "new_arg")
+            def test_method(self, old_arg=None, new_arg=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass().test_method(old_arg="float32")
+
+        with assert_no_warnings():
+            TestClass().test_method(new_arg="float32")
+
+    def test_classmethod_positional_argument_required(self):
+        """
+        NOTE: In this situation, it's impossible to avoid a deprecation
+        warning because the argument is currently required.
+        """
+
+        class TestClass:
+            @deprecated_argument("old_arg", "new_arg")
+            @classmethod
+            def test_method(cls, old_arg, new_arg):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass.test_method("float32", new_arg="bob")
+
+    def test_classmethod_positional_argument_optional(self):
+        class TestClass:
+            @deprecated_argument("old_arg", "new_arg")
+            @classmethod
+            def test_method(cls, new_arg=None, old_arg=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass.test_method("float32", "bob")
+
+        with assert_no_warnings():
+            TestClass.test_method("float32")
+
+    def test_classmethod_keyword_argument(self):
+        class TestClass:
+            @deprecated_argument("old_arg", "new_arg")
+            @classmethod
+            def test_method(cls, old_arg=None, new_arg=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass.test_method(old_arg="float32")
+
+        with assert_no_warnings():
+            TestClass.test_method(new_arg="float32")
+
+    def test_classmethod_keyword_argument_multiple_decorators(self):
+        """
+        NOTE: The @deprecated_argument decorator should come between @classmethod
+        and the method definition.
+        """
+
+        class TestClass:
+            @classmethod
+            @deprecated_argument("old_arg", "new_arg")
+            @decorator
+            def test_method(cls, old_arg=None, new_arg=None):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass.test_method(old_arg="float32")
+
+        with assert_no_warnings():
+            TestClass.test_method(new_arg="float32")
 
     def test_class_init_argument(self):
         class TestClass:
-            @deprecated_argument("dtype", "vectorizer")
-            def __init__(self, dtype=None, vectorizer=None):
+            @deprecated_argument("old_arg", "new_arg")
+            def __init__(self, old_arg=None, new_arg=None):
                 pass
 
         with pytest.warns(DeprecationWarning):
-            TestClass(dtype="float32")
+            TestClass(old_arg="float32")
 
     def test_class_init_keyword_argument(self):
         class TestClass:
-            @deprecated_argument("dtype", "vectorizer")
-            def __init__(self, dtype=None, vectorizer=None):
+            @deprecated_argument("old_arg", "new_arg")
+            def __init__(self, old_arg=None, new_arg=None):
                 pass
 
         with pytest.warns(DeprecationWarning):
-            TestClass(dtype="float32")
+            TestClass(old_arg="float32")
+
+        with assert_no_warnings():
+            TestClass(new_arg="float32")
 
     async def test_async_function_argument(self):
-        @deprecated_argument("dtype", "vectorizer")
-        async def test_func(dtype=None, vectorizer=None):
+        @deprecated_argument("old_arg", "new_arg")
+        async def test_func(old_arg=None, new_arg=None):
             return 1
 
         with pytest.warns(DeprecationWarning):
-            result = await test_func(dtype="float32")
+            result = await test_func(old_arg="float32")
         assert result == 1
-        
+
     async def test_ignores_local_variable(self):
-        @deprecated_argument("dtype")
-        async def test_func(vectorizer=None):
+        @deprecated_argument("old_arg", "new_arg")
+        async def test_func(old_arg=None, new_arg=None):
             # The presence of this variable should not trigger a warning
-            dtype = "float32"
+            old_arg = "float32"
             return 1
 
-        # This will raise an error if any warning is emitted
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with assert_no_warnings():
             await test_func()
