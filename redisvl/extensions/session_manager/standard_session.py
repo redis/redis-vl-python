@@ -61,12 +61,12 @@ class StandardSessionManager(BaseSessionManager):
 
         schema = StandardSessionIndexSchema.from_params(name, prefix)
 
-        self._index = SearchIndex(schema=schema)
-
-        if redis_client:
-            self._index.set_client(redis_client)
-        else:
-            self._index.connect(redis_url=redis_url, **connection_kwargs)
+        self._index = SearchIndex(
+            schema=schema,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            **connection_kwargs,
+        )
 
         self._index.create(overwrite=False)
 

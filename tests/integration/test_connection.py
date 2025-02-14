@@ -10,7 +10,6 @@ from redisvl.redis.connection import (
     RedisConnectionFactory,
     compare_versions,
     convert_index_info_to_schema,
-    get_address_from_env,
     unpack_redis_modules,
     validate_modules,
 )
@@ -18,6 +17,9 @@ from redisvl.schema import IndexSchema
 from redisvl.version import __version__
 
 EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
+
+# Remove after we remove connect() method from RedisConnectionFactory
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def test_unpack_redis_modules():
@@ -129,41 +131,38 @@ def test_validate_modules_not_exist():
         )
 
 
-def test_sync_redis_connect(redis_url):
-    client = RedisConnectionFactory.connect(redis_url)
-    assert client is not None
-    assert isinstance(client, Redis)
-    # Perform a simple operation
-    assert client.ping()
+class TestConnect:
+    def test_sync_redis_connect(self, redis_url):
+        client = RedisConnectionFactory.connect(redis_url)
+        assert client is not None
+        assert isinstance(client, Redis)
+        # Perform a simple operation
+        assert client.ping()
 
+    @pytest.mark.asyncio
+    async def test_async_redis_connect(self, redis_url):
+        client = RedisConnectionFactory.connect(redis_url, use_async=True)
+        assert client is not None
+        assert isinstance(client, AsyncRedis)
+        # Perform a simple operation
+        assert await client.ping()
 
-@pytest.mark.asyncio
-async def test_async_redis_connect(redis_url):
-    client = RedisConnectionFactory.connect(redis_url, use_async=True)
-    assert client is not None
-    assert isinstance(client, AsyncRedis)
-    # Perform a simple operation
-    assert await client.ping()
+    def test_missing_env_var(self):
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            del os.environ["REDIS_URL"]
+            with pytest.raises(ValueError):
+                RedisConnectionFactory.connect()
+            os.environ["REDIS_URL"] = redis_url
 
-
-def test_missing_env_var():
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
-        del os.environ["REDIS_URL"]
+    def test_invalid_url_format(self):
         with pytest.raises(ValueError):
-            RedisConnectionFactory.connect()
-        os.environ["REDIS_URL"] = redis_url
+            RedisConnectionFactory.connect(redis_url="invalid_url_format")
 
-
-def test_invalid_url_format():
-    with pytest.raises(ValueError):
-        RedisConnectionFactory.connect(redis_url="invalid_url_format")
-
-
-def test_unknown_redis():
-    bad_client = RedisConnectionFactory.connect(redis_url="redis://fake:1234")
-    with pytest.raises(ConnectionError):
-        bad_client.ping()
+    def test_unknown_redis(self):
+        with pytest.raises(ConnectionError):
+            bad_client = RedisConnectionFactory.connect(redis_url="redis://fake:1234")
+            bad_client.ping()
 
 
 def test_validate_redis(client):

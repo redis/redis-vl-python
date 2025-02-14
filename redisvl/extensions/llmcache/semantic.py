@@ -128,13 +128,12 @@ class SemanticCache(BaseLLMCache):
             name, prefix, vectorizer.dims, vectorizer.dtype
         )
         schema = self._modify_schema(schema, filterable_fields)
-        self._index = SearchIndex(schema=schema)
-
-        # Handle redis connection
-        if redis_client:
-            self._index.set_client(redis_client)
-        elif redis_url:
-            self._index.connect(redis_url=redis_url, **connection_kwargs)
+        self._index = SearchIndex(
+            schema=schema,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            **connection_kwargs,
+        )
 
         # Check for existing cache index
         if not overwrite and self._index.exists():
@@ -180,7 +179,7 @@ class SemanticCache(BaseLLMCache):
                 schema=self._index.schema,
                 redis_client=self.redis_kwargs["redis_client"],
                 redis_url=self.redis_kwargs["redis_url"],
-                **self.redis_kwargs["connection_kwargs"],
+                connection_kwargs=self.redis_kwargs["connection_kwargs"],
             )
         return self._aindex
 

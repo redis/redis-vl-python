@@ -1,5 +1,6 @@
 import os
 from typing import Any, Dict, List, Optional, Type, Union
+from warnings import warn
 
 from redis import Redis
 from redis.asyncio import Connection as AsyncConnection
@@ -190,6 +191,7 @@ class RedisConnectionFactory:
     """
 
     @classmethod
+    @deprecated_function("connect", "Please use `get_redis_connection` or `get_async_redis_connection`.")
     def connect(
         cls, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
     ) -> Union[Redis, AsyncRedis]:
@@ -218,12 +220,18 @@ class RedisConnectionFactory:
         return connection_func(redis_url, **kwargs)  # type: ignore
 
     @staticmethod
-    def get_redis_connection(url: Optional[str] = None, **kwargs) -> Redis:
+    def get_redis_connection(
+        url: Optional[str] = None,
+        required_modules: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
+    ) -> Redis:
         """Creates and returns a synchronous Redis client.
 
         Args:
             url (Optional[str]): The URL of the Redis server. If not provided,
                 the environment variable REDIS_URL is used.
+            required_modules (Optional[List[Dict[str, Any]]]): List of required
+                Redis modules with version requirements.
             **kwargs: Additional keyword arguments to be passed to the Redis
                 client constructor.
 
@@ -233,14 +241,57 @@ class RedisConnectionFactory:
         Raises:
             ValueError: If url is not provided and REDIS_URL environment
                 variable is not set.
+            RedisModuleVersionError: If required Redis modules are not installed.
         """
-        if url:
-            return Redis.from_url(url, **kwargs)
-        # fallback to env var REDIS_URL
-        return Redis.from_url(get_address_from_env(), **kwargs)
+        url = url or get_address_from_env()
+        client = Redis.from_url(url, **kwargs)
+
+        RedisConnectionFactory.validate_sync_redis(
+            client, required_modules=required_modules
+        )
+
+        return client
+    
+    @staticmethod
+    async def _get_aredis_connection(
+        url: Optional[str] = None,
+        required_modules: Optional[List[Dict[str, Any]]] = None,
+        **kwargs,
+    ) -> AsyncRedis:
+        """Creates and returns an asynchronous Redis client.
+
+        NOTE: This method is the future form of `get_async_redis_connection` but is
+        only used internally by the library now.
+
+        Args:
+            url (Optional[str]): The URL of the Redis server. If not provided,
+                the environment variable REDIS_URL is used.
+            required_modules (Optional[List[Dict[str, Any]]]): List of required
+                Redis modules with version requirements.
+            **kwargs: Additional keyword arguments to be passed to the async
+                Redis client constructor.
+
+        Returns:
+            AsyncRedis: An asynchronous Redis client instance.
+
+        Raises:
+            ValueError: If url is not provided and REDIS_URL environment
+                variable is not set.
+            RedisModuleVersionError: If required Redis modules are not installed.
+        """
+        url = url or get_address_from_env()
+        client = AsyncRedis.from_url(url, **kwargs)
+
+        await RedisConnectionFactory.validate_async_redis(
+            client, required_modules=required_modules
+        )
+        return client
 
     @staticmethod
-    def get_async_redis_connection(url: Optional[str] = None, **kwargs) -> AsyncRedis:
+    def get_async_redis_connection(
+        url: Optional[str] = None,
+        **kwargs,
+    ) -> AsyncRedis:
         """Creates and returns an asynchronous Redis client.
 
         Args:
@@ -256,13 +307,15 @@ class RedisConnectionFactory:
             ValueError: If url is not provided and REDIS_URL environment
                 variable is not set.
         """
-        if url:
-            return AsyncRedis.from_url(url, **kwargs)
-        # fallback to env var REDIS_URL
-        return AsyncRedis.from_url(get_address_from_env(), **kwargs)
+        warn(
+            "get_async_redis_connection will become async in the next major release.",
+            DeprecationWarning,
+        )
+        url = url or get_address_from_env()
+        return AsyncRedis.from_url(url, **kwargs)
 
     @deprecated_function(
-        "sync_to_async_redis", "Please use an async Redis client instead."
+        "sync_to_async_redis", "Please use an async Redis client."
     )
     @staticmethod
     def sync_to_async_redis(redis_client: Redis) -> AsyncRedis:
@@ -295,6 +348,9 @@ class RedisConnectionFactory:
         required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Validates the sync Redis client."""
+        if not isinstance(redis_client, Redis):
+            raise TypeError("Invalid Redis client instance")
+
         # Set client library name
         _lib_name = make_lib_name(lib_name)
         try:

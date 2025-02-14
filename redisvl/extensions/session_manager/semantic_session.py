@@ -97,13 +97,12 @@ class SemanticSessionManager(BaseSessionManager):
             name, prefix, self._vectorizer.dims, vectorizer.dtype
         )
 
-        self._index = SearchIndex(schema=schema)
-
-        # handle redis connection
-        if redis_client:
-            self._index.set_client(redis_client)
-        elif redis_url:
-            self._index.connect(redis_url=redis_url, **connection_kwargs)
+        self._index = SearchIndex(
+            schema=schema,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            **connection_kwargs,
+        )
 
         # Check for existing session index
         if not overwrite and self._index.exists():

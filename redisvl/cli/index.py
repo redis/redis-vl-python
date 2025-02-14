@@ -59,9 +59,7 @@ class Index:
         """
         if not args.schema:
             logger.error("Schema must be provided to create an index")
-        index = SearchIndex.from_yaml(args.schema)
-        redis_url = create_redis_url(args)
-        index.connect(redis_url)
+        index = SearchIndex.from_yaml(args.schema, redis_url=create_redis_url(args))
         index.create()
         logger.info("Index created successfully")
 
@@ -120,8 +118,7 @@ class Index:
             schema = IndexSchema.from_dict({"index": {"name": args.index}})
             index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
-            index = SearchIndex.from_yaml(args.schema)
-            index.set_client(conn)
+            index = SearchIndex.from_yaml(args.schema, redis_client=conn)
         else:
             logger.error("Index name or schema must be provided")
             exit(0)
