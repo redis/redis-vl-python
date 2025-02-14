@@ -281,14 +281,13 @@ class SemanticCache(BaseLLMCache):
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
         if self._ttl:
-            self._index.client.expire(key, self._ttl)  # type: ignore
+            self._index.expire_keys(key, self._ttl)
 
     async def _async_refresh_ttl(self, key: str) -> None:
         """Async refresh the time-to-live for the specified key."""
         aindex = await self._get_async_index()
         if self._ttl:
-            client = await aindex.get_client()
-            await client.expire(key, self._ttl)  # type: ignore
+            await aindex.expire_keys(key, self._ttl)
 
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the

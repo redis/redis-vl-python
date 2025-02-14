@@ -1,7 +1,5 @@
 import asyncio
-import atexit
 import json
-import threading
 import warnings
 from functools import wraps
 from typing import (
@@ -15,7 +13,6 @@ from typing import (
     List,
     Optional,
     Union,
-    cast,
 )
 
 from redisvl.utils.utils import deprecated_function
@@ -524,6 +521,23 @@ class SearchIndex(BaseSearchIndex):
         else:
             return self._redis_client.delete(keys)  # type: ignore
 
+    def expire_keys(
+        self, keys: Union[str, List[str]], ttl: int
+    ) -> Union[int, List[int]]:
+        """Set the expiration time for a specific entry or entries in Redis.
+
+        Args:
+            keys (Union[str, List[str]]): The document ID or IDs to set the expiration for.
+            ttl (int): The time-to-live in seconds.
+        """
+        if isinstance(keys, list):
+            pipe = self._redis_client.pipeline()  # type: ignore
+            for key in keys:
+                pipe.expire(key, ttl)
+            return pipe.execute()
+        else:
+            return self._redis_client.expire(keys, ttl)  # type: ignore
+
     def load(
         self,
         data: Iterable[Any],
@@ -938,10 +952,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
         return self._redis_client
 
-    async def get_client(self) -> aredis.Redis:
-        """Return this index's async Redis client."""
-        return await self._get_client()
-
     async def _validate_client(self, redis_client: aredis.Redis) -> aredis.Redis:
         if isinstance(redis_client, redis.Redis):
             warnings.warn(
@@ -980,7 +990,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             # overwrite an index in Redis; drop associated data (clean slate)
             await index.create(overwrite=True, drop=True)
         """
-        client = await self.get_client()
+        client = await self._get_client()
         redis_fields = self.schema.redis_fields
 
         if not redis_fields:
@@ -1016,7 +1026,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Raises:
             redis.exceptions.ResponseError: If the index does not exist.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         try:
             await client.ft(self.schema.index.name).dropindex(delete_documents=drop)
         except Exception as e:
@@ -1029,7 +1039,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         total_records_deleted: int = 0
 
         async for batch in self.paginate(
@@ -1050,11 +1060,29 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         if isinstance(keys, list):
             return await client.delete(*keys)
         else:
             return await client.delete(keys)
+
+    async def expire_keys(
+        self, keys: Union[str, List[str]], ttl: int
+    ) -> Union[int, List[int]]:
+        """Set the expiration time for a specific entry or entries in Redis.
+
+        Args:
+            keys (Union[str, List[str]]): The document ID or IDs to set the expiration for.
+            ttl (int): The time-to-live in seconds.
+        """
+        client = await self._get_client()
+        if isinstance(keys, list):
+            pipe = client.pipeline()
+            for key in keys:
+                pipe.expire(key, ttl)
+            return await pipe.execute()
+        else:
+            return await client.expire(keys, ttl)
 
     async def load(
         self,
@@ -1114,7 +1142,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             keys = await index.load(data, preprocess=add_field)
 
         """
-        client = await self.get_client()
+        client = await self._get_client()
         try:
             return await self._storage.awrite(
                 client,
@@ -1141,7 +1169,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             Dict[str, Any]: The fetched object.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         obj = await self._storage.aget(client, [self.key(id)])
         if obj:
             return convert_bytes(obj[0])
@@ -1157,7 +1185,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             Result: Raw Redis aggregation results.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         try:
             return client.ft(self.schema.index.name).aggregate(*args, **kwargs)
         except Exception as e:
@@ -1173,7 +1201,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             Result: Raw Redis search results.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         try:
             return await client.ft(self.schema.index.name).search(*args, **kwargs)
         except Exception as e:
@@ -1266,7 +1294,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             List[str]: The list of indices in the database.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         return convert_bytes(await client.execute_command("FT._LIST"))
 
     async def exists(self) -> bool:
@@ -1287,7 +1315,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             dict: A dictionary containing the information about the index.
         """
-        client = await self.get_client()
+        client = await self._get_client()
         index_name = name or self.schema.index.name
         return await type(self)._info(index_name, client)
 
