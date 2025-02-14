@@ -259,7 +259,8 @@ class IndexSchema(BaseModel):
                 ]
             })
         """
-        return cls.model_validate(data)
+        schema_dict = data.copy()
+        return cls.model_validate(schema_dict)
 
     @property
     def field_names(self) -> List[str]:
