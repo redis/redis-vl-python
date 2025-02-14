@@ -93,10 +93,13 @@ def deprecated_argument(argument: str, replacement: Optional[str] = None) -> Cal
 
             @wraps(underlying)
             def inner_wrapped(*args, **kwargs):
-                sig = inspect.signature(underlying)
-                bound_args = sig.bind(*args, **kwargs)
-                if argument in bound_args.arguments:
+                if argument in kwargs:
                     warn(message, DeprecationWarning, stacklevel=2)
+                else:
+                    sig = inspect.signature(underlying)
+                    bound_args = sig.bind(*args, **kwargs)
+                    if argument in bound_args.arguments:
+                        warn(message, DeprecationWarning, stacklevel=2)
                 return underlying(*args, **kwargs)
 
             if isinstance(func, classmethod):
@@ -107,10 +110,13 @@ def deprecated_argument(argument: str, replacement: Optional[str] = None) -> Cal
 
             @wraps(func)
             def inner_normal(*args, **kwargs):
-                sig = inspect.signature(func)
-                bound_args = sig.bind(*args, **kwargs)
-                if argument in bound_args.arguments:
+                if argument in kwargs:
                     warn(message, DeprecationWarning, stacklevel=2)
+                else:
+                    sig = inspect.signature(func)
+                    bound_args = sig.bind(*args, **kwargs)
+                    if argument in bound_args.arguments:
+                        warn(message, DeprecationWarning, stacklevel=2)
                 return func(*args, **kwargs)
 
             return inner_normal

@@ -382,6 +382,18 @@ class TestDeprecatedArgument:
         with assert_no_warnings():
             TestClass(new_arg="float32")
 
+    def test_class_init_keyword_argument_kwargs(self):
+        class TestClass:
+            @deprecated_argument("old_arg", "new_arg")
+            def __init__(self, new_arg=None, **kwargs):
+                pass
+
+        with pytest.warns(DeprecationWarning):
+            TestClass(old_arg="float32")
+
+        with assert_no_warnings():
+            TestClass(new_arg="float32")
+
     async def test_async_function_argument(self):
         @deprecated_argument("old_arg", "new_arg")
         async def test_func(old_arg=None, new_arg=None):
