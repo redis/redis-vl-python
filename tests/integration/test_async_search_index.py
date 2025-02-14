@@ -8,19 +8,6 @@ from redisvl.schema import IndexSchema, StorageType
 
 fields = [{"name": "test", "type": "tag"}]
 
-# Remove deprecation warnings after the next major release
-pytestmark = [
-    pytest.mark.filterwarnings(
-        "ignore:connect\\(\\) is deprecated; pass connection parameters in __init__:DeprecationWarning"
-    ),
-    pytest.mark.filterwarnings(
-        "ignore:Converting sync Redis client to async client is deprecated.*:DeprecationWarning"
-    ),
-    pytest.mark.filterwarnings(
-        "ignore:Function .* is deprecated and will be removed in the next major release.*:DeprecationWarning"
-    ),
-]
-
 
 @pytest.fixture
 def index_schema():
