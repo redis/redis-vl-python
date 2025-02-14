@@ -2,6 +2,7 @@ from typing import Any, Callable, List, Optional
 
 from pydantic.v1 import PrivateAttr
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -53,12 +54,14 @@ class HFTextVectorizer(BaseVectorizer):
             ValueError: If there is an error setting the embedding model dimensions.
             ValueError: If an invalid dtype is provided.
         """
-        self._initialize_client(model)
-        super().__init__(model=model, dims=self._set_model_dims(), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_client(model, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
 
-    def _initialize_client(self, model: str):
+    def _initialize_client(self, model: str, **kwargs):
         """Setup the HuggingFace client"""
-        # Dynamic import of the cohere module\
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -67,11 +70,11 @@ class HFTextVectorizer(BaseVectorizer):
                 "Please install with `pip install sentence-transformers`"
             )
 
-        self._client = SentenceTransformer(model)
+        self._client = SentenceTransformer(model, **kwargs)
 
     def _set_model_dims(self):
         try:
-            embedding = self._client.encode(["dimension check"])[0]
+            embedding = self.embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Empty response from the embedding model: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -79,6 +82,7 @@ class HFTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -112,6 +116,7 @@ class HFTextVectorizer(BaseVectorizer):
         embedding = self._client.encode([text], **kwargs)[0]
         return self._process_embedding(embedding.tolist(), as_buffer, dtype)
 
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],

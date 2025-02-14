@@ -1,10 +1,11 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that voyageai isn't imported
@@ -52,6 +53,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         model: str = "voyage-large-2",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the VoyageAI vectorizer.
 
@@ -70,14 +72,20 @@ class VoyageAITextVectorizer(BaseVectorizer):
             ValueError: If the API key is not provided.
 
         """
-        self._initialize_client(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_client(api_config, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict]):
+    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the VoyageAI clients using the provided API key or an
         environment variable.
         """
+        if api_config is None:
+            api_config = {}
+
         # Dynamic import of the voyageai module
         try:
             from voyageai import AsyncClient, Client
@@ -96,16 +104,12 @@ class VoyageAITextVectorizer(BaseVectorizer):
                 "VoyageAI API key is required. "
                 "Provide it in api_config or set the VOYAGE_API_KEY environment variable."
             )
-        self._client = Client(api_key=api_key)
-        self._aclient = AsyncClient(api_key=api_key)
+        self._client = Client(api_key=api_key, **kwargs)
+        self._aclient = AsyncClient(api_key=api_key, **kwargs)
 
-    def _set_model_dims(self, model) -> int:
+    def _set_model_dims(self) -> int:
         try:
-            embedding = self._client.embed(
-                texts=["dimension test"],
-                model=model,
-                input_type="document",
-            ).embeddings[0]
+            embedding = self.embed("dimension check", input_type="document")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VoyageAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -113,6 +117,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -158,6 +163,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],
@@ -237,6 +243,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             ]
         return embeddings
 
+    @deprecated_argument("dtype")
     async def aembed_many(
         self,
         texts: List[str],
@@ -316,6 +323,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
             ]
         return embeddings
 
+    @deprecated_argument("dtype")
     async def aembed(
         self,
         text: str,

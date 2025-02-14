@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Type
 
 import redis.commands.search.reducers as reducers
 import yaml
-from pydantic.v1 import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
@@ -44,8 +44,7 @@ class SemanticRouter(BaseModel):
 
     _index: SearchIndex = PrivateAttr()
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @deprecated_argument("dtype", "vectorizer")
     def __init__(
@@ -109,7 +108,7 @@ class SemanticRouter(BaseModel):
     ):
         """Initialize the search index and handle Redis connection."""
         schema = SemanticRouterIndexSchema.from_params(
-            self.name, self.vectorizer.dims, self.vectorizer.dtype
+            self.name, self.vectorizer.dims, self.vectorizer.dtype  # type: ignore
         )
         self._index = SearchIndex(
             schema=schema,
@@ -124,7 +123,7 @@ class SemanticRouter(BaseModel):
             existing_index = SearchIndex.from_existing(
                 self.name, redis_client=self._index.client
             )
-            if existing_index.schema != self._index.schema:
+            if existing_index.schema.to_dict() != self._index.schema.to_dict():
                 raise ValueError(
                     f"Existing index {self.name} schema does not match the user provided schema for the semantic router. "
                     "If you wish to overwrite the index schema, set overwrite=True during initialization."

@@ -94,7 +94,7 @@ class SemanticSessionManager(BaseSessionManager):
         self.set_distance_threshold(distance_threshold)
 
         schema = SemanticSessionIndexSchema.from_params(
-            name, prefix, self._vectorizer.dims, vectorizer.dtype
+            name, prefix, vectorizer.dims, vectorizer.dtype  # type: ignore
         )
 
         self._index = SearchIndex(
@@ -109,7 +109,7 @@ class SemanticSessionManager(BaseSessionManager):
             existing_index = SearchIndex.from_existing(
                 name, redis_client=self._index.client
             )
-            if existing_index.schema != self._index.schema:
+            if existing_index.schema.to_dict() != self._index.schema.to_dict():
                 raise ValueError(
                     f"Existing index {name} schema does not match the user provided schema for the semantic session. "
                     "If you wish to overwrite the index schema, set overwrite=True during initialization."

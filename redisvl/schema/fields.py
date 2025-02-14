@@ -6,9 +6,9 @@ Reference Redis vector search documentation as needed: https://redis.io/docs/int
 """
 
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Type, Union
 
-from pydantic.v1 import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from redis.commands.search.field import Field as RedisField
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
@@ -16,7 +16,13 @@ from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
-### Attribute Enums ###
+
+class FieldTypes(str, Enum):
+    TAG = "tag"
+    TEXT = "text"
+    NUMERIC = "numeric"
+    GEO = "geo"
+    VECTOR = "vector"
 
 
 class VectorDistanceMetric(str, Enum):
@@ -30,6 +36,8 @@ class VectorDataType(str, Enum):
     FLOAT16 = "FLOAT16"
     FLOAT32 = "FLOAT32"
     FLOAT64 = "FLOAT64"
+    INT8 = "INT8"
+    UINT8 = "UINT8"
 
 
 class VectorIndexAlgorithm(str, Enum):
@@ -97,7 +105,7 @@ class BaseVectorFieldAttributes(BaseModel):
     initial_cap: Optional[int] = None
     """Initial vector capacity in the index affecting memory allocation size of the index"""
 
-    @validator("algorithm", "datatype", "distance_metric", pre=True)
+    @field_validator("algorithm", "datatype", "distance_metric", mode="before")
     @classmethod
     def uppercase_strings(cls, v):
         """Validate that provided values are cast to uppercase"""
@@ -119,9 +127,7 @@ class BaseVectorFieldAttributes(BaseModel):
 class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
     """FLAT vector field attributes"""
 
-    algorithm: VectorIndexAlgorithm = Field(
-        default=VectorIndexAlgorithm.FLAT, const=True
-    )
+    algorithm: Literal[VectorIndexAlgorithm.FLAT] = VectorIndexAlgorithm.FLAT
     """The indexing algorithm for the vector field"""
     block_size: Optional[int] = None
     """Block size to hold amount of vectors in a contiguous array. This is useful when the index is dynamic with respect to addition and deletion"""
@@ -130,9 +136,7 @@ class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
 class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     """HNSW vector field attributes"""
 
-    algorithm: VectorIndexAlgorithm = Field(
-        default=VectorIndexAlgorithm.HNSW, const=True
-    )
+    algorithm: Literal[VectorIndexAlgorithm.HNSW] = VectorIndexAlgorithm.HNSW
     """The indexing algorithm for the vector field"""
     m: int = Field(default=16)
     """Number of max outgoing edges for each graph node in each layer"""
@@ -171,7 +175,7 @@ class BaseField(BaseModel):
 class TextField(BaseField):
     """Text field supporting a full text search index"""
 
-    type: str = Field(default="text", const=True)
+    type: Literal[FieldTypes.TEXT] = FieldTypes.TEXT
     attrs: TextFieldAttributes = Field(default_factory=TextFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -189,7 +193,7 @@ class TextField(BaseField):
 class TagField(BaseField):
     """Tag field for simple boolean-style filtering"""
 
-    type: str = Field(default="tag", const=True)
+    type: Literal[FieldTypes.TAG] = FieldTypes.TAG
     attrs: TagFieldAttributes = Field(default_factory=TagFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -206,7 +210,7 @@ class TagField(BaseField):
 class NumericField(BaseField):
     """Numeric field for numeric range filtering"""
 
-    type: str = Field(default="numeric", const=True)
+    type: Literal[FieldTypes.NUMERIC] = FieldTypes.NUMERIC
     attrs: NumericFieldAttributes = Field(default_factory=NumericFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -221,7 +225,7 @@ class NumericField(BaseField):
 class GeoField(BaseField):
     """Geo field with a geo-spatial index for location based search"""
 
-    type: str = Field(default="geo", const=True)
+    type: Literal[FieldTypes.GEO] = FieldTypes.GEO
     attrs: GeoFieldAttributes = Field(default_factory=GeoFieldAttributes)
 
     def as_redis_field(self) -> RedisField:
@@ -236,7 +240,7 @@ class GeoField(BaseField):
 class FlatVectorField(BaseField):
     "Vector field with a FLAT index (brute force nearest neighbors search)"
 
-    type: str = Field(default="vector", const=True)
+    type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: FlatVectorFieldAttributes
 
     def as_redis_field(self) -> RedisField:
@@ -251,7 +255,7 @@ class FlatVectorField(BaseField):
 class HNSWVectorField(BaseField):
     """Vector field with an HNSW index (approximate nearest neighbors search)"""
 
-    type: str = Field(default="vector", const=True)
+    type: Literal["vector"] = "vector"
     attrs: HNSWVectorFieldAttributes
 
     def as_redis_field(self) -> RedisField:
@@ -269,20 +273,21 @@ class HNSWVectorField(BaseField):
         return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
 
 
+FIELD_TYPE_MAP = {
+    "tag": TagField,
+    "text": TextField,
+    "numeric": NumericField,
+    "geo": GeoField,
+}
+
+VECTOR_FIELD_TYPE_MAP = {
+    "flat": FlatVectorField,
+    "hnsw": HNSWVectorField,
+}
+
+
 class FieldFactory:
     """Factory class to create fields from client data and kwargs."""
-
-    FIELD_TYPE_MAP = {
-        "tag": TagField,
-        "text": TextField,
-        "numeric": NumericField,
-        "geo": GeoField,
-    }
-
-    VECTOR_FIELD_TYPE_MAP = {
-        "flat": FlatVectorField,
-        "hnsw": HNSWVectorField,
-    }
 
     @classmethod
     def pick_vector_field_type(cls, attrs: Dict[str, Any]) -> Type[BaseField]:
@@ -294,10 +299,10 @@ class FieldFactory:
             raise ValueError("Must provide dims param for the vector field.")
 
         algorithm = attrs["algorithm"].lower()
-        if algorithm not in cls.VECTOR_FIELD_TYPE_MAP:
+        if algorithm not in VECTOR_FIELD_TYPE_MAP:
             raise ValueError(f"Unknown vector field algorithm: {algorithm}")
 
-        return cls.VECTOR_FIELD_TYPE_MAP[algorithm]  # type: ignore
+        return VECTOR_FIELD_TYPE_MAP[algorithm]  # type: ignore
 
     @classmethod
     def create_field(
@@ -312,8 +317,14 @@ class FieldFactory:
         if type == "vector":
             field_class = cls.pick_vector_field_type(attrs)
         else:
-            if type not in cls.FIELD_TYPE_MAP:
+            if type not in FIELD_TYPE_MAP:
                 raise ValueError(f"Unknown field type: {type}")
-            field_class = cls.FIELD_TYPE_MAP[type]  # type: ignore
+            field_class = FIELD_TYPE_MAP[type]  # type: ignore
 
-        return field_class(name=name, path=path, attrs=attrs)  # type: ignore
+        return field_class.model_validate(
+            {
+                "name": name,
+                "path": path,
+                "attrs": attrs,
+            }
+        )

@@ -1,10 +1,11 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that openai isn't imported
@@ -56,6 +57,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         model: str = "text-embedding-ada-002",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the AzureOpenAI vectorizer.
 
@@ -75,10 +77,13 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             ValueError: If the AzureOpenAI API key, version, or endpoint are not provided.
             ValueError: If an invalid dtype is provided.
         """
-        self._initialize_clients(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_clients(api_config, **kwargs)
+        # Set model dimensions
+        self.dims = self._set_model_dims()
 
-    def _initialize_clients(self, api_config: Optional[Dict]):
+    def _initialize_clients(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the OpenAI clients using the provided API key or an
         environment variable.
@@ -140,21 +145,19 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             api_version=api_version,
             azure_endpoint=azure_endpoint,
             **api_config,
+            **kwargs,
         )
         self._aclient = AsyncAzureOpenAI(
             api_key=api_key,
             api_version=api_version,
             azure_endpoint=azure_endpoint,
             **api_config,
+            **kwargs,
         )
 
-    def _set_model_dims(self, model) -> int:
+    def _set_model_dims(self) -> int:
         try:
-            embedding = (
-                self._client.embeddings.create(input=["dimension test"], model=model)
-                .data[0]
-                .embedding
-            )
+            embedding = self.embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the AzureOpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
@@ -167,6 +170,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],
@@ -213,6 +217,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -251,6 +256,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     async def aembed_many(
         self,
         texts: List[str],
@@ -299,6 +305,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     async def aembed(
         self,
         text: str,

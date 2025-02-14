@@ -2,10 +2,11 @@ import json
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -50,6 +51,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         model: str = "amazon.titan-embed-text-v2:0",
         api_config: Optional[Dict[str, str]] = None,
         dtype: str = "float32",
+        **kwargs,
     ) -> None:
         """Initialize the AWS Bedrock Vectorizer.
 
@@ -66,6 +68,17 @@ class BedrockTextVectorizer(BaseVectorizer):
             ValueError: If credentials are not provided in config or environment.
             ImportError: If boto3 is not installed.
             ValueError: If an invalid dtype is provided.
+        """
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_client(api_config, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
+
+    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
+        """
+        Setup the Bedrock client using the provided API keys or
+        environment variables.
         """
         try:
             import boto3  # type: ignore
@@ -97,27 +110,25 @@ class BedrockTextVectorizer(BaseVectorizer):
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
             region_name=aws_region,
+            **kwargs,
         )
 
-        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
-
-    def _set_model_dims(self, model: str) -> int:
-        """Initialize model and determine embedding dimensions."""
+    def _set_model_dims(self) -> int:
         try:
-            response = self._client.invoke_model(
-                modelId=model, body=json.dumps({"inputText": "dimension test"})
-            )
-            response_body = json.loads(response["body"].read())
-            embedding = response_body["embedding"]
-            return len(embedding)
-        except Exception as e:
-            raise ValueError(f"Error initializing Bedrock model: {str(e)}")
+            embedding = self.embed("dimension check")
+        except (KeyError, IndexError) as ke:
+            raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
+        except Exception as e:  # pylint: disable=broad-except
+            # fall back (TODO get more specific)
+            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+        return len(embedding)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed(
         self,
         text: str,
@@ -158,6 +169,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
+    @deprecated_argument("dtype")
     def embed_many(
         self,
         texts: List[str],

@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 
 from redisvl.utils.rerank.base import BaseReranker
 
@@ -45,7 +45,8 @@ class CohereReranker(BaseReranker):
         limit: int = 5,
         return_score: bool = True,
         api_config: Optional[Dict] = None,
-    ) -> None:
+        **kwargs,
+    ):
         """
         Initialize the CohereReranker with specified model, ranking criteria,
         and API configuration.
@@ -71,9 +72,9 @@ class CohereReranker(BaseReranker):
         super().__init__(
             model=model, rank_by=rank_by, limit=limit, return_score=return_score
         )
-        self._initialize_clients(api_config)
+        self._initialize_clients(api_config, **kwargs)
 
-    def _initialize_clients(self, api_config: Optional[Dict]):
+    def _initialize_clients(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the Cohere clients using the provided API key or an
         environment variable.
@@ -96,8 +97,8 @@ class CohereReranker(BaseReranker):
                 "Cohere API key is required. "
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
-        self._client = Client(api_key=api_key, client_name="redisvl")
-        self._aclient = AsyncClient(api_key=api_key, client_name="redisvl")
+        self._client = Client(api_key=api_key, client_name="redisvl", **kwargs)
+        self._aclient = AsyncClient(api_key=api_key, client_name="redisvl", **kwargs)
 
     def _preprocess(
         self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
