@@ -177,7 +177,7 @@ class SemanticRouter(BaseModel):
             if route.name in route_thresholds:
                 route.distance_threshold = route_thresholds[route.name]
 
-        print(f"{[(r.name, r.distance_threshold) for r in self.routes]}")
+        # print(f"{[(r.name, r.distance_threshold) for r in self.routes]}")
 
     def _route_ref_key(self, route_name: str, reference: str) -> str:
         """Generate the route reference key."""
@@ -280,14 +280,13 @@ class SemanticRouter(BaseModel):
         self,
         vector: List[float],
         aggregation_method: DistanceAggregationMethod,
+        max_k: int = 1,
     ) -> RouteMatch:
         """Classify to a single route using a vector."""
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
         # therefore you might take the max_threshold and further refine from there.
-        distance_threshold = max(
-            [distance_threshold] + [route.distance_threshold for route in self.routes]
-        )
+        distance_threshold = max(route.distance_threshold for route in self.routes)
 
         vector_range_query = RangeQuery(
             vector=vector,
@@ -310,6 +309,9 @@ class SemanticRouter(BaseModel):
                     "Semantic routing is only available on Redis version 7.x.x or greater"
                 )
             raise e
+
+        for match in aggregation_result.rows:
+            print(f"\n {match=}")
 
         # process aggregation results into route matches
         return [
@@ -347,7 +349,7 @@ class SemanticRouter(BaseModel):
     ) -> List[RouteMatch]:
         """Classify to multiple routes, up to max_k (int), using a vector."""
 
-        route_matches = self._get_route_matches(vector, aggregation_method, max_k)
+        route_matches = self._get_route_matches(vector, aggregation_method, max_k=max_k)
 
         # process route matches
         top_route_matches: List[RouteMatch] = []
@@ -611,7 +613,7 @@ class SemanticRouter(BaseModel):
         return correct / len(test_data)
 
     def _random_search(
-        self, route_names: List[str], route_thresholds: dict, search_step=0.05
+        self, route_names: List[str], route_thresholds: dict, search_step=0.10
     ):
 
         score_threshold_values = []
@@ -644,8 +646,10 @@ class SemanticRouter(BaseModel):
             )
             self.update_route_thresholds(thresholds)
             acc = self._eval_accuracy(test_data)
+            print(f"Accuracy: {acc}, Best: {best_acc}, Thresholds: {thresholds}")
             if acc > best_acc:
                 best_acc = acc
                 best_thresholds = thresholds
+                print("Updated best accuracy")
 
         self.update_route_thresholds(best_thresholds)
