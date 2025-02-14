@@ -27,16 +27,18 @@ def vectorizer_from_dict(vectorizer: dict) -> BaseVectorizer:
     vectorizer_type = Vectorizers(vectorizer["type"])
     model = vectorizer["model"]
     if vectorizer_type == Vectorizers.cohere:
-        return CohereTextVectorizer(model)
+        return CohereTextVectorizer(model=model)
     elif vectorizer_type == Vectorizers.openai:
-        return OpenAITextVectorizer(model)
+        return OpenAITextVectorizer(model=model)
     elif vectorizer_type == Vectorizers.azure_openai:
-        return AzureOpenAITextVectorizer(model)
+        return AzureOpenAITextVectorizer(model=model)
     elif vectorizer_type == Vectorizers.hf:
-        return HFTextVectorizer(model)
+        return HFTextVectorizer(model=model)
     elif vectorizer_type == Vectorizers.mistral:
-        return MistralAITextVectorizer(model)
+        return MistralAITextVectorizer(model=model)
     elif vectorizer_type == Vectorizers.vertexai:
-        return VertexAITextVectorizer(model)
+        return VertexAITextVectorizer(model=model)
     elif vectorizer_type == Vectorizers.voyageai:
-        return VoyageAITextVectorizer(model)
+        return VoyageAITextVectorizer(model=model)
+    else:
+        raise ValueError(f"Unsupported vectorizer type: {vectorizer_type}")

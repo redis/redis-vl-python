@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 
 from redisvl.utils.rerank.base import BaseReranker
 
@@ -39,7 +39,7 @@ class HFCrossEncoderReranker(BaseReranker):
         limit: int = 3,
         return_score: bool = True,
         **kwargs,
-    ) -> None:
+    ):
         """
         Initialize the HFCrossEncoderReranker with a specified model and ranking criteria.
 

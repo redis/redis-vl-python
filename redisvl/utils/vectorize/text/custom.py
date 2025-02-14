@@ -1,6 +1,6 @@
 from typing import Any, Callable, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -114,17 +114,16 @@ class CustomTextVectorizer(BaseVectorizer):
         Raises:
             ValueError: if embedding validation fails.
         """
+        super().__init__(model=self.type, dtype=dtype)
+
         # Store user-provided callables
         self._embed = embed
         self._embed_many = embed_many
         self._aembed = aembed
         self._aembed_many = aembed_many
 
-        # Manually validate sync methods to discover dimension
-        dims = self._validate_sync_callables()
-
-        # Initialize the base class now that we know the dimension
-        super().__init__(model=self.type, dims=dims, dtype=dtype)
+        # Set dims
+        self.dims = self._validate_sync_callables()
 
     @property
     def type(self) -> str:

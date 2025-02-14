@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic.v1 import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 
 class BaseReranker(BaseModel, ABC):
@@ -10,7 +10,7 @@ class BaseReranker(BaseModel, ABC):
     limit: int
     return_score: bool
 
-    @validator("limit")
+    @field_validator("limit")
     @classmethod
     def check_limit(cls, value):
         """Ensures the limit is a positive integer."""
@@ -18,7 +18,7 @@ class BaseReranker(BaseModel, ABC):
             raise ValueError("Limit must be a positive integer.")
         return value
 
-    @validator("rank_by")
+    @field_validator("rank_by")
     @classmethod
     def check_rank_by(cls, value):
         """Ensures that rank_by is a list of strings if provided."""

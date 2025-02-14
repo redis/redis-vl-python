@@ -125,7 +125,7 @@ class SemanticCache(BaseLLMCache):
 
         # Create semantic cache schema and index
         schema = SemanticCacheIndexSchema.from_params(
-            name, prefix, vectorizer.dims, vectorizer.dtype
+            name, prefix, vectorizer.dims, vectorizer.dtype  # type: ignore
         )
         schema = self._modify_schema(schema, filterable_fields)
         self._index = SearchIndex(schema=schema)
@@ -141,7 +141,7 @@ class SemanticCache(BaseLLMCache):
             existing_index = SearchIndex.from_existing(
                 name, redis_client=self._index.client
             )
-            if existing_index.schema != self._index.schema:
+            if existing_index.schema.to_dict() != self._index.schema.to_dict():
                 raise ValueError(
                     f"Existing index {name} schema does not match the user provided schema for the semantic cache. "
                     "If you wish to overwrite the index schema, set overwrite=True during initialization."

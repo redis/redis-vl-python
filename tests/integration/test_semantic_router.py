@@ -6,9 +6,12 @@ import pytest
 from redis.exceptions import ConnectionError
 
 from redisvl.exceptions import RedisModuleVersionError
-from redisvl.extensions.llmcache.semantic import SemanticCache
 from redisvl.extensions.router import SemanticRouter
-from redisvl.extensions.router.schema import Route, RoutingConfig
+from redisvl.extensions.router.schema import (
+    DistanceAggregationMethod,
+    Route,
+    RoutingConfig,
+)
 from redisvl.redis.connection import compare_versions
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
@@ -58,7 +61,6 @@ def disable_deprecation_warnings():
 def test_initialize_router(semantic_router):
     assert semantic_router.name == "test-router"
     assert len(semantic_router.routes) == 2
-    assert semantic_router.routing_config.distance_threshold == 0.3
     assert semantic_router.routing_config.max_k == 2
 
 
@@ -114,10 +116,13 @@ def test_multiple_query(semantic_router):
 
 
 def test_update_routing_config(semantic_router):
-    new_config = RoutingConfig(distance_threshold=0.5, max_k=1)
+    new_config = RoutingConfig(max_k=27, aggregation_method="min")
     semantic_router.update_routing_config(new_config)
-    assert semantic_router.routing_config.distance_threshold == 0.5
-    assert semantic_router.routing_config.max_k == 1
+    assert semantic_router.routing_config.max_k == 27
+    assert (
+        semantic_router.routing_config.aggregation_method
+        == DistanceAggregationMethod.min
+    )
 
 
 def test_vector_query(semantic_router):
@@ -189,7 +194,7 @@ def test_from_dict(semantic_router):
     new_router = SemanticRouter.from_dict(
         router_dict, redis_client=semantic_router._index.client, overwrite=True
     )
-    assert new_router == semantic_router
+    assert new_router.to_dict() == router_dict
 
 
 def test_to_yaml(semantic_router):
@@ -203,7 +208,7 @@ def test_from_yaml(semantic_router):
     new_router = SemanticRouter.from_yaml(
         yaml_file, redis_client=semantic_router._index.client, overwrite=True
     )
-    assert new_router == semantic_router
+    assert new_router.to_dict() == semantic_router.to_dict()
 
 
 def test_to_dict_missing_fields():
@@ -290,14 +295,14 @@ def test_different_vector_dtypes(redis_url, routes):
 def test_bad_dtype_connecting_to_exiting_router(redis_url, routes):
     try:
         router = SemanticRouter(
-            name="float64 router",
+            name="float64-router",
             routes=routes,
             dtype="float64",
             redis_url=redis_url,
         )
 
         same_type = SemanticRouter(
-            name="float64 router",
+            name="float64-router",
             routes=routes,
             dtype="float64",
             redis_url=redis_url,
@@ -308,7 +313,7 @@ def test_bad_dtype_connecting_to_exiting_router(redis_url, routes):
 
     with pytest.raises(ValueError):
         bad_type = SemanticRouter(
-            name="float64 router",
+            name="float64-router",
             routes=routes,
             dtype="float16",
             redis_url=redis_url,

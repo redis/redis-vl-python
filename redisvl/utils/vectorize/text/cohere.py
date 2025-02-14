@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic.v1 import PrivateAttr
+from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
@@ -52,6 +52,7 @@ class CohereTextVectorizer(BaseVectorizer):
         model: str = "embed-english-v3.0",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        **kwargs,
     ):
         """Initialize the Cohere vectorizer.
 
@@ -70,24 +71,29 @@ class CohereTextVectorizer(BaseVectorizer):
             ValueError: If the API key is not provided.
             ValueError: If an invalid dtype is provided.
         """
-        self._initialize_client(api_config)
-        super().__init__(model=model, dims=self._set_model_dims(model), dtype=dtype)
+        super().__init__(model=model, dtype=dtype)
+        # Init client
+        self._initialize_client(api_config, **kwargs)
+        # Set model dimensions after init
+        self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict]):
+    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the Cohere clients using the provided API key or an
         environment variable.
         """
+        if api_config is None:
+            api_config = {}
+
         # Dynamic import of the cohere module
         try:
-            from cohere import AsyncClient, Client
+            from cohere import Client
         except ImportError:
             raise ImportError(
                 "Cohere vectorizer requires the cohere library. \
                     Please install with `pip install cohere`"
             )
 
-        # Fetch the API key from api_config or environment variable
         api_key = (
             api_config.get("api_key") if api_config else os.getenv("COHERE_API_KEY")
         )
@@ -96,15 +102,11 @@ class CohereTextVectorizer(BaseVectorizer):
                 "Cohere API key is required. "
                 "Provide it in api_config or set the COHERE_API_KEY environment variable."
             )
-        self._client = Client(api_key=api_key, client_name="redisvl")
+        self._client = Client(api_key=api_key, client_name="redisvl", **kwargs)
 
-    def _set_model_dims(self, model) -> int:
+    def _set_model_dims(self) -> int:
         try:
-            embedding = self._client.embed(
-                texts=["dimension test"],
-                model=model,
-                input_type="search_document",
-            ).embeddings[0]
+            embedding = self.embed("dimension check", input_type="search_document")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the Cohere API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
