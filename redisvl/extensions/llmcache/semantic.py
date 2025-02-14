@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 from redis import Redis
-
+from redis.asyncio import Redis as AsyncRedis
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
     ENTRY_ID_FIELD_NAME,
@@ -22,6 +22,7 @@ from redisvl.extensions.llmcache.schema import (
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.utils import (
     current_timestamp,
     deprecated_argument,
@@ -175,11 +176,14 @@ class SemanticCache(BaseLLMCache):
         """Lazily construct the async search index class."""
         # Construct async index if necessary
         if not self._aindex:
+            client = self.redis_kwargs.get("redis_client")
+            if client and isinstance(client, Redis):
+                client = RedisConnectionFactory.sync_to_async_redis(client)
             self._aindex = AsyncSearchIndex(
                 schema=self._index.schema,
-                redis_client=self.redis_kwargs["redis_client"],
+                redis_client=client,
                 redis_url=self.redis_kwargs["redis_url"],
-                connection_kwargs=self.redis_kwargs["connection_kwargs"],
+                **self.redis_kwargs["connection_kwargs"],
             )
         return self._aindex
 

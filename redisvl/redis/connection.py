@@ -314,11 +314,10 @@ class RedisConnectionFactory:
         url = url or get_address_from_env()
         return AsyncRedis.from_url(url, **kwargs)
 
-    @deprecated_function(
-        "sync_to_async_redis", "Please use an async Redis client."
-    )
+
     @staticmethod
     def sync_to_async_redis(redis_client: Redis) -> AsyncRedis:
+        """Convert a synchronous Redis client to an asynchronous one."""
         # pick the right connection class
         connection_class: Type[AbstractConnection] = (
             AsyncSSLConnection
