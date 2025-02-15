@@ -1,8 +1,8 @@
 import asyncio
 from typing import Any, Dict, List, Optional
+import weakref
 
 from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
     ENTRY_ID_FIELD_NAME,
@@ -23,6 +23,7 @@ from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
     current_timestamp,
     deprecated_argument,
@@ -30,6 +31,9 @@ from redisvl.utils.utils import (
     validate_vector_dims,
 )
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+
+
+logger = get_logger("[RedisVL]")
 
 
 class SemanticCache(BaseLLMCache):
@@ -149,6 +153,8 @@ class SemanticCache(BaseLLMCache):
 
         # Create the search index in Redis
         self._index.create(overwrite=overwrite, drop=False)
+        
+        weakref.finalize(self, self._finalize_async)
 
     def _modify_schema(
         self,
@@ -702,3 +708,37 @@ class SemanticCache(BaseLLMCache):
             await aindex.load(data=[kwargs], keys=[key])
 
         await self._async_refresh_ttl(key)
+        
+    def _finalize_async(self):
+        if self._index:
+            self._index.disconnect()
+        if self._aindex:
+            try:
+                loop = None
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                loop.run_until_complete(self._aindex.disconnect())
+            except Exception as e:
+                logger.info(f"Error disconnecting from index: {e}")
+
+    def disconnect(self):
+        if self._index:
+            self._index.disconnect()
+        if self._aindex:
+            asyncio.run(self._aindex.disconnect())
+
+    async def adisconnect(self):
+        if self._index:
+            self._index.disconnect()
+        if self._aindex:
+            await self._aindex.disconnect()
+            self._aindex = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.adisconnect()

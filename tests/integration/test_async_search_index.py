@@ -313,3 +313,33 @@ async def test_check_index_exists_before_info(async_index):
 
     with pytest.raises(RedisSearchError):
         await async_index.info()
+
+
+@pytest.mark.asyncio
+async def test_search_index_async_context_manager(async_index):
+    async with async_index:
+        await async_index.create(overwrite=True, drop=True)
+        assert async_index._redis_client
+    assert async_index._redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_search_index_context_manager_with_exception(async_index):
+    async with async_index:
+        await async_index.create(overwrite=True, drop=True)
+        raise ValueError("test")
+    assert async_index._redis_client is None
+    
+    
+@pytest.mark.asyncio
+async def test_search_index_disconnect(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    await async_index.disconnect()
+    assert async_index._redis_client is None
+    
+
+@pytest.mark.asyncio
+async def test_search_engine_disconnect_sync(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    async_index.disconnect_sync()
+    assert async_index._redis_client is None

@@ -287,3 +287,24 @@ def test_check_index_exists_before_info(index):
 def test_index_needs_valid_schema():
     with pytest.raises(ValueError, match=r"Must provide a valid IndexSchema object"):
         SearchIndex(schema="Not A Valid Schema")  # type: ignore
+
+
+def test_search_index_context_manager(index):
+    with index:
+        index.create(overwrite=True, drop=True)
+        assert index.client
+    assert index.client is None
+    
+    
+def test_search_index_context_manager_with_exception(index):
+    with pytest.raises(ValueError):
+        with index:
+            index.create(overwrite=True, drop=True)
+            raise ValueError("test")
+    assert index.client is None
+
+
+def test_search_index_disconnect(index):
+    index.create(overwrite=True, drop=True)
+    index.disconnect()
+    assert index.client is None

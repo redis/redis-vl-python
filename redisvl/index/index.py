@@ -16,6 +16,7 @@ from typing import (
     Optional,
     Union,
 )
+import weakref
 
 from redisvl.utils.utils import deprecated_argument, deprecated_function
 
@@ -784,6 +785,12 @@ class SearchIndex(BaseSearchIndex):
         index_name = name or self.schema.index.name
         return self._info(index_name, self._redis_client)  # type: ignore
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.disconnect()
+
 
 class AsyncSearchIndex(BaseSearchIndex):
     """A search index class for interacting with Redis as a vector database in
@@ -857,11 +864,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._connection_kwargs = connection_kwargs or {}
         self._lock = asyncio.Lock()
 
-    async def disconnect(self):
-        """Asynchronously disconnect and cleanup the underlying async redis connection."""
-        if self._redis_client is not None:
-            await self._redis_client.aclose()  # type: ignore
-        self._redis_client = None
+        # Close connections when the object is garbage collected
+        weakref.finalize(self, self._finalize_disconnect)
 
     @classmethod
     async def from_existing(
@@ -1336,9 +1340,36 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise RedisSearchError(
                 f"Error while fetching {name} index info: {str(e)}"
             ) from e
+            
+    async def disconnect(self):
+        """Asynchronously disconnect and cleanup the underlying async redis connection."""
+        if self._redis_client is not None:
+            await self._redis_client.aclose()  # type: ignore
+        self._redis_client = None
+
+    def disconnect_sync(self):
+        """Synchronously disconnect and cleanup the underlying async redis connection."""
+        if self._redis_client is None:
+            return
+        loop = asyncio.get_running_loop()
+        if loop is None or not loop.is_running():
+            asyncio.run(self._redis_client.aclose())  # type: ignore
+        else:
+            loop.create_task(self.disconnect())
+        self._redis_client = None
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.disconnect()
+
+    def _finalize_disconnect(self):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is None or not loop.is_running():
+            asyncio.run(self.disconnect())
+        else:
+            loop.create_task(self.disconnect())

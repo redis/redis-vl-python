@@ -941,3 +941,36 @@ def test_deprecated_dtype_argument(redis_url):
             redis_url=redis_url,
             overwrite=True,
         )
+
+
+
+@pytest.mark.asyncio
+async def test_cache_async_context_manager(redis_url):
+    async with SemanticCache(name="test_cache", redis_url=redis_url) as cache:
+        await cache.astore("test prompt", "test response")
+        assert cache._aindex
+    assert cache._aindex is None
+
+
+@pytest.mark.asyncio
+async def test_cache_async_context_manager_with_exception(redis_url):
+    async with SemanticCache(name="test_cache", redis_url=redis_url) as cache:
+        await cache.astore("test prompt", "test response")
+        raise ValueError("test")
+    assert cache._aindex is None
+
+
+@pytest.mark.asyncio
+async def test_cache_async_disconnect(redis_url):
+    cache = SemanticCache(name="test_cache", redis_url=redis_url)
+    await cache.astore("test prompt", "test response")
+    await cache.adisconnect()
+    assert cache._aindex is None
+
+
+def test_cache_disconnect(redis_url):
+    cache = SemanticCache(name="test_cache", redis_url=redis_url)
+    cache.store("test prompt", "test response")
+    cache.disconnect()
+    # We keep this index object around because it isn't lazily created
+    assert cache._index.client is None
