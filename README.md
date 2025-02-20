@@ -1,5 +1,5 @@
 <div align="center" style="margin-bottom: 20px;">
-    <div><img src="https://raw.githubusercontent.com/redis/redis-vl-python/main/docs/_static/Redis_Logo_Red_RGB.svg" style="width: 250px; margin-bottom: 20px;"></div>
+    <div><img src="https://raw.githubusercontent.com/redis/redis-vl-python/main/docs/_static/Redis_Logo_Red_RGB.svg" style="max-width: 200px; margin-bottom: 20px;"></div>
     <h1>🔥 Vector Library</h1>
 </div>
 
