@@ -160,7 +160,7 @@ async def test_search_index_set_client(client, redis_url, index_schema):
         await async_index.create(overwrite=True, drop=True)
         assert isinstance(async_index.client, Redis)
 
-        # Tests deprecated sync -> async conversation behavior
+        # Tests deprecated sync -> async conversion behavior
         assert isinstance(client, SyncRedis)
         await async_index.set_client(client)
         assert isinstance(async_index.client, Redis)
