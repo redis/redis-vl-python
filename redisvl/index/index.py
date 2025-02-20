@@ -1,9 +1,12 @@
 import asyncio
 import json
+import logging
 from os import replace
+from re import S
 import threading
 import warnings
 from functools import wraps
+
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -18,14 +21,13 @@ from typing import (
 )
 import weakref
 
-from redisvl.utils.utils import deprecated_argument, deprecated_function
+from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
     from redis.commands.search.document import Document
     from redis.commands.search.result import Result
     from redisvl.query.query import BaseQuery
-    import redis.asyncio
 
 import redis
 import redis.asyncio as aredis
@@ -38,7 +40,6 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     convert_index_info_to_schema,
-    validate_modules,
 )
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
@@ -279,14 +280,21 @@ class SearchIndex(BaseSearchIndex):
 
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
 
-       # Store connection parameters
+        # Store connection parameters
         self.__redis_client = redis_client
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
-        self._lock = threading.Lock() 
+        self._lock = threading.Lock()
+
+        self._owns_redis_client = redis_client is None
+        if self._owns_redis_client:
+            weakref.finalize(self, self.disconnect)
 
     def disconnect(self):
         """Disconnect from the Redis database."""
+        if self._owns_redis_client is False:
+            print("Index does not own client, not disconnecting")
+            return
         if self.__redis_client:
             self.__redis_client.close()
         self.__redis_client = None
@@ -343,12 +351,12 @@ class SearchIndex(BaseSearchIndex):
     def client(self) -> Optional[redis.Redis]:
         """The underlying redis-py client object."""
         return self.__redis_client
-    
+
     @property
     def _redis_client(self) -> Optional[redis.Redis]:
         """
         Get a Redis client instance.
-        
+
         Lazily creates a Redis client instance if it doesn't exist.
         """
         if self.__redis_client is None:
@@ -359,7 +367,6 @@ class SearchIndex(BaseSearchIndex):
                         **self._connection_kwargs,
                     )
         return self.__redis_client
- 
 
     @deprecated_function("connect", "Pass connection parameters in __init__.")
     def connect(self, redis_url: Optional[str] = None, **kwargs):
@@ -371,8 +378,7 @@ class SearchIndex(BaseSearchIndex):
 
         Args:
             redis_url (Optional[str], optional): The URL of the Redis server to
-                connect to. If not provided, the method defaults to using the
-                `REDIS_URL` environment variable.
+                connect to.
 
         Raises:
             redis.exceptions.ConnectionError: If the connection to the Redis
@@ -842,9 +848,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             schema (IndexSchema): Index schema object.
             redis_url (Optional[str], optional): The URL of the Redis server to
                 connect to.
-            redis_client (Optional[aredis.Redis], optional): An
+            redis_client (Optional[aredis.Redis]): An
                 instantiated redis client.
-            connection_kwargs (Dict[str, Any], optional): Redis client connection
+            connection_kwargs (Optional[Dict[str, Any]]): Redis client connection
                 args.
         """
         if "redis_kwargs" in kwargs:
@@ -864,8 +870,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._connection_kwargs = connection_kwargs or {}
         self._lock = asyncio.Lock()
 
-        # Close connections when the object is garbage collected
-        weakref.finalize(self, self._finalize_disconnect)
+        self._owns_redis_client = redis_client is None
+        if self._owns_redis_client:
+            weakref.finalize(self, sync_wrapper(self.disconnect))
 
     @classmethod
     async def from_existing(
@@ -934,7 +941,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         await self.set_client(client)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
-    async def set_client(self, redis_client: aredis.Redis):
+    async def set_client(self, redis_client: Union[aredis.Redis, redis.Redis]):
         """
         [DEPRECATED] Manually set the Redis client to use with the search index.
         This method is deprecated; please provide connection parameters in __init__.
@@ -956,8 +963,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                         kwargs["url"] = self._redis_url
                     self._redis_client = (
                         await RedisConnectionFactory._get_aredis_connection(
-                            required_modules=self.required_modules,
-                            **kwargs
+                            required_modules=self.required_modules, **kwargs
                         )
                     )
             await RedisConnectionFactory.validate_async_redis(
@@ -965,7 +971,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
         return self._redis_client
 
-    async def _validate_client(self, redis_client: aredis.Redis) -> aredis.Redis:
+    async def _validate_client(
+        self, redis_client: Union[aredis.Redis, redis.Redis]
+    ) -> aredis.Redis:
         if isinstance(redis_client, redis.Redis):
             warnings.warn(
                 "Converting sync Redis client to async client is deprecated "
@@ -1340,36 +1348,21 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise RedisSearchError(
                 f"Error while fetching {name} index info: {str(e)}"
             ) from e
-            
+
     async def disconnect(self):
-        """Asynchronously disconnect and cleanup the underlying async redis connection."""
+        if self._owns_redis_client is False:
+            return
         if self._redis_client is not None:
             await self._redis_client.aclose()  # type: ignore
         self._redis_client = None
 
     def disconnect_sync(self):
-        """Synchronously disconnect and cleanup the underlying async redis connection."""
-        if self._redis_client is None:
+        if self._redis_client is None or self._owns_redis_client is False:
             return
-        loop = asyncio.get_running_loop()
-        if loop is None or not loop.is_running():
-            asyncio.run(self._redis_client.aclose())  # type: ignore
-        else:
-            loop.create_task(self.disconnect())
-        self._redis_client = None
+        sync_wrapper(self.disconnect)()
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.disconnect()
-
-    def _finalize_disconnect(self):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop is None or not loop.is_running():
-            asyncio.run(self.disconnect())
-        else:
-            loop.create_task(self.disconnect())

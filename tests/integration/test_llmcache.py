@@ -108,15 +108,21 @@ def test_get_index(cache):
 
 @pytest.mark.asyncio
 async def test_get_async_index(cache):
-    aindex = await cache._get_async_index()
-    assert isinstance(aindex, AsyncSearchIndex)
+    async with cache:
+        aindex = await cache._get_async_index()
+        assert isinstance(aindex, AsyncSearchIndex)
 
 
 @pytest.mark.asyncio
 async def test_get_async_index_from_provided_client(cache_with_redis_client):
-    aindex = await cache_with_redis_client._get_async_index()
-    assert isinstance(aindex, AsyncSearchIndex)
-    assert aindex == cache_with_redis_client.aindex
+    async with cache_with_redis_client:
+        aindex = await cache_with_redis_client._get_async_index()
+        # Shouldn't have to do this because it already was done
+        await aindex.create(overwrite=True, drop=True)
+        assert await aindex.exists()
+        assert isinstance(aindex, AsyncSearchIndex)
+        assert aindex == cache_with_redis_client.aindex
+        assert await cache_with_redis_client.aindex.exists()
 
 
 def test_delete(cache_no_cleanup):
@@ -126,8 +132,9 @@ def test_delete(cache_no_cleanup):
 
 @pytest.mark.asyncio
 async def test_async_delete(cache_no_cleanup):
-    await cache_no_cleanup.adelete()
-    assert not cache_no_cleanup.index.exists()
+    async with cache_no_cleanup:
+        await cache_no_cleanup.adelete()
+        assert not cache_no_cleanup.index.exists()
 
 
 def test_store_and_check(cache, vectorizer):
@@ -150,8 +157,9 @@ async def test_async_store_and_check(cache, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache.astore(prompt, response, vector=vector)
-    check_result = await cache.acheck(vector=vector, distance_threshold=0.4)
+    async with cache:
+        await cache.astore(prompt, response, vector=vector)
+        check_result = await cache.acheck(vector=vector, distance_threshold=0.4)
 
     assert len(check_result) == 1
     print(check_result, flush=True)
@@ -202,36 +210,37 @@ async def test_async_return_fields(cache, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache.astore(prompt, response, vector=vector)
+    async with cache:
+        await cache.astore(prompt, response, vector=vector)
 
-    # check default return fields
-    check_result = await cache.acheck(vector=vector)
-    assert set(check_result[0].keys()) == {
-        "key",
-        "entry_id",
-        "prompt",
-        "response",
-        "vector_distance",
-        "inserted_at",
-        "updated_at",
-    }
+        # check default return fields
+        check_result = await cache.acheck(vector=vector)
+        assert set(check_result[0].keys()) == {
+            "key",
+            "entry_id",
+            "prompt",
+            "response",
+            "vector_distance",
+            "inserted_at",
+            "updated_at",
+        }
 
-    # check specific return fields
-    fields = [
-        "key",
-        "entry_id",
-        "prompt",
-        "response",
-        "vector_distance",
-    ]
-    check_result = await cache.acheck(vector=vector, return_fields=fields)
-    assert set(check_result[0].keys()) == set(fields)
+        # check specific return fields
+        fields = [
+            "key",
+            "entry_id",
+            "prompt",
+            "response",
+            "vector_distance",
+        ]
+        check_result = await cache.acheck(vector=vector, return_fields=fields)
+        assert set(check_result[0].keys()) == set(fields)
 
-    # check only some return fields
-    fields = ["inserted_at", "updated_at"]
-    check_result = await cache.acheck(vector=vector, return_fields=fields)
-    fields.append("key")
-    assert set(check_result[0].keys()) == set(fields)
+        # check only some return fields
+        fields = ["inserted_at", "updated_at"]
+        check_result = await cache.acheck(vector=vector, return_fields=fields)
+        fields.append("key")
+        assert set(check_result[0].keys()) == set(fields)
 
 
 # Test clearing the cache
@@ -253,9 +262,10 @@ async def test_async_clear(cache, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache.astore(prompt, response, vector=vector)
-    await cache.aclear()
-    check_result = await cache.acheck(vector=vector)
+    async with cache:
+        await cache.astore(prompt, response, vector=vector)
+        await cache.aclear()
+        check_result = await cache.acheck(vector=vector)
 
     assert len(check_result) == 0
 
@@ -279,10 +289,11 @@ async def test_async_ttl_expiration(cache_with_ttl, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache_with_ttl.astore(prompt, response, vector=vector)
-    await asyncio.sleep(3)
+    async with cache_with_ttl:
+        await cache_with_ttl.astore(prompt, response, vector=vector)
+        await asyncio.sleep(3)
 
-    check_result = await cache_with_ttl.acheck(vector=vector)
+        check_result = await cache_with_ttl.acheck(vector=vector)
     assert len(check_result) == 0
 
 
@@ -305,10 +316,11 @@ async def test_async_custom_ttl(cache_with_ttl, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache_with_ttl.astore(prompt, response, vector=vector, ttl=5)
-    await asyncio.sleep(3)
+    async with cache_with_ttl:
+        await cache_with_ttl.astore(prompt, response, vector=vector, ttl=5)
+        await asyncio.sleep(3)
+        check_result = await cache_with_ttl.acheck(vector=vector)
 
-    check_result = await cache_with_ttl.acheck(vector=vector)
     assert len(check_result) != 0
     assert cache_with_ttl.ttl == 2
 
@@ -333,11 +345,12 @@ async def test_async_ttl_refresh(cache_with_ttl, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache_with_ttl.astore(prompt, response, vector=vector)
+    async with cache_with_ttl:
+        await cache_with_ttl.astore(prompt, response, vector=vector)
 
-    for _ in range(3):
-        await asyncio.sleep(1)
-        check_result = await cache_with_ttl.acheck(vector=vector)
+        for _ in range(3):
+            await asyncio.sleep(1)
+            check_result = await cache_with_ttl.acheck(vector=vector)
 
     assert len(check_result) == 1
 
@@ -362,11 +375,13 @@ async def test_async_drop_document(cache, vectorizer):
     response = "This is a test response."
     vector = vectorizer.embed(prompt)
 
-    await cache.astore(prompt, response, vector=vector)
-    check_result = await cache.acheck(vector=vector)
+    async with cache:
+        await cache.astore(prompt, response, vector=vector)
+        check_result = await cache.acheck(vector=vector)
 
-    await cache.adrop(ids=[check_result[0]["entry_id"]])
-    recheck_result = await cache.acheck(vector=vector)
+        await cache.adrop(ids=[check_result[0]["entry_id"]])
+        recheck_result = await cache.acheck(vector=vector)
+
     assert len(recheck_result) == 0
 
 
@@ -411,12 +426,14 @@ async def test_async_drop_documents(cache, vectorizer):
         vector = vectorizer.embed(prompt)
         await cache.astore(prompt, response, vector=vector)
 
-    check_result = await cache.acheck(vector=vector, num_results=3)
-    print(check_result, flush=True)
-    ids = [r["entry_id"] for r in check_result[0:2]]  # drop first 2 entries
-    await cache.adrop(ids=ids)
+    async with cache:
+        check_result = await cache.acheck(vector=vector, num_results=3)
+        print(check_result, flush=True)
+        ids = [r["entry_id"] for r in check_result[0:2]]  # drop first 2 entries
+        await cache.adrop(ids=ids)
 
-    recheck_result = await cache.acheck(vector=vector, num_results=3)
+        recheck_result = await cache.acheck(vector=vector, num_results=3)
+
     assert len(recheck_result) == 1
 
 
@@ -445,19 +462,22 @@ def test_updating_document(cache):
 async def test_async_updating_document(cache):
     prompt = "This is a test prompt."
     response = "This is a test response."
-    await cache.astore(prompt=prompt, response=response)
 
-    check_result = await cache.acheck(prompt=prompt, return_fields=["updated_at"])
-    key = check_result[0]["key"]
+    async with cache:
+        await cache.astore(prompt=prompt, response=response)
 
-    await asyncio.sleep(1)
+        check_result = await cache.acheck(prompt=prompt, return_fields=["updated_at"])
+        key = check_result[0]["key"]
 
-    metadata = {"foo": "bar"}
-    await cache.aupdate(key=key, metadata=metadata)
+        await asyncio.sleep(1)
 
-    updated_result = await cache.acheck(
-        prompt=prompt, return_fields=["updated_at", "metadata"]
-    )
+        metadata = {"foo": "bar"}
+        await cache.aupdate(key=key, metadata=metadata)
+
+        updated_result = await cache.acheck(
+            prompt=prompt, return_fields=["updated_at", "metadata"]
+        )
+
     assert updated_result[0]["metadata"] == metadata
     assert updated_result[0]["updated_at"] > check_result[0]["updated_at"]
 
@@ -486,10 +506,12 @@ async def test_async_ttl_expiration_after_update(cache_with_ttl, vectorizer):
 
     assert cache_with_ttl.ttl == 4
 
-    await cache_with_ttl.astore(prompt, response, vector=vector)
-    await asyncio.sleep(5)
+    async with cache_with_ttl:
+        await cache_with_ttl.astore(prompt, response, vector=vector)
+        await asyncio.sleep(5)
 
-    check_result = await cache_with_ttl.acheck(vector=vector)
+        check_result = await cache_with_ttl.acheck(vector=vector)
+
     assert len(check_result) == 0
 
 
@@ -943,10 +965,11 @@ def test_deprecated_dtype_argument(redis_url):
         )
 
 
-
 @pytest.mark.asyncio
 async def test_cache_async_context_manager(redis_url):
-    async with SemanticCache(name="test_cache", redis_url=redis_url) as cache:
+    async with SemanticCache(
+        name="test_cache_async_context_manager", redis_url=redis_url
+    ) as cache:
         await cache.astore("test prompt", "test response")
         assert cache._aindex
     assert cache._aindex is None
@@ -954,22 +977,27 @@ async def test_cache_async_context_manager(redis_url):
 
 @pytest.mark.asyncio
 async def test_cache_async_context_manager_with_exception(redis_url):
-    async with SemanticCache(name="test_cache", redis_url=redis_url) as cache:
-        await cache.astore("test prompt", "test response")
-        raise ValueError("test")
+    try:
+        async with SemanticCache(
+            name="test_cache_async_context_manager_with_exception", redis_url=redis_url
+        ) as cache:
+            await cache.astore("test prompt", "test response")
+            raise ValueError("test")
+    except ValueError:
+        pass
     assert cache._aindex is None
 
 
 @pytest.mark.asyncio
 async def test_cache_async_disconnect(redis_url):
-    cache = SemanticCache(name="test_cache", redis_url=redis_url)
+    cache = SemanticCache(name="test_cache_async_disconnect", redis_url=redis_url)
     await cache.astore("test prompt", "test response")
     await cache.adisconnect()
     assert cache._aindex is None
 
 
 def test_cache_disconnect(redis_url):
-    cache = SemanticCache(name="test_cache", redis_url=redis_url)
+    cache = SemanticCache(name="test_cache_disconnect", redis_url=redis_url)
     cache.store("test prompt", "test response")
     cache.disconnect()
     # We keep this index object around because it isn't lazily created

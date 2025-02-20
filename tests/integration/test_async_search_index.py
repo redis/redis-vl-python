@@ -1,6 +1,7 @@
 import pytest
 import warnings
 from redis.asyncio import Redis
+from redis import Redis as SyncRedis
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
@@ -150,13 +151,16 @@ async def test_search_index_client(async_client, index_schema):
 
 
 @pytest.mark.asyncio
-async def test_search_index_set_client(async_client, client, async_index):
+async def test_search_index_set_client(client, redis_url, index_schema):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     # Ignore deprecation warnings
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        assert async_index.client == async_client
+        await async_index.create(overwrite=True, drop=True)
+        assert isinstance(async_index.client, Redis)
 
         # Tests deprecated sync -> async conversation behavior
+        assert isinstance(client, SyncRedis)
         await async_index.set_client(client)
         assert isinstance(async_index.client, Redis)
 
@@ -316,7 +320,47 @@ async def test_check_index_exists_before_info(async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_async_context_manager(async_index):
+async def test_search_index_that_does_not_own_client_context_manager(async_index):
+    async with async_index:
+        await async_index.create(overwrite=True, drop=True)
+        assert async_index._redis_client
+        client = async_index._redis_client
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_context_manager_with_exception(
+    async_index,
+):
+    try:
+        async with async_index:
+            await async_index.create(overwrite=True, drop=True)
+            client = async_index._redis_client
+            raise ValueError("test")
+    except ValueError:
+        pass
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_disconnect(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    client = async_index._redis_client
+    await async_index.disconnect()
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_disconnect_sync(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    client = async_index._redis_client
+    async_index.disconnect_sync()
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_owns_client_context_manager(index_schema, redis_url):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     async with async_index:
         await async_index.create(overwrite=True, drop=True)
         assert async_index._redis_client
@@ -324,22 +368,30 @@ async def test_search_index_async_context_manager(async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_context_manager_with_exception(async_index):
-    async with async_index:
-        await async_index.create(overwrite=True, drop=True)
-        raise ValueError("test")
+async def test_search_index_that_owns_client_context_manager_with_exception(
+    index_schema, redis_url
+):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    try:
+        async with async_index:
+            await async_index.create(overwrite=True, drop=True)
+            raise ValueError("test")
+    except ValueError:
+        pass
     assert async_index._redis_client is None
-    
-    
+
+
 @pytest.mark.asyncio
-async def test_search_index_disconnect(async_index):
+async def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     await async_index.create(overwrite=True, drop=True)
     await async_index.disconnect()
     assert async_index._redis_client is None
-    
+
 
 @pytest.mark.asyncio
-async def test_search_engine_disconnect_sync(async_index):
+async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis_url):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
     await async_index.create(overwrite=True, drop=True)
-    async_index.disconnect_sync()
+    await async_index.disconnect()
     assert async_index._redis_client is None

@@ -25,6 +25,7 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
+    sync_wrapper,
     current_timestamp,
     deprecated_argument,
     serialize,
@@ -133,6 +134,12 @@ class SemanticCache(BaseLLMCache):
             name, prefix, vectorizer.dims, vectorizer.dtype  # type: ignore
         )
         schema = self._modify_schema(schema, filterable_fields)
+
+        if redis_client:
+            self._owns_redis_client = False
+        else:
+            self._owns_redis_client = True
+
         self._index = SearchIndex(
             schema=schema,
             redis_client=redis_client,
@@ -153,8 +160,6 @@ class SemanticCache(BaseLLMCache):
 
         # Create the search index in Redis
         self._index.create(overwrite=overwrite, drop=False)
-        
-        weakref.finalize(self, self._finalize_async)
 
     def _modify_schema(
         self,
@@ -317,7 +322,9 @@ class SemanticCache(BaseLLMCache):
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it
         doesn't match the search index vector dimensions."""
-        schema_vector_dims = self._index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.dims  # type: ignore
+        schema_vector_dims = self._index.schema.fields[
+            CACHE_VECTOR_FIELD_NAME
+        ].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
     def check(
@@ -392,7 +399,8 @@ class SemanticCache(BaseLLMCache):
         # Search the cache!
         cache_search_results = self._index.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results, return_fields  # type: ignore
+            cache_search_results,
+            return_fields,  # type: ignore
         )
         # Extend TTL on keys
         for key in redis_keys:
@@ -473,7 +481,8 @@ class SemanticCache(BaseLLMCache):
         # Search the cache!
         cache_search_results = await aindex.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results, return_fields  # type: ignore
+            cache_search_results,
+            return_fields,  # type: ignore
         )
         # Extend TTL on keys
         await asyncio.gather(*[self._async_refresh_ttl(key) for key in redis_keys])
@@ -646,7 +655,6 @@ class SemanticCache(BaseLLMCache):
         """
         if kwargs:
             for k, v in kwargs.items():
-
                 # Make sure the item is in the index schema
                 if k not in set(self._index.schema.field_names + [METADATA_FIELD_NAME]):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
@@ -689,7 +697,6 @@ class SemanticCache(BaseLLMCache):
 
         if kwargs:
             for k, v in kwargs.items():
-
                 # Make sure the item is in the index schema
                 if k not in set(self._index.schema.field_names + [METADATA_FIELD_NAME]):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
@@ -708,29 +715,18 @@ class SemanticCache(BaseLLMCache):
             await aindex.load(data=[kwargs], keys=[key])
 
         await self._async_refresh_ttl(key)
-        
-    def _finalize_async(self):
-        if self._index:
-            self._index.disconnect()
-        if self._aindex:
-            try:
-                loop = None
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                loop.run_until_complete(self._aindex.disconnect())
-            except Exception as e:
-                logger.info(f"Error disconnecting from index: {e}")
 
     def disconnect(self):
+        if self._owns_redis_client is False:
+            return
         if self._index:
             self._index.disconnect()
         if self._aindex:
-            asyncio.run(self._aindex.disconnect())
+            self._aindex.disconnect_sync()
 
     async def adisconnect(self):
+        if not self._owns_redis_client:
+            return
         if self._index:
             self._index.disconnect()
         if self._aindex:

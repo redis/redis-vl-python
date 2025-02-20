@@ -148,13 +148,17 @@ def test_search_index_client(client, index_schema):
     assert index.client == client
 
 
-def test_search_index_set_client(async_client, client, index):
+def test_search_index_set_client(async_client, redis_url, index_schema):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        assert index.client == client
+        index.create(overwrite=True, drop=True)
+        assert index.client
         # should not be able to set an async client here
         with pytest.raises(TypeError):
             index.set_client(async_client)
+        assert index.client is not async_client
 
         index.disconnect()
         assert index.client is None
@@ -289,14 +293,45 @@ def test_index_needs_valid_schema():
         SearchIndex(schema="Not A Valid Schema")  # type: ignore
 
 
-def test_search_index_context_manager(index):
+def test_search_index_that_does_not_own_client_context_manager(index):
+    with index:
+        index.create(overwrite=True, drop=True)
+        assert index.client
+        client = index.client
+    # Client should not have changed outside of the context manager
+    assert index.client == client
+
+
+def test_search_index_that_does_not_own_client_context_manager_with_exception(index):
+    with pytest.raises(ValueError):
+        with index:
+            index.create(overwrite=True, drop=True)
+            client = index.client
+            raise ValueError("test")
+    # Client should not have changed outside of the context manager
+    assert index.client == client
+
+
+def test_search_index_that_does_not_own_client_disconnect(index):
+    index.create(overwrite=True, drop=True)
+    client = index.client
+    index.disconnect()
+    # Client should not have changed after disconnecting
+    assert index.client == client
+
+
+def test_search_index_that_owns_client_context_manager(index_schema, redis_url):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
     with index:
         index.create(overwrite=True, drop=True)
         assert index.client
     assert index.client is None
-    
-    
-def test_search_index_context_manager_with_exception(index):
+
+
+def test_search_index_that_owns_client_context_manager_with_exception(
+    index_schema, redis_url
+):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
     with pytest.raises(ValueError):
         with index:
             index.create(overwrite=True, drop=True)
@@ -304,7 +339,8 @@ def test_search_index_context_manager_with_exception(index):
     assert index.client is None
 
 
-def test_search_index_disconnect(index):
+def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
     index.create(overwrite=True, drop=True)
     index.disconnect()
     assert index.client is None
