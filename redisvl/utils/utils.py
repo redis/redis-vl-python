@@ -13,8 +13,6 @@ from warnings import warn
 from pydantic import BaseModel
 from ulid import ULID
 
-from redisvl.utils.log import get_logger
-
 
 def create_ulid() -> str:
     """Generate a unique identifier to group related Redis documents."""
@@ -157,6 +155,7 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
 
         @wraps(func)
         def wrapper(*args, **kwargs):
+            print("???")
             warn(warning_message, category=DeprecationWarning, stacklevel=3)
             return func(*args, **kwargs)
 

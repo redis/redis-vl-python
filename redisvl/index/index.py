@@ -1,12 +1,8 @@
 import asyncio
 import json
-import logging
 import threading
 import warnings
 import weakref
-from functools import wraps
-from os import replace
-from re import S
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -45,6 +41,12 @@ from redisvl.schema import IndexSchema, StorageType
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+
+REQUIRED_MODULES_FOR_INTROSPECTION = [
+    {"name": "search", "ver": 20810},
+    {"name": "searchlight", "ver": 20810},
+]
 
 
 def process_results(
@@ -242,11 +244,6 @@ class SearchIndex(BaseSearchIndex):
 
     """
 
-    required_modules = [
-        {"name": "search", "ver": 20810},
-        {"name": "searchlight", "ver": 20810},
-    ]
-
     @deprecated_argument("connection_args", "Use connection_kwargs instead.")
     def __init__(
         self,
@@ -324,12 +321,12 @@ class SearchIndex(BaseSearchIndex):
             if redis_url:
                 redis_client = RedisConnectionFactory.get_redis_connection(
                     redis_url=redis_url,
-                    required_modules=cls.required_modules,
+                    required_modules=REQUIRED_MODULES_FOR_INTROSPECTION,
                     **kwargs,
                 )
             elif redis_client:
                 RedisConnectionFactory.validate_sync_redis(
-                    redis_client, required_modules=cls.required_modules
+                    redis_client, required_modules=REQUIRED_MODULES_FOR_INTROSPECTION
                 )
         except RedisModuleVersionError as e:
             raise RedisModuleVersionError(
@@ -829,11 +826,6 @@ class AsyncSearchIndex(BaseSearchIndex):
 
     """
 
-    required_modules = [
-        {"name": "search", "ver": 20810},
-        {"name": "searchlight", "ver": 20810},
-    ]
-
     @deprecated_argument("redis_kwargs", "Use connection_kwargs instead.")
     def __init__(
         self,
@@ -902,11 +894,13 @@ class AsyncSearchIndex(BaseSearchIndex):
         try:
             if redis_url:
                 redis_client = await RedisConnectionFactory._get_aredis_connection(
-                    url=redis_url, required_modules=cls.required_modules, **kwargs
+                    url=redis_url,
+                    required_modules=REQUIRED_MODULES_FOR_INTROSPECTION,
+                    **kwargs,
                 )
             elif redis_client:
                 await RedisConnectionFactory.validate_async_redis(
-                    redis_client, required_modules=cls.required_modules
+                    redis_client, required_modules=REQUIRED_MODULES_FOR_INTROSPECTION
                 )
         except RedisModuleVersionError as e:
             raise RedisModuleVersionError(
