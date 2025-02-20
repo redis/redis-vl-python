@@ -418,11 +418,7 @@ class SearchIndex(BaseSearchIndex):
             index.set_client(client)
 
         """
-        # TODO: Including required modules to match existing behavior, but we
-        # need to review.
-        RedisConnectionFactory.validate_sync_redis(
-            redis_client, required_modules=self.required_modules
-        )
+        RedisConnectionFactory.validate_sync_redis(redis_client)
         self.__redis_client = redis_client
         return self
 
@@ -931,8 +927,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             "connect() is deprecated; pass connection parameters in __init__",
             DeprecationWarning,
         )
-        # TODO: Intentionally not including required modules to match existing
-        # behavior, but we need to review.
         client = await RedisConnectionFactory._get_aredis_connection(
             redis_url=redis_url, **kwargs
         )
@@ -960,8 +954,6 @@ class AsyncSearchIndex(BaseSearchIndex):
                     if self._redis_url:
                         kwargs["url"] = self._redis_url
                     self._redis_client = (
-                        # TODO: Intentionally not including required modules to match existing
-                        # behavior, but we need to review.
                         await RedisConnectionFactory._get_aredis_connection(**kwargs)
                     )
             await RedisConnectionFactory.validate_async_redis(
