@@ -1,8 +1,9 @@
 import asyncio
-from typing import Any, Dict, List, Optional
 import weakref
+from typing import Any, Dict, List, Optional
 
 from redis import Redis
+
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
     ENTRY_ID_FIELD_NAME,
@@ -25,14 +26,13 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
-    sync_wrapper,
     current_timestamp,
     deprecated_argument,
     serialize,
+    sync_wrapper,
     validate_vector_dims,
 )
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
-
 
 logger = get_logger("[RedisVL]")
 

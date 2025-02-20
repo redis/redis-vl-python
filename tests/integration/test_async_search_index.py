@@ -1,7 +1,8 @@
-import pytest
 import warnings
-from redis.asyncio import Redis
+
+import pytest
 from redis import Redis as SyncRedis
+from redis.asyncio import Redis
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex

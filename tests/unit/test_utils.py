@@ -1,6 +1,7 @@
+from functools import wraps
+
 import numpy as np
 import pytest
-from functools import wraps
 
 from redisvl.redis.utils import (
     array_to_buffer,
@@ -8,7 +9,11 @@ from redisvl.redis.utils import (
     convert_bytes,
     make_dict,
 )
-from redisvl.utils.utils import assert_no_warnings, deprecated_argument, deprecated_function
+from redisvl.utils.utils import (
+    assert_no_warnings,
+    deprecated_argument,
+    deprecated_function,
+)
 
 
 def test_even_number_of_elements():

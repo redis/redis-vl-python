@@ -54,9 +54,7 @@ async def async_client(redis_url):
     """
     An async Redis client that uses the dynamic `redis_url`.
     """
-    async with await RedisConnectionFactory._get_aredis_connection(
-        redis_url
-    ) as client:
+    async with await RedisConnectionFactory._get_aredis_connection(redis_url) as client:
         yield client
 
 

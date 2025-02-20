@@ -191,7 +191,9 @@ class RedisConnectionFactory:
     """
 
     @classmethod
-    @deprecated_function("connect", "Please use `get_redis_connection` or `get_async_redis_connection`.")
+    @deprecated_function(
+        "connect", "Please use `get_redis_connection` or `get_async_redis_connection`."
+    )
     def connect(
         cls, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
     ) -> Union[Redis, AsyncRedis]:
@@ -251,7 +253,7 @@ class RedisConnectionFactory:
         )
 
         return client
-    
+
     @staticmethod
     async def _get_aredis_connection(
         url: Optional[str] = None,
@@ -313,7 +315,6 @@ class RedisConnectionFactory:
         )
         url = url or get_address_from_env()
         return AsyncRedis.from_url(url, **kwargs)
-
 
     @staticmethod
     def sync_to_async_redis(redis_client: Redis) -> AsyncRedis:

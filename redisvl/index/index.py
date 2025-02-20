@@ -1,12 +1,12 @@
 import asyncio
 import json
 import logging
-from os import replace
-from re import S
 import threading
 import warnings
+import weakref
 from functools import wraps
-
+from os import replace
+from re import S
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -19,7 +19,6 @@ from typing import (
     Optional,
     Union,
 )
-import weakref
 
 from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 

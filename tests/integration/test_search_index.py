@@ -1,4 +1,5 @@
 import warnings
+
 import pytest
 
 from redisvl.exceptions import RedisSearchError
