@@ -304,7 +304,6 @@ class SearchIndex(BaseSearchIndex):
         name: str,
         redis_client: Optional[redis.Redis] = None,
         redis_url: Optional[str] = None,
-        required_modules: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ):
         """
@@ -316,8 +315,6 @@ class SearchIndex(BaseSearchIndex):
                 instantiated redis client.
             redis_url (Optional[str]): The URL of the Redis server to
                 connect to.
-            required_modules (Optional[List[Dict[str, Any]]]): List of required
-                Redis modules with version requirements.
 
         Raises:
             ValueError: If redis_url or redis_client is not provided.
@@ -326,11 +323,13 @@ class SearchIndex(BaseSearchIndex):
         try:
             if redis_url:
                 redis_client = RedisConnectionFactory.get_redis_connection(
-                    redis_url=redis_url, required_modules=required_modules, **kwargs
+                    redis_url=redis_url,
+                    required_modules=cls.required_modules,
+                    **kwargs,
                 )
             elif redis_client:
                 RedisConnectionFactory.validate_sync_redis(
-                    redis_client, required_modules=required_modules
+                    redis_client, required_modules=cls.required_modules
                 )
         except RedisModuleVersionError as e:
             raise RedisModuleVersionError(
