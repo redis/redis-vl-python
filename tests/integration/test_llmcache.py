@@ -965,6 +965,7 @@ def test_deprecated_dtype_argument(redis_url):
         )
 
 
+<<<<<<< HEAD
 @pytest.mark.asyncio
 async def test_cache_async_context_manager(redis_url):
     async with SemanticCache(
@@ -1002,3 +1003,25 @@ def test_cache_disconnect(redis_url):
     cache.disconnect()
     # We keep this index object around because it isn't lazily created
     assert cache._index.client is None
+=======
+def test_optimize_threshold_cache(redis_url):
+    null_threshold = 0.0
+    cache = SemanticCache(
+        name="test_optimize_threshold_cache",
+        redis_url=redis_url,
+        distance_threshold=null_threshold,
+    )
+
+    paris_key = cache.store(prompt="what is the capital of france?", response="paris")
+    rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
+
+    test_data = [
+        {"query": "what actually is the capital of france?", "query_match": paris_key},
+        {"query": "what actually is the capital of morocco?", "query_match": rabat_key},
+        {"query": "What is the state bird of virginia?", "query_match": ""},
+    ]
+
+    cache.optimize_threshold(test_data)
+
+    assert cache.distance_threshold > null_threshold
+>>>>>>> dd3247c (first working tests)

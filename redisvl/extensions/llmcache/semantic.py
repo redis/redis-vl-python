@@ -2,6 +2,7 @@ import asyncio
 import weakref
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from redis import Redis
 
 from redisvl.extensions.constants import (
@@ -20,9 +21,16 @@ from redisvl.extensions.llmcache.schema import (
     CacheHit,
     SemanticCacheIndexSchema,
 )
+from redisvl.extensions.threshold_optimizer.metrics import (
+    calc_cosine_distance,
+    calc_f1_metrics_per_threshold,
+    get_best_threshold,
+)
+from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
+from redisvl.query.query import BaseQuery
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
@@ -739,3 +747,34 @@ class SemanticCache(BaseLLMCache):
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.adisconnect()
+
+    def optimize_threshold(self, test_data: List[dict]):
+        test_data = [TestData(**data) for data in test_data]
+        _query = BaseQuery().return_field("prompt_vector", decode_field=False)
+
+        cached_records = self.index.query(
+            _query
+        )  # TODO: add list of keys as input option
+        test_data_embeddings = self._vectorizer.embed_many(
+            [test.query_match for test in test_data]
+        )
+
+        distances = np.empty(
+            shape=(len(cached_records), len(test_data_embeddings)),
+            dtype=np.float32,
+            order="C",
+        )
+
+        for i, record in enumerate(cached_records):
+            for j, test_vector in enumerate(test_data_embeddings):
+                distances[i, j] = calc_cosine_distance(
+                    record["prompt_vector"], test_vector
+                )
+
+        metrics = calc_f1_metrics_per_threshold(distances, test_data, cached_records)
+
+        best_threshold = get_best_threshold(metrics)
+
+        print(f"Best threshold: {best_threshold}")
+
+        self.set_threshold(best_threshold)

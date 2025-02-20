@@ -18,6 +18,7 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
     SemanticRouterIndexSchema,
 )
+from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
@@ -30,11 +31,6 @@ from redisvl.utils.vectorize import (
 )
 
 logger = get_logger(__name__)
-
-
-class TestData(BaseModel):
-    query: str
-    query_match: str | None
 
 
 class SemanticRouter(BaseModel):

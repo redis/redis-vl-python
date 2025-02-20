@@ -10,7 +10,6 @@
 
 
 # class ThresholdOptimizer:
-#     def update_route_thresholds
 #     def optimize_router_thresholds(
 #         self,
 #         router: SemanticRouter,
