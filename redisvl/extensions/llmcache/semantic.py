@@ -186,13 +186,14 @@ class SemanticCache(BaseLLMCache):
     async def _get_async_index(self) -> AsyncSearchIndex:
         """Lazily construct the async search index class."""
         # Construct async index if necessary
-        if not self._aindex:
+        async_client = None
+        if self._aindex is None:
             client = self.redis_kwargs.get("redis_client")
-            if client and isinstance(client, Redis):
-                client = RedisConnectionFactory.sync_to_async_redis(client)
+            if isinstance(client, Redis):
+                async_client = RedisConnectionFactory.sync_to_async_redis(client)
             self._aindex = AsyncSearchIndex(
                 schema=self._index.schema,
-                redis_client=client,
+                redis_client=async_client,
                 redis_url=self.redis_kwargs["redis_url"],
                 **self.redis_kwargs["connection_kwargs"],
             )
