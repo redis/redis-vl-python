@@ -155,7 +155,6 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            print("???")
             warn(warning_message, category=DeprecationWarning, stacklevel=3)
             return func(*args, **kwargs)
 

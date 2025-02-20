@@ -289,7 +289,7 @@ class SearchIndex(BaseSearchIndex):
     def disconnect(self):
         """Disconnect from the Redis database."""
         if self._owns_redis_client is False:
-            print("Index does not own client, not disconnecting")
+            logger.info("Index does not own client, not disconnecting")
             return
         if self.__redis_client:
             self.__redis_client.close()
