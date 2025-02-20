@@ -1,4 +1,5 @@
 import asyncio
+import weakref
 from typing import Any, Dict, List, Optional
 
 from redis import Redis
@@ -22,13 +23,18 @@ from redisvl.extensions.llmcache.schema import (
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
+from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
     current_timestamp,
     deprecated_argument,
     serialize,
+    sync_wrapper,
     validate_vector_dims,
 )
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+
+logger = get_logger("[RedisVL]")
 
 
 class SemanticCache(BaseLLMCache):
@@ -128,13 +134,18 @@ class SemanticCache(BaseLLMCache):
             name, prefix, vectorizer.dims, vectorizer.dtype  # type: ignore
         )
         schema = self._modify_schema(schema, filterable_fields)
-        self._index = SearchIndex(schema=schema)
 
-        # Handle redis connection
         if redis_client:
-            self._index.set_client(redis_client)
-        elif redis_url:
-            self._index.connect(redis_url=redis_url, **connection_kwargs)
+            self._owns_redis_client = False
+        else:
+            self._owns_redis_client = True
+
+        self._index = SearchIndex(
+            schema=schema,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            **connection_kwargs,
+        )
 
         # Check for existing cache index
         if not overwrite and self._index.exists():
@@ -174,17 +185,18 @@ class SemanticCache(BaseLLMCache):
 
     async def _get_async_index(self) -> AsyncSearchIndex:
         """Lazily construct the async search index class."""
-        if not self._aindex:
-            # Construct async index if necessary
-            self._aindex = AsyncSearchIndex(schema=self._index.schema)
-            # Connect Redis async client
-            redis_client = self.redis_kwargs["redis_client"]
-            redis_url = self.redis_kwargs["redis_url"]
-            connection_kwargs = self.redis_kwargs["connection_kwargs"]
-            if redis_client is not None:
-                await self._aindex.set_client(redis_client)
-            elif redis_url:
-                await self._aindex.connect(redis_url, **connection_kwargs)  # type: ignore
+        # Construct async index if necessary
+        async_client = None
+        if self._aindex is None:
+            client = self.redis_kwargs.get("redis_client")
+            if isinstance(client, Redis):
+                async_client = RedisConnectionFactory.sync_to_async_redis(client)
+            self._aindex = AsyncSearchIndex(
+                schema=self._index.schema,
+                redis_client=async_client,
+                redis_url=self.redis_kwargs["redis_url"],
+                **self.redis_kwargs["connection_kwargs"],
+            )
         return self._aindex
 
     @property
@@ -284,13 +296,13 @@ class SemanticCache(BaseLLMCache):
     def _refresh_ttl(self, key: str) -> None:
         """Refresh the time-to-live for the specified key."""
         if self._ttl:
-            self._index.client.expire(key, self._ttl)  # type: ignore
+            self._index.expire_keys(key, self._ttl)
 
     async def _async_refresh_ttl(self, key: str) -> None:
         """Async refresh the time-to-live for the specified key."""
         aindex = await self._get_async_index()
         if self._ttl:
-            await aindex.client.expire(key, self._ttl)  # type: ignore
+            await aindex.expire_keys(key, self._ttl)
 
     def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
@@ -311,7 +323,9 @@ class SemanticCache(BaseLLMCache):
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it
         doesn't match the search index vector dimensions."""
-        schema_vector_dims = self._index.schema.fields[CACHE_VECTOR_FIELD_NAME].attrs.dims  # type: ignore
+        schema_vector_dims = self._index.schema.fields[
+            CACHE_VECTOR_FIELD_NAME
+        ].attrs.dims  # type: ignore
         validate_vector_dims(len(vector), schema_vector_dims)
 
     def check(
@@ -386,7 +400,8 @@ class SemanticCache(BaseLLMCache):
         # Search the cache!
         cache_search_results = self._index.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results, return_fields  # type: ignore
+            cache_search_results,
+            return_fields,  # type: ignore
         )
         # Extend TTL on keys
         for key in redis_keys:
@@ -467,7 +482,8 @@ class SemanticCache(BaseLLMCache):
         # Search the cache!
         cache_search_results = await aindex.query(query)
         redis_keys, cache_hits = self._process_cache_results(
-            cache_search_results, return_fields  # type: ignore
+            cache_search_results,
+            return_fields,  # type: ignore
         )
         # Extend TTL on keys
         await asyncio.gather(*[self._async_refresh_ttl(key) for key in redis_keys])
@@ -640,7 +656,6 @@ class SemanticCache(BaseLLMCache):
         """
         if kwargs:
             for k, v in kwargs.items():
-
                 # Make sure the item is in the index schema
                 if k not in set(self._index.schema.field_names + [METADATA_FIELD_NAME]):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
@@ -683,7 +698,6 @@ class SemanticCache(BaseLLMCache):
 
         if kwargs:
             for k, v in kwargs.items():
-
                 # Make sure the item is in the index schema
                 if k not in set(self._index.schema.field_names + [METADATA_FIELD_NAME]):
                     raise ValueError(f"{k} is not a valid field within the cache entry")
@@ -702,3 +716,26 @@ class SemanticCache(BaseLLMCache):
             await aindex.load(data=[kwargs], keys=[key])
 
         await self._async_refresh_ttl(key)
+
+    def disconnect(self):
+        if self._owns_redis_client is False:
+            return
+        if self._index:
+            self._index.disconnect()
+        if self._aindex:
+            self._aindex.disconnect_sync()
+
+    async def adisconnect(self):
+        if not self._owns_redis_client:
+            return
+        if self._index:
+            self._index.disconnect()
+        if self._aindex:
+            await self._aindex.disconnect()
+            self._aindex = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.adisconnect()

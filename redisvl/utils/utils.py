@@ -1,11 +1,13 @@
+import asyncio
 import inspect
 import json
+import logging
 import warnings
 from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Coroutine, Dict, Optional
 from warnings import warn
 
 from pydantic import BaseModel
@@ -13,7 +15,7 @@ from ulid import ULID
 
 
 def create_ulid() -> str:
-    """Generate a unique indentifier to group related Redis documents."""
+    """Generate a unique identifier to group related Redis documents."""
     return str(ULID())
 
 
@@ -132,3 +134,60 @@ def assert_no_warnings():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         yield
+
+
+def deprecated_function(name: Optional[str] = None, replacement: Optional[str] = None):
+    """
+    Decorator to mark a function as deprecated.
+
+    When the wrapped function is called, the decorator will log a deprecation
+    warning.
+    """
+
+    def decorator(func):
+        fn_name = name or func.__name__
+        warning_message = (
+            f"Function {fn_name} is deprecated and will be "
+            "removed in the next major release. "
+        )
+        if replacement:
+            warning_message += replacement
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            warn(warning_message, category=DeprecationWarning, stacklevel=3)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], None]:
+    def wrapper():
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        try:
+            if loop is None or not loop.is_running():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            task = loop.create_task(fn())
+            loop.run_until_complete(task)
+        except RuntimeError:
+            # This could happen if an object stored an event loop and now
+            # that event loop is closed. There's nothing we can do other than
+            # advise the user to use explicit cleanup methods.
+            #
+            # Uses logging module instead of get_logger() to avoid I/O errors
+            # if the wrapped function is called as a finalizer.
+            logging.info(
+                f"Could not run the async function {fn.__name__} because the event loop is closed. "
+                "This usually means the object was not properly cleaned up. Please use explicit "
+                "cleanup methods (e.g., disconnect(), close()) or use the object as an async "
+                "context manager.",
+            )
+            return
+
+    return wrapper

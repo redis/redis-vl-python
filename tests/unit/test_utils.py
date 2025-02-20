@@ -1,4 +1,3 @@
-import warnings
 from functools import wraps
 
 import numpy as np
@@ -10,7 +9,11 @@ from redisvl.redis.utils import (
     convert_bytes,
     make_dict,
 )
-from redisvl.utils.utils import assert_no_warnings, deprecated_argument
+from redisvl.utils.utils import (
+    assert_no_warnings,
+    deprecated_argument,
+    deprecated_function,
+)
 
 
 def test_even_number_of_elements():
@@ -420,3 +423,21 @@ class TestDeprecatedArgument:
 
         with assert_no_warnings():
             await test_func()
+
+
+class TestDeprecatedFunction:
+    def test_deprecated_function_warning(self):
+        @deprecated_function("new_func", "Use new_func2")
+        def old_func():
+            pass
+
+        with pytest.warns(DeprecationWarning):
+            old_func()
+
+    def test_deprecated_function_warning_with_name(self):
+        @deprecated_function("new_func", "Use new_func2")
+        def old_func():
+            pass
+
+        with pytest.warns(DeprecationWarning):
+            old_func()

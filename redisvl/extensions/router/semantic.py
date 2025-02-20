@@ -110,12 +110,12 @@ class SemanticRouter(BaseModel):
         schema = SemanticRouterIndexSchema.from_params(
             self.name, self.vectorizer.dims, self.vectorizer.dtype  # type: ignore
         )
-        self._index = SearchIndex(schema=schema)
-
-        if redis_client:
-            self._index.set_client(redis_client)
-        elif redis_url:
-            self._index.connect(redis_url=redis_url, **connection_kwargs)
+        self._index = SearchIndex(
+            schema=schema,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            **connection_kwargs,
+        )
 
         # Check for existing router index
         existed = self._index.exists()

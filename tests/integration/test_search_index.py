@@ -1,9 +1,10 @@
+import warnings
+
 import pytest
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
-from redisvl.redis.connection import RedisConnectionFactory, validate_modules
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 
@@ -27,8 +28,8 @@ def index_schema():
 
 
 @pytest.fixture
-def index(index_schema):
-    return SearchIndex(schema=index_schema)
+def index(index_schema, client):
+    return SearchIndex(schema=index_schema, redis_client=client)
 
 
 @pytest.fixture
@@ -45,7 +46,7 @@ def test_search_index_properties(index_schema, index):
     assert index.schema == index_schema
     # custom settings
     assert index.name == index_schema.index.name == "my_index"
-    assert index.client == None
+
     # default settings
     assert index.prefix == index_schema.index.prefix == "rvl"
     assert index.key_separator == index_schema.index.key_separator == ":"
@@ -73,7 +74,6 @@ def test_search_index_from_dict(index_from_dict):
 
 
 def test_search_index_from_existing(client, index):
-    index.set_client(client)
     index.create(overwrite=True)
 
     try:
@@ -134,10 +134,14 @@ def test_search_index_no_prefix(index_schema):
 
 def test_search_index_redis_url(redis_url, index_schema):
     index = SearchIndex(schema=index_schema, redis_url=redis_url)
+    # Client is not set until a command runs
+    assert index.client is None
+
+    index.create(overwrite=True)
     assert index.client
 
     index.disconnect()
-    assert index.client == None
+    assert index.client is None
 
 
 def test_search_index_client(client, index_schema):
@@ -145,34 +149,36 @@ def test_search_index_client(client, index_schema):
     assert index.client == client
 
 
-def test_search_index_set_client(async_client, client, index):
-    index.set_client(client)
-    assert index.client == client
-    # should not be able to set the sync client here
-    with pytest.raises(TypeError):
-        index.set_client(async_client)
+def test_search_index_set_client(async_client, redis_url, index_schema):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
 
-    index.disconnect()
-    assert index.client == None
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        index.create(overwrite=True, drop=True)
+        assert index.client
+        # should not be able to set an async client here
+        with pytest.raises(TypeError):
+            index.set_client(async_client)
+        assert index.client is not async_client
+
+        index.disconnect()
+        assert index.client is None
 
 
-def test_search_index_create(client, index):
-    index.set_client(client)
+def test_search_index_create(index):
     index.create(overwrite=True, drop=True)
     assert index.exists()
     assert index.name in convert_bytes(index.client.execute_command("FT._LIST"))
 
 
-def test_search_index_delete(client, index):
-    index.set_client(client)
+def test_search_index_delete(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
     assert not index.exists()
     assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
 
 
-def test_search_index_clear(client, index):
-    index.set_client(client)
+def test_search_index_clear(index):
     index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
     index.load(data, id_field="id")
@@ -182,8 +188,7 @@ def test_search_index_clear(client, index):
     assert index.exists()
 
 
-def test_search_index_drop_key(client, index):
-    index.set_client(client)
+def test_search_index_drop_key(index):
     index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
     keys = index.load(data, id_field="id")
@@ -195,8 +200,7 @@ def test_search_index_drop_key(client, index):
     assert index.fetch(keys[1]) is not None  # still have all other entries
 
 
-def test_search_index_drop_keys(client, index):
-    index.set_client(client)
+def test_search_index_drop_keys(index):
     index.create(overwrite=True, drop=True)
     data = [
         {"id": "1", "test": "foo"},
@@ -215,22 +219,20 @@ def test_search_index_drop_keys(client, index):
     assert index.exists()
 
 
-def test_search_index_load_and_fetch(client, index):
-    index.set_client(client)
+def test_search_index_load_and_fetch(index):
     index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
     index.load(data, id_field="id")
 
     res = index.fetch("1")
-    assert res["test"] == convert_bytes(client.hget("rvl:1", "test")) == "foo"
+    assert res["test"] == convert_bytes(index.client.hget("rvl:1", "test")) == "foo"
 
     index.delete(drop=True)
     assert not index.exists()
     assert not index.fetch("1")
 
 
-def test_search_index_load_preprocess(client, index):
-    index.set_client(client)
+def test_search_index_load_preprocess(index):
     index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
 
@@ -240,7 +242,7 @@ def test_search_index_load_preprocess(client, index):
 
     index.load(data, id_field="id", preprocess=preprocess)
     res = index.fetch("1")
-    assert res["test"] == convert_bytes(client.hget("rvl:1", "test")) == "bar"
+    assert res["test"] == convert_bytes(index.client.hget("rvl:1", "test")) == "bar"
 
     def bad_preprocess(record):
         return 1
@@ -249,8 +251,7 @@ def test_search_index_load_preprocess(client, index):
         index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
-def test_no_id_field(client, index):
-    index.set_client(client)
+def test_no_id_field(index):
     index.create(overwrite=True, drop=True)
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
@@ -259,16 +260,14 @@ def test_no_id_field(client, index):
         index.load(bad_data, id_field="key")
 
 
-def test_check_index_exists_before_delete(client, index):
-    index.set_client(client)
+def test_check_index_exists_before_delete(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
     with pytest.raises(RedisSearchError):
         index.delete()
 
 
-def test_check_index_exists_before_search(client, index):
-    index.set_client(client)
+def test_check_index_exists_before_search(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
 
@@ -282,8 +281,7 @@ def test_check_index_exists_before_search(client, index):
         index.search(query.query, query_params=query.params)
 
 
-def test_check_index_exists_before_info(client, index):
-    index.set_client(client)
+def test_check_index_exists_before_info(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
 
@@ -293,4 +291,57 @@ def test_check_index_exists_before_info(client, index):
 
 def test_index_needs_valid_schema():
     with pytest.raises(ValueError, match=r"Must provide a valid IndexSchema object"):
-        index = SearchIndex(schema="Not A Valid Schema")
+        SearchIndex(schema="Not A Valid Schema")  # type: ignore
+
+
+def test_search_index_that_does_not_own_client_context_manager(index):
+    with index:
+        index.create(overwrite=True, drop=True)
+        assert index.client
+        client = index.client
+    # Client should not have changed outside of the context manager
+    assert index.client == client
+
+
+def test_search_index_that_does_not_own_client_context_manager_with_exception(index):
+    with pytest.raises(ValueError):
+        with index:
+            index.create(overwrite=True, drop=True)
+            client = index.client
+            raise ValueError("test")
+    # Client should not have changed outside of the context manager
+    assert index.client == client
+
+
+def test_search_index_that_does_not_own_client_disconnect(index):
+    index.create(overwrite=True, drop=True)
+    client = index.client
+    index.disconnect()
+    # Client should not have changed after disconnecting
+    assert index.client == client
+
+
+def test_search_index_that_owns_client_context_manager(index_schema, redis_url):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
+    with index:
+        index.create(overwrite=True, drop=True)
+        assert index.client
+    assert index.client is None
+
+
+def test_search_index_that_owns_client_context_manager_with_exception(
+    index_schema, redis_url
+):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
+    with pytest.raises(ValueError):
+        with index:
+            index.create(overwrite=True, drop=True)
+            raise ValueError("test")
+    assert index.client is None
+
+
+def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
+    index.create(overwrite=True, drop=True)
+    index.disconnect()
+    assert index.client is None

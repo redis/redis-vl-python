@@ -92,11 +92,9 @@ def index(sample_data, redis_url):
                     },
                 },
             ],
-        }
+        },
+        redis_url=redis_url,
     )
-
-    # connect to local redis instance
-    index.connect(redis_url)
 
     # create the index (no data yet)
     index.create(overwrite=True)

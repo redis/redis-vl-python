@@ -1,4 +1,8 @@
+import warnings
+
 import pytest
+from redis import Redis as SyncRedis
+from redis.asyncio import Redis
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
@@ -15,8 +19,8 @@ def index_schema():
 
 
 @pytest.fixture
-def async_index(index_schema):
-    return AsyncSearchIndex(schema=index_schema)
+def async_index(index_schema, async_client):
+    return AsyncSearchIndex(schema=index_schema, redis_client=async_client)
 
 
 @pytest.fixture
@@ -33,7 +37,7 @@ def test_search_index_properties(index_schema, async_index):
     assert async_index.schema == index_schema
     # custom settings
     assert async_index.name == index_schema.index.name == "my_index"
-    assert async_index.client == None
+    assert async_index.client
     # default settings
     assert async_index.prefix == index_schema.index.prefix == "rvl"
     assert async_index.key_separator == index_schema.index.key_separator == ":"
@@ -45,7 +49,7 @@ def test_search_index_properties(index_schema, async_index):
 
 def test_search_index_from_yaml(async_index_from_yaml):
     assert async_index_from_yaml.name == "json-test"
-    assert async_index_from_yaml.client == None
+    assert async_index_from_yaml.client is None
     assert async_index_from_yaml.prefix == "json"
     assert async_index_from_yaml.key_separator == ":"
     assert async_index_from_yaml.storage_type == StorageType.JSON
@@ -54,7 +58,7 @@ def test_search_index_from_yaml(async_index_from_yaml):
 
 def test_search_index_from_dict(async_index_from_dict):
     assert async_index_from_dict.name == "my_index"
-    assert async_index_from_dict.client == None
+    assert async_index_from_dict.client is None
     assert async_index_from_dict.prefix == "rvl"
     assert async_index_from_dict.key_separator == ":"
     assert async_index_from_dict.storage_type == StorageType.HASH
@@ -64,7 +68,6 @@ def test_search_index_from_dict(async_index_from_dict):
 
 @pytest.mark.asyncio
 async def test_search_index_from_existing(async_client, async_index):
-    await async_index.set_client(async_client)
     await async_index.create(overwrite=True)
 
     try:
@@ -107,9 +110,7 @@ async def test_search_index_from_existing_complex(async_client):
             },
         ],
     }
-    async_index = await AsyncSearchIndex.from_dict(schema).set_client(
-        redis_client=async_client
-    )
+    async_index = AsyncSearchIndex.from_dict(schema, redis_client=async_client)
     await async_index.create(overwrite=True)
 
     try:
@@ -132,36 +133,44 @@ def test_search_index_no_prefix(index_schema):
 
 @pytest.mark.asyncio
 async def test_search_index_redis_url(redis_url, index_schema):
-    async_index = await AsyncSearchIndex(schema=index_schema).connect(
-        redis_url=redis_url
-    )
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    # Client is None until a command is run
+    assert async_index.client is None
+
+    # Lazily create the client by running a command
+    await async_index.create(overwrite=True, drop=True)
     assert async_index.client
 
-    async_index.disconnect()
-    assert async_index.client == None
+    await async_index.disconnect()
+    assert async_index.client is None
 
 
 @pytest.mark.asyncio
 async def test_search_index_client(async_client, index_schema):
-    async_index = await AsyncSearchIndex(schema=index_schema).set_client(
-        redis_client=async_client
-    )
+    async_index = AsyncSearchIndex(schema=index_schema, redis_client=async_client)
     assert async_index.client == async_client
 
 
 @pytest.mark.asyncio
-async def test_search_index_set_client(async_client, client, async_index):
-    await async_index.set_client(async_client)
-    assert async_index.client == async_client
-    await async_index.set_client(client)
+async def test_search_index_set_client(client, redis_url, index_schema):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    # Ignore deprecation warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        await async_index.create(overwrite=True, drop=True)
+        assert isinstance(async_index.client, Redis)
 
-    async_index.disconnect()
-    assert async_index.client == None
+        # Tests deprecated sync -> async conversion behavior
+        assert isinstance(client, SyncRedis)
+        await async_index.set_client(client)
+        assert isinstance(async_index.client, Redis)
+
+    await async_index.disconnect()
+    assert async_index.client is None
 
 
 @pytest.mark.asyncio
-async def test_search_index_create(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_create(async_index):
     await async_index.create(overwrite=True, drop=True)
     assert await async_index.exists()
     assert async_index.name in convert_bytes(
@@ -170,8 +179,7 @@ async def test_search_index_create(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_delete(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_delete(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
     assert not await async_index.exists()
@@ -181,8 +189,7 @@ async def test_search_index_delete(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_clear(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_clear(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
     await async_index.load(data, id_field="id")
@@ -193,8 +200,7 @@ async def test_search_index_clear(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_drop_key(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_drop_key(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
     keys = await async_index.load(data, id_field="id")
@@ -206,8 +212,7 @@ async def test_search_index_drop_key(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_drop_keys(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_drop_keys(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [
         {"id": "1", "test": "foo"},
@@ -226,8 +231,7 @@ async def test_search_index_drop_keys(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_load_and_fetch(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_load_and_fetch(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
     await async_index.load(data, id_field="id")
@@ -245,8 +249,7 @@ async def test_search_index_load_and_fetch(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_load_preprocess(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_load_preprocess(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
 
@@ -270,15 +273,13 @@ async def test_search_index_load_preprocess(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_load_empty(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_search_index_load_empty(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.load([])
 
 
 @pytest.mark.asyncio
-async def test_no_id_field(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_no_id_field(async_index):
     await async_index.create(overwrite=True, drop=True)
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
@@ -288,8 +289,7 @@ async def test_no_id_field(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_check_index_exists_before_delete(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_check_index_exists_before_delete(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
     with pytest.raises(RedisSearchError):
@@ -297,8 +297,7 @@ async def test_check_index_exists_before_delete(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_check_index_exists_before_search(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_check_index_exists_before_search(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
 
@@ -313,10 +312,87 @@ async def test_check_index_exists_before_search(async_client, async_index):
 
 
 @pytest.mark.asyncio
-async def test_check_index_exists_before_info(async_client, async_index):
-    await async_index.set_client(async_client)
+async def test_check_index_exists_before_info(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
 
     with pytest.raises(RedisSearchError):
         await async_index.info()
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_context_manager(async_index):
+    async with async_index:
+        await async_index.create(overwrite=True, drop=True)
+        assert async_index._redis_client
+        client = async_index._redis_client
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_context_manager_with_exception(
+    async_index,
+):
+    try:
+        async with async_index:
+            await async_index.create(overwrite=True, drop=True)
+            client = async_index._redis_client
+            raise ValueError("test")
+    except ValueError:
+        pass
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_disconnect(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    client = async_index._redis_client
+    await async_index.disconnect()
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_does_not_own_client_disconnect_sync(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    client = async_index._redis_client
+    async_index.disconnect_sync()
+    assert async_index._redis_client == client
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_owns_client_context_manager(index_schema, redis_url):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    async with async_index:
+        await async_index.create(overwrite=True, drop=True)
+        assert async_index._redis_client
+    assert async_index._redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_owns_client_context_manager_with_exception(
+    index_schema, redis_url
+):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    try:
+        async with async_index:
+            await async_index.create(overwrite=True, drop=True)
+            raise ValueError("test")
+    except ValueError:
+        pass
+    assert async_index._redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    await async_index.create(overwrite=True, drop=True)
+    await async_index.disconnect()
+    assert async_index._redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis_url):
+    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
+    await async_index.create(overwrite=True, drop=True)
+    await async_index.disconnect()
+    assert async_index._redis_client is None

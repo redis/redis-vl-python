@@ -121,19 +121,18 @@ Choose from multiple Redis deployment options:
     })
     ```
 
-2. [Create a SearchIndex](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#create-a-searchindex) class with an input schema and client connection in order to perform admin and search operations on your index in Redis:
+2. [Create a SearchIndex](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#create-a-searchindex) class with an input schema to perform admin and search operations on your index in Redis:
     ```python
     from redis import Redis
     from redisvl.index import SearchIndex
 
-    # Establish Redis connection and define index
-    client = Redis.from_url("redis://localhost:6379")
-    index = SearchIndex(schema, client)
+    # Define the index
+    index = SearchIndex(schema, redis_url="redis://localhost:6379")
 
     # Create the index in Redis
     index.create()
     ```
-    > Async compliant search index class also available: [AsyncSearchIndex](https://docs.redisvl.com/en/stable/api/searchindex.html#redisvl.index.AsyncSearchIndex).
+    > An async-compatible index class also available: [AsyncSearchIndex](https://docs.redisvl.com/en/stable/api/searchindex.html#redisvl.index.AsyncSearchIndex).
 
 3. [Load](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#load-data-to-searchindex)
 and [fetch](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html#fetch-an-object-from-redis) data to/from your Redis instance:
@@ -346,7 +345,7 @@ Commands:
         stats       Obtain statistics about an index
 ```
 
-> Read more about [using the CLI](https://docs.redisvl.com/en/stable/user_guide/cli.html).
+> Read more about [using the CLI](https://docs.redisvl.com/en/latest/overview/cli.html).
 
 ## 🚀 Why RedisVL?
 

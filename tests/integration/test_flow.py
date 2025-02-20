@@ -43,9 +43,7 @@ json_schema = {
 
 @pytest.mark.parametrize("schema", [hash_schema, json_schema])
 def test_simple(client, schema, sample_data):
-    index = SearchIndex.from_dict(schema)
-    # assign client (only for testing)
-    index.set_client(client)
+    index = SearchIndex.from_dict(schema, redis_client=client)
     # create the index
     index.create(overwrite=True, drop=True)
 
