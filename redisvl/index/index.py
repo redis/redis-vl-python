@@ -391,8 +391,10 @@ class SearchIndex(BaseSearchIndex):
             index.connect(redis_url="redis://localhost:6379")
 
         """
+        # TODO: Intentionally not including required modules to match existing
+        # behavior, but we need to review.
         self.__redis_client = RedisConnectionFactory.get_redis_connection(
-            redis_url=redis_url, required_modules=self.required_modules, **kwargs
+            redis_url=redis_url, **kwargs
         )
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
@@ -420,6 +422,8 @@ class SearchIndex(BaseSearchIndex):
             index.set_client(client)
 
         """
+        # TODO: Including required modules to match existing behavior, but we
+        # need to review.
         RedisConnectionFactory.validate_sync_redis(
             redis_client, required_modules=self.required_modules
         )
@@ -934,8 +938,10 @@ class AsyncSearchIndex(BaseSearchIndex):
             "connect() is deprecated; pass connection parameters in __init__",
             DeprecationWarning,
         )
+        # TODO: Intentionally not including required modules to match existing
+        # behavior, but we need to review.
         client = await RedisConnectionFactory._get_aredis_connection(
-            redis_url=redis_url, required_modules=self.required_modules, **kwargs
+            redis_url=redis_url, **kwargs
         )
         await self.set_client(client)
 
@@ -961,9 +967,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                     if self._redis_url:
                         kwargs["url"] = self._redis_url
                     self._redis_client = (
-                        await RedisConnectionFactory._get_aredis_connection(
-                            required_modules=self.required_modules, **kwargs
-                        )
+                        # TODO: Intentionally not including required modules to match existing
+                        # behavior, but we need to review.
+                        await RedisConnectionFactory._get_aredis_connection(**kwargs)
                     )
             await RedisConnectionFactory.validate_async_redis(
                 self._redis_client, self._lib_name
