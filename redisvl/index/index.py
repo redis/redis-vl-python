@@ -387,8 +387,6 @@ class SearchIndex(BaseSearchIndex):
             index.connect(redis_url="redis://localhost:6379")
 
         """
-        # TODO: Intentionally not including required modules to match existing
-        # behavior, but we need to review.
         self.__redis_client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
