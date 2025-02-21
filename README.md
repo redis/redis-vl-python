@@ -1,7 +1,8 @@
-<div align="center" style="margin-bottom: 20px;">
-    <div><img src="https://raw.githubusercontent.com/redis/redis-vl-python/main/docs/_static/Redis_Logo_Red_RGB.svg" style="max-width: 200px; margin-bottom: 20px;"></div>
+<div align="center" dir="auto">
+    <img width="300" src="https://raw.githubusercontent.com/redis/redis-vl-python/main/docs/_static/Redis_Logo_Red_RGB.svg" style="max-width: 100%" alt="Redis">
     <h1>🔥 Vector Library</h1>
 </div>
+
 
 <div align="center" style="margin-top: 20px;">
     <span style="display: block; margin-bottom: 10px;">The *AI-native* Redis Python client</span>
