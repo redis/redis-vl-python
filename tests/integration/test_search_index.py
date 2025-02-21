@@ -84,6 +84,17 @@ def test_search_index_from_existing(client, index):
     assert index2.schema == index.schema
 
 
+def test_search_index_from_existing_url(redis_url, index):
+    index.create(overwrite=True)
+
+    try:
+        index2 = SearchIndex.from_existing(index.name, redis_url=redis_url)
+    except Exception as e:
+        pytest.skip(str(e))
+
+    assert index2.schema == index.schema
+
+
 def test_search_index_from_existing_complex(client):
     schema = {
         "index": {

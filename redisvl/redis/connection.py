@@ -223,7 +223,7 @@ class RedisConnectionFactory:
 
     @staticmethod
     def get_redis_connection(
-        url: Optional[str] = None,
+        redis_url: Optional[str] = None,
         required_modules: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> Redis:
@@ -245,7 +245,7 @@ class RedisConnectionFactory:
                 variable is not set.
             RedisModuleVersionError: If required Redis modules are not installed.
         """
-        url = url or get_address_from_env()
+        url = redis_url or get_address_from_env()
         client = Redis.from_url(url, **kwargs)
 
         RedisConnectionFactory.validate_sync_redis(
