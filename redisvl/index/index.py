@@ -358,7 +358,7 @@ class SearchIndex(BaseSearchIndex):
             with self._lock:
                 if self.__redis_client is None:
                     self.__redis_client = RedisConnectionFactory.get_redis_connection(
-                        url=self._redis_url,
+                        redis_url=self._redis_url,
                         **self._connection_kwargs,
                     )
         return self.__redis_client
