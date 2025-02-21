@@ -73,7 +73,7 @@ def test_search_index_from_dict(index_from_dict):
     assert index_from_dict.key("foo").startswith(index_from_dict.prefix)
 
 
-def test_search_index_from_existing(client, index):
+def test_search_index_from_existing(index, client):
     index.create(overwrite=True)
 
     try:
@@ -174,6 +174,13 @@ def test_search_index_set_client(async_client, redis_url, index_schema):
 
         index.disconnect()
         assert index.client is None
+
+
+def test_search_index_connect(index, redis_url):
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        index.connect(redis_url=redis_url)
+    assert index.client
 
 
 def test_search_index_create(index):

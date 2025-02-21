@@ -81,6 +81,20 @@ async def test_search_index_from_existing(async_client, async_index):
 
 
 @pytest.mark.asyncio
+async def test_search_index_from_existing_url(async_index, redis_url):
+    await async_index.create(overwrite=True)
+
+    try:
+        async_index2 = await AsyncSearchIndex.from_existing(
+            async_index.name, redis_url=redis_url
+        )
+    except Exception as e:
+        pytest.skip(str(e))
+
+    assert async_index2.schema == async_index.schema
+
+
+@pytest.mark.asyncio
 async def test_search_index_from_existing_complex(async_client):
     schema = {
         "index": {
