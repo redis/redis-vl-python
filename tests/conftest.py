@@ -63,7 +63,7 @@ def client(redis_url):
     """
     A sync Redis client that uses the dynamic `redis_url`.
     """
-    conn = RedisConnectionFactory.get_redis_connection(redis_url)
+    conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
     yield conn
 
 

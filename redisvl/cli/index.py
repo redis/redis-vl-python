@@ -79,7 +79,7 @@ class Index:
             rvl index listall
         """
         redis_url = create_redis_url(args)
-        conn = RedisConnectionFactory.get_redis_connection(redis_url)
+        conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
         logger.info("Indices:")
         for i, index in enumerate(indices):
@@ -107,7 +107,7 @@ class Index:
         # connect to redis
         try:
             redis_url = create_redis_url(args)
-            conn = RedisConnectionFactory.get_redis_connection(url=redis_url)
+            conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         except ValueError:
             logger.error(
                 "Must set REDIS_URL environment variable or provide host and port"
