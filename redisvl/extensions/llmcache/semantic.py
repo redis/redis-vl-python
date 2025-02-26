@@ -24,6 +24,7 @@ from redisvl.extensions.llmcache.schema import (
 from redisvl.extensions.threshold_optimizer.metrics import (
     calc_cosine_distance,
     calc_f1_metrics_per_threshold,
+    format_qrels,
     get_best_threshold,
 )
 from redisvl.extensions.threshold_optimizer.schema import TestData
@@ -750,31 +751,18 @@ class SemanticCache(BaseLLMCache):
 
     def optimize_threshold(self, test_data: List[dict]):
         test_data = [TestData(**data) for data in test_data]
-        _query = BaseQuery().return_field("prompt_vector", decode_field=False)
 
-        cached_records = self.index.query(
-            _query
-        )  # TODO: add list of keys as input option
-        test_data_embeddings = self._vectorizer.embed_many(
-            [test.query_match for test in test_data]
-        )
+        for td in test_data:
+            vec = self._vectorizer.embed(td.query)
+            query = RangeQuery(
+                vec, vector_field_name="prompt_vector", distance_threshold=1.0
+            )
+            res = self.index.query(query)
+            td.response = res
 
-        distances = np.empty(
-            shape=(len(cached_records), len(test_data_embeddings)),
-            dtype=np.float32,
-            order="C",
-        )
-
-        for i, record in enumerate(cached_records):
-            for j, test_vector in enumerate(test_data_embeddings):
-                distances[i, j] = calc_cosine_distance(
-                    record["prompt_vector"], test_vector
-                )
-
-        metrics = calc_f1_metrics_per_threshold(distances, test_data, cached_records)
+        qrels = format_qrels(test_data)
+        metrics = calc_f1_metrics_per_threshold(qrels, test_data)
 
         best_threshold = get_best_threshold(metrics)
-
-        print(f"Best threshold: {best_threshold}")
 
         self.set_threshold(best_threshold)

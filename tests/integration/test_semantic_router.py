@@ -43,7 +43,7 @@ def semantic_router(client, routes):
     router = SemanticRouter(
         name="test-router",
         routes=routes,
-        routing_config=RoutingConfig(distance_threshold=0.7, max_k=2),
+        routing_config=RoutingConfig(max_k=2),
         redis_client=client,
         overwrite=False,
     )

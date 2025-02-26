@@ -18,6 +18,7 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
     SemanticRouterIndexSchema,
 )
+from redisvl.extensions.threshold_optimizer import metrics
 from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
@@ -599,15 +600,6 @@ class SemanticRouter(BaseModel):
             yaml_data = self.to_dict()
             yaml.dump(yaml_data, f, sort_keys=False)
 
-    def _eval_accuracy(self, test_data: List[TestData]) -> float:
-        correct = 0
-        # if init a new router for each that would be a lot of routers
-        for data in test_data:
-            route_match = self(data.query)
-            if route_match.name == data.query_match:
-                correct += 1
-        return correct / len(test_data)
-
     def _random_search(
         self, route_names: List[str], route_thresholds: dict, search_step=0.10
     ):
@@ -628,10 +620,12 @@ class SemanticRouter(BaseModel):
         }
 
     def optimize_thresholds(self, test_data: List[dict], max_iterations: int = 300):
-        test_data = [TestData(**data) for data in test_data]  # validate with pydantic
+        test_data = [TestData(**data) for data in test_data]
+
+        qrels = metrics.format_qrels(test_data)
 
         # starting condition for search
-        best_acc = self._eval_accuracy(test_data)
+        best_score = metrics.eval_router_f1(self, test_data, qrels)
         best_thresholds = self.route_thresholds
 
         for _ in range(max_iterations):
@@ -641,11 +635,11 @@ class SemanticRouter(BaseModel):
                 route_names=route_names, route_thresholds=route_thresholds
             )
             self.update_route_thresholds(thresholds)
-            acc = self._eval_accuracy(test_data)
-            print(f"Accuracy: {acc}, Best: {best_acc}, Thresholds: {thresholds}")
-            if acc > best_acc:
-                best_acc = acc
+            score = metrics.eval_router_f1(self, test_data, qrels)
+            print(f"Score: {score}, Best: {best_score}, Thresholds: {thresholds}")
+            if score > best_score:
+                best_score = score
                 best_thresholds = thresholds
-                print("Updated best accuracy")
+                print("Updated best score")
 
         self.update_route_thresholds(best_thresholds)
