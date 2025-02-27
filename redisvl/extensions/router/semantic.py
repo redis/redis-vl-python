@@ -1,8 +1,6 @@
-import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
-import numpy as np
 import redis.commands.search.reducers as reducers
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -162,7 +160,7 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
-    def update_route_thresholds(self, route_thresholds: Dict[str, float | None]):
+    def update_route_thresholds(self, route_thresholds: Dict[str, Optional[float]]):
         """Update the distance thresholds for each route.
 
         Args:
@@ -363,7 +361,7 @@ class SemanticRouter(BaseModel):
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
         aggregation_method: Optional[DistanceAggregationMethod] = None,
-        distance_threshold: float | None = None,
+        distance_threshold: Optional[float] = None,
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
 
@@ -395,7 +393,7 @@ class SemanticRouter(BaseModel):
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
         max_k: Optional[int] = None,
-        distance_threshold: float | None = None,
+        distance_threshold: Optional[float] = None,
         aggregation_method: Optional[DistanceAggregationMethod] = None,
     ) -> List[RouteMatch]:
         """Query the semantic router with a given statement or vector for multiple matches.
