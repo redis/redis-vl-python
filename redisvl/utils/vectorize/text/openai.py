@@ -218,7 +218,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = 1000,
+        batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
     ) -> Union[List[List[float]], List[bytes]]:

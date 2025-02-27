@@ -122,7 +122,7 @@ class HFTextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = 1000,
+        batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
     ) -> Union[List[List[float]], List[bytes]]:
@@ -134,7 +134,7 @@ class HFTextVectorizer(BaseVectorizer):
             preprocess (Optional[Callable], optional): Optional preprocessing
                 callable to perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. Defaults to 1000.
+                embeddings. Defaults to 10.
             as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
