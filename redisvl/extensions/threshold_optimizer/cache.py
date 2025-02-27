@@ -9,7 +9,10 @@ from redisvl.extensions.threshold_optimizer.base import (
     EvalMetric,
 )
 from redisvl.extensions.threshold_optimizer.schema import TestData
-from redisvl.extensions.threshold_optimizer.utils import NULL_RESPONSE_KEY, format_qrels
+from redisvl.extensions.threshold_optimizer.utils import (
+    NULL_RESPONSE_KEY,
+    _format_qrels,
+)
 from redisvl.query import RangeQuery
 
 
@@ -63,7 +66,7 @@ def _grid_search_opt_cache(
         res = cache.index.query(query)
         td.response = res
 
-    qrels = format_qrels(test_data)
+    qrels = _format_qrels(test_data)
 
     for threshold in thresholds:
         score = _eval_cache(test_data, threshold, qrels, eval_metric.value)

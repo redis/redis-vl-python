@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, List, TypeVar
 
-from redisvl.extensions.threshold_optimizer.utils import validate_test_dict
+from redisvl.extensions.threshold_optimizer.utils import _validate_test_dict
 
 
 class EvalMetric(Enum):
@@ -47,7 +47,7 @@ class BaseThresholdOptimizer(ABC):
             eval_fn: Function to evaluate performance
             opt_fn: Function to perform optimization
         """
-        self.test_data = validate_test_dict(test_dict)
+        self.test_data = _validate_test_dict(test_dict)
         self.optimizable = optimizable
         self.eval_metric = EvalMetric(eval_metric)
         self.opt_fn = opt_fn

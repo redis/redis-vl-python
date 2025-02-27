@@ -7,7 +7,8 @@ from redisvl.extensions.threshold_optimizer.schema import TestData
 NULL_RESPONSE_KEY = "no_match"
 
 
-def format_qrels(test_data: List[TestData]) -> Qrels:
+def _format_qrels(test_data: List[TestData]) -> Qrels:
+    """Utility function for creating qrels for evaluation with ranx"""
     qrels_dict = {}
 
     for td in test_data:
@@ -20,5 +21,6 @@ def format_qrels(test_data: List[TestData]) -> Qrels:
     return Qrels(qrels_dict)
 
 
-def validate_test_dict(test_dict: List[dict]) -> List[TestData]:
+def _validate_test_dict(test_dict: List[dict]) -> List[TestData]:
+    """Convert/validate test_dict for use in optimizer"""
     return [TestData(**d) for d in test_dict]

@@ -10,7 +10,10 @@ from redisvl.extensions.threshold_optimizer.base import (
     EvalMetric,
 )
 from redisvl.extensions.threshold_optimizer.schema import TestData
-from redisvl.extensions.threshold_optimizer.utils import NULL_RESPONSE_KEY, format_qrels
+from redisvl.extensions.threshold_optimizer.utils import (
+    NULL_RESPONSE_KEY,
+    _format_qrels,
+)
 
 
 def _generate_run_router(test_data: List[TestData], router: SemanticRouter) -> Run:
@@ -98,5 +101,5 @@ class RouterThresholdOptimizer(BaseThresholdOptimizer):
 
     def optimize(self, **kwargs: Any):
         """Optimize thresholds using the provided optimization function for router case."""
-        qrels = format_qrels(self.test_data)
+        qrels = _format_qrels(self.test_data)
         self.opt_fn(self.optimizable, self.test_data, qrels, self.eval_metric, **kwargs)
