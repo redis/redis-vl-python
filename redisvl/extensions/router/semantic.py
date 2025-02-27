@@ -18,8 +18,6 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
     SemanticRouterIndexSchema,
 )
-from redisvl.extensions.threshold_optimizer import metrics
-from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
@@ -164,7 +162,7 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
-    def update_route_thresholds(self, route_thresholds: Dict[str, float]):
+    def update_route_thresholds(self, route_thresholds: Dict[str, float | None]):
         """Update the distance thresholds for each route.
 
         Args:
@@ -172,9 +170,7 @@ class SemanticRouter(BaseModel):
         """
         for route in self.routes:
             if route.name in route_thresholds:
-                route.distance_threshold = route_thresholds[route.name]
-
-        # print(f"{[(r.name, r.distance_threshold) for r in self.routes]}")
+                route.distance_threshold = route_thresholds[route.name]  # type: ignore
 
     def _route_ref_key(self, route_name: str, reference: str) -> str:
         """Generate the route reference key."""
@@ -278,8 +274,8 @@ class SemanticRouter(BaseModel):
         vector: List[float],
         aggregation_method: DistanceAggregationMethod,
         max_k: int = 1,
-    ) -> RouteMatch:
-        """Classify to a single route using a vector."""
+    ) -> List[RouteMatch]:
+        """Get route response from vector db"""
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
         # therefore you might take the max_threshold and further refine from there.
@@ -367,7 +363,7 @@ class SemanticRouter(BaseModel):
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
         aggregation_method: Optional[DistanceAggregationMethod] = None,
-        distance_threshold: Optional[float] = None,
+        distance_threshold: float | None = None,
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
 
@@ -399,7 +395,7 @@ class SemanticRouter(BaseModel):
         statement: Optional[str] = None,
         vector: Optional[List[float]] = None,
         max_k: Optional[int] = None,
-        distance_threshold: Optional[float] = None,
+        distance_threshold: float | None = None,
         aggregation_method: Optional[DistanceAggregationMethod] = None,
     ) -> List[RouteMatch]:
         """Query the semantic router with a given statement or vector for multiple matches.
@@ -599,47 +595,3 @@ class SemanticRouter(BaseModel):
         with open(fp, "w") as f:
             yaml_data = self.to_dict()
             yaml.dump(yaml_data, f, sort_keys=False)
-
-    def _random_search(
-        self, route_names: List[str], route_thresholds: dict, search_step=0.10
-    ):
-
-        score_threshold_values = []
-        for route in route_names:
-            score_threshold_values.append(
-                np.linspace(
-                    start=max(route_thresholds[route] - search_step, 0),
-                    stop=route_thresholds[route] + search_step,
-                    num=100,
-                )
-            )
-
-        return {
-            route: random.choice(score_threshold_values[i])
-            for i, route in enumerate(route_names)
-        }
-
-    def optimize_thresholds(self, test_data: List[dict], max_iterations: int = 300):
-        test_data = [TestData(**data) for data in test_data]
-
-        qrels = metrics.format_qrels(test_data)
-
-        # starting condition for search
-        best_score = metrics.eval_router_f1(self, test_data, qrels)
-        best_thresholds = self.route_thresholds
-
-        for _ in range(max_iterations):
-            route_names = self.route_names
-            route_thresholds = self.route_thresholds
-            thresholds = self._random_search(
-                route_names=route_names, route_thresholds=route_thresholds
-            )
-            self.update_route_thresholds(thresholds)
-            score = metrics.eval_router_f1(self, test_data, qrels)
-            print(f"Score: {score}, Best: {best_score}, Thresholds: {thresholds}")
-            if score > best_score:
-                best_score = score
-                best_thresholds = thresholds
-                print("Updated best score")
-
-        self.update_route_thresholds(best_thresholds)

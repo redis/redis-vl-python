@@ -51,58 +51,6 @@ def semantic_router(client, routes):
     router.delete()
 
 
-@pytest.fixture
-def test_data():
-    return [
-        {
-            "query": "hey",
-            "query_match": "greeting",
-        },
-        {
-            "query": "bye bye",
-            "query_match": "farewell",
-        },
-    ]
-
-
-@pytest.fixture
-def test_data_optimization():
-    return [
-        # Greetings
-        {"query": "hello", "query_match": "greeting"},  # English
-        {"query": "hola", "query_match": "greeting"},  # Spanish
-        {"query": "bonjour", "query_match": "greeting"},  # French
-        {"query": "ciao", "query_match": "greeting"},  # Italian
-        {"query": "hallo", "query_match": "greeting"},  # German
-        {"query": "こんにちは", "query_match": "greeting"},  # Japanese
-        {"query": "안녕하세요", "query_match": "greeting"},  # Korean
-        {"query": "你好", "query_match": "greeting"},  # Chinese
-        {"query": "مرحبا", "query_match": "greeting"},  # Arabic
-        {"query": "привет", "query_match": "greeting"},  # Russian
-        {"query": "γεια σας", "query_match": "greeting"},  # Greek
-        {"query": "namaste", "query_match": "greeting"},  # Hindi
-        {"query": "olá", "query_match": "greeting"},  # Portuguese
-        {"query": "salut", "query_match": "greeting"},  # French informal
-        {"query": "cześć", "query_match": "greeting"},  # Polish
-        # Farewells
-        {"query": "goodbye", "query_match": "farewell"},  # English
-        {"query": "adiós", "query_match": "farewell"},  # Spanish
-        {"query": "au revoir", "query_match": "farewell"},  # French
-        {"query": "arrivederci", "query_match": "farewell"},  # Italian
-        {"query": "auf wiedersehen", "query_match": "farewell"},  # German
-        {"query": "さようなら", "query_match": "farewell"},  # Japanese
-        {"query": "안녕히 가세요", "query_match": "farewell"},  # Korean
-        {"query": "再见", "query_match": "farewell"},  # Chinese
-        {"query": "مع السلامة", "query_match": "farewell"},  # Arabic
-        {"query": "до свидания", "query_match": "farewell"},  # Russian
-        {"query": "αντίο", "query_match": "farewell"},  # Greek
-        {"query": "अलविदा", "query_match": "farewell"},  # Hindi
-        {"query": "adeus", "query_match": "farewell"},  # Portuguese
-        {"query": "tchau", "query_match": "farewell"},  # Portuguese informal
-        {"query": "do widzenia", "query_match": "farewell"},  # Polish
-    ]
-
-
 @pytest.fixture(autouse=True)
 def disable_deprecation_warnings():
     with warnings.catch_warnings():
@@ -476,35 +424,3 @@ def test_routes_different_distance_thresholds_get_one(
     matches = router.route_many("hello", max_k=2)
     assert len(matches) == 1
     assert matches[0].name == "greeting"
-
-
-def test_routes_different_distance_thresholds_optimizer(
-    semantic_router, routes, redis_url, test_data_optimization
-):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
-
-    zero_threshold = 0.0
-
-    # Test that it updates the thresholds
-    routes[0].distance_threshold = zero_threshold
-    routes[1].distance_threshold = zero_threshold
-
-    router = SemanticRouter(
-        name="test_routes_different_distance_optimizer",
-        routes=routes,
-        redis_url=redis_url,
-        overwrite=True,
-    )
-
-    # szia is hello in hungarian and not in our test data
-    matches = router.route_many("Szia", max_k=2)
-    assert len(matches) == 0
-
-    # now run optimizer
-    router.optimize_thresholds(test_data_optimization, max_iterations=10)
-
-    # test that it updated thresholds beyond the null case
-    for route in routes:
-        assert route.distance_threshold > zero_threshold

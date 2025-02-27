@@ -21,12 +21,6 @@ from redisvl.extensions.llmcache.schema import (
     CacheHit,
     SemanticCacheIndexSchema,
 )
-from redisvl.extensions.threshold_optimizer.metrics import (
-    calc_cosine_distance,
-    calc_f1_metrics_per_threshold,
-    format_qrels,
-    get_best_threshold,
-)
 from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
@@ -748,21 +742,3 @@ class SemanticCache(BaseLLMCache):
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.adisconnect()
-
-    def optimize_threshold(self, test_data: List[dict]):
-        test_data = [TestData(**data) for data in test_data]
-
-        for td in test_data:
-            vec = self._vectorizer.embed(td.query)
-            query = RangeQuery(
-                vec, vector_field_name="prompt_vector", distance_threshold=1.0
-            )
-            res = self.index.query(query)
-            td.response = res
-
-        qrels = format_qrels(test_data)
-        metrics = calc_f1_metrics_per_threshold(qrels, test_data)
-
-        best_threshold = get_best_threshold(metrics)
-
-        self.set_threshold(best_threshold)
