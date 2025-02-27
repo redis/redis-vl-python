@@ -156,7 +156,9 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings.create(input=batch, model=self.model)
+            response = self._client.embeddings.create(
+                input=batch, model=self.model, **kwargs
+            )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
@@ -199,7 +201,9 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
-        result = self._client.embeddings.create(input=[text], model=self.model)
+        result = self._client.embeddings.create(
+            input=[text], model=self.model, **kwargs
+        )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @retry(
@@ -243,7 +247,7 @@ class OpenAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._aclient.embeddings.create(
-                input=batch, model=self.model
+                input=batch, model=self.model, **kwargs
             )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
@@ -287,7 +291,9 @@ class OpenAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
-        result = await self._aclient.embeddings.create(input=[text], model=self.model)
+        result = await self._aclient.embeddings.create(
+            input=[text], model=self.model, **kwargs
+        )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @property

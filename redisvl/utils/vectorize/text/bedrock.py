@@ -156,7 +156,7 @@ class BedrockTextVectorizer(BaseVectorizer):
             text = preprocess(text)
 
         response = self._client.invoke_model(
-            modelId=self.model, body=json.dumps({"inputText": text})
+            modelId=self.model, body=json.dumps({"inputText": text}), **kwargs
         )
         response_body = json.loads(response["body"].read())
         embedding = response_body["embedding"]
@@ -206,7 +206,7 @@ class BedrockTextVectorizer(BaseVectorizer):
             batch_embeddings = []
             for text in batch:
                 response = self._client.invoke_model(
-                    modelId=self.model, body=json.dumps({"inputText": text})
+                    modelId=self.model, body=json.dumps({"inputText": text}), **kwargs
                 )
                 response_body = json.loads(response["body"].read())
                 batch_embeddings.append(response_body["embedding"])

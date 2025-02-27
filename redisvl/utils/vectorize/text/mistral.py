@@ -155,7 +155,9 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings.create(model=self.model, inputs=batch)
+            response = self._client.embeddings.create(
+                model=self.model, inputs=batch, **kwargs
+            )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
@@ -198,7 +200,9 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
-        result = self._client.embeddings.create(model=self.model, inputs=[text])
+        result = self._client.embeddings.create(
+            model=self.model, inputs=[text], **kwargs
+        )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @retry(
@@ -242,7 +246,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._client.embeddings.create_async(
-                model=self.model, inputs=batch
+                model=self.model, inputs=batch, **kwargs
             )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
@@ -287,7 +291,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         dtype = kwargs.pop("dtype", self.dtype)
 
         result = await self._client.embeddings.create_async(
-            model=self.model, inputs=[text]
+            model=self.model, inputs=[text], **kwargs
         )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 

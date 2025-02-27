@@ -156,7 +156,7 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: In an invalid input_type is provided.
 
         """
-        input_type = kwargs.get("input_type")
+        input_type = kwargs.pop("input_type", None)
 
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
@@ -172,7 +172,7 @@ class CohereTextVectorizer(BaseVectorizer):
         dtype = kwargs.pop("dtype", self.dtype)
 
         embedding = self._client.embed(
-            texts=[text], model=self.model, input_type=input_type
+            texts=[text], model=self.model, input_type=input_type, **kwargs
         ).embeddings[0]
         return self._process_embedding(embedding, as_buffer, dtype)
 
@@ -227,7 +227,7 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: In an invalid input_type is provided.
 
         """
-        input_type = kwargs.get("input_type")
+        input_type = kwargs.pop("input_type", None)
 
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
@@ -244,7 +244,7 @@ class CohereTextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embed(
-                texts=batch, model=self.model, input_type=input_type
+                texts=batch, model=self.model, input_type=input_type, **kwargs
             )
             embeddings += [
                 self._process_embedding(embedding, as_buffer, dtype)

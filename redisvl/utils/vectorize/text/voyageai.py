@@ -204,8 +204,8 @@ class VoyageAITextVectorizer(BaseVectorizer):
             TypeError: If an invalid input_type is provided.
 
         """
-        input_type = kwargs.get("input_type")
-        truncation = kwargs.get("truncation")
+        input_type = kwargs.pop("input_type", None)
+        truncation = kwargs.pop("truncation", None)
         dtype = kwargs.pop("dtype", self.dtype)
 
         if not isinstance(texts, list):
@@ -235,7 +235,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embed(
-                texts=batch, model=self.model, input_type=input_type
+                texts=batch, model=self.model, input_type=input_type, **kwargs
             )
             embeddings += [
                 self._process_embedding(embedding, as_buffer, dtype)
@@ -284,8 +284,8 @@ class VoyageAITextVectorizer(BaseVectorizer):
             TypeError: In an invalid input_type is provided.
 
         """
-        input_type = kwargs.get("input_type")
-        truncation = kwargs.get("truncation")
+        input_type = kwargs.pop("input_type", None)
+        truncation = kwargs.pop("truncation", None)
         dtype = kwargs.pop("dtype", self.dtype)
 
         if not isinstance(texts, list):
@@ -315,7 +315,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._aclient.embed(
-                texts=batch, model=self.model, input_type=input_type
+                texts=batch, model=self.model, input_type=input_type, **kwargs
             )
             embeddings += [
                 self._process_embedding(embedding, as_buffer, dtype)
@@ -360,7 +360,6 @@ class VoyageAITextVectorizer(BaseVectorizer):
         Raises:
             TypeError: In an invalid input_type is provided.
         """
-
         result = await self.aembed_many(
             texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
         )

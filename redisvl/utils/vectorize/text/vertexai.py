@@ -168,7 +168,7 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.get_embeddings(batch)
+            response = self._client.get_embeddings(batch, **kwargs)
             embeddings += [
                 self._process_embedding(r.values, as_buffer, dtype) for r in response
             ]
@@ -210,7 +210,7 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
-        result = self._client.get_embeddings([text])
+        result = self._client.get_embeddings([text], **kwargs)
         return self._process_embedding(result[0].values, as_buffer, dtype)
 
     @property
