@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Union
 
 from pydantic import PrivateAttr
 
@@ -162,7 +162,7 @@ class CustomTextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], bytes]:
         """
         Generate an embedding for a single piece of text using your sync embed function.
 
@@ -172,7 +172,7 @@ class CustomTextVectorizer(BaseVectorizer):
             as_buffer (bool): If True, return the embedding as a byte buffer.
 
         Returns:
-            List[float]: The embedding of the input text.
+            Union[List[float], bytes]: The embedding of the input text.
 
         Raises:
             TypeError: If the input is not a string.
@@ -200,7 +200,7 @@ class CustomTextVectorizer(BaseVectorizer):
         batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[bytes]]:
         """
         Generate embeddings for multiple pieces of text in batches using your sync embed_many function.
 
@@ -211,7 +211,7 @@ class CustomTextVectorizer(BaseVectorizer):
             as_buffer (bool): If True, convert each embedding to a byte buffer.
 
         Returns:
-            List[List[float]]: A list of embeddings, where each embedding is a list of floats.
+            Union[List[List[float]], List[bytes]]: A list of embeddings, where each embedding is a list of floats or bytes.
 
         Raises:
             TypeError: If the input is not a list of strings.
@@ -226,7 +226,7 @@ class CustomTextVectorizer(BaseVectorizer):
             raise NotImplementedError("No embed_many function was provided.")
 
         dtype = kwargs.pop("dtype", self.dtype)
-        embeddings: List[List[float]] = []
+        embeddings: Union[List[List[float]], List[bytes]] = []
 
         try:
             for batch in self.batchify(texts, batch_size, preprocess):
@@ -288,10 +288,10 @@ class CustomTextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = 1000,
+        batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[bytes]]:
         """
         Asynchronously generate embeddings for multiple pieces of text in batches.
 
@@ -302,7 +302,7 @@ class CustomTextVectorizer(BaseVectorizer):
             as_buffer (bool): If True, convert each embedding to a byte buffer.
 
         Returns:
-            List[List[float]]: A list of embeddings, where each embedding is a list of floats.
+            Union[List[List[float]], List[bytes]]: A list of embeddings, where each embedding is a list of floats or bytes.
 
         Raises:
             TypeError: If the input is not a list of strings.
@@ -317,7 +317,7 @@ class CustomTextVectorizer(BaseVectorizer):
             raise NotImplementedError("No aembed_many function was provided.")
 
         dtype = kwargs.pop("dtype", self.dtype)
-        embeddings: List[List[float]] = []
+        embeddings: Union[List[List[float]], List[bytes]] = []
 
         try:
             for batch in self.batchify(texts, batch_size, preprocess):

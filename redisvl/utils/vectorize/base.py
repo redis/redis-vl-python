@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -49,34 +49,69 @@ class BaseVectorizer(BaseModel, ABC):
         return value
 
     @abstractmethod
-    def embed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 1000,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> List[List[float]]:
-        raise NotImplementedError
-
-    @abstractmethod
     def embed(
         self,
         text: str,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], bytes]:
+        """Embed a chunk of text.
+
+        Args:
+            text: Text to embed
+            preprocess: Optional function to preprocess text
+            as_buffer: If True, returns a bytes object instead of a list
+
+        Returns:
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def embed_many(
+        self,
+        texts: List[str],
+        preprocess: Optional[Callable] = None,
+        batch_size: int = 10,
+        as_buffer: bool = False,
+        **kwargs,
+    ) -> Union[List[List[float]], List[bytes]]:
+        """Embed multiple chunks of text.
+
+        Args:
+            texts: List of texts to embed
+            preprocess: Optional function to preprocess text
+            batch_size: Number of texts to process in each batch
+            as_buffer: If True, returns each embedding as a bytes object
+
+        Returns:
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
+        """
         raise NotImplementedError
 
     async def aembed_many(
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = 1000,
+        batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[bytes]]:
+        """Asynchronously embed multiple chunks of text.
+
+        Args:
+            texts: List of texts to embed
+            preprocess: Optional function to preprocess text
+            batch_size: Number of texts to process in each batch
+            as_buffer: If True, returns each embedding as a bytes object
+
+        Returns:
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
+        """
         # Fallback to standard embedding call if no async support
         return self.embed_many(texts, preprocess, batch_size, as_buffer, **kwargs)
 
@@ -86,7 +121,18 @@ class BaseVectorizer(BaseModel, ABC):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], bytes]:
+        """Asynchronously embed a chunk of text.
+
+        Args:
+            text: Text to embed
+            preprocess: Optional function to preprocess text
+            as_buffer: If True, returns a bytes object instead of a list
+
+        Returns:
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
+        """
         # Fallback to standard embedding call if no async support
         return self.embed(text, preprocess, as_buffer, **kwargs)
 

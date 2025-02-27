@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -128,7 +128,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[bytes]]:
         """Embed many chunks of texts using the Mistral API.
 
         Args:
@@ -141,7 +141,8 @@ class MistralAITextVectorizer(BaseVectorizer):
                 to a byte string. Defaults to False.
 
         Returns:
-            List[List[float]]: List of embeddings.
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
 
         Raises:
             TypeError: If the wrong input type is passed in for the test.
@@ -155,7 +156,9 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings.create(model=self.model, inputs=batch)
+            response = self._client.embeddings.create(
+                model=self.model, inputs=batch, **kwargs
+            )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
                 for r in response.data
@@ -174,7 +177,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], bytes]:
         """Embed a chunk of text using the Mistral API.
 
         Args:
@@ -185,7 +188,8 @@ class MistralAITextVectorizer(BaseVectorizer):
                 to a byte string. Defaults to False.
 
         Returns:
-            List[float]: Embedding.
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
 
         Raises:
             TypeError: If the wrong input type is passed in for the test.
@@ -198,7 +202,9 @@ class MistralAITextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
-        result = self._client.embeddings.create(model=self.model, inputs=[text])
+        result = self._client.embeddings.create(
+            model=self.model, inputs=[text], **kwargs
+        )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 
     @retry(
@@ -211,7 +217,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         self,
         texts: List[str],
         preprocess: Optional[Callable] = None,
-        batch_size: int = 1000,
+        batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
     ) -> List[List[float]]:
@@ -242,7 +248,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._client.embeddings.create_async(
-                model=self.model, inputs=batch
+                model=self.model, inputs=batch, **kwargs
             )
             embeddings += [
                 self._process_embedding(r.embedding, as_buffer, dtype)
@@ -287,7 +293,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         dtype = kwargs.pop("dtype", self.dtype)
 
         result = await self._client.embeddings.create_async(
-            model=self.model, inputs=[text]
+            model=self.model, inputs=[text], **kwargs
         )
         return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
 

@@ -366,14 +366,14 @@ class SemanticRouter(BaseModel):
         if not vector:
             if not statement:
                 raise ValueError("Must provide a vector or statement to the router")
-            vector = self.vectorizer.embed(statement)
+            vector = self.vectorizer.embed(statement)  # type: ignore
 
         aggregation_method = (
             aggregation_method or self.routing_config.aggregation_method
         )
 
         # perform route classification
-        top_route_match = self._classify_route(vector, aggregation_method)
+        top_route_match = self._classify_route(vector, aggregation_method)  # type: ignore
         return top_route_match
 
     @deprecated_argument("distance_threshold")
@@ -400,7 +400,7 @@ class SemanticRouter(BaseModel):
         if not vector:
             if not statement:
                 raise ValueError("Must provide a vector or statement to the router")
-            vector = self.vectorizer.embed(statement)
+            vector = self.vectorizer.embed(statement)  # type: ignore
 
         max_k = max_k or self.routing_config.max_k
         aggregation_method = (
@@ -409,7 +409,7 @@ class SemanticRouter(BaseModel):
 
         # classify routes
         top_route_matches = self._classify_multi_route(
-            vector, max_k, aggregation_method
+            vector, max_k, aggregation_method  # type: ignore
         )
 
         return top_route_matches

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -124,7 +124,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], bytes]:
         """Embed a chunk of text using the VoyageAI Embeddings API.
 
         Can provide the embedding `input_type` as a `kwarg` to this method
@@ -149,7 +149,8 @@ class VoyageAITextVectorizer(BaseVectorizer):
                 Check https://docs.voyageai.com/docs/embeddings
 
         Returns:
-            List[float]: Embedding.
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
 
         Raises:
             TypeError: If an invalid input_type is provided.
@@ -171,7 +172,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         batch_size: Optional[int] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[bytes]]:
         """Embed many chunks of text using the VoyageAI Embeddings API.
 
         Can provide the embedding `input_type` as a `kwarg` to this method
@@ -198,14 +199,15 @@ class VoyageAITextVectorizer(BaseVectorizer):
                 Check https://docs.voyageai.com/docs/embeddings
 
         Returns:
-            List[List[float]]: List of embeddings.
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
 
         Raises:
             TypeError: If an invalid input_type is provided.
 
         """
-        input_type = kwargs.get("input_type")
-        truncation = kwargs.get("truncation")
+        input_type = kwargs.pop("input_type", None)
+        truncation = kwargs.pop("truncation", None)
         dtype = kwargs.pop("dtype", self.dtype)
 
         if not isinstance(texts, list):
@@ -235,7 +237,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embed(
-                texts=batch, model=self.model, input_type=input_type
+                texts=batch, model=self.model, input_type=input_type, **kwargs
             )
             embeddings += [
                 self._process_embedding(embedding, as_buffer, dtype)
@@ -284,8 +286,8 @@ class VoyageAITextVectorizer(BaseVectorizer):
             TypeError: In an invalid input_type is provided.
 
         """
-        input_type = kwargs.get("input_type")
-        truncation = kwargs.get("truncation")
+        input_type = kwargs.pop("input_type", None)
+        truncation = kwargs.pop("truncation", None)
         dtype = kwargs.pop("dtype", self.dtype)
 
         if not isinstance(texts, list):
@@ -315,7 +317,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = await self._aclient.embed(
-                texts=batch, model=self.model, input_type=input_type
+                texts=batch, model=self.model, input_type=input_type, **kwargs
             )
             embeddings += [
                 self._process_embedding(embedding, as_buffer, dtype)
@@ -360,7 +362,6 @@ class VoyageAITextVectorizer(BaseVectorizer):
         Raises:
             TypeError: In an invalid input_type is provided.
         """
-
         result = await self.aembed_many(
             texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
         )
