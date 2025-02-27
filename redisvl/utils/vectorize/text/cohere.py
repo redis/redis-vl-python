@@ -1,5 +1,6 @@
 import os
-from typing import Any, Callable, Dict, List, Optional
+import warnings
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -64,7 +65,8 @@ class CohereTextVectorizer(BaseVectorizer):
                 Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
-                Defaults to 'float32'.
+                'float32' will use Cohere's float embeddings, 'int8' and 'uint8' will map
+                to Cohere's corresponding embedding types. Defaults to 'float32'.
 
         Raises:
             ImportError: If the cohere library is not installed.
@@ -114,6 +116,15 @@ class CohereTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
+    def _get_cohere_embedding_type(self, dtype: str) -> List[str]:
+        """Map dtype to appropriate Cohere embedding_types value."""
+        if dtype == "int8":
+            return ["int8"]
+        elif dtype == "uint8":
+            return ["uint8"]
+        else:
+            return ["float"]
+
     @deprecated_argument("dtype")
     def embed(
         self,
@@ -121,7 +132,7 @@ class CohereTextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], List[int], bytes]:
         """Embed a chunk of text using the Cohere Embeddings API.
 
         Must provide the embedding `input_type` as a `kwarg` to this method
@@ -150,7 +161,11 @@ class CohereTextVectorizer(BaseVectorizer):
                 Required for embedding models v3 and higher.
 
         Returns:
-            List[float]: Embedding.
+            Union[List[float], List[int], bytes]:
+            - If as_buffer=True: Returns a bytes object
+            - If as_buffer=False:
+              - For dtype="float32": Returns a list of floats
+              - For dtype="int8" or "uint8": Returns a list of integers
 
         Raises:
             TypeError: In an invalid input_type is provided.
@@ -171,9 +186,34 @@ class CohereTextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
-        embedding = self._client.embed(
-            texts=[text], model=self.model, input_type=input_type, **kwargs
-        ).embeddings[0]
+        # Check if embedding_types was provided and warn user
+        if "embedding_types" in kwargs:
+            warnings.warn(
+                "The 'embedding_types' parameter is not supported in CohereTextVectorizer. "
+                "Please use the 'dtype' parameter instead. Your 'embedding_types' value will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+            kwargs.pop("embedding_types")
+
+        # Map dtype to appropriate embedding_type
+        embedding_types = self._get_cohere_embedding_type(dtype)
+
+        response = self._client.embed(
+            texts=[text],
+            model=self.model,
+            input_type=input_type,
+            embedding_types=embedding_types,
+            **kwargs,
+        )
+
+        # Extract the appropriate embedding based on embedding_types
+        embed_type = embedding_types[0]
+        if hasattr(response.embeddings, embed_type):
+            embedding = getattr(response.embeddings, embed_type)[0]
+        else:
+            embedding = response.embeddings[0]  # Fallback for older API versions
+
         return self._process_embedding(embedding, as_buffer, dtype)
 
     @retry(
@@ -189,7 +229,7 @@ class CohereTextVectorizer(BaseVectorizer):
         batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[List[int]], List[bytes]]:
         """Embed many chunks of text using the Cohere Embeddings API.
 
         Must provide the embedding `input_type` as a `kwarg` to this method
@@ -221,7 +261,11 @@ class CohereTextVectorizer(BaseVectorizer):
                 Required for embedding models v3 and higher.
 
         Returns:
-            List[List[float]]: List of embeddings.
+            Union[List[List[float]], List[List[int]], List[bytes]]:
+            - If as_buffer=True: Returns a list of bytes objects
+            - If as_buffer=False:
+              - For dtype="float32": Returns a list of lists of floats
+              - For dtype="int8" or "uint8": Returns a list of lists of integers
 
         Raises:
             TypeError: In an invalid input_type is provided.
@@ -241,14 +285,41 @@ class CohereTextVectorizer(BaseVectorizer):
 
         dtype = kwargs.pop("dtype", self.dtype)
 
+        # Check if embedding_types was provided and warn user
+        if "embedding_types" in kwargs:
+            warnings.warn(
+                "The 'embedding_types' parameter is not supported in CohereTextVectorizer. "
+                "Please use the 'dtype' parameter instead. Your 'embedding_types' value will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+            kwargs.pop("embedding_types")
+
+        # Map dtype to appropriate embedding_type
+        embedding_types = self._get_cohere_embedding_type(dtype)
+
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, preprocess):
             response = self._client.embed(
-                texts=batch, model=self.model, input_type=input_type, **kwargs
+                texts=batch,
+                model=self.model,
+                input_type=input_type,
+                embedding_types=embedding_types,
+                **kwargs,
             )
+
+            # Extract the appropriate embeddings based on embedding_types
+            embed_type = embedding_types[0]
+            if hasattr(response.embeddings, embed_type):
+                batch_embeddings = getattr(response.embeddings, embed_type)
+            else:
+                batch_embeddings = (
+                    response.embeddings
+                )  # Fallback for older API versions
+
             embeddings += [
                 self._process_embedding(embedding, as_buffer, dtype)
-                for embedding in response.embeddings
+                for embedding in batch_embeddings
             ]
         return embeddings
 

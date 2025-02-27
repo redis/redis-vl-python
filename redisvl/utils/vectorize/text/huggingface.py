@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Union
 
 from pydantic.v1 import PrivateAttr
 
@@ -89,7 +89,7 @@ class HFTextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
+    ) -> Union[List[float], bytes]:
         """Embed a chunk of text using the Hugging Face sentence transformer.
 
         Args:
@@ -100,7 +100,8 @@ class HFTextVectorizer(BaseVectorizer):
                 to a byte string. Defaults to False.
 
         Returns:
-            List[float]: Embedding.
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
 
         Raises:
             TypeError: If the wrong input type is passed in for the text.
@@ -124,7 +125,7 @@ class HFTextVectorizer(BaseVectorizer):
         batch_size: int = 1000,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> Union[List[List[float]], List[bytes]]:
         """Asynchronously embed many chunks of texts using the Hugging Face
         sentence transformer.
 
@@ -133,12 +134,13 @@ class HFTextVectorizer(BaseVectorizer):
             preprocess (Optional[Callable], optional): Optional preprocessing
                 callable to perform before vectorization. Defaults to None.
             batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. Defaults to 10.
+                embeddings. Defaults to 1000.
             as_buffer (bool, optional): Whether to convert the raw embedding
                 to a byte string. Defaults to False.
 
         Returns:
-            List[List[float]]: List of embeddings.
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
 
         Raises:
             TypeError: If the wrong input type is passed in for the test.

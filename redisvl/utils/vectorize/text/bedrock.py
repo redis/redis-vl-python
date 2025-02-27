@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -135,8 +135,8 @@ class BedrockTextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
-        """Embed a chunk of text using Amazon Bedrock.
+    ) -> Union[List[float], bytes]:
+        """Embed a chunk of text using the AWS Bedrock Embeddings API.
 
         Args:
             text (str): Text to embed.
@@ -144,7 +144,8 @@ class BedrockTextVectorizer(BaseVectorizer):
             as_buffer (bool): Whether to return as byte buffer.
 
         Returns:
-            List[float]: The embedding vector.
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
 
         Raises:
             TypeError: If text is not a string.
@@ -177,17 +178,18 @@ class BedrockTextVectorizer(BaseVectorizer):
         batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
-        """Embed multiple texts using Amazon Bedrock.
+    ) -> Union[List[List[float]], List[bytes]]:
+        """Embed many chunks of text using the AWS Bedrock Embeddings API.
 
         Args:
             texts (List[str]): List of texts to embed.
             preprocess (Optional[Callable]): Optional preprocessing function.
-            batch_size (int): Size of batches for processing.
+            batch_size (int): Size of batches for processing. Defaults to 10.
             as_buffer (bool): Whether to return as byte buffers.
 
         Returns:
-            List[List[float]]: List of embedding vectors.
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
 
         Raises:
             TypeError: If texts is not a list of strings.

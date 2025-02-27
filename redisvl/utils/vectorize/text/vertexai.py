@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -141,8 +141,8 @@ class VertexAITextVectorizer(BaseVectorizer):
         batch_size: int = 10,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[List[float]]:
-        """Embed many chunks of texts using the VertexAI API.
+    ) -> Union[List[List[float]], List[bytes]]:
+        """Embed many chunks of text using the VertexAI Embeddings API.
 
         Args:
             texts (List[str]): List of text chunks to embed.
@@ -154,7 +154,8 @@ class VertexAITextVectorizer(BaseVectorizer):
                 to a byte string. Defaults to False.
 
         Returns:
-            List[List[float]]: List of embeddings.
+            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
+            or as bytes objects if as_buffer=True
 
         Raises:
             TypeError: If the wrong input type is passed in for the test.
@@ -186,8 +187,8 @@ class VertexAITextVectorizer(BaseVectorizer):
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         **kwargs,
-    ) -> List[float]:
-        """Embed a chunk of text using the VertexAI API.
+    ) -> Union[List[float], bytes]:
+        """Embed a chunk of text using the VertexAI Embeddings API.
 
         Args:
             text (str): Chunk of text to embed.
@@ -197,7 +198,8 @@ class VertexAITextVectorizer(BaseVectorizer):
                 to a byte string. Defaults to False.
 
         Returns:
-            List[float]: Embedding.
+            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
+            object if as_buffer=True
 
         Raises:
             TypeError: If the wrong input type is passed in for the test.
