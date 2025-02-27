@@ -3,6 +3,7 @@ import pytest
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.extensions.router import Route, SemanticRouter
 from redisvl.extensions.router.schema import RoutingConfig
+from redisvl.extensions.threshold_optimizer.base import EvalMetric
 from redisvl.extensions.threshold_optimizer.cache import CacheThresholdOptimizer
 from redisvl.extensions.threshold_optimizer.router import RouterThresholdOptimizer
 from redisvl.redis.connection import compare_versions
@@ -77,7 +78,7 @@ def test_data_optimization():
     ]
 
 
-def test_routes_different_distance_thresholds_optimizer(
+def test_routes_different_distance_thresholds_optimizer_default(
     semantic_router, routes, redis_url, test_data_optimization
 ):
     redis_version = semantic_router._index.client.info()["redis_version"]
@@ -110,7 +111,77 @@ def test_routes_different_distance_thresholds_optimizer(
         assert route.distance_threshold > zero_threshold
 
 
-def test_optimize_threshold_cache(redis_url):
+def test_routes_different_distance_thresholds_optimizer_precision(
+    semantic_router, routes, redis_url, test_data_optimization
+):
+    redis_version = semantic_router._index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    zero_threshold = 0.0
+
+    # Test that it updates the thresholds
+    routes[0].distance_threshold = zero_threshold
+    routes[1].distance_threshold = zero_threshold
+
+    router = SemanticRouter(
+        name="test_routes_different_distance_optimizer",
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+    )
+
+    # szia is hello in hungarian and not in our test data
+    matches = router.route_many("Szia", max_k=2)
+    assert len(matches) == 0
+
+    # now run optimizer
+    router_optimizer = RouterThresholdOptimizer(
+        router, test_data_optimization, eval_metric="precision"
+    )
+    router_optimizer.optimize(max_iterations=10)
+
+    # test that it updated thresholds beyond the null case
+    for route in routes:
+        assert route.distance_threshold > zero_threshold
+
+
+def test_routes_different_distance_thresholds_optimizer_recall(
+    semantic_router, routes, redis_url, test_data_optimization
+):
+    redis_version = semantic_router._index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    zero_threshold = 0.0
+
+    # Test that it updates the thresholds
+    routes[0].distance_threshold = zero_threshold
+    routes[1].distance_threshold = zero_threshold
+
+    router = SemanticRouter(
+        name="test_routes_different_distance_optimizer",
+        routes=routes,
+        redis_url=redis_url,
+        overwrite=True,
+    )
+
+    # szia is hello in hungarian and not in our test data
+    matches = router.route_many("Szia", max_k=2)
+    assert len(matches) == 0
+
+    # now run optimizer
+    router_optimizer = RouterThresholdOptimizer(
+        router, test_data_optimization, eval_metric="recall"
+    )
+    router_optimizer.optimize(max_iterations=10)
+
+    # test that it updated thresholds beyond the null case
+    for route in routes:
+        assert route.distance_threshold > zero_threshold
+
+
+def test_optimize_threshold_cache_default(redis_url):
     null_threshold = 0.0
     cache = SemanticCache(
         name="test_optimize_threshold_cache",
@@ -132,3 +203,81 @@ def test_optimize_threshold_cache(redis_url):
     cache_optimizer.optimize()
 
     assert cache.distance_threshold > null_threshold
+
+
+def test_optimize_threshold_cache_precision(redis_url):
+    null_threshold = 0.0
+    cache = SemanticCache(
+        name="test_optimize_threshold_cache",
+        redis_url=redis_url,
+        distance_threshold=null_threshold,
+    )
+
+    paris_key = cache.store(prompt="what is the capital of france?", response="paris")
+    rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
+
+    test_dict = [
+        {"query": "what actually is the capital of france?", "query_match": paris_key},
+        {"query": "what actually is the capital of morocco?", "query_match": rabat_key},
+        {"query": "What is the state bird of virginia?", "query_match": ""},
+    ]
+
+    cache_optimizer = CacheThresholdOptimizer(cache, test_dict, eval_metric="precision")
+
+    cache_optimizer.optimize()
+
+    assert cache.distance_threshold > null_threshold
+
+
+def test_optimize_threshold_cache_recall(redis_url):
+    null_threshold = 0.0
+    cache = SemanticCache(
+        name="test_optimize_threshold_cache",
+        redis_url=redis_url,
+        distance_threshold=null_threshold,
+    )
+
+    paris_key = cache.store(prompt="what is the capital of france?", response="paris")
+    rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
+
+    test_dict = [
+        {"query": "what actually is the capital of france?", "query_match": paris_key},
+        {"query": "what actually is the capital of morocco?", "query_match": rabat_key},
+        {"query": "What is the state bird of virginia?", "query_match": ""},
+    ]
+
+    cache_optimizer = CacheThresholdOptimizer(cache, test_dict, eval_metric="recall")
+
+    cache_optimizer.optimize()
+
+    assert cache.distance_threshold > null_threshold
+
+
+def test_eval_metric_from_string():
+    """Test that EvalMetric.from_string works for valid metrics."""
+    assert EvalMetric.from_string("f1") == EvalMetric.F1
+    assert EvalMetric.from_string("precision") == EvalMetric.PRECISION
+    assert EvalMetric.from_string("recall") == EvalMetric.RECALL
+
+    # Test case insensitivity
+    assert EvalMetric.from_string("F1") == EvalMetric.F1
+    assert EvalMetric.from_string("PRECISION") == EvalMetric.PRECISION
+
+
+def test_eval_metric_invalid():
+    """Test that EvalMetric.from_string raises ValueError for invalid metrics."""
+    with pytest.raises(ValueError):
+        EvalMetric.from_string("invalid_metric")
+
+
+def test_optimizer_with_invalid_metric(redis_url):
+    """Test that optimizers raise ValueError when initialized with invalid metric."""
+    cache = SemanticCache(
+        name="test_invalid_metric",
+        redis_url=redis_url,
+    )
+
+    test_dict = [{"query": "test", "query_match": ""}]
+
+    with pytest.raises(ValueError):
+        CacheThresholdOptimizer(cache, test_dict, eval_metric="invalid_metric")

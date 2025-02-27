@@ -11,7 +11,6 @@ class EvalMetric(Enum):
     F1 = "f1"
     PRECISION = "precision"
     RECALL = "recall"
-    ACCURACY = "accuracy"
 
     def __str__(self) -> str:
         return self.value
