@@ -33,7 +33,7 @@ def routes():
             name="farewell",
             references=["bye", "goodbye"],
             metadata={"type": "farewell"},
-            distance_threshold=0.3,
+            distance_threshold=0.2,
         ),
     ]
 
@@ -43,7 +43,7 @@ def semantic_router(client, routes):
     router = SemanticRouter(
         name="test-router",
         routes=routes,
-        routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
+        routing_config=RoutingConfig(max_k=2),
         redis_client=client,
         overwrite=False,
     )
@@ -71,7 +71,7 @@ def test_router_properties(semantic_router):
 
     thresholds = semantic_router.route_thresholds
     assert thresholds["greeting"] == 0.3
-    assert thresholds["farewell"] == 0.3
+    assert thresholds["farewell"] == 0.2
 
 
 def test_get_route(semantic_router):

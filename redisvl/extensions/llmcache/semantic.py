@@ -2,6 +2,7 @@ import asyncio
 import weakref
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from redis import Redis
 
 from redisvl.extensions.constants import (
@@ -20,9 +21,11 @@ from redisvl.extensions.llmcache.schema import (
     CacheHit,
     SemanticCacheIndexSchema,
 )
+from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression
+from redisvl.query.query import BaseQuery
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
