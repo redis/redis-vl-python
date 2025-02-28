@@ -13,7 +13,7 @@ routes:
   - goodbye
   metadata:
     type: farewell
-  distance_threshold: 0.3
+  distance_threshold: 0.2
 vectorizer:
   type: hf
   model: sentence-transformers/all-mpnet-base-v2
