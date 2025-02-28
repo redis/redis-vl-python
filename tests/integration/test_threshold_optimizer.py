@@ -195,7 +195,7 @@ def test_optimize_threshold_cache_default(redis_url):
         distance_threshold=null_threshold,
     )
 
-    redis_version = cache.client.info()["redis_version"]
+    redis_version = cache._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
 
@@ -223,7 +223,7 @@ def test_optimize_threshold_cache_precision(redis_url):
         distance_threshold=null_threshold,
     )
 
-    redis_version = cache.client.info()["redis_version"]
+    redis_version = cache._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
 
@@ -251,7 +251,7 @@ def test_optimize_threshold_cache_recall(redis_url):
         distance_threshold=null_threshold,
     )
 
-    redis_version = cache.client.info()["redis_version"]
+    redis_version = cache._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
 
