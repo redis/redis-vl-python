@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, List, TypeVar
 
-from redisvl.extensions.threshold_optimizer.utils import _validate_test_dict
+from redisvl.utils.threshold_optimizer.utils import _validate_test_dict
 
 
 class EvalMetric(Enum):

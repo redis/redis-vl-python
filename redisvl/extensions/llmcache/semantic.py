@@ -21,7 +21,6 @@ from redisvl.extensions.llmcache.schema import (
     CacheHit,
     SemanticCacheIndexSchema,
 )
-from redisvl.extensions.threshold_optimizer.schema import TestData
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import RangeQuery
 from redisvl.query.filter import FilterExpression

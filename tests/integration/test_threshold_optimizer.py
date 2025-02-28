@@ -8,10 +8,10 @@ if sys.version_info.major == 3 and sys.version_info.minor < 10:
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.extensions.router import Route, SemanticRouter
 from redisvl.extensions.router.schema import RoutingConfig
-from redisvl.extensions.threshold_optimizer.base import EvalMetric
-from redisvl.extensions.threshold_optimizer.cache import CacheThresholdOptimizer
-from redisvl.extensions.threshold_optimizer.router import RouterThresholdOptimizer
 from redisvl.redis.connection import compare_versions
+from redisvl.utils.threshold_optimizer.base import EvalMetric
+from redisvl.utils.threshold_optimizer.cache import CacheThresholdOptimizer
+from redisvl.utils.threshold_optimizer.router import RouterThresholdOptimizer
 
 
 @pytest.fixture

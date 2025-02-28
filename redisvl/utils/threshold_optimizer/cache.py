@@ -4,16 +4,10 @@ import numpy as np
 from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.llmcache.semantic import SemanticCache
-from redisvl.extensions.threshold_optimizer.base import (
-    BaseThresholdOptimizer,
-    EvalMetric,
-)
-from redisvl.extensions.threshold_optimizer.schema import TestData
-from redisvl.extensions.threshold_optimizer.utils import (
-    NULL_RESPONSE_KEY,
-    _format_qrels,
-)
 from redisvl.query import RangeQuery
+from redisvl.utils.threshold_optimizer.base import BaseThresholdOptimizer, EvalMetric
+from redisvl.utils.threshold_optimizer.schema import TestData
+from redisvl.utils.threshold_optimizer.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
 def _generate_run_cache(test_data: List[TestData], threshold: float) -> Run:

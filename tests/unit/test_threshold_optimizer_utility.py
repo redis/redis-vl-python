@@ -7,9 +7,9 @@ if sys.version_info.major == 3 and sys.version_info.minor < 10:
 
 from ranx import evaluate
 
-from redisvl.extensions.threshold_optimizer.cache import _generate_run_cache
-from redisvl.extensions.threshold_optimizer.schema import TestData
-from redisvl.extensions.threshold_optimizer.utils import _format_qrels
+from redisvl.utils.threshold_optimizer.cache import _generate_run_cache
+from redisvl.utils.threshold_optimizer.schema import TestData
+from redisvl.utils.threshold_optimizer.utils import _format_qrels
 
 # Note: these tests are not intended to test ranx but to test that our data formatting for the package is correct
 

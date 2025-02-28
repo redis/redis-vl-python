@@ -5,15 +5,9 @@ import numpy as np
 from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.router.semantic import SemanticRouter
-from redisvl.extensions.threshold_optimizer.base import (
-    BaseThresholdOptimizer,
-    EvalMetric,
-)
-from redisvl.extensions.threshold_optimizer.schema import TestData
-from redisvl.extensions.threshold_optimizer.utils import (
-    NULL_RESPONSE_KEY,
-    _format_qrels,
-)
+from redisvl.utils.threshold_optimizer.base import BaseThresholdOptimizer, EvalMetric
+from redisvl.utils.threshold_optimizer.schema import TestData
+from redisvl.utils.threshold_optimizer.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
 def _generate_run_router(test_data: List[TestData], router: SemanticRouter) -> Run:

@@ -2,7 +2,7 @@ from typing import List
 
 from ranx import Qrels
 
-from redisvl.extensions.threshold_optimizer.schema import TestData
+from redisvl.utils.threshold_optimizer.schema import TestData
 
 NULL_RESPONSE_KEY = "no_match"
 
