@@ -215,17 +215,17 @@ def test_optimize_threshold_cache_default(redis_url):
     assert cache.distance_threshold > null_threshold
 
 
-def test_optimize_threshold_cache_precision(redis_url):
+def test_optimize_threshold_cache_precision(client, redis_url):
+    redis_version = client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
     null_threshold = 0.0
     cache = SemanticCache(
         name="test_optimize_threshold_cache",
         redis_url=redis_url,
         distance_threshold=null_threshold,
     )
-
-    redis_version = cache._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
 
     paris_key = cache.store(prompt="what is the capital of france?", response="paris")
     rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
@@ -243,17 +243,17 @@ def test_optimize_threshold_cache_precision(redis_url):
     assert cache.distance_threshold > null_threshold
 
 
-def test_optimize_threshold_cache_recall(redis_url):
+def test_optimize_threshold_cache_recall(client, redis_url):
+    redis_version = client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
     null_threshold = 0.0
     cache = SemanticCache(
         name="test_optimize_threshold_cache",
         redis_url=redis_url,
         distance_threshold=null_threshold,
     )
-
-    redis_version = cache._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
 
     paris_key = cache.store(prompt="what is the capital of france?", response="paris")
     rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
