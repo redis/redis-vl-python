@@ -1,12 +1,15 @@
+import sys
+
 import pytest
+
+if sys.version_info.major == 3 and sys.version_info.minor < 10:
+    pytest.skip("Test requires Python 3.10 or higher", allow_module_level=True)
+
 from ranx import evaluate
 
 from redisvl.extensions.threshold_optimizer.cache import _generate_run_cache
 from redisvl.extensions.threshold_optimizer.schema import TestData
-from redisvl.extensions.threshold_optimizer.utils import (
-    NULL_RESPONSE_KEY,
-    _format_qrels,
-)
+from redisvl.extensions.threshold_optimizer.utils import _format_qrels
 
 # Note: these tests are not intended to test ranx but to test that our data formatting for the package is correct
 

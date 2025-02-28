@@ -1,4 +1,9 @@
+import sys
+
 import pytest
+
+if sys.version_info.major == 3 and sys.version_info.minor < 10:
+    pytest.skip("Test requires Python 3.10 or higher", allow_module_level=True)
 
 from redisvl.extensions.llmcache import SemanticCache
 from redisvl.extensions.router import Route, SemanticRouter
@@ -114,6 +119,7 @@ def test_routes_different_distance_thresholds_optimizer_default(
 def test_routes_different_distance_thresholds_optimizer_precision(
     semantic_router, routes, redis_url, test_data_optimization
 ):
+
     redis_version = semantic_router._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
@@ -189,6 +195,10 @@ def test_optimize_threshold_cache_default(redis_url):
         distance_threshold=null_threshold,
     )
 
+    redis_version = cache.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
     paris_key = cache.store(prompt="what is the capital of france?", response="paris")
     rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
 
@@ -213,6 +223,10 @@ def test_optimize_threshold_cache_precision(redis_url):
         distance_threshold=null_threshold,
     )
 
+    redis_version = cache.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
     paris_key = cache.store(prompt="what is the capital of france?", response="paris")
     rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
 
@@ -236,6 +250,10 @@ def test_optimize_threshold_cache_recall(redis_url):
         redis_url=redis_url,
         distance_threshold=null_threshold,
     )
+
+    redis_version = cache.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
 
     paris_key = cache.store(prompt="what is the capital of france?", response="paris")
     rabat_key = cache.store(prompt="what is the capital of morocco?", response="rabat")
