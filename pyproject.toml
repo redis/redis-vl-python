@@ -44,8 +44,8 @@ protobuf = { version = "^5.29.1", optional = true }
 cohere = { version = ">=4.44", optional = true }
 mistralai = { version = ">=1.0.0", optional = true }
 voyageai = { version = ">=0.2.2", optional = true }
-boto3 = { version = "^1.36.0", optional = true, extras = ["bedrock"] }
-ranx = "^0.3.20"
+ranx = { version = "^0.3.0", python=">=3.10", optional = true }
+boto3 = {version = "1.36.0", optional = true, extras = ["bedrock"]}
 
 [tool.poetry.extras]
 openai = ["openai"]
@@ -54,6 +54,7 @@ vertexai = ["google_cloud_aiplatform", "protobuf"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
 voyageai = ["voyageai"]
+ranx = ["ranx"]
 bedrock = ["boto3"]
 
 [tool.poetry.group.dev.dependencies]
