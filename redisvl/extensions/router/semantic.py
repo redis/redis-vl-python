@@ -301,9 +301,6 @@ class SemanticRouter(BaseModel):
                 )
             raise e
 
-        for match in aggregation_result.rows:
-            print(f"\n {match=}")
-
         # process aggregation results into route matches
         return [
             self._process_route(route_match) for route_match in aggregation_result.rows

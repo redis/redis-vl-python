@@ -222,6 +222,9 @@ embeddings = co.embed_many(
 ### Rerankers
 [Integrate with popular reranking providers](https://docs.redisvl.com/en/stable/user_guide/06_rerankers.html) to improve the relevancy of the initial search results from Redis
 
+### Threshold Optimization
+[Optimize distance thresholds for cache and router](https://docs.redisvl.com/en/stable/user_guide/09_threshold_optimization.html) with the utility `ThresholdOptimizer` classes.
+
 
 
 ## 💫 Extensions

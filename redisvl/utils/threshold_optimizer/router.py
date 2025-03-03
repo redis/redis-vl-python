@@ -61,12 +61,13 @@ def _random_search_opt_router(
     **kwargs: Any,
 ):
     """Performs complete optimization for router cases provide acceptable metric"""
-    best_score = _eval_router(router, test_data, qrels, eval_metric.value)
+
+    start_score = _eval_router(router, test_data, qrels, eval_metric.value)
+    best_score = start_score
     best_thresholds = router.route_thresholds
 
     max_iterations = kwargs.get("max_iterations", 20)
 
-    print(f"Starting score {best_score}, starting thresholds {router.route_thresholds}")
     for _ in range(max_iterations):
         route_names = router.route_names
         route_thresholds = router.route_thresholds
@@ -79,7 +80,9 @@ def _random_search_opt_router(
             best_score = score
             best_thresholds = thresholds
 
-    print(f"Ending score {best_score}, ending thresholds {router.route_thresholds}")
+    print(
+        f"Eval metric {eval_metric.value.upper()}: start {round(start_score, 3)}, end {round(best_score, 3)} \nEnding thresholds: {router.route_thresholds}"
+    )
     router.update_route_thresholds(best_thresholds)
 
 
