@@ -7,7 +7,7 @@ routes:
   - what's trending in tech?
   metadata:
     category: tech
-    priority: '1'
+    priority: 1
   distance_threshold: 1.0
 - name: sports
   references:
@@ -18,7 +18,7 @@ routes:
   - basketball and football
   metadata:
     category: sports
-    priority: '2'
+    priority: 2
   distance_threshold: 0.5
 - name: entertainment
   references:
@@ -27,12 +27,11 @@ routes:
   - what's new in the entertainment industry?
   metadata:
     category: entertainment
-    priority: '3'
+    priority: 3
   distance_threshold: 0.7
 vectorizer:
   type: hf
   model: sentence-transformers/all-mpnet-base-v2
 routing_config:
-  distance_threshold: 0.5
   max_k: 3
   aggregation_method: min

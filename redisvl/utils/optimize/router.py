@@ -5,9 +5,9 @@ import numpy as np
 from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.router.semantic import SemanticRouter
-from redisvl.utils.threshold_optimizer.base import BaseThresholdOptimizer, EvalMetric
-from redisvl.utils.threshold_optimizer.schema import TestData
-from redisvl.utils.threshold_optimizer.utils import NULL_RESPONSE_KEY, _format_qrels
+from redisvl.utils.optimize.base import BaseThresholdOptimizer, EvalMetric
+from redisvl.utils.optimize.schema import TestData
+from redisvl.utils.optimize.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
 def _generate_run_router(test_data: List[TestData], router: SemanticRouter) -> Run:
@@ -15,12 +15,12 @@ def _generate_run_router(test_data: List[TestData], router: SemanticRouter) -> R
     run_dict: Dict[Any, Any] = {}
 
     for td in test_data:
-        run_dict[td.q_id] = {}
+        run_dict[td.id] = {}
         route_match = router(td.query)
         if route_match and route_match.name == td.query_match:
-            run_dict[td.q_id][td.query_match] = 1
+            run_dict[td.id][td.query_match] = 1
         else:
-            run_dict[td.q_id][NULL_RESPONSE_KEY] = 1
+            run_dict[td.id][NULL_RESPONSE_KEY] = 1
 
     return Run(run_dict)
 

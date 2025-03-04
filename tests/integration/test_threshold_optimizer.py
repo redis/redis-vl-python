@@ -9,9 +9,11 @@ from redisvl.extensions.llmcache import SemanticCache
 from redisvl.extensions.router import Route, SemanticRouter
 from redisvl.extensions.router.schema import RoutingConfig
 from redisvl.redis.connection import compare_versions
-from redisvl.utils.threshold_optimizer.base import EvalMetric
-from redisvl.utils.threshold_optimizer.cache import CacheThresholdOptimizer
-from redisvl.utils.threshold_optimizer.router import RouterThresholdOptimizer
+from redisvl.utils.optimize import (
+    CacheThresholdOptimizer,
+    EvalMetric,
+    RouterThresholdOptimizer,
+)
 
 
 @pytest.fixture
@@ -273,19 +275,15 @@ def test_optimize_threshold_cache_recall(client, redis_url):
 
 def test_eval_metric_from_string():
     """Test that EvalMetric.from_string works for valid metrics."""
-    assert EvalMetric.from_string("f1") == EvalMetric.F1
-    assert EvalMetric.from_string("precision") == EvalMetric.PRECISION
-    assert EvalMetric.from_string("recall") == EvalMetric.RECALL
-
-    # Test case insensitivity
-    assert EvalMetric.from_string("F1") == EvalMetric.F1
-    assert EvalMetric.from_string("PRECISION") == EvalMetric.PRECISION
+    assert EvalMetric("f1") == EvalMetric.F1
+    assert EvalMetric("precision") == EvalMetric.PRECISION
+    assert EvalMetric("recall") == EvalMetric.RECALL
 
 
 def test_eval_metric_invalid():
     """Test that EvalMetric.from_string raises ValueError for invalid metrics."""
     with pytest.raises(ValueError):
-        EvalMetric.from_string("invalid_metric")
+        EvalMetric("invalid_metric")
 
 
 def test_optimizer_with_invalid_metric(redis_url):

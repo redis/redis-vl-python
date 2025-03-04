@@ -5,9 +5,9 @@ from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.llmcache.semantic import SemanticCache
 from redisvl.query import RangeQuery
-from redisvl.utils.threshold_optimizer.base import BaseThresholdOptimizer, EvalMetric
-from redisvl.utils.threshold_optimizer.schema import TestData
-from redisvl.utils.threshold_optimizer.utils import NULL_RESPONSE_KEY, _format_qrels
+from redisvl.utils.optimize.base import BaseThresholdOptimizer, EvalMetric
+from redisvl.utils.optimize.schema import TestData
+from redisvl.utils.optimize.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
 def _generate_run_cache(test_data: List[TestData], threshold: float) -> Run:
@@ -15,16 +15,16 @@ def _generate_run_cache(test_data: List[TestData], threshold: float) -> Run:
     run_dict: Dict[str, Dict[str, int]] = {}
 
     for td in test_data:
-        run_dict[td.q_id] = {}
+        run_dict[td.id] = {}
         for res in td.response:
             if float(res["vector_distance"]) < threshold:
                 # value of 1 is irrelevant checks only on match for f1
-                run_dict[td.q_id][res["id"]] = 1
+                run_dict[td.id][res["id"]] = 1
 
-        if not run_dict[td.q_id]:
+        if not run_dict[td.id]:
             # ranx is a little odd in that if there are no matches it errors
             # if however there are no keys that match you get the correct score
-            run_dict[td.q_id][NULL_RESPONSE_KEY] = 1
+            run_dict[td.id][NULL_RESPONSE_KEY] = 1
 
     return Run(run_dict)
 

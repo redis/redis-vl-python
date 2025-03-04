@@ -2,28 +2,15 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, List, TypeVar
 
-from redisvl.utils.threshold_optimizer.utils import _validate_test_dict
+from redisvl.utils.optimize.utils import _validate_test_dict
 
 
-class EvalMetric(Enum):
+class EvalMetric(str, Enum):
     """Evaluation metrics for threshold optimization."""
 
     F1 = "f1"
     PRECISION = "precision"
     RECALL = "recall"
-
-    def __str__(self) -> str:
-        return self.value
-
-    @classmethod
-    def from_string(cls, metric: str) -> "EvalMetric":
-        """Convert string to EvalMetric enum."""
-        try:
-            return cls(metric.lower())
-        except ValueError:
-            raise ValueError(
-                f"Invalid metric: {metric}. Valid options are: {', '.join(m.value for m in cls)}"
-            )
 
 
 T = TypeVar("T")  # Type variable for the optimizable object (Cache or Router)

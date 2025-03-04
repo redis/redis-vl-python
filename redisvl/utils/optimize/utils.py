@@ -2,7 +2,7 @@ from typing import List
 
 from ranx import Qrels
 
-from redisvl.utils.threshold_optimizer.schema import TestData
+from redisvl.utils.optimize.schema import TestData
 
 NULL_RESPONSE_KEY = "no_match"
 
@@ -13,10 +13,10 @@ def _format_qrels(test_data: List[TestData]) -> Qrels:
 
     for td in test_data:
         if td.query_match:
-            qrels_dict[td.q_id] = {td.query_match: 1}
+            qrels_dict[td.id] = {td.query_match: 1}
         else:
             # This is for capturing true negatives from test set
-            qrels_dict[td.q_id] = {NULL_RESPONSE_KEY: 1}
+            qrels_dict[td.id] = {NULL_RESPONSE_KEY: 1}
 
     return Qrels(qrels_dict)
 
