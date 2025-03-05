@@ -8,8 +8,8 @@ on:
       - main
 
   schedule:
-    - cron: "0 2 * * *"  # 2 AM UTC nightly
-  
+    - cron: "0 2 * * *" # 2 AM UTC nightly
+
   workflow_dispatch:
 
 env:
@@ -86,9 +86,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', 3.12, 3.13]
-        connection: ['hiredis', 'plain']
-        redis-version: ['6.2.6-v9', 'latest', '8.0-M03']
+        python-version: ["3.10", "3.11", 3.12, 3.13]
+        connection: ["hiredis", "plain"]
+        redis-version: ["6.2.6-v9", "latest", "8.0-M03"]
 
     steps:
       - name: Check out repository
@@ -176,6 +176,11 @@ jobs:
         run: |
           docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
           make test-notebooks
+          if [[ "${{ matrix.python-version }}" > "3.9" ]]; then
+            make test-notebooks
+          else
+            poetry run test-notebooks --ignore ./docs/user_guide/09_threshold_optimization.ipynb
+          fi
 
   docs:
     runs-on: ubuntu-latest
