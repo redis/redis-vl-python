@@ -160,6 +160,16 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
+    def update_route_thresholds(self, route_thresholds: Dict[str, Optional[float]]):
+        """Update the distance thresholds for each route.
+
+        Args:
+            route_thresholds (Dict[str, float]): Dictionary of route names and their distance thresholds.
+        """
+        for route in self.routes:
+            if route.name in route_thresholds:
+                route.distance_threshold = route_thresholds[route.name]  # type: ignore
+
     def _route_ref_key(self, route_name: str, reference: str) -> str:
         """Generate the route reference key."""
         reference_hash = hashify(reference)
@@ -263,18 +273,16 @@ class SemanticRouter(BaseModel):
         aggregation_method: DistanceAggregationMethod,
         max_k: int = 1,
     ) -> List[RouteMatch]:
-        """Get the route matches for a given vector and aggregation method."""
+        """Get route response from vector db"""
 
-        thresholds = [route.distance_threshold for route in self.routes]
-        if thresholds:
-            distance_threshold = max(thresholds)
-        else:
-            raise ValueError("No distance thresholds provided for the semantic router")
+        # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
+        # therefore you might take the max_threshold and further refine from there.
+        distance_threshold = max(route.distance_threshold for route in self.routes)
 
         vector_range_query = RangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
-            distance_threshold=distance_threshold,
+            distance_threshold=float(distance_threshold),
             return_fields=["route_name"],
         )
 
@@ -329,7 +337,7 @@ class SemanticRouter(BaseModel):
     ) -> List[RouteMatch]:
         """Classify to multiple routes, up to max_k (int), using a vector."""
 
-        route_matches = self._get_route_matches(vector, aggregation_method, max_k)
+        route_matches = self._get_route_matches(vector, aggregation_method, max_k=max_k)
 
         # process route matches
         top_route_matches: List[RouteMatch] = []
