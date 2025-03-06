@@ -1,13 +1,13 @@
 import os
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from pydantic import PrivateAttr, HttpUrl
+from PIL import Image
+from pydantic import HttpUrl, PrivateAttr
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseMultimodalVectorizer
-from PIL import Image
 
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"

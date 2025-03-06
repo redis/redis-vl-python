@@ -2,11 +2,11 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Callable, List, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, HttpUrl
+from PIL import Image
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
-from PIL import Image
 
 
 class Vectorizers(Enum):
