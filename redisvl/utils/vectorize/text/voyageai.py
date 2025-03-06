@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
-
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"
 
