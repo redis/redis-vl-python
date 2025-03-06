@@ -120,10 +120,7 @@ class VoyageAIReranker(BaseReranker):
                 if isinstance(doc, dict) and "content" in doc
             ]
         else:
-            raise ValueError(
-                "The docs should either be List[str] or List[Dict[str, Any]] - "
-                "this case, the documents to rerank has to be in the 'content'"
-            )
+            texts = [str(doc) for doc in docs]
 
         reranker_kwargs = {
             "query": query,
