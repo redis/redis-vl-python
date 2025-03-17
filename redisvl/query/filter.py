@@ -597,7 +597,7 @@ class Timestamp(FilterField):
         FilterOperator.LT: "@%s:[-inf (%s]",
         FilterOperator.GE: "@%s:[%s +inf]",
         FilterOperator.LE: "@%s:[-inf %s]",
-        FilterOperator.BETWEEN: "@%s:[%s %s]",
+        FilterOperator.BETWEEN: "@%s:[(%s (%s]",  # should between be inclusive?
     }
 
     SUPPORTED_TYPES = (
@@ -710,7 +710,7 @@ class Timestamp(FilterField):
         """
         timestamp = self._convert_to_timestamp(other)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LT)
-        return self
+        return FilterExpression(str(self))
 
     def __ge__(self, other):
         """
