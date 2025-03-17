@@ -1,3 +1,5 @@
+import datetime
+import re
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -19,6 +21,7 @@ class FilterOperator(Enum):
     AND = 8
     LIKE = 9
     IN = 10
+    BETWEEN = 11
 
 
 class FilterField:
@@ -562,3 +565,394 @@ class FilterExpression:
         if not self._filter:
             raise ValueError("Improperly initialized FilterExpression")
         return self._filter
+
+
+class Timestamp(FilterField):
+    """
+    A timestamp filter for querying date/time fields in Redis.
+
+    This filter can handle various date and time formats, including:
+    - datetime objects (with or without timezone)
+    - date objects
+    - ISO-8601 formatted strings
+    - Unix timestamps (as integers or floats)
+
+    All timestamps are converted to Unix timestamps in UTC for consistency.
+    """
+
+    OPERATORS = {
+        FilterOperator.EQ: "==",
+        FilterOperator.NE: "!=",
+        FilterOperator.LT: "<",
+        FilterOperator.GT: ">",
+        FilterOperator.LE: "<=",
+        FilterOperator.GE: ">=",
+        FilterOperator.BETWEEN: "between",
+    }
+
+    OPERATOR_MAP = {
+        FilterOperator.EQ: "@%s:[%s %s]",  # For exact timestamp match (converted to range for dates)
+        FilterOperator.NE: "(-@%s:[%s %s])",
+        FilterOperator.GT: "@%s:[(%s +inf]",
+        FilterOperator.LT: "@%s:[-inf (%s]",
+        FilterOperator.GE: "@%s:[%s +inf]",
+        FilterOperator.LE: "@%s:[-inf %s]",
+        FilterOperator.BETWEEN: "@%s:[%s %s]",
+    }
+
+    SUPPORTED_TYPES = (
+        datetime.datetime,
+        datetime.date,
+        tuple,  # Date range
+        str,  # ISO format
+        int,  # Unix timestamp
+        float,  # Unix timestamp with fractional seconds
+        type(None),
+    )
+
+    def __init__(self, field: str):
+        """
+        Initialize a timestamp filter for the specified field.
+
+        Args:
+            field: The name of the field to filter on
+        """
+        super().__init__(field)
+        self._start_value = None
+        self._end_value = None
+
+    def __eq__(self, other):
+        """
+        Filter for timestamps equal to the specified value.
+        For date objects (without time), this matches the entire day.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        # TODO make this a function
+        if (
+            isinstance(other, datetime.date)
+            and not isinstance(other, datetime.datetime)
+        ) or (isinstance(other, str) and self._is_date_only(other)):
+            # For date objects, match the entire day
+            if isinstance(other, str):
+                other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
+            start = datetime.datetime.combine(other, datetime.time.min)
+            end = datetime.datetime.combine(other, datetime.time.max)
+            return self.between(start, end)
+
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.EQ)
+        self._start_value = timestamp
+        self._end_value = timestamp
+        return FilterExpression(str(self))
+
+    def __ne__(self, other):
+        """
+        Filter for timestamps not equal to the specified value.
+        For date objects (without time), this excludes the entire day.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        # TODO: not sure if we need to support not equal for dates
+        if (
+            isinstance(other, datetime.date)
+            and not isinstance(other, datetime.datetime)
+        ) or (isinstance(other, str) and self._is_date_only(other)):
+            # For date objects, exclude the entire day
+            if isinstance(other, str):
+                other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
+            start = datetime.datetime.combine(other, datetime.time.min)
+            end = datetime.datetime.combine(other, datetime.time.max)
+            start_ts = self._convert_to_timestamp(start)
+            end_ts = self._convert_to_timestamp(end)
+            self._set_value((start_ts, end_ts), self.SUPPORTED_TYPES, FilterOperator.NE)
+            self._start_value = start_ts
+            self._end_value = end_ts
+            return FilterExpression(str(self))
+
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.NE)
+        self._start_value = timestamp
+        self._end_value = timestamp
+        return FilterExpression(str(self))
+
+    def __gt__(self, other):
+        """
+        Filter for timestamps greater than the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.GT)
+        return FilterExpression(str(self))
+
+    def __lt__(self, other):
+        """
+        Filter for timestamps less than the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LT)
+        return self
+
+    def __ge__(self, other):
+        """
+        Filter for timestamps greater than or equal to the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.GE)
+        return FilterExpression(str(self))
+
+    def __le__(self, other):
+        """
+        Filter for timestamps less than or equal to the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LE)
+        return FilterExpression(str(self))
+
+    def between(self, start, end):
+        """
+        Filter for timestamps between start and end (inclusive).
+
+        Args:
+            start: A datetime, date, ISO string, or Unix timestamp
+            end: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        start_ts = self._convert_to_timestamp(start)
+        end_ts = self._convert_to_timestamp(end)
+
+        # Handle date objects by expanding to full day
+        # TODO: confirm if this is checked twice. Seems we do the date max thing twice
+        if isinstance(start, datetime.date) and not isinstance(
+            start, datetime.datetime
+        ):
+            start_ts = self._convert_to_timestamp(
+                datetime.datetime.combine(start, datetime.time.min)
+            )
+
+        if isinstance(end, datetime.date) and not isinstance(end, datetime.datetime):
+            end_ts = self._convert_to_timestamp(
+                datetime.datetime.combine(end, datetime.time.max)
+            )
+
+        self._set_value(
+            (start_ts, end_ts), self.SUPPORTED_TYPES, FilterOperator.BETWEEN
+        )
+        self._start_value = start_ts
+        self._end_value = end_ts
+        return FilterExpression(str(self))
+
+    def day_of(self, date_value):
+        """
+        Match exactly on the specified date (entire day, from 00:00:00 to 23:59:59).
+
+        Args:
+            date_value: A date or datetime object, or a string date representation
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        if isinstance(date_value, str):
+            # Try to parse the string as a date
+            date_value = datetime.datetime.fromisoformat(date_value).date()
+        elif isinstance(date_value, datetime.datetime):
+            date_value = date_value.date()
+
+        start = datetime.datetime.combine(date_value, datetime.time.min)
+        end = datetime.datetime.combine(date_value, datetime.time.max)
+        return self.between(start, end)
+
+    def week_of(self, date_value):
+        """
+        Match the week containing the specified date.
+        Weeks start on Monday (ISO week).
+
+        Args:
+            date_value: A date or datetime object, or a string date representation
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        if isinstance(date_value, str):
+            date_value = datetime.datetime.fromisoformat(date_value).date()
+        elif isinstance(date_value, datetime.datetime):
+            date_value = date_value.date()
+
+        # Calculate the Monday of the week
+        start_date = date_value - datetime.timedelta(days=date_value.weekday())
+        # Calculate the Sunday of the week
+        end_date = start_date + datetime.timedelta(days=6)
+
+        start = datetime.datetime.combine(start_date, datetime.time.min)
+        end = datetime.datetime.combine(end_date, datetime.time.max)
+        return self.between(start, end)
+
+    def month_of(self, year, month):
+        """
+        Match the specified month.
+
+        Args:
+            year: The year as an integer
+            month: The month as an integer (1-12)
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        if not (1 <= month <= 12):
+            raise ValueError("Month must be between 1 and 12")
+
+        start_date = datetime.date(year, month, 1)
+
+        # Calculate the last day of the month
+        if month == 12:
+            end_date = datetime.date(year + 1, 1, 1) - datetime.timedelta(days=1)
+        else:
+            end_date = datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)
+
+        start = datetime.datetime.combine(start_date, datetime.time.min)
+        end = datetime.datetime.combine(end_date, datetime.time.max)
+        return self.between(start, end)
+
+    def year_of(self, year):
+        """
+        Match the specified year.
+
+        Args:
+            year: The year as an integer
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        start = datetime.datetime(year, 1, 1, 0, 0, 0)
+        end = datetime.datetime(year, 12, 31, 23, 59, 59)
+        return self.between(start, end)
+
+    def last_days(self, days):
+        """
+        Match timestamps from the last N days up to now.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        end = datetime.datetime.now(datetime.timezone.utc)
+        start = end - datetime.timedelta(days=days)
+        return self.between(start, end)
+
+    @staticmethod
+    def _is_date_only(iso_string: str) -> bool:
+        """Check if an ISO formatted string only includes date information using regex."""
+        # Match YYYY-MM-DD format exactly
+        date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+        return bool(re.match(date_pattern, iso_string))
+
+    def _convert_to_timestamp(self, value):
+        """
+        Convert various inputs to a Unix timestamp (seconds since epoch in UTC).
+
+        Args:
+            value: A datetime, date, string, int, or float
+
+        Returns:
+            float: Unix timestamp
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            # Already a Unix timestamp
+            return float(value)
+
+        if isinstance(value, str):
+            # Parse ISO format
+            try:
+                value = datetime.datetime.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"String timestamp must be in ISO format: {value}")
+
+        if isinstance(value, datetime.date) and not isinstance(
+            value, datetime.datetime
+        ):
+            # Convert date to datetime at midnight
+            value = datetime.datetime.combine(value, datetime.time.min)
+
+        # Ensure the datetime is timezone-aware (UTC)
+        if isinstance(value, datetime.datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=datetime.timezone.utc)
+            else:
+                value = value.astimezone(datetime.timezone.utc)
+
+            # Convert to Unix timestamp
+            return value.timestamp()
+
+        raise TypeError(f"Unsupported type for timestamp conversion: {type(value)}")
+
+    def __str__(self):
+        """Generate the Redis query string for this filter."""
+        if self._value is None:
+            return "*"
+        if (
+            self._operator == FilterOperator.BETWEEN
+            or self._operator == FilterOperator.EQ
+            or (
+                self._operator == FilterOperator.NE
+                and self._start_value == self._end_value
+            )
+        ):
+            # For between and exact matches with range
+            return self.OPERATOR_MAP[self._operator] % (
+                self.escaper.escape(self._field),
+                self._start_value,
+                self._end_value,
+            )
+        elif (
+            self._operator == FilterOperator.NE and self._start_value != self._end_value
+        ):
+            # For not equal with date range
+            return self.OPERATOR_MAP[self._operator] % (
+                self.escaper.escape(self._field),
+                self._start_value,
+                self._end_value,
+            )
+        else:
+            # For other operators
+            return self.OPERATOR_MAP[self._operator] % (
+                self.escaper.escape(self._field),
+                self._value,
+            )
