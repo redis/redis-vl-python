@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from redis.commands.search.result import Result
 
@@ -348,25 +350,32 @@ def test_filters(index, query, sample_datetimes):
     search(query, index, t, 7)
 
     # Timestamps
-    t = Timestamp("last_updated") > sample_datetimes["mid"]
-    search(query, index, t, 2)
+    ts = Timestamp("last_updated") > sample_datetimes["mid"]
+    search(query, index, ts, 2)
 
-    t = Timestamp("last_updated") >= sample_datetimes["mid"]
-    search(query, index, t, 5)
+    ts = Timestamp("last_updated") >= sample_datetimes["mid"]
+    search(query, index, ts, 5)
 
-    t = Timestamp("last_updated") < sample_datetimes["high"]
-    search(query, index, t, 5)
+    ts = Timestamp("last_updated") < sample_datetimes["high"]
+    search(query, index, ts, 5)
 
-    t = Timestamp("last_updated") <= sample_datetimes["mid"]
-    search(query, index, t, 5)
+    ts = Timestamp("last_updated") <= sample_datetimes["mid"]
+    search(query, index, ts, 5)
 
-    t = Timestamp("last_updated") == sample_datetimes["mid"]
-    search(query, index, t, 3)
+    ts = Timestamp("last_updated") == sample_datetimes["mid"]
+    search(query, index, ts, 3)
 
-    t = Timestamp("last_updated").between(
-        sample_datetimes["low"], sample_datetimes["high"]
+    ts = (Timestamp("last_updated") == sample_datetimes["low"]) | (
+        Timestamp("last_updated") == sample_datetimes["high"]
     )
-    search(query, index, t, 3)
+    search(query, index, ts, 4)
+
+    # could drop between if we prefer union syntax
+    ts = Timestamp("last_updated").between(
+        sample_datetimes["low"] + timedelta(seconds=1),
+        sample_datetimes["high"] - timedelta(seconds=1),
+    )
+    search(query, index, ts, 3)
 
 
 def test_manual_string_filters(index, query):

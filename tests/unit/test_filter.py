@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 
 import pytest
 
@@ -324,22 +324,12 @@ def test_timestamp_date():
     d = date(2023, 3, 17)
     ts = Timestamp("created_at") == d
 
-    # Expected start is midnight UTC
-    start_dt = datetime(2023, 3, 17, 0, 0, 0, tzinfo=timezone.utc)
-    # Expected end is end of day UTC
-    end_dt = datetime(2023, 3, 17, 23, 59, 59, 999999, tzinfo=timezone.utc)
+    expected_ts_start = (
+        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
+    )
+    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
 
-    expected_start_ts = start_dt.timestamp()
-    expected_end_ts = end_dt.timestamp()
-
-    # The filter should create a range query for the entire day
-    assert str(ts).startswith(f"@created_at:[")
-    # We can't easily test the exact values due to potential timezone issues
-    # so we'll check that the values are within the expected day
-
-    # Alternative approach: use the day_of method directly
-    ts2 = Timestamp("created_at").day_of(d)
-    assert str(ts) == str(ts2)
+    assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
 
 
 def test_timestamp_iso_string():
@@ -347,8 +337,11 @@ def test_timestamp_iso_string():
     # Date-only ISO string
     ts = Timestamp("created_at") == "2023-03-17"
     d = date(2023, 3, 17)
-    expected_ts = Timestamp("created_at").day_of(d)
-    assert str(ts) == str(expected_ts)
+    expected_ts_start = (
+        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
+    )
+    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+    assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
 
     # Full ISO datetime string
     dt_str = "2023-03-17T14:30:00+00:00"
@@ -409,7 +402,7 @@ def test_timestamp_between():
     start_ts = start.timestamp()
     end_ts = end.timestamp()
 
-    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
+    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
 
     # Test with dates (should expand to full days)
     start_date = date(2023, 3, 1)
@@ -428,100 +421,7 @@ def test_timestamp_between():
     expected_start_ts = expected_start.timestamp()
     expected_end_ts = expected_end.timestamp()
 
-    assert str(ts) == f"@created_at:[({expected_start_ts} ({expected_end_ts}]"
-
-
-def test_timestamp_day_of():
-    """Test the day_of helper method."""
-    d = date(2023, 3, 17)
-    ts = Timestamp("created_at").day_of(d)
-
-    # Expected start is midnight UTC
-    start_dt = datetime.combine(d, datetime.min.time()).replace(tzinfo=timezone.utc)
-    # Expected end is end of day UTC
-    end_dt = datetime.combine(d, datetime.max.time()).replace(tzinfo=timezone.utc)
-
-    start_ts = start_dt.timestamp()
-    end_ts = end_dt.timestamp()
-
-    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
-
-    # Test with string date
-    ts = Timestamp("created_at").day_of("2023-03-17")
-    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
-
-
-def test_timestamp_week_of():
-    """Test the week_of helper method."""
-    # March 17, 2023 was a Friday
-    d = date(2023, 3, 17)
-    ts = Timestamp("created_at").week_of(d)
-
-    # Monday of that week is March 13
-    monday = date(2023, 3, 13)
-    # Sunday of that week is March 19
-    sunday = date(2023, 3, 19)
-
-    start_dt = datetime.combine(monday, datetime.min.time()).replace(
-        tzinfo=timezone.utc
-    )
-    end_dt = datetime.combine(sunday, datetime.max.time()).replace(tzinfo=timezone.utc)
-
-    start_ts = start_dt.timestamp()
-    end_ts = end_dt.timestamp()
-
-    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
-
-
-def test_timestamp_month_of():
-    """Test the month_of helper method."""
-    ts = Timestamp("created_at").month_of(2023, 3)
-
-    # First day of March
-    start_date = date(2023, 3, 1)
-    # Last day of March
-    end_date = date(2023, 3, 31)
-
-    start_dt = datetime.combine(start_date, datetime.min.time()).replace(
-        tzinfo=timezone.utc
-    )
-    end_dt = datetime.combine(end_date, datetime.max.time()).replace(
-        tzinfo=timezone.utc
-    )
-
-    start_ts = start_dt.timestamp()
-    end_ts = end_dt.timestamp()
-
-    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
-
-    # Test with invalid month
-    with pytest.raises(ValueError):
-        Timestamp("created_at").month_of(2023, 13)
-
-
-def test_timestamp_year_of():
-    """Test the year_of helper method."""
-    ts = Timestamp("created_at").year_of(2023)
-
-    start_dt = datetime(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    end_dt = datetime(2023, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-
-    start_ts = start_dt.timestamp()
-    end_ts = end_dt.timestamp()
-
-    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
-
-
-def test_timestamp_last_days():
-    """Test the last_days helper method."""
-    ts = Timestamp("created_at").last_days(7)
-
-    # This test is tricky because it depends on the current time
-    # We'll just verify that it generates a valid filter string
-    assert "@created_at:[" in str(ts)
-
-    # We can mock datetime.now for more precise testing in a real test suite
-    # but for simplicity, we'll just check the format here
+    assert str(ts) == f"@created_at:[{expected_start_ts} {expected_end_ts}]"
 
 
 def test_timestamp_none():
