@@ -798,37 +798,3 @@ class Timestamp(Num):
             (start_ts, end_ts), self.SUPPORTED_TYPES, FilterOperator.BETWEEN
         )
         return FilterExpression(str(self))
-
-    # def __str__(self):
-    #     """Generate the Redis query string for this filter."""
-    #     if self._value is None:
-    #         return "*"
-    #     if (
-    #         self._operator == FilterOperator.BETWEEN
-    #         or self._operator == FilterOperator.EQ
-    #         or (
-    #             self._operator == FilterOperator.NE
-    #             and self._start_value == self._end_value
-    #         )
-    #     ):
-    #         # For between and exact matches with range
-    #         return self.OPERATOR_MAP[self._operator] % (
-    #             self.escaper.escape(self._field),
-    #             self._start_value,
-    #             self._end_value,
-    #         )
-    #     elif (
-    #         self._operator == FilterOperator.NE and self._start_value != self._end_value
-    #     ):
-    #         # For not equal with date range
-    #         return self.OPERATOR_MAP[self._operator] % (
-    #             self.escaper.escape(self._field),
-    #             self._start_value,
-    #             self._end_value,
-    #         )
-    #     else:
-    #         # For other operators
-    #         return self.OPERATOR_MAP[self._operator] % (
-    #             self.escaper.escape(self._field),
-    #             self._value,
-    #         )
