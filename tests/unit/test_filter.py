@@ -409,7 +409,7 @@ def test_timestamp_between():
     start_ts = start.timestamp()
     end_ts = end.timestamp()
 
-    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
 
     # Test with dates (should expand to full days)
     start_date = date(2023, 3, 1)
@@ -428,7 +428,7 @@ def test_timestamp_between():
     expected_start_ts = expected_start.timestamp()
     expected_end_ts = expected_end.timestamp()
 
-    assert str(ts) == f"@created_at:[{expected_start_ts} {expected_end_ts}]"
+    assert str(ts) == f"@created_at:[({expected_start_ts} ({expected_end_ts}]"
 
 
 def test_timestamp_day_of():
@@ -444,11 +444,11 @@ def test_timestamp_day_of():
     start_ts = start_dt.timestamp()
     end_ts = end_dt.timestamp()
 
-    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
 
     # Test with string date
     ts = Timestamp("created_at").day_of("2023-03-17")
-    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
 
 
 def test_timestamp_week_of():
@@ -470,7 +470,7 @@ def test_timestamp_week_of():
     start_ts = start_dt.timestamp()
     end_ts = end_dt.timestamp()
 
-    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
 
 
 def test_timestamp_month_of():
@@ -492,7 +492,7 @@ def test_timestamp_month_of():
     start_ts = start_dt.timestamp()
     end_ts = end_dt.timestamp()
 
-    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
 
     # Test with invalid month
     with pytest.raises(ValueError):
@@ -509,7 +509,7 @@ def test_timestamp_year_of():
     start_ts = start_dt.timestamp()
     end_ts = end_dt.timestamp()
 
-    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+    assert str(ts) == f"@created_at:[({start_ts} ({end_ts}]"
 
 
 def test_timestamp_last_days():
