@@ -272,11 +272,6 @@ class SearchIndex(BaseSearchIndex):
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
 
-        if redis_client:
-            RedisConnectionFactory.validate_sync_redis(
-                redis_client, required_modules=REQUIRED_MODULES_FOR_INTROSPECTION
-            )
-
         self.schema = schema
 
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
