@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 
@@ -111,6 +111,18 @@ def test_numeric_filter():
 
     nf = Num("numeric_field") != None
     assert str(nf) == "*"
+
+    nf = Num("numeric_field").between(2, 5)
+    assert str(nf) == "@numeric_field:[2 5]"
+
+    nf = Num("numeric_field").between(2, 5, inclusive="neither")
+    assert str(nf) == "@numeric_field:[2 5]"
+
+    nf = Num("numeric_field").between(2, 5, inclusive="left")
+    assert str(nf) == "@numeric_field:[2 (5]"
+
+    nf = Num("numeric_field").between(2, 5, inclusive="right")
+    assert str(nf) == "@numeric_field:[(2 5]"
 
 
 def test_text_filter():
@@ -296,13 +308,6 @@ def test_num_filter_zero():
     ), "Num filter should handle zero correctly"
 
 
-from datetime import date, datetime, timedelta, timezone
-
-import pytest
-
-from redisvl.query.filter import Timestamp
-
-
 def test_timestamp_datetime():
     """Test Timestamp filter with datetime objects."""
     # Test with timezone-aware datetime
@@ -390,6 +395,22 @@ def test_timestamp_operators():
     # Less than or equal
     ts = Timestamp("created_at") <= dt
     assert str(ts) == f"@created_at:[-inf {ts_value}]"
+
+    td = timedelta(days=5)
+    dt2 = dt + td
+    ts_value2 = dt2.timestamp()
+
+    ts = Timestamp("created_at").between(dt, dt2)
+    assert str(ts) == f"@created_at:[{ts_value} {ts_value2}]"
+
+    ts = Timestamp("created_at").between(dt, dt2, inclusive="neither")
+    assert str(ts) == f"@created_at:[({ts_value} ({ts_value2}]"
+
+    ts = Timestamp("created_at").between(dt, dt2, inclusive="left")
+    assert str(ts) == f"@created_at:[{ts_value} ({ts_value2}]"
+
+    ts = Timestamp("created_at").between(dt, dt2, inclusive="right")
+    assert str(ts) == f"@created_at:[({ts_value} {ts_value2}]"
 
 
 def test_timestamp_between():

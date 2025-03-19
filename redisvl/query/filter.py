@@ -10,6 +10,19 @@ from redisvl.utils.token_escaper import TokenEscaper
 # mypy: disable-error-code="override"
 
 
+class Inclusive(str, Enum):
+    """Enumeration for distance aggregation methods."""
+
+    BOTH = "both"
+    """Inclusive of both sides of range (default)"""
+    NEITHER = "neither"
+    """Inclusive of neither side of range"""
+    LEFT = "left"
+    """Inclusive of only left"""
+    RIGHT = "right"
+    """Inclusive of only right"""
+
+
 class FilterOperator(Enum):
     EQ = 1
     NE = 2
@@ -379,7 +392,35 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
-    def between(self, start: int, end: int) -> "FilterExpression":
+    @staticmethod
+    def _validate_inclusive_string(inclusive: str) -> Inclusive:
+        try:
+            return Inclusive(inclusive)
+        except:
+            raise ValueError(
+                f"Invalid inclusive value must be: {[i.value for i in Inclusive]}"
+            )
+
+    def _format_inclusive_between(
+        self, inclusive: Inclusive, start: int, end: int
+    ) -> str:
+        if inclusive.value == Inclusive.BOTH.value:
+            return f"@{self._field}:[{start} {end}]"
+
+        if inclusive.value == Inclusive.NEITHER.value:
+            return f"@{self._field}:[({start} ({end}]"
+
+        if inclusive.value == Inclusive.LEFT.value:
+            return f"@{self._field}:[{start} ({end}]"
+
+        if inclusive.value == Inclusive.RIGHT.value:
+            return f"@{self._field}:[({start} {end}]"
+
+        raise ValueError(f"Inclusive value not found")
+
+    def between(
+        self, start: int, end: int, inclusive: str = "both"
+    ) -> "FilterExpression":
         """Create a Numeric equality filter expression.
 
         Args:
@@ -391,8 +432,10 @@ class Num(FilterField):
             f = Num("zipcode") == 90210
 
         """
-        self._set_value((start, end), self.SUPPORTED_VAL_TYPES, FilterOperator.BETWEEN)
-        return FilterExpression(str(self))
+        inclusive = self._validate_inclusive_string(inclusive)
+        expression = self._format_inclusive_between(inclusive, start, end)
+
+        return FilterExpression(expression)
 
     def __str__(self) -> str:
         """Return the Redis Query string for the Numeric filter"""
@@ -674,7 +717,7 @@ class Timestamp(Num):
 
         raise TypeError(f"Unsupported type for timestamp conversion: {type(value)}")
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> FilterExpression:
         """
         Filter for timestamps equal to the specified value.
         For date objects (without time), this matches the entire day.
@@ -701,7 +744,7 @@ class Timestamp(Num):
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
-    def __ne__(self, other):
+    def __ne__(self, other) -> FilterExpression:
         """
         Filter for timestamps not equal to the specified value.
         For date objects (without time), this excludes the entire day.
@@ -780,7 +823,7 @@ class Timestamp(Num):
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
-    def between(self, start, end):
+    def between(self, start, end, inclusive: str = "both"):
         """
         Filter for timestamps between start and end (inclusive).
 
@@ -791,10 +834,11 @@ class Timestamp(Num):
         Returns:
             self: The filter object for method chaining
         """
+        inclusive = self._validate_inclusive_string(inclusive)
+
         start_ts = self._convert_to_timestamp(start)
         end_ts = self._convert_to_timestamp(end, end_date=True)
 
-        self._set_value(
-            (start_ts, end_ts), self.SUPPORTED_TYPES, FilterOperator.BETWEEN
-        )
-        return FilterExpression(str(self))
+        expression = self._format_inclusive_between(inclusive, start_ts, end_ts)
+
+        return FilterExpression(expression)
