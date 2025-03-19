@@ -1,10 +1,11 @@
 import warnings
+from unittest import mock
 
 import pytest
 from redis import Redis as SyncRedis
-from redis.asyncio import Redis
+from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
 from redisvl.redis.utils import convert_bytes
@@ -172,12 +173,12 @@ async def test_search_index_set_client(client, redis_url, index_schema):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         await async_index.create(overwrite=True, drop=True)
-        assert isinstance(async_index.client, Redis)
+        assert isinstance(async_index.client, AsyncRedis)
 
         # Tests deprecated sync -> async conversion behavior
         assert isinstance(client, SyncRedis)
         await async_index.set_client(client)
-        assert isinstance(async_index.client, Redis)
+        assert isinstance(async_index.client, AsyncRedis)
 
     await async_index.disconnect()
     assert async_index.client is None
@@ -410,3 +411,28 @@ async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis
     await async_index.create(overwrite=True, drop=True)
     await async_index.disconnect()
     assert async_index._redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_async_search_index_validates_redis_modules(redis_url):
+    """
+    A regression test for RAAE-694: we should validate that a passed-in
+    Redis client has the correct modules installed.
+    """
+    client = AsyncRedis.from_url(redis_url)
+    with mock.patch(
+        "redisvl.index.index.RedisConnectionFactory.validate_async_redis"
+    ) as mock_validate_async_redis:
+        mock_validate_async_redis.side_effect = RedisModuleVersionError(
+            "Required modules not installed"
+        )
+        with pytest.raises(RedisModuleVersionError):
+            index = AsyncSearchIndex(
+                schema=IndexSchema.from_dict(
+                    {"index": {"name": "my_index"}, "fields": fields}
+                ),
+                redis_client=client,
+            )
+            await index.create(overwrite=True, drop=True)
+
+        mock_validate_async_redis.assert_called_once()

@@ -272,6 +272,11 @@ class SearchIndex(BaseSearchIndex):
         if not isinstance(schema, IndexSchema):
             raise ValueError("Must provide a valid IndexSchema object")
 
+        if redis_client:
+            RedisConnectionFactory.validate_sync_redis(
+                redis_client, required_modules=REQUIRED_MODULES_FOR_INTROSPECTION
+            )
+
         self.schema = schema
 
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
@@ -282,6 +287,7 @@ class SearchIndex(BaseSearchIndex):
         self._connection_kwargs = connection_kwargs or {}
         self._lock = threading.Lock()
 
+        self._validated_client = False
         self._owns_redis_client = redis_client is None
         if self._owns_redis_client:
             weakref.finalize(self, self.disconnect)
@@ -361,6 +367,12 @@ class SearchIndex(BaseSearchIndex):
                         redis_url=self._redis_url,
                         **self._connection_kwargs,
                     )
+        if not self._validated_client:
+            RedisConnectionFactory.validate_sync_redis(
+                self.__redis_client,
+                self._lib_name,
+            )
+            self._validated_client = True
         return self.__redis_client
 
     @deprecated_function("connect", "Pass connection parameters in __init__.")
@@ -851,6 +863,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self.schema = schema
 
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
+        self._validated_client = False
 
         # Store connection parameters
         self._redis_client = redis_client
@@ -954,9 +967,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                     self._redis_client = (
                         await RedisConnectionFactory._get_aredis_connection(**kwargs)
                     )
+        if not self._validated_client:
             await RedisConnectionFactory.validate_async_redis(
-                self._redis_client, self._lib_name
+                self._redis_client,
+                self._lib_name,
             )
+            self._validated_client = True
         return self._redis_client
 
     async def _validate_client(
