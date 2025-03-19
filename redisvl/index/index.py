@@ -858,7 +858,6 @@ class AsyncSearchIndex(BaseSearchIndex):
         self.schema = schema
 
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
-        self._validated_client = False
 
         # Store connection parameters
         self._redis_client = redis_client
@@ -866,6 +865,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._connection_kwargs = connection_kwargs or {}
         self._lock = asyncio.Lock()
 
+        self._validated_client = False
         self._owns_redis_client = redis_client is None
         if self._owns_redis_client:
             weakref.finalize(self, sync_wrapper(self.disconnect))
