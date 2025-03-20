@@ -11,7 +11,7 @@ from redisvl.utils.token_escaper import TokenEscaper
 
 
 class Inclusive(str, Enum):
-    """Enumeration for distance aggregation methods."""
+    """Enum for valid inclusive options"""
 
     BOTH = "both"
     """Inclusive of both sides of range (default)"""
@@ -421,17 +421,7 @@ class Num(FilterField):
     def between(
         self, start: int, end: int, inclusive: str = "both"
     ) -> "FilterExpression":
-        """Create a Numeric equality filter expression.
-
-        Args:
-            other (int): The value to filter on.
-
-        .. code-block:: python
-
-            from redisvl.query.filter import Num
-            f = Num("zipcode") == 90210
-
-        """
+        """Operator for searching values between two numeric values."""
         inclusive = self._validate_inclusive_string(inclusive)
         expression = self._format_inclusive_between(inclusive, start, end)
 
