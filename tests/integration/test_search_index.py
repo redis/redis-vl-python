@@ -380,10 +380,12 @@ def test_search_index_validates_redis_modules(redis_url):
             "Required modules not installed"
         )
         with pytest.raises(RedisModuleVersionError):
-            SearchIndex(
+            index = SearchIndex(
                 schema=IndexSchema.from_dict(
                     {"index": {"name": "my_index"}, "fields": fields}
                 ),
                 redis_client=client,
             )
+            index.create(overwrite=True, drop=True)
+
         mock_validate_sync_redis.assert_called_once()
