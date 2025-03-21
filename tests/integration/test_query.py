@@ -1,9 +1,19 @@
+from datetime import timedelta
+
 import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
-from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
+from redisvl.query.filter import (
+    FilterExpression,
+    Geo,
+    GeoRadius,
+    Num,
+    Tag,
+    Text,
+    Timestamp,
+)
 from redisvl.redis.utils import array_to_buffer
 
 # TODO expand to multiple schema types and sync + async
@@ -14,7 +24,14 @@ def vector_query():
     return VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
-        return_fields=["user", "credit_score", "age", "job", "location"],
+        return_fields=[
+            "user",
+            "credit_score",
+            "age",
+            "job",
+            "location",
+            "last_updated",
+        ],
     )
 
 
@@ -23,7 +40,14 @@ def sorted_vector_query():
     return VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
-        return_fields=["user", "credit_score", "age", "job", "location"],
+        return_fields=[
+            "user",
+            "credit_score",
+            "age",
+            "job",
+            "location",
+            "last_updated",
+        ],
         sort_by="age",
     )
 
@@ -31,7 +55,14 @@ def sorted_vector_query():
 @pytest.fixture
 def filter_query():
     return FilterQuery(
-        return_fields=["user", "credit_score", "age", "job", "location"],
+        return_fields=[
+            "user",
+            "credit_score",
+            "age",
+            "job",
+            "location",
+            "last_updated",
+        ],
         filter_expression=Tag("credit_score") == "high",
     )
 
@@ -39,7 +70,14 @@ def filter_query():
 @pytest.fixture
 def sorted_filter_query():
     return FilterQuery(
-        return_fields=["user", "credit_score", "age", "job", "location"],
+        return_fields=[
+            "user",
+            "credit_score",
+            "age",
+            "job",
+            "location",
+            "last_updated",
+        ],
         filter_expression=Tag("credit_score") == "high",
         sort_by="age",
     )
@@ -80,6 +118,7 @@ def index(sample_data, redis_url):
                 {"name": "credit_score", "type": "tag"},
                 {"name": "job", "type": "text"},
                 {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
                 {"name": "location", "type": "geo"},
                 {
                     "name": "user_embedding",
@@ -255,7 +294,7 @@ def query(request):
     return request.getfixturevalue(request.param)
 
 
-def test_filters(index, query):
+def test_filters(index, query, sample_datetimes):
     # Simple Tag Filter
     t = Tag("credit_score") == "high"
     search(query, index, t, 4, credit_check="high")
@@ -309,6 +348,34 @@ def test_filters(index, query):
     # Test empty filters
     t = Text("job") % ""
     search(query, index, t, 7)
+
+    # Timestamps
+    ts = Timestamp("last_updated") > sample_datetimes["mid"]
+    search(query, index, ts, 2)
+
+    ts = Timestamp("last_updated") >= sample_datetimes["mid"]
+    search(query, index, ts, 5)
+
+    ts = Timestamp("last_updated") < sample_datetimes["high"]
+    search(query, index, ts, 5)
+
+    ts = Timestamp("last_updated") <= sample_datetimes["mid"]
+    search(query, index, ts, 5)
+
+    ts = Timestamp("last_updated") == sample_datetimes["mid"]
+    search(query, index, ts, 3)
+
+    ts = (Timestamp("last_updated") == sample_datetimes["low"]) | (
+        Timestamp("last_updated") == sample_datetimes["high"]
+    )
+    search(query, index, ts, 4)
+
+    # could drop between if we prefer union syntax
+    ts = Timestamp("last_updated").between(
+        sample_datetimes["low"] + timedelta(seconds=1),
+        sample_datetimes["high"] - timedelta(seconds=1),
+    )
+    search(query, index, ts, 3)
 
 
 def test_manual_string_filters(index, query):
