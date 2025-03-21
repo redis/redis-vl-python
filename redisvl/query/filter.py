@@ -1,3 +1,5 @@
+import datetime
+import re
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -6,6 +8,19 @@ from redisvl.utils.token_escaper import TokenEscaper
 
 # disable mypy error for dunder method overrides
 # mypy: disable-error-code="override"
+
+
+class Inclusive(str, Enum):
+    """Enum for valid inclusive options"""
+
+    BOTH = "both"
+    """Inclusive of both sides of range (default)"""
+    NEITHER = "neither"
+    """Inclusive of neither side of range"""
+    LEFT = "left"
+    """Inclusive of only left"""
+    RIGHT = "right"
+    """Inclusive of only right"""
 
 
 class FilterOperator(Enum):
@@ -19,6 +34,7 @@ class FilterOperator(Enum):
     AND = 8
     LIKE = 9
     IN = 10
+    BETWEEN = 11
 
 
 class FilterField:
@@ -267,6 +283,7 @@ class Num(FilterField):
         FilterOperator.GT: ">",
         FilterOperator.LE: "<=",
         FilterOperator.GE: ">=",
+        FilterOperator.BETWEEN: "between",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:[%s %s]",
@@ -275,8 +292,10 @@ class Num(FilterField):
         FilterOperator.LT: "@%s:[-inf (%s]",
         FilterOperator.GE: "@%s:[%s +inf]",
         FilterOperator.LE: "@%s:[-inf %s]",
+        FilterOperator.BETWEEN: "@%s:[%s %s]",
     }
-    SUPPORTED_VAL_TYPES = (int, float, type(None))
+
+    SUPPORTED_VAL_TYPES = (int, float, tuple, type(None))
 
     def __eq__(self, other: int) -> "FilterExpression":
         """Create a Numeric equality filter expression.
@@ -373,10 +392,51 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
+    @staticmethod
+    def _validate_inclusive_string(inclusive: str) -> Inclusive:
+        try:
+            return Inclusive(inclusive)
+        except:
+            raise ValueError(
+                f"Invalid inclusive value must be: {[i.value for i in Inclusive]}"
+            )
+
+    def _format_inclusive_between(
+        self, inclusive: Inclusive, start: int, end: int
+    ) -> str:
+        if inclusive.value == Inclusive.BOTH.value:
+            return f"@{self._field}:[{start} {end}]"
+
+        if inclusive.value == Inclusive.NEITHER.value:
+            return f"@{self._field}:[({start} ({end}]"
+
+        if inclusive.value == Inclusive.LEFT.value:
+            return f"@{self._field}:[{start} ({end}]"
+
+        if inclusive.value == Inclusive.RIGHT.value:
+            return f"@{self._field}:[({start} {end}]"
+
+        raise ValueError(f"Inclusive value not found")
+
+    def between(
+        self, start: int, end: int, inclusive: str = "both"
+    ) -> "FilterExpression":
+        """Operator for searching values between two numeric values."""
+        inclusive = self._validate_inclusive_string(inclusive)
+        expression = self._format_inclusive_between(inclusive, start, end)
+
+        return FilterExpression(expression)
+
     def __str__(self) -> str:
         """Return the Redis Query string for the Numeric filter"""
         if self._value is None:
             return "*"
+        if self._operator == FilterOperator.BETWEEN:
+            return self.OPERATOR_MAP[self._operator] % (
+                self._field,
+                self._value[0],
+                self._value[1],
+            )
         if self._operator == FilterOperator.EQ or self._operator == FilterOperator.NE:
             return self.OPERATOR_MAP[self._operator] % (
                 self._field,
@@ -562,3 +622,213 @@ class FilterExpression:
         if not self._filter:
             raise ValueError("Improperly initialized FilterExpression")
         return self._filter
+
+
+class Timestamp(Num):
+    """
+    A timestamp filter for querying date/time fields in Redis.
+
+    This filter can handle various date and time formats, including:
+    - datetime objects (with or without timezone)
+    - date objects
+    - ISO-8601 formatted strings
+    - Unix timestamps (as integers or floats)
+
+    All timestamps are converted to Unix timestamps in UTC for consistency.
+    """
+
+    SUPPORTED_TYPES = (
+        datetime.datetime,
+        datetime.date,
+        tuple,  # Date range
+        str,  # ISO format
+        int,  # Unix timestamp
+        float,  # Unix timestamp with fractional seconds
+        type(None),
+    )
+
+    @staticmethod
+    def _is_date(value: Any) -> bool:
+        """Check if the value is a date object. Either ISO string or datetime.date."""
+        return (
+            isinstance(value, datetime.date)
+            and not isinstance(value, datetime.datetime)
+        ) or (isinstance(value, str) and Timestamp._is_date_only(value))
+
+    @staticmethod
+    def _is_date_only(iso_string: str) -> bool:
+        """Check if an ISO formatted string only includes date information using regex."""
+        # Match YYYY-MM-DD format exactly
+        date_pattern = r"^\d{4}-\d{2}-\d{2}$"
+        return bool(re.match(date_pattern, iso_string))
+
+    def _convert_to_timestamp(self, value, end_date=False):
+        """
+        Convert various inputs to a Unix timestamp (seconds since epoch in UTC).
+
+        Args:
+            value: A datetime, date, string, int, or float
+
+        Returns:
+            float: Unix timestamp
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            # Already a Unix timestamp
+            return float(value)
+
+        if isinstance(value, str):
+            # Parse ISO format
+            try:
+                value = datetime.datetime.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"String timestamp must be in ISO format: {value}")
+
+        if isinstance(value, datetime.date) and not isinstance(
+            value, datetime.datetime
+        ):
+            # Convert to max or min if for dates based on end or not
+            if end_date:
+                value = datetime.datetime.combine(value, datetime.time.max)
+            else:
+                value = datetime.datetime.combine(value, datetime.time.min)
+
+        # Ensure the datetime is timezone-aware (UTC)
+        if isinstance(value, datetime.datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=datetime.timezone.utc)
+            else:
+                value = value.astimezone(datetime.timezone.utc)
+
+            # Convert to Unix timestamp
+            return value.timestamp()
+
+        raise TypeError(f"Unsupported type for timestamp conversion: {type(value)}")
+
+    def __eq__(self, other) -> FilterExpression:
+        """
+        Filter for timestamps equal to the specified value.
+        For date objects (without time), this matches the entire day.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        if self._is_date(other):
+            # For date objects, match the entire day
+            if isinstance(other, str):
+                other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
+            start = datetime.datetime.combine(other, datetime.time.min).astimezone(
+                datetime.timezone.utc
+            )
+            end = datetime.datetime.combine(other, datetime.time.max).astimezone(
+                datetime.timezone.utc
+            )
+            return self.between(start, end)
+
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.EQ)
+        return FilterExpression(str(self))
+
+    def __ne__(self, other) -> FilterExpression:
+        """
+        Filter for timestamps not equal to the specified value.
+        For date objects (without time), this excludes the entire day.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        if self._is_date(other):
+            # For date objects, exclude the entire day
+            if isinstance(other, str):
+                other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
+            start = datetime.datetime.combine(other, datetime.time.min)
+            end = datetime.datetime.combine(other, datetime.time.max)
+            return self.between(start, end)
+
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.NE)
+        return FilterExpression(str(self))
+
+    def __gt__(self, other):
+        """
+        Filter for timestamps greater than the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.GT)
+        return FilterExpression(str(self))
+
+    def __lt__(self, other):
+        """
+        Filter for timestamps less than the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LT)
+        return FilterExpression(str(self))
+
+    def __ge__(self, other):
+        """
+        Filter for timestamps greater than or equal to the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.GE)
+        return FilterExpression(str(self))
+
+    def __le__(self, other):
+        """
+        Filter for timestamps less than or equal to the specified value.
+
+        Args:
+            other: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        timestamp = self._convert_to_timestamp(other)
+        self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LE)
+        return FilterExpression(str(self))
+
+    def between(self, start, end, inclusive: str = "both"):
+        """
+        Filter for timestamps between start and end (inclusive).
+
+        Args:
+            start: A datetime, date, ISO string, or Unix timestamp
+            end: A datetime, date, ISO string, or Unix timestamp
+
+        Returns:
+            self: The filter object for method chaining
+        """
+        inclusive = self._validate_inclusive_string(inclusive)
+
+        start_ts = self._convert_to_timestamp(start)
+        end_ts = self._convert_to_timestamp(end, end_date=True)
+
+        expression = self._format_inclusive_between(inclusive, start_ts, end_ts)
+
+        return FilterExpression(expression)
