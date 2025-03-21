@@ -159,7 +159,7 @@ def validate_modules(
         required_modules: List of required modules.
 
     Raises:
-        ValueError: If required Redis modules are not installed.
+        RedisModuleVersionError: If required Redis modules are not installed.
     """
     required_modules = required_modules or DEFAULT_REQUIRED_MODULES
 
