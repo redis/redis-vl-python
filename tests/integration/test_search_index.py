@@ -1,8 +1,10 @@
 import warnings
+from unittest import mock
 
 import pytest
+from redis import Redis
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.redis.utils import convert_bytes
@@ -363,3 +365,27 @@ def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
     index.create(overwrite=True, drop=True)
     index.disconnect()
     assert index.client is None
+
+
+def test_search_index_validates_redis_modules(redis_url):
+    """
+    A regression test for RAAE-694: we should validate that a passed-in
+    Redis client has the correct modules installed.
+    """
+    client = Redis.from_url(redis_url)
+    with mock.patch(
+        "redisvl.index.index.RedisConnectionFactory.validate_sync_redis"
+    ) as mock_validate_sync_redis:
+        mock_validate_sync_redis.side_effect = RedisModuleVersionError(
+            "Required modules not installed"
+        )
+        with pytest.raises(RedisModuleVersionError):
+            index = SearchIndex(
+                schema=IndexSchema.from_dict(
+                    {"index": {"name": "my_index"}, "fields": fields}
+                ),
+                redis_client=client,
+            )
+            index.create(overwrite=True, drop=True)
+
+        mock_validate_sync_redis.assert_called_once()
