@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 import pytest
 from testcontainers.compose import DockerCompose
@@ -68,12 +69,22 @@ def client(redis_url):
 
 
 @pytest.fixture
-def sample_data():
+def sample_datetimes():
+    return {
+        "low": datetime(2025, 1, 16, 13).astimezone(timezone.utc),
+        "mid": datetime(2025, 2, 16, 13).astimezone(timezone.utc),
+        "high": datetime(2025, 3, 16, 13).astimezone(timezone.utc),
+    }
+
+
+@pytest.fixture
+def sample_data(sample_datetimes):
     return [
         {
             "user": "john",
             "age": 18,
             "job": "engineer",
+            "last_updated": sample_datetimes["low"].timestamp(),
             "credit_score": "high",
             "location": "-122.4194,37.7749",
             "user_embedding": [0.1, 0.1, 0.5],
@@ -82,6 +93,7 @@ def sample_data():
             "user": "mary",
             "age": 14,
             "job": "doctor",
+            "last_updated": sample_datetimes["low"].timestamp(),
             "credit_score": "low",
             "location": "-122.4194,37.7749",
             "user_embedding": [0.1, 0.1, 0.5],
@@ -90,6 +102,7 @@ def sample_data():
             "user": "nancy",
             "age": 94,
             "job": "doctor",
+            "last_updated": sample_datetimes["mid"].timestamp(),
             "credit_score": "high",
             "location": "-122.4194,37.7749",
             "user_embedding": [0.7, 0.1, 0.5],
@@ -98,6 +111,7 @@ def sample_data():
             "user": "tyler",
             "age": 100,
             "job": "engineer",
+            "last_updated": sample_datetimes["mid"].timestamp(),
             "credit_score": "high",
             "location": "-110.0839,37.3861",
             "user_embedding": [0.1, 0.4, 0.5],
@@ -106,6 +120,7 @@ def sample_data():
             "user": "tim",
             "age": 12,
             "job": "dermatologist",
+            "last_updated": sample_datetimes["mid"].timestamp(),
             "credit_score": "high",
             "location": "-110.0839,37.3861",
             "user_embedding": [0.4, 0.4, 0.5],
@@ -114,6 +129,7 @@ def sample_data():
             "user": "taimur",
             "age": 15,
             "job": "CEO",
+            "last_updated": sample_datetimes["high"].timestamp(),
             "credit_score": "low",
             "location": "-110.0839,37.3861",
             "user_embedding": [0.6, 0.1, 0.5],
@@ -122,6 +138,7 @@ def sample_data():
             "user": "joe",
             "age": 35,
             "job": "dentist",
+            "last_updated": sample_datetimes["high"].timestamp(),
             "credit_score": "medium",
             "location": "-110.0839,37.3861",
             "user_embedding": [0.9, 0.9, 0.1],

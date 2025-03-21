@@ -1,6 +1,8 @@
+from datetime import date, datetime, time, timedelta, timezone
+
 import pytest
 
-from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
+from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text, Timestamp
 
 
 # Test cases for various scenarios of tag usage, combinations, and their string representations.
@@ -109,6 +111,18 @@ def test_numeric_filter():
 
     nf = Num("numeric_field") != None
     assert str(nf) == "*"
+
+    nf = Num("numeric_field").between(2, 5)
+    assert str(nf) == "@numeric_field:[2 5]"
+
+    nf = Num("numeric_field").between(2, 5, inclusive="neither")
+    assert str(nf) == "@numeric_field:[2 5]"
+
+    nf = Num("numeric_field").between(2, 5, inclusive="left")
+    assert str(nf) == "@numeric_field:[2 (5]"
+
+    nf = Num("numeric_field").between(2, 5, inclusive="right")
+    assert str(nf) == "@numeric_field:[(2 5]"
 
 
 def test_text_filter():
@@ -292,3 +306,179 @@ def test_num_filter_zero():
     assert (
         str(num_filter) == "@chunk_number:[0 0]"
     ), "Num filter should handle zero correctly"
+
+
+def test_timestamp_datetime():
+    """Test Timestamp filter with datetime objects."""
+    # Test with timezone-aware datetime
+    dt = datetime(2023, 3, 17, 14, 30, 0, tzinfo=timezone.utc)
+    ts = Timestamp("created_at") == dt
+    # Expected timestamp would be the Unix timestamp for the datetime
+    expected_ts = dt.timestamp()
+    assert str(ts) == f"@created_at:[{expected_ts} {expected_ts}]"
+
+    # Test with timezone-naive datetime (should convert to UTC)
+    dt = datetime(2023, 3, 17, 14, 30, 0)
+    ts = Timestamp("created_at") == dt
+    expected_ts = dt.replace(tzinfo=timezone.utc).timestamp()
+    assert str(ts) == f"@created_at:[{expected_ts} {expected_ts}]"
+
+
+def test_timestamp_date():
+    """Test Timestamp filter with date objects (should match full day)."""
+    d = date(2023, 3, 17)
+    ts = Timestamp("created_at") == d
+
+    expected_ts_start = (
+        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
+    )
+    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+
+    assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
+
+
+def test_timestamp_iso_string():
+    """Test Timestamp filter with ISO format strings."""
+    # Date-only ISO string
+    ts = Timestamp("created_at") == "2023-03-17"
+    d = date(2023, 3, 17)
+    expected_ts_start = (
+        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
+    )
+    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+    assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
+
+    # Full ISO datetime string
+    dt_str = "2023-03-17T14:30:00+00:00"
+    ts = Timestamp("created_at") == dt_str
+    dt = datetime.fromisoformat(dt_str)
+    expected_ts = dt.timestamp()
+    assert str(ts) == f"@created_at:[{expected_ts} {expected_ts}]"
+
+
+def test_timestamp_unix():
+    """Test Timestamp filter with Unix timestamps."""
+    # Integer timestamp
+    ts = Timestamp("created_at") == 1679062200  # 2023-03-17T14:30:00+00:00
+    assert str(ts) == "@created_at:[1679062200.0 1679062200.0]"
+
+    # Float timestamp
+    ts = Timestamp("created_at") == 1679062200.5
+    assert str(ts) == "@created_at:[1679062200.5 1679062200.5]"
+
+
+def test_timestamp_operators():
+    """Test all comparison operators for Timestamp filter."""
+    dt = datetime(2023, 3, 17, 14, 30, 0, tzinfo=timezone.utc)
+    ts_value = dt.timestamp()
+
+    # Equal
+    ts = Timestamp("created_at") == dt
+    assert str(ts) == f"@created_at:[{ts_value} {ts_value}]"
+
+    # Not equal
+    ts = Timestamp("created_at") != dt
+    assert str(ts) == f"(-@created_at:[{ts_value} {ts_value}])"
+
+    # Greater than
+    ts = Timestamp("created_at") > dt
+    assert str(ts) == f"@created_at:[({ts_value} +inf]"
+
+    # Less than
+    ts = Timestamp("created_at") < dt
+    assert str(ts) == f"@created_at:[-inf ({ts_value}]"
+
+    # Greater than or equal
+    ts = Timestamp("created_at") >= dt
+    assert str(ts) == f"@created_at:[{ts_value} +inf]"
+
+    # Less than or equal
+    ts = Timestamp("created_at") <= dt
+    assert str(ts) == f"@created_at:[-inf {ts_value}]"
+
+    td = timedelta(days=5)
+    dt2 = dt + td
+    ts_value2 = dt2.timestamp()
+
+    ts = Timestamp("created_at").between(dt, dt2)
+    assert str(ts) == f"@created_at:[{ts_value} {ts_value2}]"
+
+    ts = Timestamp("created_at").between(dt, dt2, inclusive="neither")
+    assert str(ts) == f"@created_at:[({ts_value} ({ts_value2}]"
+
+    ts = Timestamp("created_at").between(dt, dt2, inclusive="left")
+    assert str(ts) == f"@created_at:[{ts_value} ({ts_value2}]"
+
+    ts = Timestamp("created_at").between(dt, dt2, inclusive="right")
+    assert str(ts) == f"@created_at:[({ts_value} {ts_value2}]"
+
+
+def test_timestamp_between():
+    """Test the between method for date ranges."""
+    start = datetime(2023, 3, 1, 0, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2023, 3, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+    ts = Timestamp("created_at").between(start, end)
+
+    start_ts = start.timestamp()
+    end_ts = end.timestamp()
+
+    assert str(ts) == f"@created_at:[{start_ts} {end_ts}]"
+
+    # Test with dates (should expand to full days)
+    start_date = date(2023, 3, 1)
+    end_date = date(2023, 3, 31)
+
+    ts = Timestamp("created_at").between(start_date, end_date)
+
+    # Start should be beginning of day
+    expected_start = datetime.combine(start_date, datetime.min.time())
+    expected_start = expected_start.replace(tzinfo=timezone.utc)
+
+    # End should be end of day
+    expected_end = datetime.combine(end_date, datetime.max.time())
+    expected_end = expected_end.replace(tzinfo=timezone.utc)
+
+    expected_start_ts = expected_start.timestamp()
+    expected_end_ts = expected_end.timestamp()
+
+    assert str(ts) == f"@created_at:[{expected_start_ts} {expected_end_ts}]"
+
+
+def test_timestamp_none():
+    """Test handling of None values."""
+    ts = Timestamp("created_at") == None
+    assert str(ts) == "*"
+
+    ts = Timestamp("created_at") != None
+    assert str(ts) == "*"
+
+    ts = Timestamp("created_at") > None
+    assert str(ts) == "*"
+
+
+def test_timestamp_invalid_input():
+    """Test error handling for invalid inputs."""
+    # Invalid ISO format
+    with pytest.raises(ValueError):
+        Timestamp("created_at") == "not-a-date"
+
+    # Unsupported type
+    with pytest.raises(TypeError):
+        Timestamp("created_at") == object()
+
+
+def test_timestamp_filter_combination():
+    """Test combining timestamp filters with other filters."""
+    from redisvl.query.filter import Num, Tag
+
+    ts = Timestamp("created_at") > datetime(2023, 3, 1)
+    num = Num("age") > 30
+    tag = Tag("status") == "active"
+
+    combined = ts & num & tag
+
+    # The exact string depends on the timestamp value, but we can check structure
+    assert str(combined).startswith("((@created_at:")
+    assert "@age:[(30 +inf]" in str(combined)
+    assert "@status:{active}" in str(combined)

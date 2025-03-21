@@ -312,7 +312,8 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
 
-        return self._vectorizer.embed(prompt)
+        result = self._vectorizer.embed(prompt)
+        return result  # type: ignore
 
     async def _avectorize_prompt(self, prompt: Optional[str]) -> List[float]:
         """Converts a text prompt to its vector representation using the
@@ -320,7 +321,8 @@ class SemanticCache(BaseLLMCache):
         if not isinstance(prompt, str):
             raise TypeError("Prompt must be a string.")
 
-        return await self._vectorizer.aembed(prompt)
+        result = await self._vectorizer.aembed(prompt)
+        return result  # type: ignore
 
     def _check_vector_dims(self, vector: List[float]):
         """Checks the size of the provided vector and raises an error if it

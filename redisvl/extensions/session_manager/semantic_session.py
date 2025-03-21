@@ -349,7 +349,7 @@ class SemanticSessionManager(BaseSessionManager):
                 role=message[ROLE_FIELD_NAME],
                 content=message[CONTENT_FIELD_NAME],
                 session_tag=session_tag,
-                vector_field=content_vector,
+                vector_field=content_vector,  # type: ignore
             )
 
             if TOOL_FIELD_NAME in message:

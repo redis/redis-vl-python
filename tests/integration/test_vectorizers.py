@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import pytest
 
 from redisvl.utils.vectorize import (
@@ -287,7 +288,7 @@ def test_default_dtype(vectorizer_):
         VoyageAITextVectorizer,
     ],
 )
-def test_other_dtypes(vectorizer_):
+def test_vectorizer_dtype_assignment(vectorizer_):
     # test initializing dtype in constructor
     for dtype in ["float16", "float32", "float64", "bfloat16", "int8", "uint8"]:
         if issubclass(vectorizer_, CustomTextVectorizer):
@@ -319,7 +320,7 @@ def test_other_dtypes(vectorizer_):
         VoyageAITextVectorizer,
     ],
 )
-def test_bad_dtypes(vectorizer_):
+def test_non_supported_dtypes(vectorizer_):
     with pytest.raises(ValueError):
         vectorizer_(dtype="float25")
 
@@ -392,3 +393,95 @@ async def test_avectorizer_bad_input(avectorizer):
 
     with pytest.raises(TypeError):
         avectorizer.embed_many(42)
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.parametrize(
+    "dtype,expected_type",
+    [
+        ("float32", float),  # Float dtype should return floats
+        ("int8", int),  # Int8 dtype should return ints
+        ("uint8", int),  # Uint8 dtype should return ints
+    ],
+)
+def test_cohere_dtype_support(dtype, expected_type):
+    """Test that CohereTextVectorizer properly handles different dtypes for embeddings."""
+    text = "This is a test sentence."
+    texts = ["First test sentence.", "Second test sentence."]
+
+    # Create vectorizer with specified dtype
+    vectorizer = CohereTextVectorizer(dtype=dtype)
+
+    # Verify the correct mapping of dtype to Cohere embedding_types
+    if dtype == "int8":
+        assert vectorizer._get_cohere_embedding_type(dtype) == ["int8"]
+    elif dtype == "uint8":
+        assert vectorizer._get_cohere_embedding_type(dtype) == ["uint8"]
+    else:
+        # All other dtypes should map to float
+        assert vectorizer._get_cohere_embedding_type(dtype) == ["float"]
+
+    # Test single embedding
+    embedding = vectorizer.embed(text, input_type="search_document")
+    assert isinstance(embedding, list)
+    assert len(embedding) == vectorizer.dims
+
+    # Check that all elements are of the expected type
+    assert all(
+        isinstance(val, expected_type) for val in embedding
+    ), f"Expected all elements to be {expected_type.__name__} for dtype {dtype}"
+
+    # Test multiple embeddings
+    embeddings = vectorizer.embed_many(texts, input_type="search_document")
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(texts)
+    assert all(
+        isinstance(emb, list) and len(emb) == vectorizer.dims for emb in embeddings
+    )
+
+    # Check that all elements in all embeddings are of the expected type
+    for emb in embeddings:
+        assert all(
+            isinstance(val, expected_type) for val in emb
+        ), f"Expected all elements to be {expected_type.__name__} for dtype {dtype}"
+
+    # Test as_buffer output format
+    embedding_buffer = vectorizer.embed(
+        text, input_type="search_document", as_buffer=True
+    )
+    assert isinstance(embedding_buffer, bytes)
+
+    # Test embed_many with as_buffer=True
+    buffer_embeddings = vectorizer.embed_many(
+        texts, input_type="search_document", as_buffer=True
+    )
+    assert all(isinstance(emb, bytes) for emb in buffer_embeddings)
+
+    # Compare dimensions between buffer and list formats
+    assert len(np.frombuffer(embedding_buffer, dtype=dtype)) == len(embedding)
+
+
+@pytest.mark.requires_api_keys
+def test_cohere_embedding_types_warning():
+    """Test that a warning is raised when embedding_types parameter is passed."""
+    text = "This is a test sentence."
+    texts = ["First test sentence.", "Second test sentence."]
+    vectorizer = CohereTextVectorizer()
+
+    # Test warning for single embedding
+    with pytest.warns(UserWarning, match="embedding_types.*not supported"):
+        embedding = vectorizer.embed(
+            text,
+            input_type="search_document",
+            embedding_types=["uint8"],  # explicitly testing the anti-pattern here
+        )
+    assert isinstance(embedding, list)
+    assert len(embedding) == vectorizer.dims
+
+    # Test warning for multiple embeddings
+    with pytest.warns(UserWarning, match="embedding_types.*not supported"):
+        embeddings = vectorizer.embed_many(
+            texts, input_type="search_document", embedding_types=["uint8"]
+        )
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(texts)
