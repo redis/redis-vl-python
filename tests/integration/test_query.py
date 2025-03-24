@@ -749,7 +749,7 @@ def test_query_normalize_cosine_distance(index, normalized_vector_query):
         assert 0 <= float(r["vector_distance"]) <= 1
 
 
-def test_query_normalize_cosine_distance_ip_distance(L2_index, normalized_vector_query):
+def test_query_normalize_cosine_distance_lp_distance(L2_index, normalized_vector_query):
 
     res = L2_index.query(normalized_vector_query)
 
