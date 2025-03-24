@@ -191,3 +191,10 @@ def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Non
             return
 
     return wrapper
+
+
+def norm_cosine_distance(value: float) -> float:
+    """
+    Normalize the cosine distance to a similarity score between 0 and 1.
+    """
+    return (2 - value) / 2

@@ -18,7 +18,12 @@ from typing import (
     Union,
 )
 
-from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
+from redisvl.utils.utils import (
+    deprecated_argument,
+    deprecated_function,
+    norm_cosine_distance,
+    sync_wrapper,
+)
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -34,7 +39,13 @@ from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
-from redisvl.query import BaseQuery, CountQuery, FilterQuery
+from redisvl.query import (
+    BaseQuery,
+    CountQuery,
+    FilterQuery,
+    VectorQuery,
+    VectorRangeQuery,
+)
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -42,6 +53,7 @@ from redisvl.redis.connection import (
 )
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema.fields import VectorDistanceMetric
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +74,7 @@ SearchParams = Union[
 
 
 def process_results(
-    results: "Result", query: BaseQuery, storage_type: StorageType
+    results: "Result", query: BaseQuery, schema: IndexSchema
 ) -> List[Dict[str, Any]]:
     """Convert a list of search Result objects into a list of document
     dictionaries.
@@ -87,9 +99,16 @@ def process_results(
 
     # Determine if unpacking JSON is needed
     unpack_json = (
-        (storage_type == StorageType.JSON)
+        (schema.index.storage_type == StorageType.JSON)
         and isinstance(query, FilterQuery)
         and not query._return_fields  # type: ignore
+    )
+
+    normalize_cosine_distance = (
+        (isinstance(query, VectorQuery) or isinstance(query, VectorRangeQuery))
+        and query._normalize_cosine_distance
+        and schema.fields[query._vector_field_name].attrs.distance_metric  # type: ignore
+        == VectorDistanceMetric.COSINE
     )
 
     # Process records
@@ -104,6 +123,12 @@ def process_results(
             if isinstance(json_data, dict):
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
+
+        if normalize_cosine_distance:
+            # convert float back to string to be consistent
+            doc_dict[query.DISTANCE_ID] = str(  # type: ignore
+                norm_cosine_distance(float(doc_dict[query.DISTANCE_ID]))  # type: ignore
+            )
 
         # Remove 'payload' if present
         doc_dict.pop("payload", None)
@@ -771,9 +796,7 @@ class SearchIndex(BaseSearchIndex):
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
         results = self.search(query.query, query_params=query.params)
-        return process_results(
-            results, query=query, storage_type=self.schema.index.storage_type
-        )
+        return process_results(results, query=query, schema=self.schema)
 
     def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query on the index.
@@ -1415,9 +1438,7 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""
         results = await self.search(query.query, query_params=query.params)
-        return process_results(
-            results, query=query, storage_type=self.schema.index.storage_type
-        )
+        return process_results(results, query=query, schema=self.schema)
 
     async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.

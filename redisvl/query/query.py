@@ -198,6 +198,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
+        normalize_cosine_distance: bool = False,
     ):
         """A query for running a vector search along with an optional filter
         expression.
@@ -233,6 +234,9 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 of vectors to fetch in each batch. Larger values may improve performance
                 at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
                 Defaults to None, which lets Redis auto-select an appropriate batch size.
+            normalize_cosine_distance (bool): by default Redis returns cosine distance as a value
+                between 0 and 2 where 0 is the best match. If set to True, the cosine distance will be
+                converted to cosine similarity with a value between 0 and 1 where 1 is the best match.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
@@ -246,6 +250,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._num_results = num_results
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
+        self._normalize_cosine_distance = normalize_cosine_distance
         self.set_filter(filter_expression)
         query_string = self._build_query_string()
 
@@ -394,6 +399,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
+        normalize_cosine_distance: bool = False,
     ):
         """A query for running a filtered vector search based on semantic
         distance threshold.
@@ -437,6 +443,16 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 of vectors to fetch in each batch. Larger values may improve performance
                 at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
                 Defaults to None, which lets Redis auto-select an appropriate batch size.
+            normalize_cosine_distance (bool): by default Redis returns cosine distance as a value
+                between 0 and 2 where 0 is the best match. If set to True, the cosine distance will be
+                converted to cosine similarity with a value between 0 and 1 where 1 is the best match.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        Note:
+            Learn more about vector range queries: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
+
         """
         self._vector = vector
         self._vector_field_name = vector_field_name
@@ -456,6 +472,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         if batch_size is not None:
             self.set_batch_size(batch_size)
 
+        self._normalize_cosine_distance = normalize_cosine_distance
         self.set_distance_threshold(distance_threshold)
         self.set_filter(filter_expression)
         query_string = self._build_query_string()

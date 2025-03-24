@@ -18,7 +18,14 @@ from redisvl.utils.utils import (
     assert_no_warnings,
     deprecated_argument,
     deprecated_function,
+    norm_cosine_distance,
 )
+
+
+def test_norm_cosine_distance():
+    input = 2
+    expected = 0
+    assert norm_cosine_distance(input) == expected
 
 
 def test_even_number_of_elements():

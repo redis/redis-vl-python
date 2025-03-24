@@ -54,6 +54,24 @@ def sorted_vector_query():
 
 
 @pytest.fixture
+def normalized_vector_query():
+    return VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        normalize_cosine_distance=True,
+        return_score=True,
+        return_fields=[
+            "user",
+            "credit_score",
+            "age",
+            "job",
+            "location",
+            "last_updated",
+        ],
+    )
+
+
+@pytest.fixture
 def filter_query():
     return FilterQuery(
         return_fields=[
@@ -81,6 +99,18 @@ def sorted_filter_query():
         ],
         filter_expression=Tag("credit_score") == "high",
         sort_by="age",
+    )
+
+
+@pytest.fixture
+def normalized_range_query():
+    return RangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        normalize_cosine_distance=True,
+        return_score=True,
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        distance_threshold=0.2,
     )
 
 
@@ -127,6 +157,56 @@ def index(sample_data, redis_url):
                     "attrs": {
                         "dims": 3,
                         "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    # create the index (no data yet)
+    index.create(overwrite=True)
+
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
+
+    index.load(sample_data, preprocess=hash_preprocess)
+
+    # run the test
+    yield index
+
+    # clean up
+    index.delete(drop=True)
+
+
+@pytest.fixture
+def L2_index(sample_data, redis_url):
+    # construct a search index from the schema
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "L2_index",
+                "prefix": "L2_index",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "L2",
                         "algorithm": "flat",
                         "datatype": "float32",
                     },
@@ -659,3 +739,26 @@ def test_range_query_with_filter_and_hybrid_policy(index):
     for result in results:
         assert result["credit_score"] == "high"
         assert float(result["vector_distance"]) <= 0.5
+
+
+def test_query_normalize_cosine_distance(index, normalized_vector_query):
+
+    res = index.query(normalized_vector_query)
+
+    for r in res:
+        assert 0 <= float(r["vector_distance"]) <= 1
+
+
+def test_query_normalize_cosine_distance_ip_distance(L2_index, normalized_vector_query):
+
+    res = L2_index.query(normalized_vector_query)
+
+    assert any(float(r["vector_distance"]) > 1 for r in res)
+
+
+def test_range_query_normalize_cosine_distance(index, normalized_range_query):
+
+    res = index.query(normalized_range_query)
+
+    for r in res:
+        assert 0 <= float(r["vector_distance"]) <= 1
