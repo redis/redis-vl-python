@@ -5,6 +5,7 @@ from redis.commands.search.result import Result
 from redisvl.index.index import process_results
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
 from redisvl.query.filter import Tag
+from redisvl.query.query import VectorRangeQuery
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
@@ -48,8 +49,8 @@ def test_filter_query():
     assert isinstance(filter_query.params, dict)
     assert filter_query.params == {}
     assert filter_query._dialect == 2
-    assert filter_query._sortby == None
-    assert filter_query._in_order == False
+    assert filter_query._sortby is None
+    assert filter_query._in_order is False
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -92,7 +93,7 @@ def test_vector_query():
     assert vector_query.params != {}
     assert vector_query._dialect == 3
     assert vector_query._sortby.args[0] == VectorQuery.DISTANCE_ID
-    assert vector_query._in_order == False
+    assert vector_query._in_order is False
 
     # Test set_filter functionality
     new_filter_expression = Tag("category") == "Sportswear"
@@ -277,3 +278,271 @@ def test_string_filter_expressions(query):
     query.set_filter("~(@desciption:(hello | world))")
     assert query._filter_expression == "~(@desciption:(hello | world))"
     assert query.query_string().__contains__("~(@desciption:(hello | world))")
+
+
+def test_vector_query_hybrid_policy():
+    """Test that VectorQuery correctly handles hybrid policy parameters."""
+    # Create a vector query with hybrid policy
+    vector_query = VectorQuery(
+        [0.1, 0.2, 0.3, 0.4], "vector_field", hybrid_policy="BATCHES"
+    )
+
+    # Check properties
+    assert vector_query.hybrid_policy == "BATCHES"
+    assert vector_query.batch_size is None
+
+    # Check query string
+    query_string = str(vector_query)
+    assert "HYBRID_POLICY BATCHES" in query_string
+
+    # Test with batch size
+    vector_query = VectorQuery(
+        [0.1, 0.2, 0.3, 0.4], "vector_field", hybrid_policy="BATCHES", batch_size=50
+    )
+
+    # Check properties
+    assert vector_query.hybrid_policy == "BATCHES"
+    assert vector_query.batch_size == 50
+
+    # Check query string
+    query_string = str(vector_query)
+    assert "HYBRID_POLICY BATCHES BATCH_SIZE 50" in query_string
+
+    # Test with ADHOC_BF policy
+    vector_query = VectorQuery(
+        [0.1, 0.2, 0.3, 0.4], "vector_field", hybrid_policy="ADHOC_BF"
+    )
+
+    # Check properties
+    assert vector_query.hybrid_policy == "ADHOC_BF"
+
+    # Check query string
+    query_string = str(vector_query)
+    assert "HYBRID_POLICY ADHOC_BF" in query_string
+
+
+def test_vector_query_set_hybrid_policy():
+    """Test that VectorQuery setter methods work properly."""
+    # Create a vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Initially no hybrid policy
+    assert vector_query.hybrid_policy is None
+    assert "HYBRID_POLICY" not in str(vector_query)
+
+    # Set hybrid policy
+    vector_query.set_hybrid_policy("BATCHES")
+
+    # Check properties
+    assert vector_query.hybrid_policy == "BATCHES"
+
+    # Check query string
+    query_string = str(vector_query)
+    assert "HYBRID_POLICY BATCHES" in query_string
+
+    # Set batch size
+    vector_query.set_batch_size(100)
+
+    # Check properties
+    assert vector_query.batch_size == 100
+
+    # Check query string
+    query_string = str(vector_query)
+    assert "HYBRID_POLICY BATCHES BATCH_SIZE 100" in query_string
+
+
+def test_vector_query_invalid_hybrid_policy():
+    """Test error handling for invalid hybrid policy values."""
+    # Test with invalid hybrid policy
+    with pytest.raises(ValueError, match=r"hybrid_policy must be one of.*"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", hybrid_policy="INVALID")
+
+    # Create a valid vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid hybrid policy
+    with pytest.raises(ValueError, match=r"hybrid_policy must be one of.*"):
+        vector_query.set_hybrid_policy("INVALID")
+
+    # Test with invalid batch size types
+    with pytest.raises(TypeError, match="batch_size must be an integer"):
+        vector_query.set_batch_size("50")
+
+    # Test with invalid batch size values
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        vector_query.set_batch_size(0)
+
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        vector_query.set_batch_size(-10)
+
+
+def test_vector_range_query_epsilon():
+    """Test that VectorRangeQuery correctly handles epsilon parameter."""
+    # Create a range query with epsilon
+    range_query = VectorRangeQuery(
+        [0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=0.05, distance_threshold=0.3
+    )
+
+    # Check properties
+    assert range_query.epsilon == 0.05
+    assert range_query.distance_threshold == 0.3
+
+    # Check query string
+    query_string = str(range_query)
+    assert "$EPSILON: 0.05" in query_string
+
+    # Test setting epsilon
+    range_query.set_epsilon(0.1)
+    assert range_query.epsilon == 0.1
+    assert "$EPSILON: 0.1" in str(range_query)
+
+
+def test_vector_range_query_invalid_epsilon():
+    """Test error handling for invalid epsilon values."""
+    # Test with invalid epsilon type
+    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
+        VectorRangeQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon="0.05")
+
+    # Test with negative epsilon
+    with pytest.raises(ValueError, match="epsilon must be non-negative"):
+        VectorRangeQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=-0.05)
+
+    # Create a valid range query
+    range_query = VectorRangeQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid epsilon
+    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
+        range_query.set_epsilon("0.05")
+
+    with pytest.raises(ValueError, match="epsilon must be non-negative"):
+        range_query.set_epsilon(-0.05)
+
+
+def test_vector_range_query_construction():
+    """Unit test: Test the construction of VectorRangeQuery with various parameters."""
+    # Basic range query
+    basic_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score"],
+        distance_threshold=0.2,
+    )
+
+    query_string = str(basic_query)
+    assert "VECTOR_RANGE $distance_threshold $vector" in query_string
+    assert "$YIELD_DISTANCE_AS: vector_distance" in query_string
+    assert "HYBRID_POLICY" not in query_string
+
+    # Range query with epsilon
+    epsilon_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score"],
+        distance_threshold=0.2,
+        epsilon=0.05,
+    )
+
+    query_string = str(epsilon_query)
+    assert "VECTOR_RANGE $distance_threshold $vector" in query_string
+    assert "$YIELD_DISTANCE_AS: vector_distance" in query_string
+    assert "$EPSILON: 0.05" in query_string
+    assert epsilon_query.epsilon == 0.05
+    assert "EPSILON" not in epsilon_query.params
+
+    # Range query with hybrid policy
+    hybrid_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score"],
+        distance_threshold=0.2,
+        hybrid_policy="BATCHES",
+    )
+
+    query_string = str(hybrid_query)
+    # Hybrid policy should not be in the query string
+    assert "HYBRID_POLICY" not in query_string
+    assert hybrid_query.hybrid_policy == "BATCHES"
+    assert hybrid_query.params["HYBRID_POLICY"] == "BATCHES"
+
+    # Range query with hybrid policy and batch size
+    batch_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score"],
+        distance_threshold=0.2,
+        hybrid_policy="BATCHES",
+        batch_size=50,
+    )
+
+    query_string = str(batch_query)
+    # Hybrid policy and batch size should not be in the query string
+    assert "HYBRID_POLICY" not in query_string
+    assert "BATCH_SIZE" not in query_string
+    assert batch_query.hybrid_policy == "BATCHES"
+    assert batch_query.batch_size == 50
+    assert batch_query.params["HYBRID_POLICY"] == "BATCHES"
+    assert batch_query.params["BATCH_SIZE"] == 50
+
+
+def test_vector_range_query_setter_methods():
+    """Unit test: Test setter methods for VectorRangeQuery parameters."""
+    # Create a basic query
+    query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        distance_threshold=0.2,
+    )
+
+    # Verify initial state
+    assert query.epsilon is None
+    assert query.hybrid_policy is None
+    assert query.batch_size is None
+    assert "$EPSILON" not in str(query)
+    assert "HYBRID_POLICY" not in query.params
+    assert "BATCH_SIZE" not in query.params
+
+    # Set epsilon
+    query.set_epsilon(0.1)
+    assert query.epsilon == 0.1
+    assert "$EPSILON: 0.1" in str(query)
+
+    # Set hybrid policy
+    query.set_hybrid_policy("BATCHES")
+    assert query.hybrid_policy == "BATCHES"
+    assert query.params["HYBRID_POLICY"] == "BATCHES"
+
+    # Set batch size
+    query.set_batch_size(25)
+    assert query.batch_size == 25
+    assert query.params["BATCH_SIZE"] == 25
+
+
+def test_vector_range_query_error_handling():
+    """Unit test: Test error handling for invalid VectorRangeQuery parameters."""
+    # Create a basic query
+    query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        distance_threshold=0.2,
+    )
+
+    # Test invalid epsilon
+    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
+        query.set_epsilon("0.1")
+
+    with pytest.raises(ValueError, match="epsilon must be non-negative"):
+        query.set_epsilon(-0.1)
+
+    # Test invalid hybrid policy
+    with pytest.raises(ValueError, match="hybrid_policy must be one of"):
+        query.set_hybrid_policy("INVALID")
+
+    # Test invalid batch size
+    with pytest.raises(TypeError, match="batch_size must be an integer"):
+        query.set_batch_size(10.5)
+
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        query.set_batch_size(0)
+
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        query.set_batch_size(-10)

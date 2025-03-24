@@ -188,6 +188,8 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         dialect: int = 2,
         sort_by: Optional[str] = None,
         in_order: bool = False,
+        hybrid_policy: Optional[str] = None,
+        batch_size: Optional[int] = None,
     ):
         """A query for running a vector search along with an optional filter
         expression.
@@ -213,6 +215,16 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
                 the offsets between them. Defaults to False.
+            hybrid_policy (Optional[str]): Controls how filters are applied during vector search.
+                Options are "BATCHES" (paginates through small batches of nearest neighbors) or
+                "ADHOC_BF" (computes scores for all vectors passing the filter).
+                "BATCHES" mode is typically faster for queries with selective filters.
+                "ADHOC_BF" mode is better when filters match a large portion of the dataset.
+                Defaults to None, which lets Redis auto-select the optimal policy.
+            batch_size (Optional[int]): When hybrid_policy is "BATCHES", controls the number
+                of vectors to fetch in each batch. Larger values may improve performance
+                at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
+                Defaults to None, which lets Redis auto-select an appropriate batch size.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
@@ -224,6 +236,8 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._vector_field_name = vector_field_name
         self._dtype = dtype
         self._num_results = num_results
+        self._hybrid_policy: Optional[str] = None
+        self._batch_size: Optional[int] = None
         self.set_filter(filter_expression)
         query_string = self._build_query_string()
 
@@ -246,12 +260,89 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if in_order:
             self.in_order()
 
+        if hybrid_policy is not None:
+            self.set_hybrid_policy(hybrid_policy)
+
+        if batch_size is not None:
+            self.set_batch_size(batch_size)
+
     def _build_query_string(self) -> str:
         """Build the full query string for vector search with optional filtering."""
         filter_expression = self._filter_expression
         if isinstance(filter_expression, FilterExpression):
             filter_expression = str(filter_expression)
-        return f"{filter_expression}=>[KNN {self._num_results} @{self._vector_field_name} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
+
+        # Base KNN query
+        knn_query = (
+            f"KNN {self._num_results} @{self._vector_field_name} ${self.VECTOR_PARAM}"
+        )
+
+        # Add hybrid policy parameters if specified
+        if self._hybrid_policy:
+            knn_query += f" HYBRID_POLICY {self._hybrid_policy}"
+
+            # Add batch size if specified and using BATCHES policy
+            if self._hybrid_policy == "BATCHES" and self._batch_size:
+                knn_query += f" BATCH_SIZE {self._batch_size}"
+
+        # Add distance field alias
+        knn_query += f" AS {self.DISTANCE_ID}"
+
+        return f"{filter_expression}=>[{knn_query}]"
+
+    def set_hybrid_policy(self, hybrid_policy: str):
+        """Set the hybrid policy for the query.
+
+        Args:
+            hybrid_policy (str): The hybrid policy to use. Options are "BATCHES"
+                                or "ADHOC_BF".
+
+        Raises:
+            ValueError: If hybrid_policy is not one of the valid options
+        """
+        if hybrid_policy not in {"BATCHES", "ADHOC_BF"}:
+            raise ValueError("hybrid_policy must be one of {'BATCHES', 'ADHOC_BF'}")
+        self._hybrid_policy = hybrid_policy
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
+    def set_batch_size(self, batch_size: int):
+        """Set the batch size for the query.
+
+        Args:
+            batch_size (int): The batch size to use when hybrid_policy is "BATCHES".
+
+        Raises:
+            TypeError: If batch_size is not an integer
+            ValueError: If batch_size is not positive
+        """
+        if not isinstance(batch_size, int):
+            raise TypeError("batch_size must be an integer")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        self._batch_size = batch_size
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
+    @property
+    def hybrid_policy(self) -> Optional[str]:
+        """Return the hybrid policy for the query.
+
+        Returns:
+            Optional[str]: The hybrid policy for the query.
+        """
+        return self._hybrid_policy
+
+    @property
+    def batch_size(self) -> Optional[int]:
+        """Return the batch size for the query.
+
+        Returns:
+            Optional[int]: The batch size for the query.
+        """
+        return self._batch_size
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -265,11 +356,16 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         else:
             vector = array_to_buffer(self._vector, dtype=self._dtype)
 
-        return {self.VECTOR_PARAM: vector}
+        params = {self.VECTOR_PARAM: vector}
+
+        return params
 
 
 class VectorRangeQuery(BaseVectorQuery, BaseQuery):
     DISTANCE_THRESHOLD_PARAM: str = "distance_threshold"
+    EPSILON_PARAM: str = "EPSILON"  # Parameter name for epsilon
+    HYBRID_POLICY_PARAM: str = "HYBRID_POLICY"  # Parameter name for hybrid policy
+    BATCH_SIZE_PARAM: str = "BATCH_SIZE"  # Parameter name for batch size
 
     def __init__(
         self,
@@ -279,11 +375,14 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         dtype: str = "float32",
         distance_threshold: float = 0.2,
+        epsilon: Optional[float] = None,
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
         sort_by: Optional[str] = None,
         in_order: bool = False,
+        hybrid_policy: Optional[str] = None,
+        batch_size: Optional[int] = None,
     ):
         """A query for running a filtered vector search based on semantic
         distance threshold.
@@ -298,9 +397,14 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 along with the range query. Defaults to None.
             dtype (str, optional): The dtype of the vector. Defaults to
                 "float32".
-            distance_threshold (str, float): The threshold for vector distance.
+            distance_threshold (float): The threshold for vector distance.
                 A smaller threshold indicates a stricter semantic search.
                 Defaults to 0.2.
+            epsilon (Optional[float]): The relative factor for vector range queries,
+                setting boundaries for candidates within radius * (1 + epsilon).
+                This controls how extensive the search is beyond the specified radius.
+                Higher values increase recall at the expense of performance.
+                Defaults to None, which uses the index-defined epsilon (typically 0.01).
             num_results (int): The MAX number of results to return.
                 Defaults to 10.
             return_score (bool, optional): Whether to return the vector
@@ -312,18 +416,35 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
                 the offsets between them. Defaults to False.
-
-        Raises:
-            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
-
-        Note:
-            Learn more about vector range queries: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
-
+            hybrid_policy (Optional[str]): Controls how filters are applied during vector search.
+                Options are "BATCHES" (paginates through small batches of nearest neighbors) or
+                "ADHOC_BF" (computes scores for all vectors passing the filter).
+                "BATCHES" mode is typically faster for queries with selective filters.
+                "ADHOC_BF" mode is better when filters match a large portion of the dataset.
+                Defaults to None, which lets Redis auto-select the optimal policy.
+            batch_size (Optional[int]): When hybrid_policy is "BATCHES", controls the number
+                of vectors to fetch in each batch. Larger values may improve performance
+                at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
+                Defaults to None, which lets Redis auto-select an appropriate batch size.
         """
         self._vector = vector
         self._vector_field_name = vector_field_name
         self._dtype = dtype
         self._num_results = num_results
+        self._distance_threshold: float = 0.2  # Initialize with default
+        self._epsilon: Optional[float] = None
+        self._hybrid_policy: Optional[str] = None
+        self._batch_size: Optional[int] = None
+
+        if epsilon is not None:
+            self.set_epsilon(epsilon)
+
+        if hybrid_policy is not None:
+            self.set_hybrid_policy(hybrid_policy)
+
+        if batch_size is not None:
+            self.set_batch_size(batch_size)
+
         self.set_distance_threshold(distance_threshold)
         self.set_filter(filter_expression)
         query_string = self._build_query_string()
@@ -347,27 +468,104 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         if in_order:
             self.in_order()
 
+    def set_distance_threshold(self, distance_threshold: float):
+        """Set the distance threshold for the query.
+
+        Args:
+            distance_threshold (float): Vector distance threshold.
+
+        Raises:
+            TypeError: If distance_threshold is not a float or int
+            ValueError: If distance_threshold is negative
+        """
+        if not isinstance(distance_threshold, (float, int)):
+            raise TypeError("distance_threshold must be of type float or int")
+        if distance_threshold < 0:
+            raise ValueError("distance_threshold must be non-negative")
+        self._distance_threshold = distance_threshold
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
+    def set_epsilon(self, epsilon: float):
+        """Set the epsilon parameter for the range query.
+
+        Args:
+            epsilon (float): The relative factor for vector range queries,
+                setting boundaries for candidates within radius * (1 + epsilon).
+
+        Raises:
+            TypeError: If epsilon is not a float or int
+            ValueError: If epsilon is negative
+        """
+        if not isinstance(epsilon, (float, int)):
+            raise TypeError("epsilon must be of type float or int")
+        if epsilon < 0:
+            raise ValueError("epsilon must be non-negative")
+        self._epsilon = epsilon
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
+    def set_hybrid_policy(self, hybrid_policy: str):
+        """Set the hybrid policy for the query.
+
+        Args:
+            hybrid_policy (str): The hybrid policy to use. Options are "BATCHES"
+                                or "ADHOC_BF".
+
+        Raises:
+            ValueError: If hybrid_policy is not one of the valid options
+        """
+        if hybrid_policy not in {"BATCHES", "ADHOC_BF"}:
+            raise ValueError("hybrid_policy must be one of {'BATCHES', 'ADHOC_BF'}")
+        self._hybrid_policy = hybrid_policy
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
+    def set_batch_size(self, batch_size: int):
+        """Set the batch size for the query.
+
+        Args:
+            batch_size (int): The batch size to use when hybrid_policy is "BATCHES".
+
+        Raises:
+            TypeError: If batch_size is not an integer
+            ValueError: If batch_size is not positive
+        """
+        if not isinstance(batch_size, int):
+            raise TypeError("batch_size must be an integer")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        self._batch_size = batch_size
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
     def _build_query_string(self) -> str:
         """Build the full query string for vector range queries with optional filtering"""
+        # Build base query with vector range only
         base_query = f"@{self._vector_field_name}:[VECTOR_RANGE ${self.DISTANCE_THRESHOLD_PARAM} ${self.VECTOR_PARAM}]"
 
+        # Build query attributes section
+        attr_parts = []
+        attr_parts.append(f"$YIELD_DISTANCE_AS: {self.DISTANCE_ID}")
+
+        if self._epsilon is not None:
+            attr_parts.append(f"$EPSILON: {self._epsilon}")
+
+        # Add query attributes section
+        attr_section = f"=>{{{'; '.join(attr_parts)}}}"
+
+        # Add filter expression if present
         filter_expression = self._filter_expression
         if isinstance(filter_expression, FilterExpression):
             filter_expression = str(filter_expression)
 
         if filter_expression == "*":
-            return f"{base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}}"
-        return f"({base_query}=>{{$yield_distance_as: {self.DISTANCE_ID}}} {filter_expression})"
-
-    def set_distance_threshold(self, distance_threshold: float):
-        """Set the distance threshold for the query.
-
-        Args:
-            distance_threshold (float): vector distance
-        """
-        if not isinstance(distance_threshold, (float, int)):
-            raise TypeError("distance_threshold must be of type int or float")
-        self._distance_threshold = distance_threshold
+            return f"{base_query}{attr_section}"
+        return f"({base_query}{attr_section} {filter_expression})"
 
     @property
     def distance_threshold(self) -> float:
@@ -377,6 +575,33 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             float: The distance threshold for the query.
         """
         return self._distance_threshold
+
+    @property
+    def epsilon(self) -> Optional[float]:
+        """Return the epsilon for the query.
+
+        Returns:
+            Optional[float]: The epsilon for the query, or None if not set.
+        """
+        return self._epsilon
+
+    @property
+    def hybrid_policy(self) -> Optional[str]:
+        """Return the hybrid policy for the query.
+
+        Returns:
+            Optional[str]: The hybrid policy for the query.
+        """
+        return self._hybrid_policy
+
+    @property
+    def batch_size(self) -> Optional[int]:
+        """Return the batch size for the query.
+
+        Returns:
+            Optional[int]: The batch size for the query.
+        """
+        return self._batch_size
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -390,10 +615,19 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         else:
             vector_param = array_to_buffer(self._vector, dtype=self._dtype)
 
-        return {
+        params = {
             self.VECTOR_PARAM: vector_param,
             self.DISTANCE_THRESHOLD_PARAM: self._distance_threshold,
         }
+
+        # Add hybrid policy and batch size as query parameters (not in query string)
+        if self._hybrid_policy:
+            params[self.HYBRID_POLICY_PARAM] = self._hybrid_policy
+
+            if self._hybrid_policy == "BATCHES" and self._batch_size:
+                params[self.BATCH_SIZE_PARAM] = self._batch_size
+
+        return params
 
 
 class RangeQuery(VectorRangeQuery):
