@@ -91,7 +91,8 @@ class FilterQuery(BaseQuery):
             num_results (Optional[int], optional): The number of results to return. Defaults to 10.
             dialect (int, optional): The query dialect. Defaults to 2.
             sort_by (Optional[str], optional): The field to order the results by. Defaults to None.
-            in_order (bool, optional): Requires the terms in the field to have the same order as the terms in the query filter. Defaults to False.
+            in_order (bool, optional): Requires the terms in the field to have the same order as the
+                terms in the query filter. Defaults to False.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
 
         Raises:
@@ -136,7 +137,8 @@ class CountQuery(BaseQuery):
         """A query for a simple count operation provided some filter expression.
 
         Args:
-            filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to query with. Defaults to None.
+            filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to 
+                query with. Defaults to None.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
 
         Raises:
@@ -214,6 +216,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 "float32".
             num_results (int, optional): The top k results to return from the
                 vector search. Defaults to 10.
+
             return_score (bool, optional): Whether to return the vector
                 distance. Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
@@ -647,3 +650,208 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 class RangeQuery(VectorRangeQuery):
     # keep for backwards compatibility
     pass
+
+
+class TextQuery(FilterQuery):
+    def __init__(
+        self, 
+        text: str,
+        text_field: str,
+        text_scorer: str = "TFIDF",
+        return_fields: Optional[List[str]] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        num_results: int = 10,
+        return_score: bool = True,
+        dialect: int = 2,
+        sort_by: Optional[str] = None,
+        in_order: bool = False,
+    ):
+        """A query for running a full text and vector search, along with an optional
+        filter expression.
+
+        Args:
+            text (str): The text string to perform the text search with. 
+            text_field (str): The name of the document field to perform text search on.
+            text_scorer (str, optional): The text scoring algorithm to use.
+                Defaults to TFIDF. Options are {TFIDF, BM25, DOCNORM, DISMAX, DOCSCORE}.
+                See https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/scoring/
+            return_fields (List[str]): The declared fields to return with search
+                results.
+            filter_expression (Union[str, FilterExpression], optional): A filter to apply
+                along with the vector search. Defaults to None.
+            num_results (int, optional): The top k results to return from the
+                search. Defaults to 10.
+            return_score (bool, optional): Whether to return the text score.
+                Defaults to True.
+            dialect (int, optional): The RediSearch query dialect.
+                Defaults to 2.
+            sort_by (Optional[str]): The field to order the results by. Defaults
+                to None. Results will be ordered by text score.
+            in_order (bool): Requires the terms in the field to have
+                the same order as the terms in the query filter, regardless of
+                the offsets between them. Defaults to False.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+        """
+        self._text_field = text_field
+        self._num_results = num_results
+        self.set_filter(filter_expression)
+        query_string = self._build_query_string()
+        from nltk.corpus import stopwords
+        import nltk
+
+        nltk.download('stopwords')
+        self._stopwords = set(stopwords.words('english'))
+
+
+        super().__init__(query_string)
+
+        # Handle query modifiers
+        if return_fields:
+            self.return_fields(*return_fields)
+
+        self.paging(0, self._num_results).dialect(dialect)
+
+        if return_score:
+            self.return_fields(self.DISTANCE_ID) #TODO
+
+        if sort_by:
+            self.sort_by(sort_by)
+        else:
+            self.sort_by(self.DISTANCE_ID) #TODO
+
+        if in_order:
+            self.in_order()
+
+    
+    def _tokenize_query(self, user_query: str) -> str:
+        """Convert a raw user query to a redis full text query joined by ORs"""
+        words = word_tokenize(user_query)
+
+        tokens = [token.strip().strip(",").lower() for token in user_query.split()]
+        return " | ".join([token for token in tokens if token not in self._stopwords])
+
+
+    def _build_query_string(self) -> str:
+        """Build the full query string for text search with optional filtering."""
+        filter_expression = self._filter_expression
+        # TODO include text only
+        if isinstance(filter_expression, FilterExpression):
+            filter_expression = str(filter_expression)
+
+        text = f"(~{Text(self._text_field) % self._tokenize_query(user_query)})"
+        
+        text_and_filter = text & self._filter_expression
+
+        #TODO is this method even needed? use 
+        return text_and_filter
+
+
+class HybridQuery(VectorQuery, TextQuery):
+    def __init__():
+        self,
+        text: str,
+        text_field: str,
+        vector: Union[List[float], bytes],
+        vector_field_name: str,
+        text_scorer: str = "TFIDF",
+        alpha: float = 0.7,
+        return_fields: Optional[List[str]] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        dtype: str = "float32",
+        num_results: int = 10,
+        return_score: bool = True,
+        dialect: int = 2,
+        sort_by: Optional[str] = None,
+        in_order: bool = False,
+    ):
+        """A query for running a hybrid full text and vector search, along with
+        an optional filter expression.
+
+        Args:
+            text (str): The text string to run text search with.
+            text_field (str): The name of the text field to search against.
+            vector (List[float]): The vector to perform the vector search with.
+            vector_field_name (str): The name of the vector field to search
+                against in the database.
+            text_scorer (str, optional): The text scoring algorithm to use.
+                Defaults to TFIDF.
+            alpha (float, optional): The amount to weight the vector similarity
+                score relative to the text similarity score. Defaults to 0.7
+            return_fields (List[str]): The declared fields to return with search
+                results.
+            filter_expression (Union[str, FilterExpression], optional): A filter to apply
+                along with the vector search. Defaults to None.
+            dtype (str, optional): The dtype of the vector. Defaults to
+                "float32".
+            num_results (int, optional): The top k results to return from the
+                vector search. Defaults to 10.
+            return_score (bool, optional): Whether to return the vector
+                distance. Defaults to True.
+            dialect (int, optional): The RediSearch query dialect.
+                Defaults to 2.
+            sort_by (Optional[str]): The field to order the results by. Defaults
+                to None. Results will be ordered by vector distance.
+            in_order (bool): Requires the terms in the field to have
+                the same order as the terms in the query filter, regardless of
+                the offsets between them. Defaults to False.
+
+        Raises:
+            TypeError: If filter_expression is not of type redisvl.query.FilterExpression
+
+        Note:
+            Learn more about vector queries in Redis: https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search
+        """
+        self._text = text
+        self._text_field_name = tex_field_name
+        self._vector = vector
+        self._vector_field_name = vector_field_name
+        self._dtype = dtype
+        self._num_results = num_results
+        self.set_filter(filter_expression)
+        query_string = self._build_query_string()
+        
+        # TODO how to handle multiple parents? call parent.__init__() manually?
+        super().__init__(query_string)
+
+        # Handle query modifiers
+        if return_fields:
+            self.return_fields(*return_fields)
+
+        self.paging(0, self._num_results).dialect(dialect)
+
+        if return_score:
+            self.return_fields(self.DISTANCE_ID)
+
+        if sort_by:
+            self.sort_by(sort_by)
+        else:
+            self.sort_by(self.DISTANCE_ID)
+
+        if in_order:
+            self.in_order()
+
+
+    def _build_query_string(self) -> str:
+        """Build the full query string for hybrid search with optional filtering."""
+        filter_expression = self._filter_expression
+        # TODO include hybrid
+        if isinstance(filter_expression, FilterExpression):
+            filter_expression = str(filter_expression)
+        return f"{filter_expression}=>[KNN {self._num_results} @{self._vector_field_name} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}]"
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """Return the parameters for the query.
+
+        Returns:
+            Dict[str, Any]: The parameters for the query.
+        """
+        if isinstance(self._vector, bytes):
+            vector = self._vector
+        else:
+            vector = array_to_buffer(self._vector, dtype=self._dtype)
+
+        return {self.VECTOR_PARAM: vector}
+
