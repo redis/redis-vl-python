@@ -704,7 +704,6 @@ class TextQuery(FilterQuery):
         nltk.download('stopwords')
         self._stopwords = set(stopwords.words('english'))
 
-
         super().__init__(query_string)
 
         # Handle query modifiers
@@ -727,6 +726,7 @@ class TextQuery(FilterQuery):
     
     def _tokenize_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs"""
+
         words = word_tokenize(user_query)
 
         tokens = [token.strip().strip(",").lower() for token in user_query.split()]
@@ -747,6 +747,12 @@ class TextQuery(FilterQuery):
         #TODO is this method even needed? use 
         return text_and_filter
 
+# from redisvl.utils.token_escaper import TokenEscaper
+# escaper = TokenEscaper()
+# def tokenize_and_escape_query(user_query: str) -> str:
+#     """Convert a raw user query to a redis full text query joined by ORs"""
+#     tokens = [escaper.escape(token.strip().strip(",").replace("“", "").replace("”", "").lower()) for token in user_query.split()]
+#     return " | ".join([token for token in tokens if token and token not in stopwords_en])
 
 class HybridQuery(VectorQuery, TextQuery):
     def __init__():
