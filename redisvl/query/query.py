@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from redis.commands.search.query import Query as RedisQuery
@@ -175,6 +176,13 @@ class BaseVectorQuery:
     VECTOR_PARAM: str = "vector"
 
 
+class HybridPolicy(str, Enum):
+    """Enum for valid hybrid policy options in vector queries."""
+
+    BATCHES = "BATCHES"
+    ADHOC_BF = "ADHOC_BF"
+
+
 class VectorQuery(BaseVectorQuery, BaseQuery):
     def __init__(
         self,
@@ -236,7 +244,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._vector_field_name = vector_field_name
         self._dtype = dtype
         self._num_results = num_results
-        self._hybrid_policy: Optional[str] = None
+        self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
         self.set_filter(filter_expression)
         query_string = self._build_query_string()
@@ -279,10 +287,10 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
         # Add hybrid policy parameters if specified
         if self._hybrid_policy:
-            knn_query += f" HYBRID_POLICY {self._hybrid_policy}"
+            knn_query += f" HYBRID_POLICY {self._hybrid_policy.value}"
 
             # Add batch size if specified and using BATCHES policy
-            if self._hybrid_policy == "BATCHES" and self._batch_size:
+            if self._hybrid_policy == HybridPolicy.BATCHES and self._batch_size:
                 knn_query += f" BATCH_SIZE {self._batch_size}"
 
         # Add distance field alias
@@ -300,9 +308,12 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         Raises:
             ValueError: If hybrid_policy is not one of the valid options
         """
-        if hybrid_policy not in {"BATCHES", "ADHOC_BF"}:
-            raise ValueError("hybrid_policy must be one of {'BATCHES', 'ADHOC_BF'}")
-        self._hybrid_policy = hybrid_policy
+        try:
+            self._hybrid_policy = HybridPolicy(hybrid_policy)
+        except ValueError:
+            raise ValueError(
+                f"hybrid_policy must be one of {', '.join([p.value for p in HybridPolicy])}"
+            )
 
         # Reset the query string
         self._query_string = self._build_query_string()
@@ -333,7 +344,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         Returns:
             Optional[str]: The hybrid policy for the query.
         """
-        return self._hybrid_policy
+        return self._hybrid_policy.value if self._hybrid_policy else None
 
     @property
     def batch_size(self) -> Optional[int]:
@@ -433,7 +444,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._num_results = num_results
         self._distance_threshold: float = 0.2  # Initialize with default
         self._epsilon: Optional[float] = None
-        self._hybrid_policy: Optional[str] = None
+        self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
 
         if epsilon is not None:
@@ -517,9 +528,12 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         Raises:
             ValueError: If hybrid_policy is not one of the valid options
         """
-        if hybrid_policy not in {"BATCHES", "ADHOC_BF"}:
-            raise ValueError("hybrid_policy must be one of {'BATCHES', 'ADHOC_BF'}")
-        self._hybrid_policy = hybrid_policy
+        try:
+            self._hybrid_policy = HybridPolicy(hybrid_policy)
+        except ValueError:
+            raise ValueError(
+                f"hybrid_policy must be one of {', '.join([p.value for p in HybridPolicy])}"
+            )
 
         # Reset the query string
         self._query_string = self._build_query_string()
@@ -592,7 +606,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         Returns:
             Optional[str]: The hybrid policy for the query.
         """
-        return self._hybrid_policy
+        return self._hybrid_policy.value if self._hybrid_policy else None
 
     @property
     def batch_size(self) -> Optional[int]:
@@ -622,9 +636,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         # Add hybrid policy and batch size as query parameters (not in query string)
         if self._hybrid_policy:
-            params[self.HYBRID_POLICY_PARAM] = self._hybrid_policy
+            params[self.HYBRID_POLICY_PARAM] = self._hybrid_policy.value
 
-            if self._hybrid_policy == "BATCHES" and self._batch_size:
+            if self._hybrid_policy == HybridPolicy.BATCHES and self._batch_size:
                 params[self.BATCH_SIZE_PARAM] = self._batch_size
 
         return params
