@@ -7,7 +7,7 @@ if sys.version_info.major == 3 and sys.version_info.minor < 10:
 
 from ranx import evaluate
 
-from redisvl.utils.optimize import TestData
+from redisvl.utils.optimize import LabeledData
 from redisvl.utils.optimize.cache import _generate_run_cache
 from redisvl.utils.optimize.utils import _format_qrels
 
@@ -26,7 +26,7 @@ def test_known_precision_case():
     """
     # Setup test data
     test_data = [
-        TestData(
+        LabeledData(
             query="test query 1",
             query_match="doc1",
             response=[
@@ -34,7 +34,7 @@ def test_known_precision_case():
                 {"id": "doc2", "vector_distance": 0.3},
             ],
         ),
-        TestData(
+        LabeledData(
             query="test query 2",
             query_match="doc3",
             response=[
@@ -58,7 +58,7 @@ def test_known_precision_case():
 def test_known_precision_with_no_matches():
     """Test case where some queries have no matches."""
     test_data = [
-        TestData(
+        LabeledData(
             query="test query 2",
             query_match="",  # Expecting no match
             response=[],
