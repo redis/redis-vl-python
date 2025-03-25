@@ -1,3 +1,8 @@
+import importlib
+import io
+import logging
+import re
+import sys
 from functools import wraps
 
 import numpy as np
@@ -441,3 +446,59 @@ class TestDeprecatedFunction:
 
         with pytest.warns(DeprecationWarning):
             old_func()
+
+    def test_logging_configuration_not_overridden(self):
+        """Test that RedisVL imports don't override existing logging configurations."""
+        import os
+        import subprocess
+
+        # Get the path to the helper script relative to this test file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        helper_script = os.path.join(current_dir, "logger_interference_checker.py")
+
+        # Run the helper script in a separate process
+        result = subprocess.run(
+            [sys.executable, helper_script], capture_output=True, text=True
+        )
+
+        # Extract the log lines
+        output_lines = result.stdout.strip().split("\n")
+        pre_import_line = ""
+        post_import_line = ""
+
+        for line in output_lines:
+            if "PRE_IMPORT_FORMAT" in line:
+                pre_import_line = line
+            elif "POST_IMPORT_FORMAT" in line:
+                post_import_line = line
+
+        # Check if we found both lines
+        assert pre_import_line, "No pre-import log message found"
+        assert post_import_line, "No post-import log message found"
+
+        # Print for debugging
+        print(f"Pre-import format: {pre_import_line}")
+        print(f"Post-import format: {post_import_line}")
+
+        # Check format preservation
+        # Look for bracketed logger name format
+        has_bracketed_logger_pre = "[app]" in pre_import_line
+        has_bracketed_logger_post = "[app]" in post_import_line
+        assert has_bracketed_logger_pre == has_bracketed_logger_post, (
+            f"Logger format changed from {'bracketed' if has_bracketed_logger_pre else 'unbracketed'} "
+            f"to {'bracketed' if has_bracketed_logger_post else 'unbracketed'}"
+        )
+
+        # Look for file/line information
+        has_file_line_pre = bool(re.search(r"\[\w+\.py:\d+\]", pre_import_line))
+        has_file_line_post = bool(re.search(r"\[\w+\.py:\d+\]", post_import_line))
+        assert (
+            has_file_line_pre == has_file_line_post
+        ), f"File/line format changed: was present before: {has_file_line_pre}, present after: {has_file_line_post}"
+
+        # Check date format (RedisVL strips the date portion)
+        has_date_pre = bool(re.match(r"\d{4}-\d{2}-\d{2}", pre_import_line))
+        has_date_post = bool(re.match(r"\d{4}-\d{2}-\d{2}", post_import_line))
+        assert (
+            has_date_pre == has_date_post
+        ), f"Date format changed: was present before: {has_date_pre}, present after: {has_date_post}"
