@@ -1,13 +1,17 @@
-import asyncio
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
 
 from redisvl.redis.utils import convert_bytes
+from redisvl.schema import IndexSchema
+from redisvl.schema.validation import validate_object
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import create_ulid
+
+logger = get_logger(__name__)
 
 
 class BaseStorage(BaseModel):
@@ -20,14 +24,10 @@ class BaseStorage(BaseModel):
 
     type: IndexType
     """Type of index used in storage"""
-    prefix: str
-    """Prefix for Redis keys"""
-    key_separator: str
-    """Separator between prefix and key value"""
+    index_schema: IndexSchema
+    """Index schema definition"""
     default_batch_size: int = 200
     """Default size for batch operations"""
-    default_write_concurrency: int = 20
-    """Default concurrency for async ops"""
 
     @staticmethod
     def _key(id: str, prefix: str, key_separator: str) -> str:
@@ -72,7 +72,9 @@ class BaseStorage(BaseModel):
                 raise ValueError(f"Key field {id_field} not found in record {obj}")
 
         return self._key(
-            key_value, prefix=self.prefix, key_separator=self.key_separator
+            key_value,
+            prefix=self.index_schema.index.prefix,
+            key_separator=self.index_schema.index.key_separator,
         )
 
     @staticmethod
@@ -91,35 +93,6 @@ class BaseStorage(BaseModel):
         if preprocess:
             obj = preprocess(obj)
         return obj
-
-    @staticmethod
-    async def _apreprocess(
-        obj: Any, preprocess: Optional[Callable] = None
-    ) -> Dict[str, Any]:
-        """Asynchronously apply a preprocessing function to the object if
-        provided.
-
-        Args:
-            preprocess (Optional[Callable], optional): Async function to
-                process the object.
-            obj (Any): Object to preprocess.
-
-        Returns:
-            Dict[str, Any]: Processed object as a dictionary.
-        """
-        # optionally async preprocess object
-        if preprocess:
-            obj = await preprocess(obj)
-        return obj
-
-    def _validate(self, obj: Dict[str, Any]):
-        """Validate the object before writing to Redis. This method should be
-        implemented by subclasses.
-
-        Args:
-            obj (Dict[str, Any]): The object to validate.
-        """
-        raise NotImplementedError
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):
@@ -169,6 +142,84 @@ class BaseStorage(BaseModel):
         """
         raise NotImplementedError
 
+    def validate(self, obj: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate an object against the schema using Pydantic-based validation.
+
+        Args:
+            obj: The object to validate
+
+        Returns:
+            Validated object with any type coercions applied
+
+        Raises:
+            ValueError: If validation fails
+        """
+        # Pass directly to validation function and let any errors propagate
+        return validate_object(self.index_schema, obj)
+
+    def _preprocess_and_validate_objects(
+        self,
+        objects: List[Any],
+        id_field: Optional[str] = None,
+        keys: Optional[Iterable[str]] = None,
+        preprocess: Optional[Callable] = None,
+        validate: bool = False,
+    ) -> List[Tuple[str, Dict[str, Any]]]:
+        """
+        Preprocess and validate a list of objects with fail-fast approach.
+
+        Args:
+            objects: List of objects to preprocess and validate
+            id_field: Field to use as the key
+            keys: Optional iterable of keys
+            preprocess: Optional preprocessing function
+            validate: Whether to validate against schema
+
+        Returns:
+            List of tuples (key, processed_obj) for valid objects
+
+        Raises:
+            ValueError: If any validation fails with object context
+        """
+        prepared_objects = []
+        keys_iterator = iter(keys) if keys else None
+
+        for i, obj in enumerate(objects):
+            try:
+                # Generate key
+                key = (
+                    next(keys_iterator)
+                    if keys_iterator
+                    else self._create_key(obj, id_field)
+                )
+
+                # Preprocess
+                processed_obj = self._preprocess(obj, preprocess)
+
+                # Basic type validation
+                if not isinstance(processed_obj, dict):
+                    raise ValueError(
+                        f"Object must be a dictionary, got {type(processed_obj).__name__}"
+                    )
+
+                # Schema validation if enabled
+                if validate:
+                    processed_obj = self.validate(processed_obj)
+
+                # Store valid object with its key for writing
+                prepared_objects.append((key, processed_obj))
+
+            except Exception as e:
+                # Enhance error message with object context
+                object_id = f"at index {i}"
+                if id_field and isinstance(obj, dict) and id_field in obj:
+                    object_id = f"with {id_field}={obj[id_field]}"
+
+                raise ValueError(f"Validation failed for object {object_id}: {str(e)}")
+
+        return prepared_objects
+
     def write(
         self,
         redis_client: Redis,
@@ -178,6 +229,7 @@ class BaseStorage(BaseModel):
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         batch_size: Optional[int] = None,
+        validate: bool = False,
     ) -> List[str]:
         """Write a batch of objects to Redis as hash entries. This method
         returns a list of Redis keys written to the database.
@@ -195,43 +247,51 @@ class BaseStorage(BaseModel):
                 objects before storage. Defaults to None.
             batch_size (Optional[int], optional): Number of objects to write
                 in a single Redis pipeline execution.
+            validate (bool, optional): Whether to validate objects against schema.
+                Defaults to False.
 
         Raises:
             ValueError: If the length of provided keys does not match the
-                length of objects.
+                length of objects, or if validation fails.
         """
         if keys and len(keys) != len(objects):  # type: ignore
             raise ValueError("Length of keys does not match the length of objects")
 
         if batch_size is None:
-            # Use default or calculate based on the input data
             batch_size = self.default_batch_size
 
-        keys_iterator = iter(keys) if keys else None
-        added_keys: List[str] = []
+        if not objects:
+            return []
 
-        if objects:
-            with redis_client.pipeline(transaction=False) as pipe:
-                for i, obj in enumerate(objects, start=1):
-                    # Construct key, validate, and write
-                    key = (
-                        next(keys_iterator)
-                        if keys_iterator
-                        else self._create_key(obj, id_field)
-                    )
-                    obj = self._preprocess(obj, preprocess)
-                    self._validate(obj)
-                    self._set(pipe, key, obj)
-                    # Set TTL if provided
-                    if ttl:
-                        pipe.expire(key, ttl)
-                    # Execute mini batch
-                    if i % batch_size == 0:
-                        pipe.execute()
-                    added_keys.append(key)
-                # Clean up batches if needed
-                if i % batch_size != 0:
+        # Pass 1: Preprocess and validate all objects
+        prepared_objects = self._preprocess_and_validate_objects(
+            objects,
+            id_field=id_field,
+            keys=keys,
+            preprocess=preprocess,
+            validate=validate,
+        )
+
+        # Pass 2: Write all valid objects in batches
+        added_keys = []
+
+        with redis_client.pipeline(transaction=False) as pipe:
+            for i, (key, obj) in enumerate(prepared_objects, start=1):
+                self._set(pipe, key, obj)
+
+                # Set TTL if provided
+                if ttl:
+                    pipe.expire(key, ttl)
+
+                added_keys.append(key)
+
+                # Execute in batches
+                if i % batch_size == 0:
                     pipe.execute()
+
+            # Execute any remaining commands
+            if len(prepared_objects) % batch_size != 0:
+                pipe.execute()
 
         return added_keys
 
@@ -242,12 +302,12 @@ class BaseStorage(BaseModel):
         id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
         ttl: Optional[int] = None,
+        batch_size: Optional[int] = None,
         preprocess: Optional[Callable] = None,
-        concurrency: Optional[int] = None,
+        validate: bool = False,
     ) -> List[str]:
-        """Asynchronously write objects to Redis as hash entries with
-        concurrency control. The method returns a list of keys written to the
-        database.
+        """Asynchronously write objects to Redis as hash entries using pipeline batching.
+        The method returns a list of keys written to the database.
 
         Args:
             redis_client (AsyncRedis): An asynchronous Redis client used
@@ -259,47 +319,60 @@ class BaseStorage(BaseModel):
                 Must match the length of objects if provided.
             ttl (Optional[int], optional): Time-to-live in seconds for each key.
                 Defaults to None.
+            batch_size (Optional[int], optional): Number of objects to write
+                in a single Redis pipeline execution.
             preprocess (Optional[Callable], optional): An async function to
                 preprocess objects before storage. Defaults to None.
-            concurrency (Optional[int], optional): The maximum number of
-                concurrent write operations. Defaults to class's default
-                concurrency level.
+            validate (bool, optional): Whether to validate objects against schema.
+                Defaults to False.
 
         Returns:
             List[str]: List of Redis keys loaded to the databases.
 
         Raises:
             ValueError: If the length of provided keys does not match the
-                length of objects.
+                length of objects, or if validation fails.
         """
         if keys and len(keys) != len(objects):  # type: ignore
             raise ValueError("Length of keys does not match the length of objects")
 
-        if not concurrency:
-            concurrency = self.default_write_concurrency
+        if batch_size is None:
+            batch_size = self.default_batch_size
 
-        semaphore = asyncio.Semaphore(concurrency)
-        keys_iterator = iter(keys) if keys else None
+        if not objects:
+            return []
 
-        async def _load(obj: Dict[str, Any], key: Optional[str] = None) -> str:
-            async with semaphore:
-                if key is None:
-                    key = self._create_key(obj, id_field)
-                obj = await self._apreprocess(obj, preprocess)
-                self._validate(obj)
-                await self._aset(redis_client, key, obj)
+        # Pass 1: Preprocess and validate all objects
+        prepared_objects = self._preprocess_and_validate_objects(
+            objects,
+            id_field=id_field,
+            keys=keys,
+            preprocess=preprocess,
+            validate=validate,
+        )
+
+        # Pass 2: Write all valid objects in batches using pipeline
+        added_keys = []
+
+        async with redis_client.pipeline(transaction=False) as pipe:
+            for i, (key, obj) in enumerate(prepared_objects, start=1):
+                await self._aset(pipe, key, obj)
+
+                # Set TTL if provided
                 if ttl:
-                    await redis_client.expire(key, ttl)
-                return key
+                    await pipe.expire(key, ttl)
 
-        if keys_iterator:
-            tasks = [
-                asyncio.create_task(_load(obj, next(keys_iterator))) for obj in objects
-            ]
-        else:
-            tasks = [asyncio.create_task(_load(obj)) for obj in objects]
+                added_keys.append(key)
 
-        return await asyncio.gather(*tasks)
+                # Execute in batches
+                if i % batch_size == 0:
+                    await pipe.execute()
+
+            # Execute any remaining commands
+            if len(prepared_objects) % batch_size != 0:
+                await pipe.execute()
+
+        return added_keys
 
     def get(
         self, redis_client: Redis, keys: Iterable[str], batch_size: Optional[int] = None
@@ -325,9 +398,7 @@ class BaseStorage(BaseModel):
             return []
 
         if batch_size is None:
-            batch_size = (
-                self.default_batch_size
-            )  # Use default or calculate based on the input data
+            batch_size = self.default_batch_size
 
         # Use a pipeline to batch the retrieval
         with redis_client.pipeline(transaction=False) as pipe:
@@ -345,39 +416,42 @@ class BaseStorage(BaseModel):
         self,
         redis_client: AsyncRedis,
         keys: Iterable[str],
-        concurrency: Optional[int] = None,
+        batch_size: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Asynchronously retrieve objects from Redis by keys, with concurrency
-        control.
+        """Asynchronously retrieve objects from Redis by keys.
 
         Args:
             redis_client (AsyncRedis): Asynchronous Redis client.
             keys (Iterable[str]): Keys to retrieve from Redis.
-            concurrency (Optional[int], optional): The number of concurrent
-                requests to make.
+            batch_size (Optional[int], optional): Number of objects to write
+                in a single Redis pipeline execution. Defaults to class's
+                default batch size.
 
         Returns:
             Dict[str, Any]: Dictionary with keys and their corresponding
                 objects.
         """
+        results: List = []
+
         if not isinstance(keys, Iterable):  # type: ignore
             raise TypeError("Keys must be an iterable of strings")
 
         if len(keys) == 0:  # type: ignore
             return []
 
-        if not concurrency:
-            concurrency = self.default_write_concurrency
+        if batch_size is None:
+            batch_size = self.default_batch_size
 
-        semaphore = asyncio.Semaphore(concurrency)
+        # Use a pipeline to batch the retrieval
+        async with redis_client.pipeline(transaction=False) as pipe:
+            for i, key in enumerate(keys, start=1):
+                await self._aget(pipe, key)
+                if i % batch_size == 0:
+                    results.extend(await pipe.execute())
+            if i % batch_size != 0:
+                results.extend(await pipe.execute())
 
-        async def _get(key: str) -> Dict[str, Any]:
-            async with semaphore:
-                result = await self._aget(redis_client, key)
-                return result
-
-        tasks = [asyncio.create_task(_get(key)) for key in keys]
-        results = await asyncio.gather(*tasks)
+        # Process results
         return convert_bytes(results)
 
 
@@ -391,19 +465,6 @@ class HashStorage(BaseStorage):
 
     type: IndexType = IndexType.HASH
     """Hash data type for the index"""
-
-    def _validate(self, obj: Dict[str, Any]):
-        """Validate that the given object is a dictionary, suitable for storage
-        as a Redis hash.
-
-        Args:
-            obj (Dict[str, Any]): The object to validate.
-
-        Raises:
-            TypeError: If the object is not a dictionary.
-        """
-        if not isinstance(obj, dict):
-            raise TypeError("Object must be a dictionary.")
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):
@@ -464,19 +525,6 @@ class JsonStorage(BaseStorage):
 
     type: IndexType = IndexType.JSON
     """JSON data type for the index"""
-
-    def _validate(self, obj: Dict[str, Any]):
-        """Validate that the given object is a dictionary, suitable for JSON
-        serialization.
-
-        Args:
-            obj (Dict[str, Any]): The object to validate.
-
-        Raises:
-            TypeError: If the object is not a dictionary.
-        """
-        if not isinstance(obj, dict):
-            raise TypeError("Object must be a dictionary.")
 
     @staticmethod
     def _set(client: Redis, key: str, obj: Dict[str, Any]):

@@ -268,7 +268,7 @@ def test_search_index_load_preprocess(index):
     def bad_preprocess(record):
         return 1
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
