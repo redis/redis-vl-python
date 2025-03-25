@@ -14,6 +14,7 @@ from redisvl.query.filter import (
     Text,
     Timestamp,
 )
+from redisvl.query.query import VectorRangeQuery
 from redisvl.redis.utils import array_to_buffer
 
 # TODO expand to multiple schema types and sync + async
@@ -531,3 +532,130 @@ def test_query_with_chunk_number_zero():
     assert (
         str(filter_conditions) == expected_query_str
     ), "Query with chunk_number zero is incorrect"
+
+
+def test_hybrid_policy_batches_mode(index, vector_query):
+    """Test vector query with BATCHES hybrid policy."""
+    # Create a filter
+    t = Tag("credit_score") == "high"
+
+    # Set hybrid policy to BATCHES
+    vector_query.set_hybrid_policy("BATCHES")
+    vector_query.set_batch_size(2)
+
+    # Set the filter
+    vector_query.set_filter(t)
+
+    # Check query string
+    assert "HYBRID_POLICY BATCHES BATCH_SIZE 2" in str(vector_query)
+
+    # Execute query
+    results = index.query(vector_query)
+
+    # Check results - should have filtered to "high" credit scores
+    assert len(results) > 0
+    for result in results:
+        assert result["credit_score"] == "high"
+
+
+def test_hybrid_policy_adhoc_bf_mode(index, vector_query):
+    """Test vector query with ADHOC_BF hybrid policy."""
+    # Create a filter
+    t = Tag("credit_score") == "high"
+
+    # Set hybrid policy to ADHOC_BF
+    vector_query.set_hybrid_policy("ADHOC_BF")
+
+    # Set the filter
+    vector_query.set_filter(t)
+
+    # Check query string
+    assert "HYBRID_POLICY ADHOC_BF" in str(vector_query)
+
+    # Execute query
+    results = index.query(vector_query)
+
+    # Check results - should have filtered to "high" credit scores
+    assert len(results) > 0
+    for result in results:
+        assert result["credit_score"] == "high"
+
+
+def test_range_query_with_epsilon(index):
+    """Integration test: Execute range query with epsilon parameter against Redis."""
+    # Create a range query with epsilon
+    epsilon_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job"],
+        distance_threshold=0.3,
+        epsilon=0.5,  # Larger than default to get potentially more results
+    )
+
+    # Verify query string contains epsilon attribute
+    query_string = str(epsilon_query)
+    assert "$EPSILON: 0.5" in query_string
+
+    # Verify epsilon property is set
+    assert epsilon_query.epsilon == 0.5
+
+    # Test setting epsilon
+    epsilon_query.set_epsilon(0.1)
+    assert epsilon_query.epsilon == 0.1
+    assert "$EPSILON: 0.1" in str(epsilon_query)
+
+    # Execute basic query without epsilon to ensure functionality
+    basic_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job"],
+        distance_threshold=0.2,
+    )
+
+    results = index.query(basic_query)
+
+    # Check results
+    for result in results:
+        assert float(result["vector_distance"]) <= 0.2
+
+
+def test_range_query_with_filter_and_hybrid_policy(index):
+    """Integration test: Test construction of a range query with filter and hybrid policy."""
+    # Create a filter for high credit score
+    credit_filter = Tag("credit_score") == "high"
+
+    # Create a range query with filter and hybrid policy
+    query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job"],
+        filter_expression=credit_filter,
+        distance_threshold=0.5,
+        hybrid_policy="BATCHES",
+        batch_size=2,
+    )
+
+    # Check query string and parameters
+    query_string = str(query)
+    assert "@credit_score:{high}" in query_string
+    assert "HYBRID_POLICY" not in query_string
+    assert query.hybrid_policy == "BATCHES"
+    assert query.batch_size == 2
+    assert query.params["HYBRID_POLICY"] == "BATCHES"
+    assert query.params["BATCH_SIZE"] == 2
+
+    # Execute basic query with filter but without hybrid policy
+    basic_filter_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score", "age", "job"],
+        filter_expression=credit_filter,
+        distance_threshold=0.5,
+    )
+
+    results = index.query(basic_filter_query)
+
+    # Check results
+    for result in results:
+        assert result["credit_score"] == "high"
+        assert float(result["vector_distance"]) <= 0.5
