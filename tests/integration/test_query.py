@@ -25,6 +25,7 @@ def vector_query():
     return VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
+        return_score=True,
         return_fields=[
             "user",
             "credit_score",
@@ -58,7 +59,7 @@ def normalized_vector_query():
     return VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
-        normalize_cosine_distance=True,
+        normalize_vector_distance=True,
         return_score=True,
         return_fields=[
             "user",
@@ -107,7 +108,7 @@ def normalized_range_query():
     return RangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
-        normalize_cosine_distance=True,
+        normalize_vector_distance=True,
         return_score=True,
         return_fields=["user", "credit_score", "age", "job", "location"],
         distance_threshold=0.2,
@@ -749,11 +750,26 @@ def test_query_normalize_cosine_distance(index, normalized_vector_query):
         assert 0 <= float(r["vector_distance"]) <= 1
 
 
-def test_query_normalize_cosine_distance_lp_distance(L2_index, normalized_vector_query):
+def test_query_cosine_distance_un_normalized(index, vector_query):
+
+    res = index.query(vector_query)
+
+    assert any(float(r["vector_distance"]) > 1 for r in res)
+
+
+def test_query_l2_distance_un_normalized(L2_index, vector_query):
+
+    res = L2_index.query(vector_query)
+
+    assert any(float(r["vector_distance"]) > 1 for r in res)
+
+
+def test_query_l2_distance_normalized(L2_index, normalized_vector_query):
 
     res = L2_index.query(normalized_vector_query)
 
-    assert any(float(r["vector_distance"]) > 1 for r in res)
+    for r in res:
+        assert 0 <= float(r["vector_distance"]) <= 1
 
 
 def test_range_query_normalize_cosine_distance(index, normalized_range_query):

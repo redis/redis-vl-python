@@ -18,7 +18,7 @@ class Route(BaseModel):
     """List of reference phrases for the route."""
     metadata: Dict[str, Any] = Field(default={})
     """Metadata associated with the route."""
-    distance_threshold: Annotated[float, Field(strict=True, gt=0, le=1)] = 0.5
+    distance_threshold: Annotated[float, Field(strict=True, gt=0, le=2)] = 0.5
     """Distance threshold for matching the route."""
 
     @field_validator("name")

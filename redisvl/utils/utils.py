@@ -198,3 +198,10 @@ def norm_cosine_distance(value: float) -> float:
     Normalize the cosine distance to a similarity score between 0 and 1.
     """
     return (2 - value) / 2
+
+
+def norm_l2_distance(value: float) -> float:
+    """
+    Normalize the L2 distance.
+    """
+    return 1 / (1 + value)

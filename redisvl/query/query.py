@@ -198,7 +198,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
-        normalize_cosine_distance: bool = False,
+        normalize_vector_distance: bool = False,
     ):
         """A query for running a vector search along with an optional filter
         expression.
@@ -234,9 +234,12 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 of vectors to fetch in each batch. Larger values may improve performance
                 at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
                 Defaults to None, which lets Redis auto-select an appropriate batch size.
-            normalize_cosine_distance (bool): by default Redis returns cosine distance as a value
-                between 0 and 2 where 0 is the best match. If set to True, the cosine distance will be
-                converted to cosine similarity with a value between 0 and 1 where 1 is the best match.
+            normalize_vector_distance (bool): Redis supports 3 distance metrics: L2 (euclidean),
+                IP (inner product), and COSINE. By default, L2 distance returns an unbounded value.
+                COSINE distance returns a value between 0 and 2. IP returns a value determined by
+                the magnitude of the vector. Setting this flag to true converts COSINE and L2 distance
+                to a similarity score between 0 and 1. Note: setting this flag to true for IP will
+                throw a warning since by definition COSINE similarity is normalized IP.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
@@ -250,7 +253,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._num_results = num_results
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
-        self._normalize_cosine_distance = normalize_cosine_distance
+        self._normalize_vector_distance = normalize_vector_distance
         self.set_filter(filter_expression)
         query_string = self._build_query_string()
 
@@ -399,7 +402,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
-        normalize_cosine_distance: bool = False,
+        normalize_vector_distance: bool = False,
     ):
         """A query for running a filtered vector search based on semantic
         distance threshold.
@@ -443,9 +446,12 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 of vectors to fetch in each batch. Larger values may improve performance
                 at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
                 Defaults to None, which lets Redis auto-select an appropriate batch size.
-            normalize_cosine_distance (bool): by default Redis returns cosine distance as a value
-                between 0 and 2 where 0 is the best match. If set to True, the cosine distance will be
-                converted to cosine similarity with a value between 0 and 1 where 1 is the best match.
+            normalize_vector_distance (bool): Redis supports 3 distance metrics: L2 (euclidean),
+                IP (inner product), and COSINE. By default, L2 distance returns an unbounded value.
+                COSINE distance returns a value between 0 and 2. IP returns a value determined by
+                the magnitude of the vector. Setting this flag to true converts COSINE and L2 distance
+                to a similarity score between 0 and 1. Note: setting this flag to true for IP will
+                throw a warning since by definition COSINE similarity is normalized IP.
 
         Raises:
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
@@ -472,7 +478,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         if batch_size is not None:
             self.set_batch_size(batch_size)
 
-        self._normalize_cosine_distance = normalize_cosine_distance
+        self._normalize_vector_distance = normalize_vector_distance
         self.set_distance_threshold(distance_threshold)
         self.set_filter(filter_expression)
         query_string = self._build_query_string()

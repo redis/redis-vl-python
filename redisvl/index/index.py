@@ -53,7 +53,7 @@ from redisvl.redis.connection import (
 )
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.schema.fields import VectorDistanceMetric
+from redisvl.schema.fields import VECTOR_NORM_MAP, VectorDistanceMetric
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -104,12 +104,20 @@ def process_results(
         and not query._return_fields  # type: ignore
     )
 
-    normalize_cosine_distance = (
-        (isinstance(query, VectorQuery) or isinstance(query, VectorRangeQuery))
-        and query._normalize_cosine_distance
-        and schema.fields[query._vector_field_name].attrs.distance_metric  # type: ignore
-        == VectorDistanceMetric.COSINE
-    )
+    if (
+        isinstance(query, VectorQuery) or isinstance(query, VectorRangeQuery)
+    ) and query._normalize_vector_distance:
+        dist_metric = VectorDistanceMetric(
+            schema.fields[query._vector_field_name].attrs.distance_metric.upper()  # type: ignore
+        )
+        if dist_metric == VectorDistanceMetric.IP:
+            warnings.warn(
+                "Attempting to normalize inner product distance metric. Use cosine distance instead which is normalized inner product by definition."
+            )
+
+        norm_fn = VECTOR_NORM_MAP[dist_metric.value]
+    else:
+        norm_fn = None
 
     # Process records
     def _process(doc: "Document") -> Dict[str, Any]:
@@ -124,10 +132,10 @@ def process_results(
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
 
-        if normalize_cosine_distance:
+        if norm_fn:
             # convert float back to string to be consistent
             doc_dict[query.DISTANCE_ID] = str(  # type: ignore
-                norm_cosine_distance(float(doc_dict[query.DISTANCE_ID]))  # type: ignore
+                norm_fn(float(doc_dict[query.DISTANCE_ID]))  # type: ignore
             )
 
         # Remove 'payload' if present
