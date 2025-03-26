@@ -9,12 +9,13 @@ This module tests the core validation functionality:
 """
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytest
 
 from redisvl.schema import IndexSchema
 from redisvl.schema.fields import FieldTypes, VectorDataType
+from redisvl.schema.schema import StorageType
 from redisvl.schema.type_utils import TypeInferrer
 from redisvl.schema.validation import (
     SchemaModelGenerator,
@@ -22,19 +23,21 @@ from redisvl.schema.validation import (
     validate_object,
 )
 
+# -------------------- FIXTURES --------------------
+
 
 @pytest.fixture
-def sample_schema():
-    """Create a sample schema with different field types for testing."""
+def sample_hash_schema():
+    """Create a sample schema with HASH storage for testing."""
     schema_dict = {
         "index": {
-            "name": "test-index",
+            "name": "test-hash-index",
             "prefix": "test",
             "key_separator": ":",
             "storage_type": "hash",
         },
         "fields": [
-            {"name": "id", "type": "tag"},
+            {"name": "test_id", "type": "tag"},
             {"name": "title", "type": "text"},
             {"name": "rating", "type": "numeric"},
             {"name": "location", "type": "geo"},
@@ -48,6 +51,16 @@ def sample_schema():
                     "distance_metric": "cosine",
                 },
             },
+            {
+                "name": "int_vector",
+                "type": "vector",
+                "attrs": {
+                    "algorithm": "flat",
+                    "dims": 3,
+                    "datatype": "int8",
+                    "distance_metric": "l2",
+                },
+            },
         ],
     }
     return IndexSchema.from_dict(schema_dict)
@@ -55,7 +68,7 @@ def sample_schema():
 
 @pytest.fixture
 def sample_json_schema():
-    """Create a sample schema with JSON storage and path fields."""
+    """Create a sample schema with JSON storage for testing."""
     schema_dict = {
         "index": {
             "name": "test-json-index",
@@ -64,7 +77,7 @@ def sample_json_schema():
             "storage_type": "json",
         },
         "fields": [
-            {"name": "id", "type": "tag", "path": "$.id"},
+            {"name": "test_id", "type": "tag", "path": "$.test_id"},
             {"name": "user", "type": "tag", "path": "$.metadata.user"},
             {"name": "title", "type": "text", "path": "$.content.title"},
             {"name": "rating", "type": "numeric", "path": "$.metadata.rating"},
@@ -79,71 +92,178 @@ def sample_json_schema():
                     "distance_metric": "cosine",
                 },
             },
+            {
+                "name": "int_vector",
+                "type": "vector",
+                "path": "$.content.int_vector",
+                "attrs": {
+                    "algorithm": "flat",
+                    "dims": 3,
+                    "datatype": "int8",
+                    "distance_metric": "l2",
+                },
+            },
         ],
     }
     return IndexSchema.from_dict(schema_dict)
 
 
 @pytest.fixture
-def valid_data():
-    """Sample valid data for testing validation."""
+def valid_hash_data():
+    """Sample valid data for testing HASH storage validation."""
     return {
-        "id": "doc1",
+        "test_id": "doc1",
         "title": "Test Document",
         "rating": 4.5,
         "location": "37.7749,-122.4194",
-        "embedding": [0.1, 0.2, 0.3, 0.4],
+        "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",  # Bytes for HASH
+        "int_vector": b"\x01\x02\x03",  # Bytes for HASH
     }
 
 
 @pytest.fixture
-def valid_nested_data():
-    """Sample valid nested data for testing JSON path validation."""
+def valid_json_data():
+    """Sample valid data for testing JSON storage validation."""
     return {
-        "id": "doc1",
+        "test_id": "doc1",
         "metadata": {"user": "user123", "rating": 4.5},
-        "content": {"title": "Test Document", "embedding": [0.1, 0.2, 0.3, 0.4]},
+        "content": {
+            "title": "Test Document",
+            "embedding": [0.1, 0.2, 0.3, 0.4],  # List for JSON
+            "int_vector": [1, 2, 3],  # List for JSON
+        },
     }
+
+
+# -------------------- TEST HELPERS --------------------
+
+
+def validate_field(
+    schema: IndexSchema,
+    field_name: str,
+    value: Any,
+    should_pass: bool,
+    error_text: Optional[str] = None,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Helper function to validate a field value against a schema.
+
+    Args:
+        schema: The schema to validate against
+        field_name: The name of the field to validate
+        value: The value to validate
+        should_pass: Whether validation should pass
+        error_text: Expected error text if validation should fail
+
+    Returns:
+        Tuple of (validation_success, error_message)
+    """
+    # Get model for schema
+    model_class = SchemaModelGenerator.get_model_for_schema(schema)
+
+    # Create test data with minimal viable fields
+    test_data = {field_name: value}
+
+    # Try to validate
+    try:
+        validated = model_class.model_validate(test_data)
+
+        # If we got here, validation passed
+        success = True
+        error_msg = None
+
+    except Exception as e:
+        # Validation failed
+        success = False
+        error_msg = str(e)
+
+    # Check if result matches expectation
+    if success != should_pass:
+        print("ERROR", error_msg, flush=True)
+        print(validated, flush=True)
+    assert (
+        success == should_pass
+    ), f"Validation {'passed' if success else 'failed'} but expected {'pass' if should_pass else 'fail'}"
+
+    # Check error text if specified and validation failed
+    if not success and error_text and error_msg:
+        assert (
+            error_text in error_msg
+        ), f"Error '{error_msg}' does not contain expected text '{error_text}'"
+
+    return success, error_msg
+
+
+# -------------------- CATEGORY 1: BASIC UNIT TESTS --------------------
 
 
 class TestSchemaModelGenerator:
     """Tests for the SchemaModelGenerator class."""
 
-    def test_get_model_for_schema(self, sample_schema):
+    @pytest.mark.parametrize("schema_type", ["hash", "json"])
+    def test_get_model_for_schema(
+        self, schema_type, sample_hash_schema, sample_json_schema
+    ):
         """Test generating a model from a schema."""
+        # Select schema based on type
+        schema = sample_hash_schema if schema_type == "hash" else sample_json_schema
+
         # Get model for schema
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
+        model_class = SchemaModelGenerator.get_model_for_schema(schema)
 
         # Verify model name matches the index name
-        assert model_class.__name__ == "test-index__PydanticModel"
+        assert model_class.__name__ == f"{schema.index.name}__PydanticModel"
 
         # Verify model has expected fields
-        for field_name in sample_schema.field_names:
+        for field_name in schema.field_names:
             assert field_name in model_class.model_fields
 
-    def test_model_caching(self, sample_schema):
+    def test_model_caching(self, sample_hash_schema):
         """Test that models are cached and reused."""
         # Get model twice
-        model1 = SchemaModelGenerator.get_model_for_schema(sample_schema)
-        model2 = SchemaModelGenerator.get_model_for_schema(sample_schema)
+        model1 = SchemaModelGenerator.get_model_for_schema(sample_hash_schema)
+        model2 = SchemaModelGenerator.get_model_for_schema(sample_hash_schema)
 
         # Verify same instance
         assert model1 is model2
 
-    def test_type_mapping(self, sample_schema):
+    @pytest.mark.parametrize(
+        "field_type,storage_type,expected_type",
+        [
+            (FieldTypes.TEXT, StorageType.HASH, str),
+            (FieldTypes.TAG, StorageType.HASH, str),
+            (FieldTypes.NUMERIC, StorageType.HASH, Union[int, float]),
+            (FieldTypes.GEO, StorageType.HASH, str),
+            (FieldTypes.VECTOR, StorageType.HASH, bytes),
+            (FieldTypes.TEXT, StorageType.JSON, str),
+            (FieldTypes.TAG, StorageType.JSON, str),
+            (FieldTypes.NUMERIC, StorageType.JSON, Union[int, float]),
+            (FieldTypes.GEO, StorageType.JSON, str),
+            (FieldTypes.VECTOR, StorageType.JSON, List[float]),
+        ],
+    )
+    def test_type_mapping(self, field_type, storage_type, expected_type):
         """Test mapping Redis field types to Pydantic types."""
-        for field_name, field in sample_schema.fields.items():
-            field_type = SchemaModelGenerator._map_field_to_pydantic_type(field)
 
-            # Verify each field type maps to expected Python type
-            if field.type == FieldTypes.TEXT:
-                assert field_type == str
-            elif field.type == FieldTypes.TAG:
-                assert field_type == str
-            elif field.type == FieldTypes.NUMERIC:
-                assert field_type.__origin__ == type(Union)  # Check it's a Union
-            elif field.type == FieldTypes.VECTOR:
-                assert field_type.__origin__ == type(Union)  # Check it's a Union
+        # Create a basic field of the specified type
+        class SimpleField:
+            def __init__(self, ftype):
+                self.type = ftype
+                # Add attrs for vector fields
+                if ftype == FieldTypes.VECTOR:
+
+                    class Attrs:
+                        dims = 4
+                        datatype = VectorDataType.FLOAT32
+
+                    self.attrs = Attrs()
+
+        field = SimpleField(field_type)
+        field_type_result = SchemaModelGenerator._map_field_to_pydantic_type(
+            field, storage_type
+        )
+
+        assert field_type_result == expected_type
 
     def test_unsupported_field_type(self):
         """Test that an error is raised for unsupported field types."""
@@ -154,362 +274,419 @@ class TestSchemaModelGenerator:
 
         # Mapping should raise ValueError
         with pytest.raises(ValueError) as exc_info:
-            SchemaModelGenerator._map_field_to_pydantic_type(DummyField())
+            SchemaModelGenerator._map_field_to_pydantic_type(
+                DummyField(), StorageType.HASH
+            )
 
         assert "Unsupported field type" in str(exc_info.value)
 
 
-class TestFieldValidators:
-    """Tests for field-specific validators."""
+class TestJsonPathExtraction:
+    """Tests for JSON path extraction functionality."""
 
-    def test_text_field_validation(self, sample_schema, valid_data):
-        """Test validation of text fields."""
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
-
-        # Valid text field
-        valid = valid_data.copy()
-        validated = model_class.model_validate(valid)
-        assert validated.title == "Test Document"
-
-        # Invalid text field (number)
-        invalid = valid_data.copy()
-        invalid["title"] = 123
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid)
-        assert "title" in str(exc_info.value)
-        assert "must be a string" in str(exc_info.value)
-
-    def test_tag_field_validation(self, sample_schema, valid_data):
-        """Test validation of tag fields."""
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
-
-        # Valid tag field
-        valid = valid_data.copy()
-        validated = model_class.model_validate(valid)
-        assert validated.id == "doc1"
-
-        # Invalid tag field (number)
-        invalid = valid_data.copy()
-        invalid["id"] = 123
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid)
-        assert "id" in str(exc_info.value)
-        assert "must be a string" in str(exc_info.value)
-
-    def test_numeric_field_validation(self, sample_schema, valid_data):
-        """Test validation of numeric fields."""
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
-
-        # Valid numeric field (integer)
-        valid_int = valid_data.copy()
-        valid_int["rating"] = 5
-        validated = model_class.model_validate(valid_int)
-        assert validated.rating == 5
-
-        # Valid numeric field (float)
-        valid_float = valid_data.copy()
-        valid_float["rating"] = 4.5
-        validated = model_class.model_validate(valid_float)
-        assert validated.rating == 4.5
-
-        # Invalid numeric field (string)
-        invalid = valid_data.copy()
-        invalid["rating"] = "high"
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid)
-        assert "rating" in str(exc_info.value)
-        assert "must be a number" in str(exc_info.value)
-
-        # Invalid numeric field (string that looks like number)
-        invalid_num_str = valid_data.copy()
-        invalid_num_str["rating"] = "4.5"
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_num_str)
-        assert "rating" in str(exc_info.value)
-        assert "must be a number" in str(exc_info.value)
-
-    def test_geo_field_validation(self, sample_schema, valid_data):
-        """Test validation of geo fields."""
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
-
-        # Valid geo format
-        valid_geo = valid_data.copy()
-        valid_geo["location"] = "37.7749,-122.4194"
-        validated = model_class.model_validate(valid_geo)
-        assert validated.location == "37.7749,-122.4194"
-
-        # Invalid geo format (not matching lat,lon pattern)
-        invalid_geo = valid_data.copy()
-        invalid_geo["location"] = "invalid_geo"
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_geo)
-        assert "location" in str(exc_info.value)
-        assert "not a valid 'lat,lon' format" in str(exc_info.value)
-
-        # Verify the geo pattern actually works with valid formats
-        valid_formats = [
-            "0,0",
-            "90,-180",
-            "-90,180",
-            "37.7749,-122.4194",
-            "37.7749,122.4194",
-            "-37.7749,-122.4194",
-        ]
-        for format in valid_formats:
-            assert re.match(TypeInferrer.GEO_PATTERN.pattern, format)
-
-        # Verify invalid formats fail the pattern
-        invalid_formats = [
-            "invalid",
-            "37.7749",
-            "37.7749,",
-            ",122.4194",
-            "91,0",  # Latitude > 90
-            "-91,0",  # Latitude < -90
-            "0,181",  # Longitude > 180
-            "0,-181",  # Longitude < -180
-        ]
-        for format in invalid_formats:
-            assert not re.match(TypeInferrer.GEO_PATTERN.pattern, format)
-
-    def test_vector_field_validation_float(self, sample_schema, valid_data):
-        """Test validation of float vector fields."""
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
-
-        # Valid vector
-        valid_vector = valid_data.copy()
-        valid_vector["embedding"] = [0.1, 0.2, 0.3, 0.4]
-        validated = model_class.model_validate(valid_vector)
-        assert validated.embedding == [0.1, 0.2, 0.3, 0.4]
-
-        # Valid vector as bytes
-        valid_bytes = valid_data.copy()
-        valid_bytes["embedding"] = b"\x00\x01\x02\x03"
-        validated = model_class.model_validate(valid_bytes)
-        assert validated.embedding == b"\x00\x01\x02\x03"
-
-        # Invalid vector type (string)
-        invalid_type = valid_data.copy()
-        invalid_type["embedding"] = "not a vector"
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_type)
-        assert "embedding" in str(exc_info.value)
-
-        # Invalid dimensions
-        invalid_dims = valid_data.copy()
-        invalid_dims["embedding"] = [0.1, 0.2, 0.3]  # 3 dimensions instead of 4
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_dims)
-        assert "embedding" in str(exc_info.value)
-        assert "dimensions" in str(exc_info.value)
-
-        # Invalid vector values
-        invalid_values = valid_data.copy()
-        invalid_values["embedding"] = [0.1, "string", 0.3, 0.4]
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_values)
-        assert "embedding" in str(exc_info.value)
-
-    def test_vector_field_validation_int(self, sample_schema, valid_data):
-        """Test validation of integer vector fields."""
-        model_class = SchemaModelGenerator.get_model_for_schema(sample_schema)
-
-        # Valid integer vector
-        valid_vector = valid_data.copy()
-        valid_vector["int_vector"] = [1, 2, 3]
-        validated = model_class.model_validate(valid_vector)
-        assert validated.int_vector == [1, 2, 3]
-
-        # Invalid: float values in int vector
-        invalid_floats = valid_data.copy()
-        invalid_floats["int_vector"] = [0.1, 0.2, 0.3]
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_floats)
-        assert "int_vector" in str(exc_info.value)
-        assert "integer values" in str(exc_info.value)
-
-        # Invalid: values outside INT8 range
-        invalid_range = valid_data.copy()
-        invalid_range["int_vector"] = [1000, 2000, 3000]  # Outside INT8 range
-        with pytest.raises(ValueError) as exc_info:
-            model_class.model_validate(invalid_range)
-        assert "int_vector" in str(exc_info.value)
-        assert "must be between" in str(exc_info.value)
-
-
-class TestJsonPathValidation:
-    """Tests for JSON path-based validation."""
-
-    def test_extract_from_json_path(self, valid_nested_data):
+    @pytest.mark.parametrize(
+        "path,expected_value",
+        [
+            ("$.test_id", "doc1"),
+            ("$.metadata.user", "user123"),
+            ("$.metadata.rating", 4.5),
+            ("$.content.title", "Test Document"),
+            ("$.content.embedding", [0.1, 0.2, 0.3, 0.4]),
+            ("metadata.user", "user123"),  # alternate format
+            ("$.nonexistent", None),  # nonexistent path
+            ("$.metadata.nonexistent", None),  # nonexistent nested path
+        ],
+    )
+    def test_extract_from_json_path(self, valid_json_data, path, expected_value):
         """Test extracting values using JSON paths."""
-        # Test simple path
-        assert extract_from_json_path(valid_nested_data, "$.id") == "doc1"
+        assert extract_from_json_path(valid_json_data, path) == expected_value
 
-        # Test nested path
-        assert extract_from_json_path(valid_nested_data, "$.metadata.user") == "user123"
-        assert extract_from_json_path(valid_nested_data, "$.metadata.rating") == 4.5
-        assert (
-            extract_from_json_path(valid_nested_data, "$.content.title")
-            == "Test Document"
-        )
-        assert extract_from_json_path(valid_nested_data, "$.content.embedding") == [
-            0.1,
-            0.2,
-            0.3,
-            0.4,
-        ]
 
-        # Test non-existent path
-        assert extract_from_json_path(valid_nested_data, "$.nonexistent") is None
-        assert (
-            extract_from_json_path(valid_nested_data, "$.metadata.nonexistent") is None
-        )
+# # -------------------- CATEGORY 2: PARAMETRIZED VALIDATOR TESTS --------------------
 
-        # Test path with alternate formats
-        assert extract_from_json_path(valid_nested_data, "metadata.user") == "user123"
 
-    def test_validate_nested_json(self, sample_json_schema, valid_nested_data):
-        """Test validating a nested JSON object."""
-        # Validate nested object
-        validated = validate_object(sample_json_schema, valid_nested_data)
+class TestBasicFieldValidation:
+    """Tests for validating non-vector field types."""
 
-        # Verify validation succeeds and flattens the structure
-        assert validated is not None
-        assert "id" in validated
-        assert "user" in validated
-        assert "title" in validated
-        assert "rating" in validated
-        assert "embedding" in validated
+    @pytest.mark.parametrize(
+        "field_type,field_name,valid_values,invalid_values",
+        [
+            # TEXT fields
+            (
+                "text",
+                "title",
+                [("Test Document", None), ("123", None), ("", None)],
+                [(123, "string"), (True, "string"), ([], "string")],
+            ),
+            # TAG fields
+            (
+                "tag",
+                "test_id",
+                [("doc1", None), ("123", None), ("abc,def", None), ("", None)],
+                [
+                    (123, "string"),
+                    (True, "string"),
+                    ([], "string"),
+                    ([1, 2, 3], "string"),
+                ],
+            ),
+            # NUMERIC fields
+            (
+                "numeric",
+                "rating",
+                [(5, None), (4.5, None), (0, None), (-1.5, None), ("5.3", None)],
+                [("high", "number"), (True, "boolean"), ([], "number")],
+            ),
+            # GEO fields
+            (
+                "geo",
+                "location",
+                [
+                    ("0,0", None),
+                    ("90,-180", None),
+                    ("-90,180", None),
+                    ("37.7749,-122.4194", None),
+                ],
+                [
+                    ("invalid_geo", "lat,lon"),
+                    ("37.7749", "lat,lon"),
+                    ("37.7749,", "lat,lon"),
+                    (",122.4194", "lat,lon"),
+                    ("91,0", "lat,lon"),  # Latitude > 90
+                    ("-91,0", "lat,lon"),  # Latitude < -90
+                    ("0,181", "lat,lon"),  # Longitude > 180
+                    ("0,-181", "lat,lon"),  # Longitude < -180
+                    (123, "string"),
+                    (True, "string"),
+                ],
+            ),
+        ],
+    )
+    def test_basic_field_validation(
+        self, sample_hash_schema, field_type, field_name, valid_values, invalid_values
+    ):
+        """
+        Test validation of basic field types (text, tag, numeric, geo).
 
-        # Verify values were extracted correctly
-        assert validated["id"] == "doc1"
-        assert validated["user"] == "user123"
-        assert validated["title"] == "Test Document"
-        assert validated["rating"] == 4.5
-        assert validated["embedding"] == [0.1, 0.2, 0.3, 0.4]
+        This test consolidates previously separate tests for different field types.
+        """
+        # Test valid values
+        for value, _ in valid_values:
+            validate_field(sample_hash_schema, field_name, value, True)
 
-    def test_validate_nested_json_missing_paths(self, sample_json_schema):
-        """Test validating a nested JSON with missing paths."""
-        # Nested object with missing paths
-        partial_nested = {
-            "id": "doc1",
-            "metadata": {
-                "user": "user123"
-                # missing rating
+            # For GEO fields, also verify pattern
+            if field_type == "geo" and isinstance(value, str):
+                assert re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+
+        # Test invalid values
+        for value, error_text in invalid_values:
+            validate_field(sample_hash_schema, field_name, value, False, error_text)
+
+            # For GEO fields, also verify pattern failure
+            if field_type == "geo" and isinstance(value, str):
+                assert not re.match(TypeInferrer.GEO_PATTERN.pattern, value)
+
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            # Valid cases for HASH storage (bytes)
+            {
+                "storage": StorageType.HASH,
+                "field_name": "embedding",
+                "value": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+                "valid": True,
+                "error_text": None,
+                "description": "Valid bytes for HASH storage",
             },
-            "content": {
-                "title": "Test Document"
-                # missing embedding
+            {
+                "storage": StorageType.HASH,
+                "field_name": "int_vector",
+                "value": b"\x01\x02\x03",
+                "valid": True,
+                "error_text": None,
+                "description": "Valid bytes for HASH storage (int vector)",
             },
-        }
+            # Invalid cases for HASH storage (trying to use lists)
+            {
+                "storage": StorageType.HASH,
+                "field_name": "embedding",
+                "value": [0.1, 0.2, 0.3, 0.4],
+                "valid": False,
+                "error_text": "bytes",
+                "description": "List not valid for HASH storage",
+            },
+            # Valid cases for JSON storage (lists)
+            {
+                "storage": StorageType.JSON,
+                "field_name": "embedding",
+                "value": [0.1, 0.2, 0.3, 0.4],
+                "valid": True,
+                "error_text": None,
+                "description": "Valid list for JSON storage",
+            },
+            {
+                "storage": StorageType.JSON,
+                "field_name": "int_vector",
+                "value": [1, 2, 3],
+                "valid": True,
+                "error_text": None,
+                "description": "Valid int list for JSON storage",
+            },
+            # Invalid cases for JSON storage (trying to use bytes)
+            {
+                "storage": StorageType.JSON,
+                "field_name": "embedding",
+                "value": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+                "valid": False,
+                "error_text": "list",
+                "description": "Bytes not valid for JSON storage",
+            },
+            # Dimension validation
+            {
+                "storage": StorageType.JSON,
+                "field_name": "embedding",
+                "value": [0.1, 0.2, 0.3],  # Should be 4 dimensions
+                "valid": False,
+                "error_text": "dimensions",
+                "description": "Wrong dimensions for vector",
+            },
+            # Type validation for int vectors
+            {
+                "storage": StorageType.JSON,
+                "field_name": "int_vector",
+                "value": [0.1, 0.2, 0.3],  # Should be integers
+                "valid": False,
+                "error_text": "integer",
+                "description": "Float values in int vector",
+            },
+        ],
+    )
+    def test_vector_field_validation(
+        self, sample_hash_schema, sample_json_schema, test_case
+    ):
+        """Test validation of vector fields with storage-specific requirements."""
+        # Select the appropriate schema based on storage type
+        schema = (
+            sample_hash_schema
+            if test_case["storage"] == StorageType.HASH
+            else sample_json_schema
+        )
 
+        # Validate the field
+        validate_field(
+            schema,
+            test_case["field_name"],
+            test_case["value"],
+            test_case["valid"],
+            test_case["error_text"],
+        )
+
+
+class TestNestedJsonValidation:
+    """Tests for JSON path-based validation with nested structures."""
+
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            # Complete valid data
+            {
+                "data": {
+                    "test_id": "doc1",
+                    "metadata": {"user": "user123", "rating": 4.5},
+                    "content": {
+                        "title": "Test Document",
+                        "embedding": [0.1, 0.2, 0.3, 0.4],
+                        "int_vector": [1, 2, 3],
+                    },
+                },
+                "expected_fields": [
+                    "test_id",
+                    "user",
+                    "title",
+                    "rating",
+                    "embedding",
+                    "int_vector",
+                ],
+                "missing_fields": [],
+            },
+            # Partial data - missing some fields
+            {
+                "data": {
+                    "test_id": "doc1",
+                    "metadata": {"user": "user123"},
+                    "content": {"title": "Test Document"},
+                },
+                "expected_fields": ["test_id", "user", "title"],
+                "missing_fields": ["rating", "embedding", "int_vector"],
+            },
+            # Minimal data
+            {
+                "data": {"test_id": "doc1"},
+                "expected_fields": ["test_id"],
+                "missing_fields": [
+                    "user",
+                    "title",
+                    "rating",
+                    "embedding",
+                    "int_vector",
+                ],
+            },
+        ],
+    )
+    def test_nested_json_validation(self, sample_json_schema, test_case):
+        """Test validating nested JSON with various data structures."""
         # Validate object
-        validated = validate_object(sample_json_schema, partial_nested)
+        validated = validate_object(sample_json_schema, test_case["data"])
 
-        # Verify validation succeeds with partial data
-        assert validated is not None
-        assert "id" in validated
-        assert "user" in validated
-        assert "title" in validated
-        assert "rating" not in validated
-        assert "embedding" not in validated
+        # Verify expected fields are present
+        for field in test_case["expected_fields"]:
+            assert field in validated
+
+        # Verify missing fields are not present
+        for field in test_case["missing_fields"]:
+            assert field not in validated
 
 
-class TestObjectValidation:
-    """Tests for complete object validation."""
+class TestEndToEndValidation:
+    """End-to-end tests for complete object validation against schema."""
 
-    def test_validate_valid_object(self, sample_schema, valid_data):
-        """Test validating a valid object."""
-        # Validate object
-        validated = validate_object(sample_schema, valid_data)
+    @pytest.mark.parametrize(
+        "schema_type,data,expected_result",
+        [
+            # Valid HASH data
+            (
+                "hash",
+                {
+                    "test_id": "doc1",
+                    "title": "Test Document",
+                    "rating": 4.5,
+                    "location": "37.7749,-122.4194",
+                    "embedding": b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+                    "int_vector": b"\x01\x02\x03",
+                },
+                {
+                    "success": True,
+                    "fields": [
+                        "test_id",
+                        "title",
+                        "rating",
+                        "location",
+                        "embedding",
+                        "int_vector",
+                    ],
+                },
+            ),
+            # Partial HASH data
+            (
+                "hash",
+                {"test_id": "doc1", "title": "Test Document"},
+                {"success": True, "fields": ["test_id", "title"]},
+            ),
+            # Valid JSON data
+            (
+                "json",
+                {
+                    "test_id": "doc1",
+                    "metadata": {"user": "user123", "rating": 4.5},
+                    "content": {
+                        "title": "Test Document",
+                        "embedding": [0.1, 0.2, 0.3, 0.4],
+                        "int_vector": [1, 2, 3],
+                    },
+                },
+                {
+                    "success": True,
+                    "fields": [
+                        "test_id",
+                        "user",
+                        "rating",
+                        "title",
+                        "embedding",
+                        "int_vector",
+                    ],
+                },
+            ),
+            # Invalid HASH data - wrong vector type
+            (
+                "hash",
+                {
+                    "test_id": "doc1",
+                    "embedding": [0.1, 0.2, 0.3, 0.4],  # Should be bytes for HASH
+                },
+                {"success": False, "error_field": "embedding"},
+            ),
+            # Invalid JSON data - wrong vector type
+            (
+                "json",
+                {
+                    "test_id": "doc1",
+                    "content": {
+                        "embedding": b"\x00\x00\x00\x00"  # Should be list for JSON
+                    },
+                },
+                {"success": False, "error_field": "embedding"},
+            ),
+        ],
+    )
+    def test_end_to_end_validation(
+        self, sample_hash_schema, sample_json_schema, schema_type, data, expected_result
+    ):
+        """Test validating complete objects with various data scenarios."""
+        # Select schema based on type
+        schema = sample_hash_schema if schema_type == "hash" else sample_json_schema
 
-        # Verify no exceptions and data is returned
-        assert validated is not None
+        if expected_result["success"]:
+            # Validation should succeed
+            validated = validate_object(schema, data)
 
-        # Verify all fields are present
-        for field_name in sample_schema.field_names:
-            if field_name in valid_data:
-                assert field_name in validated
+            # Verify expected fields are present
+            for field in expected_result["fields"]:
+                assert field in validated
+        else:
+            # Validation should fail
+            with pytest.raises(ValueError) as exc_info:
+                validate_object(schema, data)
 
-    def test_validate_missing_optional_fields(self, sample_schema):
-        """Test validating an object with missing optional fields."""
-        # Object with only some fields
-        partial_data = {"id": "doc1", "title": "Test Document"}
+            # Error should mention the field
+            assert expected_result["error_field"] in str(exc_info.value)
 
-        # Validate object
-        validated = validate_object(sample_schema, partial_data)
 
-        # Verify validation passes with partial data
-        assert validated is not None
-        assert "id" in validated
-        assert "title" in validated
-        assert "rating" not in validated
-        assert "location" not in validated
-        assert "embedding" not in validated
+# -------------------- ADDITIONAL TESTS --------------------
 
-    def test_explicit_none_fields_are_excluded(self, sample_schema):
-        """Test that fields explicitly set to None are excluded from output."""
-        # Object with some fields set to None
-        data_with_none = {
-            "id": "doc1",
+
+class TestEdgeCases:
+    """Tests for edge cases and boundary conditions."""
+
+    def test_empty_object_validation(self, sample_hash_schema, sample_json_schema):
+        """Test validating an empty object."""
+        # Empty object should validate for both storage types (all fields are optional)
+        # TODO confirm if this is indeed true
+        assert validate_object(sample_hash_schema, {}) == {}
+        assert validate_object(sample_json_schema, {}) == {}
+
+    def test_additional_fields(self, sample_hash_schema, valid_hash_data):
+        """Test that additional fields not in schema are NOT ignored."""
+        # Add extra field not in schema
+        data_with_extra = valid_hash_data.copy()
+        data_with_extra["extra_field"] = "some value"
+
+        # Validation should succeed and ignore extra field
+        validated = validate_object(sample_hash_schema, data_with_extra)
+        assert "extra_field" in validated
+
+    def test_explicit_none_fields_excluded(self, sample_hash_schema):
+        """Test that fields explicitly set to None are excluded."""
+        # Data with explicit None values
+        data = {
+            "test_id": "doc1",
             "title": "Test Document",
             "rating": None,
             "location": None,
         }
 
-        # Validate object
-        validated = validate_object(sample_schema, data_with_none)
-
-        # Verify None fields are excluded
-        assert validated is not None
-        assert "id" in validated
+        # Validate and check fields
+        validated = validate_object(sample_hash_schema, data)
+        assert "test_id" in validated
         assert "title" in validated
         assert "rating" not in validated
         assert "location" not in validated
-
-    def test_validate_with_multiple_invalid_fields(self, sample_schema, valid_data):
-        """Test validation with multiple invalid fields."""
-        # Create object with multiple invalid fields
-        invalid_data = valid_data.copy()
-        invalid_data["title"] = 123
-        invalid_data["rating"] = "not a number"
-        invalid_data["location"] = "invalid"
-
-        # Validation should fail with the first error encountered
-        with pytest.raises(ValueError) as exc_info:
-            validate_object(sample_schema, invalid_data)
-
-        # Error message should mention validation failure
-        assert "Validation failed" in str(exc_info.value)
-
-    @pytest.mark.parametrize(
-        "case",
-        [
-            {"field": "title", "value": 123, "error_text": "must be a string"},
-            {"field": "rating", "value": "high", "error_text": "must be a number"},
-            {
-                "field": "location",
-                "value": "invalid_geo",
-                "error_text": "not a valid 'lat,lon' format",
-            },
-            {
-                "field": "embedding",
-                "value": [0.1, 0.2, 0.3],
-                "error_text": "dimensions",
-            },
-        ],
-    )
-    def test_validate_invalid_field_parametrized(self, sample_schema, valid_data, case):
-        """Parametrized test for validating invalid fields."""
-        # Create invalid data according to test case
-        invalid_data = valid_data.copy()
-        invalid_data[case["field"]] = case["value"]
-
-        # Validate and check error
-        with pytest.raises(ValueError) as exc_info:
-            validate_object(sample_schema, invalid_data)
-
-        # Error should mention the field and specific issue
-        error_message = str(exc_info.value)
-        assert case["field"] in error_message
-        assert case["error_text"] in error_message

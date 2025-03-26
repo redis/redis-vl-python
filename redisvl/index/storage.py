@@ -5,6 +5,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.commands.search.indexDefinition import IndexType
 
+from redisvl.exceptions import SchemaValidationError
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema
 from redisvl.schema.validation import validate_object
@@ -180,7 +181,8 @@ class BaseStorage(BaseModel):
             List of tuples (key, processed_obj) for valid objects
 
         Raises:
-            ValueError: If any validation fails with object context
+            SchemaValidationError: If validation fails, with context about which object failed
+            ValueError: If any other processing errors occur
         """
         prepared_objects = []
         keys_iterator = iter(keys) if keys else None
@@ -197,12 +199,6 @@ class BaseStorage(BaseModel):
                 # Preprocess
                 processed_obj = self._preprocess(obj, preprocess)
 
-                # Basic type validation
-                if not isinstance(processed_obj, dict):
-                    raise ValueError(
-                        f"Object must be a dictionary, got {type(processed_obj).__name__}"
-                    )
-
                 # Schema validation if enabled
                 if validate:
                     processed_obj = self.validate(processed_obj)
@@ -210,13 +206,15 @@ class BaseStorage(BaseModel):
                 # Store valid object with its key for writing
                 prepared_objects.append((key, processed_obj))
 
+            except ValidationError as e:
+                # Convert Pydantic ValidationError to SchemaValidationError with index context
+                raise SchemaValidationError(str(e), index=i) from e
             except Exception as e:
-                # Enhance error message with object context
+                # Capture other exceptions with context
                 object_id = f"at index {i}"
-                if id_field and isinstance(obj, dict) and id_field in obj:
-                    object_id = f"with {id_field}={obj[id_field]}"
-
-                raise ValueError(f"Validation failed for object {object_id}: {str(e)}")
+                raise ValueError(
+                    f"Error processing object {object_id}: {str(e)}"
+                ) from e
 
         return prepared_objects
 

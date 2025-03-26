@@ -10,7 +10,7 @@ import re
 import warnings
 from typing import Any, Dict, List, Optional, Type, Union
 
-from pydantic import BaseModel, Field, ValidationError, create_model, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from redisvl.schema import IndexSchema
 from redisvl.schema.fields import BaseField, FieldTypes, VectorDataType
@@ -78,7 +78,10 @@ class SchemaModelGenerator:
         elif field.type == FieldTypes.VECTOR:
             # For JSON storage, vectors are always lists
             if storage_type == StorageType.JSON:
-                return List[Union[int, float]]
+                # For int data types, vectors must be ints, otherwise floats
+                if field.attrs.datatype in (VectorDataType.INT8, VectorDataType.UINT8):
+                    return List[int]
+                return List[float]
             else:
                 return bytes
 
@@ -88,7 +91,7 @@ class SchemaModelGenerator:
     @classmethod
     def _create_model(cls, schema: IndexSchema) -> Type[BaseModel]:
         """
-        Create a Pydantic model from schema definition.
+        Create a Pydantic model from schema definition using type() approach.
 
         Args:
             schema: The IndexSchema to convert
@@ -96,134 +99,111 @@ class SchemaModelGenerator:
         Returns:
             A Pydantic model class with appropriate fields and validators
         """
-        field_definitions = {}
-        validators = {}
-
         # Get storage type from schema
         storage_type = schema.index.storage_type
 
-        # Create field definitions dictionary for create_model
+        # Create annotations dictionary for the dynamic model
+        annotations = {}
+        class_dict = {}
+
+        # Build annotations and field metadata
         for field_name, field in schema.fields.items():
             field_type = cls._map_field_to_pydantic_type(field, storage_type)
 
-            # Create field definition (all fields are optional in the model)
-            # this handles the cases where objects have missing fields (supported behavior)
-            field_definitions[field_name] = (
-                Optional[field_type],  # Make fields optional
-                Field(
-                    default=None,
-                    json_schema_extra={
-                        "field_type": field.type,
-                    },
-                ),
-            )
+            # Make all fields optional in the model
+            annotations[field_name] = Optional[field_type]
 
-            # Add field-specific validator info to our validator registry
+            # Add default=None to make fields truly optional (can be missing from input)
+            class_dict[field_name] = Field(default=None)
+
+            # Register validators for GEO fields
             if field.type == FieldTypes.GEO:
-                validators[field_name] = {"type": "geo"}
 
-            elif field.type == FieldTypes.VECTOR:
-                validators[field_name] = {
-                    "type": "vector",
-                    "dims": field.attrs.dims,
-                    "datatype": field.attrs.datatype,
-                    "storage_type": storage_type,
-                }
+                def make_geo_validator(fname: str):
+                    @field_validator(fname, mode="after")
+                    def _validate_geo(cls, value):
+                        # Skip validation for None values
+                        if value is not None:
+                            # Validate against pattern
+                            if not TypeInferrer._is_geographic(value):
+                                raise ValueError(
+                                    f"Geo field '{fname}' value '{value}' is not a valid 'lat,lon' format"
+                                )
+                        return value
 
-        # First create the model class with field definitions
-        model_name = f"{schema.index.name}__PydanticModel"
-        model_class = create_model(model_name, **field_definitions)
+                    return _validate_geo
 
-        # Then add validators to the model class
-        for field_name, validator_info in validators.items():
-            if validator_info["type"] == "geo":
-                # Add geo validator
-                validator = cls._create_geo_validator(field_name)
-                setattr(model_class, f"validate_{field_name}", validator)
+                class_dict[f"validate_{field_name}"] = make_geo_validator(field_name)
 
-            elif validator_info["type"] == "vector":
-                # Add vector validator
-                validator = cls._create_vector_validator(
-                    field_name,
-                    validator_info["dims"],
-                    validator_info["datatype"],
-                    validator_info["storage_type"],
+            # Register validators for NUMERIC fields
+            elif field.type == FieldTypes.NUMERIC:
+
+                def make_numeric_validator(fname: str):
+                    # mode='before' so it catches bools before parsing
+                    @field_validator(fname, mode="before")
+                    def _disallow_bool(cls, value):
+                        if isinstance(value, bool):
+                            raise ValueError(f"Field '{fname}' cannot be boolean.")
+                        return value
+
+                    return _disallow_bool
+
+                class_dict[f"validate_{field_name}"] = make_numeric_validator(
+                    field_name
                 )
-                setattr(model_class, f"validate_{field_name}", validator)
 
-        return model_class
+            # Register validators for VECTOR fields
+            elif field.type == FieldTypes.VECTOR:
 
-    @staticmethod
-    def _create_geo_validator(field_name: str):
-        """
-        Create a validator for geo fields.
+                def make_vector_validator(
+                    fname: str, dims: int, datatype: VectorDataType
+                ):
+                    @field_validator(fname, mode="after")
+                    def _validate_vector(cls, value):
+                        # Skip validation for None values
+                        if value is not None:
+                            # Handle list representation
+                            if isinstance(value, list):
+                                # Validate dimensions
+                                if len(value) != dims:
+                                    raise ValueError(
+                                        f"Vector field '{fname}' must have {dims} dimensions, got {len(value)}"
+                                    )
+                                # Validate data types
+                                datatype_str = str(datatype).upper()
+                                # Integer-based datatypes
+                                if datatype_str in ("INT8", "UINT8"):
+                                    # Check range for INT8
+                                    if datatype_str == "INT8":
+                                        if any(v < -128 or v > 127 for v in value):
+                                            raise ValueError(
+                                                f"Vector field '{fname}' contains values outside the INT8 range (-128 to 127)"
+                                            )
+                                    # Check range for UINT8
+                                    elif datatype_str == "UINT8":
+                                        if any(v < 0 or v > 255 for v in value):
+                                            raise ValueError(
+                                                f"Vector field '{fname}' contains values outside the UINT8 range (0 to 255)"
+                                            )
+                        return value
 
-        Args:
-            field_name: Name of the field to validate
+                    return _validate_vector
 
-        Returns:
-            A validator function that can be attached to a Pydantic model
-        """
+                class_dict[f"validate_{field_name}"] = make_vector_validator(
+                    field_name, field.attrs.dims, field.attrs.datatype
+                )
 
-        # Create the validator function
-        def validate_geo_field(cls, value):
-            # Skip validation for None values
-            if value is not None:
-                # Validate against pattern
-                if not re.match(TypeInferrer.GEO_PATTERN.pattern, value):
-                    raise ValueError(
-                        f"Geo field '{field_name}' value '{value}' is not a valid 'lat,lon' format"
-                    )
-            return value
+        # Create class dictionary with annotations and field metadata
+        class_dict.update(
+            **{
+                "__annotations__": annotations,
+                "model_config": {"arbitrary_types_allowed": True, "extra": "allow"},
+            }
+        )
 
-        # Add the field_validator decorator
-        return field_validator(field_name, mode="after")(validate_geo_field)
-
-    @staticmethod
-    def _create_vector_validator(
-        field_name: str, dims: int, datatype: VectorDataType, storage_type: StorageType
-    ):
-        """
-        Create a validator for vector fields.
-
-        Args:
-            field_name: Name of the field to validate
-            dims: Expected dimensions of the vector
-            datatype: Expected datatype of the vector elements
-            storage_type: Type of storage (HASH or JSON)
-
-        Returns:
-            A validator function that can be attached to a Pydantic model
-        """
-
-        # Create the validator function
-        def validate_vector_field(cls, value):
-            # Skip validation for None values
-            if value is not None:
-
-                # Handle list representation
-                if isinstance(value, list):
-
-                    # Validate dimensions
-                    if len(value) != dims:
-                        raise ValueError(
-                            f"Vector field '{field_name}' must have {dims} dimensions, got {len(value)}"
-                        )
-
-                    # Validate data types
-                    datatype_str = str(datatype).upper()
-
-                    # Integer-based datatypes
-                    if datatype_str in ("INT8", "UINT8"):
-                        # Check type
-                        if not all(isinstance(v, int) for v in value):
-                            raise ValueError(
-                                f"Vector field '{field_name}' must contain only integer values for {datatype_str}"
-                            )
-
-            return value
-
-        return validate_vector_field
+        # Create the model class using type()
+        model_name = f"{schema.index.name}__PydanticModel"
+        return type(model_name, (BaseModel,), class_dict)
 
 
 def extract_from_json_path(obj: Dict[str, Any], path: str) -> Any:

@@ -32,7 +32,12 @@ from redis.client import NEVER_DECODE
 from redis.commands.helpers import get_protocol_version  # type: ignore
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
+from redisvl.exceptions import (
+    RedisModuleVersionError,
+    RedisSearchError,
+    RedisVLError,
+    SchemaValidationError,
+)
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
@@ -594,27 +599,8 @@ class SearchIndex(BaseSearchIndex):
             List[str]: List of keys loaded to Redis.
 
         Raises:
-            ValueError: If the length of provided keys does not match the length
-                of objects or if validation fails when validate_on_load is enabled.
-
-        .. code-block:: python
-
-            data = [{"test": "foo"}, {"test": "bar"}]
-
-            # simple case
-            keys = index.load(data)
-
-            # set 360 second ttl policy on data
-            keys = index.load(data, ttl=360)
-
-            # load data with predefined keys
-            keys = index.load(data, keys=["rvl:foo", "rvl:bar"])
-
-            # load data with preprocessing step
-            def add_field(d):
-                d["new_field"] = 123
-                return d
-            keys = index.load(data, preprocess=add_field)
+            SchemaValidationError: If validation fails when validate_on_load is enabled.
+            RedisVLError: If there's an error loading data to Redis.
         """
         try:
             return self._storage.write(
@@ -627,9 +613,14 @@ class SearchIndex(BaseSearchIndex):
                 batch_size=batch_size,
                 validate=self._validate_on_load,
             )
-        except:
-            logger.exception("Error while loading data to Redis")
+        except SchemaValidationError:
+            # Pass through validation errors directly
+            logger.exception("Schema validation error while loading data")
             raise
+        except Exception as e:
+            # Wrap other errors as general RedisVL errors
+            logger.exception("Error while loading data to Redis")
+            raise RedisVLError(f"Failed to load data: {str(e)}") from e
 
     def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Fetch an object from Redis by id.
@@ -1246,8 +1237,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             List[str]: List of keys loaded to Redis.
 
         Raises:
-            ValueError: If the length of provided keys does not match the
-                length of objects or if validation fails when validate_on_load is enabled.
+            SchemaValidationError: If validation fails when validate_on_load is enabled.
+            RedisVLError: If there's an error loading data to Redis.
 
         .. code-block:: python
 
@@ -1281,9 +1272,14 @@ class AsyncSearchIndex(BaseSearchIndex):
                 batch_size=batch_size,
                 validate=self._validate_on_load,
             )
-        except:
-            logger.exception("Error while loading data to Redis")
+        except SchemaValidationError:
+            # Pass through validation errors directly
+            logger.exception("Schema validation error while loading data")
             raise
+        except Exception as e:
+            # Wrap other errors as general RedisVL errors
+            logger.exception("Error while loading data to Redis")
+            raise RedisVLError(f"Failed to load data: {str(e)}") from e
 
     async def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Asynchronously etch an object from Redis by id. The id is typically
