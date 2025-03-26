@@ -6,11 +6,11 @@ from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.router.semantic import SemanticRouter
 from redisvl.utils.optimize.base import BaseThresholdOptimizer, EvalMetric
-from redisvl.utils.optimize.schema import TestData
+from redisvl.utils.optimize.schema import LabeledData
 from redisvl.utils.optimize.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
-def _generate_run_router(test_data: List[TestData], router: SemanticRouter) -> Run:
+def _generate_run_router(test_data: List[LabeledData], router: SemanticRouter) -> Run:
     """Format router results into format for ranx Run"""
     run_dict: Dict[Any, Any] = {}
 
@@ -26,7 +26,7 @@ def _generate_run_router(test_data: List[TestData], router: SemanticRouter) -> R
 
 
 def _eval_router(
-    router: SemanticRouter, test_data: List[TestData], qrels: Qrels, eval_metric: str
+    router: SemanticRouter, test_data: List[LabeledData], qrels: Qrels, eval_metric: str
 ) -> float:
     """Evaluate acceptable metric given run and qrels data"""
     run = _generate_run_router(test_data, router)
@@ -55,7 +55,7 @@ def _router_random_search(
 
 def _random_search_opt_router(
     router: SemanticRouter,
-    test_data: List[TestData],
+    test_data: List[LabeledData],
     qrels: Qrels,
     eval_metric: EvalMetric,
     **kwargs: Any,
@@ -67,12 +67,15 @@ def _random_search_opt_router(
     best_thresholds = router.route_thresholds
 
     max_iterations = kwargs.get("max_iterations", 20)
+    search_step = kwargs.get("search_step", 0.10)
 
     for _ in range(max_iterations):
         route_names = router.route_names
         route_thresholds = router.route_thresholds
         thresholds = _router_random_search(
-            route_names=route_names, route_thresholds=route_thresholds
+            route_names=route_names,
+            route_thresholds=route_thresholds,
+            search_step=search_step,
         )
         router.update_route_thresholds(thresholds)
         score = _eval_router(router, test_data, qrels, eval_metric.value)
