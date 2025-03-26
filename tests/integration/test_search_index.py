@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 from redis import Redis
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError, RedisVLError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
@@ -268,7 +268,7 @@ def test_search_index_load_preprocess(index):
     def bad_preprocess(record):
         return 1
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisVLError):
         index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
@@ -277,7 +277,7 @@ def test_no_id_field(index):
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
     # catch missing / invalid id_field
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisVLError):
         index.load(bad_data, id_field="key")
 
 

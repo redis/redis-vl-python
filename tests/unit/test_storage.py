@@ -19,6 +19,7 @@ def sample_hash_schema():
         "fields": [
             {"name": "test_id", "type": "tag"},
             {"name": "title", "type": "text"},
+            {"name": "user", "type": "tag"},
             {"name": "rating", "type": "numeric"},
             {"name": "location", "type": "geo"},
             {
@@ -57,14 +58,14 @@ def sample_json_schema():
             "storage_type": "json",
         },
         "fields": [
-            {"name": "test_id", "type": "tag", "path": "$.test_id"},
-            {"name": "user", "type": "tag", "path": "$.metadata.user"},
-            {"name": "title", "type": "text", "path": "$.content.title"},
-            {"name": "rating", "type": "numeric", "path": "$.metadata.rating"},
+            {"name": "test_id", "type": "tag"},
+            {"name": "user", "type": "tag"},
+            {"name": "title", "type": "text"},
+            {"name": "rating", "type": "numeric"},
+            {"name": "location", "type": "geo"},
             {
                 "name": "embedding",
                 "type": "vector",
-                "path": "$.content.embedding",
                 "attrs": {
                     "algorithm": "flat",
                     "dims": 4,
@@ -75,7 +76,6 @@ def sample_json_schema():
             {
                 "name": "int_vector",
                 "type": "vector",
-                "path": "$.content.int_vector",
                 "attrs": {
                     "algorithm": "flat",
                     "dims": 3,
@@ -120,7 +120,7 @@ def test_create_key(storage_instance):
 
 def test_validate_success(storage_instance):
     try:
-        storage_instance.validate(
+        storage_instance._validate(
             {"test_id": "1234", "rating": 5, "user": "john", "title": "engineer"}
         )
     except Exception as e:
@@ -130,10 +130,11 @@ def test_validate_success(storage_instance):
 def test_validate_failure(storage_instance):
     data = {"title": 5}
     with pytest.raises(ValidationError):
-        storage_instance.validate(data)
-    data = {"user": True}
+        storage_instance._validate(data)
+
+    data = {"user": [1]}
     with pytest.raises(ValidationError):
-        storage_instance.validate(data)
+        storage_instance._validate(data)
 
 
 def test_validate_preprocess_and_validate_failure(storage_instance):
@@ -143,7 +144,8 @@ def test_validate_preprocess_and_validate_failure(storage_instance):
     )
     with pytest.raises(SchemaValidationError):
         storage_instance._preprocess_and_validate_objects(objects=[data], validate=True)
-    data = {"user": True}
+
+    data = {"user": [1]}
     data == storage_instance._preprocess_and_validate_objects(
         objects=[data], validate=False
     )

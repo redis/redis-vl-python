@@ -175,7 +175,7 @@ class BaseSearchIndex:
 
             from redisvl.index import SearchIndex
 
-            index = SearchIndex.from_yaml("schemas/schema.yaml")
+            index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
         """
         schema = IndexSchema.from_yaml(schema_path)
         return cls(schema=schema, **kwargs)
@@ -203,7 +203,7 @@ class BaseSearchIndex:
                 "fields": [
                     {"name": "doc-id", "type": "tag"}
                 ]
-            })
+            }, redis_url="redis://localhost:6379")
 
         """
         schema = IndexSchema.from_dict(schema_dict)
@@ -247,10 +247,14 @@ class SearchIndex(BaseSearchIndex):
         from redisvl.index import SearchIndex
 
         # initialize the index object with schema from file
-        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
+        index = SearchIndex.from_yaml(
+            "schemas/schema.yaml",
+            redis_url="redis://localhost:6379",
+            validate_on_load=True
+        )
 
         # create the index
-        index.create(overwrite=True)
+        index.create(overwrite=True, drop=False)
 
         # data is an iterable of dictionaries
         index.load(data)
@@ -407,11 +411,6 @@ class SearchIndex(BaseSearchIndex):
             ValueError: If the Redis URL is not provided nor accessible
                 through the `REDIS_URL` environment variable.
             ModuleNotFoundError: If required Redis modules are not installed.
-
-        .. code-block:: python
-
-            index.connect(redis_url="redis://localhost:6379")
-
         """
         self.__redis_client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
@@ -431,16 +430,6 @@ class SearchIndex(BaseSearchIndex):
 
         Raises:
             TypeError: If the provided client is not valid.
-
-        .. code-block:: python
-
-            import redis
-            from redisvl.index import SearchIndex
-
-            client = redis.Redis.from_url("redis://localhost:6379")
-            index = SearchIndex.from_yaml("schemas/schema.yaml")
-            index.set_client(client)
-
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.__redis_client = redis_client
@@ -906,11 +895,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         # initialize the index object with schema from file
         index = AsyncSearchIndex.from_yaml(
             "schemas/schema.yaml",
-            redis_url="redis://localhost:6379"
+            redis_url="redis://localhost:6379",
+            validate_on_load=True
         )
 
         # create the index
-        await index.create(overwrite=True)
+        await index.create(overwrite=True, drop=False)
 
         # data is an iterable of dictionaries
         await index.load(data)

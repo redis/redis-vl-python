@@ -143,7 +143,7 @@ class BaseStorage(BaseModel):
         """
         raise NotImplementedError
 
-    def validate(self, obj: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate(self, obj: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate an object against the schema using Pydantic-based validation.
 
@@ -161,7 +161,7 @@ class BaseStorage(BaseModel):
 
     def _preprocess_and_validate_objects(
         self,
-        objects: List[Any],
+        objects: Iterable[Any],
         id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
         preprocess: Optional[Callable] = None,
@@ -201,7 +201,7 @@ class BaseStorage(BaseModel):
 
                 # Schema validation if enabled
                 if validate:
-                    processed_obj = self.validate(processed_obj)
+                    processed_obj = self._validate(processed_obj)
 
                 # Store valid object with its key for writing
                 prepared_objects.append((key, processed_obj))
@@ -263,7 +263,7 @@ class BaseStorage(BaseModel):
 
         # Pass 1: Preprocess and validate all objects
         prepared_objects = self._preprocess_and_validate_objects(
-            objects,
+            list(objects),  # Convert Iterable to List
             id_field=id_field,
             keys=keys,
             preprocess=preprocess,
@@ -342,7 +342,7 @@ class BaseStorage(BaseModel):
 
         # Pass 1: Preprocess and validate all objects
         prepared_objects = self._preprocess_and_validate_objects(
-            objects,
+            list(objects),  # Convert Iterable to List
             id_field=id_field,
             keys=keys,
             preprocess=preprocess,

@@ -8,7 +8,7 @@ using dynamically generated Pydantic models.
 import json
 import re
 import warnings
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union, cast
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -53,7 +53,7 @@ class SchemaModelGenerator:
     @classmethod
     def _map_field_to_pydantic_type(
         cls, field: BaseField, storage_type: StorageType
-    ) -> Type:
+    ) -> Type[Any]:
         """
         Map Redis field types to appropriate Pydantic types.
 
@@ -72,14 +72,17 @@ class SchemaModelGenerator:
         elif field.type == FieldTypes.TAG:
             return str
         elif field.type == FieldTypes.NUMERIC:
-            return Union[int, float]
+            return Union[int, float]  # type: ignore
         elif field.type == FieldTypes.GEO:
             return str
         elif field.type == FieldTypes.VECTOR:
             # For JSON storage, vectors are always lists
             if storage_type == StorageType.JSON:
                 # For int data types, vectors must be ints, otherwise floats
-                if field.attrs.datatype in (VectorDataType.INT8, VectorDataType.UINT8):
+                if field.attrs.datatype in (  # type: ignore
+                    VectorDataType.INT8,
+                    VectorDataType.UINT8,
+                ):
                     return List[int]
                 return List[float]
             else:
@@ -103,8 +106,8 @@ class SchemaModelGenerator:
         storage_type = schema.index.storage_type
 
         # Create annotations dictionary for the dynamic model
-        annotations = {}
-        class_dict = {}
+        annotations: Dict[str, Any] = {}
+        class_dict: Dict[str, Any] = {}
 
         # Build annotations and field metadata
         for field_name, field in schema.fields.items():
@@ -154,6 +157,8 @@ class SchemaModelGenerator:
 
             # Register validators for VECTOR fields
             elif field.type == FieldTypes.VECTOR:
+                dims = field.attrs.dims  # type: ignore
+                datatype = field.attrs.datatype  # type: ignore
 
                 def make_vector_validator(
                     fname: str, dims: int, datatype: VectorDataType
@@ -190,7 +195,7 @@ class SchemaModelGenerator:
                     return _validate_vector
 
                 class_dict[f"validate_{field_name}"] = make_vector_validator(
-                    field_name, field.attrs.dims, field.attrs.datatype
+                    field_name, dims, datatype
                 )
 
         # Create class dictionary with annotations and field metadata
