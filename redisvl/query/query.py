@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from redis.commands.search.aggregation import AggregateRequest, Desc
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
@@ -790,6 +791,7 @@ class TextQuery(FilterQuery):
 
     def tokenize_and_escape_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs"""
+        from redisvl.utils.token_escaper import TokenEscaper
 
         escaper = TokenEscaper()
 
@@ -811,7 +813,7 @@ class TextQuery(FilterQuery):
         else:
             filter_expression = ""
 
-        text = f"(@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
+        text = f"~(@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
         if filter_expression and filter_expression != "*":
             text += f"({filter_expression})"
         return text

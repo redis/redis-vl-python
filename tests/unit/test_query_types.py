@@ -204,7 +204,7 @@ def test_text_query():
     assert text_query._num_results == 10
     assert (
         text_query.filter
-        == f"(@{text_field_name}:({text_query.tokenize_and_escape_query(text_string)}))"
+        == f"(~@{text_field_name}:({text_query.tokenize_and_escape_query(text_string)}))"
     )
     assert isinstance(text_query, Query)
     assert isinstance(text_query.query, Query)
