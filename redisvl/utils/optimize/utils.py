@@ -2,12 +2,12 @@ from typing import List
 
 from ranx import Qrels
 
-from redisvl.utils.optimize.schema import TestData
+from redisvl.utils.optimize.schema import LabeledData
 
 NULL_RESPONSE_KEY = "no_match"
 
 
-def _format_qrels(test_data: List[TestData]) -> Qrels:
+def _format_qrels(test_data: List[LabeledData]) -> Qrels:
     """Utility function for creating qrels for evaluation with ranx"""
     qrels_dict = {}
 
@@ -21,6 +21,6 @@ def _format_qrels(test_data: List[TestData]) -> Qrels:
     return Qrels(qrels_dict)
 
 
-def _validate_test_dict(test_dict: List[dict]) -> List[TestData]:
+def _validate_test_dict(test_dict: List[dict]) -> List[LabeledData]:
     """Convert/validate test_dict for use in optimizer"""
-    return [TestData(**d) for d in test_dict]
+    return [LabeledData(**d) for d in test_dict]

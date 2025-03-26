@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from ulid import ULID
 
 
-class TestData(BaseModel):
+class LabeledData(BaseModel):
     id: str = Field(default_factory=lambda: str(ULID()))
     query: str
     query_match: Optional[str]

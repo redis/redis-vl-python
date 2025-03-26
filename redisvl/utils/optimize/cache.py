@@ -6,11 +6,11 @@ from ranx import Qrels, Run, evaluate
 from redisvl.extensions.llmcache.semantic import SemanticCache
 from redisvl.query import RangeQuery
 from redisvl.utils.optimize.base import BaseThresholdOptimizer, EvalMetric
-from redisvl.utils.optimize.schema import TestData
+from redisvl.utils.optimize.schema import LabeledData
 from redisvl.utils.optimize.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
-def _generate_run_cache(test_data: List[TestData], threshold: float) -> Run:
+def _generate_run_cache(test_data: List[LabeledData], threshold: float) -> Run:
     """Format observed data for evaluation with ranx"""
     run_dict: Dict[str, Dict[str, int]] = {}
 
@@ -30,7 +30,7 @@ def _generate_run_cache(test_data: List[TestData], threshold: float) -> Run:
 
 
 def _eval_cache(
-    test_data: List[TestData], threshold: float, qrels: Qrels, metric: str
+    test_data: List[LabeledData], threshold: float, qrels: Qrels, metric: str
 ) -> float:
     """Formats run data and evaluates supported metric"""
     run = _generate_run_cache(test_data, threshold)
@@ -46,7 +46,7 @@ def _get_best_threshold(metrics: dict) -> float:
 
 
 def _grid_search_opt_cache(
-    cache: SemanticCache, test_data: List[TestData], eval_metric: EvalMetric
+    cache: SemanticCache, test_data: List[LabeledData], eval_metric: EvalMetric
 ):
     """Evaluates all thresholds in linspace for cache to determine optimal"""
     thresholds = np.linspace(0.01, 0.8, 60)
