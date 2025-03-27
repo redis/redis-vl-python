@@ -1,5 +1,6 @@
 from redisvl.query.query import (
     BaseQuery,
+    BaseVectorQuery,
     CountQuery,
     FilterQuery,
     RangeQuery,
@@ -9,6 +10,7 @@ from redisvl.query.query import (
 
 __all__ = [
     "BaseQuery",
+    "BaseVectorQuery",
     "VectorQuery",
     "FilterQuery",
     "RangeQuery",

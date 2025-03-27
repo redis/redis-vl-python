@@ -4,7 +4,7 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
+from redisvl.query import CountQuery, FilterQuery, VectorQuery, VectorRangeQuery
 from redisvl.query.filter import (
     FilterExpression,
     Geo,
@@ -105,7 +105,7 @@ def sorted_filter_query():
 
 @pytest.fixture
 def normalized_range_query():
-    return RangeQuery(
+    return VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         normalize_vector_distance=True,
@@ -117,7 +117,7 @@ def normalized_range_query():
 
 @pytest.fixture
 def range_query():
-    return RangeQuery(
+    return VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
@@ -127,7 +127,7 @@ def range_query():
 
 @pytest.fixture
 def sorted_range_query():
-    return RangeQuery(
+    return VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
@@ -272,7 +272,7 @@ def test_search_and_query(index):
 
 
 def test_range_query(index):
-    r = RangeQuery(
+    r = VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job"],
@@ -343,7 +343,7 @@ def search(
             assert doc.location == location
 
     # if range query, test results by distance threshold
-    if isinstance(query, RangeQuery):
+    if isinstance(query, VectorRangeQuery):
         for doc in results.docs:
             print(doc.vector_distance)
             assert float(doc.vector_distance) <= distance_threshold
@@ -354,7 +354,7 @@ def search(
 
     # check results are in sorted order
     if sort:
-        if isinstance(query, RangeQuery):
+        if isinstance(query, VectorRangeQuery):
             assert [int(doc.age) for doc in results.docs] == [12, 14, 18, 100]
         else:
             assert [int(doc.age) for doc in results.docs] == [
@@ -370,7 +370,7 @@ def search(
 
 @pytest.fixture(
     params=["vector_query", "filter_query", "range_query"],
-    ids=["VectorQuery", "FilterQuery", "RangeQuery"],
+    ids=["VectorQuery", "FilterQuery", "VectorRangeQuery"],
 )
 def query(request):
     return request.getfixturevalue(request.param)
@@ -778,3 +778,15 @@ def test_range_query_normalize_cosine_distance(index, normalized_range_query):
 
     for r in res:
         assert 0 <= float(r["vector_distance"]) <= 1
+
+
+def test_range_query_normalize_bad_input(index):
+    with pytest.raises(ValueError):
+        VectorRangeQuery(
+            vector=[0.1, 0.1, 0.5],
+            vector_field_name="user_embedding",
+            normalize_vector_distance=True,
+            return_score=True,
+            return_fields=["user", "credit_score", "age", "job", "location"],
+            distance_threshold=1.2,
+        )

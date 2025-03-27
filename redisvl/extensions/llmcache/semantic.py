@@ -238,9 +238,9 @@ class SemanticCache(BaseLLMCache):
         Raises:
             ValueError: If the threshold is not between 0 and 1.
         """
-        if not 0 <= float(distance_threshold) <= 1:
+        if not 0 <= float(distance_threshold) <= 2:
             raise ValueError(
-                f"Distance must be between 0 and 1, got {distance_threshold}"
+                f"Distance must be between 0 and 2, got {distance_threshold}"
             )
         self._distance_threshold = float(distance_threshold)
 

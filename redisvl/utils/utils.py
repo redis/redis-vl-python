@@ -197,7 +197,12 @@ def norm_cosine_distance(value: float) -> float:
     """
     Normalize the cosine distance to a similarity score between 0 and 1.
     """
-    return (2 - value) / 2
+    return max((2 - value) / 2, 0)
+
+
+def denorm_cosine_distance(value: float) -> float:
+    """Denormalize the distance threshold from [0, 1] to [0, 1] for our db."""
+    return max(2 - 2 * value, 0)
 
 
 def norm_l2_distance(value: float) -> float:

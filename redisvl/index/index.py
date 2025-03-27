@@ -18,12 +18,7 @@ from typing import (
     Union,
 )
 
-from redisvl.utils.utils import (
-    deprecated_argument,
-    deprecated_function,
-    norm_cosine_distance,
-    sync_wrapper,
-)
+from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -39,13 +34,7 @@ from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
-from redisvl.query import (
-    BaseQuery,
-    CountQuery,
-    FilterQuery,
-    VectorQuery,
-    VectorRangeQuery,
-)
+from redisvl.query import BaseQuery, BaseVectorQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -104,9 +93,7 @@ def process_results(
         and not query._return_fields  # type: ignore
     )
 
-    if (
-        isinstance(query, VectorQuery) or isinstance(query, VectorRangeQuery)
-    ) and query._normalize_vector_distance:
+    if (isinstance(query, BaseVectorQuery)) and query._normalize_vector_distance:
         dist_metric = VectorDistanceMetric(
             schema.fields[query._vector_field_name].attrs.distance_metric.upper()  # type: ignore
         )

@@ -5,6 +5,7 @@ from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
+from redisvl.utils.utils import denorm_cosine_distance
 
 
 class BaseQuery(RedisQuery):
@@ -174,6 +175,8 @@ class CountQuery(BaseQuery):
 class BaseVectorQuery:
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
+
+    _normalize_vector_distance: bool = False
 
 
 class HybridPolicy(str, Enum):
@@ -516,6 +519,14 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             raise TypeError("distance_threshold must be of type float or int")
         if distance_threshold < 0:
             raise ValueError("distance_threshold must be non-negative")
+        if self._normalize_vector_distance:
+            if distance_threshold > 1:
+                raise ValueError(
+                    "distance_threshold must be between 0 and 1 when normalize_vector_distance is set to True"
+                )
+
+            # User sets normalized value 0-1 denormalize for use in DB
+            distance_threshold = denorm_cosine_distance(distance_threshold)
         self._distance_threshold = distance_threshold
 
         # Reset the query string
