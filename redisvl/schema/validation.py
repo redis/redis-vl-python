@@ -5,6 +5,7 @@ This module provides utilities for validating data against RedisVL schemas
 using dynamically generated Pydantic models.
 """
 
+import json
 from typing import Any, Dict, List, Optional, Type, Union
 
 from jsonpath_ng import parse as jsonpath_parse
@@ -41,7 +42,7 @@ class SchemaModelGenerator:
             A Pydantic model class that can validate data against the schema
         """
         # Use schema identifier as cache key
-        cache_key = schema.index.name
+        cache_key = str(hash(json.dumps(schema.to_dict(), sort_keys=True).encode()))
 
         if cache_key not in cls._model_cache:
             cls._model_cache[cache_key] = cls._create_model(schema)
