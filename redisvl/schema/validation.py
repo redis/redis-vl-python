@@ -5,11 +5,9 @@ This module provides utilities for validating data against RedisVL schemas
 using dynamically generated Pydantic models.
 """
 
-import json
-import re
-import warnings
-from typing import Any, Dict, List, Optional, Type, Union, cast
+from typing import Any, Dict, List, Optional, Type, Union
 
+from jsonpath_ng import parse as jsonpath_parse
 from pydantic import BaseModel, Field, field_validator
 
 from redisvl.schema import IndexSchema
@@ -213,29 +211,32 @@ class SchemaModelGenerator:
 
 def extract_from_json_path(obj: Dict[str, Any], path: str) -> Any:
     """
-    Extract a value from a nested JSON object using a path.
+    Extract a value from a nested JSON object using a JSONPath expression.
 
     Args:
         obj: The object to extract values from
-        path: JSONPath-style path (e.g., $.field.subfield)
+        path: JSONPath expression (e.g., $.field.subfield, $.[*].name)
 
     Returns:
         The extracted value or None if not found
+
+    Notes:
+        This function uses the jsonpath-ng library for proper JSONPath parsing
+        and supports the full JSONPath specification including filters, wildcards,
+        and array indexing.
     """
-    # Handle JSONPath syntax (e.g., $.field.subfield)
-    if path.startswith("$."):
-        path_parts = path[2:].split(".")
-    else:
-        path_parts = path.split(".")
+    # If path doesn't start with $, add it as per JSONPath spec
+    if not path.startswith("$"):
+        path = f"$.{path}"
 
-    current = obj
-    for part in path_parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            return None
+    # Parse and find the JSONPath expression
+    jsonpath_expr = jsonpath_parse(path)
+    matches = jsonpath_expr.find(obj)
 
-    return current
+    # Return the first match value, or None if no matches
+    if matches:
+        return matches[0].value
+    return None
 
 
 def validate_object(schema: IndexSchema, obj: Dict[str, Any]) -> Dict[str, Any]:
