@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 from redis.commands.search.aggregation import AggregateRequest, Desc
 from redis.commands.search.query import Query as RedisQuery
@@ -658,7 +658,7 @@ class TextQuery(FilterQuery):
         self,
         text: str,
         text_field: str,
-        text_scorer: str = "BM25",
+        text_scorer: str = "BM25STD",
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         return_fields: Optional[List[str]] = None,
         num_results: int = 10,
@@ -667,6 +667,7 @@ class TextQuery(FilterQuery):
         sort_by: Optional[str] = None,
         in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
+        stopwords: Optional[Union[str, Iterable[str]]] = "english",
     ):
         """A query for running a full text and vector search, along with an optional
         filter expression.
@@ -675,7 +676,7 @@ class TextQuery(FilterQuery):
             text (str): The text string to perform the text search with.
             text_field (str): The name of the document field to perform text search on.
             text_scorer (str, optional): The text scoring algorithm to use.
-                Defaults to BM25. Options are {TFIDF, BM25, DOCNORM, DISMAX, DOCSCORE}.
+                Defaults to BM25STD. Options are {TFIDF, BM25STD, BM25, DOCNORM, DISMAX, DOCSCORE}.
                 See https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/scoring/
             filter_expression (Union[str, FilterExpression], optional): A filter to apply
                 along with the text search. Defaults to None.
@@ -694,19 +695,23 @@ class TextQuery(FilterQuery):
                 the offsets between them. Defaults to False.
             params (Optional[Dict[str, Any]], optional): The parameters for the query.
                 Defaults to None.
+            stopwords (Optional[Union[str, Iterable[str]]): The set of stop words to remove
+                from the query text. If a language like 'english' or 'spanish' is provided
+                a default set of stopwords for that language will be used. Users may specify
+                their own stop words by providing a List or Set of words. if set to None,
+                then no words will be removed. Defaults to 'english'.
+
+        Raises:
+            ValueError: if stopwords language string cannot be loaded.
+            TypeError: If stopwords is not a valid iterable set of strings.
         """
-        import nltk
-        from nltk.corpus import stopwords
-
-        nltk.download("stopwords")
-        self._stopwords = set(stopwords.words("english"))
-
         self._text = text
         self._text_field = text_field
         self._text_scorer = text_scorer
-
-        self.set_filter(filter_expression)
         self._num_results = num_results
+
+        self.set_stopwords(stopwords)
+        self.set_filter(filter_expression)
 
         query_string = self._build_query_string()
 
@@ -726,6 +731,27 @@ class TextQuery(FilterQuery):
 
         if return_score:
             self.with_scores()
+
+    @property
+    def stopwords(self):
+        return self._stopwords
+
+    def set_stopwords(self, stopwords: Optional[Union[str, Iterable[str]]] = "english"):
+        if not stopwords:
+            self._stopwords = set()
+        elif isinstance(stopwords, str):
+            try:
+                import nltk
+                from nltk.corpus import stopwords as nltk_stopwords
+
+                nltk.download("stopwords")
+                self._stopwords = set(nltk_stopwords.words(stopwords))
+            except Exception as e:
+                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
+        elif isinstance(stopwords, Iterable) and isinstance(stopwords[0], str):
+            self._stopwords = set(stopwords)
+        else:
+            raise TypeError("stopwords must be an Iterable set of strings")
 
     def tokenize_and_escape_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs"""
@@ -751,7 +777,7 @@ class TextQuery(FilterQuery):
         else:
             filter_expression = ""
 
-        text = f"(~@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
+        text = f"(@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
         if filter_expression and filter_expression != "*":
             text += f"({filter_expression})"
         return text
