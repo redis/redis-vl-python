@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from redis.commands.search.aggregation import AggregateRequest, Desc
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression

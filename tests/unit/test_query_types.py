@@ -204,7 +204,7 @@ def test_text_query():
     assert text_query._num_results == 10
     assert (
         text_query.filter
-        == f"(~@{text_field_name}:({text_query.tokenize_and_escape_query(text_string)}))"
+        == f"(@{text_field_name}:({text_query.tokenize_and_escape_query(text_string)}))"
     )
     assert isinstance(text_query, Query)
     assert isinstance(text_query.query, Query)
@@ -253,6 +253,23 @@ def test_text_query():
         text_query.filter
         == f"(@{text_field_name}:({text_query.tokenize_and_escape_query(text_string)}))"
     )
+
+    text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
+    assert text_query.stopwords == set(["the", "a", "of"])
+    assert (
+        text_query.filter
+        == f"(@{text_field_name}:({text_query.tokenize_and_escape_query(text_string)}))"
+    )
+
+    text_query = TextQuery(text_string, text_field_name, stopwords="german")
+    assert text_query.stopwords != set([])
+
+    with pytest.raises(ValueError):
+        text_query = TextQuery(text_string, text_field_name, stopwords="gibberish")
+
+    with pytest.raises(TypeError):
+        text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
+
 
     text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
     assert text_query.stopwords == set(["the", "a", "of"])
