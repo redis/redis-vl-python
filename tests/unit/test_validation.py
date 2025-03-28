@@ -9,7 +9,7 @@ This module tests the core validation functionality:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import pytest
 
