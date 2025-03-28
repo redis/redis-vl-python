@@ -1283,8 +1283,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
     async def batch_search(
-        self, queries: List[str], batch_size: int = 100, **query_params
-    ) -> List[List[Dict[str, Any]]]:
+        self, queries: List[BaseQuery], batch_size: int = 100, **query_params
+    ) -> List["Result"]:
         """Perform a search against the index for multiple queries.
 
         This method takes a list of queries and returns a list of search results.
@@ -1298,9 +1298,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                 for each query.
 
         Returns:
-            List[List[Dict[str, Any]]]: The search results.
+            List[Result]: The search results.
         """
-        all_parsed = []
+        all_results = []
         client = await self._get_client()
         search = client.ft(self.schema.index.name)
         options = {}
@@ -1340,16 +1340,8 @@ class AsyncSearchIndex(BaseSearchIndex):
                         query=_built_query,
                         duration=duration,
                     )
-                    parsed = process_results(
-                        parsed_raw,
-                        query=_built_query,
-                        storage_type=self.schema.index.storage_type,
-                    )
-                    # Create separate lists of parsed results for each query
-                    # passed in to the batch_search method, so that callers can
-                    # access the results for each query individually
-                    all_parsed.append(parsed)
-        return all_parsed
+                    all_results.append(parsed_raw)
+        return all_results
 
     async def search(self, *args, **kwargs) -> "Result":
         """Perform a search on this index.
@@ -1366,6 +1358,34 @@ class AsyncSearchIndex(BaseSearchIndex):
             return await client.ft(self.schema.index.name).search(*args, **kwargs)  # type: ignore
         except Exception as e:
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
+
+    async def _batch_query(
+        self, queries: List[BaseQuery], batch_size: int = 100
+    ) -> List[List[Dict[str, Any]]]:
+        """Asynchronously execute a batch of queries and process results."""
+        results = await self.batch_search(queries, batch_size=batch_size)
+        all_parsed = []
+        for query, batch_results in zip(queries, results):
+            parsed = process_results(
+                batch_results,
+                query=query,
+                storage_type=self.schema.index.storage_type,
+            )
+            # Create separate lists of parsed results for each query
+            # passed in to the batch_search method, so that callers can
+            # access the results for each query individually
+            all_parsed.append(parsed)
+
+        return all_parsed
+
+    async def batch_query(
+        self, queries: List[BaseQuery], batch_size: int = 100
+    ) -> List[List[Dict[str, Any]]]:
+        """Asynchronously execute a batch of queries and process results."""
+        return await self._batch_query(
+            [query.query for query in queries],
+            batch_size=batch_size,
+        )
 
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""

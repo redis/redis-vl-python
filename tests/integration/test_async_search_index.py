@@ -8,6 +8,7 @@ from redis.asyncio import Redis as AsyncRedis
 from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
+from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 
@@ -487,3 +488,15 @@ async def test_batch_search_with_multiple_batches(async_index):
     assert results[3][0]["id"] == "rvl:1"
     assert results[4][0]["id"] == "rvl:2"
     assert len(results[5]) == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_query(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    query = FilterQuery(filter_expression="@test:{foo}")
+    results = await async_index.batch_query([query])
+
+    assert len(results) == 1
