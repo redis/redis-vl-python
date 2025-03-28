@@ -431,7 +431,7 @@ def test_batch_search_with_multiple_batches(index):
     # Second (and only) result for the second query
     assert results[1][0]["id"] == "rvl:2"
 
-    # Third query has no results
+    # Third query should have zero results because there is no baz
     assert len(results[2]) == 0
 
     # Then the pattern repeats

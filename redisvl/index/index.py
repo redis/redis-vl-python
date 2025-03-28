@@ -1282,6 +1282,75 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
+    async def batch_search(
+        self, queries: List[str], batch_size: int = 100, **query_params
+    ) -> List[List[Dict[str, Any]]]:
+        """Perform a search against the index for multiple queries.
+
+        This method takes a list of queries and returns a list of search results.
+        The results are returned in the same order as the queries.
+
+        Args:
+            queries (List[str]): The queries to search for.
+            batch_size (int, optional): The number of queries to search for at a time.
+                Defaults to 100.
+            query_params (dict, optional): The query parameters to pass to the search
+                for each query.
+
+        Returns:
+            List[List[Dict[str, Any]]]: The search results.
+        """
+        all_parsed = []
+        client = await self._get_client()
+        search = client.ft(self.schema.index.name)
+        options = {}
+        if get_protocol_version(client) not in ["3", 3]:
+            options[NEVER_DECODE] = True
+
+        for i in range(0, len(queries), batch_size):
+            batch_queries = queries[i : i + batch_size]
+
+            # redis-py doesn't support calling `search` in a pipeline,
+            # so we need to manually execute each command in a pipeline
+            # and parse the results
+            async with client.pipeline(transaction=False) as pipe:
+                batch_built_queries = []
+                for query in batch_queries:
+                    query_args, q = search._mk_query_args(  # type: ignore
+                        query, query_params=query_params
+                    )
+                    batch_built_queries.append(q)
+                    pipe.execute_command(
+                        "FT.SEARCH",
+                        *query_args,
+                        **options,
+                    )
+
+                st = time.time()
+                results = await pipe.execute()
+
+                # We don't know how long each query took, so we'll use the total time
+                # for all queries in the batch as the duration for each query
+                duration = (time.time() - st) * 1000.0
+
+                for i, query_results in enumerate(results):
+                    _built_query = batch_built_queries[i]
+                    parsed_raw = search._parse_search(  # type: ignore
+                        query_results,
+                        query=_built_query,
+                        duration=duration,
+                    )
+                    parsed = process_results(
+                        parsed_raw,
+                        query=_built_query,
+                        storage_type=self.schema.index.storage_type,
+                    )
+                    # Create separate lists of parsed results for each query
+                    # passed in to the batch_search method, so that callers can
+                    # access the results for each query individually
+                    all_parsed.append(parsed)
+        return all_parsed
+
     async def search(self, *args, **kwargs) -> "Result":
         """Perform a search on this index.
 

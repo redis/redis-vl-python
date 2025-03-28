@@ -436,3 +436,54 @@ async def test_async_search_index_validates_redis_modules(redis_url):
             await index.create(overwrite=True, drop=True)
 
         mock_validate_async_redis.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_batch_search(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    results = await async_index.batch_search(["@test:{foo}", "@test:{bar}"])
+    assert len(results) == 2
+    assert results[0][0]["id"] == "rvl:1"
+    assert results[1][0]["id"] == "rvl:2"
+
+
+@pytest.mark.asyncio
+async def test_batch_search_with_multiple_batches(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    results = await async_index.batch_search(["@test:{foo}", "@test:{bar}"])
+    assert len(results) == 2
+    assert len(results[0]) == 1
+    assert len(results[1]) == 1
+
+    results = await async_index.batch_search(
+        [
+            "@test:{foo}",
+            "@test:{bar}",
+            "@test:{baz}",
+            "@test:{foo}",
+            "@test:{bar}",
+            "@test:{baz}",
+        ],
+        batch_size=2,
+    )
+    assert len(results) == 6
+
+    # First (and only) result for the first query
+    assert results[0][0]["id"] == "rvl:1"
+
+    # Second (and only) result for the second query
+    assert results[1][0]["id"] == "rvl:2"
+
+    # Third query should have zero results because there is no baz
+    assert len(results[2]) == 0
+
+    # Then the pattern repeats
+    assert results[3][0]["id"] == "rvl:1"
+    assert results[4][0]["id"] == "rvl:2"
+    assert len(results[5]) == 0
