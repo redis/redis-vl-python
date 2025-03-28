@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+import time
 import warnings
 import weakref
 from typing import (
@@ -26,6 +27,8 @@ if TYPE_CHECKING:
 
 import redis
 import redis.asyncio as aredis
+from redis.client import NEVER_DECODE
+from redis.commands.helpers import get_protocol_version  # type: ignore
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
@@ -349,7 +352,7 @@ class SearchIndex(BaseSearchIndex):
         return self.__redis_client
 
     @property
-    def _redis_client(self) -> Optional[redis.Redis]:
+    def _redis_client(self) -> redis.Redis:
         """
         Get a Redis client instance.
 
@@ -651,6 +654,79 @@ class SearchIndex(BaseSearchIndex):
             )
         except Exception as e:
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
+
+    def batch_search(
+        self, queries: List[str], batch_size: int = 100, **query_params
+    ) -> List[List[Dict[str, Any]]]:
+        """Perform a search against the index for multiple queries.
+
+        This method takes a list of queries and returns a list of search results.
+        The results are returned in the same order as the queries.
+
+        Args:
+            queries (List[str]): The queries to search for.
+            batch_size (int, optional): The number of queries to search for at a time.
+                Defaults to 100.
+            query_params (dict, optional): The query parameters to pass to the search
+                for each query.
+
+        Returns:
+            List[List[Dict[str, Any]]]: The search results.
+        """
+        all_parsed = []
+        search = self._redis_client.ft(self.schema.index.name)
+        options = {}
+        if get_protocol_version(self._redis_client) not in ["3", 3]:
+            options[NEVER_DECODE] = True
+
+        for i in range(0, len(queries), batch_size):
+            batch_queries = queries[i : i + batch_size]
+            print("batch queries", batch_queries)
+
+            # redis-py doesn't support calling `search` in a pipeline,
+            # so we need to manually execute each command in a pipeline
+            # and parse the results
+            with self._redis_client.pipeline(transaction=False) as pipe:
+                batch_built_queries = []
+                for query in batch_queries:
+                    query_args, q = search._mk_query_args(  # type: ignore
+                        query, query_params=query_params
+                    )
+                    batch_built_queries.append(q)
+                    print("query", query_args, options)
+                    pipe.execute_command(
+                        "FT.SEARCH",
+                        *query_args,
+                        **options,
+                    )
+
+                st = time.time()
+                # One list of results per query
+                print("query stack", pipe.command_stack)
+                results = pipe.execute()
+                print("SUCCESS")
+
+                # We don't know how long each query took, so we'll use the total time
+                # for all queries in the batch as the duration for each query
+                duration = (time.time() - st) * 1000.0
+
+                for i, query_results in enumerate(results):
+                    _built_query = batch_built_queries[i]
+                    parsed_raw = search._parse_search(  # type: ignore
+                        query_results,
+                        query=_built_query,
+                        duration=duration,
+                    )
+                    parsed = process_results(
+                        parsed_raw,
+                        query=_built_query,
+                        storage_type=self.schema.index.storage_type,
+                    )
+                    # Create separate lists of parsed results for each query
+                    # passed in to the batch_search method, so that callers can
+                    # access the results for each query individually
+                    all_parsed.append(parsed)
+        return all_parsed
 
     def search(self, *args, **kwargs) -> "Result":
         """Perform a search against the index.

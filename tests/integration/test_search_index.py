@@ -389,3 +389,52 @@ def test_search_index_validates_redis_modules(redis_url):
             index.create(overwrite=True, drop=True)
 
         mock_validate_sync_redis.assert_called_once()
+
+
+def test_batch_search(index):
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    index.load(data, id_field="id")
+
+    results = index.batch_search(["@test:{foo}", "@test:{bar}"])
+    assert len(results) == 2
+    assert results[0][0]["id"] == "rvl:1"
+    assert results[1][0]["id"] == "rvl:2"
+
+
+def test_batch_search_with_multiple_batches(index):
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    index.load(data, id_field="id")
+
+    results = index.batch_search(["@test:{foo}", "@test:{bar}"])
+    assert len(results) == 2
+    assert len(results[0]) == 1
+    assert len(results[1]) == 1
+
+    results = index.batch_search(
+        [
+            "@test:{foo}",
+            "@test:{bar}",
+            "@test:{baz}",
+            "@test:{foo}",
+            "@test:{bar}",
+            "@test:{baz}",
+        ],
+        batch_size=2,
+    )
+    assert len(results) == 6
+
+    # First (and only) result for the first query
+    assert results[0][0]["id"] == "rvl:1"
+
+    # Second (and only) result for the second query
+    assert results[1][0]["id"] == "rvl:2"
+
+    # Third query has no results
+    assert len(results[2]) == 0
+
+    # Then the pattern repeats
+    assert results[3][0]["id"] == "rvl:1"
+    assert results[4][0]["id"] == "rvl:2"
+    assert len(results[5]) == 0
