@@ -681,7 +681,6 @@ class SearchIndex(BaseSearchIndex):
 
         for i in range(0, len(queries), batch_size):
             batch_queries = queries[i : i + batch_size]
-            print("batch queries", batch_queries)
 
             # redis-py doesn't support calling `search` in a pipeline,
             # so we need to manually execute each command in a pipeline
@@ -693,7 +692,6 @@ class SearchIndex(BaseSearchIndex):
                         query, query_params=query_params
                     )
                     batch_built_queries.append(q)
-                    print("query", query_args, options)
                     pipe.execute_command(
                         "FT.SEARCH",
                         *query_args,
@@ -701,10 +699,7 @@ class SearchIndex(BaseSearchIndex):
                     )
 
                 st = time.time()
-                # One list of results per query
-                print("query stack", pipe.command_stack)
                 results = pipe.execute()
-                print("SUCCESS")
 
                 # We don't know how long each query took, so we'll use the total time
                 # for all queries in the batch as the duration for each query
