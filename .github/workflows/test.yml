@@ -17,14 +17,53 @@ env:
   POETRY_VERSION: "1.8.3"
 
 jobs:
+  prime-cache:
+    name: Prime HuggingFace Model Cache
+    runs-on: ubuntu-latest
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Cache HuggingFace Models
+        id: hf-cache
+        uses: actions/cache@v3
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+          cache: pip
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          poetry install --all-extras
+
+      - name: Run full test suite to prime cache
+        env:
+          HF_HOME: ${{ github.workspace }}/hf_cache
+        run: |
+          make test-all
+
   test:
     name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis ${{ matrix.redis-version }}]
     runs-on: ubuntu-latest
-
+    needs: prime-cache
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.9, '3.10', 3.11, 3.12, 3.13]
+        python-version: ['3.10', '3.11', 3.12, 3.13]
         connection: ['hiredis', 'plain']
         redis-version: ['6.2.6-v9', 'latest', '8.0-M03']
 
@@ -32,11 +71,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
 
+      - name: Cache HuggingFace Models
+        uses: actions/cache@v3
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          cache: pip
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -74,16 +119,16 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
-          AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
-          AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
-          OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+          OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           make test-all
 
-      - name: Run tests
+      - name: Run tests (alternate)
         if: matrix.connection != 'plain' || matrix.redis-version != 'latest'
         run: |
           make test
@@ -97,15 +142,15 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          AZURE_OPENAI_API_KEY: ${{secrets.AZURE_OPENAI_API_KEY}}
-          AZURE_OPENAI_ENDPOINT: ${{secrets.AZURE_OPENAI_ENDPOINT}}
-          AZURE_OPENAI_DEPLOYMENT_NAME: ${{secrets.AZURE_OPENAI_DEPLOYMENT_NAME}}
-          OPENAI_API_VERSION: ${{secrets.OPENAI_API_VERSION}}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+          OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
-          make test-notebooks 
+          make test-notebooks
 
   docs:
     runs-on: ubuntu-latest
@@ -117,17 +162,17 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
+          cache: pip
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
           version: ${{ env.POETRY_VERSION }}
-  
+
       - name: Install dependencies
         run: |
           poetry install --all-extras
 
       - name: Build docs
         run: |
-          make docs-build 
+          make docs-build
