@@ -51,6 +51,18 @@ jobs:
       - name: Run full test suite to prime cache
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
+          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+          OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           make test-all
 
@@ -113,6 +125,7 @@ jobs:
       - name: Run tests
         if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
         env:
+          HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -136,6 +149,7 @@ jobs:
       - name: Run notebooks
         if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
         env:
+          HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
