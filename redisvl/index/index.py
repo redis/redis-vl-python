@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+import time
 import warnings
 import weakref
 from typing import (
@@ -13,6 +14,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -26,6 +28,8 @@ if TYPE_CHECKING:
 
 import redis
 import redis.asyncio as aredis
+from redis.client import NEVER_DECODE
+from redis.commands.helpers import get_protocol_version  # type: ignore
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
@@ -46,6 +50,14 @@ logger = get_logger(__name__)
 REQUIRED_MODULES_FOR_INTROSPECTION = [
     {"name": "search", "ver": 20810},
     {"name": "searchlight", "ver": 20810},
+]
+
+SearchParams = Union[
+    Tuple[
+        Union[str, BaseQuery],
+        Union[Dict[str, Union[str, int, float, bytes]], None],
+    ],
+    Union[str, BaseQuery],
 ]
 
 
@@ -349,7 +361,7 @@ class SearchIndex(BaseSearchIndex):
         return self.__redis_client
 
     @property
-    def _redis_client(self) -> Optional[redis.Redis]:
+    def _redis_client(self) -> redis.Redis:
         """
         Get a Redis client instance.
 
@@ -652,6 +664,73 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
+    def batch_search(
+        self,
+        queries: List[SearchParams],
+        batch_size: int = 10,
+    ) -> List["Result"]:
+        """Perform a search against the index for multiple queries.
+
+        This method takes a list of queries and optionally query params and
+        returns a list of Result objects for each query. Results are
+        returned in the same order as the queries.
+
+        Args:
+            queries (List[SearchParams]): The queries to search for. batch_size
+            (int, optional): The number of queries to search for at a time.
+                Defaults to 10.
+
+        Returns:
+            List[Result]: The search results for each query.
+        """
+        all_parsed = []
+        search = self._redis_client.ft(self.schema.index.name)
+        options = {}
+        if get_protocol_version(self._redis_client) not in ["3", 3]:
+            options[NEVER_DECODE] = True
+
+        for i in range(0, len(queries), batch_size):
+            batch_queries = queries[i : i + batch_size]
+
+            # redis-py doesn't support calling `search` in a pipeline,
+            # so we need to manually execute each command in a pipeline
+            # and parse the results
+            with self._redis_client.pipeline(transaction=False) as pipe:
+                batch_built_queries = []
+                for query in batch_queries:
+                    if isinstance(query, tuple):
+                        query_args, q = search._mk_query_args(  # type: ignore
+                            query[0], query_params=query[1]
+                        )
+                    else:
+                        query_args, q = search._mk_query_args(  # type: ignore
+                            query, query_params=None
+                        )
+                    batch_built_queries.append(q)
+                    pipe.execute_command(
+                        "FT.SEARCH",
+                        *query_args,
+                        **options,
+                    )
+
+                st = time.time()
+                results = pipe.execute()
+
+                # We don't know how long each query took, so we'll use the total time
+                # for all queries in the batch as the duration for each query
+                duration = (time.time() - st) * 1000.0
+
+                for i, query_results in enumerate(results):
+                    _built_query = batch_built_queries[i]
+                    parsed_result = search._parse_search(  # type: ignore
+                        query_results,
+                        query=_built_query,
+                        duration=duration,
+                    )
+                    # Return a parsed Result object for each query
+                    all_parsed.append(parsed_result)
+        return all_parsed
+
     def search(self, *args, **kwargs) -> "Result":
         """Perform a search against the index.
 
@@ -668,6 +747,26 @@ class SearchIndex(BaseSearchIndex):
             )
         except Exception as e:
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
+
+    def batch_query(
+        self, queries: List[BaseQuery], batch_size: int = 10
+    ) -> List[List[Dict[str, Any]]]:
+        """Execute a batch of queries and process results."""
+        results = self.batch_search(
+            [(query.query, query.params) for query in queries], batch_size=batch_size
+        )
+        all_parsed = []
+        for query, batch_results in zip(queries, results):
+            parsed = process_results(
+                batch_results,
+                query=query,
+                storage_type=self.schema.index.storage_type,
+            )
+            # Create separate lists of parsed results for each query
+            # passed in to the batch_search method, so that callers can
+            # access the results for each query individually
+            all_parsed.append(parsed)
+        return all_parsed
 
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
@@ -1211,6 +1310,71 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
 
+    async def batch_search(
+        self, queries: List[SearchParams], batch_size: int = 10
+    ) -> List["Result"]:
+        """Perform a search against the index for multiple queries.
+
+        This method takes a list of queries and returns a list of Result objects
+        for each query. Results are returned in the same order as the queries.
+
+        Args:
+            queries (List[SearchParams]): The queries to search for. batch_size
+            (int, optional): The number of queries to search for at a time.
+                Defaults to 10.
+
+        Returns:
+            List[Result]: The search results for each query.
+        """
+        all_results = []
+        client = await self._get_client()
+        search = client.ft(self.schema.index.name)
+        options = {}
+        if get_protocol_version(client) not in ["3", 3]:
+            options[NEVER_DECODE] = True
+
+        for i in range(0, len(queries), batch_size):
+            batch_queries = queries[i : i + batch_size]
+
+            # redis-py doesn't support calling `search` in a pipeline,
+            # so we need to manually execute each command in a pipeline
+            # and parse the results
+            async with client.pipeline(transaction=False) as pipe:
+                batch_built_queries = []
+                for query in batch_queries:
+                    if isinstance(query, tuple):
+                        query_args, q = search._mk_query_args(  # type: ignore
+                            query[0], query_params=query[1]
+                        )
+                    else:
+                        query_args, q = search._mk_query_args(  # type: ignore
+                            query, query_params=None
+                        )
+                    batch_built_queries.append(q)
+                    pipe.execute_command(
+                        "FT.SEARCH",
+                        *query_args,
+                        **options,
+                    )
+
+                st = time.time()
+                results = await pipe.execute()
+
+                # We don't know how long each query took, so we'll use the total time
+                # for all queries in the batch as the duration for each query
+                duration = (time.time() - st) * 1000.0
+
+                for i, query_results in enumerate(results):
+                    _built_query = batch_built_queries[i]
+                    parsed_result = search._parse_search(  # type: ignore
+                        query_results,
+                        query=_built_query,
+                        duration=duration,
+                    )
+                    # Return a parsed Result object for each query
+                    all_results.append(parsed_result)
+        return all_results
+
     async def search(self, *args, **kwargs) -> "Result":
         """Perform a search on this index.
 
@@ -1226,6 +1390,27 @@ class AsyncSearchIndex(BaseSearchIndex):
             return await client.ft(self.schema.index.name).search(*args, **kwargs)  # type: ignore
         except Exception as e:
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
+
+    async def batch_query(
+        self, queries: List[BaseQuery], batch_size: int = 10
+    ) -> List[List[Dict[str, Any]]]:
+        """Asynchronously execute a batch of queries and process results."""
+        results = await self.batch_search(
+            [(query.query, query.params) for query in queries], batch_size=batch_size
+        )
+        all_parsed = []
+        for query, batch_results in zip(queries, results):
+            parsed = process_results(
+                batch_results,
+                query=query,
+                storage_type=self.schema.index.storage_type,
+            )
+            # Create separate lists of parsed results for each query
+            # passed in to the batch_search method, so that callers can
+            # access the results for each query individually
+            all_parsed.append(parsed)
+
+        return all_parsed
 
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""
