@@ -33,6 +33,11 @@ jobs:
           path: hf_cache
           key: ${{ runner.os }}-hf-cache
 
+      - name: Set HuggingFace token
+        run: |
+          mkdir -p ~/.huggingface
+          echo '{"token":"${{ secrets.HF_TOKEN }}"}' > ~/.huggingface/token
+
       - name: Set up Python 3.9
         uses: actions/setup-python@v4
         with:
@@ -48,8 +53,14 @@ jobs:
         run: |
           poetry install --all-extras
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
       - name: Run full test suite to prime cache
         env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
