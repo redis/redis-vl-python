@@ -95,12 +95,8 @@ class SemanticCache(BaseLLMCache):
         }
 
         # Use the index name as the key prefix by default
-        if "prefix" in kwargs:
-            prefix = kwargs["prefix"]
-        else:
-            prefix = name
-
-        dtype = kwargs.get("dtype")
+        prefix = kwargs.pop("prefix", name)
+        dtype = kwargs.pop("dtype", None)
 
         # Validate a provided vectorizer or set the default
         if vectorizer:
@@ -111,7 +107,10 @@ class SemanticCache(BaseLLMCache):
                     f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
                 )
         else:
-            vectorizer_kwargs = {"dtype": dtype} if dtype else {}
+            vectorizer_kwargs = kwargs
+
+            if dtype:
+                vectorizer_kwargs.update(**{"dtype": dtype})
 
             vectorizer = HFTextVectorizer(
                 model="sentence-transformers/all-mpnet-base-v2",
