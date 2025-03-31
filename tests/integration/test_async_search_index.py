@@ -1,12 +1,14 @@
 import warnings
+from unittest import mock
 
 import pytest
 from redis import Redis as SyncRedis
-from redis.asyncio import Redis
+from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
+from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 
@@ -172,12 +174,12 @@ async def test_search_index_set_client(client, redis_url, index_schema):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         await async_index.create(overwrite=True, drop=True)
-        assert isinstance(async_index.client, Redis)
+        assert isinstance(async_index.client, AsyncRedis)
 
         # Tests deprecated sync -> async conversion behavior
         assert isinstance(client, SyncRedis)
         await async_index.set_client(client)
-        assert isinstance(async_index.client, Redis)
+        assert isinstance(async_index.client, AsyncRedis)
 
     await async_index.disconnect()
     assert async_index.client is None
@@ -410,3 +412,142 @@ async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis
     await async_index.create(overwrite=True, drop=True)
     await async_index.disconnect()
     assert async_index._redis_client is None
+
+
+@pytest.mark.asyncio
+async def test_async_search_index_validates_redis_modules(redis_url):
+    """
+    A regression test for RAAE-694: we should validate that a passed-in
+    Redis client has the correct modules installed.
+    """
+    client = AsyncRedis.from_url(redis_url)
+    with mock.patch(
+        "redisvl.index.index.RedisConnectionFactory.validate_async_redis"
+    ) as mock_validate_async_redis:
+        mock_validate_async_redis.side_effect = RedisModuleVersionError(
+            "Required modules not installed"
+        )
+        with pytest.raises(RedisModuleVersionError):
+            index = AsyncSearchIndex(
+                schema=IndexSchema.from_dict(
+                    {"index": {"name": "my_index"}, "fields": fields}
+                ),
+                redis_client=client,
+            )
+            await index.create(overwrite=True, drop=True)
+
+        mock_validate_async_redis.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_batch_search(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    results = await async_index.batch_search(["@test:{foo}", "@test:{bar}"])
+    assert len(results) == 2
+    assert results[0].total == 1
+    assert results[0].docs[0]["id"] == "rvl:1"
+    assert results[1].total == 1
+    assert results[1].docs[0]["id"] == "rvl:2"
+
+
+@pytest.mark.parametrize(
+    "queries",
+    [
+        [
+            [
+                FilterQuery(filter_expression="@test:{foo}"),
+                FilterQuery(filter_expression="@test:{bar}"),
+            ],
+            [
+                FilterQuery(filter_expression="@test:{foo}"),
+                FilterQuery(filter_expression="@test:{bar}"),
+                FilterQuery(filter_expression="@test:{baz}"),
+                FilterQuery(filter_expression="@test:{foo}"),
+                FilterQuery(filter_expression="@test:{bar}"),
+                FilterQuery(filter_expression="@test:{baz}"),
+            ],
+        ],
+        [
+            [
+                "@test:{foo}",
+                "@test:{bar}",
+            ],
+            [
+                "@test:{foo}",
+                "@test:{bar}",
+                "@test:{baz}",
+                "@test:{foo}",
+                "@test:{bar}",
+                "@test:{baz}",
+            ],
+        ],
+    ],
+)
+@pytest.mark.asyncio
+async def test_batch_search_with_multiple_batches(async_index, queries):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    results = await async_index.batch_search(queries[0])
+    assert len(results) == 2
+    assert results[0].total == 1
+    assert results[0].docs[0]["id"] == "rvl:1"
+    assert results[1].total == 1
+    assert results[1].docs[0]["id"] == "rvl:2"
+
+    results = await async_index.batch_search(
+        queries[1],
+        batch_size=2,
+    )
+    assert len(results) == 6
+
+    # First (and only) result for the first query
+    assert results[0].total == 1
+    assert results[0].docs[0]["id"] == "rvl:1"
+
+    # Second (and only) result for the second query
+    assert results[1].total == 1
+    assert results[1].docs[0]["id"] == "rvl:2"
+
+    # Third query should have zero results because there is no baz
+    assert results[2].total == 0
+
+    # Then the pattern repeats
+    assert results[3].total == 1
+    assert results[3].docs[0]["id"] == "rvl:1"
+    assert results[4].total == 1
+    assert results[4].docs[0]["id"] == "rvl:2"
+    assert results[5].total == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_query(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    query = FilterQuery(filter_expression="@test:{foo}")
+    results = await async_index.batch_query([query])
+
+    assert len(results) == 1
+    assert results[0][0]["id"] == "rvl:1"
+
+
+@pytest.mark.asyncio
+async def test_batch_query_with_multiple_batches(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    await async_index.load(data, id_field="id")
+
+    queries = [
+        FilterQuery(filter_expression="@test:{foo}"),
+        FilterQuery(filter_expression="@test:{bar}"),
+    ]
+    results = await async_index.batch_query(queries, batch_size=1)
+    assert len(results) == 2
+    assert results[0][0]["id"] == "rvl:1"
+    assert results[1][0]["id"] == "rvl:2"

@@ -1,10 +1,13 @@
 import warnings
+from unittest import mock
 
 import pytest
+from redis import Redis
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
+from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 
@@ -363,3 +366,133 @@ def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
     index.create(overwrite=True, drop=True)
     index.disconnect()
     assert index.client is None
+
+
+def test_search_index_validates_redis_modules(redis_url):
+    """
+    A regression test for RAAE-694: we should validate that a passed-in
+    Redis client has the correct modules installed.
+    """
+    client = Redis.from_url(redis_url)
+    with mock.patch(
+        "redisvl.index.index.RedisConnectionFactory.validate_sync_redis"
+    ) as mock_validate_sync_redis:
+        mock_validate_sync_redis.side_effect = RedisModuleVersionError(
+            "Required modules not installed"
+        )
+        with pytest.raises(RedisModuleVersionError):
+            index = SearchIndex(
+                schema=IndexSchema.from_dict(
+                    {"index": {"name": "my_index"}, "fields": fields}
+                ),
+                redis_client=client,
+            )
+            index.create(overwrite=True, drop=True)
+
+        mock_validate_sync_redis.assert_called_once()
+
+
+def test_batch_search(index):
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    index.load(data, id_field="id")
+
+    results = index.batch_search(["@test:{foo}", "@test:{bar}"])
+    assert len(results) == 2
+    assert results[0].total == 1
+    assert results[0].docs[0]["id"] == "rvl:1"
+    assert results[1].total == 1
+    assert results[1].docs[0]["id"] == "rvl:2"
+
+
+@pytest.mark.parametrize(
+    "queries",
+    [
+        [
+            [
+                FilterQuery(filter_expression="@test:{foo}"),
+                FilterQuery(filter_expression="@test:{bar}"),
+            ],
+            [
+                FilterQuery(filter_expression="@test:{foo}"),
+                FilterQuery(filter_expression="@test:{bar}"),
+                FilterQuery(filter_expression="@test:{baz}"),
+                FilterQuery(filter_expression="@test:{foo}"),
+                FilterQuery(filter_expression="@test:{bar}"),
+                FilterQuery(filter_expression="@test:{baz}"),
+            ],
+        ],
+        [
+            [
+                "@test:{foo}",
+                "@test:{bar}",
+            ],
+            [
+                "@test:{foo}",
+                "@test:{bar}",
+                "@test:{baz}",
+                "@test:{foo}",
+                "@test:{bar}",
+                "@test:{baz}",
+            ],
+        ],
+    ],
+)
+def test_batch_search_with_multiple_batches(index, queries):
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    index.load(data, id_field="id")
+
+    results = index.batch_search(queries[0])
+    assert len(results) == 2
+    assert results[0].total == 1
+    assert results[0].docs[0]["id"] == "rvl:1"
+    assert results[1].total == 1
+    assert results[1].docs[0]["id"] == "rvl:2"
+
+    results = index.batch_search(
+        queries[1],
+        batch_size=2,
+    )
+    assert len(results) == 6
+
+    # First (and only) result for the first query
+    assert results[0].docs[0]["id"] == "rvl:1"
+
+    # Second (and only) result for the second query
+    assert results[1].docs[0]["id"] == "rvl:2"
+
+    # Third query should have zero results because there is no baz
+    assert results[2].total == 0
+
+    # Then the pattern repeats
+    assert results[3].docs[0]["id"] == "rvl:1"
+    assert results[4].docs[0]["id"] == "rvl:2"
+    assert results[5].total == 0
+
+
+def test_batch_query(index):
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    index.load(data, id_field="id")
+
+    query = FilterQuery(filter_expression="@test:{foo}")
+    results = index.batch_query([query])
+
+    assert len(results) == 1
+    assert results[0][0]["id"] == "rvl:1"
+
+
+def test_batch_query_with_multiple_batches(index):
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    index.load(data, id_field="id")
+
+    queries = [
+        FilterQuery(filter_expression="@test:{foo}"),
+        FilterQuery(filter_expression="@test:{bar}"),
+    ]
+    results = index.batch_query(queries, batch_size=1)
+    assert len(results) == 2
+    assert results[0][0]["id"] == "rvl:1"
+    assert results[1][0]["id"] == "rvl:2"
