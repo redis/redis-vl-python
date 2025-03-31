@@ -777,11 +777,7 @@ class SearchIndex(BaseSearchIndex):
         )
         all_parsed = []
         for query, batch_results in zip(queries, results):
-            parsed = process_results(
-                batch_results,
-                query=query,
-                storage_type=self.schema.index.storage_type,
-            )
+            parsed = process_results(batch_results, query=query, schema=self.schema)
             # Create separate lists of parsed results for each query
             # passed in to the batch_search method, so that callers can
             # access the results for each query individually
@@ -1421,7 +1417,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             parsed = process_results(
                 batch_results,
                 query=query,
-                storage_type=self.schema.index.storage_type,
+                schema=self.schema,
             )
             # Create separate lists of parsed results for each query
             # passed in to the batch_search method, so that callers can
