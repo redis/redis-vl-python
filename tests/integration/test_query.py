@@ -4,7 +4,7 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
+from redisvl.query import CountQuery, FilterQuery, VectorQuery, VectorRangeQuery
 from redisvl.query.filter import (
     FilterExpression,
     Geo,
@@ -25,6 +25,7 @@ def vector_query():
     return VectorQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
+        return_score=True,
         return_fields=[
             "user",
             "credit_score",
@@ -50,6 +51,24 @@ def sorted_vector_query():
             "last_updated",
         ],
         sort_by="age",
+    )
+
+
+@pytest.fixture
+def normalized_vector_query():
+    return VectorQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+        return_score=True,
+        return_fields=[
+            "user",
+            "credit_score",
+            "age",
+            "job",
+            "location",
+            "last_updated",
+        ],
     )
 
 
@@ -85,8 +104,20 @@ def sorted_filter_query():
 
 
 @pytest.fixture
+def normalized_range_query():
+    return VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+        return_score=True,
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        distance_threshold=0.2,
+    )
+
+
+@pytest.fixture
 def range_query():
-    return RangeQuery(
+    return VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
@@ -96,7 +127,7 @@ def range_query():
 
 @pytest.fixture
 def sorted_range_query():
-    return RangeQuery(
+    return VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job", "location"],
@@ -127,6 +158,56 @@ def index(sample_data, redis_url):
                     "attrs": {
                         "dims": 3,
                         "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    # create the index (no data yet)
+    index.create(overwrite=True)
+
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
+
+    index.load(sample_data, preprocess=hash_preprocess)
+
+    # run the test
+    yield index
+
+    # clean up
+    index.delete(drop=True)
+
+
+@pytest.fixture
+def L2_index(sample_data, redis_url):
+    # construct a search index from the schema
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "L2_index",
+                "prefix": "L2_index",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "L2",
                         "algorithm": "flat",
                         "datatype": "float32",
                     },
@@ -191,7 +272,7 @@ def test_search_and_query(index):
 
 
 def test_range_query(index):
-    r = RangeQuery(
+    r = VectorRangeQuery(
         vector=[0.1, 0.1, 0.5],
         vector_field_name="user_embedding",
         return_fields=["user", "credit_score", "age", "job"],
@@ -262,7 +343,7 @@ def search(
             assert doc.location == location
 
     # if range query, test results by distance threshold
-    if isinstance(query, RangeQuery):
+    if isinstance(query, VectorRangeQuery):
         for doc in results.docs:
             print(doc.vector_distance)
             assert float(doc.vector_distance) <= distance_threshold
@@ -273,7 +354,7 @@ def search(
 
     # check results are in sorted order
     if sort:
-        if isinstance(query, RangeQuery):
+        if isinstance(query, VectorRangeQuery):
             assert [int(doc.age) for doc in results.docs] == [12, 14, 18, 100]
         else:
             assert [int(doc.age) for doc in results.docs] == [
@@ -289,7 +370,7 @@ def search(
 
 @pytest.fixture(
     params=["vector_query", "filter_query", "range_query"],
-    ids=["VectorQuery", "FilterQuery", "RangeQuery"],
+    ids=["VectorQuery", "FilterQuery", "VectorRangeQuery"],
 )
 def query(request):
     return request.getfixturevalue(request.param)
@@ -659,3 +740,53 @@ def test_range_query_with_filter_and_hybrid_policy(index):
     for result in results:
         assert result["credit_score"] == "high"
         assert float(result["vector_distance"]) <= 0.5
+
+
+def test_query_normalize_cosine_distance(index, normalized_vector_query):
+
+    res = index.query(normalized_vector_query)
+
+    for r in res:
+        assert 0 <= float(r["vector_distance"]) <= 1
+
+
+def test_query_cosine_distance_un_normalized(index, vector_query):
+
+    res = index.query(vector_query)
+
+    assert any(float(r["vector_distance"]) > 1 for r in res)
+
+
+def test_query_l2_distance_un_normalized(L2_index, vector_query):
+
+    res = L2_index.query(vector_query)
+
+    assert any(float(r["vector_distance"]) > 1 for r in res)
+
+
+def test_query_l2_distance_normalized(L2_index, normalized_vector_query):
+
+    res = L2_index.query(normalized_vector_query)
+
+    for r in res:
+        assert 0 <= float(r["vector_distance"]) <= 1
+
+
+def test_range_query_normalize_cosine_distance(index, normalized_range_query):
+
+    res = index.query(normalized_range_query)
+
+    for r in res:
+        assert 0 <= float(r["vector_distance"]) <= 1
+
+
+def test_range_query_normalize_bad_input(index):
+    with pytest.raises(ValueError):
+        VectorRangeQuery(
+            vector=[0.1, 0.1, 0.5],
+            vector_field_name="user_embedding",
+            normalize_vector_distance=True,
+            return_score=True,
+            return_fields=["user", "credit_score", "age", "job", "location"],
+            distance_threshold=1.2,
+        )
