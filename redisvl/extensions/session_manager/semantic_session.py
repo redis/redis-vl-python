@@ -71,7 +71,7 @@ class SemanticSessionManager(BaseSessionManager):
         super().__init__(name, session_tag)
 
         prefix = prefix or name
-        dtype = kwargs.get("dtype")
+        dtype = kwargs.pop("dtype", None)
 
         # Validate a provided vectorizer or set the default
         if vectorizer:
@@ -82,10 +82,13 @@ class SemanticSessionManager(BaseSessionManager):
                     f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
                 )
         else:
-            vectorizer_kwargs = {"dtype": dtype} if dtype else {}
+            vectorizer_kwargs = kwargs
+
+            if dtype:
+                vectorizer_kwargs.update(**{"dtype": dtype})
 
             vectorizer = HFTextVectorizer(
-                model="sentence-transformers/msmarco-distilbert-cos-v5",
+                model="sentence-transformers/all-mpnet-base-v2",
                 **vectorizer_kwargs,
             )
 

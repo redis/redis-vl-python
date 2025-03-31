@@ -32,7 +32,12 @@ from redis.client import NEVER_DECODE
 from redis.commands.helpers import get_protocol_version  # type: ignore
 from redis.commands.search.indexDefinition import IndexDefinition
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
+from redisvl.exceptions import (
+    RedisModuleVersionError,
+    RedisSearchError,
+    RedisVLError,
+    SchemaValidationError,
+)
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import BaseQuery, CountQuery, FilterQuery
 from redisvl.query.filter import FilterExpression
@@ -130,8 +135,7 @@ class BaseSearchIndex:
     def _storage(self) -> BaseStorage:
         """The storage type for the index schema."""
         return self._STORAGE_MAP[self.schema.index.storage_type](
-            prefix=self.schema.index.prefix,
-            key_separator=self.schema.index.key_separator,
+            index_schema=self.schema
         )
 
     @property
@@ -171,7 +175,7 @@ class BaseSearchIndex:
 
             from redisvl.index import SearchIndex
 
-            index = SearchIndex.from_yaml("schemas/schema.yaml")
+            index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
         """
         schema = IndexSchema.from_yaml(schema_path)
         return cls(schema=schema, **kwargs)
@@ -199,7 +203,7 @@ class BaseSearchIndex:
                 "fields": [
                     {"name": "doc-id", "type": "tag"}
                 ]
-            })
+            }, redis_url="redis://localhost:6379")
 
         """
         schema = IndexSchema.from_dict(schema_dict)
@@ -243,10 +247,14 @@ class SearchIndex(BaseSearchIndex):
         from redisvl.index import SearchIndex
 
         # initialize the index object with schema from file
-        index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
+        index = SearchIndex.from_yaml(
+            "schemas/schema.yaml",
+            redis_url="redis://localhost:6379",
+            validate_on_load=True
+        )
 
         # create the index
-        index.create(overwrite=True)
+        index.create(overwrite=True, drop=False)
 
         # data is an iterable of dictionaries
         index.load(data)
@@ -263,6 +271,7 @@ class SearchIndex(BaseSearchIndex):
         redis_client: Optional[redis.Redis] = None,
         redis_url: Optional[str] = None,
         connection_kwargs: Optional[Dict[str, Any]] = None,
+        validate_on_load: bool = False,
         **kwargs,
     ):
         """Initialize the RedisVL search index with a schema, Redis client
@@ -277,6 +286,8 @@ class SearchIndex(BaseSearchIndex):
                 connect to.
             connection_kwargs (Dict[str, Any], optional): Redis client connection
                 args.
+            validate_on_load (bool, optional): Whether to validate data against schema
+                when loading. Defaults to False.
         """
         if "connection_args" in kwargs:
             connection_kwargs = kwargs.pop("connection_args")
@@ -285,7 +296,7 @@ class SearchIndex(BaseSearchIndex):
             raise ValueError("Must provide a valid IndexSchema object")
 
         self.schema = schema
-
+        self._validate_on_load = validate_on_load
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
 
         # Store connection parameters
@@ -400,11 +411,6 @@ class SearchIndex(BaseSearchIndex):
             ValueError: If the Redis URL is not provided nor accessible
                 through the `REDIS_URL` environment variable.
             ModuleNotFoundError: If required Redis modules are not installed.
-
-        .. code-block:: python
-
-            index.connect(redis_url="redis://localhost:6379")
-
         """
         self.__redis_client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
@@ -424,16 +430,6 @@ class SearchIndex(BaseSearchIndex):
 
         Raises:
             TypeError: If the provided client is not valid.
-
-        .. code-block:: python
-
-            import redis
-            from redisvl.index import SearchIndex
-
-            client = redis.Redis.from_url("redis://localhost:6379")
-            index = SearchIndex.from_yaml("schemas/schema.yaml")
-            index.set_client(client)
-
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.__redis_client = redis_client
@@ -592,27 +588,8 @@ class SearchIndex(BaseSearchIndex):
             List[str]: List of keys loaded to Redis.
 
         Raises:
-            ValueError: If the length of provided keys does not match the length
-                of objects.
-
-        .. code-block:: python
-
-            data = [{"test": "foo"}, {"test": "bar"}]
-
-            # simple case
-            keys = index.load(data)
-
-            # set 360 second ttl policy on data
-            keys = index.load(data, ttl=360)
-
-            # load data with predefined keys
-            keys = index.load(data, keys=["rvl:foo", "rvl:bar"])
-
-            # load data with preprocessing step
-            def add_field(d):
-                d["new_field"] = 123
-                return d
-            keys = index.load(data, preprocess=add_field)
+            SchemaValidationError: If validation fails when validate_on_load is enabled.
+            RedisVLError: If there's an error loading data to Redis.
         """
         try:
             return self._storage.write(
@@ -623,10 +600,16 @@ class SearchIndex(BaseSearchIndex):
                 ttl=ttl,
                 preprocess=preprocess,
                 batch_size=batch_size,
+                validate=self._validate_on_load,
             )
-        except:
-            logger.exception("Error while loading data to Redis")
+        except SchemaValidationError:
+            # Pass through validation errors directly
+            logger.exception("Schema validation error while loading data")
             raise
+        except Exception as e:
+            # Wrap other errors as general RedisVL errors
+            logger.exception("Error while loading data to Redis")
+            raise RedisVLError(f"Failed to load data: {str(e)}") from e
 
     def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Fetch an object from Redis by id.
@@ -912,11 +895,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         # initialize the index object with schema from file
         index = AsyncSearchIndex.from_yaml(
             "schemas/schema.yaml",
-            redis_url="redis://localhost:6379"
+            redis_url="redis://localhost:6379",
+            validate_on_load=True
         )
 
         # create the index
-        await index.create(overwrite=True)
+        await index.create(overwrite=True, drop=False)
 
         # data is an iterable of dictionaries
         await index.load(data)
@@ -934,6 +918,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         redis_url: Optional[str] = None,
         redis_client: Optional[aredis.Redis] = None,
         connection_kwargs: Optional[Dict[str, Any]] = None,
+        validate_on_load: bool = False,
         **kwargs,
     ):
         """Initialize the RedisVL async search index with a schema.
@@ -946,6 +931,8 @@ class AsyncSearchIndex(BaseSearchIndex):
                 instantiated redis client.
             connection_kwargs (Optional[Dict[str, Any]]): Redis client connection
                 args.
+            validate_on_load (bool, optional): Whether to validate data against schema
+                when loading. Defaults to False.
         """
         if "redis_kwargs" in kwargs:
             connection_kwargs = kwargs.pop("redis_kwargs")
@@ -955,7 +942,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise ValueError("Must provide a valid IndexSchema object")
 
         self.schema = schema
-
+        self._validate_on_load = validate_on_load
         self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
 
         # Store connection parameters
@@ -1203,6 +1190,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         else:
             return await client.expire(keys, ttl)
 
+    @deprecated_argument("concurrency", "Use batch_size instead.")
     async def load(
         self,
         data: Iterable[Any],
@@ -1211,9 +1199,10 @@ class AsyncSearchIndex(BaseSearchIndex):
         ttl: Optional[int] = None,
         preprocess: Optional[Callable] = None,
         concurrency: Optional[int] = None,
+        batch_size: Optional[int] = None,
     ) -> List[str]:
-        """Asynchronously load objects to Redis with concurrency control.
-        Returns the list of keys loaded to Redis.
+        """Asynchronously load objects to Redis. Returns the list of keys loaded
+        to Redis.
 
         RedisVL automatically handles constructing the object keys, batching,
         optional preprocessing steps, and setting optional expiration
@@ -1228,18 +1217,18 @@ class AsyncSearchIndex(BaseSearchIndex):
                 Must match the length of objects if provided. Defaults to None.
             ttl (Optional[int], optional): Time-to-live in seconds for each key.
                 Defaults to None.
-            preprocess (Optional[Callable], optional): An async function to
+            preprocess (Optional[Callable], optional): A function to
                 preprocess objects before storage. Defaults to None.
-            concurrency (Optional[int], optional): The maximum number of
-                concurrent write operations. Defaults to class's default
-                concurrency level.
+            batch_size (Optional[int], optional): Number of objects to write in
+                a single Redis pipeline execution. Defaults to class's
+                default batch size.
 
         Returns:
             List[str]: List of keys loaded to Redis.
 
         Raises:
-            ValueError: If the length of provided keys does not match the
-                length of objects.
+            SchemaValidationError: If validation fails when validate_on_load is enabled.
+            RedisVLError: If there's an error loading data to Redis.
 
         .. code-block:: python
 
@@ -1255,7 +1244,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             keys = await index.load(data, keys=["rvl:foo", "rvl:bar"])
 
             # load data with preprocessing step
-            async def add_field(d):
+            def add_field(d):
                 d["new_field"] = 123
                 return d
             keys = await index.load(data, preprocess=add_field)
@@ -1270,11 +1259,17 @@ class AsyncSearchIndex(BaseSearchIndex):
                 keys=keys,
                 ttl=ttl,
                 preprocess=preprocess,
-                concurrency=concurrency,
+                batch_size=batch_size,
+                validate=self._validate_on_load,
             )
-        except:
-            logger.exception("Error while loading data to Redis")
+        except SchemaValidationError:
+            # Pass through validation errors directly
+            logger.exception("Schema validation error while loading data")
             raise
+        except Exception as e:
+            # Wrap other errors as general RedisVL errors
+            logger.exception("Error while loading data to Redis")
+            raise RedisVLError(f"Failed to load data: {str(e)}") from e
 
     async def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Asynchronously etch an object from Redis by id. The id is typically
