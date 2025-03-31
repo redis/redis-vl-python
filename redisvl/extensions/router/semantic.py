@@ -72,7 +72,7 @@ class SemanticRouter(BaseModel):
             connection_kwargs (Dict[str, Any]): The connection arguments
                 for the redis client. Defaults to empty {}.
         """
-        dtype = kwargs.get("dtype")
+        dtype = kwargs.pop("dtype", None)
 
         # Validate a provided vectorizer or set the default
         if vectorizer:
@@ -83,8 +83,15 @@ class SemanticRouter(BaseModel):
                     f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
                 )
         else:
-            vectorizer_kwargs = {"dtype": dtype} if dtype else {}
-            vectorizer = HFTextVectorizer(**vectorizer_kwargs)
+            vectorizer_kwargs = kwargs
+
+            if dtype:
+                vectorizer_kwargs.update(**{"dtype": dtype})
+
+            vectorizer = HFTextVectorizer(
+                model="sentence-transformers/all-mpnet-base-v2",
+                **vectorizer_kwargs,
+            )
 
         if routing_config is None:
             routing_config = RoutingConfig()

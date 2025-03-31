@@ -133,6 +133,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
+      - name: Set HuggingFace token
+        run: |
+          mkdir -p ~/.huggingface
+          echo '{"token":"${{ secrets.HF_TOKEN }}"}' > ~/.huggingface/token 
+
       - name: Run tests
         if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
         env:
@@ -149,6 +154,7 @@ jobs:
           OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           make test-all
 
@@ -173,6 +179,7 @@ jobs:
           OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
           if [[ "${{ matrix.python-version }}" > "3.9" ]]; then

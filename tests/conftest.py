@@ -5,6 +5,7 @@ import pytest
 from testcontainers.compose import DockerCompose
 
 from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.utils.vectorize import HFTextVectorizer
 
 
 @pytest.fixture(autouse=True)
@@ -66,6 +67,15 @@ def client(redis_url):
     """
     conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
     yield conn
+
+
+@pytest.fixture(scope="session", autouse=True)
+def hf_vectorizer():
+    return HFTextVectorizer(
+        model="sentence-transformers/all-mpnet-base-v2",
+        token=os.getenv("HF_TOKEN"),
+        cache_folder=os.getenv("SENTENCE_TRANSFORMERS_HOME"),
+    )
 
 
 @pytest.fixture
