@@ -164,12 +164,14 @@ class BaseField(BaseModel):
     """Specified field attributes"""
 
     def _handle_names(self) -> Tuple[str, Optional[str]]:
+        """Helper to handle field naming with path support"""
         if self.path:
             return self.path, self.name
         return self.name, None
 
     def as_redis_field(self) -> RedisField:
-        raise NotImplementedError
+        """Convert schema field to Redis Field object"""
+        raise NotImplementedError("Must be implemented by field subclasses")
 
 
 class TextField(BaseField):

@@ -35,10 +35,11 @@ def routes():
 
 
 @pytest.fixture
-def semantic_router(client, routes):
+def semantic_router(client, routes, hf_vectorizer):
     router = SemanticRouter(
         name="test-router",
         routes=routes,
+        vectorizer=hf_vectorizer,
         routing_config=RoutingConfig(max_k=2),
         redis_client=client,
         overwrite=False,
@@ -86,7 +87,7 @@ def test_data_optimization():
 
 
 def test_routes_different_distance_thresholds_optimizer_default(
-    semantic_router, routes, redis_url, test_data_optimization
+    semantic_router, routes, redis_url, test_data_optimization, hf_vectorizer
 ):
     redis_version = semantic_router._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
@@ -101,6 +102,7 @@ def test_routes_different_distance_thresholds_optimizer_default(
     router = SemanticRouter(
         name="test_routes_different_distance_optimizer",
         routes=routes,
+        vectorizer=hf_vectorizer,
         redis_url=redis_url,
         overwrite=True,
     )
@@ -119,7 +121,7 @@ def test_routes_different_distance_thresholds_optimizer_default(
 
 
 def test_routes_different_distance_thresholds_optimizer_precision(
-    semantic_router, routes, redis_url, test_data_optimization
+    semantic_router, routes, redis_url, test_data_optimization, hf_vectorizer
 ):
 
     redis_version = semantic_router._index.client.info()["redis_version"]
@@ -135,6 +137,7 @@ def test_routes_different_distance_thresholds_optimizer_precision(
     router = SemanticRouter(
         name="test_routes_different_distance_optimizer",
         routes=routes,
+        vectorizer=hf_vectorizer,
         redis_url=redis_url,
         overwrite=True,
     )
@@ -155,7 +158,7 @@ def test_routes_different_distance_thresholds_optimizer_precision(
 
 
 def test_routes_different_distance_thresholds_optimizer_recall(
-    semantic_router, routes, redis_url, test_data_optimization
+    semantic_router, routes, redis_url, test_data_optimization, hf_vectorizer
 ):
     redis_version = semantic_router._index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
@@ -170,6 +173,7 @@ def test_routes_different_distance_thresholds_optimizer_recall(
     router = SemanticRouter(
         name="test_routes_different_distance_optimizer",
         routes=routes,
+        vectorizer=hf_vectorizer,
         redis_url=redis_url,
         overwrite=True,
     )
