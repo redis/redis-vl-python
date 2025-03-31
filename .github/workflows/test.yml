@@ -58,7 +58,7 @@ jobs:
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
-      - name: Run full test suite to prime cache
+      - name: Run full test suite and prime the HF cache
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_HOME: ${{ github.workspace }}/hf_cache
@@ -80,7 +80,7 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis ${{ matrix.redis-version }}]
     runs-on: ubuntu-latest
-    needs: prime-cache
+    needs: service-tests
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     strategy:
