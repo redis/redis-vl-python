@@ -22,7 +22,7 @@ from redisvl.extensions.llmcache.schema import (
     SemanticCacheIndexSchema,
 )
 from redisvl.index import AsyncSearchIndex, SearchIndex
-from redisvl.query import RangeQuery
+from redisvl.query import VectorRangeQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.query.query import BaseQuery
 from redisvl.redis.connection import RedisConnectionFactory
@@ -237,9 +237,9 @@ class SemanticCache(BaseLLMCache):
         Raises:
             ValueError: If the threshold is not between 0 and 1.
         """
-        if not 0 <= float(distance_threshold) <= 1:
+        if not 0 <= float(distance_threshold) <= 2:
             raise ValueError(
-                f"Distance must be between 0 and 1, got {distance_threshold}"
+                f"Distance must be between 0 and 2, got {distance_threshold}"
             )
         self._distance_threshold = float(distance_threshold)
 
@@ -389,7 +389,7 @@ class SemanticCache(BaseLLMCache):
         vector = vector or self._vectorize_prompt(prompt)
         self._check_vector_dims(vector)
 
-        query = RangeQuery(
+        query = VectorRangeQuery(
             vector=vector,
             vector_field_name=CACHE_VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
@@ -472,7 +472,7 @@ class SemanticCache(BaseLLMCache):
         vector = vector or await self._avectorize_prompt(prompt)
         self._check_vector_dims(vector)
 
-        query = RangeQuery(
+        query = VectorRangeQuery(
             vector=vector,
             vector_field_name=CACHE_VECTOR_FIELD_NAME,
             return_fields=self.return_fields,
@@ -480,6 +480,7 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
+            normalize_vector_distance=True,
         )
 
         # Search the cache!
