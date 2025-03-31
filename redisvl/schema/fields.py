@@ -16,6 +16,14 @@ from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
+from redisvl.utils.utils import norm_cosine_distance, norm_l2_distance
+
+VECTOR_NORM_MAP = {
+    "COSINE": norm_cosine_distance,
+    "L2": norm_l2_distance,
+    "IP": None,  # normalized inner product is cosine similarity by definition
+}
+
 
 class FieldTypes(str, Enum):
     TAG = "tag"

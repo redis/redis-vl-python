@@ -17,7 +17,7 @@ from redisvl.extensions.router.schema import (
     SemanticRouterIndexSchema,
 )
 from redisvl.index import SearchIndex
-from redisvl.query import RangeQuery
+from redisvl.query import VectorRangeQuery
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, model_to_dict
@@ -244,7 +244,7 @@ class SemanticRouter(BaseModel):
 
     def _build_aggregate_request(
         self,
-        vector_range_query: RangeQuery,
+        vector_range_query: VectorRangeQuery,
         aggregation_method: DistanceAggregationMethod,
         max_k: int,
     ) -> AggregateRequest:
@@ -286,7 +286,7 @@ class SemanticRouter(BaseModel):
         # therefore you might take the max_threshold and further refine from there.
         distance_threshold = max(route.distance_threshold for route in self.routes)
 
-        vector_range_query = RangeQuery(
+        vector_range_query = VectorRangeQuery(
             vector=vector,
             vector_field_name=ROUTE_VECTOR_FIELD_NAME,
             distance_threshold=float(distance_threshold),

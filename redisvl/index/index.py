@@ -54,6 +54,7 @@ from redisvl.redis.connection import (
 )
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema.fields import VECTOR_NORM_MAP, VectorDistanceMetric
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -74,7 +75,7 @@ SearchParams = Union[
 
 
 def process_results(
-    results: "Result", query: BaseQuery, storage_type: StorageType
+    results: "Result", query: BaseQuery, schema: IndexSchema
 ) -> List[Dict[str, Any]]:
     """Convert a list of search Result objects into a list of document
     dictionaries.
@@ -99,10 +100,23 @@ def process_results(
 
     # Determine if unpacking JSON is needed
     unpack_json = (
-        (storage_type == StorageType.JSON)
+        (schema.index.storage_type == StorageType.JSON)
         and isinstance(query, FilterQuery)
         and not query._return_fields  # type: ignore
     )
+
+    if (isinstance(query, BaseVectorQuery)) and query._normalize_vector_distance:
+        dist_metric = VectorDistanceMetric(
+            schema.fields[query._vector_field_name].attrs.distance_metric.upper()  # type: ignore
+        )
+        if dist_metric == VectorDistanceMetric.IP:
+            warnings.warn(
+                "Attempting to normalize inner product distance metric. Use cosine distance instead which is normalized inner product by definition."
+            )
+
+        norm_fn = VECTOR_NORM_MAP[dist_metric.value]
+    else:
+        norm_fn = None
 
     # Process records
     def _process(doc: "Document") -> Dict[str, Any]:
@@ -116,6 +130,12 @@ def process_results(
             if isinstance(json_data, dict):
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
+
+        if norm_fn:
+            # convert float back to string to be consistent
+            doc_dict[query.DISTANCE_ID] = str(  # type: ignore
+                norm_fn(float(doc_dict[query.DISTANCE_ID]))  # type: ignore
+            )
 
         # Remove 'payload' if present
         doc_dict.pop("payload", None)
@@ -813,11 +833,7 @@ class SearchIndex(BaseSearchIndex):
         )
         all_parsed = []
         for query, batch_results in zip(queries, results):
-            parsed = process_results(
-                batch_results,
-                query=query,
-                storage_type=self.schema.index.storage_type,
-            )
+            parsed = process_results(batch_results, query=query, schema=self.schema)
             # Create separate lists of parsed results for each query
             # passed in to the batch_search method, so that callers can
             # access the results for each query individually
@@ -827,9 +843,7 @@ class SearchIndex(BaseSearchIndex):
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
         results = self.search(query.query, query_params=query.params)
-        return process_results(
-            results, query=query, storage_type=self.schema.index.storage_type
-        )
+        return process_results(results, query=query, schema=self.schema)
 
     def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query on the index.
@@ -1471,7 +1485,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             parsed = process_results(
                 batch_results,
                 query=query,
-                storage_type=self.schema.index.storage_type,
+                schema=self.schema,
             )
             # Create separate lists of parsed results for each query
             # passed in to the batch_search method, so that callers can
@@ -1483,9 +1497,7 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""
         results = await self.search(query.query, query_params=query.params)
-        return process_results(
-            results, query=query, storage_type=self.schema.index.storage_type
-        )
+        return process_results(results, query=query, schema=self.schema)
 
     async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.

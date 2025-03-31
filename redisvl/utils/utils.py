@@ -191,3 +191,22 @@ def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Non
             return
 
     return wrapper
+
+
+def norm_cosine_distance(value: float) -> float:
+    """
+    Normalize the cosine distance to a similarity score between 0 and 1.
+    """
+    return max((2 - value) / 2, 0)
+
+
+def denorm_cosine_distance(value: float) -> float:
+    """Denormalize the distance threshold from [0, 1] to [0, 1] for our db."""
+    return max(2 - 2 * value, 0)
+
+
+def norm_l2_distance(value: float) -> float:
+    """
+    Normalize the L2 distance.
+    """
+    return 1 / (1 + value)

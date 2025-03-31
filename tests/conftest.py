@@ -158,7 +158,7 @@ def sample_data(sample_datetimes):
             "last_updated": sample_datetimes["high"].timestamp(),
             "credit_score": "medium",
             "location": "-110.0839,37.3861",
-            "user_embedding": [0.9, 0.9, 0.1],
+            "user_embedding": [-0.1, -0.1, -0.5],
         },
     ]
 

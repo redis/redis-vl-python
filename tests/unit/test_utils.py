@@ -13,9 +13,28 @@ from redisvl.redis.utils import (
 )
 from redisvl.utils.utils import (
     assert_no_warnings,
+    denorm_cosine_distance,
     deprecated_argument,
     deprecated_function,
+    norm_cosine_distance,
 )
+
+
+def test_norm_cosine_distance():
+    input = 2
+    expected = 0
+    assert norm_cosine_distance(input) == expected
+
+
+def test_denorm_cosine_distance():
+    input = 0
+    expected = 2
+    assert denorm_cosine_distance(input) == expected
+
+
+def test_norm_denorm_cosine():
+    input = 0.6
+    assert input == round(denorm_cosine_distance(norm_cosine_distance(input)), 6)
 
 
 def test_even_number_of_elements():
