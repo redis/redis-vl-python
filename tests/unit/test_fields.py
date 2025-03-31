@@ -1,3 +1,5 @@
+from typing import Any, Optional, Tuple
+
 import pytest
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField

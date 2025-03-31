@@ -52,7 +52,7 @@ async def test_simple(async_client, schema, sample_data):
     await index.create(overwrite=True, drop=True)
 
     # Prepare and load the data based on storage type
-    async def hash_preprocess(item: dict) -> dict:
+    def hash_preprocess(item: dict) -> dict:
         return {
             **item,
             "user_embedding": array_to_buffer(item["user_embedding"], "float32"),

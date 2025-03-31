@@ -5,7 +5,7 @@ import pytest
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
+from redisvl.exceptions import RedisModuleVersionError, RedisSearchError, RedisVLError
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
@@ -269,7 +269,7 @@ async def test_search_index_load_preprocess(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
 
-    async def preprocess(record):
+    def preprocess(record):
         record["test"] = "bar"
         return record
 
@@ -281,10 +281,10 @@ async def test_search_index_load_preprocess(async_index):
         == "bar"
     )
 
-    async def bad_preprocess(record):
+    def bad_preprocess(record):
         return 1
 
-    with pytest.raises(TypeError):
+    with pytest.raises(RedisVLError):
         await async_index.load(data, id_field="id", preprocess=bad_preprocess)
 
 
@@ -300,7 +300,7 @@ async def test_no_id_field(async_index):
     bad_data = [{"wrong_key": "1", "value": "test"}]
 
     # catch missing / invalid id_field
-    with pytest.raises(ValueError):
+    with pytest.raises(RedisVLError):
         await async_index.load(bad_data, id_field="key")
 
 
