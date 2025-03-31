@@ -167,7 +167,6 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
-          make test-notebooks
           if [[ "${{ matrix.python-version }}" > "3.9" ]]; then
             make test-notebooks
           else
