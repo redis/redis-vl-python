@@ -790,7 +790,6 @@ class TextQuery(FilterQuery):
 
     def tokenize_and_escape_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs"""
-        from redisvl.utils.token_escaper import TokenEscaper
 
         escaper = TokenEscaper()
 

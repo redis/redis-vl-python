@@ -4,7 +4,6 @@ from redisvl.query.query import (
     BaseVectorQuery,
     CountQuery,
     FilterQuery,
-    HybridQuery,
     RangeQuery,
     TextQuery,
     VectorQuery,
