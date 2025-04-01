@@ -16,6 +16,7 @@ from typing import (
     Union,
 )
 
+from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
@@ -30,7 +31,13 @@ from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.exceptions import RedisModuleVersionError, RedisSearchError
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
-from redisvl.query import BaseQuery, CountQuery, FilterQuery
+from redisvl.query import (
+    AggregationQuery,
+    BaseQuery,
+    CountQuery,
+    FilterQuery,
+    HybridAggregationQuery,
+)
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -99,6 +106,34 @@ def process_results(
         return doc_dict
 
     return [_process(doc) for doc in results.docs]
+
+
+def process_aggregate_results(
+    results: "AggregateResult", query: AggregationQuery, storage_type: StorageType
+) -> List[Dict[str, Any]]:
+    """Convert an aggregate reslt object into a list of document dictionaries.
+
+    This function processes results from Redis, handling different storage
+    types and query types. For JSON storage with empty return fields, it
+    unpacks the JSON object while retaining the document ID. The 'payload'
+    field is also removed from all resulting documents for consistency.
+
+    Args:
+        results (AggregarteResult): The aggregart results from Redis.
+        query (AggregationQuery): The aggregation query object used for the aggregation.
+        storage_type (StorageType): The storage type of the search
+            index (json or hash).
+
+    Returns:
+        List[Dict[str, Any]]: A list of processed document dictionaries.
+    """
+
+    def _process(row):
+        result = make_dict(convert_bytes(row))
+        result.pop("__score", None)
+        return result
+
+    return [_process(r) for r in results.rows]
 
 
 class BaseSearchIndex:
@@ -627,6 +662,44 @@ class SearchIndex(BaseSearchIndex):
         if obj:
             return convert_bytes(obj[0])
         return None
+
+    def aggregate_query(
+        self, aggregation_query: AggregationQuery
+    ) -> List[Dict[str, Any]]:
+        """Execute an aggretation query and processes the results.
+
+        This method takes an AggregationHyridQuery object directly, runs the search, and
+        handles post-processing of the search.
+
+        Args:
+            aggregation_query (AggregationQuery): The aggregation query to run.
+
+        Returns:
+            List[Result]: A list of search results.
+
+        .. code-block:: python
+
+            from redisvl.query import HybridAggregationQuery
+
+            aggregation = HybridAggregationQuery(
+                text="the text to search for",
+                text_field="description",
+                vector=[0.16, -0.34, 0.98, 0.23],
+                vector_field="embedding",
+                num_results=3
+            )
+
+            results = index.aggregate_query(aggregation_query)
+
+        """
+        results = self.aggregate(
+            aggregation_query, query_params=aggregation_query.params
+        )
+        return process_aggregate_results(
+            results,
+            query=aggregation_query,
+            storage_type=self.schema.index.storage_type,
+        )
 
     def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.

@@ -1,11 +1,11 @@
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from redis.commands.search.aggregation import AggregateRequest, Desc
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
+from redisvl.utils.token_escaper import TokenEscaper
 
 
 class BaseQuery(RedisQuery):
@@ -667,7 +667,7 @@ class TextQuery(FilterQuery):
         sort_by: Optional[str] = None,
         in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
-        stopwords: Optional[Union[str, Iterable[str]]] = "english",
+        stopwords: Optional[Union[str, Set[str]]] = "english",
     ):
         """A query for running a full text and vector search, along with an optional
         filter expression.
@@ -695,7 +695,7 @@ class TextQuery(FilterQuery):
                 the offsets between them. Defaults to False.
             params (Optional[Dict[str, Any]], optional): The parameters for the query.
                 Defaults to None.
-            stopwords (Optional[Union[str, Iterable[str]]): The set of stop words to remove
+            stopwords (Optional[Union[str, Set[str]]): The set of stop words to remove
                 from the query text. If a language like 'english' or 'spanish' is provided
                 a default set of stopwords for that language will be used. Users may specify
                 their own stop words by providing a List or Set of words. if set to None,
@@ -736,7 +736,7 @@ class TextQuery(FilterQuery):
     def stopwords(self):
         return self._stopwords
 
-    def set_stopwords(self, stopwords: Optional[Union[str, Iterable[str]]] = "english"):
+    def set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
@@ -748,14 +748,15 @@ class TextQuery(FilterQuery):
                 self._stopwords = set(nltk_stopwords.words(stopwords))
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
-        elif isinstance(stopwords, Iterable) and isinstance(stopwords[0], str):
+        elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
+            isinstance(word, str) for word in stopwords
+        ):
             self._stopwords = set(stopwords)
         else:
-            raise TypeError("stopwords must be an Iterable set of strings")
+            raise TypeError("stopwords must be a set, list, or tuple of strings")
 
     def tokenize_and_escape_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs"""
-        from redisvl.utils.token_escaper import TokenEscaper
 
         escaper = TokenEscaper()
 
@@ -781,19 +782,3 @@ class TextQuery(FilterQuery):
         if filter_expression and filter_expression != "*":
             text += f"({filter_expression})"
         return text
-
-
-class HybridQuery(AggregateRequest):
-    def __init__(
-        self, text_query: TextQuery, vector_query: VectorQuery, alpha: float = 0.7
-    ):
-        """An aggregate query for running a hybrid full text and vector search.
-
-        Args:
-            text_query (TextQuery): The text query to run text search with.
-            vector_query (VectorQuery): The vector query to run vector search with.
-            alpha (float, optional): The amount to weight the vector similarity
-                score relative to the text similarity score. Defaults to 0.7
-
-        """
-        pass

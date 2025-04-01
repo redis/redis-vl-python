@@ -3,14 +3,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index.index import process_results
-from redisvl.query import (
-    CountQuery,
-    FilterQuery,
-    HybridQuery,
-    RangeQuery,
-    TextQuery,
-    VectorQuery,
-)
+from redisvl.query import CountQuery, FilterQuery, RangeQuery, TextQuery, VectorQuery
 from redisvl.query.filter import Tag
 from redisvl.query.query import VectorRangeQuery
 
@@ -276,10 +269,6 @@ def test_text_query():
 
     with pytest.raises(TypeError):
         text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
-
-
-def test_hybrid_query():
-    pass
 
 
 @pytest.mark.parametrize(
