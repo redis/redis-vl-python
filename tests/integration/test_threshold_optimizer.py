@@ -150,7 +150,7 @@ def test_routes_different_distance_thresholds_optimizer_precision(
     router_optimizer = RouterThresholdOptimizer(
         router, test_data_optimization, eval_metric="precision"
     )
-    router_optimizer.optimize(max_iterations=10)
+    router_optimizer.optimize(max_iterations=10, search_step=0.5)
 
     # test that it updated thresholds beyond the null case
     for route in routes:
@@ -186,7 +186,7 @@ def test_routes_different_distance_thresholds_optimizer_recall(
     router_optimizer = RouterThresholdOptimizer(
         router, test_data_optimization, eval_metric="recall"
     )
-    router_optimizer.optimize(max_iterations=10)
+    router_optimizer.optimize(max_iterations=10, search_step=0.5)
 
     # test that it updated thresholds beyond the null case
     for route in routes:
