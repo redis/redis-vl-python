@@ -812,7 +812,7 @@ class TextQuery(FilterQuery):
         else:
             filter_expression = ""
 
-        text = f"(~@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
+        text = f"(@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
         if filter_expression and filter_expression != "*":
             text += f"({filter_expression})"
         return text
