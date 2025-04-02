@@ -42,6 +42,7 @@ from redisvl.exceptions import (
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import (
     AggregationQuery,
+    BaseVectorQuery,
     BaseQuery,
     CountQuery,
     FilterQuery,

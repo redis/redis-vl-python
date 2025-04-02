@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
-from redisvl.redis.utils import array_to_buffer, denorm_cosine_distance
+from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.token_escaper import TokenEscaper
+from redisvl.utils.utils import denorm_cosine_distance
 
 
 class BaseQuery(RedisQuery):
@@ -811,7 +812,7 @@ class TextQuery(FilterQuery):
         else:
             filter_expression = ""
 
-        text = f"~(@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
+        text = f"(~@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
         if filter_expression and filter_expression != "*":
             text += f"({filter_expression})"
         return text

@@ -270,7 +270,6 @@ def test_text_query():
     with pytest.raises(TypeError):
         text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
-
     text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
     assert text_query.stopwords == set(["the", "a", "of"])
     assert (

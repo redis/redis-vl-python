@@ -13,8 +13,6 @@ sample_text = "the toon squad play basketball against a gang of aliens"
 
 
 # Test Cases
-
-
 def test_aggregate_hybrid_query():
     text_field_name = "description"
     vector_field_name = "embedding"
@@ -34,10 +32,6 @@ def test_aggregate_hybrid_query():
     assert hybrid_query._vector == sample_vector
     assert hybrid_query._vector_field == vector_field_name
     assert hybrid_query._scorer == "BM25STD"
-    # assert (
-    #    hybrid_query.filter
-    #    == f"(@{text_field_name}:({hybrid_query.tokenize_and_escape_query(text_string)}))"
-    # )
     assert hybrid_query._filter_expression == None
     assert hybrid_query._alpha == 0.7
     assert hybrid_query._num_results == 10
@@ -72,10 +66,6 @@ def test_aggregate_hybrid_query():
     assert hybrid_query._vector == sample_vector
     assert hybrid_query._vector_field == vector_field_name
     assert hybrid_query._scorer == scorer
-    # assert (
-    #    hybrid_query.filter
-    #    == f"(@{text_field_name}:({hybrid_query.tokenize_and_escape_query(text_string)}))"
-    # )
     assert hybrid_query._filter_expression == filter_expression
     assert hybrid_query._alpha == 0.5
     assert hybrid_query._num_results == 8
@@ -83,36 +73,43 @@ def test_aggregate_hybrid_query():
     assert hybrid_query._dialect == 2
     assert hybrid_query.stopwords == set()
 
-    return
-
     # Test stopwords are configurable
-    hybrid_query = HybridAggregationQuery(text_string, text_field_name, stopwords=None)
+    hybrid_query = HybridAggregationQuery(
+        sample_text, text_field_name, sample_vector, vector_field_name, stopwords=None
+    )
     assert hybrid_query.stopwords == set([])
-    # assert (
-    #    hyrid_query.filter
-    #    == f"(@{text_field_name}:({hyrid_query.tokenize_and_escape_query(text_string)}))"
-    # )
-
-    hyrid_query = HybridAggregationQuery(
-        text_string, text_field_name, stopwords=["the", "a", "of"]
-    )
-    assert hybrid_query.stopwords == set(["the", "a", "of"])
-    assert (
-        hybrid_query.filter
-        == f"(@{text_field_name}:({hybrid_query.tokenize_and_escape_query(text_string)}))"
-    )
 
     hybrid_query = HybridAggregationQuery(
-        text_string, text_field_name, stopwords="german"
+        sample_text,
+        text_field_name,
+        sample_vector,
+        vector_field_name,
+        stopwords=["the", "a", "of"],
+    )
+    assert hybrid_query.stopwords == set(["the", "a", "of"])
+    hybrid_query = HybridAggregationQuery(
+        sample_text,
+        text_field_name,
+        sample_vector,
+        vector_field_name,
+        stopwords="german",
     )
     assert hybrid_query.stopwords != set([])
 
     with pytest.raises(ValueError):
         hybrid_query = HybridAggregationQuery(
-            text_string, text_field_name, stopwords="gibberish"
+            sample_text,
+            text_field_name,
+            sample_vector,
+            vector_field_name,
+            stopwords="gibberish",
         )
 
     with pytest.raises(TypeError):
         hybrid_query = HybridAggregationQuery(
-            text_string, text_field_name, stopwords=[1, 2, 3]
+            sample_text,
+            text_field_name,
+            sample_vector,
+            vector_field_name,
+            stopwords=[1, 2, 3],
         )
