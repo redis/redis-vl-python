@@ -691,7 +691,7 @@ class TextQuery(FilterQuery):
     def __init__(
         self,
         text: str,
-        text_field: str,
+        text_field_name: str,
         text_scorer: str = "BM25STD",
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         return_fields: Optional[List[str]] = None,
@@ -708,7 +708,7 @@ class TextQuery(FilterQuery):
 
         Args:
             text (str): The text string to perform the text search with.
-            text_field (str): The name of the document field to perform text search on.
+            text_field_name (str): The name of the document field to perform text search on.
             text_scorer (str, optional): The text scoring algorithm to use.
                 Defaults to BM25STD. Options are {TFIDF, BM25STD, BM25, DOCNORM, DISMAX, DOCSCORE}.
                 See https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/scoring/
@@ -740,7 +740,7 @@ class TextQuery(FilterQuery):
             TypeError: If stopwords is not a valid iterable set of strings.
         """
         self._text = text
-        self._text_field = text_field
+        self._text_field = text_field_name
         self._text_scorer = text_scorer
         self._num_results = num_results
 

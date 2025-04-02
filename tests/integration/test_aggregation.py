@@ -1,8 +1,8 @@
-from datetime import timedelta
-
 import pytest
 from redis.commands.search.aggregation import AggregateResult
 from redis.commands.search.result import Result
+
+from redisvl.redis.connection import compare_versions
 
 from redisvl.index import SearchIndex
 from redisvl.query import HybridAggregationQuery
@@ -13,31 +13,12 @@ from redisvl.query.filter import (
     Num,
     Tag,
     Text,
-    Timestamp,
 )
 from redisvl.redis.utils import array_to_buffer
-
-# TODO expand to multiple schema types and sync + async
-
-vector = ([0.1, 0.1, 0.5],)
-vector_field_name = ("user_embedding",)
-return_fields = (
-    [
-        "user",
-        "credit_score",
-        "age",
-        "job",
-        "location",
-        "last_updated",
-    ],
-)
-filter_expression = (Tag("credit_score") == "high",)
-distance_threshold = (0.2,)
 
 
 @pytest.fixture
 def index(sample_data, redis_url):
-    # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
@@ -70,7 +51,7 @@ def index(sample_data, redis_url):
     # create the index (no data yet)
     index.create(overwrite=True)
 
-    # Prepare and load the data
+    # prepare and load the data
     def hash_preprocess(item: dict) -> dict:
         return {
             **item,
@@ -87,7 +68,10 @@ def index(sample_data, redis_url):
 
 
 def test_aggregation_query(index):
-    # *=>[KNN 7 @user_embedding $vector AS vector_distance]
+    redis_version = index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -96,9 +80,9 @@ def test_aggregation_query(index):
 
     hybrid_query = HybridAggregationQuery(
         text=text,
-        text_field=text_field,
+        text_field_name=text_field,
         vector=vector,
-        vector_field=vector_field,
+        vector_field_name=vector_field,
         return_fields=return_fields,
     )
 
@@ -106,7 +90,6 @@ def test_aggregation_query(index):
     assert isinstance(results, list)
     assert len(results) == 7
     for doc in results:
-        # ensure all return fields present
         assert doc["user"] in [
             "john",
             "derrick",
@@ -121,12 +104,11 @@ def test_aggregation_query(index):
         assert doc["job"] in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
         assert doc["credit_score"] in ["high", "low", "medium"]
 
-    # test num_results
     hybrid_query = HybridAggregationQuery(
         text=text,
-        text_field=text_field,
+        text_field_name=text_field,
         vector=vector,
-        vector_field=vector_field,
+        vector_field_name=vector_field,
         num_results=3,
     )
 
@@ -139,7 +121,7 @@ def test_aggregation_query(index):
     )
 
 
-def test_empty_query_string(index):
+def test_empty_query_string():
     text = ""
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -149,30 +131,86 @@ def test_empty_query_string(index):
     # test if text is empty
     with pytest.raises(ValueError):
         hybrid_query = HybridAggregationQuery(
-            text=text, text_field=text_field, vector=vector, vector_field=vector_field
+            text=text, text_field_name=text_field, vector=vector, vector_field_name=vector_field
         )
 
     # test if text becomes empty after stopwords are removed
     text = "with a for but and"  # will all be removed as default stopwords
     with pytest.raises(ValueError):
         hybrid_query = HybridAggregationQuery(
-            text=text, text_field=text_field, vector=vector, vector_field=vector_field
+            text=text, text_field_name=text_field, vector=vector, vector_field_name=vector_field
         )
 
+def test_aggregation_query_filter(index):
+    redis_version = index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
 
-def test_aggregate_query_stopwords(index):
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
-    return
-    # test num_results
+    filter_expression = (Tag("credit_score") == ("high")) & (Num("age") > 30)
+
     hybrid_query = HybridAggregationQuery(
         text=text,
-        text_field=text_field,
+        text_field_name=text_field,
         vector=vector,
-        vector_field=vector_field,
+        vector_field_name=vector_field,
+        filter_expression=filter_expression,
+        return_fields=return_fields,
+    )
+
+    results = index.aggregate_query(hybrid_query)
+    assert len(results) == 3
+    for result in results:
+        assert result["credit_score"] == "high"
+        assert int(result["age"]) > 30
+
+
+def test_aggregation_query_with_geo_filter(index):
+    redis_version = index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+    filter_expression = Geo("location") == GeoRadius(37.7749, -122.4194, 1000)
+
+    hybrid_query = HybridAggregationQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        filter_expression=filter_expression,
+        return_fields=return_fields,
+    )
+
+    results = index.aggregate_query(hybrid_query)
+    assert len(results) == 3
+    for result in results:
+        assert result["location"] is not None
+
+
+def test_aggregate_query_stopwords(index):
+    redis_version = index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+
+    hybrid_query = HybridAggregationQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
         alpha=0.5,
         stopwords=["medical", "expertise"],
     )
@@ -182,3 +220,30 @@ def test_aggregate_query_stopwords(index):
     for r in results:
         assert r["text_score"] == 0
         assert r["hybrid_score"] == 0.5 * r["vector_similarity"]
+
+
+def test_aggregate_query_text_filter(index):
+    redis_version = index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+    filter_expression = (Text("description") == ("medical")) | (Text("job") % ("doct*"))
+
+    hybrid_query = HybridAggregationQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        alpha=0.5,
+        filter_expression=filter_expression
+        )
+
+    results = index.aggregate_query(hybrid_query)
+    assert len(results) == 7
+    for result in results:
+        assert result["text_score"] == 0
+        assert result["hybrid_score"] == 0.5 * result["vector_similarity"]

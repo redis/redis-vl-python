@@ -32,9 +32,9 @@ class HybridAggregationQuery(AggregationQuery):
     def __init__(
         self,
         text: str,
-        text_field: str,
+        text_field_name: str,
         vector: Union[bytes, List[float]],
-        vector_field: str,
+        vector_field_name: str,
         text_scorer: str = "BM25STD",
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         alpha: float = 0.7,
@@ -42,16 +42,16 @@ class HybridAggregationQuery(AggregationQuery):
         num_results: int = 10,
         return_fields: Optional[List[str]] = None,
         stopwords: Optional[Union[str, Set[str]]] = "english",
-        dialect: int = 4,
+        dialect: int = 2,
     ):
         """
         Instantiages a HybridAggregationQuery object.
 
         Args:
             text (str): The text to search for.
-            text_field (str): The text field name to search in.
+            text_field_name (str): The text field name to search in.
             vector (Union[bytes, List[float]]): The vector to perform vector similarity search.
-            vector_field (str): The vector field name to search in.
+            vector_field_name (str): The vector field name to search in.
             text_scorer (str, optional): The text scorer to use. Options are {TFIDF, TFIDF.DOCNORM,
                 BM25, DISMAX, DOCSCORE, BM25STD}. Defaults to "BM25STD".
             filter_expression (Optional[FilterExpression], optional): The filter expression to use.
@@ -67,7 +67,7 @@ class HybridAggregationQuery(AggregationQuery):
                 provided then a default set of stopwords for that language will be used. if a list,
                 set, or tuple of strings is provided then those will be used as stopwords.
                 Defaults to "english". if set to "None" then no stopwords will be removed.
-            dialect (int, optional): The Redis dialect version. Defaults to 4.
+            dialect (int, optional): The Redis dialect version. Defaults to 2.
 
         Raises:
             ValueError: If the text string is empty, or if the text string becomes empty after
@@ -82,9 +82,9 @@ class HybridAggregationQuery(AggregationQuery):
 
             query = HybridAggregationQuery(
                 text="example text",
-                text_field="text_field",
+                text_field_name="text_field",
                 vector=[0.1, 0.2, 0.3],
-                vector_field="vector_field",
+                vector_field_name="vector_field",
                 text_scorer="BM25STD",
                 filter_expression=None,
                 alpha=0.7,
@@ -102,9 +102,9 @@ class HybridAggregationQuery(AggregationQuery):
             raise ValueError("text string cannot be empty")
 
         self._text = text
-        self._text_field = text_field
+        self._text_field = text_field_name
         self._vector = vector
-        self._vector_field = vector_field
+        self._vector_field = vector_field_name
         self._filter_expression = filter_expression
         self._alpha = alpha
         self._dtype = dtype
@@ -112,6 +112,9 @@ class HybridAggregationQuery(AggregationQuery):
         self.set_stopwords(stopwords)
 
         query_string = self._build_query_string()
+        ####
+        print('query_string: ', query_string)
+        ####
         super().__init__(query_string)
 
         self.scorer(text_scorer)  # type: ignore[attr-defined]
