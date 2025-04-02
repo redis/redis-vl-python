@@ -58,6 +58,7 @@ mistralai = ["mistralai"]
 voyageai = ["voyageai"]
 ranx = ["ranx"]
 bedrock = ["boto3"]
+nltk = ["nltk"]
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

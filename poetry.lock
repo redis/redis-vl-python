@@ -747,6 +747,7 @@ files = [
     {file = "click-8.1.8-py3-none-any.whl", hash = "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2"},
     {file = "click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a"},
 ]
+markers = {main = "extra == \"nltk\""}
 
 [package.dependencies]
 colorama = {version = "*", markers = "platform_system == \"Windows\""}
@@ -786,7 +787,7 @@ files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
 ]
-markers = {main = "platform_system == \"Windows\"", dev = "platform_system == \"Windows\" or sys_platform == \"win32\"", docs = "platform_system == \"Windows\" or sys_platform == \"win32\""}
+markers = {main = "platform_system == \"Windows\" and (extra == \"nltk\" or extra == \"openai\" or extra == \"sentence-transformers\" or extra == \"cohere\" or extra == \"ranx\") and (extra == \"nltk\" or extra == \"openai\" or extra == \"sentence-transformers\" or extra == \"cohere\" or python_version >= \"3.10\")", dev = "platform_system == \"Windows\" or sys_platform == \"win32\"", docs = "platform_system == \"Windows\" or sys_platform == \"win32\""}
 
 [[package]]
 name = "coloredlogs"
@@ -2806,6 +2807,7 @@ description = "Lightweight pipelining with Python functions"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"nltk\" or extra == \"sentence-transformers\""
 files = [
     {file = "joblib-1.4.2-py3-none-any.whl", hash = "sha256:06d478d5674cbc267e7496a410ee875abd68e4340feff4490bcb7afb88060ae6"},
     {file = "joblib-1.4.2.tar.gz", hash = "sha256:2382c5816b2636fbd20a09e0f4e9dad4736765fdfb7dca582943b9c1366b3f0e"},
@@ -3984,6 +3986,7 @@ description = "Natural Language Toolkit"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"nltk\""
 files = [
     {file = "nltk-3.9.1-py3-none-any.whl", hash = "sha256:4fa26829c5b00715afe3061398a8989dc643b92ce7dd93fb4585a70930d168a1"},
     {file = "nltk-3.9.1.tar.gz", hash = "sha256:87d127bd3de4bd89a4f81265e5fa59cb1b199b27440175370f7417d2bc7ae868"},
@@ -5694,6 +5697,7 @@ description = "Alternative regular expression module, to replace re."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"nltk\" or extra == \"sentence-transformers\""
 files = [
     {file = "regex-2024.11.6-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:ff590880083d60acc0433f9c3f713c51f7ac6ebb9adf889c79a261ecf541aa91"},
     {file = "regex-2024.11.6-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:658f90550f38270639e83ce492f27d2c8d2cd63805c65a13a14d36ca126753f0"},
@@ -6999,6 +7003,7 @@ description = "Fast, Extensible Progress Meter"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
+markers = "(extra == \"nltk\" or extra == \"openai\" or extra == \"sentence-transformers\" or extra == \"cohere\" or extra == \"ranx\") and (extra == \"nltk\" or extra == \"openai\" or extra == \"sentence-transformers\" or extra == \"cohere\") or (extra == \"nltk\" or extra == \"openai\" or extra == \"sentence-transformers\" or extra == \"cohere\" or extra == \"ranx\") and python_version >= \"3.10\""
 files = [
     {file = "tqdm-4.67.1-py3-none-any.whl", hash = "sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2"},
     {file = "tqdm-4.67.1.tar.gz", hash = "sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2"},
@@ -7704,6 +7709,7 @@ files = [
 bedrock = ["boto3"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
+nltk = ["nltk"]
 openai = ["openai"]
 ranx = ["ranx"]
 sentence-transformers = ["scipy", "scipy", "sentence-transformers"]
@@ -7713,4 +7719,4 @@ voyageai = ["voyageai"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.14"
-content-hash = "31caa5fcd726203ef2d950c07ae16690e85509f4e857696030fc091263fcd9f9"
+content-hash = "52db593aa7e849c77d41201044adb215e57151dfe8c2da7be4ddfe381b27e230"
