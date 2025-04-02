@@ -8,8 +8,8 @@ on:
       - main
 
   schedule:
-    - cron: "0 2 * * *"  # 2 AM UTC nightly
-  
+    - cron: "0 2 * * *" # 2 AM UTC nightly
+
   workflow_dispatch:
 
 env:
