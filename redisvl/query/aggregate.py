@@ -114,14 +114,14 @@ class HybridAggregationQuery(AggregationQuery):
         query_string = self._build_query_string()
         super().__init__(query_string)
 
-        self.scorer(text_scorer)
-        self.add_scores()
+        self.scorer(text_scorer)  # type: ignore[attr-defined]
+        self.add_scores()  # type: ignore[attr-defined]
         self.apply(
             vector_similarity=f"(2 - @{self.DISTANCE_ID})/2", text_score="@__score"
         )
         self.apply(hybrid_score=f"{1-alpha}*@text_score + {alpha}*@vector_similarity")
         self.sort_by(Desc("@hybrid_score"), max=num_results)
-        self.dialect(dialect)
+        self.dialect(dialect)  # type: ignore[attr-defined]
 
         if return_fields:
             self.load(*return_fields)

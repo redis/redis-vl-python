@@ -42,8 +42,8 @@ from redisvl.exceptions import (
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import (
     AggregationQuery,
-    BaseVectorQuery,
     BaseQuery,
+    BaseVectorQuery,
     CountQuery,
     FilterQuery,
     HybridAggregationQuery,
@@ -716,7 +716,7 @@ class SearchIndex(BaseSearchIndex):
 
         """
         results = self.aggregate(
-            aggregation_query, query_params=aggregation_query.params
+            aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
         )
         return process_aggregate_results(
             results,
