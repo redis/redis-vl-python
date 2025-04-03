@@ -112,9 +112,6 @@ class HybridAggregationQuery(AggregationQuery):
         self.set_stopwords(stopwords)
 
         query_string = self._build_query_string()
-        ####
-        print('query_string: ', query_string)
-        ####
         super().__init__(query_string)
 
         self.scorer(text_scorer)  # type: ignore[attr-defined]
@@ -125,7 +122,6 @@ class HybridAggregationQuery(AggregationQuery):
         self.apply(hybrid_score=f"{1-alpha}*@text_score + {alpha}*@vector_similarity")
         self.sort_by(Desc("@hybrid_score"), max=num_results)
         self.dialect(dialect)  # type: ignore[attr-defined]
-
         if return_fields:
             self.load(*return_fields)
 
@@ -216,9 +212,9 @@ class HybridAggregationQuery(AggregationQuery):
         # base KNN query
         knn_query = f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}"
 
-        text = f"(~@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
+        text = f"(~@{self._text_field}:({self.tokenize_and_escape_query(self._text)})"
 
         if filter_expression and filter_expression != "*":
-            text += f"({filter_expression})"
+            text += f" AND {filter_expression}"
 
-        return f"{text}=>[{knn_query}]"
+        return f"{text})=>[{knn_query}]"

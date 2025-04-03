@@ -19,9 +19,9 @@ def test_aggregate_hybrid_query():
 
     hybrid_query = HybridAggregationQuery(
         text=sample_text,
-        text_field=text_field_name,
+        text_field_name=text_field_name,
         vector=sample_vector,
-        vector_field=vector_field_name,
+        vector_field_name=vector_field_name,
     )
 
     assert isinstance(hybrid_query, AggregateRequest)
@@ -49,9 +49,9 @@ def test_aggregate_hybrid_query():
 
     hybrid_query = HybridAggregationQuery(
         text=sample_text,
-        text_field=text_field_name,
+        text_field_name=text_field_name,
         vector=sample_vector,
-        vector_field=vector_field_name,
+        vector_field_name=vector_field_name,
         text_scorer=scorer,
         filter_expression=filter_expression,
         alpha=alpha,

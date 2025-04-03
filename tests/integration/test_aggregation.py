@@ -2,18 +2,10 @@ import pytest
 from redis.commands.search.aggregation import AggregateResult
 from redis.commands.search.result import Result
 
-from redisvl.redis.connection import compare_versions
-
 from redisvl.index import SearchIndex
 from redisvl.query import HybridAggregationQuery
-from redisvl.query.filter import (
-    FilterExpression,
-    Geo,
-    GeoRadius,
-    Num,
-    Tag,
-    Text,
-)
+from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
+from redisvl.redis.connection import compare_versions
 from redisvl.redis.utils import array_to_buffer
 
 
@@ -131,17 +123,24 @@ def test_empty_query_string():
     # test if text is empty
     with pytest.raises(ValueError):
         hybrid_query = HybridAggregationQuery(
-            text=text, text_field_name=text_field, vector=vector, vector_field_name=vector_field
+            text=text,
+            text_field_name=text_field,
+            vector=vector,
+            vector_field_name=vector_field,
         )
 
     # test if text becomes empty after stopwords are removed
     text = "with a for but and"  # will all be removed as default stopwords
     with pytest.raises(ValueError):
         hybrid_query = HybridAggregationQuery(
-            text=text, text_field_name=text_field, vector=vector, vector_field_name=vector_field
+            text=text,
+            text_field_name=text_field,
+            vector=vector,
+            vector_field_name=vector_field,
         )
 
-def test_aggregation_query_filter(index):
+
+def test_aggregation_query_with_filter(index):
     redis_version = index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.2.0"):
         pytest.skip("Not using a late enough version of Redis")
@@ -163,7 +162,7 @@ def test_aggregation_query_filter(index):
     )
 
     results = index.aggregate_query(hybrid_query)
-    assert len(results) == 3
+    assert len(results) == 2
     for result in results:
         assert result["credit_score"] == "high"
         assert int(result["age"]) > 30
@@ -179,7 +178,7 @@ def test_aggregation_query_with_geo_filter(index):
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
-    filter_expression = Geo("location") == GeoRadius(37.7749, -122.4194, 1000)
+    filter_expression = Geo("location") == GeoRadius(-122.4194, 37.7749, 1000, "m")
 
     hybrid_query = HybridAggregationQuery(
         text=text,
@@ -196,6 +195,36 @@ def test_aggregation_query_with_geo_filter(index):
         assert result["location"] is not None
 
 
+@pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
+def test_aggregate_query_alpha(index, alpha):
+    redis_version = index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.2.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+
+    hybrid_query = HybridAggregationQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        alpha=alpha,
+    )
+
+    results = index.aggregate_query(hybrid_query)
+    assert len(results) == 7
+    for result in results:
+        score = alpha * float(result["vector_similarity"]) + (1 - alpha) * float(
+            result["text_score"]
+        )
+        assert (
+            float(result["hybrid_score"]) - score <= 0.0001
+        )  # allow for small floating point error
+
+
 def test_aggregate_query_stopwords(index):
     redis_version = index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.2.0"):
@@ -205,24 +234,34 @@ def test_aggregate_query_stopwords(index):
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
+    alpha = 0.5
 
     hybrid_query = HybridAggregationQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
         vector_field_name=vector_field,
-        alpha=0.5,
+        alpha=alpha,
         stopwords=["medical", "expertise"],
     )
 
+    query_string = hybrid_query._build_query_string()
+
+    assert "medical" not in query_string
+    assert "expertize" not in query_string
+
     results = index.aggregate_query(hybrid_query)
     assert len(results) == 7
-    for r in results:
-        assert r["text_score"] == 0
-        assert r["hybrid_score"] == 0.5 * r["vector_similarity"]
+    for result in results:
+        score = alpha * float(result["vector_similarity"]) + (1 - alpha) * float(
+            result["text_score"]
+        )
+        assert (
+            float(result["hybrid_score"]) - score <= 0.0001
+        )  # allow for small floating point error
 
 
-def test_aggregate_query_text_filter(index):
+def test_aggregate_query_with_text_filter(index):
     redis_version = index.client.info()["redis_version"]
     if not compare_versions(redis_version, "7.2.0"):
         pytest.skip("Not using a late enough version of Redis")
@@ -231,19 +270,39 @@ def test_aggregate_query_text_filter(index):
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
-    filter_expression = (Text("description") == ("medical")) | (Text("job") % ("doct*"))
+    filter_expression = Text(text_field) == ("medical")
 
+    # make sure we can still apply filters to the same text field we are querying
     hybrid_query = HybridAggregationQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
         vector_field_name=vector_field,
         alpha=0.5,
-        filter_expression=filter_expression
-        )
+        filter_expression=filter_expression,
+        return_fields=["job", "description"],
+    )
 
     results = index.aggregate_query(hybrid_query)
-    assert len(results) == 7
+    assert len(results) == 2
     for result in results:
-        assert result["text_score"] == 0
-        assert result["hybrid_score"] == 0.5 * result["vector_similarity"]
+        assert "medical" in result[text_field].lower()
+
+    filter_expression = (Text(text_field) == ("medical")) & (
+        (Text(text_field) != ("research"))
+    )
+    hybrid_query = HybridAggregationQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        alpha=0.5,
+        filter_expression=filter_expression,
+        return_fields=["description"],
+    )
+
+    results = index.aggregate_query(hybrid_query)
+    assert len(results) == 2
+    for result in results:
+        assert "medical" in result[text_field].lower()
+        assert "research" not in result[text_field].lower()

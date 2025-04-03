@@ -687,7 +687,7 @@ class RangeQuery(VectorRangeQuery):
     pass
 
 
-class TextQuery(FilterQuery):
+class TextQuery(BaseQuery):
     def __init__(
         self,
         text: str,
@@ -747,21 +747,25 @@ class TextQuery(FilterQuery):
         self.set_stopwords(stopwords)
         self.set_filter(filter_expression)
 
+        if params:
+            self._params = params
+
+        self._num_results = num_results
+
+        # initialize the base query with the full query string and filter expression
         query_string = self._build_query_string()
+        super().__init__(query_string)
 
-        super().__init__(
-            query_string,
-            return_fields=return_fields,
-            num_results=num_results,
-            dialect=dialect,
-            sort_by=sort_by,
-            in_order=in_order,
-            params=params,
-        )
-
-        # Handle query modifiers
-        self.scorer(self._text_scorer)
+        # Handle query settings
+        if return_fields:
+            self.return_fields(*return_fields)
         self.paging(0, self._num_results).dialect(dialect)
+
+        if sort_by:
+            self.sort_by(sort_by)
+
+        if in_order:
+            self.in_order()
 
         if return_score:
             self.with_scores()
@@ -812,7 +816,7 @@ class TextQuery(FilterQuery):
         else:
             filter_expression = ""
 
-        text = f"(@{self._text_field}:({self.tokenize_and_escape_query(self._text)}))"
+        text = f"@{self._text_field}:({self.tokenize_and_escape_query(self._text)})"
         if filter_expression and filter_expression != "*":
-            text += f"({filter_expression})"
+            text += f" AND {filter_expression}"
         return text
