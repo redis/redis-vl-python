@@ -46,7 +46,7 @@ from redisvl.query import (
     BaseVectorQuery,
     CountQuery,
     FilterQuery,
-    HybridAggregationQuery,
+    HybridQuery,
 )
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
@@ -686,35 +686,8 @@ class SearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
-    def aggregate_query(
-        self, aggregation_query: AggregationQuery
-    ) -> List[Dict[str, Any]]:
-        """Execute an aggretation query and processes the results.
-
-        This method takes an AggregationHyridQuery object directly, runs the search, and
-        handles post-processing of the search.
-
-        Args:
-            aggregation_query (AggregationQuery): The aggregation query to run.
-
-        Returns:
-            List[Result]: A list of search results.
-
-        .. code-block:: python
-
-            from redisvl.query import HybridAggregationQuery
-
-            aggregation = HybridAggregationQuery(
-                text="the text to search for",
-                text_field="description",
-                vector=[0.16, -0.34, 0.98, 0.23],
-                vector_field="embedding",
-                num_results=3
-            )
-
-            results = index.aggregate_query(aggregation_query)
-
-        """
+    def _aggregate(self, aggregation_query: AggregationQuery) -> List[Dict[str, Any]]:
+        """Execute an aggretation query and processes the results."""
         results = self.aggregate(
             aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
         )
@@ -846,7 +819,7 @@ class SearchIndex(BaseSearchIndex):
         results = self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    def query(self, query: Union[BaseQuery, AggregationQuery]) -> List[Dict[str, Any]]:
         """Execute a query on the index.
 
         This method takes a BaseQuery object directly, runs the search, and
@@ -871,7 +844,10 @@ class SearchIndex(BaseSearchIndex):
             results = index.query(query)
 
         """
-        return self._query(query)
+        if isinstance(query, AggregationQuery):
+            return self._aggregate(query)
+        else:
+            return self._query(query)
 
     def paginate(self, query: BaseQuery, page_size: int = 30) -> Generator:
         """Execute a given query against the index and return results in
@@ -1377,6 +1353,19 @@ class AsyncSearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
+    async def _aggregate(
+        self, aggregation_query: AggregationQuery
+    ) -> List[Dict[str, Any]]:
+        """Execute an aggretation query and processes the results."""
+        results = await self.aggregate(
+            aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
+        )
+        return process_aggregate_results(
+            results,
+            query=aggregation_query,
+            storage_type=self.schema.index.storage_type,
+        )
+
     async def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
 
@@ -1500,14 +1489,16 @@ class AsyncSearchIndex(BaseSearchIndex):
         results = await self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    async def query(
+        self, query: Union[BaseQuery, AggregationQuery]
+    ) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
-        This method takes a BaseQuery object directly, runs the search, and
-        handles post-processing of the search.
+        This method takes a BaseQuery or AggregationQuery object directly, runs
+        the search, and handles post-processing of the search.
 
         Args:
-            query (BaseQuery): The query to run.
+            query Union(BaseQuery, AggregationQuery): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1524,7 +1515,10 @@ class AsyncSearchIndex(BaseSearchIndex):
 
             results = await index.query(query)
         """
-        return await self._query(query)
+        if isinstance(query, AggregationQuery):
+            return await self._aggregate(query)
+        else:
+            return await self._query(query)
 
     async def paginate(self, query: BaseQuery, page_size: int = 30) -> AsyncGenerator:
         """Execute a given query against the index and return results in

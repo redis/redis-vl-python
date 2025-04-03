@@ -196,6 +196,7 @@ def test_text_query():
         text=text_string,
         text_field_name=text_field_name,
         return_fields=return_fields,
+        text_scorer="BM25",
         return_score=False,
     )
 

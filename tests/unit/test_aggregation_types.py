@@ -4,7 +4,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index.index import process_results
-from redisvl.query.aggregate import HybridAggregationQuery
+from redisvl.query.aggregate import HybridQuery
 from redisvl.query.filter import Tag
 
 # Sample data for testing
@@ -17,7 +17,7 @@ def test_aggregate_hybrid_query():
     text_field_name = "description"
     vector_field_name = "embedding"
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=sample_text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -47,7 +47,7 @@ def test_aggregate_hybrid_query():
     stopwords = []
     dialect = 2
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=sample_text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -74,12 +74,12 @@ def test_aggregate_hybrid_query():
     assert hybrid_query.stopwords == set()
 
     # Test stopwords are configurable
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         sample_text, text_field_name, sample_vector, vector_field_name, stopwords=None
     )
     assert hybrid_query.stopwords == set([])
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         sample_text,
         text_field_name,
         sample_vector,
@@ -87,7 +87,7 @@ def test_aggregate_hybrid_query():
         stopwords=["the", "a", "of"],
     )
     assert hybrid_query.stopwords == set(["the", "a", "of"])
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         sample_text,
         text_field_name,
         sample_vector,
@@ -97,7 +97,7 @@ def test_aggregate_hybrid_query():
     assert hybrid_query.stopwords != set([])
 
     with pytest.raises(ValueError):
-        hybrid_query = HybridAggregationQuery(
+        hybrid_query = HybridQuery(
             sample_text,
             text_field_name,
             sample_vector,
@@ -106,7 +106,7 @@ def test_aggregate_hybrid_query():
         )
 
     with pytest.raises(TypeError):
-        hybrid_query = HybridAggregationQuery(
+        hybrid_query = HybridQuery(
             sample_text,
             text_field_name,
             sample_vector,

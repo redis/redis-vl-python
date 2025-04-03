@@ -19,9 +19,9 @@ class AggregationQuery(AggregateRequest):
         super().__init__(query_string)
 
 
-class HybridAggregationQuery(AggregationQuery):
+class HybridQuery(AggregationQuery):
     """
-    HybridAggregationQuery combines text and vector search in Redis.
+    HybridQuery combines text and vector search in Redis.
     It allows you to perform a hybrid search using both text and vector similarity.
     It scores documents based on a weighted combination of text and vector similarity.
     """
@@ -45,7 +45,7 @@ class HybridAggregationQuery(AggregationQuery):
         dialect: int = 2,
     ):
         """
-        Instantiages a HybridAggregationQuery object.
+        Instantiages a HybridQuery object.
 
         Args:
             text (str): The text to search for.
@@ -75,12 +75,12 @@ class HybridAggregationQuery(AggregationQuery):
             TypeError: If the stopwords are not a set, list, or tuple of strings.
 
         .. code-block:: python
-            from redisvl.query.aggregate import HybridAggregationQuery
+            from redisvl.query import HybridQuery
             from redisvl.index import SearchIndex
 
-            index = SearchIndex("my_index")
+            index = SearchIndex.from_yaml(index.yaml)
 
-            query = HybridAggregationQuery(
+            query = HybridQuery(
                 text="example text",
                 text_field_name="text_field",
                 vector=[0.1, 0.2, 0.3],
@@ -92,10 +92,10 @@ class HybridAggregationQuery(AggregationQuery):
                 num_results=10,
                 return_fields=["field1", "field2"],
                 stopwords="english",
-                dialect=4,
+                dialect=2,
             )
 
-            results = index.aggregate_query(query)
+            results = index.query(query)
         """
 
         if not text.strip():

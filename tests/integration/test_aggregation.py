@@ -3,7 +3,7 @@ from redis.commands.search.aggregation import AggregateResult
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import HybridAggregationQuery
+from redisvl.query import HybridQuery
 from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.connection import compare_versions
 from redisvl.redis.utils import array_to_buffer
@@ -70,7 +70,7 @@ def test_aggregation_query(index):
     vector_field = "user_embedding"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -78,7 +78,7 @@ def test_aggregation_query(index):
         return_fields=return_fields,
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert isinstance(results, list)
     assert len(results) == 7
     for doc in results:
@@ -96,7 +96,7 @@ def test_aggregation_query(index):
         assert doc["job"] in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
         assert doc["credit_score"] in ["high", "low", "medium"]
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -104,7 +104,7 @@ def test_aggregation_query(index):
         num_results=3,
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 3
     assert (
         results[0]["hybrid_score"]
@@ -122,7 +122,7 @@ def test_empty_query_string():
 
     # test if text is empty
     with pytest.raises(ValueError):
-        hybrid_query = HybridAggregationQuery(
+        hybrid_query = HybridQuery(
             text=text,
             text_field_name=text_field,
             vector=vector,
@@ -132,7 +132,7 @@ def test_empty_query_string():
     # test if text becomes empty after stopwords are removed
     text = "with a for but and"  # will all be removed as default stopwords
     with pytest.raises(ValueError):
-        hybrid_query = HybridAggregationQuery(
+        hybrid_query = HybridQuery(
             text=text,
             text_field_name=text_field,
             vector=vector,
@@ -152,7 +152,7 @@ def test_aggregation_query_with_filter(index):
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
     filter_expression = (Tag("credit_score") == ("high")) & (Num("age") > 30)
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -161,7 +161,7 @@ def test_aggregation_query_with_filter(index):
         return_fields=return_fields,
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 2
     for result in results:
         assert result["credit_score"] == "high"
@@ -180,7 +180,7 @@ def test_aggregation_query_with_geo_filter(index):
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
     filter_expression = Geo("location") == GeoRadius(-122.4194, 37.7749, 1000, "m")
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -189,7 +189,7 @@ def test_aggregation_query_with_geo_filter(index):
         return_fields=return_fields,
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 3
     for result in results:
         assert result["location"] is not None
@@ -206,7 +206,7 @@ def test_aggregate_query_alpha(index, alpha):
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -214,7 +214,7 @@ def test_aggregate_query_alpha(index, alpha):
         alpha=alpha,
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 7
     for result in results:
         score = alpha * float(result["vector_similarity"]) + (1 - alpha) * float(
@@ -236,7 +236,7 @@ def test_aggregate_query_stopwords(index):
     vector_field = "user_embedding"
     alpha = 0.5
 
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -250,7 +250,7 @@ def test_aggregate_query_stopwords(index):
     assert "medical" not in query_string
     assert "expertize" not in query_string
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 7
     for result in results:
         score = alpha * float(result["vector_similarity"]) + (1 - alpha) * float(
@@ -273,7 +273,7 @@ def test_aggregate_query_with_text_filter(index):
     filter_expression = Text(text_field) == ("medical")
 
     # make sure we can still apply filters to the same text field we are querying
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -283,7 +283,7 @@ def test_aggregate_query_with_text_filter(index):
         return_fields=["job", "description"],
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 2
     for result in results:
         assert "medical" in result[text_field].lower()
@@ -291,7 +291,7 @@ def test_aggregate_query_with_text_filter(index):
     filter_expression = (Text(text_field) == ("medical")) & (
         (Text(text_field) != ("research"))
     )
-    hybrid_query = HybridAggregationQuery(
+    hybrid_query = HybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -301,7 +301,7 @@ def test_aggregate_query_with_text_filter(index):
         return_fields=["description"],
     )
 
-    results = index.aggregate_query(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 2
     for result in results:
         assert "medical" in result[text_field].lower()

@@ -799,7 +799,10 @@ def test_range_query_normalize_bad_input(index):
         )
 
 
-def test_text_query(index):
+@pytest.mark.parametrize(
+    "scorer", ["BM25", "TFIDF", "TFIDF.DOCNORM", "DISMAX", "DOCSCORE"]
+)
+def test_text_query(index, scorer):
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
@@ -807,6 +810,7 @@ def test_text_query(index):
     text_query = TextQuery(
         text=text,
         text_field_name=text_field,
+        text_scorer=scorer,
         return_fields=return_fields,
     )
     results = index.query(text_query)
@@ -824,10 +828,12 @@ def test_text_query_with_filter(index):
     text_field = "description"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
     filter_expression = (Tag("credit_score") == ("high")) & (Num("age") > 30)
+    scorer = "TFIDF"
 
     text_query = TextQuery(
         text=text,
         text_field_name=text_field,
+        text_scorer=scorer,
         filter_expression=filter_expression,
         return_fields=return_fields,
     )
@@ -843,12 +849,14 @@ def test_text_query_with_filter(index):
 def test_text_query_with_text_filter(index):
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
+    scorer = "TFIDF.DOCNORM"
     return_fields = ["age", "job", "description"]
     filter_expression = Text(text_field) == ("medical")
 
     text_query = TextQuery(
         text=text,
         text_field_name=text_field,
+        text_scorer=scorer,
         filter_expression=filter_expression,
         return_fields=return_fields,
     )
@@ -863,6 +871,7 @@ def test_text_query_with_text_filter(index):
     text_query = TextQuery(
         text=text,
         text_field_name=text_field,
+        text_scorer=scorer,
         filter_expression=filter_expression,
         return_fields=return_fields,
     )

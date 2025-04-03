@@ -712,7 +712,7 @@ class TextQuery(BaseQuery):
             text (str): The text string to perform the text search with.
             text_field_name (str): The name of the document field to perform text search on.
             text_scorer (str, optional): The text scoring algorithm to use.
-                Defaults to BM25STD. Options are {TFIDF, BM25STD, BM25, DOCNORM, DISMAX, DOCSCORE}.
+                Defaults to BM25STD. Options are {TFIDF, BM25STD, BM25, TFIDF.DOCNORM, DISMAX, DOCSCORE}.
                 See https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/scoring/
             filter_expression (Union[str, FilterExpression], optional): A filter to apply
                 along with the text search. Defaults to None.
@@ -740,6 +740,25 @@ class TextQuery(BaseQuery):
         Raises:
             ValueError: if stopwords language string cannot be loaded.
             TypeError: If stopwords is not a valid iterable set of strings.
+
+        .. code-block:: python
+            from redisvl.query import TextQuery
+            from redisvl.index import SearchIndex
+
+            index = SearchIndex.from_yaml(index.yaml)
+
+            query = TextQuery(
+                text="example text",
+                text_field_name="text_field",
+                text_scorer="BM25STD",
+                filter_expression=None,
+                num_results=10,
+                return_fields=["field1", "field2"],
+                stopwords="english",
+                dialect=2,
+            )
+
+            results = index.query(query)
         """
         self._text = text
         self._text_field = text_field_name
