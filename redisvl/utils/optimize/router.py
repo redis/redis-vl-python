@@ -90,6 +90,8 @@ def _random_search_opt_router(
 
 
 class RouterThresholdOptimizer(BaseThresholdOptimizer):
+    """Class for optimizing thresholds for a SemanticRouter."""
+
     def __init__(
         self,
         router: SemanticRouter,

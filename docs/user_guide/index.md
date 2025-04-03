@@ -20,4 +20,5 @@ User guides provide helpful resources for using RedisVL and its different compon
 06_rerankers
 07_session_manager
 08_semantic_router
+09_threshold_optimization
 ```

@@ -71,6 +71,8 @@ def _grid_search_opt_cache(
 
 
 class CacheThresholdOptimizer(BaseThresholdOptimizer):
+    """Class for optimizing thresholds for a SemanticCache."""
+
     def __init__(
         self,
         cache: SemanticCache,
