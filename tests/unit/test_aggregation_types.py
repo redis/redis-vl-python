@@ -36,7 +36,7 @@ def test_aggregate_hybrid_query():
     assert hybrid_query._alpha == 0.7
     assert hybrid_query._num_results == 10
     assert hybrid_query._loadfields == []
-    assert hybrid_query._dialect == 4
+    assert hybrid_query._dialect == 2
 
     # Check specifying properties
     scorer = "TFIDF"
