@@ -822,11 +822,11 @@ class SearchIndex(BaseSearchIndex):
     def query(self, query: Union[BaseQuery, AggregationQuery]) -> List[Dict[str, Any]]:
         """Execute a query on the index.
 
-        This method takes a BaseQuery object directly, runs the search, and
+        This method takes a BaseQuery or AggregationQuery object directly, and
         handles post-processing of the search.
 
         Args:
-            query (BaseQuery): The query to run.
+            query (Union[BaseQuery, AggregateQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1498,7 +1498,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         the search, and handles post-processing of the search.
 
         Args:
-            query Union(BaseQuery, AggregationQuery): The query to run.
+            query (Union[BaseQuery, AggregateQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.

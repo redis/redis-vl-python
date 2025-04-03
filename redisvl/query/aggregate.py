@@ -45,7 +45,7 @@ class HybridQuery(AggregationQuery):
         dialect: int = 2,
     ):
         """
-        Instantiages a HybridQuery object.
+        Instantiates a HybridQuery object.
 
         Args:
             text (str): The text to search for.

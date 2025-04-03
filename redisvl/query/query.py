@@ -795,6 +795,16 @@ class TextQuery(BaseQuery):
         return self._stopwords
 
     def _set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
+        """Set the stopwords to use in the query.
+        Args:
+            stopwords (Optional[Union[str, Set[str]]]): The stopwords to use. If a string
+                such as "english" "german" is provided then a default set of stopwords for that
+                language will be used. if a list, set, or tuple of strings is provided then those
+                will be used as stopwords. Defaults to "english". if set to "None" then no stopwords
+                will be removed.
+        Raises:
+            TypeError: If the stopwords are not a set, list, or tuple of strings.
+        """
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
