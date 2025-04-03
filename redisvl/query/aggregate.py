@@ -109,7 +109,7 @@ class HybridAggregationQuery(AggregationQuery):
         self._alpha = alpha
         self._dtype = dtype
         self._num_results = num_results
-        self.set_stopwords(stopwords)
+        self._set_stopwords(stopwords)
 
         query_string = self._build_query_string()
         super().__init__(query_string)
@@ -149,7 +149,7 @@ class HybridAggregationQuery(AggregationQuery):
         """
         return self._stopwords.copy() if self._stopwords else set()
 
-    def set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
+    def _set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
         """Set the stopwords to use in the query.
         Args:
             stopwords (Optional[Union[str, Set[str]]]): The stopwords to use. If a string
@@ -164,7 +164,7 @@ class HybridAggregationQuery(AggregationQuery):
             self._stopwords = set()
         elif isinstance(stopwords, str):
             try:
-                nltk.download("stopwords")
+                nltk.download("stopwords", quiet=True)
                 self._stopwords = set(nltk_stopwords.words(stopwords))
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
@@ -175,7 +175,7 @@ class HybridAggregationQuery(AggregationQuery):
         else:
             raise TypeError("stopwords must be a set, list, or tuple of strings")
 
-    def tokenize_and_escape_query(self, user_query: str) -> str:
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
         """Convert a raw user query to a redis full text query joined by ORs
         Args:
             user_query (str): The user query to tokenize and escape.
@@ -185,7 +185,6 @@ class HybridAggregationQuery(AggregationQuery):
         Raises:
             ValueError: If the text string becomes empty after stopwords are removed.
         """
-
         escaper = TokenEscaper()
 
         tokens = [
@@ -212,7 +211,7 @@ class HybridAggregationQuery(AggregationQuery):
         # base KNN query
         knn_query = f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}"
 
-        text = f"(~@{self._text_field}:({self.tokenize_and_escape_query(self._text)})"
+        text = f"(~@{self._text_field}:({self._tokenize_and_escape_query(self._text)})"
 
         if filter_expression and filter_expression != "*":
             text += f" AND {filter_expression}"

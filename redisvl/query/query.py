@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+import nltk
+from nltk.corpus import stopwords as nltk_stopwords
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
@@ -741,22 +743,21 @@ class TextQuery(BaseQuery):
         """
         self._text = text
         self._text_field = text_field_name
-        self._text_scorer = text_scorer
         self._num_results = num_results
 
-        self.set_stopwords(stopwords)
+        self._set_stopwords(stopwords)
         self.set_filter(filter_expression)
 
         if params:
             self._params = params
 
-        self._num_results = num_results
-
         # initialize the base query with the full query string and filter expression
         query_string = self._build_query_string()
         super().__init__(query_string)
 
-        # Handle query settings
+        # handle query settings
+        self.scorer(text_scorer)
+
         if return_fields:
             self.return_fields(*return_fields)
         self.paging(0, self._num_results).dialect(dialect)
@@ -774,15 +775,12 @@ class TextQuery(BaseQuery):
     def stopwords(self):
         return self._stopwords
 
-    def set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
+    def _set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
             try:
-                import nltk
-                from nltk.corpus import stopwords as nltk_stopwords
-
-                nltk.download("stopwords")
+                nltk.download("stopwords", quiet=True)
                 self._stopwords = set(nltk_stopwords.words(stopwords))
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
@@ -793,9 +791,16 @@ class TextQuery(BaseQuery):
         else:
             raise TypeError("stopwords must be a set, list, or tuple of strings")
 
-    def tokenize_and_escape_query(self, user_query: str) -> str:
-        """Convert a raw user query to a redis full text query joined by ORs"""
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
+        """Convert a raw user query to a redis full text query joined by ORs
+        Args:
+            user_query (str): The user query to tokenize and escape.
 
+        Returns:
+            str: The tokenized and escaped query string.
+        Raises:
+            ValueError: If the text string becomes empty after stopwords are removed.
+        """
         escaper = TokenEscaper()
 
         tokens = [
@@ -816,7 +821,7 @@ class TextQuery(BaseQuery):
         else:
             filter_expression = ""
 
-        text = f"@{self._text_field}:({self.tokenize_and_escape_query(self._text)})"
+        text = f"@{self._text_field}:({self._tokenize_and_escape_query(self._text)})"
         if filter_expression and filter_expression != "*":
             text += f" AND {filter_expression}"
         return text
