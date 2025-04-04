@@ -90,7 +90,47 @@ def _random_search_opt_router(
 
 
 class RouterThresholdOptimizer(BaseThresholdOptimizer):
-    """Class for optimizing thresholds for a SemanticRouter."""
+    """
+    Class for optimizing thresholds for a SemanticRouter.
+
+    .. code-block:: python
+
+        from redisvl.extensions.router import Route, SemanticRouter
+        from redisvl.utils.vectorize import HFTextVectorizer
+        from redisvl.utils.optimize import RouterThresholdOptimizer
+
+        routes = [
+                Route(
+                    name="greeting",
+                    references=["hello", "hi"],
+                    metadata={"type": "greeting"},
+                    distance_threshold=0.5,
+                ),
+                Route(
+                    name="farewell",
+                    references=["bye", "goodbye"],
+                    metadata={"type": "farewell"},
+                    distance_threshold=0.5,
+                ),
+            ]
+
+        router = SemanticRouter(
+            name="greeting-router",
+            vectorizer=HFTextVectorizer(),
+            routes=routes,
+            redis_url="redis://localhost:6379",
+            overwrite=True # Blow away any other routing index with this name
+        )
+
+        test_data = [
+            {"query": "hello", "query_match": "greeting"},
+            {"query": "goodbye", "query_match": "farewell"},
+            ...
+        ]
+
+        optimizer = RouterThresholdOptimizer(router, test_data)
+        optimizer.optimize()
+    """
 
     def __init__(
         self,
@@ -108,54 +148,12 @@ class RouterThresholdOptimizer(BaseThresholdOptimizer):
                 grid search.
             eval_metric (str): Evaluation metric for threshold optimization.
                 Defaults to "f1" score.
-
-        .. code-block:: python
-            from redisvl.extensions.router import Route, SemanticRouter
-            from redisvl.utils.vectorize import HFTextVectorizer
-            from redisvl.utils.optimize import RouterThresholdOptimizer
-
-            routes = [
-                    Route(
-                        name="greeting",
-                        references=["hello", "hi"],
-                        metadata={"type": "greeting"},
-                        distance_threshold=0.5,
-                    ),
-                    Route(
-                        name="farewell",
-                        references=["bye", "goodbye"],
-                        metadata={"type": "farewell"},
-                        distance_threshold=0.5,
-                    ),
-                ]
-
-            router = SemanticRouter(
-                name="greeting-router",
-                vectorizer=HFTextVectorizer(),
-                routes=routes,
-                redis_url="redis://localhost:6379",
-                overwrite=True # Blow away any other routing index with this name
-            )
-
-            test_data = [
-                {"query": "hello", "query_match": "greeting"},
-                {"query": "goodbye", "query_match": "farewell"},
-                ...
-            ]
-
-            optimizer = RouterThresholdOptimizer(router, test_data)
-            optimizer.optimize()
+        Raises:
+            ValueError: If the test_dict not in LabeledData format.
         """
         super().__init__(router, test_dict, opt_fn, eval_metric)
 
     def optimize(self, **kwargs: Any):
-        """Optimize thresholds using the provided optimization function for router case.
-
-        .. code-block:: python
-            from redisvl.utils.optimize import RouterThresholdOptimizer
-
-            optimizer = RouterThresholdOptimizer(router, test_data)
-            optimizer.optimize(search_step=0.05, max_iterations=50)
-        """
+        """Optimize kicks of the optimization process for router"""
         qrels = _format_qrels(self.test_data)
         self.opt_fn(self.optimizable, self.test_data, qrels, self.eval_metric, **kwargs)
