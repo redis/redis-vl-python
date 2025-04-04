@@ -56,7 +56,6 @@ This will also spin up the [Redis Insight GUI](https://redis.io/insight/) at `ht
 Overview <overview/index>
 API <api/index>
 User Guides <user_guide/index>
-Release Guides <user_guide/release_guide/index>
 Example Gallery <examples/index>
 ```
 
