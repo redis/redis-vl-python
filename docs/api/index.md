@@ -22,5 +22,6 @@ reranker
 cache
 session_manager
 router
+threshold_optimizer
 ```
 

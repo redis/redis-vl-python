@@ -2,7 +2,7 @@
 myst:
   html_meta:
     "description lang=en": |
-      User Guides for RedisVL
+      User guides for RedisVL
 ---
 
 # User Guides
@@ -20,4 +20,6 @@ User guides provide helpful resources for using RedisVL and its different compon
 06_rerankers
 07_session_manager
 08_semantic_router
+09_threshold_optimization
+release_guide/index
 ```
