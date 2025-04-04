@@ -1,10 +1,13 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+import nltk
+from nltk.corpus import stopwords as nltk_stopwords
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
+from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import denorm_cosine_distance
 
 
@@ -92,7 +95,8 @@ class FilterQuery(BaseQuery):
             num_results (Optional[int], optional): The number of results to return. Defaults to 10.
             dialect (int, optional): The query dialect. Defaults to 2.
             sort_by (Optional[str], optional): The field to order the results by. Defaults to None.
-            in_order (bool, optional): Requires the terms in the field to have the same order as the terms in the query filter. Defaults to False.
+            in_order (bool, optional): Requires the terms in the field to have the same order as the
+                terms in the query filter. Defaults to False.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
 
         Raises:
@@ -137,7 +141,8 @@ class CountQuery(BaseQuery):
         """A query for a simple count operation provided some filter expression.
 
         Args:
-            filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to query with. Defaults to None.
+            filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to
+                query with. Defaults to None.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
 
         Raises:
@@ -218,6 +223,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 "float32".
             num_results (int, optional): The top k results to return from the
                 vector search. Defaults to 10.
+
             return_score (bool, optional): Whether to return the vector
                 distance. Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
@@ -681,3 +687,169 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 class RangeQuery(VectorRangeQuery):
     # keep for backwards compatibility
     pass
+
+
+class TextQuery(BaseQuery):
+    def __init__(
+        self,
+        text: str,
+        text_field_name: str,
+        text_scorer: str = "BM25STD",
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        return_fields: Optional[List[str]] = None,
+        num_results: int = 10,
+        return_score: bool = True,
+        dialect: int = 2,
+        sort_by: Optional[str] = None,
+        in_order: bool = False,
+        params: Optional[Dict[str, Any]] = None,
+        stopwords: Optional[Union[str, Set[str]]] = "english",
+    ):
+        """A query for running a full text search, along with an optional filter expression.
+
+        Args:
+            text (str): The text string to perform the text search with.
+            text_field_name (str): The name of the document field to perform text search on.
+            text_scorer (str, optional): The text scoring algorithm to use.
+                Defaults to BM25STD. Options are {TFIDF, BM25STD, BM25, TFIDF.DOCNORM, DISMAX, DOCSCORE}.
+                See https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/scoring/
+            filter_expression (Union[str, FilterExpression], optional): A filter to apply
+                along with the text search. Defaults to None.
+            return_fields (List[str]): The declared fields to return with search
+                results.
+            num_results (int, optional): The top k results to return from the
+                search. Defaults to 10.
+            return_score (bool, optional): Whether to return the text score.
+                Defaults to True.
+            dialect (int, optional): The RediSearch query dialect.
+                Defaults to 2.
+            sort_by (Optional[str]): The field to order the results by. Defaults
+                to None. Results will be ordered by text score.
+            in_order (bool): Requires the terms in the field to have
+                the same order as the terms in the query filter, regardless of
+                the offsets between them. Defaults to False.
+            params (Optional[Dict[str, Any]], optional): The parameters for the query.
+                Defaults to None.
+            stopwords (Optional[Union[str, Set[str]]): The set of stop words to remove
+                from the query text. If a language like 'english' or 'spanish' is provided
+                a default set of stopwords for that language will be used. Users may specify
+                their own stop words by providing a List or Set of words. if set to None,
+                then no words will be removed. Defaults to 'english'.
+
+        Raises:
+            ValueError: if stopwords language string cannot be loaded.
+            TypeError: If stopwords is not a valid iterable set of strings.
+
+        .. code-block:: python
+            from redisvl.query import TextQuery
+            from redisvl.index import SearchIndex
+
+            index = SearchIndex.from_yaml(index.yaml)
+
+            query = TextQuery(
+                text="example text",
+                text_field_name="text_field",
+                text_scorer="BM25STD",
+                filter_expression=None,
+                num_results=10,
+                return_fields=["field1", "field2"],
+                stopwords="english",
+                dialect=2,
+            )
+
+            results = index.query(query)
+        """
+        self._text = text
+        self._text_field = text_field_name
+        self._num_results = num_results
+
+        self._set_stopwords(stopwords)
+        self.set_filter(filter_expression)
+
+        if params:
+            self._params = params
+
+        # initialize the base query with the full query string and filter expression
+        query_string = self._build_query_string()
+        super().__init__(query_string)
+
+        # handle query settings
+        self.scorer(text_scorer)
+
+        if return_fields:
+            self.return_fields(*return_fields)
+        self.paging(0, self._num_results).dialect(dialect)
+
+        if sort_by:
+            self.sort_by(sort_by)
+
+        if in_order:
+            self.in_order()
+
+        if return_score:
+            self.with_scores()
+
+    @property
+    def stopwords(self):
+        return self._stopwords
+
+    def _set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
+        """Set the stopwords to use in the query.
+        Args:
+            stopwords (Optional[Union[str, Set[str]]]): The stopwords to use. If a string
+                such as "english" "german" is provided then a default set of stopwords for that
+                language will be used. if a list, set, or tuple of strings is provided then those
+                will be used as stopwords. Defaults to "english". if set to "None" then no stopwords
+                will be removed.
+        Raises:
+            TypeError: If the stopwords are not a set, list, or tuple of strings.
+        """
+        if not stopwords:
+            self._stopwords = set()
+        elif isinstance(stopwords, str):
+            try:
+                nltk.download("stopwords", quiet=True)
+                self._stopwords = set(nltk_stopwords.words(stopwords))
+            except Exception as e:
+                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
+        elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
+            isinstance(word, str) for word in stopwords
+        ):
+            self._stopwords = set(stopwords)
+        else:
+            raise TypeError("stopwords must be a set, list, or tuple of strings")
+
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
+        """Convert a raw user query to a redis full text query joined by ORs
+        Args:
+            user_query (str): The user query to tokenize and escape.
+
+        Returns:
+            str: The tokenized and escaped query string.
+        Raises:
+            ValueError: If the text string becomes empty after stopwords are removed.
+        """
+        escaper = TokenEscaper()
+
+        tokens = [
+            escaper.escape(
+                token.strip().strip(",").replace("“", "").replace("”", "").lower()
+            )
+            for token in user_query.split()
+        ]
+        return " | ".join(
+            [token for token in tokens if token and token not in self._stopwords]
+        )
+
+    def _build_query_string(self) -> str:
+        """Build the full query string for text search with optional filtering."""
+        filter_expression = self._filter_expression
+        if isinstance(filter_expression, FilterExpression):
+            filter_expression = str(filter_expression)
+        else:
+            filter_expression = ""
+
+        text = f"@{self._text_field}:({self._tokenize_and_escape_query(self._text)})"
+        if filter_expression and filter_expression != "*":
+            text += f" AND {filter_expression}"
+        return text

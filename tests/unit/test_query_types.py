@@ -3,7 +3,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index.index import process_results
-from redisvl.query import CountQuery, FilterQuery, RangeQuery, VectorQuery
+from redisvl.query import CountQuery, FilterQuery, RangeQuery, TextQuery, VectorQuery
 from redisvl.query.filter import Tag
 from redisvl.query.query import VectorRangeQuery
 
@@ -186,6 +186,94 @@ def test_range_query():
         in_order=True,
     )
     assert range_query._in_order
+
+
+def test_text_query():
+    text_string = "the toon squad play basketball against a gang of aliens"
+    text_field_name = "description"
+    return_fields = ["title", "genre", "rating"]
+    text_query = TextQuery(
+        text=text_string,
+        text_field_name=text_field_name,
+        return_fields=return_fields,
+        text_scorer="BM25",
+        return_score=False,
+    )
+
+    # Check properties
+    assert text_query._return_fields == return_fields
+    assert text_query._num_results == 10
+
+    assert isinstance(text_query, Query)
+    assert isinstance(text_query.query, Query)
+    assert isinstance(text_query.params, dict)
+    assert text_query.params == {}
+    assert text_query._dialect == 2
+    assert text_query._in_order == False
+
+    # Test paging functionality
+    text_query.paging(5, 7)
+    assert text_query._offset == 5
+    assert text_query._num == 7
+    assert text_query._num_results == 10
+
+    # Test sort_by functionality
+    filter_expression = Tag("genre") == "comedy"
+    scorer = "TFIDF"
+    text_query = TextQuery(
+        text_string,
+        text_field_name,
+        scorer,
+        filter_expression,
+        return_fields,
+        num_results=10,
+        sort_by="rating",
+    )
+    assert text_query._sortby is not None
+
+    # Test in_order functionality
+    text_query = TextQuery(
+        text_string,
+        text_field_name,
+        scorer,
+        filter_expression,
+        return_fields,
+        num_results=10,
+        in_order=True,
+    )
+    assert text_query._in_order
+
+    # Test stopwords are configurable
+    text_query = TextQuery(text_string, text_field_name, stopwords=None)
+    assert text_query.stopwords == set([])
+
+    text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
+    assert text_query.stopwords == set(["the", "a", "of"])
+
+    text_query = TextQuery(text_string, text_field_name, stopwords="german")
+    assert text_query.stopwords != set([])
+
+    with pytest.raises(ValueError):
+        text_query = TextQuery(text_string, text_field_name, stopwords="gibberish")
+
+    with pytest.raises(TypeError):
+        text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
+
+    text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
+    assert text_query.stopwords == set(["the", "a", "of"])
+
+    text_query = TextQuery(text_string, text_field_name, stopwords="german")
+    assert text_query.stopwords != set([])
+
+    # test that filter expression is set correctly
+    text_query.set_filter(filter_expression)
+    assert text_query.filter == filter_expression
+
+    with pytest.raises(ValueError):
+        text_query = TextQuery(text_string, text_field_name, stopwords="gibberish")
+
+    with pytest.raises(TypeError):
+        text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
 
 @pytest.mark.parametrize(

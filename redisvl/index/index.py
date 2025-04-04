@@ -18,6 +18,7 @@ from typing import (
     Union,
 )
 
+from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
@@ -39,7 +40,14 @@ from redisvl.exceptions import (
     SchemaValidationError,
 )
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
-from redisvl.query import BaseQuery, BaseVectorQuery, CountQuery, FilterQuery
+from redisvl.query import (
+    AggregationQuery,
+    BaseQuery,
+    BaseVectorQuery,
+    CountQuery,
+    FilterQuery,
+    HybridQuery,
+)
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -136,6 +144,34 @@ def process_results(
         return doc_dict
 
     return [_process(doc) for doc in results.docs]
+
+
+def process_aggregate_results(
+    results: "AggregateResult", query: AggregationQuery, storage_type: StorageType
+) -> List[Dict[str, Any]]:
+    """Convert an aggregate reslt object into a list of document dictionaries.
+
+    This function processes results from Redis, handling different storage
+    types and query types. For JSON storage with empty return fields, it
+    unpacks the JSON object while retaining the document ID. The 'payload'
+    field is also removed from all resulting documents for consistency.
+
+    Args:
+        results (AggregarteResult): The aggregart results from Redis.
+        query (AggregationQuery): The aggregation query object used for the aggregation.
+        storage_type (StorageType): The storage type of the search
+            index (json or hash).
+
+    Returns:
+        List[Dict[str, Any]]: A list of processed document dictionaries.
+    """
+
+    def _process(row):
+        result = make_dict(convert_bytes(row))
+        result.pop("__score", None)
+        return result
+
+    return [_process(r) for r in results.rows]
 
 
 class BaseSearchIndex:
@@ -650,6 +686,17 @@ class SearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
+    def _aggregate(self, aggregation_query: AggregationQuery) -> List[Dict[str, Any]]:
+        """Execute an aggretation query and processes the results."""
+        results = self.aggregate(
+            aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
+        )
+        return process_aggregate_results(
+            results,
+            query=aggregation_query,
+            storage_type=self.schema.index.storage_type,
+        )
+
     def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
 
@@ -772,14 +819,14 @@ class SearchIndex(BaseSearchIndex):
         results = self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    def query(self, query: Union[BaseQuery, AggregationQuery]) -> List[Dict[str, Any]]:
         """Execute a query on the index.
 
-        This method takes a BaseQuery object directly, runs the search, and
+        This method takes a BaseQuery or AggregationQuery object directly, and
         handles post-processing of the search.
 
         Args:
-            query (BaseQuery): The query to run.
+            query (Union[BaseQuery, AggregateQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -797,7 +844,10 @@ class SearchIndex(BaseSearchIndex):
             results = index.query(query)
 
         """
-        return self._query(query)
+        if isinstance(query, AggregationQuery):
+            return self._aggregate(query)
+        else:
+            return self._query(query)
 
     def paginate(self, query: BaseQuery, page_size: int = 30) -> Generator:
         """Execute a given query against the index and return results in
@@ -1303,6 +1353,19 @@ class AsyncSearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
+    async def _aggregate(
+        self, aggregation_query: AggregationQuery
+    ) -> List[Dict[str, Any]]:
+        """Execute an aggretation query and processes the results."""
+        results = await self.aggregate(
+            aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
+        )
+        return process_aggregate_results(
+            results,
+            query=aggregation_query,
+            storage_type=self.schema.index.storage_type,
+        )
+
     async def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
 
@@ -1426,14 +1489,16 @@ class AsyncSearchIndex(BaseSearchIndex):
         results = await self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    async def query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    async def query(
+        self, query: Union[BaseQuery, AggregationQuery]
+    ) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
-        This method takes a BaseQuery object directly, runs the search, and
-        handles post-processing of the search.
+        This method takes a BaseQuery or AggregationQuery object directly, runs
+        the search, and handles post-processing of the search.
 
         Args:
-            query (BaseQuery): The query to run.
+            query (Union[BaseQuery, AggregateQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1450,7 +1515,10 @@ class AsyncSearchIndex(BaseSearchIndex):
 
             results = await index.query(query)
         """
-        return await self._query(query)
+        if isinstance(query, AggregationQuery):
+            return await self._aggregate(query)
+        else:
+            return await self._query(query)
 
     async def paginate(self, query: BaseQuery, page_size: int = 30) -> AsyncGenerator:
         """Execute a given query against the index and return results in
