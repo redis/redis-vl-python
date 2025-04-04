@@ -4,7 +4,13 @@ import pytest
 from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
-from redisvl.query import CountQuery, FilterQuery, VectorQuery, VectorRangeQuery
+from redisvl.query import (
+    CountQuery,
+    FilterQuery,
+    TextQuery,
+    VectorQuery,
+    VectorRangeQuery,
+)
 from redisvl.query.filter import (
     FilterExpression,
     Geo,
@@ -147,6 +153,7 @@ def index(sample_data, redis_url):
                 "storage_type": "hash",
             },
             "fields": [
+                {"name": "description", "type": "text"},
                 {"name": "credit_score", "type": "tag"},
                 {"name": "job", "type": "text"},
                 {"name": "age", "type": "numeric"},
@@ -790,3 +797,87 @@ def test_range_query_normalize_bad_input(index):
             return_fields=["user", "credit_score", "age", "job", "location"],
             distance_threshold=1.2,
         )
+
+
+@pytest.mark.parametrize(
+    "scorer", ["BM25", "TFIDF", "TFIDF.DOCNORM", "DISMAX", "DOCSCORE"]
+)
+def test_text_query(index, scorer):
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+
+    text_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        text_scorer=scorer,
+        return_fields=return_fields,
+    )
+    results = index.query(text_query)
+
+    assert len(results) == 4
+
+    # make sure at least one word from the query is in the description
+    for result in results:
+        assert any(word in result[text_field] for word in text.split())
+
+
+# test that text queryies work with filter expressions
+def test_text_query_with_filter(index):
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+    filter_expression = (Tag("credit_score") == ("high")) & (Num("age") > 30)
+    scorer = "TFIDF"
+
+    text_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        text_scorer=scorer,
+        filter_expression=filter_expression,
+        return_fields=return_fields,
+    )
+    results = index.query(text_query)
+    assert len(results) == 2
+    for result in results:
+        assert any(word in result[text_field] for word in text.split())
+        assert result["credit_score"] == "high"
+        assert int(result["age"]) > 30
+
+
+# test that text queryies workt with text filter expressions on the same text field
+def test_text_query_with_text_filter(index):
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    scorer = "TFIDF.DOCNORM"
+    return_fields = ["age", "job", "description"]
+    filter_expression = Text(text_field) == ("medical")
+
+    text_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        text_scorer=scorer,
+        filter_expression=filter_expression,
+        return_fields=return_fields,
+    )
+    results = index.query(text_query)
+    assert len(results) == 2
+    for result in results:
+        assert any(word in result[text_field] for word in text.split())
+        assert "medical" in result[text_field]
+
+    filter_expression = Text(text_field) != ("research")
+
+    text_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        text_scorer=scorer,
+        filter_expression=filter_expression,
+        return_fields=return_fields,
+    )
+
+    results = index.query(text_query)
+    assert len(results) == 3
+    for result in results:
+        assert any(word in result[text_field] for word in text.split())
+        assert "research" not in result[text_field]
