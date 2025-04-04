@@ -154,6 +154,6 @@ class RouterThresholdOptimizer(BaseThresholdOptimizer):
         super().__init__(router, test_dict, opt_fn, eval_metric)
 
     def optimize(self, **kwargs: Any):
-        """Optimize kicks of the optimization process for router"""
+        """Optimize kicks off the optimization process for router"""
         qrels = _format_qrels(self.test_data)
         self.opt_fn(self.optimizable, self.test_data, qrels, self.eval_metric, **kwargs)
