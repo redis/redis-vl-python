@@ -157,7 +157,7 @@ def process_aggregate_results(
     field is also removed from all resulting documents for consistency.
 
     Args:
-        results (AggregarteResult): The aggregart results from Redis.
+        results (AggregateResult): The aggregate results from Redis.
         query (AggregationQuery): The aggregation query object used for the aggregation.
         storage_type (StorageType): The storage type of the search
             index (json or hash).

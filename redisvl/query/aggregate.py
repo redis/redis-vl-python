@@ -23,6 +23,31 @@ class HybridQuery(AggregationQuery):
     HybridQuery combines text and vector search in Redis.
     It allows you to perform a hybrid search using both text and vector similarity.
     It scores documents based on a weighted combination of text and vector similarity.
+
+     .. code-block:: python
+
+        from redisvl.query import HybridQuery
+        from redisvl.index import SearchIndex
+
+        index = SearchIndex.from_yaml("path/to/index.yaml")
+
+        query = HybridQuery(
+            text="example text",
+            text_field_name="text_field",
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="vector_field",
+            text_scorer="BM25STD",
+            filter_expression=None,
+            alpha=0.7,
+            dtype="float32",
+            num_results=10,
+            return_fields=["field1", "field2"],
+            stopwords="english",
+            dialect=2,
+        )
+
+        results = index.query(query)
+
     """
 
     DISTANCE_ID: str = "vector_distance"
@@ -72,29 +97,6 @@ class HybridQuery(AggregationQuery):
             ValueError: If the text string is empty, or if the text string becomes empty after
                 stopwords are removed.
             TypeError: If the stopwords are not a set, list, or tuple of strings.
-
-        .. code-block:: python
-            from redisvl.query import HybridQuery
-            from redisvl.index import SearchIndex
-
-            index = SearchIndex.from_yaml(index.yaml)
-
-            query = HybridQuery(
-                text="example text",
-                text_field_name="text_field",
-                vector=[0.1, 0.2, 0.3],
-                vector_field_name="vector_field",
-                text_scorer="BM25STD",
-                filter_expression=None,
-                alpha=0.7,
-                dtype="float32",
-                num_results=10,
-                return_fields=["field1", "field2"],
-                stopwords="english",
-                dialect=2,
-            )
-
-            results = index.query(query)
         """
 
         if not text.strip():
