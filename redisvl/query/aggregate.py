@@ -77,7 +77,7 @@ class HybridQuery(AggregationQuery):
             from redisvl.query import HybridQuery
             from redisvl.index import SearchIndex
 
-            index = SearchIndex.from_yaml(index.yaml)
+            index = SearchIndex.from_yaml("path/to/index.yaml")
 
             query = HybridQuery(
                 text="example text",

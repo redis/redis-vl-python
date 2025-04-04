@@ -80,7 +80,7 @@ class CacheThresholdOptimizer(BaseThresholdOptimizer):
         opt_fn: Callable = _grid_search_opt_cache,
         eval_metric: str = "f1",
     ):
-        """Initialize the optimizer.
+        """Initialize the cache optimizer.
 
         Args:
             cache (SemanticCache): The RedisVL SemanticCache instance to optimize.
@@ -91,9 +91,35 @@ class CacheThresholdOptimizer(BaseThresholdOptimizer):
                 Defaults to "f1" score.
 
         .. code-block:: python
+            from redisvl.extensions.llmcache import SemanticCache
+            from redisvl.utils.optimize import CacheThresholdOptimizer
 
-            # TODO
+            sem_cache = SemanticCache(
+                name="sem_cache",                    # underlying search index name
+                redis_url="redis://localhost:6379",  # redis connection url string
+                distance_threshold=0.5               # semantic cache distance threshold
+            )
 
+            paris_key = sem_cache.store(prompt="what is the capital of france?", response="paris")
+            rabat_key = sem_cache.store(prompt="what is the capital of morocco?", response="rabat")
+
+            test_data = [
+                {
+                    "query": "What's the capital of Britain?",
+                    "query_match": ""
+                },
+                {
+                    "query": "What's the capital of France??",
+                    "query_match": paris_key
+                },
+                {
+                    "query": "What's the capital city of Morocco?",
+                    "query_match": rabat_key
+                },
+            ]
+
+            optimizer = CacheThresholdOptimizer(sem_cache, test_data)
+            optimizer.optimize()
         """
         super().__init__(cache, test_dict, opt_fn, eval_metric)
 
@@ -101,8 +127,9 @@ class CacheThresholdOptimizer(BaseThresholdOptimizer):
         """Optimize thresholds using the provided optimization function for cache case.
 
         .. code-block:: python
+            from redisvl.utils.optimize import CacheThresholdOptimizer
 
-            # TODO
-
+            optimizer = CacheThresholdOptimizer(semantic_cache, test_data)
+            optimizer.optimize(*kwargs)
         """
         self.opt_fn(self.optimizable, self.test_data, self.eval_metric, **kwargs)
