@@ -170,7 +170,7 @@ jobs:
           if [[ "${{ matrix.python-version }}" > "3.9" ]]; then
             make test-notebooks
           else
-            poetry run test-notebooks --ignore ./docs/user_guide/09_threshold_optimization.ipynb --ignore ./docs/user_guide/release_guide/0.5.0_release.ipynb
+            poetry run test-notebooks --ignore ./docs/user_guide/09_threshold_optimization.ipynb --ignore ./docs/user_guide/release_guide/0_5_0_release.ipynb
           fi
 
   docs:
