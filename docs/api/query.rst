@@ -34,6 +34,34 @@ VectorRangeQuery
    :show-inheritance:
    :exclude-members: add_filter,get_args,highlight,return_field,summarize
 
+HybridQuery
+================
+
+
+.. currentmodule:: redisvl.query
+
+
+.. autoclass:: HybridQuery
+   :members:
+   :inherited-members:
+   :show-inheritance:
+   :exclude-members: add_filter,get_args,highlight,return_field,summarize
+
+
+TextQuery
+================
+
+
+.. currentmodule:: redisvl.query
+
+
+.. autoclass:: TextQuery
+   :members:
+   :inherited-members:
+   :show-inheritance:
+   :exclude-members: add_filter,get_args,highlight,return_field,summarize
+
+
 FilterQuery
 ===========
 

@@ -690,6 +690,30 @@ class RangeQuery(VectorRangeQuery):
 
 
 class TextQuery(BaseQuery):
+    """
+    TextQuery is a query for running a full text search, along with an optional filter expression.
+
+    .. code-block:: python
+
+        from redisvl.query import TextQuery
+        from redisvl.index import SearchIndex
+
+        index = SearchIndex.from_yaml(index.yaml)
+
+        query = TextQuery(
+            text="example text",
+            text_field_name="text_field",
+            text_scorer="BM25STD",
+            filter_expression=None,
+            num_results=10,
+            return_fields=["field1", "field2"],
+            stopwords="english",
+            dialect=2,
+        )
+
+        results = index.query(query)
+    """
+
     def __init__(
         self,
         text: str,
@@ -739,25 +763,6 @@ class TextQuery(BaseQuery):
         Raises:
             ValueError: if stopwords language string cannot be loaded.
             TypeError: If stopwords is not a valid iterable set of strings.
-
-        .. code-block:: python
-            from redisvl.query import TextQuery
-            from redisvl.index import SearchIndex
-
-            index = SearchIndex.from_yaml(index.yaml)
-
-            query = TextQuery(
-                text="example text",
-                text_field_name="text_field",
-                text_scorer="BM25STD",
-                filter_expression=None,
-                num_results=10,
-                return_fields=["field1", "field2"],
-                stopwords="english",
-                dialect=2,
-            )
-
-            results = index.query(query)
         """
         self._text = text
         self._text_field = text_field_name
