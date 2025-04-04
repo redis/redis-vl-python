@@ -95,13 +95,25 @@ class RouterThresholdOptimizer(BaseThresholdOptimizer):
     def __init__(
         self,
         router: SemanticRouter,
-        test_dict: List[Dict],
+        test_dict: List[Dict[str, Any]],
         opt_fn: Callable = _random_search_opt_router,
         eval_metric: str = "f1",
     ):
+        """
+        # TODO
+
+        .. code-block:: python
+
+        # TODO
+        """
         super().__init__(router, test_dict, opt_fn, eval_metric)
 
     def optimize(self, **kwargs: Any):
-        """Optimize thresholds using the provided optimization function for router case."""
+        """Optimize thresholds using the provided optimization function for router case.
+
+        .. code-block:: python
+
+            # TODO
+        """
         qrels = _format_qrels(self.test_data)
         self.opt_fn(self.optimizable, self.test_data, qrels, self.eval_metric, **kwargs)
