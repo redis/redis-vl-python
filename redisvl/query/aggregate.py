@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-import nltk
-from nltk.corpus import stopwords as nltk_stopwords
 from redis.commands.search.aggregation import AggregateRequest, Desc
 
 from redisvl.query.filter import FilterExpression
@@ -164,6 +162,10 @@ class HybridQuery(AggregationQuery):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
+            # Lazy import because nltk is an optional dependency
+            import nltk
+            from nltk.corpus import stopwords as nltk_stopwords
+
             try:
                 nltk.download("stopwords", quiet=True)
                 self._stopwords = set(nltk_stopwords.words(stopwords))
