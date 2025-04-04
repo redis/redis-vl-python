@@ -705,8 +705,7 @@ class TextQuery(BaseQuery):
         params: Optional[Dict[str, Any]] = None,
         stopwords: Optional[Union[str, Set[str]]] = "english",
     ):
-        """A query for running a full text and vector search, along with an optional
-        filter expression.
+        """A query for running a full text search, along with an optional filter expression.
 
         Args:
             text (str): The text string to perform the text search with.

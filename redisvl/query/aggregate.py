@@ -9,7 +9,6 @@ from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.token_escaper import TokenEscaper
 
 
-# base class
 class AggregationQuery(AggregateRequest):
     """
     Base class for aggregation queries used to create aggregation queries for Redis.
