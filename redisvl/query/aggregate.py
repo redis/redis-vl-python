@@ -163,9 +163,13 @@ class HybridQuery(AggregationQuery):
             self._stopwords = set()
         elif isinstance(stopwords, str):
             # Lazy import because nltk is an optional dependency
-            import nltk
-            from nltk.corpus import stopwords as nltk_stopwords
-
+            try:
+                import nltk
+                from nltk.corpus import stopwords as nltk_stopwords
+            except ImportError:
+                raise ValueError(
+                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
+                )
             try:
                 nltk.download("stopwords", quiet=True)
                 self._stopwords = set(nltk_stopwords.words(stopwords))
