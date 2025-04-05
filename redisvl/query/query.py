@@ -1,8 +1,6 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-import nltk
-from nltk.corpus import stopwords as nltk_stopwords
 from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
@@ -812,6 +810,14 @@ class TextQuery(BaseQuery):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
+            # Lazy import because nltk is an optional dependency
+            try:
+                import nltk
+                from nltk.corpus import stopwords as nltk_stopwords
+            except ImportError:
+                raise ValueError(
+                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
+                )
             try:
                 nltk.download("stopwords", quiet=True)
                 self._stopwords = set(nltk_stopwords.words(stopwords))
