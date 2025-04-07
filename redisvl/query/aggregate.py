@@ -22,7 +22,7 @@ class HybridQuery(AggregationQuery):
     It allows you to perform a hybrid search using both text and vector similarity.
     It scores documents based on a weighted combination of text and vector similarity.
 
-     .. code-block:: python
+    .. code-block:: python
 
         from redisvl.query import HybridQuery
         from redisvl.index import SearchIndex
