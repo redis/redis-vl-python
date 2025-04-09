@@ -247,6 +247,37 @@ async def test_search_index_drop_keys(async_index):
 
 
 @pytest.mark.asyncio
+async def test_search_index_drop_documents(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [
+        {"id": "1", "test": "foo"},
+        {"id": "2", "test": "bar"},
+        {"id": "3", "test": "baz"},
+    ]
+    await async_index.load(data, id_field="id")
+
+    # Test dropping a single document by ID
+    dropped = await async_index.drop_documents("1")
+    assert dropped == 1
+    assert not await async_index.fetch("1")
+    assert await async_index.fetch("2") is not None
+    assert await async_index.fetch("3") is not None
+
+    # Test dropping multiple documents by ID
+    dropped = await async_index.drop_documents(["2", "3"])
+    assert dropped == 2
+    assert not await async_index.fetch("2")
+    assert not await async_index.fetch("3")
+
+    # Test dropping with an empty list
+    dropped = await async_index.drop_documents([])
+    assert dropped == 0
+
+    # Ensure the index still exists
+    assert await async_index.exists()
+
+
+@pytest.mark.asyncio
 async def test_search_index_load_and_fetch(async_index):
     await async_index.create(overwrite=True, drop=True)
     data = [{"id": "1", "test": "foo"}]
