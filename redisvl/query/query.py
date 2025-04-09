@@ -178,6 +178,7 @@ class CountQuery(BaseQuery):
 class BaseVectorQuery:
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
+    EF_RUNTIME_PARAM: str = "EF_RUNTIME"
 
     _normalize_vector_distance: bool = False
 
@@ -204,6 +205,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
+        ef_runtime: Optional[int] = None,
         normalize_vector_distance: bool = False,
     ):
         """A query for running a vector search along with an optional filter
@@ -241,6 +243,9 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 of vectors to fetch in each batch. Larger values may improve performance
                 at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
                 Defaults to None, which lets Redis auto-select an appropriate batch size.
+            ef_runtime (Optional[int]): Controls the size of the dynamic candidate list for HNSW
+                algorithm at query time. Higher values improve recall at the expense of
+                slower search performance. Defaults to None, which uses the index-defined value.
             normalize_vector_distance (bool): Redis supports 3 distance metrics: L2 (euclidean),
                 IP (inner product), and COSINE. By default, L2 distance returns an unbounded value.
                 COSINE distance returns a value between 0 and 2. IP returns a value determined by
@@ -260,6 +265,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._num_results = num_results
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
+        self._ef_runtime: Optional[int] = None
         self._normalize_vector_distance = normalize_vector_distance
         self.set_filter(filter_expression)
         query_string = self._build_query_string()
@@ -289,6 +295,9 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if batch_size is not None:
             self.set_batch_size(batch_size)
 
+        if ef_runtime is not None:
+            self.set_ef_runtime(ef_runtime)
+
     def _build_query_string(self) -> str:
         """Build the full query string for vector search with optional filtering."""
         filter_expression = self._filter_expression
@@ -307,6 +316,10 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             # Add batch size if specified and using BATCHES policy
             if self._hybrid_policy == HybridPolicy.BATCHES and self._batch_size:
                 knn_query += f" BATCH_SIZE {self._batch_size}"
+
+        # Add EF_RUNTIME parameter if specified
+        if self._ef_runtime:
+            knn_query += f" EF_RUNTIME {self._ef_runtime}"
 
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
@@ -352,6 +365,26 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         # Reset the query string
         self._query_string = self._build_query_string()
 
+    def set_ef_runtime(self, ef_runtime: int):
+        """Set the EF_RUNTIME parameter for the query.
+
+        Args:
+            ef_runtime (int): The EF_RUNTIME value to use for HNSW algorithm.
+                Higher values improve recall at the expense of slower search.
+
+        Raises:
+            TypeError: If ef_runtime is not an integer
+            ValueError: If ef_runtime is not positive
+        """
+        if not isinstance(ef_runtime, int):
+            raise TypeError("ef_runtime must be an integer")
+        if ef_runtime <= 0:
+            raise ValueError("ef_runtime must be positive")
+        self._ef_runtime = ef_runtime
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
     @property
     def hybrid_policy(self) -> Optional[str]:
         """Return the hybrid policy for the query.
@@ -371,6 +404,15 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._batch_size
 
     @property
+    def ef_runtime(self) -> Optional[int]:
+        """Return the EF_RUNTIME parameter for the query.
+
+        Returns:
+            Optional[int]: The EF_RUNTIME value for the query.
+        """
+        return self._ef_runtime
+
+    @property
     def params(self) -> Dict[str, Any]:
         """Return the parameters for the query.
 
@@ -382,7 +424,11 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         else:
             vector = array_to_buffer(self._vector, dtype=self._dtype)
 
-        params = {self.VECTOR_PARAM: vector}
+        params: Dict[str, Union[bytes, str]] = {self.VECTOR_PARAM: vector}
+
+        # Add EF_RUNTIME parameter if specified
+        if self._ef_runtime is not None:
+            params[self.EF_RUNTIME_PARAM] = str(self._ef_runtime)
 
         return params
 
@@ -409,6 +455,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
+        ef_runtime: Optional[int] = None,
         normalize_vector_distance: bool = False,
     ):
         """A query for running a filtered vector search based on semantic
@@ -453,6 +500,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 of vectors to fetch in each batch. Larger values may improve performance
                 at the cost of memory usage. Only applies when hybrid_policy="BATCHES".
                 Defaults to None, which lets Redis auto-select an appropriate batch size.
+            ef_runtime (Optional[int]): Controls the size of the dynamic candidate list for HNSW
+                algorithm at query time. Higher values improve recall at the expense of
+                slower search performance. Defaults to None, which uses the index-defined value.
             normalize_vector_distance (bool): Redis supports 3 distance metrics: L2 (euclidean),
                 IP (inner product), and COSINE. By default, L2 distance returns an unbounded value.
                 COSINE distance returns a value between 0 and 2. IP returns a value determined by
@@ -475,6 +525,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._epsilon: Optional[float] = None
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
+        self._ef_runtime: Optional[int] = None
 
         if epsilon is not None:
             self.set_epsilon(epsilon)
@@ -484,6 +535,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         if batch_size is not None:
             self.set_batch_size(batch_size)
+
+        if ef_runtime is not None:
+            self.set_ef_runtime(ef_runtime)
 
         self._normalize_vector_distance = normalize_vector_distance
         self.set_distance_threshold(distance_threshold)
@@ -595,6 +649,26 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         # Reset the query string
         self._query_string = self._build_query_string()
 
+    def set_ef_runtime(self, ef_runtime: int):
+        """Set the EF_RUNTIME parameter for the query.
+
+        Args:
+            ef_runtime (int): The EF_RUNTIME value to use for HNSW algorithm.
+                Higher values improve recall at the expense of slower search.
+
+        Raises:
+            TypeError: If ef_runtime is not an integer
+            ValueError: If ef_runtime is not positive
+        """
+        if not isinstance(ef_runtime, int):
+            raise TypeError("ef_runtime must be an integer")
+        if ef_runtime <= 0:
+            raise ValueError("ef_runtime must be positive")
+        self._ef_runtime = ef_runtime
+
+        # Reset the query string
+        self._query_string = self._build_query_string()
+
     def _build_query_string(self) -> str:
         """Build the full query string for vector range queries with optional filtering"""
         # Build base query with vector range only
@@ -656,6 +730,15 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._batch_size
 
     @property
+    def ef_runtime(self) -> Optional[int]:
+        """Return the EF_RUNTIME parameter for the query.
+
+        Returns:
+            Optional[int]: The EF_RUNTIME value for the query.
+        """
+        return self._ef_runtime
+
+    @property
     def params(self) -> Dict[str, Any]:
         """Return the parameters for the query.
 
@@ -663,21 +746,30 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             Dict[str, Any]: The parameters for the query.
         """
         if isinstance(self._vector, bytes):
-            vector_param = self._vector
+            vector = self._vector
         else:
-            vector_param = array_to_buffer(self._vector, dtype=self._dtype)
+            vector = array_to_buffer(self._vector, dtype=self._dtype)
 
         params = {
-            self.VECTOR_PARAM: vector_param,
+            self.VECTOR_PARAM: vector,
             self.DISTANCE_THRESHOLD_PARAM: self._distance_threshold,
         }
 
-        # Add hybrid policy and batch size as query parameters (not in query string)
-        if self._hybrid_policy:
+        # Add EPSILON parameter if specified
+        if self._epsilon is not None:
+            params[self.EPSILON_PARAM] = str(self._epsilon)
+
+        # Add HYBRID_POLICY parameter if specified
+        if self._hybrid_policy is not None:
             params[self.HYBRID_POLICY_PARAM] = self._hybrid_policy.value
 
-            if self._hybrid_policy == HybridPolicy.BATCHES and self._batch_size:
-                params[self.BATCH_SIZE_PARAM] = self._batch_size
+        # Add BATCH_SIZE parameter if specified
+        if self._batch_size is not None:
+            params[self.BATCH_SIZE_PARAM] = str(self._batch_size)
+
+        # Add EF_RUNTIME parameter if specified
+        if self._ef_runtime is not None:
+            params[self.EF_RUNTIME_PARAM] = str(self._ef_runtime)
 
         return params
 
@@ -844,7 +936,7 @@ class TextQuery(BaseQuery):
 
         tokens = [
             escaper.escape(
-                token.strip().strip(",").replace("“", "").replace("”", "").lower()
+                token.strip().strip(",").replace(""", "").replace(""", "").lower()
             )
             for token in user_query.split()
         ]
