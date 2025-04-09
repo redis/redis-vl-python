@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "redisvl"
-version = "0.5.1"
+version = "0.5.2"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = ["Redis Inc. <applied.ai@redis.com>"]
 license = "MIT"
@@ -31,7 +31,7 @@ redis = "^5.0"
 pydantic = "^2"
 tenacity = ">=8.2.2"
 tabulate = "^0.9.0"
-ml-dtypes = "^0.4.0"
+ml-dtypes = ">=0.4.0,<1.0.0"
 python-ulid = "^3.0.0"
 nltk = { version = "^3.8.1", optional = true }
 jsonpath-ng = "^1.5.0"
