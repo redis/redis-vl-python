@@ -319,7 +319,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
         # Add EF_RUNTIME parameter if specified
         if self._ef_runtime:
-            knn_query += f" EF_RUNTIME {self._ef_runtime}"
+            knn_query += f" {self.EF_RUNTIME_PARAM} {self._ef_runtime}"
 
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
@@ -424,11 +424,11 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         else:
             vector = array_to_buffer(self._vector, dtype=self._dtype)
 
-        params: Dict[str, Union[bytes, str]] = {self.VECTOR_PARAM: vector}
+        params: Dict[str, Any] = {self.VECTOR_PARAM: vector}
 
         # Add EF_RUNTIME parameter if specified
         if self._ef_runtime is not None:
-            params[self.EF_RUNTIME_PARAM] = str(self._ef_runtime)
+            params[self.EF_RUNTIME_PARAM] = self._ef_runtime
 
         return params
 
@@ -757,19 +757,20 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         # Add EPSILON parameter if specified
         if self._epsilon is not None:
-            params[self.EPSILON_PARAM] = str(self._epsilon)
+            params[self.EPSILON_PARAM] = self._epsilon
 
-        # Add HYBRID_POLICY parameter if specified
+        # Add hybrid policy and batch size as query parameters (not in query string)
         if self._hybrid_policy is not None:
             params[self.HYBRID_POLICY_PARAM] = self._hybrid_policy.value
-
-        # Add BATCH_SIZE parameter if specified
-        if self._batch_size is not None:
-            params[self.BATCH_SIZE_PARAM] = str(self._batch_size)
+            if (
+                self._hybrid_policy == HybridPolicy.BATCHES
+                and self._batch_size is not None
+            ):
+                params[self.BATCH_SIZE_PARAM] = self._batch_size
 
         # Add EF_RUNTIME parameter if specified
         if self._ef_runtime is not None:
-            params[self.EF_RUNTIME_PARAM] = str(self._ef_runtime)
+            params[self.EF_RUNTIME_PARAM] = self._ef_runtime
 
         return params
 
@@ -936,7 +937,7 @@ class TextQuery(BaseQuery):
 
         tokens = [
             escaper.escape(
-                token.strip().strip(",").replace(""", "").replace(""", "").lower()
+                token.strip().strip(",").replace("“", "").replace("”", "").lower()
             )
             for token in user_query.split()
         ]

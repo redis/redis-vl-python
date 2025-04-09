@@ -535,7 +535,7 @@ def test_vector_range_query_construction():
     assert "$YIELD_DISTANCE_AS: vector_distance" in query_string
     assert "$EPSILON: 0.05" in query_string
     assert epsilon_query.epsilon == 0.05
-    assert epsilon_query.params.get("EPSILON") == "0.05"
+    assert epsilon_query.params.get("EPSILON") == 0.05
 
     # Range query with hybrid policy
     hybrid_query = VectorRangeQuery(
@@ -569,7 +569,7 @@ def test_vector_range_query_construction():
     assert batch_query.hybrid_policy == "BATCHES"
     assert batch_query.batch_size == 50
     assert batch_query.params["HYBRID_POLICY"] == "BATCHES"
-    assert batch_query.params["BATCH_SIZE"] == "50"
+    assert batch_query.params["BATCH_SIZE"] == 50
 
 
 def test_vector_range_query_setter_methods():
@@ -602,7 +602,7 @@ def test_vector_range_query_setter_methods():
     # Set batch size
     query.set_batch_size(25)
     assert query.batch_size == 25
-    assert query.params["BATCH_SIZE"] == "25"
+    assert query.params["BATCH_SIZE"] == 25
 
 
 def test_vector_range_query_error_handling():
@@ -649,7 +649,7 @@ def test_vector_query_ef_runtime():
     assert "EF_RUNTIME 100" in query_string
 
     # Check params dictionary
-    assert vector_query.params.get("EF_RUNTIME") == "100"
+    assert vector_query.params.get("EF_RUNTIME") == 100
 
     # Test with different value
     vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=50)
@@ -682,7 +682,7 @@ def test_vector_query_set_ef_runtime():
     assert "EF_RUNTIME 200" in query_string
 
     # Check params dictionary
-    assert vector_query.params.get("EF_RUNTIME") == "200"
+    assert vector_query.params.get("EF_RUNTIME") == 200
 
 
 def test_vector_query_invalid_ef_runtime():
@@ -726,9 +726,9 @@ def test_vector_range_query_ef_runtime():
 
     # EF_RUNTIME should be in params but not in query string (like hybrid_policy)
     assert "EF_RUNTIME" not in str(range_query)
-    assert range_query.params.get("EF_RUNTIME") == "100"
+    assert range_query.params.get("EF_RUNTIME") == 100
 
     # Test setting ef_runtime
     range_query.set_ef_runtime(150)
     assert range_query.ef_runtime == 150
-    assert range_query.params.get("EF_RUNTIME") == "150"
+    assert range_query.params.get("EF_RUNTIME") == 150
