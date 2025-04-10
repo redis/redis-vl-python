@@ -14,19 +14,19 @@ class BaseQuery(RedisQuery):
     Base query class used to subclass many query types.
 
     NOTE: In the base class, the `_query_string` field is set once on
-    initialization, and afterward, the redis-py codebase expects to be able to
-    read it. By contrast, our query subclasses allow users to call methods that
-    alter the query string at runtime. To avoid having to rebuild
-    `_query_string` every time one of these methods is called, we lazily build
-    the query string when a user calls `query()` or accesses the property
-    `_query_string`, when the underlying `__query_string` field is None. Any
-    method that alters the query string should set `__query_string` to None so
-    that the next time the query string is accessed, it is rebuilt.
+    initialization, and afterward, redis-py expects to be able to read it. By
+    contrast, our query subclasses allow users to call methods that alter the
+    query string at runtime. To avoid having to rebuild `_query_string` every
+    time one of these methods is called, we lazily build the query string when a
+    user calls `query()` or accesses the property `_query_string`, when the
+    underlying `_built_query_string` field is None. Any method that alters the query
+    string should set `_built_query_string` to None so that the next time the query
+    string is accessed, it is rebuilt.
     """
 
     _params: Dict[str, Any] = {}
     _filter_expression: Union[str, FilterExpression] = FilterExpression("*")
-    __query_string: Optional[str] = None
+    _built_query_string: Optional[str] = None
 
     def __init__(self, query_string: str = "*"):
         """
@@ -35,7 +35,14 @@ class BaseQuery(RedisQuery):
         Args:
             query_string (str, optional): The query string to use. Defaults to '*'.
         """
+        # The parent class expects a query string, so we pass it in, but we'll
+        # actually manage building it dynamically.
         super().__init__(query_string)
+
+        # This is a private field that we use to track whether the query string
+        # has been built, and we set it to None here to indicate that the field
+        # has not been built yet.
+        self._built_query_string = None
 
     def __str__(self) -> str:
         """Return the string representation of the query."""
@@ -68,7 +75,7 @@ class BaseQuery(RedisQuery):
             )
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     @property
     def filter(self) -> Union[str, FilterExpression]:
@@ -88,14 +95,14 @@ class BaseQuery(RedisQuery):
     @property
     def _query_string(self) -> str:
         """Maintains compatibility with parent class while providing lazy loading."""
-        if self.__query_string is None:
-            self.__query_string = self._build_query_string()
-        return self.__query_string
+        if self._built_query_string is None:
+            self._built_query_string = self._build_query_string()
+        return self._built_query_string
 
     @_query_string.setter
     def _query_string(self, value: Optional[str]):
         """Setter for _query_string to maintain compatibility with parent class."""
-        self.__query_string = value
+        self._built_query_string = value
 
 
 class FilterQuery(BaseQuery):
@@ -134,7 +141,7 @@ class FilterQuery(BaseQuery):
 
         # Initialize the base query with the query string from the property
         super().__init__("*")
-        self.__query_string = None  # Ensure it's invalidated after initialization
+        self._built_query_string = None  # Ensure it's invalidated after initialization
 
         # Handle query settings
         if return_fields:
@@ -188,7 +195,7 @@ class CountQuery(BaseQuery):
 
         # Initialize the base query with the query string from the property
         super().__init__("*")
-        self.__query_string = None
+        self._built_query_string = None
 
         # Query specific modifications
         self.no_content().paging(0, 0).dialect(dialect)
@@ -203,7 +210,8 @@ class CountQuery(BaseQuery):
 class BaseVectorQuery:
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
-    EF_RUNTIME_PARAM: str = "EF_RUNTIME"
+    EF_RUNTIME: str = "EF_RUNTIME"
+    EF_RUNTIME_PARAM: str = "EF"
 
     _normalize_vector_distance: bool = False
 
@@ -296,7 +304,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
         # Initialize the base query
         super().__init__("*")
-        self.__query_string = None
+        self._built_query_string = None
 
         # Handle query modifiers
         if return_fields:
@@ -345,7 +353,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
         # Add EF_RUNTIME parameter if specified
         if self._ef_runtime:
-            knn_query += f" {self.EF_RUNTIME_PARAM} {self._ef_runtime}"
+            knn_query += f" {self.EF_RUNTIME} ${self.EF_RUNTIME_PARAM}"
 
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
@@ -370,7 +378,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             )
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def set_batch_size(self, batch_size: int):
         """Set the batch size for the query.
@@ -389,7 +397,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._batch_size = batch_size
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def set_ef_runtime(self, ef_runtime: int):
         """Set the EF_RUNTIME parameter for the query.
@@ -409,7 +417,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._ef_runtime = ef_runtime
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     @property
     def hybrid_policy(self) -> Optional[str]:
@@ -556,7 +564,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         # Initialize the base query
         super().__init__("*")
-        self.__query_string = None
+        self._built_query_string = None
 
         if epsilon is not None:
             self.set_epsilon(epsilon)
@@ -615,7 +623,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._distance_threshold = distance_threshold
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def set_epsilon(self, epsilon: float):
         """Set the epsilon parameter for the range query.
@@ -635,7 +643,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._epsilon = epsilon
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def set_hybrid_policy(self, hybrid_policy: str):
         """Set the hybrid policy for the query.
@@ -655,7 +663,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             )
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def set_batch_size(self, batch_size: int):
         """Set the batch size for the query.
@@ -674,7 +682,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._batch_size = batch_size
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def set_ef_runtime(self, ef_runtime: int):
         """Set the EF_RUNTIME parameter for the query.
@@ -694,7 +702,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._ef_runtime = ef_runtime
 
         # Invalidate the query string
-        self.__query_string = None
+        self._built_query_string = None
 
     def _build_query_string(self) -> str:
         """Build the full query string for vector range queries with optional filtering"""
@@ -707,6 +715,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         if self._epsilon is not None:
             attr_parts.append(f"$EPSILON: {self._epsilon}")
+
+        if self._ef_runtime is not None:
+            attr_parts.append(f"$EF_RUNTIME: {self._ef_runtime}")
 
         # Add query attributes section
         attr_section = f"=>{{{'; '.join(attr_parts)}}}"
@@ -782,10 +793,6 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             self.DISTANCE_THRESHOLD_PARAM: self._distance_threshold,
         }
 
-        # Add EPSILON parameter if specified
-        if self._epsilon is not None:
-            params[self.EPSILON_PARAM] = self._epsilon
-
         # Add hybrid policy and batch size as query parameters (not in query string)
         if self._hybrid_policy is not None:
             params[self.HYBRID_POLICY_PARAM] = self._hybrid_policy.value
@@ -794,10 +801,6 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 and self._batch_size is not None
             ):
                 params[self.BATCH_SIZE_PARAM] = self._batch_size
-
-        # Add EF_RUNTIME parameter if specified
-        if self._ef_runtime is not None:
-            params[self.EF_RUNTIME_PARAM] = self._ef_runtime
 
         return params
 
@@ -894,7 +897,7 @@ class TextQuery(BaseQuery):
 
         # Initialize the base query
         super().__init__("*")
-        self.__query_string = None
+        self._built_query_string = None
 
         # handle query settings
         self.scorer(text_scorer)

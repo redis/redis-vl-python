@@ -535,7 +535,7 @@ def test_vector_range_query_construction():
     assert "$YIELD_DISTANCE_AS: vector_distance" in query_string
     assert "$EPSILON: 0.05" in query_string
     assert epsilon_query.epsilon == 0.05
-    assert epsilon_query.params.get("EPSILON") == 0.05
+    assert "EPSILON" not in epsilon_query.params
 
     # Range query with hybrid policy
     hybrid_query = VectorRangeQuery(
@@ -571,6 +571,20 @@ def test_vector_range_query_construction():
     assert batch_query.params["HYBRID_POLICY"] == "BATCHES"
     assert batch_query.params["BATCH_SIZE"] == 50
 
+    # Range query with ef_runtime
+    ef_runtime_query = VectorRangeQuery(
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        return_fields=["user", "credit_score"],
+        distance_threshold=0.2,
+        ef_runtime=100,
+    )
+
+    # EF_RUNTIME should be in the query string, not params
+    query_string = str(ef_runtime_query)
+    assert "$EF_RUNTIME: 100" in query_string
+    assert "EF_RUNTIME" not in ef_runtime_query.params
+
 
 def test_vector_range_query_setter_methods():
     """Unit test: Test setter methods for VectorRangeQuery parameters."""
@@ -593,6 +607,11 @@ def test_vector_range_query_setter_methods():
     query.set_epsilon(0.1)
     assert query.epsilon == 0.1
     assert "$EPSILON: 0.1" in str(query)
+
+    # Set ef_runtime
+    query.set_ef_runtime(100)
+    assert query.ef_runtime == 100
+    assert "$EF_RUNTIME: 100" in str(query)
 
     # Set hybrid policy
     query.set_hybrid_policy("BATCHES")
@@ -635,6 +654,13 @@ def test_vector_range_query_error_handling():
     with pytest.raises(ValueError, match="batch_size must be positive"):
         query.set_batch_size(-10)
 
+    # Test invalid ef_runtime
+    with pytest.raises(TypeError, match="ef_runtime must be an integer"):
+        query.set_ef_runtime("hey")  # type: ignore
+
+    with pytest.raises(ValueError, match="ef_runtime must be positive"):
+        query.set_ef_runtime(-10)
+
 
 def test_vector_query_ef_runtime():
     """Test that VectorQuery correctly handles EF_RUNTIME parameter."""
@@ -646,10 +672,10 @@ def test_vector_query_ef_runtime():
 
     # Check query string
     query_string = str(vector_query)
-    assert "EF_RUNTIME 100" in query_string
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in query_string
 
     # Check params dictionary
-    assert vector_query.params.get("EF_RUNTIME") == 100
+    assert vector_query.params.get(VectorQuery.EF_RUNTIME_PARAM) == 100
 
     # Test with different value
     vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=50)
@@ -659,7 +685,7 @@ def test_vector_query_ef_runtime():
 
     # Check query string
     query_string = str(vector_query)
-    assert "EF_RUNTIME 50" in query_string
+    assert "EF_RUNTIME $EF" in query_string
 
 
 def test_vector_query_set_ef_runtime():
@@ -669,7 +695,9 @@ def test_vector_query_set_ef_runtime():
 
     # Initially no ef_runtime
     assert vector_query.ef_runtime is None
-    assert "EF_RUNTIME" not in str(vector_query)
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" not in str(
+        vector_query
+    )
 
     # Set ef_runtime
     vector_query.set_ef_runtime(200)
@@ -679,17 +707,17 @@ def test_vector_query_set_ef_runtime():
 
     # Check query string
     query_string = str(vector_query)
-    assert "EF_RUNTIME 200" in query_string
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in query_string
 
     # Check params dictionary
-    assert vector_query.params.get("EF_RUNTIME") == 200
+    assert vector_query.params.get(VectorQuery.EF_RUNTIME_PARAM) == 200
 
 
 def test_vector_query_invalid_ef_runtime():
     """Test error handling for invalid EF_RUNTIME values."""
     # Test with invalid ef_runtime type
     with pytest.raises(TypeError, match="ef_runtime must be an integer"):
-        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime="100")
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime="hey")  # type: ignore
 
     # Test with invalid ef_runtime value
     with pytest.raises(ValueError, match="ef_runtime must be positive"):
@@ -703,7 +731,7 @@ def test_vector_query_invalid_ef_runtime():
 
     # Test with invalid ef_runtime type
     with pytest.raises(TypeError, match="ef_runtime must be an integer"):
-        vector_query.set_ef_runtime("100")
+        vector_query.set_ef_runtime("hey")  # type: ignore
 
     # Test with invalid ef_runtime value
     with pytest.raises(ValueError, match="ef_runtime must be positive"):
@@ -724,11 +752,12 @@ def test_vector_range_query_ef_runtime():
     assert range_query.ef_runtime == 100
     assert range_query.distance_threshold == 0.3
 
-    # EF_RUNTIME should be in params but not in query string (like hybrid_policy)
-    assert "EF_RUNTIME" not in str(range_query)
-    assert range_query.params.get("EF_RUNTIME") == 100
+    # EF_RUNTIME should not be in params and should be in query string
+    assert f"${VectorRangeQuery.EF_RUNTIME}: 100" in str(range_query)
+    assert VectorRangeQuery.EF_RUNTIME_PARAM not in range_query.params
 
     # Test setting ef_runtime
     range_query.set_ef_runtime(150)
     assert range_query.ef_runtime == 150
-    assert range_query.params.get("EF_RUNTIME") == 150
+    assert f"${VectorRangeQuery.EF_RUNTIME}: 150" in str(range_query)
+    assert VectorRangeQuery.EF_RUNTIME_PARAM not in range_query.params
