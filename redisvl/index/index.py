@@ -592,6 +592,27 @@ class SearchIndex(BaseSearchIndex):
         else:
             return self._redis_client.delete(keys)  # type: ignore
 
+    def drop_documents(self, ids: Union[str, List[str]]) -> int:
+        """Remove documents from the index by their document IDs.
+
+        This method converts document IDs to Redis keys automatically by applying
+        the index's key prefix and separator configuration.
+
+        Args:
+            ids (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of documents deleted from Redis.
+        """
+        if isinstance(ids, list):
+            if not ids:
+                return 0
+            keys = [self.key(id) for id in ids]
+            return self._redis_client.delete(*keys)  # type: ignore
+        else:
+            key = self.key(ids)
+            return self._redis_client.delete(key)  # type: ignore
+
     def expire_keys(
         self, keys: Union[str, List[str]], ttl: int
     ) -> Union[int, List[int]]:
@@ -1236,6 +1257,28 @@ class AsyncSearchIndex(BaseSearchIndex):
         else:
             return await client.delete(keys)
 
+    async def drop_documents(self, ids: Union[str, List[str]]) -> int:
+        """Remove documents from the index by their document IDs.
+
+        This method converts document IDs to Redis keys automatically by applying
+        the index's key prefix and separator configuration.
+
+        Args:
+            ids (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of documents deleted from Redis.
+        """
+        client = await self._get_client()
+        if isinstance(ids, list):
+            if not ids:
+                return 0
+            keys = [self.key(id) for id in ids]
+            return await client.delete(*keys)
+        else:
+            key = self.key(ids)
+            return await client.delete(key)
+
     async def expire_keys(
         self, keys: Union[str, List[str]], ttl: int
     ) -> Union[int, List[int]]:
@@ -1356,7 +1399,7 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _aggregate(
         self, aggregation_query: AggregationQuery
     ) -> List[Dict[str, Any]]:
-        """Execute an aggretation query and processes the results."""
+        """Execute an aggregation query and processes the results."""
         results = await self.aggregate(
             aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
         )
