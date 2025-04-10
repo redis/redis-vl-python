@@ -10,10 +10,23 @@ from redisvl.utils.utils import denorm_cosine_distance
 
 
 class BaseQuery(RedisQuery):
-    """Base query class used to subclass many query types."""
+    """
+    Base query class used to subclass many query types.
+
+    NOTE: In the base class, the `_query_string` field is set once on
+    initialization, and afterward, the redis-py codebase expects to be able to
+    read it. By contrast, our query subclasses allow users to call methods that
+    alter the query string at runtime. To avoid having to rebuild
+    `_query_string` every time one of these methods is called, we lazily build
+    the query string when a user calls `query()` or accesses the property
+    `_query_string`, when the underlying `__query_string` field is None. Any
+    method that alters the query string should set `__query_string` to None so
+    that the next time the query string is accessed, it is rebuilt.
+    """
 
     _params: Dict[str, Any] = {}
     _filter_expression: Union[str, FilterExpression] = FilterExpression("*")
+    __query_string: Optional[str] = None
 
     def __init__(self, query_string: str = "*"):
         """
@@ -54,8 +67,8 @@ class BaseQuery(RedisQuery):
                 "filter_expression must be of type FilterExpression or string or None"
             )
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     @property
     def filter(self) -> Union[str, FilterExpression]:
@@ -71,6 +84,18 @@ class BaseQuery(RedisQuery):
     def params(self) -> Dict[str, Any]:
         """Return the query parameters."""
         return self._params
+
+    @property
+    def _query_string(self) -> str:
+        """Maintains compatibility with parent class while providing lazy loading."""
+        if self.__query_string is None:
+            self.__query_string = self._build_query_string()
+        return self.__query_string
+
+    @_query_string.setter
+    def _query_string(self, value: Optional[str]):
+        """Setter for _query_string to maintain compatibility with parent class."""
+        self.__query_string = value
 
 
 class FilterQuery(BaseQuery):
@@ -107,9 +132,9 @@ class FilterQuery(BaseQuery):
 
         self._num_results = num_results
 
-        # Initialize the base query with the full query string constructed from the filter expression
-        query_string = self._build_query_string()
-        super().__init__(query_string)
+        # Initialize the base query with the query string from the property
+        super().__init__("*")
+        self.__query_string = None  # Ensure it's invalidated after initialization
 
         # Handle query settings
         if return_fields:
@@ -161,9 +186,9 @@ class CountQuery(BaseQuery):
         if params:
             self._params = params
 
-        # Initialize the base query with the full query string constructed from the filter expression
-        query_string = self._build_query_string()
-        super().__init__(query_string)
+        # Initialize the base query with the query string from the property
+        super().__init__("*")
+        self.__query_string = None
 
         # Query specific modifications
         self.no_content().paging(0, 0).dialect(dialect)
@@ -268,9 +293,10 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._ef_runtime: Optional[int] = None
         self._normalize_vector_distance = normalize_vector_distance
         self.set_filter(filter_expression)
-        query_string = self._build_query_string()
 
-        super().__init__(query_string)
+        # Initialize the base query
+        super().__init__("*")
+        self.__query_string = None
 
         # Handle query modifiers
         if return_fields:
@@ -343,8 +369,8 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 f"hybrid_policy must be one of {', '.join([p.value for p in HybridPolicy])}"
             )
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def set_batch_size(self, batch_size: int):
         """Set the batch size for the query.
@@ -362,8 +388,8 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             raise ValueError("batch_size must be positive")
         self._batch_size = batch_size
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def set_ef_runtime(self, ef_runtime: int):
         """Set the EF_RUNTIME parameter for the query.
@@ -382,8 +408,8 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             raise ValueError("ef_runtime must be positive")
         self._ef_runtime = ef_runtime
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     @property
     def hybrid_policy(self) -> Optional[str]:
@@ -526,6 +552,11 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
         self._ef_runtime: Optional[int] = None
+        self._normalize_vector_distance = normalize_vector_distance
+
+        # Initialize the base query
+        super().__init__("*")
+        self.__query_string = None
 
         if epsilon is not None:
             self.set_epsilon(epsilon)
@@ -539,12 +570,8 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         if ef_runtime is not None:
             self.set_ef_runtime(ef_runtime)
 
-        self._normalize_vector_distance = normalize_vector_distance
         self.set_distance_threshold(distance_threshold)
         self.set_filter(filter_expression)
-        query_string = self._build_query_string()
-
-        super().__init__(query_string)
 
         # Handle query modifiers
         if return_fields:
@@ -587,8 +614,8 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             distance_threshold = denorm_cosine_distance(distance_threshold)
         self._distance_threshold = distance_threshold
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def set_epsilon(self, epsilon: float):
         """Set the epsilon parameter for the range query.
@@ -607,8 +634,8 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             raise ValueError("epsilon must be non-negative")
         self._epsilon = epsilon
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def set_hybrid_policy(self, hybrid_policy: str):
         """Set the hybrid policy for the query.
@@ -627,8 +654,8 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 f"hybrid_policy must be one of {', '.join([p.value for p in HybridPolicy])}"
             )
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def set_batch_size(self, batch_size: int):
         """Set the batch size for the query.
@@ -646,8 +673,8 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             raise ValueError("batch_size must be positive")
         self._batch_size = batch_size
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def set_ef_runtime(self, ef_runtime: int):
         """Set the EF_RUNTIME parameter for the query.
@@ -666,8 +693,8 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             raise ValueError("ef_runtime must be positive")
         self._ef_runtime = ef_runtime
 
-        # Reset the query string
-        self._query_string = self._build_query_string()
+        # Invalidate the query string
+        self.__query_string = None
 
     def _build_query_string(self) -> str:
         """Build the full query string for vector range queries with optional filtering"""
@@ -856,7 +883,7 @@ class TextQuery(BaseQuery):
             TypeError: If stopwords is not a valid iterable set of strings.
         """
         self._text = text
-        self._text_field = text_field_name
+        self._text_field_name = text_field_name
         self._num_results = num_results
 
         self._set_stopwords(stopwords)
@@ -865,9 +892,9 @@ class TextQuery(BaseQuery):
         if params:
             self._params = params
 
-        # initialize the base query with the full query string and filter expression
-        query_string = self._build_query_string()
-        super().__init__(query_string)
+        # Initialize the base query
+        super().__init__("*")
+        self.__query_string = None
 
         # handle query settings
         self.scorer(text_scorer)
@@ -953,7 +980,9 @@ class TextQuery(BaseQuery):
         else:
             filter_expression = ""
 
-        text = f"@{self._text_field}:({self._tokenize_and_escape_query(self._text)})"
+        text = (
+            f"@{self._text_field_name}:({self._tokenize_and_escape_query(self._text)})"
+        )
         if filter_expression and filter_expression != "*":
             text += f" AND {filter_expression}"
         return text
