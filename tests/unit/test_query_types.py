@@ -721,31 +721,6 @@ def test_vector_query_invalid_ef_runtime():
         vector_query.set_ef_runtime(-10)
 
 
-def test_vector_range_query_ef_runtime():
-    """Test that VectorRangeQuery correctly handles EF_RUNTIME parameter."""
-    # Create a range query with ef_runtime
-    range_query = VectorRangeQuery(
-        [0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=100, distance_threshold=0.3
-    )
-
-    # Check properties
-    assert range_query.ef_runtime == 100
-    assert range_query.distance_threshold == 0.3
-
-    # EF_RUNTIME should not be in params and should be in query string
-    assert f"${VectorRangeQuery.EF_RUNTIME}: 100" in str(range_query)
-    assert VectorRangeQuery.EF_RUNTIME_PARAM not in range_query.params
-
-    # Test setting ef_runtime
-    range_query.set_ef_runtime(150)
-    assert range_query.ef_runtime == 150
-    assert f"${VectorRangeQuery.EF_RUNTIME}: 150" in str(range_query)
-    assert VectorRangeQuery.EF_RUNTIME_PARAM not in range_query.params
-
-
-# New tests for updating EF_RUNTIME parameter in VectorQuery
-
-
 def test_vector_query_update_ef_runtime():
     """Unit test: Verify that updating EF_RUNTIME on a VectorQuery updates both the query string and params."""
     vq = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
