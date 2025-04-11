@@ -1,12 +1,10 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from redisvl.extensions.constants import (
     CACHE_VECTOR_FIELD_NAME,
-    ENTRY_ID_FIELD_NAME,
     INSERTED_AT_FIELD_NAME,
-    METADATA_FIELD_NAME,
     PROMPT_FIELD_NAME,
     RESPONSE_FIELD_NAME,
     UPDATED_AT_FIELD_NAME,
@@ -17,9 +15,9 @@ from redisvl.utils.utils import current_timestamp, deserialize, serialize
 
 
 class CacheEntry(BaseModel):
-    """A single LLM cache entry in Redis."""
+    """A single cache entry in Redis"""
 
-    entry_id: str
+    entry_id: Optional[str] = Field(default=None)
     """Cache entry identifier"""
     prompt: str
     """Input prompt or question cached in Redis"""
@@ -38,191 +36,101 @@ class CacheEntry(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_and_set_defaults(cls, values):
-        """Ensure the entry_id is set and validate data types."""
-        # Set entry_id if not provided
-        if not values.get(ENTRY_ID_FIELD_NAME):
-            if PROMPT_FIELD_NAME not in values:
-                raise ValueError("Prompt is required for cache entry")
-
-            filters = values.get("filters")
-            values[ENTRY_ID_FIELD_NAME] = hashify(values[PROMPT_FIELD_NAME], filters)
-
-        # Set timestamps if not provided
-        if INSERTED_AT_FIELD_NAME not in values:
-            values[INSERTED_AT_FIELD_NAME] = current_timestamp()
-        if UPDATED_AT_FIELD_NAME not in values:
-            values[UPDATED_AT_FIELD_NAME] = current_timestamp()
-
+    def generate_id(cls, values):
+        # Ensure entry_id is set
+        if not values.get("entry_id"):
+            values["entry_id"] = hashify(values["prompt"], values.get("filters"))
         return values
 
-    @field_validator("metadata", "filters", mode="before")
+    @field_validator("metadata")
     @classmethod
-    def deserialize_if_string(cls, v):
-        """Deserialize metadata or filters if they are serialized strings."""
-        if isinstance(v, str):
-            try:
-                return deserialize(v)
-            except:
-                pass
+    def non_empty_metadata(cls, v):
+        if v is not None and not isinstance(v, dict):
+            raise TypeError("Metadata must be a dictionary.")
         return v
 
-    def to_dict(self, dtype: str = "float32") -> Dict[str, Any]:
-        """Convert to a dictionary for storage.
-
-        Args:
-            dtype (str): The data type for vector conversion.
-
-        Returns:
-            Dict[str, Any]: The dictionary representation ready for storage.
-        """
+    def to_dict(self, dtype: str) -> Dict:
         data = self.model_dump(exclude_none=True)
-
-        # Convert vector to binary format
-        vector_field_name = CACHE_VECTOR_FIELD_NAME
-        if "prompt_vector" in data:
-            data[vector_field_name] = array_to_buffer(data.pop("prompt_vector"), dtype)
-
-        # Serialize dictionary fields
-        if "metadata" in data and data["metadata"] is not None:
-            data[METADATA_FIELD_NAME] = serialize(data["metadata"])
-        if "filters" in data and data["filters"] is not None:
-            data["filters"] = serialize(data["filters"])
-
-        # Set entry_id if needed
-        if ENTRY_ID_FIELD_NAME not in data:
-            data[ENTRY_ID_FIELD_NAME] = self.entry_id
-
+        data["prompt_vector"] = array_to_buffer(self.prompt_vector, dtype)
+        if self.metadata is not None:
+            data["metadata"] = serialize(self.metadata)
+        if self.filters is not None:
+            data.update(self.filters)
+            del data["filters"]
         return data
 
 
 class CacheHit(BaseModel):
-    """A cache hit result from searching the semantic cache."""
+    """A cache hit based on some input query"""
 
-    entry_id: str = Field(alias="entry_id")
+    entry_id: str
     """Cache entry identifier"""
     prompt: str
     """Input prompt or question cached in Redis"""
     response: str
     """Response or answer to the question, cached in Redis"""
-    score: Optional[float] = None
-    """Optional similarity score returned by vector search"""
-    inserted_at: Optional[float] = None
+    vector_distance: float
+    """The semantic distance between the query vector and the stored prompt vector"""
+    inserted_at: float
     """Timestamp of when the entry was added to the cache"""
-    updated_at: Optional[float] = None
+    updated_at: float
     """Timestamp of when the entry was updated in the cache"""
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = Field(default=None)
     """Optional metadata stored on the cache entry"""
+    filters: Optional[Dict[str, Any]] = Field(default=None)
+    """Optional filter data stored on the cache entry for customizing retrieval"""
+
+    # Allow extra fields to simplify handling filters
+    model_config = ConfigDict(extra="allow")
 
     @model_validator(mode="before")
     @classmethod
-    def deserialize_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Deserialize fields as needed."""
-        # Deserialize metadata if it's a string
-        if METADATA_FIELD_NAME in values and isinstance(
-            values[METADATA_FIELD_NAME], str
-        ):
-            try:
-                values[METADATA_FIELD_NAME] = deserialize(values[METADATA_FIELD_NAME])
-            except:
-                # If deserialization fails, keep as string
-                pass
+    def validate_cache_hit(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Deserialize metadata if necessary
+        if "metadata" in values and isinstance(values["metadata"], str):
+            values["metadata"] = deserialize(values["metadata"])
 
-        # Convert string timestamps to floats
-        for timestamp_field in [INSERTED_AT_FIELD_NAME, UPDATED_AT_FIELD_NAME]:
-            if timestamp_field in values and isinstance(values[timestamp_field], str):
-                try:
-                    values[timestamp_field] = float(values[timestamp_field])
-                except:
-                    # If conversion fails, keep as string
-                    pass
+        # Collect any extra fields and store them as filters
+        extra_data = values.pop("__pydantic_extra__", {}) or {}
+        if extra_data:
+            current_filters = values.get("filters") or {}
+            if not isinstance(current_filters, dict):
+                current_filters = {}
+            current_filters.update(extra_data)
+            values["filters"] = current_filters
 
         return values
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the cache hit to a dictionary.
-
-        Returns:
-            Dict[str, Any]: Dictionary representation of the cache hit result.
-        """
-        return self.model_dump(exclude_none=True)
+        """Convert this model to a dictionary, merging filters into the result."""
+        data = self.model_dump(exclude_none=True)
+        if data.get("filters"):
+            data.update(data["filters"])
+            del data["filters"]
+        return data
 
 
 class SemanticCacheIndexSchema(IndexSchema):
-    """Schema for the semantic cache index.
-
-    This defines the Redis search index structure used by SemanticCache.
-    """
 
     @classmethod
-    def from_params(
-        cls,
-        name: str,
-        prefix: str,
-        dims: int,
-        dtype: str,
-    ) -> "SemanticCacheIndexSchema":
-        """Create a semantic cache index schema from parameters.
+    def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str):
 
-        Args:
-            name (str): The name of the index.
-            prefix (str): The prefix for Redis keys.
-            dims (int): The dimensions of the vector field.
-            dtype (str): The data type for the vector field.
-
-        Returns:
-            SemanticCacheIndexSchema: The semantic cache index schema.
-
-        Raises:
-            ValueError: If the dimensions are invalid.
-        """
-        if dims <= 0:
-            raise ValueError(f"Vector dimensions must be positive, got {dims}")
-
-        schema_dict = {
-            "index": {
-                "name": name,
-                "prefix": f"{prefix}:",
-                "storage_type": "hash",
-            },
-            "fields": [
-                {"name": ENTRY_ID_FIELD_NAME, "type": "tag"},
+        return cls(
+            index={"name": name, "prefix": prefix},  # type: ignore
+            fields=[  # type: ignore
                 {"name": PROMPT_FIELD_NAME, "type": "text"},
                 {"name": RESPONSE_FIELD_NAME, "type": "text"},
-                {"name": INSERTED_AT_FIELD_NAME, "type": "numeric", "sortable": True},
-                {"name": UPDATED_AT_FIELD_NAME, "type": "numeric", "sortable": True},
-                {"name": METADATA_FIELD_NAME, "type": "text"},
+                {"name": INSERTED_AT_FIELD_NAME, "type": "numeric"},
+                {"name": UPDATED_AT_FIELD_NAME, "type": "numeric"},
                 {
                     "name": CACHE_VECTOR_FIELD_NAME,
                     "type": "vector",
                     "attrs": {
-                        "dims": dims,
+                        "dims": vector_dims,
+                        "datatype": dtype,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
-                        "datatype": dtype,
                     },
                 },
             ],
-        }
-
-        return cls.from_dict(schema_dict)
-
-    def add_field(self, field_dict: Dict[str, Any]) -> None:
-        """Add a field to the schema.
-
-        Args:
-            field_dict (Dict[str, Any]): The field definition to add.
-
-        Raises:
-            ValueError: If a field with the same name already exists.
-        """
-        field_name = field_dict.get("name")
-        if not field_name:
-            raise ValueError("Field must have a 'name' attribute")
-
-        # Check if field already exists
-        if field_name in self.field_names:
-            raise ValueError(f"Field '{field_name}' already exists in schema")
-
-        # Add field to schema
-        self.fields.append(field_dict)  # type: ignore
+        )

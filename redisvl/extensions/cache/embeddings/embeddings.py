@@ -1,10 +1,6 @@
-"""Embeddings cache implementation for RedisVL.
+"""Embeddings cache implementation for RedisVL."""
 
-This module provides a concrete implementation of the BaseEmbeddingsCache that
-stores and retrieves embedding vectors with exact key matching.
-"""
-
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from redis import Redis
 
@@ -83,8 +79,18 @@ class EmbeddingsCache(BaseCache):
         model_name: str,
         embedding: List[float],
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Prepare data for storage in Redis"""
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Prepare data for storage in Redis
+
+        Args:
+            text (str): The text input that was embedded.
+            model_name (str): The name of the embedding model.
+            embedding (List[float]): The embedding vector.
+            metadata (Optional[Dict[str, Any]]): Optional metadata.
+
+        Returns:
+            Tuple[str, Dict[str, Any]]: A tuple of (key, entry_data)
+        """
         # Create cache entry with entry_id
         entry_id = self._make_entry_id(text, model_name)
         key = self._make_key(entry_id)
@@ -96,46 +102,6 @@ class EmbeddingsCache(BaseCache):
             metadata=metadata,
         )
         return key, entry.to_dict()
-
-    def clear(self) -> None:
-        """Clear the cache of all keys.
-
-        Removes all entries from the cache that match the cache prefix.
-
-        .. code-block:: python
-
-            cache.clear()
-        """
-        client = self._get_redis_client()
-
-        # Scan for all keys with our prefix
-        cursor = "0"
-        while cursor != 0:
-            cursor, keys = client.scan(
-                cursor=cursor, match=f"{self.prefix}*", count=100
-            )
-            if keys:
-                client.delete(*keys)
-
-    async def aclear(self) -> None:
-        """Async clear the cache of all keys.
-
-        Asynchronously removes all entries from the cache that match the cache prefix.
-
-        .. code-block:: python
-
-            await cache.aclear()
-        """
-        client = await self._get_async_redis_client()
-
-        # Scan for all keys with our prefix
-        cursor = "0"
-        while cursor != 0:
-            cursor, keys = await client.scan(
-                cursor=cursor, match=f"{self.prefix}*", count=100
-            )
-            if keys:
-                await client.delete(*keys)
 
     def get(
         self,
@@ -284,7 +250,7 @@ class EmbeddingsCache(BaseCache):
 
         # Store in Redis
         client = self._get_redis_client()
-        client.hset(name=key, mapping=cache_entry)
+        client.hset(name=key, mapping=cache_entry)  # type: ignore
 
         # Set TTL if specified
         self.expire(key, ttl)
@@ -329,7 +295,7 @@ class EmbeddingsCache(BaseCache):
 
         # Store in Redis
         client = await self._get_async_redis_client()
-        await client.hset(name=key, mapping=cache_entry)
+        await client.hset(name=key, mapping=cache_entry)  # type: ignore
 
         # Set TTL if specified
         await self.aexpire(key, ttl)

@@ -17,6 +17,9 @@ class BaseCache:
     including TTL management, connection handling, and basic cache operations.
     """
 
+    _redis_client: Optional[Redis]
+    _async_redis_client: Optional[AsyncRedis]
+
     def __init__(
         self,
         name: str,
@@ -47,12 +50,15 @@ class BaseCache:
             "connection_kwargs": connection_kwargs,
         }
 
+        # Initialize Redis clients
+        self._async_redis_client = None
+
         if redis_client:
             self._owns_redis_client = False
             self._redis_client = redis_client
         else:
             self._owns_redis_client = True
-            self._redis_client = None
+            self._redis_client = None  # type: ignore
 
     def _get_prefix(self) -> str:
         """Get the key prefix for Redis keys.
@@ -102,9 +108,10 @@ class BaseCache:
             Redis: A Redis client instance.
         """
         if self._redis_client is None:
-            self._redis_client = Redis.from_url(
-                self.redis_kwargs["redis_url"], **self.redis_kwargs["connection_kwargs"]
-            )
+            # Create new Redis client
+            url = self.redis_kwargs["redis_url"]
+            kwargs = self.redis_kwargs["connection_kwargs"]
+            self._redis_client = Redis.from_url(url, **kwargs)  # type: ignore
         return self._redis_client
 
     async def _get_async_redis_client(self) -> AsyncRedis:
@@ -114,9 +121,10 @@ class BaseCache:
             AsyncRedis: An async Redis client instance.
         """
         if not hasattr(self, "_async_redis_client") or self._async_redis_client is None:
-            self._async_redis_client = AsyncRedis.from_url(
-                self.redis_kwargs["redis_url"], **self.redis_kwargs["connection_kwargs"]
-            )
+            # Create new async Redis client
+            url = self.redis_kwargs["redis_url"]
+            kwargs = self.redis_kwargs["connection_kwargs"]
+            self._async_redis_client = AsyncRedis.from_url(url, **kwargs)  # type: ignore
         return self._async_redis_client
 
     def expire(self, key: str, ttl: Optional[int] = None) -> None:
@@ -161,11 +169,14 @@ class BaseCache:
         prefix = self._get_prefix()
 
         # Scan for all keys with our prefix
-        cursor = "0"
-        while cursor != 0:
-            cursor, keys = client.scan(cursor=cursor, match=f"{prefix}*", count=100)
+        cursor = 0  # Start with cursor 0
+        while True:
+            cursor_int, keys = client.scan(cursor=cursor, match=f"{prefix}*", count=100)  # type: ignore
             if keys:
                 client.delete(*keys)
+            if cursor_int == 0:  # Redis returns 0 when scan is complete
+                break
+            cursor = cursor_int  # Update cursor for next iteration
 
     async def aclear(self) -> None:
         """Async clear the cache of all keys."""
@@ -173,13 +184,14 @@ class BaseCache:
         prefix = self._get_prefix()
 
         # Scan for all keys with our prefix
-        cursor = "0"
-        while cursor != 0:
-            cursor, keys = await client.scan(
-                cursor=cursor, match=f"{prefix}*", count=100
-            )
+        cursor = 0  # Start with cursor 0
+        while True:
+            cursor_int, keys = await client.scan(cursor=cursor, match=f"{prefix}*", count=100)  # type: ignore
             if keys:
                 await client.delete(*keys)
+            if cursor_int == 0:  # Redis returns 0 when scan is complete
+                break
+            cursor = cursor_int  # Update cursor for next iteration
 
     def disconnect(self) -> None:
         """Disconnect from Redis."""
@@ -188,11 +200,12 @@ class BaseCache:
 
         if self._redis_client:
             self._redis_client.close()
-            self._redis_client = None
+            self._redis_client = None  # type: ignore
 
         if hasattr(self, "_async_redis_client") and self._async_redis_client:
-            self._async_redis_client.close()
-            self._async_redis_client = None
+            # Use synchronous close for async client in synchronous context
+            self._async_redis_client.close()  # type: ignore
+            self._async_redis_client = None  # type: ignore
 
     async def adisconnect(self) -> None:
         """Async disconnect from Redis."""
@@ -201,8 +214,9 @@ class BaseCache:
 
         if self._redis_client:
             self._redis_client.close()
-            self._redis_client = None
+            self._redis_client = None  # type: ignore
 
         if hasattr(self, "_async_redis_client") and self._async_redis_client:
-            await self._async_redis_client.aclose()
-            self._async_redis_client = None
+            # Use proper async close method
+            await self._async_redis_client.aclose()  # type: ignore
+            self._async_redis_client = None  # type: ignore

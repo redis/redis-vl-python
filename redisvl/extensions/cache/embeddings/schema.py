@@ -23,8 +23,6 @@ class CacheEntry(BaseModel):
     """The name of the embedding model used"""
     embedding: List[float]
     """The embedding vector representation"""
-    dimensions: int
-    """Number of dimensions in the embedding"""
     inserted_at: float = Field(default_factory=current_timestamp)
     """Timestamp of when the entry was added to the cache"""
     metadata: Optional[Dict[str, Any]] = Field(default=None)
@@ -43,6 +41,8 @@ class CacheEntry(BaseModel):
             values[EMBEDDING_FIELD_NAME], str
         ):
             values[EMBEDDING_FIELD_NAME] = deserialize(values[EMBEDDING_FIELD_NAME])
+
+        return values
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the cache entry to a dictionary for storage"""

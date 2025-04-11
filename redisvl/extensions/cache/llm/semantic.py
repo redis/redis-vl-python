@@ -87,7 +87,6 @@ class SemanticCache(BaseLLMCache):
         super().__init__(
             name=name,
             ttl=ttl,
-            overwrite=overwrite,
             redis_client=redis_client,
             redis_url=redis_url,
             connection_kwargs=connection_kwargs,
@@ -714,9 +713,9 @@ class SemanticCache(BaseLLMCache):
             # Add updated timestamp
             kwargs.update({UPDATED_AT_FIELD_NAME: current_timestamp()})
 
-            # Update the hash in Redis
+            # Update the hash in Redis - ensure client exists and handle type properly
             client = self._get_redis_client()
-            client.hset(key, mapping=kwargs)
+            client.hset(key, mapping=kwargs)  # type: ignore
 
         # Refresh TTL regardless of whether fields were updated
         self.expire(key)
@@ -758,9 +757,10 @@ class SemanticCache(BaseLLMCache):
             # Add updated timestamp
             kwargs.update({UPDATED_AT_FIELD_NAME: current_timestamp()})
 
-            # Update the hash in Redis
-            aindex = await self._get_async_index()
-            await aindex.client.hset(key, mapping=kwargs)
+            # Update the hash in Redis - ensure client exists and handle type properly
+            client = await self._get_async_redis_client()
+            # Convert dict values to proper types for Redis
+            await client.hset(key, mapping=kwargs)  # type: ignore
 
         # Refresh TTL regardless of whether fields were updated
         await self.aexpire(key)
