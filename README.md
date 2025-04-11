@@ -238,7 +238,7 @@ We're excited to announce the support for **RedisVL Extensions**. These modules 
 Increase application throughput and reduce the cost of using LLM models in production by leveraging previously generated knowledge with the [`SemanticCache`](https://docs.redisvl.com/en/stable/api/cache.html#semanticcache).
 
 ```python
-from redisvl.extensions.llmcache import SemanticCache
+from redisvl.extensions.cache.llm import SemanticCache
 
 # init cache with TTL and semantic distance threshold
 llmcache = SemanticCache(

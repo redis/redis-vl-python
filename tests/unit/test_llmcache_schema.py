@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from redisvl.extensions.llmcache.schema import CacheEntry, CacheHit
+from redisvl.extensions.cache.llm import CacheEntry, CacheHit
 from redisvl.redis.utils import array_to_buffer, hashify
 
 

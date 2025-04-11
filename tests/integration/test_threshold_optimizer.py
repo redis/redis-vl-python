@@ -5,7 +5,7 @@ import pytest
 if sys.version_info.major == 3 and sys.version_info.minor < 10:
     pytest.skip("Test requires Python 3.10 or higher", allow_module_level=True)
 
-from redisvl.extensions.llmcache import SemanticCache
+from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.extensions.router import Route, SemanticRouter
 from redisvl.extensions.router.schema import RoutingConfig
 from redisvl.redis.connection import compare_versions

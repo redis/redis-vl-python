@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from redis.exceptions import ConnectionError
 
 from redisvl.exceptions import RedisModuleVersionError
-from redisvl.extensions.llmcache import SemanticCache
+from redisvl.extensions.cache import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer

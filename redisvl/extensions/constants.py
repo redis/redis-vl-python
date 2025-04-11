@@ -25,5 +25,11 @@ INSERTED_AT_FIELD_NAME: str = "inserted_at"
 UPDATED_AT_FIELD_NAME: str = "updated_at"
 METADATA_FIELD_NAME: str = "metadata"
 
+# EmbeddingsCache
+TEXT_FIELD_NAME: str = "text"
+MODEL_NAME_FIELD_NAME: str = "model_name"
+EMBEDDING_FIELD_NAME: str = "embedding"
+DIMENSIONS_FIELD_NAME: str = "dimensions"
+
 # SemanticRouter
 ROUTE_VECTOR_FIELD_NAME: str = "vector"
