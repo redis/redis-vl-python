@@ -526,3 +526,33 @@ def test_batch_query_with_multiple_batches(index):
     assert len(results) == 2
     assert results[0][0]["id"] == "rvl:1"
     assert results[1][0]["id"] == "rvl:2"
+
+
+def test_search_index_expire_keys(index):
+    """Test that SearchIndex.expire_keys method properly sets expiration times on keys."""
+    # Create the index and load some data
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    keys = index.load(data, id_field="id")
+
+    # Set expiration on a single key
+    index.expire_keys(keys[0], 60)
+    ttl = index.client.ttl(keys[0])
+    assert ttl > 0  # TTL should be positive
+    assert ttl <= 60  # TTL should be 60 or less
+
+    # Test no expiration on the other key
+    ttl = index.client.ttl(keys[1])
+    assert ttl == -1  # -1 means no expiration
+
+    # Set expiration on multiple keys
+    result = index.expire_keys(keys, 30)
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert all(r == 1 for r in result)  # All operations should return 1 (success)
+
+    # Verify TTLs are set
+    for key in keys:
+        ttl = index.client.ttl(key)
+        assert ttl > 0
+        assert ttl <= 30

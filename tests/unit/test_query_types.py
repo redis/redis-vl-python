@@ -247,7 +247,9 @@ def test_text_query():
     text_query = TextQuery(text_string, text_field_name, stopwords=None)
     assert text_query.stopwords == set([])
 
-    text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
+    text_query = TextQuery(
+        text_string, text_field_name, stopwords=set(["the", "a", "of"])
+    )
     assert text_query.stopwords == set(["the", "a", "of"])
 
     text_query = TextQuery(text_string, text_field_name, stopwords="german")
@@ -259,7 +261,9 @@ def test_text_query():
     with pytest.raises(TypeError):
         text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
-    text_query = TextQuery(text_string, text_field_name, stopwords=["the", "a", "of"])
+    text_query = TextQuery(
+        text_string, text_field_name, stopwords=set(["the", "a", "of"])
+    )
     assert text_query.stopwords == set(["the", "a", "of"])
 
     text_query = TextQuery(text_string, text_field_name, stopwords="german")
@@ -616,7 +620,7 @@ def test_vector_range_query_error_handling():
 
     # Test invalid epsilon
     with pytest.raises(TypeError, match="epsilon must be of type float or int"):
-        query.set_epsilon("0.1")
+        query.set_epsilon("0.1")  # type: ignore
 
     with pytest.raises(ValueError, match="epsilon must be non-negative"):
         query.set_epsilon(-0.1)
@@ -627,10 +631,108 @@ def test_vector_range_query_error_handling():
 
     # Test invalid batch size
     with pytest.raises(TypeError, match="batch_size must be an integer"):
-        query.set_batch_size(10.5)
+        query.set_batch_size(10.5)  # type: ignore
 
     with pytest.raises(ValueError, match="batch_size must be positive"):
         query.set_batch_size(0)
 
     with pytest.raises(ValueError, match="batch_size must be positive"):
         query.set_batch_size(-10)
+
+    # Removed: Test invalid ef_runtime since VectorRangeQuery doesn't use EF_RUNTIME
+
+
+def test_vector_query_ef_runtime():
+    """Test that VectorQuery correctly handles EF_RUNTIME parameter."""
+    # Create a vector query with ef_runtime
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=100)
+
+    # Check properties
+    assert vector_query.ef_runtime == 100
+
+    # Check query string
+    query_string = str(vector_query)
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in query_string
+
+    # Check params dictionary
+    assert vector_query.params.get(VectorQuery.EF_RUNTIME_PARAM) == 100
+
+    # Test with different value
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=50)
+
+    # Check properties
+    assert vector_query.ef_runtime == 50
+
+    # Check query string
+    query_string = str(vector_query)
+    assert "EF_RUNTIME $EF" in query_string
+
+
+def test_vector_query_set_ef_runtime():
+    """Test that VectorQuery setter methods for EF_RUNTIME work properly."""
+    # Create a vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Initially no ef_runtime
+    assert vector_query.ef_runtime is None
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" not in str(
+        vector_query
+    )
+
+    # Set ef_runtime
+    vector_query.set_ef_runtime(200)
+
+    # Check properties
+    assert vector_query.ef_runtime == 200
+
+    # Check query string
+    query_string = str(vector_query)
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in query_string
+
+    # Check params dictionary
+    assert vector_query.params.get(VectorQuery.EF_RUNTIME_PARAM) == 200
+
+
+def test_vector_query_invalid_ef_runtime():
+    """Test error handling for invalid EF_RUNTIME values."""
+    # Test with invalid ef_runtime type
+    with pytest.raises(TypeError, match="ef_runtime must be an integer"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime="hey")  # type: ignore
+
+    # Test with invalid ef_runtime value
+    with pytest.raises(ValueError, match="ef_runtime must be positive"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=0)
+
+    with pytest.raises(ValueError, match="ef_runtime must be positive"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", ef_runtime=-10)
+
+    # Create a valid vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid ef_runtime type
+    with pytest.raises(TypeError, match="ef_runtime must be an integer"):
+        vector_query.set_ef_runtime("hey")  # type: ignore
+
+    # Test with invalid ef_runtime value
+    with pytest.raises(ValueError, match="ef_runtime must be positive"):
+        vector_query.set_ef_runtime(0)
+
+    with pytest.raises(ValueError, match="ef_runtime must be positive"):
+        vector_query.set_ef_runtime(-10)
+
+
+def test_vector_query_update_ef_runtime():
+    """Unit test: Verify that updating EF_RUNTIME on a VectorQuery updates both the query string and params."""
+    vq = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+    vq.set_ef_runtime(100)
+    qs1 = str(vq)
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in qs1
+    params1 = vq.params
+    assert params1.get(VectorQuery.EF_RUNTIME_PARAM) == 100
+
+    # Now update the EF_RUNTIME value
+    vq.set_ef_runtime(200)
+    qs2 = str(vq)
+    assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in qs2
+    params2 = vq.params
+    assert params2.get(VectorQuery.EF_RUNTIME_PARAM) == 200
