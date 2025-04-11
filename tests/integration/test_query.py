@@ -165,7 +165,7 @@ def index(sample_data, redis_url):
                     "attrs": {
                         "dims": 3,
                         "distance_metric": "cosine",
-                        "algorithm": "flat",
+                        "algorithm": "hnsw",
                         "datatype": "float32",
                     },
                 },
@@ -881,3 +881,20 @@ def test_text_query_with_text_filter(index):
     for result in results:
         assert any(word in result[text_field] for word in text.split())
         assert "research" not in result[text_field]
+
+
+def test_vector_query_with_ef_runtime(index, vector_query, sample_data):
+    """
+    Integration test: Verify that setting EF_RUNTIME on a VectorQuery works correctly.
+    """
+    vector_query.set_ef_runtime(100)
+    query_string = str(vector_query)
+    # Check that the query string includes the EF_RUNTIME parameter indicator
+    assert (
+        f"{vector_query.__class__.EF_RUNTIME} ${vector_query.__class__.EF_RUNTIME_PARAM}"
+        in query_string
+    ), "EF_RUNTIME not in query string"
+    results = index.query(vector_query)
+    assert len(results) > 0
+    for result in results:
+        assert "vector_distance" in result
