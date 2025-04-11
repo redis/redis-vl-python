@@ -437,3 +437,340 @@ def test_redis_client_reuse(cache_with_redis_client, sample_embedding_data):
     result = cache_with_redis_client.get_by_key(key)
     assert result is not None
     assert result["text"] == sample["text"]
+
+
+def test_mset_and_mget(cache, sample_embedding_data):
+    """Test batch setting and getting of embeddings."""
+    # Prepare batch items
+    batch_items = []
+    for sample in sample_embedding_data:
+        batch_items.append(
+            {
+                "text": sample["text"],
+                "model_name": sample["model_name"],
+                "embedding": sample["embedding"],
+                "metadata": sample.get("metadata"),
+            }
+        )
+
+    # Use mset to store embeddings
+    keys = cache.mset(batch_items)
+    assert len(keys) == len(batch_items)
+
+    # Get texts and model name for mget
+    texts = [item["text"] for item in batch_items]
+    model_name = batch_items[0]["model_name"]  # Assuming same model
+
+    # Test mget
+    results = cache.mget(texts, model_name)
+    assert len(results) == len(texts)
+
+    # Verify all results are returned and in correct order
+    for i, result in enumerate(results):
+        assert result is not None
+        assert result["text"] == texts[i]
+        assert result["model_name"] == model_name
+
+
+def test_mget_by_keys(cache, sample_embedding_data):
+    """Test getting multiple embeddings by their keys."""
+    # Set embeddings individually and collect keys
+    keys = []
+    for sample in sample_embedding_data:
+        key = cache.set(
+            text=sample["text"],
+            model_name=sample["model_name"],
+            embedding=sample["embedding"],
+            metadata=sample.get("metadata"),
+        )
+        keys.append(key)
+
+    # Test mget_by_keys
+    results = cache.mget_by_keys(keys)
+    assert len(results) == len(keys)
+
+    # Verify all results match the original samples
+    for i, result in enumerate(results):
+        assert result is not None
+        assert result["text"] == sample_embedding_data[i]["text"]
+        assert result["model_name"] == sample_embedding_data[i]["model_name"]
+
+    # Test with mix of existing and non-existing keys
+    non_existent_key = "test_embed_cache:nonexistent"
+    mixed_keys = keys[:1] + [non_existent_key] + keys[1:]
+    mixed_results = cache.mget_by_keys(mixed_keys)
+
+    assert len(mixed_results) == len(mixed_keys)
+    assert mixed_results[0] is not None
+    assert mixed_results[1] is None  # Non-existent key should return None
+    assert mixed_results[2] is not None
+
+
+def test_mexists_and_mexists_by_keys(cache, sample_embedding_data):
+    """Test batch existence checks for embeddings."""
+    # Set embeddings individually and collect data
+    keys = []
+    texts = []
+    for sample in sample_embedding_data:
+        key = cache.set(
+            text=sample["text"],
+            model_name=sample["model_name"],
+            embedding=sample["embedding"],
+        )
+        keys.append(key)
+        texts.append(sample["text"])
+
+    model_name = sample_embedding_data[0]["model_name"]  # Assuming same model
+
+    # Test mexists
+    exist_results = cache.mexists(texts, model_name)
+    assert len(exist_results) == len(texts)
+    assert all(exist_results)  # All should exist
+
+    # Test with mix of existing and non-existing texts
+    non_existent_text = "This text does not exist"
+    mixed_texts = texts[:1] + [non_existent_text] + texts[1:]
+    mixed_results = cache.mexists(mixed_texts, model_name)
+
+    assert len(mixed_results) == len(mixed_texts)
+    assert mixed_results[0] is True
+    assert mixed_results[1] is False  # Non-existent text should return False
+    assert mixed_results[2] is True
+
+    # Test mexists_by_keys
+    key_exist_results = cache.mexists_by_keys(keys)
+    assert len(key_exist_results) == len(keys)
+    assert all(key_exist_results)  # All should exist
+
+    # Test with mix of existing and non-existing keys
+    non_existent_key = "test_embed_cache:nonexistent"
+    mixed_keys = keys[:1] + [non_existent_key] + keys[1:]
+    mixed_key_results = cache.mexists_by_keys(mixed_keys)
+
+    assert len(mixed_key_results) == len(mixed_keys)
+    assert mixed_key_results[0] is True
+    assert mixed_key_results[1] is False  # Non-existent key should return False
+    assert mixed_key_results[2] is True
+
+
+def test_mdrop_and_mdrop_by_keys(cache, sample_embedding_data):
+    """Test batch deletion of embeddings."""
+    # Set embeddings and collect data
+    keys = []
+    texts = []
+    for sample in sample_embedding_data:
+        key = cache.set(
+            text=sample["text"],
+            model_name=sample["model_name"],
+            embedding=sample["embedding"],
+        )
+        keys.append(key)
+        texts.append(sample["text"])
+
+    model_name = sample_embedding_data[0]["model_name"]  # Assuming same model
+
+    # Test mdrop_by_keys with subset of keys
+    subset_keys = keys[:2]
+    cache.mdrop_by_keys(subset_keys)
+
+    # Verify only selected keys were dropped
+    for i, key in enumerate(keys):
+        if i < 2:
+            assert not cache.exists_by_key(key)  # Should be dropped
+        else:
+            assert cache.exists_by_key(key)  # Should still exist
+
+    # Reset for mdrop test
+    cache.clear()
+    keys = []
+    texts = []
+    for sample in sample_embedding_data:
+        key = cache.set(
+            text=sample["text"],
+            model_name=sample["model_name"],
+            embedding=sample["embedding"],
+        )
+        keys.append(key)
+        texts.append(sample["text"])
+
+    # Test mdrop with subset of texts
+    subset_texts = texts[:2]
+    cache.mdrop(subset_texts, model_name)
+
+    # Verify only selected texts were dropped
+    for i, text in enumerate(texts):
+        if i < 2:
+            assert not cache.exists(text, model_name)  # Should be dropped
+        else:
+            assert cache.exists(text, model_name)  # Should still exist
+
+
+@pytest.mark.asyncio
+async def test_async_batch_operations(cache, sample_embedding_data):
+    """Test async batch operations (amset, amget, amexists, amdrop)."""
+    # Prepare batch items
+    batch_items = []
+    for sample in sample_embedding_data:
+        batch_items.append(
+            {
+                "text": sample["text"],
+                "model_name": sample["model_name"],
+                "embedding": sample["embedding"],
+                "metadata": sample.get("metadata"),
+            }
+        )
+
+    # Use amset to store embeddings
+    keys = await cache.amset(batch_items)
+    assert len(keys) == len(batch_items)
+
+    # Get texts and model name for amget
+    texts = [item["text"] for item in batch_items]
+    model_name = batch_items[0]["model_name"]  # Assuming same model
+
+    # Test amget
+    results = await cache.amget(texts, model_name)
+    assert len(results) == len(texts)
+    for i, result in enumerate(results):
+        assert result is not None
+        assert result["text"] == texts[i]
+
+    # Test amget_by_keys
+    key_results = await cache.amget_by_keys(keys)
+    assert len(key_results) == len(keys)
+    for result in key_results:
+        assert result is not None
+
+    # Test amexists
+    exist_results = await cache.amexists(texts, model_name)
+    assert len(exist_results) == len(texts)
+    assert all(exist_results)  # All should exist
+
+    # Test amexists_by_keys
+    key_exist_results = await cache.amexists_by_keys(keys)
+    assert len(key_exist_results) == len(keys)
+    assert all(key_exist_results)  # All should exist
+
+    # Test amdrop with first text
+    await cache.amdrop([texts[0]], model_name)
+    updated_exists = await cache.aexists(texts[0], model_name)
+    assert not updated_exists  # Should be dropped
+
+    # Test amdrop_by_keys with second key
+    await cache.amdrop_by_keys([keys[1]])
+    updated_key_exists = await cache.aexists_by_key(keys[1])
+    assert not updated_key_exists  # Should be dropped
+
+
+def test_batch_operations_with_missing_data(cache):
+    """Test batch operations with empty lists and missing cache entries."""
+    # Test with empty lists
+    assert cache.mget_by_keys([]) == []
+    assert cache.mexists_by_keys([]) == []
+    cache.mdrop_by_keys([])  # Should not raise errors
+
+    # Test mget with non-existent keys
+    non_existent_keys = [
+        "test_embed_cache:nonexistent1",
+        "test_embed_cache:nonexistent2",
+    ]
+    results = cache.mget_by_keys(non_existent_keys)
+    assert len(results) == 2
+    assert results[0] is None
+    assert results[1] is None
+
+    # Test mexists with non-existent keys
+    exist_results = cache.mexists_by_keys(non_existent_keys)
+    assert len(exist_results) == 2
+    assert not any(exist_results)  # None should exist
+
+    # Test with empty model names and texts
+    assert cache.mget([], "model") == []
+    assert cache.mexists([], "model") == []
+    cache.mdrop([], "model")  # Should not raise errors
+
+
+def test_batch_with_ttl(cache_with_ttl, sample_embedding_data):
+    """Test batch operations with TTL."""
+    # Prepare batch items
+    batch_items = []
+    for sample in sample_embedding_data:
+        batch_items.append(
+            {
+                "text": sample["text"],
+                "model_name": sample["model_name"],
+                "embedding": sample["embedding"],
+                "metadata": sample.get("metadata"),
+            }
+        )
+
+    # Store with default TTL (2 seconds from fixture)
+    keys = cache_with_ttl.mset(batch_items)
+
+    # Verify all exist initially
+    exist_results = cache_with_ttl.mexists_by_keys(keys)
+    assert all(exist_results)
+
+    # Wait for TTL to expire
+    time.sleep(3)
+
+    # Verify all have expired
+    exist_results_after = cache_with_ttl.mexists_by_keys(keys)
+    assert not any(exist_results_after)
+
+    # Test with custom TTL override
+    keys = cache_with_ttl.mset(batch_items, ttl=5)  # 5 second TTL
+
+    # Wait for 3 seconds (beyond default but before custom TTL)
+    time.sleep(3)
+
+    # Should still exist with custom TTL
+    exist_results = cache_with_ttl.mexists_by_keys(keys)
+    assert all(exist_results)
+
+
+def test_large_batch_operations(cache):
+    """Test operations with larger batches to ensure scalability."""
+    # Create a larger batch of items
+    large_batch = []
+    for i in range(100):
+        large_batch.append(
+            {
+                "text": f"Sample text {i}",
+                "model_name": "test-model",
+                "embedding": [float(i) / 100] * 5,
+                "metadata": {"index": i},
+            }
+        )
+
+    # Test storing large batch
+    keys = cache.mset(large_batch)
+    assert len(keys) == 100
+
+    # Test retrieving large batch by keys
+    results = cache.mget_by_keys(keys)
+    assert len(results) == 100
+    assert all(result is not None for result in results)
+
+    # Get texts for batch retrieval
+    texts = [item["text"] for item in large_batch]
+
+    # Test retrieving by texts
+    results = cache.mget(texts, "test-model")
+    assert len(results) == 100
+    assert all(result is not None for result in results)
+
+    # Test existence checks
+    exist_results = cache.mexists_by_keys(keys)
+    assert len(exist_results) == 100
+    assert all(exist_results)
+
+    # Test batch deletion
+    cache.mdrop_by_keys(keys[:50])  # Delete first half
+
+    # Verify first half deleted, second half still exists
+    for i, key in enumerate(keys):
+        if i < 50:
+            assert not cache.exists_by_key(key)
+        else:
+            assert cache.exists_by_key(key)
