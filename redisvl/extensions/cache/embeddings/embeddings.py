@@ -1,6 +1,6 @@
 """Embeddings cache implementation for RedisVL."""
 
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from redis import Redis
 
@@ -103,6 +103,23 @@ class EmbeddingsCache(BaseCache):
         )
         return key, entry.to_dict()
 
+    def _process_cache_data(
+        self, data: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Process Redis hash data into a cache entry response.
+
+        Args:
+            data (Optional[Dict[str, Any]]): Raw Redis hash data.
+
+        Returns:
+            Optional[Dict[str, Any]]: Processed cache entry or None if no data.
+        """
+        if not data:
+            return None
+
+        cache_hit = CacheEntry(**data)
+        return cache_hit.model_dump(exclude_none=True)
+
     def get(
         self,
         text: str,
@@ -127,17 +144,35 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        client = self._get_redis_client()
         key = self._make_cache_key(text, model_name)
+        return self.get_by_key(key)
+
+    def get_by_key(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get embedding by its full Redis key.
+
+        Retrieves a cached embedding for the given Redis key.
+        If found, refreshes the TTL of the entry.
+
+        Args:
+            key (str): The full Redis key for the embedding.
+
+        Returns:
+            Optional[Dict[str, Any]]: Embedding cache entry or None if not found.
+
+        .. code-block:: python
+
+            embedding_data = cache.get_by_key("embedcache:1234567890abcdef")
+        """
+        client = self._get_redis_client()
 
         # Get all fields
-        if data := client.hgetall(key):
-            # Refresh TTL
+        data = client.hgetall(key)
+
+        # Refresh TTL if data exists
+        if data:
             self.expire(key)
-            cache_hit = CacheEntry(**data)
-            response = cache_hit.model_dump(exclude_none=True)
-            return response
-        return None
+
+        return self._process_cache_data(data)
 
     async def aget(
         self,
@@ -163,16 +198,35 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        client = await self._get_async_redis_client()
         key = self._make_cache_key(text, model_name)
+        return await self.aget_by_key(key)
 
-        if data := await client.hgetall(key):
-            # Refresh TTL
+    async def aget_by_key(self, key: str) -> Optional[Dict[str, Any]]:
+        """Async get embedding by its full Redis key.
+
+        Asynchronously retrieves a cached embedding for the given Redis key.
+        If found, refreshes the TTL of the entry.
+
+        Args:
+            key (str): The full Redis key for the embedding.
+
+        Returns:
+            Optional[Dict[str, Any]]: Embedding cache entry or None if not found.
+
+        .. code-block:: python
+
+            embedding_data = await cache.aget_by_key("embedcache:1234567890abcdef")
+        """
+        client = await self._get_async_redis_client()
+
+        # Get all fields
+        data = await client.hgetall(key)
+
+        # Refresh TTL if data exists
+        if data:
             await self.aexpire(key)
-            cache_hit = CacheEntry(**data)
-            response = cache_hit.model_dump(exclude_none=True)
-            return response
-        return None
+
+        return self._process_cache_data(data)
 
     def exists(self, text: str, model_name: str) -> bool:
         """Check if an embedding exists for the given text and model.
@@ -193,6 +247,23 @@ class EmbeddingsCache(BaseCache):
         key = self._make_cache_key(text, model_name)
         return bool(client.exists(key))
 
+    def exists_by_key(self, key: str) -> bool:
+        """Check if an embedding exists for the given Redis key.
+
+        Args:
+            key (str): The full Redis key for the embedding.
+
+        Returns:
+            bool: True if the embedding exists in the cache, False otherwise.
+
+        .. code-block:: python
+
+            if cache.exists_by_key("embedcache:1234567890abcdef"):
+                print("Embedding is in cache")
+        """
+        client = self._get_redis_client()
+        return bool(client.exists(key))
+
     async def aexists(self, text: str, model_name: str) -> bool:
         """Async check if an embedding exists.
 
@@ -210,8 +281,26 @@ class EmbeddingsCache(BaseCache):
             if await cache.aexists("What is machine learning?", "text-embedding-ada-002"):
                 print("Embedding is in cache")
         """
-        client = await self._get_async_redis_client()
         key = self._make_cache_key(text, model_name)
+        return await self.aexists_by_key(key)
+
+    async def aexists_by_key(self, key: str) -> bool:
+        """Async check if an embedding exists for the given Redis key.
+
+        Asynchronously checks if an embedding exists for the given Redis key.
+
+        Args:
+            key (str): The full Redis key for the embedding.
+
+        Returns:
+            bool: True if the embedding exists in the cache, False otherwise.
+
+        .. code-block:: python
+
+            if await cache.aexists_by_key("embedcache:1234567890abcdef"):
+                print("Embedding is in cache")
+        """
+        client = await self._get_async_redis_client()
         return bool(await client.exists(key))
 
     def set(
@@ -316,8 +405,20 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        client = self._get_redis_client()
         key = self._make_cache_key(text, model_name)
+        self.drop_by_key(key)
+
+    def drop_by_key(self, key: str) -> None:
+        """Remove an embedding from the cache by its Redis key.
+
+        Args:
+            key (str): The full Redis key for the embedding.
+
+        .. code-block:: python
+
+            cache.drop_by_key("embedcache:1234567890abcdef")
+        """
+        client = self._get_redis_client()
         client.delete(key)
 
     async def adrop(self, text: str, model_name: str) -> None:
@@ -336,6 +437,20 @@ class EmbeddingsCache(BaseCache):
                 model_name="text-embedding-ada-002"
             )
         """
-        client = await self._get_async_redis_client()
         key = self._make_cache_key(text, model_name)
+        await self.adrop_by_key(key)
+
+    async def adrop_by_key(self, key: str) -> None:
+        """Async remove an embedding from the cache by its Redis key.
+
+        Asynchronously removes an embedding from the cache by its Redis key.
+
+        Args:
+            key (str): The full Redis key for the embedding.
+
+        .. code-block:: python
+
+            await cache.adrop_by_key("embedcache:1234567890abcdef")
+        """
+        client = await self._get_async_redis_client()
         await client.delete(key)
