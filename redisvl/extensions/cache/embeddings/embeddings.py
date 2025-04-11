@@ -6,7 +6,7 @@ from redis import Redis
 
 from redisvl.extensions.cache.base import BaseCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
-from redisvl.redis.utils import hashify
+from redisvl.redis.utils import convert_bytes, hashify
 
 
 class EmbeddingsCache(BaseCache):
@@ -117,7 +117,7 @@ class EmbeddingsCache(BaseCache):
         if not data:
             return None
 
-        cache_hit = CacheEntry(**data)
+        cache_hit = CacheEntry(**convert_bytes(data))
         return cache_hit.model_dump(exclude_none=True)
 
     def get(

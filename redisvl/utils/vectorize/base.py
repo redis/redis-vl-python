@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Callable, List, Optional, Union
 
@@ -18,7 +17,7 @@ class Vectorizers(Enum):
     voyageai = "voyageai"
 
 
-class BaseVectorizer(BaseModel, ABC):
+class BaseVectorizer(BaseModel):
     """Base vectorizer interface."""
 
     model: str
@@ -48,7 +47,6 @@ class BaseVectorizer(BaseModel, ABC):
             raise ValueError("Dims must be a positive integer.")
         return value
 
-    @abstractmethod
     def embed(
         self,
         text: str,
@@ -69,7 +67,6 @@ class BaseVectorizer(BaseModel, ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def embed_many(
         self,
         texts: List[str],
