@@ -5,7 +5,12 @@ import pytest
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError, RedisVLError
+from redisvl.exceptions import (
+    QueryValidationError,
+    RedisModuleVersionError,
+    RedisSearchError,
+    RedisVLError,
+)
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
@@ -614,3 +619,16 @@ async def test_async_search_index_expire_keys(async_index):
         ttl = await client.ttl(key)
         assert ttl > 0
         assert ttl <= 30
+
+
+@pytest.mark.asyncio
+async def test_search_index_validates_query(async_flat_index, sample_data):
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    with pytest.raises(QueryValidationError):
+        await async_flat_index.query(query)
