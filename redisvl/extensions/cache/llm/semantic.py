@@ -22,7 +22,6 @@ from redisvl.extensions.constants import (
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import VectorRangeQuery
 from redisvl.query.filter import FilterExpression
-from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import hashify
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
@@ -31,7 +30,7 @@ from redisvl.utils.utils import (
     serialize,
     validate_vector_dims,
 )
-from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 logger = get_logger("[RedisVL]")
 
@@ -105,6 +104,8 @@ class SemanticCache(BaseLLMCache):
                 )
             self._vectorizer = vectorizer
         else:
+            from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
+
             # Create a default vectorizer
             vectorizer_kwargs = kwargs
             if dtype:
@@ -183,11 +184,8 @@ class SemanticCache(BaseLLMCache):
     async def _get_async_index(self) -> AsyncSearchIndex:
         """Lazily construct the async search index class."""
         # Construct async index if necessary
-        async_client = None
         if self._aindex is None:
-            client = self.redis_kwargs.get("redis_client")
-            if isinstance(client, Redis):
-                async_client = RedisConnectionFactory.sync_to_async_redis(client)
+            async_client = await self._get_async_redis_client()
             self._aindex = AsyncSearchIndex(
                 schema=self._index.schema,
                 redis_client=async_client,

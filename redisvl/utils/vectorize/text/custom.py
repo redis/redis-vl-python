@@ -1,8 +1,10 @@
-from typing import Any, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict
 
-from redisvl.utils.utils import deprecated_argument
+if TYPE_CHECKING:
+    from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
+
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -32,30 +34,6 @@ def _check_vector(result: list, method_name: str) -> None:
             raise ValueError(f"{method_name} must return a list of floats.")
 
 
-def validate_async(method):
-    """
-    Decorator that lazily validates the output of async methods (aembed, aembed_many).
-    On first call, it checks the returned embeddings with _check_vector, then sets a flag
-    so subsequent calls skip re-validation.
-    """
-
-    async def wrapper(self, *args, **kwargs):
-        result = await method(self, *args, **kwargs)
-        method_name = method.__name__
-        validated_attr = f"_{method_name}_validated"
-
-        try:
-            if not getattr(self, validated_attr):
-                _check_vector(result, method_name)
-                setattr(self, validated_attr, True)
-        except Exception as e:
-            raise ValueError(f"Invalid embedding method: {e}")
-
-        return result
-
-    return wrapper
-
-
 class CustomTextVectorizer(BaseVectorizer):
     """The CustomTextVectorizer class wraps user-defined embedding methods to create
     embeddings for text data.
@@ -66,13 +44,31 @@ class CustomTextVectorizer(BaseVectorizer):
     allows for batch processing of texts, but at a minimum only syncronous embedding
     is required to satisfy the 'embed()' method.
 
+    You can optionally enable caching to improve performance when generating
+    embeddings for repeated text inputs.
+
     .. code-block:: python
 
-        # Synchronous embedding of a single text
+        # Basic usage with a custom embedding function
         vectorizer = CustomTextVectorizer(
             embed = my_vectorizer.generate_embedding
         )
         embedding = vectorizer.embed("Hello, world!")
+
+        # With caching enabled
+        from redisvl.extensions.cache.embeddings import EmbeddingsCache
+        cache = EmbeddingsCache(name="my_embeddings_cache")
+
+        vectorizer = CustomTextVectorizer(
+            embed=my_vectorizer.generate_embedding,
+            cache=cache
+        )
+
+        # First call will compute and cache the embedding
+        embedding1 = vectorizer.embed("Hello, world!")
+
+        # Second call will retrieve from cache
+        embedding2 = vectorizer.embed("Hello, world!")
 
         # Asynchronous batch embedding of multiple texts
         embeddings = await vectorizer.aembed_many(
@@ -82,15 +78,7 @@ class CustomTextVectorizer(BaseVectorizer):
 
     """
 
-    # User-provided callables
-    _embed: Callable = PrivateAttr()
-    _embed_many: Optional[Callable] = PrivateAttr()
-    _aembed: Optional[Callable] = PrivateAttr()
-    _aembed_many: Optional[Callable] = PrivateAttr()
-
-    # Validation flags for async methods
-    _aembed_validated: bool = PrivateAttr(default=False)
-    _aembed_many_validated: bool = PrivateAttr(default=False)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
@@ -99,234 +87,193 @@ class CustomTextVectorizer(BaseVectorizer):
         aembed: Optional[Callable] = None,
         aembed_many: Optional[Callable] = None,
         dtype: str = "float32",
+        cache: Optional["EmbeddingsCache"] = None,
     ):
         """Initialize the Custom vectorizer.
 
         Args:
             embed (Callable): a Callable function that accepts a string object and returns a list of floats.
-            embed_many (Optional[Callable)]: a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+            embed_many (Optional[Callable]): a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
             aembed (Optional[Callable]): an asyncronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
-            aembed_many (Optional[Callable]):  an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
+            aembed_many (Optional[Callable]): an asyncronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
+            cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
+                better performance with repeated texts. Defaults to None.
 
         Raises:
             ValueError: if embedding validation fails.
         """
-        super().__init__(model=self.type, dtype=dtype)
+        # First, determine the dimensions
+        try:
+            test_result = embed("dimension test")
+            _check_vector(test_result, "embed")
+            dims = len(test_result)
+        except Exception as e:
+            raise ValueError(f"Failed to validate embed method: {e}")
 
-        # Store user-provided callables
-        self._embed = embed
-        self._embed_many = embed_many
-        self._aembed = aembed
-        self._aembed_many = aembed_many
+        # Initialize parent with known information
+        super().__init__(model="custom", dtype=dtype, dims=dims, cache=cache)
 
-        # Set dims
-        self.dims = self._validate_sync_callables()
+        # Now setup the functions and validation flags
+        self._setup_functions(embed, embed_many, aembed, aembed_many)
+
+    def _setup_functions(self, embed, embed_many, aembed, aembed_many):
+        """Setup the user-provided embedding functions."""
+        self._embed_func = embed
+        self._embed_func_many = embed_many
+        self._aembed_func = aembed
+        self._aembed_func_many = aembed_many
+
+        # Initialize validation flags
+        self._aembed_validated = False
+        self._aembed_many_validated = False
+
+        # Validate the other functions if provided
+        self._validate_optional_funcs()
 
     @property
     def type(self) -> str:
         return "custom"
 
-    def _validate_sync_callables(self) -> int:
+    def _validate_optional_funcs(self) -> None:
         """
-        Validate the sync embed function with a test call and discover the dimension.
-        Optionally validate embed_many if provided. Returns the discovered dimension.
+        Optionally validate the other user-provided functions if they exist.
 
         Raises:
-            ValueError: If embed or embed_many produce malformed results or fail entirely.
+            ValueError: If any provided function produces invalid results.
         """
-        # Check embed
-        try:
-            test_single = self._embed("dimension test")
-            _check_vector(test_single, "embed")
-            dims = len(test_single)
-        except Exception as e:
-            raise ValueError(f"Invalid embedding method: {e}")
-
-        # Check embed_many
-        if self._embed_many:
+        # Check embed_many if provided
+        if self._embed_func_many:
             try:
-                test_batch = self._embed_many(["dimension test (many)"])
+                test_batch = self._embed_func_many(["dimension test (many)"])
                 _check_vector(test_batch, "embed_many")
             except Exception as e:
-                raise ValueError(f"Invalid embedding method: {e}")
+                raise ValueError(f"Invalid embed_many function: {e}")
 
-        return dims
-
-    @deprecated_argument("dtype")
-    def embed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[float], bytes]:
-        """
-        Generate an embedding for a single piece of text using your sync embed function.
+    def _embed(self, text: str, **kwargs) -> List[float]:
+        """Generate a vector embedding for a single text using the provided user function.
 
         Args:
-            text (str): The text to embed.
-            preprocess (Optional[Callable]): An optional callable to preprocess the text.
-            as_buffer (bool): If True, return the embedding as a byte buffer.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the user function
 
         Returns:
-            Union[List[float], bytes]: The embedding of the input text.
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If the input is not a string.
+            TypeError: If text is not a string
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        if preprocess:
-            text = preprocess(text)
-
-        dtype = kwargs.pop("dtype", self.dtype)
-
         try:
-            result = self._embed(text, **kwargs)
+            result = self._embed_func(text, **kwargs)
+            return result
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
-        return self._process_embedding(result, as_buffer, dtype)
-
-    @deprecated_argument("dtype")
-    def embed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """
-        Generate embeddings for multiple pieces of text in batches using your sync embed_many function.
+    def _embed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
+    ) -> List[List[float]]:
+        """Generate vector embeddings for a batch of texts using the provided user function.
 
         Args:
-            texts (List[str]): A list of texts to embed.
-            preprocess (Optional[Callable]): Optional preprocessing for each text.
-            batch_size (int): Number of texts per batch.
-            as_buffer (bool): If True, convert each embedding to a byte buffer.
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each batch
+            **kwargs: Additional parameters to pass to the user function
 
         Returns:
-            Union[List[List[float]], List[bytes]]: A list of embeddings, where each embedding is a list of floats or bytes.
+            List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If the input is not a list of strings.
-            NotImplementedError: If no embed_many function was provided.
+            TypeError: If texts is not a list of strings
+            ValueError: If embedding fails
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if texts and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        if not self._embed_many:
-            raise NotImplementedError("No embed_many function was provided.")
-
-        dtype = kwargs.pop("dtype", self.dtype)
-        embeddings: Union[List[List[float]], List[bytes]] = []
+        if not self._embed_func_many:
+            # Fallback: Use _embed for each text if no batch function provided
+            return [self._embed(text, **kwargs) for text in texts]
 
         try:
-            for batch in self.batchify(texts, batch_size, preprocess):
-                results = self._embed_many(batch, **kwargs)
-                processed = [
-                    self._process_embedding(r, as_buffer, dtype) for r in results
-                ]
-                embeddings.extend(processed)
+            results = self._embed_func_many(texts, **kwargs)
+            return results
         except Exception as e:
-            raise ValueError(f"Embedding text failed: {e}")
+            raise ValueError(f"Embedding texts failed: {e}")
 
-        return embeddings
-
-    @validate_async
-    @deprecated_argument("dtype")
-    async def aembed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> List[float]:
-        """
-        Asynchronously generate an embedding for a single piece of text.
+    async def _aembed(self, text: str, **kwargs) -> List[float]:
+        """Asynchronously generate a vector embedding for a single text.
 
         Args:
-            text (str): The text to embed.
-            preprocess (Optional[Callable]): An optional callable to preprocess the text.
-            as_buffer (bool): If True, return the embedding as a byte buffer.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the user async function
 
         Returns:
-            List[float]: The embedding of the input text.
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If the input is not a string.
-            NotImplementedError: If no aembed function was provided.
+            TypeError: If text is not a string
+            NotImplementedError: If no aembed function was provided
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        if not self._aembed:
-            raise NotImplementedError("No aembed function was provided.")
-
-        if preprocess:
-            text = preprocess(text)
-
-        dtype = kwargs.pop("dtype", self.dtype)
+        if not self._aembed_func:
+            return self._embed(text, **kwargs)
 
         try:
-            result = await self._aembed(text, **kwargs)
+            result = await self._aembed_func(text, **kwargs)
+
+            # Validate result on first call
+            if not self._aembed_validated:
+                _check_vector(result, "aembed")
+                self._aembed_validated = True
+
+            return result
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
-        return self._process_embedding(result, as_buffer, dtype)
-
-    @validate_async
-    @deprecated_argument("dtype")
-    async def aembed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """
-        Asynchronously generate embeddings for multiple pieces of text in batches.
+    async def _aembed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
+    ) -> List[List[float]]:
+        """Asynchronously generate vector embeddings for a batch of texts.
 
         Args:
-            texts (List[str]): The texts to embed.
-            preprocess (Optional[Callable]): Optional preprocessing for each text.
-            batch_size (int): Number of texts per batch.
-            as_buffer (bool): If True, convert each embedding to a byte buffer.
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each batch
+            **kwargs: Additional parameters to pass to the user async function
 
         Returns:
-            Union[List[List[float]], List[bytes]]: A list of embeddings, where each embedding is a list of floats or bytes.
+            List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If the input is not a list of strings.
-            NotImplementedError: If no aembed_many function was provided.
+            TypeError: If texts is not a list of strings
+            NotImplementedError: If no aembed_many function was provided
+            ValueError: If embedding fails
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if texts and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        if not self._aembed_many:
-            raise NotImplementedError("No aembed_many function was provided.")
-
-        dtype = kwargs.pop("dtype", self.dtype)
-        embeddings: Union[List[List[float]], List[bytes]] = []
+        if not self._aembed_func_many:
+            return self._embed_many(texts, batch_size, **kwargs)
 
         try:
-            for batch in self.batchify(texts, batch_size, preprocess):
-                results = await self._aembed_many(batch, **kwargs)
-                processed = [
-                    self._process_embedding(r, as_buffer, dtype) for r in results
-                ]
-                embeddings.extend(processed)
-        except Exception as e:
-            raise ValueError(f"Embedding text failed: {e}")
+            results = await self._aembed_func_many(texts, **kwargs)
 
-        return embeddings
+            # Validate result on first call
+            if not self._aembed_many_validated:
+                _check_vector(results, "aembed_many")
+                self._aembed_many_validated = True
+
+            return results
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
