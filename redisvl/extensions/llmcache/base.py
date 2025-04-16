@@ -6,7 +6,6 @@ This module is kept for backward compatibility. Please use `redisvl.extensions.c
 
 import warnings
 
-from redisvl.extensions.cache.base import BaseCache
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 
 warnings.warn(

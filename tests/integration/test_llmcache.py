@@ -79,6 +79,12 @@ def disable_deprecation_warnings():
         yield
 
 
+def test_llmcache_backwards_compat():
+    from redisvl.extensions.llmcache import SemanticCache as DeprecatedSemanticCache
+
+    assert DeprecatedSemanticCache == SemanticCache
+
+
 def test_bad_ttl(cache):
     with pytest.raises(ValueError):
         cache.set_ttl(2.5)
