@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from redis.exceptions import ConnectionError
 
 from redisvl.exceptions import RedisModuleVersionError
-from redisvl.extensions.llmcache import SemanticCache
+from redisvl.extensions.cache import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
@@ -77,6 +77,12 @@ def disable_deprecation_warnings():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         yield
+
+
+def test_llmcache_backwards_compat():
+    from redisvl.extensions.llmcache import SemanticCache as DeprecatedSemanticCache
+
+    assert DeprecatedSemanticCache == SemanticCache
 
 
 def test_bad_ttl(cache):
