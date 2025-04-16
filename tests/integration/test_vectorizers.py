@@ -41,11 +41,11 @@ def embeddings_cache(client):
     params=[
         HFTextVectorizer,
         OpenAITextVectorizer,
-        # VertexAITextVectorizer,
+        VertexAITextVectorizer,
         CohereTextVectorizer,
-        # AzureOpenAITextVectorizer,
-        # BedrockTextVectorizer,
-        # MistralAITextVectorizer,
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
+        MistralAITextVectorizer,
         CustomTextVectorizer,
         VoyageAITextVectorizer,
     ]
@@ -418,14 +418,14 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 @pytest.mark.parametrize(
     "vectorizer_",
     [
-        # AzureOpenAITextVectorizer,
-        # BedrockTextVectorizer,
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
         CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         OpenAITextVectorizer,
-        # VertexAITextVectorizer,
+        VertexAITextVectorizer,
         VoyageAITextVectorizer,
     ],
 )
@@ -447,14 +447,14 @@ def test_default_dtype(vectorizer_):
 @pytest.mark.parametrize(
     "vectorizer_",
     [
-        # AzureOpenAITextVectorizer,
-        # BedrockTextVectorizer,
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
         CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         OpenAITextVectorizer,
-        # VertexAITextVectorizer,
+        VertexAITextVectorizer,
         VoyageAITextVectorizer,
     ],
 )
@@ -480,13 +480,13 @@ def test_vectorizer_dtype_assignment(vectorizer_):
 @pytest.mark.parametrize(
     "vectorizer_",
     [
-        # AzureOpenAITextVectorizer,
-        # BedrockTextVectorizer,
+        AzureOpenAITextVectorizer,
+        BedrockTextVectorizer,
         CohereTextVectorizer,
         HFTextVectorizer,
-        # MistralAITextVectorizer,
+        MistralAITextVectorizer,
         OpenAITextVectorizer,
-        # VertexAITextVectorizer,
+        VertexAITextVectorizer,
         VoyageAITextVectorizer,
     ],
 )
