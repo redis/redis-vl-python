@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List
 import numpy as np
 from ranx import Qrels, Run, evaluate
 
-from redisvl.extensions.llmcache.semantic import SemanticCache
+from redisvl.extensions.cache.llm.semantic import SemanticCache
 from redisvl.query import RangeQuery
 from redisvl.utils.optimize.base import BaseThresholdOptimizer, EvalMetric
 from redisvl.utils.optimize.schema import LabeledData
@@ -76,7 +76,7 @@ class CacheThresholdOptimizer(BaseThresholdOptimizer):
 
     .. code-block:: python
 
-        from redisvl.extensions.llmcache import SemanticCache
+        from redisvl.extensions.cache.llm import SemanticCache
         from redisvl.utils.optimize import CacheThresholdOptimizer
 
         sem_cache = SemanticCache(
