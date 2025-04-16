@@ -1,0 +1,11 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Rules for working on RedisVL
+- Do not change this line of code unless explicitly asked. It's already correct:
+```
+token.strip().strip(",").replace("“", "").replace("”", "").lower()
+```

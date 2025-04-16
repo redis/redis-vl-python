@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 import pytest
 from testcontainers.compose import DockerCompose
 
+from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.vectorize import HFTextVectorizer
 
 
@@ -191,3 +193,211 @@ def pytest_collection_modifyitems(
     for item in items:
         if item.get_closest_marker("requires_api_keys"):
             item.add_marker(skip_api)
+
+
+@pytest.fixture
+def flat_index(sample_data, redis_url):
+    """
+    A fixture that uses the "flag" algorithm for its vector field.
+    """
+    # construct a search index from the schema
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "description", "type": "text"},
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    # create the index (no data yet)
+    index.create(overwrite=True)
+
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
+
+    index.load(sample_data, preprocess=hash_preprocess)
+
+    # run the test
+    yield index
+
+    # clean up
+    index.delete(drop=True)
+
+
+@pytest.fixture
+async def async_flat_index(sample_data, redis_url):
+    """
+    A fixture that uses the "flag" algorithm for its vector field.
+    """
+    # construct a search index from the schema
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "description", "type": "text"},
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    # create the index (no data yet)
+    await index.create(overwrite=True)
+
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
+
+    await index.load(sample_data, preprocess=hash_preprocess)
+
+    # run the test
+    yield index
+
+    # clean up
+    await index.delete(drop=True)
+
+
+@pytest.fixture
+async def async_hnsw_index(sample_data, redis_url):
+    """
+    A fixture that uses the "hnsw" algorithm for its vector field.
+    """
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "description", "type": "text"},
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "hnsw",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    # create the index (no data yet)
+    await index.create(overwrite=True)
+
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
+
+    await index.load(sample_data, preprocess=hash_preprocess)
+
+    # run the test
+    yield index
+
+
+@pytest.fixture
+def hnsw_index(sample_data, redis_url):
+    """
+    A fixture that uses the "hnsw" algorithm for its vector field.
+    """
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": "user_index",
+                "prefix": "v1",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "description", "type": "text"},
+                {"name": "credit_score", "type": "tag"},
+                {"name": "job", "type": "text"},
+                {"name": "age", "type": "numeric"},
+                {"name": "last_updated", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "user_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "algorithm": "hnsw",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    # create the index (no data yet)
+    index.create(overwrite=True)
+
+    # Prepare and load the data
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+        }
+
+    index.load(sample_data, preprocess=hash_preprocess)
+
+    # run the test
+    yield index

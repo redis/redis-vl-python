@@ -4,12 +4,18 @@ from unittest import mock
 import pytest
 from redis import Redis
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError, RedisVLError
+from redisvl.exceptions import (
+    QueryValidationError,
+    RedisModuleVersionError,
+    RedisSearchError,
+    RedisVLError,
+)
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema.fields import VectorIndexAlgorithm
 
 fields = [
     {"name": "test", "type": "tag"},
@@ -237,6 +243,36 @@ def test_search_index_drop_keys(index):
     assert not index.fetch(keys[1])
     assert index.fetch(keys[2]) is not None
 
+    assert index.exists()
+
+
+def test_search_index_drop_documents(index):
+    index.create(overwrite=True, drop=True)
+    data = [
+        {"id": "1", "test": "foo"},
+        {"id": "2", "test": "bar"},
+        {"id": "3", "test": "baz"},
+    ]
+    index.load(data, id_field="id")
+
+    # Test dropping a single document by ID
+    dropped = index.drop_documents("1")
+    assert dropped == 1
+    assert not index.fetch("1")
+    assert index.fetch("2") is not None
+    assert index.fetch("3") is not None
+
+    # Test dropping multiple documents by ID
+    dropped = index.drop_documents(["2", "3"])
+    assert dropped == 2
+    assert not index.fetch("2")
+    assert not index.fetch("3")
+
+    # Test dropping with an empty list
+    dropped = index.drop_documents([])
+    assert dropped == 0
+
+    # Ensure the index still exists
     assert index.exists()
 
 
@@ -496,3 +532,65 @@ def test_batch_query_with_multiple_batches(index):
     assert len(results) == 2
     assert results[0][0]["id"] == "rvl:1"
     assert results[1][0]["id"] == "rvl:2"
+
+
+def test_search_index_expire_keys(index):
+    """Test that SearchIndex.expire_keys method properly sets expiration times on keys."""
+    # Create the index and load some data
+    index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    keys = index.load(data, id_field="id")
+
+    # Set expiration on a single key
+    index.expire_keys(keys[0], 60)
+    ttl = index.client.ttl(keys[0])
+    assert ttl > 0  # TTL should be positive
+    assert ttl <= 60  # TTL should be 60 or less
+
+    # Test no expiration on the other key
+    ttl = index.client.ttl(keys[1])
+    assert ttl == -1  # -1 means no expiration
+
+    # Set expiration on multiple keys
+    result = index.expire_keys(keys, 30)
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert all(r == 1 for r in result)  # All operations should return 1 (success)
+
+    # Verify TTLs are set
+    for key in keys:
+        ttl = index.client.ttl(key)
+        assert ttl > 0
+        assert ttl <= 30
+
+
+def test_search_index_validates_query_with_flat_algorithm(flat_index, sample_data):
+    assert (
+        flat_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.FLAT
+    )
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    with pytest.raises(QueryValidationError):
+        flat_index.query(query)
+
+
+def test_search_index_validates_query_with_hnsw_algorithm(hnsw_index, sample_data):
+    assert (
+        hnsw_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.HNSW
+    )
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    # Should not raise
+    hnsw_index.query(query)

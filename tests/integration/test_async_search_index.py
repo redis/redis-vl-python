@@ -5,12 +5,18 @@ import pytest
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.exceptions import RedisModuleVersionError, RedisSearchError, RedisVLError
+from redisvl.exceptions import (
+    QueryValidationError,
+    RedisModuleVersionError,
+    RedisSearchError,
+    RedisVLError,
+)
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema.fields import VectorIndexAlgorithm
 
 fields = [{"name": "test", "type": "tag"}]
 
@@ -243,6 +249,37 @@ async def test_search_index_drop_keys(async_index):
     assert not await async_index.fetch(keys[1])
     assert await async_index.fetch(keys[2]) is not None
 
+    assert await async_index.exists()
+
+
+@pytest.mark.asyncio
+async def test_search_index_drop_documents(async_index):
+    await async_index.create(overwrite=True, drop=True)
+    data = [
+        {"id": "1", "test": "foo"},
+        {"id": "2", "test": "bar"},
+        {"id": "3", "test": "baz"},
+    ]
+    await async_index.load(data, id_field="id")
+
+    # Test dropping a single document by ID
+    dropped = await async_index.drop_documents("1")
+    assert dropped == 1
+    assert not await async_index.fetch("1")
+    assert await async_index.fetch("2") is not None
+    assert await async_index.fetch("3") is not None
+
+    # Test dropping multiple documents by ID
+    dropped = await async_index.drop_documents(["2", "3"])
+    assert dropped == 2
+    assert not await async_index.fetch("2")
+    assert not await async_index.fetch("3")
+
+    # Test dropping with an empty list
+    dropped = await async_index.drop_documents([])
+    assert dropped == 0
+
+    # Ensure the index still exists
     assert await async_index.exists()
 
 
@@ -551,3 +588,73 @@ async def test_batch_query_with_multiple_batches(async_index):
     assert len(results) == 2
     assert results[0][0]["id"] == "rvl:1"
     assert results[1][0]["id"] == "rvl:2"
+
+
+@pytest.mark.asyncio
+async def test_async_search_index_expire_keys(async_index):
+    """Test that AsyncSearchIndex.expire_keys method properly sets expiration times on keys."""
+    # Create the index and load some data
+    await async_index.create(overwrite=True, drop=True)
+    data = [{"id": "1", "test": "foo"}, {"id": "2", "test": "bar"}]
+    keys = await async_index.load(data, id_field="id")
+
+    # Set expiration on a single key
+    await async_index.expire_keys(keys[0], 60)
+    client = await async_index._get_client()
+    ttl = await client.ttl(keys[0])
+    assert ttl > 0  # TTL should be positive
+    assert ttl <= 60  # TTL should be 60 or less
+
+    # Test no expiration on the other key
+    ttl = await client.ttl(keys[1])
+    assert ttl == -1  # -1 means no expiration
+
+    # Set expiration on multiple keys
+    result = await async_index.expire_keys(keys, 30)
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert all(r == 1 for r in result)  # All operations should return 1 (success)
+
+    # Verify TTLs are set
+    for key in keys:
+        ttl = await client.ttl(key)
+        assert ttl > 0
+        assert ttl <= 30
+
+
+@pytest.mark.asyncio
+async def test_search_index_validates_query_with_flat_algorithm(
+    async_flat_index, sample_data
+):
+    assert (
+        async_flat_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.FLAT
+    )
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    with pytest.raises(QueryValidationError):
+        await async_flat_index.query(query)
+
+
+@pytest.mark.asyncio
+async def test_search_index_validates_query_with_hnsw_algorithm(
+    async_hnsw_index, sample_data
+):
+    assert (
+        async_hnsw_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.HNSW
+    )
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    # Should not raise
+    await async_hnsw_index.query(query)

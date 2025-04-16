@@ -30,3 +30,9 @@ class SchemaValidationError(RedisVLError):
         if index is not None:
             message = f"Validation failed for object at index {index}: {message}"
         super().__init__(message)
+
+
+class QueryValidationError(RedisVLError):
+    """Error when validating a query."""
+
+    pass

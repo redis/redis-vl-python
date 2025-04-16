@@ -18,6 +18,7 @@ from typing import (
     Union,
 )
 
+from redisvl.query.query import VectorQuery
 from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
@@ -34,6 +35,7 @@ from redis.commands.helpers import get_protocol_version  # type: ignore
 from redis.commands.search.indexDefinition import IndexDefinition
 
 from redisvl.exceptions import (
+    QueryValidationError,
     RedisModuleVersionError,
     RedisSearchError,
     RedisVLError,
@@ -46,16 +48,18 @@ from redisvl.query import (
     BaseVectorQuery,
     CountQuery,
     FilterQuery,
-    HybridQuery,
 )
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     convert_index_info_to_schema,
 )
-from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.schema.fields import VECTOR_NORM_MAP, VectorDistanceMetric
+from redisvl.schema.fields import (
+    VECTOR_NORM_MAP,
+    VectorDistanceMetric,
+    VectorIndexAlgorithm,
+)
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -193,6 +197,15 @@ class BaseSearchIndex:
         return self._STORAGE_MAP[self.schema.index.storage_type](
             index_schema=self.schema
         )
+
+    def _validate_query(self, query: BaseQuery) -> None:
+        """Validate a query."""
+        if isinstance(query, VectorQuery):
+            field = self.schema.fields[query._vector_field_name]
+            if query.ef_runtime and field.attrs.algorithm != VectorIndexAlgorithm.HNSW:  # type: ignore
+                raise QueryValidationError(
+                    "Vector field using 'flat' algorithm does not support EF_RUNTIME query parameter."
+                )
 
     @property
     def name(self) -> str:
@@ -592,6 +605,27 @@ class SearchIndex(BaseSearchIndex):
         else:
             return self._redis_client.delete(keys)  # type: ignore
 
+    def drop_documents(self, ids: Union[str, List[str]]) -> int:
+        """Remove documents from the index by their document IDs.
+
+        This method converts document IDs to Redis keys automatically by applying
+        the index's key prefix and separator configuration.
+
+        Args:
+            ids (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of documents deleted from Redis.
+        """
+        if isinstance(ids, list):
+            if not ids:
+                return 0
+            keys = [self.key(id) for id in ids]
+            return self._redis_client.delete(*keys)  # type: ignore
+        else:
+            key = self.key(ids)
+            return self._redis_client.delete(key)  # type: ignore
+
     def expire_keys(
         self, keys: Union[str, List[str]], ttl: int
     ) -> Union[int, List[int]]:
@@ -816,6 +850,10 @@ class SearchIndex(BaseSearchIndex):
 
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
+        try:
+            self._validate_query(query)
+        except QueryValidationError as e:
+            raise QueryValidationError(f"Invalid query: {str(e)}") from e
         results = self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
@@ -1236,6 +1274,28 @@ class AsyncSearchIndex(BaseSearchIndex):
         else:
             return await client.delete(keys)
 
+    async def drop_documents(self, ids: Union[str, List[str]]) -> int:
+        """Remove documents from the index by their document IDs.
+
+        This method converts document IDs to Redis keys automatically by applying
+        the index's key prefix and separator configuration.
+
+        Args:
+            ids (Union[str, List[str]]): The document ID or IDs to remove from the index.
+
+        Returns:
+            int: Count of documents deleted from Redis.
+        """
+        client = await self._get_client()
+        if isinstance(ids, list):
+            if not ids:
+                return 0
+            keys = [self.key(id) for id in ids]
+            return await client.delete(*keys)
+        else:
+            key = self.key(ids)
+            return await client.delete(key)
+
     async def expire_keys(
         self, keys: Union[str, List[str]], ttl: int
     ) -> Union[int, List[int]]:
@@ -1356,9 +1416,10 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _aggregate(
         self, aggregation_query: AggregationQuery
     ) -> List[Dict[str, Any]]:
-        """Execute an aggretation query and processes the results."""
+        """Execute an aggregation query and processes the results."""
         results = await self.aggregate(
-            aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
+            aggregation_query,
+            query_params=aggregation_query.params,  # type: ignore[attr-defined]
         )
         return process_aggregate_results(
             results,
@@ -1486,6 +1547,10 @@ class AsyncSearchIndex(BaseSearchIndex):
 
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""
+        try:
+            self._validate_query(query)
+        except QueryValidationError as e:
+            raise QueryValidationError(f"Invalid query: {str(e)}") from e
         results = await self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
