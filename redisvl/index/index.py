@@ -48,16 +48,18 @@ from redisvl.query import (
     BaseVectorQuery,
     CountQuery,
     FilterQuery,
-    HybridQuery,
 )
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
     convert_index_info_to_schema,
 )
-from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
-from redisvl.schema.fields import VECTOR_NORM_MAP, VectorDistanceMetric
+from redisvl.schema.fields import (
+    VECTOR_NORM_MAP,
+    VectorDistanceMetric,
+    VectorIndexAlgorithm,
+)
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -195,6 +197,15 @@ class BaseSearchIndex:
         return self._STORAGE_MAP[self.schema.index.storage_type](
             index_schema=self.schema
         )
+
+    def _validate_query(self, query: BaseQuery) -> None:
+        """Validate a query."""
+        if isinstance(query, VectorQuery):
+            field = self.schema.fields[query._vector_field_name]
+            if query.ef_runtime and field.attrs.algorithm != VectorIndexAlgorithm.HNSW:  # type: ignore
+                raise QueryValidationError(
+                    "Vector field using 'flat' algorithm does not support EF_RUNTIME query parameter."
+                )
 
     @property
     def name(self) -> str:
@@ -837,15 +848,6 @@ class SearchIndex(BaseSearchIndex):
             all_parsed.append(parsed)
         return all_parsed
 
-    def _validate_query(self, query: BaseQuery) -> None:
-        """Validate a query."""
-        if isinstance(query, VectorQuery):
-            field = self.schema.fields[query._vector_field_name]
-            if query.ef_runtime and field.attrs.algorithm != "hnsw":  # type: ignore
-                raise QueryValidationError(
-                    "Flat index does not support vector queries."
-                )
-
     def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Execute a query and process results."""
         try:
@@ -1416,7 +1418,8 @@ class AsyncSearchIndex(BaseSearchIndex):
     ) -> List[Dict[str, Any]]:
         """Execute an aggregation query and processes the results."""
         results = await self.aggregate(
-            aggregation_query, query_params=aggregation_query.params  # type: ignore[attr-defined]
+            aggregation_query,
+            query_params=aggregation_query.params,  # type: ignore[attr-defined]
         )
         return process_aggregate_results(
             results,
@@ -1541,15 +1544,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             all_parsed.append(parsed)
 
         return all_parsed
-
-    def _validate_query(self, query: BaseQuery) -> None:
-        """Validate a query."""
-        if isinstance(query, VectorQuery):
-            field = self.schema.fields[query._vector_field_name]
-            if query.ef_runtime and field.attrs.algorithm != "hnsw":  # type: ignore
-                raise QueryValidationError(
-                    "Flat index does not support vector queries."
-                )
 
     async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
         """Asynchronously execute a query and process results."""

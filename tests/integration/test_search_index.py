@@ -15,6 +15,7 @@ from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema.fields import VectorIndexAlgorithm
 
 fields = [
     {"name": "test", "type": "tag"},
@@ -563,7 +564,11 @@ def test_search_index_expire_keys(index):
         assert ttl <= 30
 
 
-def test_search_index_validates_query(flat_index, sample_data):
+def test_search_index_validates_query_with_flat_algorithm(flat_index, sample_data):
+    assert (
+        flat_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.FLAT
+    )
     query = VectorQuery(
         [0.1, 0.1, 0.5],
         "user_embedding",
@@ -573,3 +578,19 @@ def test_search_index_validates_query(flat_index, sample_data):
     )
     with pytest.raises(QueryValidationError):
         flat_index.query(query)
+
+
+def test_search_index_validates_query_with_hnsw_algorithm(hnsw_index, sample_data):
+    assert (
+        hnsw_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.HNSW
+    )
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    # Should not raise
+    hnsw_index.query(query)

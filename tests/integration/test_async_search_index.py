@@ -16,6 +16,7 @@ from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
+from redisvl.schema.fields import VectorIndexAlgorithm
 
 fields = [{"name": "test", "type": "tag"}]
 
@@ -622,7 +623,13 @@ async def test_async_search_index_expire_keys(async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_validates_query(async_flat_index, sample_data):
+async def test_search_index_validates_query_with_flat_algorithm(
+    async_flat_index, sample_data
+):
+    assert (
+        async_flat_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.FLAT
+    )
     query = VectorQuery(
         [0.1, 0.1, 0.5],
         "user_embedding",
@@ -632,3 +639,22 @@ async def test_search_index_validates_query(async_flat_index, sample_data):
     )
     with pytest.raises(QueryValidationError):
         await async_flat_index.query(query)
+
+
+@pytest.mark.asyncio
+async def test_search_index_validates_query_with_hnsw_algorithm(
+    async_hnsw_index, sample_data
+):
+    assert (
+        async_hnsw_index.schema.fields["user_embedding"].attrs.algorithm
+        == VectorIndexAlgorithm.HNSW
+    )
+    query = VectorQuery(
+        [0.1, 0.1, 0.5],
+        "user_embedding",
+        return_fields=["user", "credit_score", "age", "job", "location"],
+        num_results=7,
+        ef_runtime=100,
+    )
+    # Should not raise
+    await async_hnsw_index.query(query)

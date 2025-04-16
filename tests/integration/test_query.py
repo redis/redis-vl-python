@@ -21,7 +21,6 @@ from redisvl.query.filter import (
     Text,
     Timestamp,
 )
-from redisvl.query.query import VectorRangeQuery
 from redisvl.redis.utils import array_to_buffer
 
 # TODO expand to multiple schema types and sync + async
