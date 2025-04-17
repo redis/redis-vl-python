@@ -1,9 +1,12 @@
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
+
+if TYPE_CHECKING:
+    from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -26,10 +29,14 @@ class VoyageAITextVectorizer(BaseVectorizer):
     The vectorizer supports both synchronous and asynchronous operations, allows for batch
     processing of texts and flexibility in handling preprocessing tasks.
 
+    You can optionally enable caching to improve performance when generating
+    embeddings for repeated text inputs.
+
     .. code-block:: python
 
         from redisvl.utils.vectorize import VoyageAITextVectorizer
 
+        # Basic usage
         vectorizer = VoyageAITextVectorizer(
             model="voyage-large-2",
             api_config={"api_key": "your-voyageai-api-key"} # OR set VOYAGE_API_KEY in your env
@@ -43,16 +50,38 @@ class VoyageAITextVectorizer(BaseVectorizer):
             input_type="document"
         )
 
+        # With caching enabled
+        from redisvl.extensions.cache.embeddings import EmbeddingsCache
+        cache = EmbeddingsCache(name="voyageai_embeddings_cache")
+
+        vectorizer = VoyageAITextVectorizer(
+            model="voyage-large-2",
+            api_config={"api_key": "your-voyageai-api-key"},
+            cache=cache
+        )
+
+        # First call will compute and cache the embedding
+        embedding1 = vectorizer.embed(
+            text="your input query text here",
+            input_type="query"
+        )
+
+        # Second call will retrieve from cache
+        embedding2 = vectorizer.embed(
+            text="your input query text here",
+            input_type="query"
+        )
+
     """
 
-    _client: Any = PrivateAttr()
-    _aclient: Any = PrivateAttr()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
         model: str = "voyage-large-2",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        cache: Optional["EmbeddingsCache"] = None,
         **kwargs,
     ):
         """Initialize the VoyageAI vectorizer.
@@ -66,22 +95,37 @@ class VoyageAITextVectorizer(BaseVectorizer):
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
+            cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
+                better performance with repeated texts. Defaults to None.
 
         Raises:
             ImportError: If the voyageai library is not installed.
             ValueError: If the API key is not provided.
 
         """
-        super().__init__(model=model, dtype=dtype)
-        # Init client
+        super().__init__(model=model, dtype=dtype, cache=cache)
+        # Initialize client and set up the model
+        self._setup(api_config, **kwargs)
+
+    def _setup(self, api_config: Optional[Dict], **kwargs):
+        """Set up the VoyageAI client and determine the embedding dimensions."""
+        # Initialize client
         self._initialize_client(api_config, **kwargs)
-        # Set model dimensions after init
+        # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
     def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the VoyageAI clients using the provided API key or an
         environment variable.
+
+        Args:
+            api_config: Dictionary with API configuration options
+            **kwargs: Additional arguments to pass to VoyageAI clients
+
+        Raises:
+            ImportError: If the voyageai library is not installed
+            ValueError: If no API key is provided
         """
         if api_config is None:
             api_config = {}
@@ -91,8 +135,8 @@ class VoyageAITextVectorizer(BaseVectorizer):
             from voyageai import AsyncClient, Client
         except ImportError:
             raise ImportError(
-                "VoyageAI vectorizer requires the voyageai library. \
-                    Please install with `pip install voyageai`"
+                "VoyageAI vectorizer requires the voyageai library. "
+                "Please install with `pip install voyageai`"
             )
 
         # Fetch the API key from api_config or environment variable
@@ -104,265 +148,206 @@ class VoyageAITextVectorizer(BaseVectorizer):
                 "VoyageAI API key is required. "
                 "Provide it in api_config or set the VOYAGE_API_KEY environment variable."
             )
+
         self._client = Client(api_key=api_key, **kwargs)
         self._aclient = AsyncClient(api_key=api_key, **kwargs)
 
     def _set_model_dims(self) -> int:
+        """
+        Determine the dimensionality of the embedding model by making a test call.
+
+        Returns:
+            int: Dimensionality of the embedding model
+
+        Raises:
+            ValueError: If embedding dimensions cannot be determined
+        """
         try:
-            embedding = self.embed("dimension check", input_type="document")
+            # Call the protected _embed method to avoid caching this test embedding
+            embedding = self._embed("dimension check", input_type="document")
+            return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VoyageAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
-        return len(embedding)
 
-    @deprecated_argument("dtype")
-    def embed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[float], bytes]:
-        """Embed a chunk of text using the VoyageAI Embeddings API.
-
-        Can provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. For retrieval/search use cases,
-        we recommend specifying this argument when encoding queries or documents to enhance retrieval quality.
-        Embeddings generated with and without the input_type argument are compatible.
-
-        Supported input types are ``document`` and ``query``
-
-        When hydrating your Redis DB, the documents you want to search over
-        should be embedded with input_type="document" and when you are
-        querying the database, you should set the input_type="query".
-
-        Args:
-            text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
-            input_type (str): Specifies the type of input passed to the model.
-            truncation (bool): Whether to truncate the input texts to fit within the context length.
-                Check https://docs.voyageai.com/docs/embeddings
+    def _get_batch_size(self) -> int:
+        """
+        Determine the appropriate batch size based on the model being used.
 
         Returns:
-            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
-            object if as_buffer=True
+            int: Recommended batch size for the current model
+        """
+        if self.model in ["voyage-2", "voyage-02"]:
+            return 72
+        elif self.model == "voyage-3-lite":
+            return 30
+        elif self.model == "voyage-3":
+            return 10
+        else:
+            return 7  # Default for other models
+
+    def _validate_input(
+        self, texts: List[str], input_type: Optional[str], truncation: Optional[bool]
+    ):
+        """
+        Validate the inputs to the embedding methods.
+
+        Args:
+            texts: List of texts to embed
+            input_type: Type of input (document or query)
+            truncation: Whether to truncate long texts
 
         Raises:
-            TypeError: If an invalid input_type is provided.
+            TypeError: If inputs are invalid
         """
-        return self.embed_many(
-            texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
-        )[0]
+        if not isinstance(texts, list):
+            raise TypeError("Must pass in a list of str values to embed.")
+        if texts and not isinstance(texts[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
+        if input_type is not None and input_type not in ["document", "query"]:
+            raise TypeError(
+                "Must pass in a allowed value for voyageai embedding input_type. "
+                "See https://docs.voyageai.com/docs/embeddings."
+            )
+        if truncation is not None and not isinstance(truncation, bool):
+            raise TypeError("Truncation (optional) parameter is a bool.")
+
+    def _embed(self, text: str, **kwargs) -> List[float]:
+        """
+        Generate a vector embedding for a single text using the VoyageAI API.
+
+        Args:
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the VoyageAI API
+
+        Returns:
+            List[float]: Vector embedding as a list of floats
+
+        Raises:
+            TypeError: If text is not a string or parameters are invalid
+            ValueError: If embedding fails
+        """
+        # Simply call _embed_many with a single text and return the first result
+        result = self._embed_many([text], **kwargs)
+        return result[0]
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    def embed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """Embed many chunks of text using the VoyageAI Embeddings API.
-
-        Can provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. For retrieval/search use cases,
-        we recommend specifying this argument when encoding queries or documents to enhance retrieval quality.
-        Embeddings generated with and without the input_type argument are compatible.
-
-        Supported input types are ``document`` and ``query``
-
-        When hydrating your Redis DB, the documents you want to search over
-        should be embedded with input_type="document" and when you are
-        querying the database, you should set the input_type="query".
-
-        Args:
-            texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. .
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
-            input_type (str): Specifies the type of input passed to the model.
-            truncation (bool): Whether to truncate the input texts to fit within the context length.
-                Check https://docs.voyageai.com/docs/embeddings
-
-        Returns:
-            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
-            or as bytes objects if as_buffer=True
-
-        Raises:
-            TypeError: If an invalid input_type is provided.
-
-        """
-        input_type = kwargs.pop("input_type", None)
-        truncation = kwargs.pop("truncation", None)
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        if not isinstance(texts, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if input_type is not None and input_type not in ["document", "query"]:
-            raise TypeError(
-                "Must pass in a allowed value for voyageai embedding input_type. \
-                    See https://docs.voyageai.com/docs/embeddings."
-            )
-
-        if truncation is not None and not isinstance(truncation, bool):
-            raise TypeError("Truncation (optional) parameter is a bool.")
-
-        if batch_size is None:
-            batch_size = (
-                72
-                if self.model in ["voyage-2", "voyage-02"]
-                else (
-                    30
-                    if self.model == "voyage-3-lite"
-                    else (10 if self.model == "voyage-3" else 7)
-                )
-            )
-
-        embeddings: List = []
-        for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embed(
-                texts=batch, model=self.model, input_type=input_type, **kwargs
-            )
-            embeddings += [
-                self._process_embedding(embedding, as_buffer, dtype)
-                for embedding in response.embeddings
-            ]
-        return embeddings
-
-    @deprecated_argument("dtype")
-    async def aembed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = None,
-        as_buffer: bool = False,
-        **kwargs,
+    def _embed_many(
+        self, texts: List[str], batch_size: Optional[int] = None, **kwargs
     ) -> List[List[float]]:
-        """Embed many chunks of text using the VoyageAI Embeddings API.
-
-        Can provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. For retrieval/search use cases,
-        we recommend specifying this argument when encoding queries or documents to enhance retrieval quality.
-        Embeddings generated with and without the input_type argument are compatible.
-
-        Supported input types are ``document`` and ``query``
-
-        When hydrating your Redis DB, the documents you want to search over
-        should be embedded with input_type="document" and when you are
-        querying the database, you should set the input_type="query".
+        """
+        Generate vector embeddings for a batch of texts using the VoyageAI API.
 
         Args:
-            texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. .
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
-            input_type (str): Specifies the type of input passed to the model.
-            truncation (bool): Whether to truncate the input texts to fit within the context length.
-                Check https://docs.voyageai.com/docs/embeddings
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the VoyageAI API
 
         Returns:
-            List[List[float]]: List of embeddings.
+            List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: In an invalid input_type is provided.
-
+            TypeError: If texts is not a list of strings or parameters are invalid
+            ValueError: If embedding fails
         """
         input_type = kwargs.pop("input_type", None)
         truncation = kwargs.pop("truncation", None)
-        dtype = kwargs.pop("dtype", self.dtype)
 
-        if not isinstance(texts, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if input_type is not None and input_type not in ["document", "query"]:
-            raise TypeError(
-                "Must pass in a allowed value for voyageai embedding input_type. \
-                    See https://docs.voyageai.com/docs/embeddings."
-            )
+        # Validate inputs
+        self._validate_input(texts, input_type, truncation)
 
-        if truncation is not None and not isinstance(truncation, bool):
-            raise TypeError("Truncation (optional) parameter is a bool.")
-
+        # Determine batch size if not provided
         if batch_size is None:
-            batch_size = (
-                72
-                if self.model in ["voyage-2", "voyage-02"]
-                else (
-                    30
-                    if self.model == "voyage-3-lite"
-                    else (10 if self.model == "voyage-3" else 7)
+            batch_size = self._get_batch_size()
+
+        try:
+            embeddings: List = []
+            for batch in self.batchify(texts, batch_size):
+                response = self._client.embed(
+                    texts=batch,
+                    model=self.model,
+                    input_type=input_type,
+                    truncation=truncation,
+                    **kwargs,
                 )
-            )
+                embeddings.extend(response.embeddings)
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
 
-        embeddings: List = []
-        for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self._aclient.embed(
-                texts=batch, model=self.model, input_type=input_type, **kwargs
-            )
-            embeddings += [
-                self._process_embedding(embedding, as_buffer, dtype)
-                for embedding in response.embeddings
-            ]
-        return embeddings
-
-    @deprecated_argument("dtype")
-    async def aembed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> List[float]:
-        """Embed a chunk of text using the VoyageAI Embeddings API.
-
-        Can provide the embedding `input_type` as a `kwarg` to this method
-        that specifies the type of input you're giving to the model. For retrieval/search use cases,
-        we recommend specifying this argument when encoding queries or documents to enhance retrieval quality.
-        Embeddings generated with and without the input_type argument are compatible.
-
-        Supported input types are ``document`` and ``query``
-
-        When hydrating your Redis DB, the documents you want to search over
-        should be embedded with input_type="document" and when you are
-        querying the database, you should set the input_type="query".
+    async def _aembed(self, text: str, **kwargs) -> List[float]:
+        """
+        Asynchronously generate a vector embedding for a single text using the VoyageAI API.
 
         Args:
-            text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
-            input_type (str): Specifies the type of input passed to the model.
-            truncation (bool): Whether to truncate the input texts to fit within the context length.
-                Check https://docs.voyageai.com/docs/embeddings
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the VoyageAI API
 
         Returns:
-            List[float]: Embedding.
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: In an invalid input_type is provided.
+            TypeError: If text is not a string or parameters are invalid
+            ValueError: If embedding fails
         """
-        result = await self.aembed_many(
-            texts=[text], preprocess=preprocess, as_buffer=as_buffer, **kwargs
-        )
+        # Simply call _aembed_many with a single text and return the first result
+        result = await self._aembed_many([text], **kwargs)
         return result[0]
+
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
+    async def _aembed_many(
+        self, texts: List[str], batch_size: Optional[int] = None, **kwargs
+    ) -> List[List[float]]:
+        """
+        Asynchronously generate vector embeddings for a batch of texts using the VoyageAI API.
+
+        Args:
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the VoyageAI API
+
+        Returns:
+            List[List[float]]: List of vector embeddings as lists of floats
+
+        Raises:
+            TypeError: If texts is not a list of strings or parameters are invalid
+            ValueError: If embedding fails
+        """
+        input_type = kwargs.pop("input_type", None)
+        truncation = kwargs.pop("truncation", None)
+
+        # Validate inputs
+        self._validate_input(texts, input_type, truncation)
+
+        # Determine batch size if not provided
+        if batch_size is None:
+            batch_size = self._get_batch_size()
+
+        try:
+            embeddings: List = []
+            for batch in self.batchify(texts, batch_size):
+                response = await self._aclient.embed(
+                    texts=batch,
+                    model=self.model,
+                    input_type=input_type,
+                    truncation=truncation,
+                    **kwargs,
+                )
+                embeddings.extend(response.embeddings)
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
+
+    @property
+    def type(self) -> str:
+        return "voyageai"
