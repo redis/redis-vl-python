@@ -762,7 +762,9 @@ class SemanticRouter(BaseModel):
         if reference_ids:
             queries = cls._make_filter_queries(reference_ids)
         else:
-            _, keys = index.client.scan(match=f"{index.prefix}:{route_name}:*")
+            _, keys = index.client.scan(
+                cursor=0, match=f"{index.prefix}:{route_name}:*"
+            )
             queries = cls._make_filter_queries(
                 [key.split(":")[-1] for key in convert_bytes(keys)]
             )
@@ -817,7 +819,14 @@ class SemanticRouter(BaseModel):
                 for reference_id in reference_ids
             ]
         else:
-            _, keys = index.client.scan(match=f"{index.prefix}:{route_name}:*")
+            _, keys = index.client.scan(
+                cursor=0, match=f"{index.prefix}:{route_name}:*"
+            )
             keys = convert_bytes(keys)
+
+        if not keys:
+            raise ValueError(
+                f"No references found for route {route_name} in router {router_name}"
+            )
 
         return index.drop_keys(keys)

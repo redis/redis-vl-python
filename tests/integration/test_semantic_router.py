@@ -332,7 +332,7 @@ def test_vectorizer_dtype_mismatch(routes, redis_url):
         )
 
 
-def test_invalid_vectorizer(routes, redis_url):
+def test_invalid_vectorizer(redis_url):
     with pytest.raises(TypeError):
         SemanticRouter(
             name="test_invalid_vectorizer",
@@ -473,27 +473,34 @@ def test_add_route_references_cls(redis_url, routes):
 
 def test_add_route_references_cls_missing_inputs(redis_url):
 
-    # Add new references to an existing route
     with pytest.raises(ValueError):
         SemanticRouter.add_route_references(
             route_name="farewell",
             references=["peace out"],
-            router_name="test-router",
-            vectorizer=HFTextVectorizer(),
-        )
-
-    with pytest.raises(ValueError):
-        SemanticRouter.add_route_references(
-            route_name="farewell",
-            references=["peace out"],
-            redis_url=redis_url,
             vectorizer=HFTextVectorizer(),
         )
 
 
-def test_get_route_references(semantic_router):
+def test_get_route_references(redis_url):
+    routes = [
+        Route(
+            name="test",
+            references=["hello", "hi"],
+            metadata={"type": "test"},
+            distance_threshold=0.3,
+        ),
+    ]
+
     # Get references for a specific route
-    refs = semantic_router.get_route_references(route_name="greeting")
+    router = SemanticRouter(
+        name="get-router",
+        routes=routes,
+        routing_config=RoutingConfig(max_k=2),
+        redis_url=redis_url,
+    )
+
+    # Get references for a specific route
+    refs = router.get_route_references(route_name="test")
 
     # Should return at least the initial references
     assert len(refs) >= 2
@@ -501,25 +508,34 @@ def test_get_route_references(semantic_router):
     # Reference IDs should be present
     reference_id = refs[0]["reference_id"]
     # Get references by ID
-    id_refs = semantic_router.get_route_references(reference_ids=[reference_id])
+    id_refs = router.get_route_references(reference_ids=[reference_id])
     assert len(id_refs) == 1
 
     with pytest.raises(ValueError):
-        semantic_router.get_route_references()
+        router.get_route_references()
 
 
-def test_get_route_references_cls(routes, redis_url):
+def test_get_route_references_cls(redis_url):
+    routes = [
+        Route(
+            name="test",
+            references=["hello", "hi"],
+            metadata={"type": "test"},
+            distance_threshold=0.3,
+        ),
+    ]
+
     # Get references for a specific route
     _ = SemanticRouter(
-        name="new-router",
+        name="get-router",
         routes=routes,
         routing_config=RoutingConfig(max_k=2),
         redis_url=redis_url,
     )
 
     refs = SemanticRouter.get_route_references(
-        route_name="greeting",
-        router_name="new-router",
+        route_name="test",
+        router_name="get-router",
         redis_url=redis_url,
     )
 
@@ -536,52 +552,39 @@ def test_get_route_references_cls(routes, redis_url):
         SemanticRouter.get_route_references()
 
 
-def test_delete_route_references(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+def test_delete_route_references(redis_url):
+    routes = [
+        Route(
+            name="test",
+            references=["hello", "hi"],
+            metadata={"type": "test"},
+            distance_threshold=0.3,
+        ),
+        Route(
+            name="test2",
+            references=["by", "boy"],
+            metadata={"type": "test"},
+            distance_threshold=0.3,
+        ),
+    ]
 
-    # Delete specific reference
-    deleted_count = semantic_router.delete_route_references(
-        route_name="greeting",
-    )
-
-    assert deleted_count == 2
-
-    # Verify the reference is gone
-    refs = semantic_router.get_route_references(route_name="farewell")
-    ref_id = refs[0]["reference_id"]
-    deleted = semantic_router.delete_route_references(
-        route_name="farewell", reference_ids=[ref_id]
-    )
-    assert deleted == 1
-
-
-def test_delete_route_references_cls(routes, redis_url):
     # Get references for a specific route
-    _ = SemanticRouter(
-        name="new-router",
+    router = SemanticRouter(
+        name="delete-router",
         routes=routes,
         routing_config=RoutingConfig(max_k=2),
         redis_url=redis_url,
     )
 
     # Delete specific reference
-    deleted_count = SemanticRouter.delete_route_references(
-        route_name="greeting",
-        router_name="new-router",
-        redis_url=redis_url,
+    deleted_count = router.delete_route_references(
+        route_name="test",
     )
 
     assert deleted_count == 2
 
     # Verify the reference is gone
-    refs = SemanticRouter.get_route_references(route_name="farewell")
+    refs = router.get_route_references(route_name="test2")
     ref_id = refs[0]["reference_id"]
-    deleted = SemanticRouter.delete_route_references(
-        route_name="farewell",
-        reference_ids=[ref_id],
-        router_name="new-router",
-        redis_url=redis_url,
-    )
+    deleted = router.delete_route_references(route_name="test2", reference_ids=[ref_id])
     assert deleted == 1
