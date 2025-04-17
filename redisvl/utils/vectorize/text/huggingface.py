@@ -158,43 +158,6 @@ class HFTextVectorizer(BaseVectorizer):
             embeddings.extend([embedding.tolist() for embedding in batch_embeddings])
         return embeddings
 
-    async def _aembed(self, text: str, **kwargs) -> List[float]:
-        """Asynchronously generate a vector embedding for a single text.
-
-        Note: This implementation falls back to the synchronous version as
-        sentence-transformers does not have native async support.
-
-        Args:
-            text: Text to embed
-            **kwargs: Additional model-specific parameters
-
-        Returns:
-            List[float]: Vector embedding as a list of floats
-        """
-        # HuggingFace Sentence Transformers doesn't have async support,
-        # so we just call the synchronous version
-        return self._embed(text, **kwargs)
-
-    async def _aembed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
-    ) -> List[List[float]]:
-        """Asynchronously generate vector embeddings for a batch of texts.
-
-        Note: This implementation falls back to the synchronous version as
-        sentence-transformers does not have native async support.
-
-        Args:
-            texts: List of texts to embed
-            batch_size: Number of texts to process in each batch
-            **kwargs: Additional model-specific parameters
-
-        Returns:
-            List[List[float]]: List of vector embeddings as lists of floats
-        """
-        # HuggingFace Sentence Transformers doesn't have async support,
-        # so we just call the synchronous version
-        return self._embed_many(texts, batch_size, **kwargs)
-
     @property
     def type(self) -> str:
         return "hf"

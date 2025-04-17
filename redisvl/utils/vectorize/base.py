@@ -306,12 +306,18 @@ class BaseVectorizer(BaseModel):
 
     async def _aembed(self, text: str, **kwargs) -> List[float]:
         """Asynchronously generate a vector embedding for a single text."""
+        logger.warning(
+            "This vectorizer has no async embed method. Falling back to sync."
+        )
         return self._embed(text, **kwargs)
 
     async def _aembed_many(
         self, texts: List[str], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
         """Asynchronously generate vector embeddings for a batch of texts."""
+        logger.warning(
+            "This vectorizer has no async embed_many method. Falling back to sync."
+        )
         return self._embed_many(texts, batch_size, **kwargs)
 
     def _get_from_cache_batch(
