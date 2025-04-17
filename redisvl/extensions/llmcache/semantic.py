@@ -1,8 +1,6 @@
 import asyncio
-import weakref
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from redis import Redis
 
 from redisvl.extensions.constants import (
@@ -24,14 +22,12 @@ from redisvl.extensions.llmcache.schema import (
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import VectorRangeQuery
 from redisvl.query.filter import FilterExpression
-from redisvl.query.query import BaseQuery
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import (
     current_timestamp,
     deprecated_argument,
     serialize,
-    sync_wrapper,
     validate_vector_dims,
 )
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer

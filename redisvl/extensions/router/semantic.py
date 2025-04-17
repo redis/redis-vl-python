@@ -18,9 +18,9 @@ from redisvl.extensions.router.schema import (
 )
 from redisvl.index import SearchIndex
 from redisvl.query import VectorRangeQuery
-from redisvl.redis.utils import convert_bytes, hashify, make_dict
+from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, model_to_dict
+from redisvl.utils.utils import deprecated_argument, hashify, model_to_dict
 from redisvl.utils.vectorize import (
     BaseVectorizer,
     HFTextVectorizer,

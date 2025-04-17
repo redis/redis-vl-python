@@ -1,8 +1,6 @@
-import hashlib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
-from ml_dtypes import bfloat16
 
 from redisvl.schema.fields import VectorDataType
 
@@ -53,11 +51,3 @@ def buffer_to_array(buffer: bytes, dtype: str) -> List[Any]:
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
     return np.frombuffer(buffer, dtype=dtype.lower()).tolist()  # type: ignore[return-value]
-
-
-def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:
-    """Create a secure hash of some arbitrary input text and optional dictionary."""
-    if extras:
-        extra_string = " ".join([str(k) + str(v) for k, v in sorted(extras.items())])
-        content = content + extra_string
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()

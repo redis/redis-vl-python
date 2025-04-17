@@ -9,9 +9,9 @@ from redisvl.extensions.constants import (
     RESPONSE_FIELD_NAME,
     UPDATED_AT_FIELD_NAME,
 )
-from redisvl.redis.utils import array_to_buffer, hashify
+from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
-from redisvl.utils.utils import current_timestamp, deserialize, serialize
+from redisvl.utils.utils import current_timestamp, deserialize, hashify, serialize
 
 
 class CacheEntry(BaseModel):
