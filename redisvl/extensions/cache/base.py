@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
+from redisvl.redis.connection import RedisConnectionFactory
+
 
 class BaseCache:
     """Base abstract cache interface for all RedisVL caches.
@@ -121,10 +123,15 @@ class BaseCache:
             AsyncRedis: An async Redis client instance.
         """
         if not hasattr(self, "_async_redis_client") or self._async_redis_client is None:
-            # Create new async Redis client
-            url = self.redis_kwargs["redis_url"]
-            kwargs = self.redis_kwargs["connection_kwargs"]
-            self._async_redis_client = AsyncRedis.from_url(url, **kwargs)  # type: ignore
+            client = self.redis_kwargs.get("redis_client")
+            if isinstance(client, Redis):
+                self._async_redis_client = RedisConnectionFactory.sync_to_async_redis(
+                    client
+                )
+            else:
+                url = self.redis_kwargs["redis_url"]
+                kwargs = self.redis_kwargs["connection_kwargs"]
+                self._async_redis_client = RedisConnectionFactory.get_async_redis_connection(url, **kwargs)  # type: ignore
         return self._async_redis_client
 
     def expire(self, key: str, ttl: Optional[int] = None) -> None:

@@ -1,9 +1,12 @@
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
+
+if TYPE_CHECKING:
+    from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -27,14 +30,33 @@ class MistralAITextVectorizer(BaseVectorizer):
     allowing for batch processing of texts and flexibility in handling
     preprocessing tasks.
 
+    You can optionally enable caching to improve performance when generating
+    embeddings for repeated text inputs.
+
     .. code-block:: python
 
-        # Synchronous embedding of a single text
+        # Basic usage
         vectorizer = MistralAITextVectorizer(
-            model="mistral-embed"
+            model="mistral-embed",
             api_config={"api_key": "your_api_key"} # OR set MISTRAL_API_KEY in your env
         )
         embedding = vectorizer.embed("Hello, world!")
+
+        # With caching enabled
+        from redisvl.extensions.cache.embeddings import EmbeddingsCache
+        cache = EmbeddingsCache(name="mistral_embeddings_cache")
+
+        vectorizer = MistralAITextVectorizer(
+            model="mistral-embed",
+            api_config={"api_key": "your_api_key"},
+            cache=cache
+        )
+
+        # First call will compute and cache the embedding
+        embedding1 = vectorizer.embed("Hello, world!")
+
+        # Second call will retrieve from cache
+        embedding2 = vectorizer.embed("Hello, world!")
 
         # Asynchronous batch embedding of multiple texts
         embeddings = await vectorizer.aembed_many(
@@ -44,41 +66,57 @@ class MistralAITextVectorizer(BaseVectorizer):
 
     """
 
-    _client: Any = PrivateAttr()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
         model: str = "mistral-embed",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        cache: Optional["EmbeddingsCache"] = None,
         **kwargs,
     ):
         """Initialize the MistralAI vectorizer.
 
         Args:
             model (str): Model to use for embedding. Defaults to
-                'text-embedding-ada-002'.
+                'mistral-embed'.
             api_config (Optional[Dict], optional): Dictionary containing the
                 API key. Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
+            cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
+                better performance with repeated texts. Defaults to None.
 
         Raises:
             ImportError: If the mistralai library is not installed.
             ValueError: If the Mistral API key is not provided.
             ValueError: If an invalid dtype is provided.
         """
-        super().__init__(model=model, dtype=dtype)
-        # Init client
+        super().__init__(model=model, dtype=dtype, cache=cache)
+        # Initialize client and set up the model
+        self._setup(api_config, **kwargs)
+
+    def _setup(self, api_config: Optional[Dict], **kwargs):
+        """Set up the MistralAI client and determine the embedding dimensions."""
+        # Initialize client
         self._initialize_client(api_config, **kwargs)
-        # Set model dimensions after init
+        # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
     def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
-        Setup the Mistral clients using the provided API key or an
+        Setup the Mistral client using the provided API key or an
         environment variable.
+
+        Args:
+            api_config: Dictionary with API configuration options
+            **kwargs: Additional arguments to pass to MistralAI client
+
+        Raises:
+            ImportError: If the mistralai library is not installed
+            ValueError: If no API key is provided
         """
         if api_config is None:
             api_config = {}
@@ -88,8 +126,8 @@ class MistralAITextVectorizer(BaseVectorizer):
             from mistralai import Mistral
         except ImportError:
             raise ImportError(
-                "MistralAI vectorizer requires the mistralai library. \
-                    Please install with `pip install mistralai`"
+                "MistralAI vectorizer requires the mistralai library. "
+                "Please install with `pip install mistralai`"
             )
 
         # Fetch the API key from api_config or environment variable
@@ -99,203 +137,171 @@ class MistralAITextVectorizer(BaseVectorizer):
         if not api_key:
             raise ValueError(
                 "MISTRAL API key is required. "
-                "Provide it in api_config or set the MISTRAL_API_KEY\
-                    environment variable."
+                "Provide it in api_config or set the MISTRAL_API_KEY environment variable."
             )
 
+        # Store client as a regular attribute instead of PrivateAttr
         self._client = Mistral(api_key=api_key, **kwargs)
 
     def _set_model_dims(self) -> int:
+        """
+        Determine the dimensionality of the embedding model by making a test call.
+
+        Returns:
+            int: Dimensionality of the embedding model
+
+        Raises:
+            ValueError: If embedding dimensions cannot be determined
+        """
         try:
-            embedding = self.embed("dimension check")
+            # Call the protected _embed method to avoid caching this test embedding
+            embedding = self._embed("dimension check")
+            return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the MISTRAL API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
-        return len(embedding)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    def embed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """Embed many chunks of texts using the Mistral API.
-
-        Args:
-            texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing
-                callable to perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. Defaults to 10.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
-
-        Returns:
-            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
-            or as bytes objects if as_buffer=True
-
-        Raises:
-            TypeError: If the wrong input type is passed in for the test.
+    def _embed(self, text: str, **kwargs) -> List[float]:
         """
-        if not isinstance(texts, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
-
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        embeddings: List = []
-        for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings.create(
-                model=self.model, inputs=batch, **kwargs
-            )
-            embeddings += [
-                self._process_embedding(r.embedding, as_buffer, dtype)
-                for r in response.data
-            ]
-        return embeddings
-
-    @retry(
-        wait=wait_random_exponential(min=1, max=60),
-        stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
-    )
-    @deprecated_argument("dtype")
-    def embed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[float], bytes]:
-        """Embed a chunk of text using the Mistral API.
+        Generate a vector embedding for a single text using the MistralAI API.
 
         Args:
-            text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the MistralAI API
 
         Returns:
-            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
-            object if as_buffer=True
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If text is not a string
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        if preprocess:
-            text = preprocess(text)
-
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        result = self._client.embeddings.create(
-            model=self.model, inputs=[text], **kwargs
-        )
-        return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
+        try:
+            result = self._client.embeddings.create(
+                model=self.model, inputs=[text], **kwargs
+            )
+            return result.data[0].embedding  # type: ignore
+        except Exception as e:
+            raise ValueError(f"Embedding text failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    async def aembed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
+    def _embed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
-        """Asynchronously embed many chunks of texts using the Mistral API.
+        """
+        Generate vector embeddings for a batch of texts using the MistralAI API.
 
         Args:
-            texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. Defaults to 10.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the MistralAI API
 
         Returns:
-            List[List[float]]: List of embeddings.
+            List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If texts is not a list of strings
+            ValueError: If embedding fails
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
+        if texts and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        embeddings: List = []
-        for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self._client.embeddings.create_async(
-                model=self.model, inputs=batch, **kwargs
-            )
-            embeddings += [
-                self._process_embedding(r.embedding, as_buffer, dtype)
-                for r in response.data
-            ]
-        return embeddings
+        try:
+            embeddings: List = []
+            for batch in self.batchify(texts, batch_size):
+                response = self._client.embeddings.create(
+                    model=self.model, inputs=batch, **kwargs
+                )
+                embeddings.extend([r.embedding for r in response.data])
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    async def aembed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> List[float]:
-        """Asynchronously embed a chunk of text using the MistralAPI.
+    async def _aembed(self, text: str, **kwargs) -> List[float]:
+        """
+        Asynchronously generate a vector embedding for a single text using the MistralAI API.
 
         Args:
-            text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the MistralAI API
 
         Returns:
-            List[float]: Embedding.
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If text is not a string
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        if preprocess:
-            text = preprocess(text)
+        try:
+            result = await self._client.embeddings.create_async(
+                model=self.model, inputs=[text], **kwargs
+            )
+            return result.data[0].embedding  # type: ignore
+        except Exception as e:
+            raise ValueError(f"Embedding text failed: {e}")
 
-        dtype = kwargs.pop("dtype", self.dtype)
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
+    async def _aembed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
+    ) -> List[List[float]]:
+        """
+        Asynchronously generate vector embeddings for a batch of texts using the MistralAI API.
 
-        result = await self._client.embeddings.create_async(
-            model=self.model, inputs=[text], **kwargs
-        )
-        return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
+        Args:
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the MistralAI API
+
+        Returns:
+            List[List[float]]: List of vector embeddings as lists of floats
+
+        Raises:
+            TypeError: If texts is not a list of strings
+            ValueError: If embedding fails
+        """
+        if not isinstance(texts, list):
+            raise TypeError("Must pass in a list of str values to embed.")
+        if texts and not isinstance(texts[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
+
+        try:
+            embeddings: List = []
+            for batch in self.batchify(texts, batch_size):
+                response = await self._client.embeddings.create_async(
+                    model=self.model, inputs=batch, **kwargs
+                )
+                embeddings.extend([r.embedding for r in response.data])
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
 
     @property
     def type(self) -> str:
