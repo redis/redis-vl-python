@@ -57,12 +57,12 @@ def validate_vector_dims(v1: int, v2: int) -> None:
         )
 
 
-def serialize(data: Dict[str, Any]) -> str:
+def serialize(data: Any) -> str:
     """Serlize the input into a string."""
     return json.dumps(data)
 
 
-def deserialize(data: str) -> Dict[str, Any]:
+def deserialize(data: str) -> Any:
     """Deserialize the input from a string."""
     return json.loads(data)
 

@@ -20,7 +20,7 @@ from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
 from redisvl.utils.utils import deprecated_argument, validate_vector_dims
-from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
+from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class SemanticSessionManager(BaseSessionManager):
@@ -82,6 +82,8 @@ class SemanticSessionManager(BaseSessionManager):
                     f"Provided dtype {dtype} does not match vectorizer dtype {vectorizer.dtype}"
                 )
         else:
+            from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
+
             vectorizer_kwargs = kwargs
 
             if dtype:

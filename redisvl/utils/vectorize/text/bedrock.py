@@ -1,10 +1,13 @@
 import json
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
+
+if TYPE_CHECKING:
+    from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -24,9 +27,12 @@ class BedrockTextVectorizer(BaseVectorizer):
     The vectorizer supports synchronous operations with batch processing and
     preprocessing capabilities.
 
+    You can optionally enable caching to improve performance when generating
+    embeddings for repeated text inputs.
+
     .. code-block:: python
 
-        # Initialize with explicit credentials
+        # Basic usage with explicit credentials
         vectorizer = AmazonBedrockTextVectorizer(
             model="amazon.titan-embed-text-v2:0",
             api_config={
@@ -36,21 +42,33 @@ class BedrockTextVectorizer(BaseVectorizer):
             }
         )
 
-        # Initialize using environment variables
-        vectorizer = AmazonBedrockTextVectorizer()
+        # With environment variables and caching
+        from redisvl.extensions.cache.embeddings import EmbeddingsCache
+        cache = EmbeddingsCache(name="bedrock_embeddings_cache")
 
-        # Generate embeddings
-        embedding = vectorizer.embed("Hello, world!")
+        vectorizer = AmazonBedrockTextVectorizer(
+            model="amazon.titan-embed-text-v2:0",
+            cache=cache
+        )
+
+        # First call will compute and cache the embedding
+        embedding1 = vectorizer.embed("Hello, world!")
+
+        # Second call will retrieve from cache
+        embedding2 = vectorizer.embed("Hello, world!")
+
+        # Generate batch embeddings
         embeddings = vectorizer.embed_many(["Hello", "World"], batch_size=2)
     """
 
-    _client: Any = PrivateAttr()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
         model: str = "amazon.titan-embed-text-v2:0",
         api_config: Optional[Dict[str, str]] = None,
         dtype: str = "float32",
+        cache: Optional["EmbeddingsCache"] = None,
         **kwargs,
     ) -> None:
         """Initialize the AWS Bedrock Vectorizer.
@@ -63,22 +81,37 @@ class BedrockTextVectorizer(BaseVectorizer):
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
+            cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
+                better performance with repeated texts. Defaults to None.
 
         Raises:
             ValueError: If credentials are not provided in config or environment.
             ImportError: If boto3 is not installed.
             ValueError: If an invalid dtype is provided.
         """
-        super().__init__(model=model, dtype=dtype)
-        # Init client
+        super().__init__(model=model, dtype=dtype, cache=cache)
+        # Initialize client and set up the model
+        self._setup(api_config, **kwargs)
+
+    def _setup(self, api_config: Optional[Dict], **kwargs):
+        """Set up the Bedrock client and determine the embedding dimensions."""
+        # Initialize client
         self._initialize_client(api_config, **kwargs)
-        # Set model dimensions after init
+        # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
     def _initialize_client(self, api_config: Optional[Dict], **kwargs):
         """
         Setup the Bedrock client using the provided API keys or
         environment variables.
+
+        Args:
+            api_config: Dictionary with AWS credentials and configuration
+            **kwargs: Additional arguments to pass to boto3 client
+
+        Raises:
+            ImportError: If boto3 is not installed
+            ValueError: If AWS credentials are not provided
         """
         try:
             import boto3  # type: ignore
@@ -105,6 +138,7 @@ class BedrockTextVectorizer(BaseVectorizer):
                 "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
             )
 
+        # Store client as a regular attribute instead of PrivateAttr
         self._client = boto3.client(
             "bedrock-runtime",
             aws_access_key_id=aws_access_key_id,
@@ -114,113 +148,106 @@ class BedrockTextVectorizer(BaseVectorizer):
         )
 
     def _set_model_dims(self) -> int:
+        """
+        Determine the dimensionality of the embedding model by making a test call.
+
+        Returns:
+            int: Dimensionality of the embedding model
+
+        Raises:
+            ValueError: If embedding dimensions cannot be determined
+        """
         try:
-            embedding = self.embed("dimension check")
+            # Call the protected _embed method to avoid caching this test embedding
+            embedding = self._embed("dimension check")
+            return len(embedding)
         except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
+            raise ValueError(f"Unexpected response from the Bedrock API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
-        return len(embedding)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    def embed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[float], bytes]:
-        """Embed a chunk of text using the AWS Bedrock Embeddings API.
+    def _embed(self, text: str, **kwargs) -> List[float]:
+        """
+        Generate a vector embedding for a single text using the AWS Bedrock API.
 
         Args:
-            text (str): Text to embed.
-            preprocess (Optional[Callable]): Optional preprocessing function.
-            as_buffer (bool): Whether to return as byte buffer.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the AWS Bedrock API
 
         Returns:
-            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
-            object if as_buffer=True
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If text is not a string.
+            TypeError: If text is not a string
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Text must be a string")
 
-        if preprocess:
-            text = preprocess(text)
-
-        response = self._client.invoke_model(
-            modelId=self.model, body=json.dumps({"inputText": text}), **kwargs
-        )
-        response_body = json.loads(response["body"].read())
-        embedding = response_body["embedding"]
-
-        dtype = kwargs.pop("dtype", self.dtype)
-        return self._process_embedding(embedding, as_buffer, dtype)
+        try:
+            response = self._client.invoke_model(
+                modelId=self.model, body=json.dumps({"inputText": text}), **kwargs
+            )
+            response_body = json.loads(response["body"].read())
+            return response_body["embedding"]
+        except Exception as e:
+            raise ValueError(f"Embedding text failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    def embed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """Embed many chunks of text using the AWS Bedrock Embeddings API.
+    def _embed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
+    ) -> List[List[float]]:
+        """
+        Generate vector embeddings for a batch of texts using the AWS Bedrock API.
 
         Args:
-            texts (List[str]): List of texts to embed.
-            preprocess (Optional[Callable]): Optional preprocessing function.
-            batch_size (int): Size of batches for processing. Defaults to 10.
-            as_buffer (bool): Whether to return as byte buffers.
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the AWS Bedrock API
 
         Returns:
-            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
-            or as bytes objects if as_buffer=True
+            List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If texts is not a list of strings.
+            TypeError: If texts is not a list of strings
+            ValueError: If embedding fails
         """
         if not isinstance(texts, list):
             raise TypeError("Texts must be a list of strings")
         if texts and not isinstance(texts[0], str):
             raise TypeError("Texts must be a list of strings")
 
-        embeddings: List[List[float]] = []
-        dtype = kwargs.pop("dtype", self.dtype)
+        try:
+            embeddings: List[List[float]] = []
 
-        for batch in self.batchify(texts, batch_size, preprocess):
-            # Process each text in the batch individually since Bedrock
-            # doesn't support batch embedding
-            batch_embeddings = []
-            for text in batch:
-                response = self._client.invoke_model(
-                    modelId=self.model, body=json.dumps({"inputText": text}), **kwargs
-                )
-                response_body = json.loads(response["body"].read())
-                batch_embeddings.append(response_body["embedding"])
+            for batch in self.batchify(texts, batch_size):
+                # Process each text in the batch individually since Bedrock
+                # doesn't support batch embedding
+                batch_embeddings = []
+                for text in batch:
+                    response = self._client.invoke_model(
+                        modelId=self.model,
+                        body=json.dumps({"inputText": text}),
+                        **kwargs,
+                    )
+                    response_body = json.loads(response["body"].read())
+                    batch_embeddings.append(response_body["embedding"])
 
-            embeddings.extend(
-                [
-                    self._process_embedding(embedding, as_buffer, dtype)
-                    for embedding in batch_embeddings
-                ]
-            )
+                embeddings.extend(batch_embeddings)
 
-        return embeddings
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
 
     @property
     def type(self) -> str:

@@ -1,9 +1,12 @@
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
+
+if TYPE_CHECKING:
+    from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
 from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -28,9 +31,12 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     allowing for batch processing of texts and flexibility in handling
     preprocessing tasks.
 
+    You can optionally enable caching to improve performance when generating
+    embeddings for repeated text inputs.
+
     .. code-block:: python
 
-        # Synchronous embedding of a single text
+        # Basic usage
         vectorizer = AzureOpenAITextVectorizer(
             model="text-embedding-ada-002",
             api_config={
@@ -41,6 +47,26 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         )
         embedding = vectorizer.embed("Hello, world!")
 
+        # With caching enabled
+        from redisvl.extensions.cache.embeddings import EmbeddingsCache
+        cache = EmbeddingsCache(name="azureopenai_embeddings_cache")
+
+        vectorizer = AzureOpenAITextVectorizer(
+            model="text-embedding-ada-002",
+            api_config={
+                "api_key": "your_api_key",
+                "api_version": "your_api_version",
+                "azure_endpoint": "your_azure_endpoint",
+            },
+            cache=cache
+        )
+
+        # First call will compute and cache the embedding
+        embedding1 = vectorizer.embed("Hello, world!")
+
+        # Second call will retrieve from cache
+        embedding2 = vectorizer.embed("Hello, world!")
+
         # Asynchronous batch embedding of multiple texts
         embeddings = await vectorizer.aembed_many(
             ["Hello, world!", "How are you?"],
@@ -49,14 +75,14 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
 
     """
 
-    _client: Any = PrivateAttr()
-    _aclient: Any = PrivateAttr()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
         model: str = "text-embedding-ada-002",
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
+        cache: Optional["EmbeddingsCache"] = None,
         **kwargs,
     ):
         """Initialize the AzureOpenAI vectorizer.
@@ -71,22 +97,37 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             dtype (str): the default datatype to use when embedding text as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
+            cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
+                better performance with repeated texts. Defaults to None.
 
         Raises:
             ImportError: If the openai library is not installed.
             ValueError: If the AzureOpenAI API key, version, or endpoint are not provided.
             ValueError: If an invalid dtype is provided.
         """
-        super().__init__(model=model, dtype=dtype)
-        # Init client
+        super().__init__(model=model, dtype=dtype, cache=cache)
+        # Initialize clients and set up the model
+        self._setup(api_config, **kwargs)
+
+    def _setup(self, api_config: Optional[Dict], **kwargs):
+        """Set up the AzureOpenAI clients and determine the embedding dimensions."""
+        # Initialize clients
         self._initialize_clients(api_config, **kwargs)
-        # Set model dimensions
+        # Set model dimensions after client initialization
         self.dims = self._set_model_dims()
 
     def _initialize_clients(self, api_config: Optional[Dict], **kwargs):
         """
-        Setup the OpenAI clients using the provided API key or an
-        environment variable.
+        Setup the AzureOpenAI clients using the provided API key, API version,
+        and Azure endpoint.
+
+        Args:
+            api_config: Dictionary with API configuration options
+            **kwargs: Additional arguments to pass to AzureOpenAI clients
+
+        Raises:
+            ImportError: If the openai library is not installed
+            ValueError: If required parameters are not provided
         """
         if api_config is None:
             api_config = {}
@@ -96,8 +137,8 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             from openai import AsyncAzureOpenAI, AzureOpenAI
         except ImportError:
             raise ImportError(
-                "AzureOpenAI vectorizer requires the openai library. \
-                    Please install with `pip install openai`"
+                "AzureOpenAI vectorizer requires the openai library. "
+                "Please install with `pip install openai>=1.13.0`"
             )
 
         # Fetch the API key, version and endpoint from api_config or environment variable
@@ -110,8 +151,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if not azure_endpoint:
             raise ValueError(
                 "AzureOpenAI API endpoint is required. "
-                "Provide it in api_config or set the AZURE_OPENAI_ENDPOINT\
-                    environment variable."
+                "Provide it in api_config or set the AZURE_OPENAI_ENDPOINT environment variable."
             )
 
         api_version = (
@@ -123,8 +163,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if not api_version:
             raise ValueError(
                 "AzureOpenAI API version is required. "
-                "Provide it in api_config or set the OPENAI_API_VERSION\
-                    environment variable."
+                "Provide it in api_config or set the OPENAI_API_VERSION environment variable."
             )
 
         api_key = (
@@ -136,10 +175,10 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         if not api_key:
             raise ValueError(
                 "AzureOpenAI API key is required. "
-                "Provide it in api_config or set the AZURE_OPENAI_API_KEY\
-                    environment variable."
+                "Provide it in api_config or set the AZURE_OPENAI_API_KEY environment variable."
             )
 
+        # Store clients as regular attributes instead of PrivateAttr
         self._client = AzureOpenAI(
             api_key=api_key,
             api_version=api_version,
@@ -156,198 +195,164 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         )
 
     def _set_model_dims(self) -> int:
+        """
+        Determine the dimensionality of the embedding model by making a test call.
+
+        Returns:
+            int: Dimensionality of the embedding model
+
+        Raises:
+            ValueError: If embedding dimensions cannot be determined
+        """
         try:
-            embedding = self.embed("dimension check")
+            # Call the protected _embed method to avoid caching this test embedding
+            embedding = self._embed("dimension check")
+            return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the AzureOpenAI API: {str(ke)}")
         except Exception as e:  # pylint: disable=broad-except
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
-        return len(embedding)
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    def embed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """Embed many chunks of texts using the AzureOpenAI API.
-
-        Args:
-            texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing
-                callable to perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. Defaults to 10.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
-
-        Returns:
-            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
-            or as bytes objects if as_buffer=True
-
-        Raises:
-            TypeError: If the wrong input type is passed in for the test.
+    def _embed(self, text: str, **kwargs) -> List[float]:
         """
-        if not isinstance(texts, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
-
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        embeddings: List = []
-        for batch in self.batchify(texts, batch_size, preprocess):
-            response = self._client.embeddings.create(
-                input=batch, model=self.model, **kwargs
-            )
-            embeddings += [
-                self._process_embedding(r.embedding, as_buffer, dtype)
-                for r in response.data
-            ]
-        return embeddings
-
-    @retry(
-        wait=wait_random_exponential(min=1, max=60),
-        stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
-    )
-    @deprecated_argument("dtype")
-    def embed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[float], bytes]:
-        """Embed a chunk of text using the AzureOpenAI API.
+        Generate a vector embedding for a single text using the AzureOpenAI API.
 
         Args:
-            text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the AzureOpenAI API
 
         Returns:
-            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
-            object if as_buffer=True
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If text is not a string
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        if preprocess:
-            text = preprocess(text)
-
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        result = self._client.embeddings.create(
-            input=[text], model=self.model, **kwargs
-        )
-        return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
+        try:
+            result = self._client.embeddings.create(
+                input=[text], model=self.model, **kwargs
+            )
+            return result.data[0].embedding
+        except Exception as e:
+            raise ValueError(f"Embedding text failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    async def aembed_many(
-        self,
-        texts: List[str],
-        preprocess: Optional[Callable] = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
-        """Asynchronously embed many chunks of texts using the AzureOpenAI API.
+    def _embed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
+    ) -> List[List[float]]:
+        """
+        Generate vector embeddings for a batch of texts using the AzureOpenAI API.
 
         Args:
-            texts (List[str]): List of text chunks to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            batch_size (int, optional): Batch size of texts to use when creating
-                embeddings. Defaults to 10.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the AzureOpenAI API
 
         Returns:
-            Union[List[List[float]], List[bytes]]: List of embeddings as lists of floats,
-            or as bytes objects if as_buffer=True
+            List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If texts is not a list of strings
+            ValueError: If embedding fails
         """
         if not isinstance(texts, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
+        if texts and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
-        dtype = kwargs.pop("dtype", self.dtype)
-
-        embeddings: List = []
-        for batch in self.batchify(texts, batch_size, preprocess):
-            response = await self._aclient.embeddings.create(
-                input=batch, model=self.model, **kwargs
-            )
-            embeddings += [
-                self._process_embedding(r.embedding, as_buffer, dtype)
-                for r in response.data
-            ]
-        return embeddings
+        try:
+            embeddings: List = []
+            for batch in self.batchify(texts, batch_size):
+                response = self._client.embeddings.create(
+                    input=batch, model=self.model, **kwargs
+                )
+                embeddings.extend([r.embedding for r in response.data])
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    @deprecated_argument("dtype")
-    async def aembed(
-        self,
-        text: str,
-        preprocess: Optional[Callable] = None,
-        as_buffer: bool = False,
-        **kwargs,
-    ) -> Union[List[float], bytes]:
-        """Asynchronously embed a chunk of text using the OpenAI API.
+    async def _aembed(self, text: str, **kwargs) -> List[float]:
+        """
+        Asynchronously generate a vector embedding for a single text using the AzureOpenAI API.
 
         Args:
-            text (str): Chunk of text to embed.
-            preprocess (Optional[Callable], optional): Optional preprocessing callable to
-                perform before vectorization. Defaults to None.
-            as_buffer (bool, optional): Whether to convert the raw embedding
-                to a byte string. Defaults to False.
+            text: Text to embed
+            **kwargs: Additional parameters to pass to the AzureOpenAI API
 
         Returns:
-            Union[List[float], bytes]: Embedding as a list of floats, or as a bytes
-            object if as_buffer=True
+            List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If the wrong input type is passed in for the test.
+            TypeError: If text is not a string
+            ValueError: If embedding fails
         """
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
-        if preprocess:
-            text = preprocess(text)
+        try:
+            result = await self._aclient.embeddings.create(
+                input=[text], model=self.model, **kwargs
+            )
+            return result.data[0].embedding
+        except Exception as e:
+            raise ValueError(f"Embedding text failed: {e}")
 
-        dtype = kwargs.pop("dtype", self.dtype)
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_not_exception_type(TypeError),
+    )
+    async def _aembed_many(
+        self, texts: List[str], batch_size: int = 10, **kwargs
+    ) -> List[List[float]]:
+        """
+        Asynchronously generate vector embeddings for a batch of texts using the AzureOpenAI API.
 
-        result = await self._aclient.embeddings.create(
-            input=[text], model=self.model, **kwargs
-        )
-        return self._process_embedding(result.data[0].embedding, as_buffer, dtype)
+        Args:
+            texts: List of texts to embed
+            batch_size: Number of texts to process in each API call
+            **kwargs: Additional parameters to pass to the AzureOpenAI API
+
+        Returns:
+            List[List[float]]: List of vector embeddings as lists of floats
+
+        Raises:
+            TypeError: If texts is not a list of strings
+            ValueError: If embedding fails
+        """
+        if not isinstance(texts, list):
+            raise TypeError("Must pass in a list of str values to embed.")
+        if texts and not isinstance(texts[0], str):
+            raise TypeError("Must pass in a list of str values to embed.")
+
+        try:
+            embeddings: List = []
+            for batch in self.batchify(texts, batch_size):
+                response = await self._aclient.embeddings.create(
+                    input=batch, model=self.model, **kwargs
+                )
+                embeddings.extend([r.embedding for r in response.data])
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Embedding texts failed: {e}")
 
     @property
     def type(self) -> str:

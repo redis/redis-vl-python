@@ -21,11 +21,8 @@ from redisvl.query import VectorRangeQuery
 from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, hashify, model_to_dict
-from redisvl.utils.vectorize import (
-    BaseVectorizer,
-    HFTextVectorizer,
-    vectorizer_from_dict,
-)
+from redisvl.utils.vectorize.base import BaseVectorizer
+from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger(__name__)
 
@@ -483,6 +480,8 @@ class SemanticRouter(BaseModel):
             }
             router = SemanticRouter.from_dict(router_data)
         """
+        from redisvl.utils.vectorize import vectorizer_from_dict
+
         try:
             name = data["name"]
             routes_data = data["routes"]

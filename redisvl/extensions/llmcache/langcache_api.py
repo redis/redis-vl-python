@@ -1,17 +1,25 @@
 import json
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 from langcache import LangCache as LangCacheSDK
 from langcache.models import CacheEntryScope, CacheEntryScopeTypedDict
 
-from redisvl.extensions.llmcache.base import BaseLLMCache
+from redisvl.extensions.cache.llm.langcache_api import LangCache as NewLangCache
 from redisvl.query.filter import FilterExpression
 from redisvl.utils.utils import current_timestamp
+
+warnings.warn(
+    "Importing from redisvl.extensions.llmcache.langcache_api is deprecated. "
+    "Please import from redisvl.extensions.cache.llm instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 Scope = Optional[Union[CacheEntryScope, CacheEntryScopeTypedDict]]
 
 
-class LangCache(BaseLLMCache):
+class LangCache(NewLangCache):
     """Redis LangCache Service: API for managing a Redis LangCache"""
 
     def __init__(
@@ -39,7 +47,13 @@ class LangCache(BaseLLMCache):
             entry_scope: Optional scope for cache entries.
         """
         # Initialize the base class
-        super().__init__(ttl)
+        super().__init__(
+            name=name,
+            ttl=ttl,
+            redis_client=redis_client,
+            redis_url=redis_url,
+            connection_kwargs=connection_kwargs,
+        )
 
         # Store configuration
         self._name = name
@@ -180,7 +194,7 @@ class LangCache(BaseLLMCache):
         return_fields: Optional[List[str]] = None,
         filter_expression: Optional[FilterExpression] = None,
         distance_threshold: Optional[float] = None,
-        entry_scope: Optional[Dict[str, Any]] = None,
+        entry_scope: Scope = None,
     ) -> List[Dict[str, Any]]:
         """Check the cache for semantically similar entries.
 
@@ -332,6 +346,7 @@ class LangCache(BaseLLMCache):
         metadata: Optional[Dict[str, Any]] = None,
         filters: Optional[Dict[str, Any]] = None,
         ttl: Optional[int] = None,
+        entry_scope: Scope = None,
     ) -> str:
         """Store a new entry in the cache.
 
@@ -342,6 +357,7 @@ class LangCache(BaseLLMCache):
             metadata: Optional metadata to store with the entry.
             filters: Optional filters to associate with the entry.
             ttl: Optional custom TTL for this entry.
+            entry_scope: Optional scope for the cache entry.
 
         Returns:
             The ID of the created entry.
@@ -367,6 +383,9 @@ class LangCache(BaseLLMCache):
                 json.dumps(metadata) if isinstance(metadata, dict) else metadata
             )
 
+        # Use the provided scope or fall back to the instance default
+        scope = entry_scope if entry_scope is not None else self._entry_scope
+
         # Store the entry and get the response
         create_response = self._api.entries.create(
             cache_id=self._cache_id,
@@ -374,6 +393,7 @@ class LangCache(BaseLLMCache):
             response=response,
             attributes=attributes,
             ttl_millis=ttl_millis,
+            scope=scope,
         )
 
         # Return the entry ID from the response
@@ -387,8 +407,22 @@ class LangCache(BaseLLMCache):
         metadata: Optional[Dict[str, Any]] = None,
         filters: Optional[Dict[str, Any]] = None,
         ttl: Optional[int] = None,
+        entry_scope: Scope = None,
     ) -> str:
-        """Asynchronously store a new entry in the cache."""
+        """Asynchronously store a new entry in the cache.
+
+        Args:
+            prompt: The prompt text.
+            response: The response text.
+            vector: Unused. LangCache manages vectorization internally.
+            metadata: Optional metadata to store with the entry.
+            filters: Optional filters to associate with the entry.
+            ttl: Optional custom TTL for this entry.
+            entry_scope: Optional scope for the cache entry.
+
+        Returns:
+            The ID of the created entry.
+        """
         # Validate metadata
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError("Metadata must be a dictionary")
@@ -410,6 +444,9 @@ class LangCache(BaseLLMCache):
                 json.dumps(metadata) if isinstance(metadata, dict) else metadata
             )
 
+        # Use the provided scope or fall back to the instance default
+        scope = entry_scope if entry_scope is not None else self._entry_scope
+
         # Store the entry and get the response
         create_response = await self._api.entries.create_async(
             cache_id=self._cache_id,
@@ -417,6 +454,7 @@ class LangCache(BaseLLMCache):
             response=response,
             attributes=attributes,
             ttl_millis=ttl_millis,
+            scope=scope,
         )
 
         # Return the entry ID from the response
