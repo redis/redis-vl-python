@@ -6,13 +6,20 @@ This module is kept for backward compatibility. Please use `redisvl.extensions.m
 
 import warnings
 
-from redisvl.extensions.message_history.standard_history import MessageHistory
+from redisvl.extensions.message_history.message_history import MessageHistory
 
 warnings.warn(
     "Importing from redisvl.extensions.session_manger.standard_session is deprecated. "
-    "Please import from redisvl.extensions.message_history instead.",
+    "StandardSessionManager has been renamed to MessageHistory. "
+    "Please import MessageHistory from redisvl.extensions.message_history instead.",
     DeprecationWarning,
     stacklevel=2,
 )
 
-__all__ = ["MessageHistory"]
+
+class StandardSessionManager(MessageHistory):
+    # keep for backward compatibility
+    pass
+
+
+__all__ = ["StandardSessionManager"]

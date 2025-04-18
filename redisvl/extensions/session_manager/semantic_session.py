@@ -6,13 +6,20 @@ This module is kept for backward compatibility. Please use `redisvl.extensions.s
 
 import warnings
 
-from redisvl.extensions.message_history.semantic_history import SemanticHistory
+from redisvl.extensions.message_history.semantic_history import SemanticMessageHistory
 
 warnings.warn(
     "Importing from redisvl.extensions.session_manger.semantic_session is deprecated. "
-    "Please import from redisvl.extensions.semantic_history instead.",
+    "SemanticSessionManager has been renamed to SemanticMessageHistory. "
+    "Please import SemanticMessageHistory from redisvl.extensions.semantic_history instead.",
     DeprecationWarning,
     stacklevel=2,
 )
 
-__all__ = ["SemanticHistory"]
+
+class SemanticSessionManager(SemanticMessageHistory):
+    # keep for backwards compatibility
+    pass
+
+
+__all__ = ["SemanticSessionManager"]

@@ -8,8 +8,8 @@ import warnings
 
 from redisvl.extensions.message_history.schema import (
     ChatMessage,
-    SemanticMessageHistorySchema,
     MessageHistorySchema,
+    SemanticMessageHistorySchema,
 )
 
 warnings.warn(
@@ -19,8 +19,19 @@ warnings.warn(
     stacklevel=2,
 )
 
+
+class StandardSessionIndexSchema(MessageHistorySchema):
+    # keep for backward compatibility
+    pass
+
+
+class SemanticSessionIndexSchema(SemanticMessageHistorySchema):
+    # keep for backward compatibility
+    pass
+
+
 __all__ = [
     "ChatMessage",
-    "MessageHistory",
-    "SemanticMessageHistory",
+    "StandardSessionIndexSchema",
+    "SemanticSessionIndexSchema",
 ]

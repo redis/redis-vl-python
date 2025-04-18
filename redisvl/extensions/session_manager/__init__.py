@@ -6,27 +6,18 @@ This module is kept for backward compatibility. Please use `redisvl.extensions.m
 
 import warnings
 
-from redisvl.extensions.message_history.message_history import MessageHistory
-from redisvl.extensions.message_history.schema import (
-    ChatMessage,
-    MessageHistorySchema,
-    SemanticMessageHistorySchema,
-)
-from redisvl.extensions.message_history.semantic_message_history import (
-    SemanticMessageHistory,
-)
+from redisvl.extensions.session_manager.base_session import BaseSessionManager
+from redisvl.extensions.session_manager.semantic_session import SemanticSessionManager
+from redisvl.extensions.session_manager.standard_session import StandardSessionManager
 
 warnings.warn(
     "Importing from redisvl.extensions.session_manager is deprecated. "
+    "StandardSessionManager has been renamed to MessageHistory. "
+    "SemanticSessionManager has been renamed to SemanticMessageHistory. "
     "Please import from redisvl.extensions.message_history instead.",
     DeprecationWarning,
     stacklevel=2,
 )
 
-__all__ = [
-    "MessageHistory",
-    "SemanticMessageHistory",
-    "ChatMessage",
-    "MessageHistorySchema",
-    "SemanticMessageHistorySchema",
-]
+
+__all__ = ["BaseSessionManager", "StandardSessionManager", "SemanticSessionManager"]
