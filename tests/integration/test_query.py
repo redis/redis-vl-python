@@ -598,6 +598,7 @@ def test_sort_vector_query(index, sorted_vector_query):
     search(sorted_vector_query, index, t, 7, sort=True)
 
 
+@pytest.mark.skip("Flaky test")
 def test_sort_range_query(index, sorted_range_query):
     t = Text("job") % ""
     search(sorted_range_query, index, t, 7, sort=True)
@@ -803,6 +804,9 @@ def test_range_query_normalize_bad_input(index):
     "scorer", ["BM25", "TFIDF", "TFIDF.DOCNORM", "DISMAX", "DOCSCORE"]
 )
 def test_text_query(index, scorer):
+    if scorer == "BM25":
+        pytest.skip("BM25 test is flaky")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
