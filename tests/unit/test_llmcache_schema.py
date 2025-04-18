@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from redisvl.extensions.llmcache.schema import CacheEntry, CacheHit
-from redisvl.redis.utils import array_to_buffer, hashify
+from redisvl.redis.utils import array_to_buffer
+from redisvl.utils.utils import hashify
 
 
 def test_valid_cache_entry_creation():
@@ -35,7 +36,7 @@ def test_cache_entry_with_invalid_metadata():
             prompt="What is AI?",
             response="AI is artificial intelligence.",
             prompt_vector=[0.1, 0.2, 0.3],
-            metadata="invalid_metadata",
+            metadata="invalid_metadata",  # type: ignore[arg-type]
         )
 
 
@@ -79,7 +80,7 @@ def test_cache_hit_with_serialized_metadata():
         vector_distance=0.1,
         inserted_at=1625819123.123,
         updated_at=1625819123.123,
-        metadata=json.dumps({"author": "John"}),
+        metadata=json.dumps({"author": "John"}),  # type: ignore[arg-type]
     )
     assert hit.metadata == {"author": "John"}
 
