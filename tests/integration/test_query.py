@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 from redis.commands.search.result import Result
 
+from redisvl.exceptions import QueryValidationError
 from redisvl.index import SearchIndex
 from redisvl.query import (
     CountQuery,
@@ -20,7 +21,6 @@ from redisvl.query.filter import (
     Text,
     Timestamp,
 )
-from redisvl.query.query import VectorRangeQuery
 from redisvl.redis.utils import array_to_buffer
 
 # TODO expand to multiple schema types and sync + async
@@ -898,3 +898,23 @@ def test_vector_query_with_ef_runtime(index, vector_query, sample_data):
     assert len(results) > 0
     for result in results:
         assert "vector_distance" in result
+
+
+def test_vector_query_with_ef_runtime_flat_index(flat_index, vector_query, sample_data):
+    """
+    Integration test: Verify that Redis ignores EF_RUNTIME on a query if the
+    algo is "flat." EF_RUNTIME is only valid with the "hnsw" algorithm.
+    """
+    vector_query.set_ef_runtime(100)
+
+    # The vector query does not know if the index field supports EF_RUNTIME,
+    # so it should include this param in the query string if asked.
+    query_string = str(vector_query)
+    assert (
+        f"{vector_query.__class__.EF_RUNTIME} ${vector_query.__class__.EF_RUNTIME_PARAM}"
+        in query_string
+    ), "EF_RUNTIME should be in query string"
+
+    # However, the index should raise an error if EF_RUNTIME is set on a flat index.
+    with pytest.raises(QueryValidationError):  # noqa: F821
+        flat_index.query(vector_query)
