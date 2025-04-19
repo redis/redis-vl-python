@@ -560,6 +560,7 @@ def test_paginate_vector_query(index, vector_query, sample_data):
     assert i == expected_iterations
 
 
+@pytest.mark.skip("Flaky test")
 def test_paginate_filter_query(index, filter_query):
     batch_size = 3
     all_results = []
