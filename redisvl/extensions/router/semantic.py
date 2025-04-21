@@ -130,9 +130,12 @@ class SemanticRouter(BaseModel):
     ):
         """Initialize the search index and handle Redis connection."""
 
-        self._index = self._connect_to_index(
-            router_name=self.name,
-            vectorizer=self.vectorizer,
+        schema = SemanticRouterIndexSchema.from_params(
+            self.name, self.vectorizer.dims, self.vectorizer.dtype  # type: ignore
+        )
+
+        self._index = SearchIndex(
+            schema=schema,
             redis_client=redis_client,
             redis_url=redis_url,
             **connection_kwargs,
@@ -154,26 +157,6 @@ class SemanticRouter(BaseModel):
         if not existed or overwrite:
             # write the routes to Redis
             self._add_routes(self.routes)
-
-    @staticmethod
-    def _connect_to_index(
-        router_name: str,
-        vectorizer: BaseVectorizer,
-        redis_client: Optional[Redis] = None,
-        redis_url: str = "redis://localhost:6379",
-        **connection_kwargs,
-    ) -> SearchIndex:
-        """Connect to the Redis index."""
-        schema = SemanticRouterIndexSchema.from_params(
-            router_name, vectorizer.dims, vectorizer.dtype  # type: ignore
-        )
-
-        return SearchIndex(
-            schema=schema,
-            redis_client=redis_client,
-            redis_url=redis_url,
-            **connection_kwargs,
-        )
 
     @property
     def route_names(self) -> List[str]:
@@ -782,7 +765,7 @@ class SemanticRouter(BaseModel):
         redis_client: Optional[Redis] = None,
         redis_url: str = "",
     ) -> int:
-        """Get references for an existing route route.
+        """Get references for an existing semantic router route.
 
         Args:
             router_name (str): The name of the router.

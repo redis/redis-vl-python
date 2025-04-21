@@ -487,7 +487,7 @@ def test_get_route_references(redis_url):
             name="test",
             references=["hello", "hi"],
             metadata={"type": "test"},
-            distance_threshold=0.3,
+            distance_threshold=0.5,
         ),
     ]
 
@@ -495,7 +495,6 @@ def test_get_route_references(redis_url):
     router = SemanticRouter(
         name="get-router",
         routes=routes,
-        routing_config=RoutingConfig(max_k=2),
         redis_url=redis_url,
     )
 
@@ -521,7 +520,7 @@ def test_get_route_references_cls(redis_url):
             name="test",
             references=["hello", "hi"],
             metadata={"type": "test"},
-            distance_threshold=0.3,
+            distance_threshold=0.5,
         ),
     ]
 
@@ -529,7 +528,6 @@ def test_get_route_references_cls(redis_url):
     _ = SemanticRouter(
         name="get-router",
         routes=routes,
-        routing_config=RoutingConfig(max_k=2),
         redis_url=redis_url,
     )
 
@@ -558,13 +556,13 @@ def test_delete_route_references(redis_url):
             name="test",
             references=["hello", "hi"],
             metadata={"type": "test"},
-            distance_threshold=0.3,
+            distance_threshold=0.5,
         ),
         Route(
             name="test2",
             references=["by", "boy"],
             metadata={"type": "test"},
-            distance_threshold=0.3,
+            distance_threshold=0.5,
         ),
     ]
 
@@ -572,7 +570,6 @@ def test_delete_route_references(redis_url):
     router = SemanticRouter(
         name="delete-router",
         routes=routes,
-        routing_config=RoutingConfig(max_k=2),
         redis_url=redis_url,
     )
 
