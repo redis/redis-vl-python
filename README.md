@@ -264,20 +264,20 @@ print(response[0]["response"])
 
 > Learn more about [semantic caching]((https://docs.redisvl.com/en/stable/user_guide/03_llmcache.html)) for LLMs.
 
-### LLM Session Management
+### LLM Memory History
 
-Improve personalization and accuracy of LLM responses by providing user chat history as context. Manage access to the session data using recency or relevancy, *powered by vector search* with the [`SemanticSessionManager`](https://docs.redisvl.com/en/stable/api/session_manager.html).
+Improve personalization and accuracy of LLM responses by providing user message history as context. Manage access to message history data using recency or relevancy, *powered by vector search* with the [`MessageHistory`](https://docs.redisvl.com/en/stable/api/message_history.html).
 
 ```python
-from redisvl.extensions.session_manager import SemanticSessionManager
+from redisvl.extensions.message_history import SemanticMessageHistory
 
-session = SemanticSessionManager(
+history = SemanticMessageHistory(
     name="my-session",
     redis_url="redis://localhost:6379",
     distance_threshold=0.7
 )
 
-session.add_messages([
+history.add_messages([
     {"role": "user", "content": "hello, how are you?"},
     {"role": "assistant", "content": "I'm doing fine, thanks."},
     {"role": "user", "content": "what is the weather going to be today?"},
@@ -286,19 +286,19 @@ session.add_messages([
 ```
 Get recent chat history:
 ```python
-session.get_recent(top_k=1)
+history.get_recent(top_k=1)
 ```
 ```stdout
 >>> [{"role": "assistant", "content": "I don't know"}]
 ```
 Get relevant chat history (powered by vector search):
 ```python
-session.get_relevant("weather", top_k=1)
+history.get_relevant("weather", top_k=1)
 ```
 ```stdout
 >>> [{"role": "user", "content": "what is the weather going to be today?"}]
 ```
-> Learn more about [LLM session management]((https://docs.redisvl.com/en/stable/user_guide/07_session_manager.html)).
+> Learn more about [LLM message history]((https://docs.redisvl.com/en/stable/user_guide/07_message_history.html)).
 
 
 ### LLM Semantic Routing
