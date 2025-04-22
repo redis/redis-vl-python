@@ -687,13 +687,13 @@ class SemanticRouter(BaseModel):
         return index.load(route_references, keys=keys)
 
     @staticmethod
-    def _make_filter_queries(keys: List[str]) -> List[FilterQuery]:
-        """Create a filter query for the given keys."""
+    def _make_filter_queries(ids: List[str]) -> List[FilterQuery]:
+        """Create a filter query for the given ids."""
 
         queries = []
 
-        for key in keys:
-            fe = Tag("reference_id") == key
+        for id in ids:
+            fe = Tag("reference_id") == id
             fq = FilterQuery(
                 return_fields=["reference_id", "route_name", "reference"],
                 filter_expression=fe,
@@ -759,25 +759,27 @@ class SemanticRouter(BaseModel):
     @classmethod
     def delete_route_references(
         cls,
-        route_name: str,
+        route_name: str = "",
         router_name: str = "",
         reference_ids: List[str] = [],
+        keys: List[str] = [],
         redis_client: Optional[Redis] = None,
         redis_url: str = "",
     ) -> int:
         """Get references for an existing semantic router route.
 
         Args:
-            router_name (str): The name of the router.
+            router_name Optional(str): The name of the router.
             reference_ids Optional(List[str]]): The reference or list of references to delete.
+            keys Optional(List[str]]): List of fully qualified keys (prefix:router:reference_id) to delete.
 
         Returns:
             int: Number of objects deleted
         """
 
-        if not route_name and not reference_ids:
+        if not route_name and not reference_ids and not keys:
             raise ValueError(
-                "Must provide a route name, router name or reference ids to get references"
+                "Must provide a route name, reference ids or keys to delete"
             )
 
         if not cls._cls_index:
@@ -796,11 +798,13 @@ class SemanticRouter(BaseModel):
             index = cls._cls_index
             router_name = cls._name
 
+        if keys:
+            return index.drop_keys(keys)
+
         if reference_ids:
-            keys = [
-                f"{index.prefix}:{route_name}:{reference_id}"
-                for reference_id in reference_ids
-            ]
+            queries = cls._make_filter_queries(reference_ids)
+            res = index.batch_query(queries)
+            keys = [r[0]["id"] for r in res if len(r) > 0]
         else:
             _, keys = index.client.scan(
                 cursor=0, match=f"{index.prefix}:{route_name}:*"
