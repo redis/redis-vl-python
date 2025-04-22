@@ -19,7 +19,7 @@ User guides provide helpful resources for using RedisVL and its different compon
 04_vectorizers
 05_hash_vs_json
 06_rerankers
-07_session_manager
+07_message_history
 08_semantic_router
 09_threshold_optimization
 release_guide/index
