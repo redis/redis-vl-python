@@ -520,4 +520,4 @@ def test_delete_route_references(semantic_router):
     assert deleted == 2
 
     router_dict = semantic_router.to_dict()
-    assert len(router_dict["references"]) == 0
+    assert len(router_dict["routes"][0]["references"]) == 0

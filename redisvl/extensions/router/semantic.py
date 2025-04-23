@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 import redis.commands.search.reducers as reducers
 import yaml
@@ -23,7 +23,7 @@ from redisvl.query.filter import Tag
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_argument, model_to_dict
+from redisvl.utils.utils import deprecated_argument, model_to_dict, scan_by_pattern
 from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
@@ -43,7 +43,6 @@ class SemanticRouter(BaseModel):
     """Configuration for routing behavior."""
 
     _index: SearchIndex = PrivateAttr()
-    _persist_config: bool = PrivateAttr()
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -170,7 +169,7 @@ class SemanticRouter(BaseModel):
 
         if not existed or overwrite:
             # write the routes to Redis
-            self.add_routes(self.routes)
+            self._add_routes(self.routes)
 
     @property
     def route_names(self) -> List[str]:
@@ -213,7 +212,7 @@ class SemanticRouter(BaseModel):
         """Generate the route reference key."""
         return f"{index.prefix}:{route_name}:{reference_hash}"
 
-    def add_routes(self, routes: List[Route]):
+    def _add_routes(self, routes: List[Route]):
         """Add routes to the router and index.
 
         Args:
@@ -719,8 +718,8 @@ class SemanticRouter(BaseModel):
             queries = self._make_filter_queries(reference_ids)
         elif route_name:
             if not keys:
-                _, keys = self._index.client.scan(  # type: ignore
-                    cursor=0, match=f"{self._index.prefix}:{route_name}:*"
+                keys = scan_by_pattern(
+                    self._index.client, f"{self._index.prefix}:{route_name}:*"  # type: ignore
                 )
 
             queries = self._make_filter_queries(
@@ -757,10 +756,9 @@ class SemanticRouter(BaseModel):
             res = self._index.batch_query(queries)
             keys = [r[0]["id"] for r in res if len(r) > 0]
         elif not keys:
-            _, keys = self._index.client.scan(  # type: ignore
-                cursor=0, match=f"{self._index.prefix}:{route_name}:*"
+            keys = scan_by_pattern(
+                self._index.client, f"{self._index.prefix}:{route_name}:*"  # type: ignore
             )
-            keys = convert_bytes(keys)
 
         if not keys:
             raise ValueError(f"No references found for route {route_name}")
