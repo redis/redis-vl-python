@@ -20,7 +20,7 @@ filter
 vectorizer
 reranker
 cache
-session_manager
+message_history
 router
 threshold_optimizer
 ```

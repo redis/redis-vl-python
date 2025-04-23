@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from redisvl.extensions.session_manager.schema import ChatMessage
+from redisvl.extensions.message_history.schema import ChatMessage
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.utils import create_ulid, current_timestamp
 

@@ -5,10 +5,7 @@ from redis.exceptions import ConnectionError
 
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ID_FIELD_NAME
-from redisvl.extensions.session_manager import (
-    SemanticSessionManager,
-    StandardSessionManager,
-)
+from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 
@@ -18,18 +15,18 @@ def app_name():
 
 
 @pytest.fixture
-def standard_session(app_name, client):
-    session = StandardSessionManager(app_name, redis_client=client)
-    yield session
-    session.clear()
+def standard_history(app_name, client):
+    history = MessageHistory(app_name, redis_client=client)
+    yield history
+    history.clear()
 
 
 @pytest.fixture
-def semantic_session(app_name, client):
-    session = SemanticSessionManager(app_name, redis_client=client, overwrite=True)
-    yield session
-    session.clear()
-    session.delete()
+def semantic_history(app_name, client):
+    history = SemanticMessageHistory(app_name, redis_client=client, overwrite=True)
+    yield history
+    history.clear()
+    history.delete()
 
 
 @pytest.fixture(autouse=True)
@@ -39,42 +36,42 @@ def disable_deprecation_warnings():
         yield
 
 
-# test standard session manager
+# test standard message history
 def test_specify_redis_client(client):
-    session = StandardSessionManager(name="test_app", redis_client=client)
-    assert isinstance(session._index.client, type(client))
+    history = MessageHistory(name="test_app", redis_client=client)
+    assert isinstance(history._index.client, type(client))
 
 
 def test_specify_redis_url(client, redis_url):
-    session = StandardSessionManager(
+    history = MessageHistory(
         name="test_app",
         session_tag="abc",
         redis_url=redis_url,
     )
-    assert isinstance(session._index.client, type(client))
+    assert isinstance(history._index.client, type(client))
 
 
 def test_standard_bad_connection_info():
     with pytest.raises(ConnectionError):
-        StandardSessionManager(
+        MessageHistory(
             name="test_app",
             session_tag="abc",
             redis_url="redis://localhost:6389",  # bad url
         )
 
 
-def test_standard_store(standard_session):
-    context = standard_session.get_recent()
+def test_standard_store(standard_history):
+    context = standard_history.get_recent()
     assert len(context) == 0
 
-    standard_session.store(prompt="first prompt", response="first response")
-    standard_session.store(prompt="second prompt", response="second response")
-    standard_session.store(prompt="third prompt", response="third response")
-    standard_session.store(prompt="fourth prompt", response="fourth response")
-    standard_session.store(prompt="fifth prompt", response="fifth response")
+    standard_history.store(prompt="first prompt", response="first response")
+    standard_history.store(prompt="second prompt", response="second response")
+    standard_history.store(prompt="third prompt", response="third response")
+    standard_history.store(prompt="fourth prompt", response="fourth response")
+    standard_history.store(prompt="fifth prompt", response="fifth response")
 
     # test that order is maintained
-    full_context = standard_session.get_recent(top_k=10)
+    full_context = standard_history.get_recent(top_k=10)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -89,37 +86,37 @@ def test_standard_store(standard_session):
     ]
 
 
-def test_standard_add_and_get(standard_session):
-    context = standard_session.get_recent()
+def test_standard_add_and_get(standard_history):
+    context = standard_history.get_recent()
     assert len(context) == 0
 
-    standard_session.add_message({"role": "user", "content": "first prompt"})
-    standard_session.add_message({"role": "llm", "content": "first response"})
-    standard_session.add_message({"role": "user", "content": "second prompt"})
-    standard_session.add_message({"role": "llm", "content": "second response"})
-    standard_session.add_message(
+    standard_history.add_message({"role": "user", "content": "first prompt"})
+    standard_history.add_message({"role": "llm", "content": "first response"})
+    standard_history.add_message({"role": "user", "content": "second prompt"})
+    standard_history.add_message({"role": "llm", "content": "second response"})
+    standard_history.add_message(
         {
             "role": "tool",
             "content": "tool result 1",
             "tool_call_id": "tool call one",
         }
     )
-    standard_session.add_message(
+    standard_history.add_message(
         {
             "role": "tool",
             "content": "tool result 2",
             "tool_call_id": "tool call two",
         }
     )
-    standard_session.add_message({"role": "user", "content": "third prompt"})
-    standard_session.add_message({"role": "llm", "content": "third response"})
+    standard_history.add_message({"role": "user", "content": "third prompt"})
+    standard_history.add_message({"role": "llm", "content": "third response"})
 
     # test default context history size
-    default_context = standard_session.get_recent()
+    default_context = standard_history.get_recent()
     assert len(default_context) == 5  #  default is 5
 
     # test specified context history size
-    partial_context = standard_session.get_recent(top_k=3)
+    partial_context = standard_history.get_recent(top_k=3)
     assert len(partial_context) == 3
     assert partial_context == [
         {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
@@ -128,7 +125,7 @@ def test_standard_add_and_get(standard_session):
     ]
 
     # test that order is maintained
-    full_context = standard_session.get_recent(top_k=10)
+    full_context = standard_history.get_recent(top_k=10)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -142,23 +139,23 @@ def test_standard_add_and_get(standard_session):
 
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=-2)
+        bad_context = standard_history.get_recent(top_k=-2)
 
     with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=-2.0)
+        bad_context = standard_history.get_recent(top_k=-2.0)
 
     with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k=1.3)
+        bad_context = standard_history.get_recent(top_k=1.3)
 
     with pytest.raises(ValueError):
-        bad_context = standard_session.get_recent(top_k="3")
+        bad_context = standard_history.get_recent(top_k="3")
 
 
-def test_standard_add_messages(standard_session):
-    context = standard_session.get_recent()
+def test_standard_add_messages(standard_history):
+    context = standard_history.get_recent()
     assert len(context) == 0
 
-    standard_session.add_messages(
+    standard_history.add_messages(
         [
             {"role": "user", "content": "first prompt"},
             {"role": "llm", "content": "first response"},
@@ -179,7 +176,7 @@ def test_standard_add_messages(standard_session):
         ]
     )
 
-    full_context = standard_session.get_recent(top_k=10)
+    full_context = standard_history.get_recent(top_k=10)
     assert len(full_context) == 8
     assert full_context == [
         {"role": "user", "content": "first prompt"},
@@ -193,8 +190,8 @@ def test_standard_add_messages(standard_session):
     ]
 
 
-def test_standard_messages_property(standard_session):
-    standard_session.add_messages(
+def test_standard_messages_property(standard_history):
+    standard_history.add_messages(
         [
             {"role": "user", "content": "first prompt"},
             {"role": "llm", "content": "first response"},
@@ -204,7 +201,7 @@ def test_standard_messages_property(standard_session):
         ]
     )
 
-    assert standard_session.messages == [
+    assert standard_history.messages == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
@@ -213,47 +210,47 @@ def test_standard_messages_property(standard_session):
     ]
 
 
-def test_standard_scope(standard_session):
+def test_standard_scope(standard_history):
     # store entries under default session tag
-    standard_session.store("some prompt", "some response")
+    standard_history.store("some prompt", "some response")
 
     # test that changing session tag does indeed change access scope
     new_session = "def"
-    standard_session.store(
+    standard_history.store(
         "new user prompt", "new user response", session_tag=new_session
     )
-    context = standard_session.get_recent(session_tag=new_session)
+    context = standard_history.get_recent(session_tag=new_session)
     assert context == [
         {"role": "user", "content": "new user prompt"},
         {"role": "llm", "content": "new user response"},
     ]
 
     # test that default session data is still accessible
-    context = standard_session.get_recent()
+    context = standard_history.get_recent()
     assert context == [
         {"role": "user", "content": "some prompt"},
         {"role": "llm", "content": "some response"},
     ]
 
     bad_session = "xyz"
-    no_context = standard_session.get_recent(session_tag=bad_session)
+    no_context = standard_history.get_recent(session_tag=bad_session)
     assert no_context == []
 
 
-def test_standard_get_text(standard_session):
-    standard_session.store("first prompt", "first response")
-    text = standard_session.get_recent(as_text=True)
+def test_standard_get_text(standard_history):
+    standard_history.store("first prompt", "first response")
+    text = standard_history.get_recent(as_text=True)
     assert text == ["first prompt", "first response"]
 
-    standard_session.add_message({"role": "system", "content": "system level prompt"})
-    text = standard_session.get_recent(as_text=True)
+    standard_history.add_message({"role": "system", "content": "system level prompt"})
+    text = standard_history.get_recent(as_text=True)
     assert text == ["first prompt", "first response", "system level prompt"]
 
 
-def test_standard_get_raw(standard_session):
-    standard_session.store("first prompt", "first response")
-    standard_session.store("second prompt", "second response")
-    raw = standard_session.get_recent(raw=True)
+def test_standard_get_raw(standard_history):
+    standard_history.store("first prompt", "first response")
+    standard_history.store("second prompt", "second response")
+    raw = standard_history.get_recent(raw=True)
     assert len(raw) == 4
     assert raw[0]["role"] == "user"
     assert raw[0]["content"] == "first prompt"
@@ -261,15 +258,15 @@ def test_standard_get_raw(standard_session):
     assert raw[1]["content"] == "first response"
 
 
-def test_standard_drop(standard_session):
-    standard_session.store("first prompt", "first response")
-    standard_session.store("second prompt", "second response")
-    standard_session.store("third prompt", "third response")
-    standard_session.store("fourth prompt", "fourth response")
+def test_standard_drop(standard_history):
+    standard_history.store("first prompt", "first response")
+    standard_history.store("second prompt", "second response")
+    standard_history.store("third prompt", "third response")
+    standard_history.store("fourth prompt", "fourth response")
 
     # test drop() with no arguments removes the last element
-    standard_session.drop()
-    context = standard_session.get_recent(top_k=3)
+    standard_history.drop()
+    context = standard_history.get_recent(top_k=3)
     assert context == [
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
@@ -277,10 +274,10 @@ def test_standard_drop(standard_session):
     ]
 
     # test drop(id) removes the specified element
-    context = standard_session.get_recent(top_k=10, raw=True)
+    context = standard_history.get_recent(top_k=10, raw=True)
     middle_id = context[3][ID_FIELD_NAME]
-    standard_session.drop(middle_id)
-    context = standard_session.get_recent(top_k=6)
+    standard_history.drop(middle_id)
+    context = standard_history.get_recent(top_k=6)
     assert context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -291,82 +288,82 @@ def test_standard_drop(standard_session):
     ]
 
 
-def test_standard_clear(standard_session):
-    standard_session.store("some prompt", "some response")
-    standard_session.clear()
-    empty_context = standard_session.get_recent(top_k=10)
+def test_standard_clear(standard_history):
+    standard_history.store("some prompt", "some response")
+    standard_history.clear()
+    empty_context = standard_history.get_recent(top_k=10)
     assert empty_context == []
 
 
-# test semantic session manager
+# test semantic message history
 def test_semantic_specify_client(client):
-    session = SemanticSessionManager(
+    history = SemanticMessageHistory(
         name="test_app", session_tag="abc", redis_client=client, overwrite=True
     )
-    assert isinstance(session._index.client, type(client))
+    assert isinstance(history._index.client, type(client))
 
 
 def test_semantic_bad_connection_info():
     with pytest.raises(ConnectionError):
-        SemanticSessionManager(
+        SemanticMessageHistory(
             name="test_app",
             session_tag="abc",
             redis_url="redis://localhost:6389",
         )
 
 
-def test_semantic_scope(semantic_session):
+def test_semantic_scope(semantic_history):
     # store entries under default session tag
-    semantic_session.store("some prompt", "some response")
+    semantic_history.store("some prompt", "some response")
 
     # test that changing session tag does indeed change access scope
     new_session = "def"
-    semantic_session.store(
+    semantic_history.store(
         "new user prompt", "new user response", session_tag=new_session
     )
-    context = semantic_session.get_recent(session_tag=new_session)
+    context = semantic_history.get_recent(session_tag=new_session)
     assert context == [
         {"role": "user", "content": "new user prompt"},
         {"role": "llm", "content": "new user response"},
     ]
 
     # test that previous session data is still accessible
-    context = semantic_session.get_recent()
+    context = semantic_history.get_recent()
     assert context == [
         {"role": "user", "content": "some prompt"},
         {"role": "llm", "content": "some response"},
     ]
 
     bad_session = "xyz"
-    no_context = semantic_session.get_recent(session_tag=bad_session)
+    no_context = semantic_history.get_recent(session_tag=bad_session)
     assert no_context == []
 
 
-def test_semantic_store_and_get_recent(semantic_session):
-    context = semantic_session.get_recent()
+def test_semantic_store_and_get_recent(semantic_history):
+    context = semantic_history.get_recent()
     assert len(context) == 0
 
-    semantic_session.store(prompt="first prompt", response="first response")
-    semantic_session.store(prompt="second prompt", response="second response")
-    semantic_session.store(prompt="third prompt", response="third response")
-    semantic_session.store(prompt="fourth prompt", response="fourth response")
-    semantic_session.add_message(
+    semantic_history.store(prompt="first prompt", response="first response")
+    semantic_history.store(prompt="second prompt", response="second response")
+    semantic_history.store(prompt="third prompt", response="third response")
+    semantic_history.store(prompt="fourth prompt", response="fourth response")
+    semantic_history.add_message(
         {"role": "tool", "content": "tool result", "tool_call_id": "tool id"}
     )
     # test default context history size
-    default_context = semantic_session.get_recent()
+    default_context = semantic_history.get_recent()
     assert len(default_context) == 5  # 5 is default
 
     # test specified context history size
-    partial_context = semantic_session.get_recent(top_k=4)
+    partial_context = semantic_history.get_recent(top_k=4)
     assert len(partial_context) == 4
 
     # test larger context history returns full history
-    too_large_context = semantic_session.get_recent(top_k=100)
+    too_large_context = semantic_history.get_recent(top_k=100)
     assert len(too_large_context) == 9
 
     # test that order is maintained
-    full_context = semantic_session.get_recent(top_k=9)
+    full_context = semantic_history.get_recent(top_k=9)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -380,7 +377,7 @@ def test_semantic_store_and_get_recent(semantic_session):
     ]
 
     # test that more recent entries are returned
-    context = semantic_session.get_recent(top_k=4)
+    context = semantic_history.get_recent(top_k=4)
     assert context == [
         {"role": "llm", "content": "third response"},
         {"role": "user", "content": "fourth prompt"},
@@ -389,28 +386,28 @@ def test_semantic_store_and_get_recent(semantic_session):
     ]
 
     # test no entries are returned and no error is raised if top_k == 0
-    context = semantic_session.get_recent(top_k=0)
+    context = semantic_history.get_recent(top_k=0)
     assert context == []
 
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_recent(top_k=0.5)
+        bad_context = semantic_history.get_recent(top_k=0.5)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_recent(top_k=-1)
+        bad_context = semantic_history.get_recent(top_k=-1)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_recent(top_k=-2.0)
+        bad_context = semantic_history.get_recent(top_k=-2.0)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_recent(top_k=1.3)
+        bad_context = semantic_history.get_recent(top_k=1.3)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_recent(top_k="3")
+        bad_context = semantic_history.get_recent(top_k="3")
 
 
-def test_semantic_messages_property(semantic_session):
-    semantic_session.add_messages(
+def test_semantic_messages_property(semantic_history):
+    semantic_history.add_messages(
         [
             {"role": "user", "content": "first prompt"},
             {"role": "llm", "content": "first response"},
@@ -430,7 +427,7 @@ def test_semantic_messages_property(semantic_session):
         ]
     )
 
-    assert semantic_session.messages == [
+    assert semantic_history.messages == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
         {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
@@ -441,23 +438,23 @@ def test_semantic_messages_property(semantic_session):
     ]
 
 
-def test_semantic_add_and_get_relevant(semantic_session):
-    semantic_session.add_message(
+def test_semantic_add_and_get_relevant(semantic_history):
+    semantic_history.add_message(
         {"role": "system", "content": "discussing common fruits and vegetables"}
     )
-    semantic_session.store(
+    semantic_history.store(
         prompt="list of common fruits",
         response="apples, oranges, bananas, strawberries",
     )
-    semantic_session.store(
+    semantic_history.store(
         prompt="list of common vegetables",
         response="carrots, broccoli, onions, spinach",
     )
-    semantic_session.store(
+    semantic_history.store(
         prompt="winter sports in the olympics",
         response="downhill skiing, ice skating, luge",
     )
-    semantic_session.add_message(
+    semantic_history.add_message(
         {
             "role": "tool",
             "content": "skiing, skating, luge",
@@ -466,7 +463,7 @@ def test_semantic_add_and_get_relevant(semantic_session):
     )
 
     # test default distance metric
-    default_context = semantic_session.get_relevant(
+    default_context = semantic_history.get_relevant(
         "set of common fruits like apples and bananas"
     )
     assert len(default_context) == 2
@@ -477,15 +474,15 @@ def test_semantic_add_and_get_relevant(semantic_session):
     }
 
     # test increasing distance metric broadens results
-    semantic_session.set_distance_threshold(0.5)
-    default_context = semantic_session.get_relevant("list of fruits and vegetables")
+    semantic_history.set_distance_threshold(0.5)
+    default_context = semantic_history.get_relevant("list of fruits and vegetables")
     assert len(default_context) == 5  # 2 pairs of prompt:response, and system
-    assert default_context == semantic_session.get_relevant(
+    assert default_context == semantic_history.get_relevant(
         "list of fruits and vegetables", distance_threshold=0.5
     )
 
     # test tool calls can also be returned
-    context = semantic_session.get_relevant("winter sports like skiing")
+    context = semantic_history.get_relevant("winter sports like skiing")
     assert context == [
         {
             "role": "user",
@@ -504,22 +501,22 @@ def test_semantic_add_and_get_relevant(semantic_session):
 
     # test that a ValueError is raised when top_k is invalid
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_relevant("test prompt", top_k=-1)
+        bad_context = semantic_history.get_relevant("test prompt", top_k=-1)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_relevant("test prompt", top_k=-2.0)
+        bad_context = semantic_history.get_relevant("test prompt", top_k=-2.0)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_relevant("test prompt", top_k=1.3)
+        bad_context = semantic_history.get_relevant("test prompt", top_k=1.3)
 
     with pytest.raises(ValueError):
-        bad_context = semantic_session.get_relevant("test prompt", top_k="3")
+        bad_context = semantic_history.get_relevant("test prompt", top_k="3")
 
 
-def test_semantic_get_raw(semantic_session):
-    semantic_session.store("first prompt", "first response")
-    semantic_session.store("second prompt", "second response")
-    raw = semantic_session.get_recent(raw=True)
+def test_semantic_get_raw(semantic_history):
+    semantic_history.store("first prompt", "first response")
+    semantic_history.store("second prompt", "second response")
+    raw = semantic_history.get_recent(raw=True)
     assert len(raw) == 4
     assert raw[0]["role"] == "user"
     assert raw[0]["content"] == "first prompt"
@@ -527,15 +524,15 @@ def test_semantic_get_raw(semantic_session):
     assert raw[1]["content"] == "first response"
 
 
-def test_semantic_drop(semantic_session):
-    semantic_session.store("first prompt", "first response")
-    semantic_session.store("second prompt", "second response")
-    semantic_session.store("third prompt", "third response")
-    semantic_session.store("fourth prompt", "fourth response")
+def test_semantic_drop(semantic_history):
+    semantic_history.store("first prompt", "first response")
+    semantic_history.store("second prompt", "second response")
+    semantic_history.store("third prompt", "third response")
+    semantic_history.store("fourth prompt", "fourth response")
 
     # test drop() with no arguments removes the last element
-    semantic_session.drop()
-    context = semantic_session.get_recent(top_k=3)
+    semantic_history.drop()
+    context = semantic_history.get_recent(top_k=3)
     assert context == [
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
@@ -543,10 +540,10 @@ def test_semantic_drop(semantic_session):
     ]
 
     # test drop(id) removes the specified element
-    context = semantic_session.get_recent(top_k=5, raw=True)
+    context = semantic_history.get_recent(top_k=5, raw=True)
     middle_id = context[2][ID_FIELD_NAME]
-    semantic_session.drop(middle_id)
-    context = semantic_session.get_recent(top_k=4)
+    semantic_history.drop(middle_id)
+    context = semantic_history.get_recent(top_k=4)
     assert context == [
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
@@ -557,16 +554,16 @@ def test_semantic_drop(semantic_session):
 
 def test_different_vector_dtypes():
     try:
-        bfloat_sess = SemanticSessionManager(name="bfloat_session", dtype="bfloat16")
+        bfloat_sess = SemanticMessageHistory(name="bfloat_history", dtype="bfloat16")
         bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
 
-        float16_sess = SemanticSessionManager(name="float16_session", dtype="float16")
+        float16_sess = SemanticMessageHistory(name="float16_history", dtype="float16")
         float16_sess.add_message({"role": "user", "content": "float16 message"})
 
-        float32_sess = SemanticSessionManager(name="float32_session", dtype="float32")
+        float32_sess = SemanticMessageHistory(name="float32_history", dtype="float32")
         float32_sess.add_message({"role": "user", "content": "float32 message"})
 
-        float64_sess = SemanticSessionManager(name="float64_session", dtype="float64")
+        float64_sess = SemanticMessageHistory(name="float64_history", dtype="float64")
         float64_sess.add_message({"role": "user", "content": "float64 message"})
 
         for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
@@ -576,27 +573,27 @@ def test_different_vector_dtypes():
         pytest.skip("Not using a late enough version of Redis")
 
 
-def test_bad_dtype_connecting_to_exiting_session(redis_url):
+def test_bad_dtype_connecting_to_exiting_history(redis_url):
     try:
-        session = SemanticSessionManager(
-            name="float64 session", dtype="float64", redis_url=redis_url
+        history = SemanticMessageHistory(
+            name="float64 history", dtype="float64", redis_url=redis_url
         )
-        same_type = SemanticSessionManager(
-            name="float64 session", dtype="float64", redis_url=redis_url
+        same_type = SemanticMessageHistory(
+            name="float64 history", dtype="float64", redis_url=redis_url
         )
         # under the hood uses from_existing
     except RedisModuleVersionError:
         pytest.skip("Not using a late enough version of Redis")
 
     with pytest.raises(ValueError):
-        bad_type = SemanticSessionManager(
-            name="float64 session", dtype="float16", redis_url=redis_url
+        bad_type = SemanticMessageHistory(
+            name="float64 history", dtype="float16", redis_url=redis_url
         )
 
 
 def test_vectorizer_dtype_mismatch(redis_url, hf_vectorizer_float16):
     with pytest.raises(ValueError):
-        SemanticSessionManager(
+        SemanticMessageHistory(
             name="test_dtype_mismatch",
             dtype="float32",
             vectorizer=hf_vectorizer_float16,
@@ -607,7 +604,7 @@ def test_vectorizer_dtype_mismatch(redis_url, hf_vectorizer_float16):
 
 def test_invalid_vectorizer(redis_url):
     with pytest.raises(TypeError):
-        SemanticSessionManager(
+        SemanticMessageHistory(
             name="test_invalid_vectorizer",
             vectorizer="invalid_vectorizer",  # type: ignore
             redis_url=redis_url,
@@ -617,7 +614,7 @@ def test_invalid_vectorizer(redis_url):
 
 def test_passes_through_dtype_to_default_vectorizer(redis_url):
     # The default is float32, so we should see float64 if we pass it in.
-    cache = SemanticSessionManager(
+    cache = SemanticMessageHistory(
         name="test_pass_through_dtype",
         dtype="float64",
         redis_url=redis_url,
@@ -628,6 +625,6 @@ def test_passes_through_dtype_to_default_vectorizer(redis_url):
 
 def test_deprecated_dtype_argument(redis_url):
     with pytest.warns(DeprecationWarning):
-        SemanticSessionManager(
-            name="float64 session", dtype="float64", redis_url=redis_url, overwrite=True
+        SemanticMessageHistory(
+            name="float64 history", dtype="float64", redis_url=redis_url, overwrite=True
         )

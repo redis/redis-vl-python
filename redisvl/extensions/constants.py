@@ -1,10 +1,10 @@
 """
-Constants used within the extension classes SemanticCache, BaseSessionManager,
-StandardSessionManager,SemanticSessionManager and SemanticRouter.
+Constants used within the extension classes SemanticCache, BaseMessageHistory,
+MessageHistory, SemanticMessageHistory and SemanticRouter.
 These constants are also used within theses classes corresponding schema.
 """
 
-# BaseSessionManager
+# BaseMessageHistory
 ID_FIELD_NAME: str = "entry_id"
 ROLE_FIELD_NAME: str = "role"
 CONTENT_FIELD_NAME: str = "content"
@@ -12,8 +12,8 @@ TOOL_FIELD_NAME: str = "tool_call_id"
 TIMESTAMP_FIELD_NAME: str = "timestamp"
 SESSION_FIELD_NAME: str = "session_tag"
 
-# SemanticSessionManager
-SESSION_VECTOR_FIELD_NAME: str = "vector_field"
+# SemanticMessageHistory
+MESSAGE_VECTOR_FIELD_NAME: str = "vector_field"
 
 # SemanticCache
 REDIS_KEY_FIELD_NAME: str = "key"
