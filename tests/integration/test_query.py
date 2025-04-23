@@ -22,7 +22,6 @@ from redisvl.query.filter import (
     Timestamp,
 )
 from redisvl.redis.utils import array_to_buffer
-from redisvl.utils.utils import create_ulid
 
 # TODO expand to multiple schema types and sync + async
 
@@ -146,12 +145,11 @@ def sorted_range_query():
 @pytest.fixture
 def index(sample_data, redis_url):
     # construct a search index from the schema
-    idx = f"user_index_{create_ulid()}"
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": idx,
-                "prefix": idx,
+                "name": "user_index",
+                "prefix": "v1",
                 "storage_type": "hash",
             },
             "fields": [
@@ -192,20 +190,17 @@ def index(sample_data, redis_url):
     yield index
 
     # clean up
-    index.clear()
-    index.delete()
+    index.delete(drop=True)
 
 
 @pytest.fixture
 def L2_index(sample_data, redis_url):
     # construct a search index from the schema
-    idx = f"L2_index_{create_ulid()}"
-
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": idx,
-                "prefix": idx,
+                "name": "L2_index",
+                "prefix": "L2_index",
                 "storage_type": "hash",
             },
             "fields": [
@@ -245,8 +240,7 @@ def L2_index(sample_data, redis_url):
     yield index
 
     # clean up
-    index.clear()
-    index.delete()
+    index.delete(drop=True)
 
 
 def test_search_and_query(index):
