@@ -11,12 +11,7 @@ from redisvl.extensions.constants import (
 )
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
-from redisvl.utils.utils import (  # hashify is from utils.utils, not redis.utils
-    current_timestamp,
-    deserialize,
-    hashify,
-    serialize,
-)
+from redisvl.utils.utils import current_timestamp, deserialize, hashify, serialize
 
 
 class CacheEntry(BaseModel):

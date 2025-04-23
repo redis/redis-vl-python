@@ -32,13 +32,30 @@ def async_index(index_schema, async_client):
 
 
 @pytest.fixture
-def async_index_from_dict():
-    return AsyncSearchIndex.from_dict({"index": {"name": "my_index"}, "fields": fields})
+def async_index_from_dict(request):
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
+    return AsyncSearchIndex.from_dict(
+        {"index": {"name": "my_index", "prefix": f"rvl_{worker_id}"}, "fields": fields}
+    )
 
 
 @pytest.fixture
-def async_index_from_yaml():
-    return AsyncSearchIndex.from_yaml("schemas/test_json_schema.yaml")
+def async_index_from_yaml(request):
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
+    # Load the schema from YAML
+    schema = IndexSchema.from_yaml("schemas/test_json_schema.yaml")
+
+    # Modify the prefix to include the worker ID
+    schema.index.prefix = f"{schema.index.prefix}_{worker_id}"
+
+    # Create the AsyncSearchIndex with the modified schema
+    return AsyncSearchIndex(schema=schema)
 
 
 def test_search_index_properties(index_schema, async_index):

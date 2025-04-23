@@ -16,8 +16,8 @@ from redisvl.utils.vectorize import HFTextVectorizer
 
 
 @pytest.fixture
-def vectorizer():
-    return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
+def vectorizer(hf_vectorizer_with_model):
+    return hf_vectorizer_with_model
 
 
 @pytest.fixture
@@ -929,12 +929,12 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url):
         )
 
 
-def test_vectorizer_dtype_mismatch(redis_url):
+def test_vectorizer_dtype_mismatch(redis_url, hf_vectorizer_float16):
     with pytest.raises(ValueError):
         SemanticCache(
             name="test_dtype_mismatch",
             dtype="float32",
-            vectorizer=HFTextVectorizer(dtype="float16"),
+            vectorizer=hf_vectorizer_float16,
             redis_url=redis_url,
             overwrite=True,
         )

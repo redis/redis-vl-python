@@ -10,12 +10,16 @@ from redisvl.redis.utils import array_to_buffer
 
 
 @pytest.fixture
-def index(sample_data, redis_url):
+def index(sample_data, redis_url, request):
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
     index = SearchIndex.from_dict(
         {
             "index": {
                 "name": "user_index",
-                "prefix": "v1",
+                "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [
