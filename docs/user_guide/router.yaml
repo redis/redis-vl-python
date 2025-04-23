@@ -8,7 +8,7 @@ routes:
   metadata:
     category: tech
     priority: 1
-  distance_threshold: 1.0
+  distance_threshold: 0.71
 - name: sports
   references:
   - who won the game last night?
@@ -19,7 +19,7 @@ routes:
   metadata:
     category: sports
     priority: 2
-  distance_threshold: 0.5
+  distance_threshold: 0.72
 - name: entertainment
   references:
   - what are the top movies right now?

@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, Dict, Optional
+from typing import Any, Callable, Coroutine, Dict, Optional, Sequence
 from warnings import warn
 
 from pydantic import BaseModel
+from redis import Redis
 from ulid import ULID
 
 
@@ -214,6 +215,25 @@ def norm_l2_distance(value: float) -> float:
     Normalize the L2 distance.
     """
     return 1 / (1 + value)
+
+
+def scan_by_pattern(
+    redis_client: Redis,
+    pattern: str,
+) -> Sequence[str]:
+    """
+    Scan the Redis database for keys matching a specific pattern.
+
+    Args:
+        redis (Redis): The Redis client instance.
+        pattern (str): The pattern to match keys against.
+
+    Returns:
+        List[str]: A dictionary containing the keys and their values.
+    """
+    from redisvl.redis.utils import convert_bytes
+
+    return convert_bytes(list(redis_client.scan_iter(match=pattern)))
 
 
 def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:

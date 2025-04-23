@@ -14,6 +14,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -833,7 +834,7 @@ class SearchIndex(BaseSearchIndex):
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
 
     def batch_query(
-        self, queries: List[BaseQuery], batch_size: int = 10
+        self, queries: Sequence[BaseQuery], batch_size: int = 10
     ) -> List[List[Dict[str, Any]]]:
         """Execute a batch of queries and process results."""
         results = self.batch_search(

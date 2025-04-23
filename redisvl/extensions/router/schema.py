@@ -100,6 +100,7 @@ class SemanticRouterIndexSchema(IndexSchema):
         return cls(
             index={"name": name, "prefix": name},  # type: ignore
             fields=[  # type: ignore
+                {"name": "reference_id", "type": "tag"},
                 {"name": "route_name", "type": "tag"},
                 {"name": "reference", "type": "text"},
                 {
