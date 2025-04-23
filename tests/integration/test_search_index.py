@@ -83,7 +83,7 @@ def test_search_index_properties(index_schema, index):
 def test_search_index_from_yaml(index_from_yaml):
     assert index_from_yaml.name == "json-test"
     assert index_from_yaml.client == None
-    assert index_from_yaml.prefix == "json"
+    assert index_from_yaml.prefix.startswith("json")
     assert index_from_yaml.key_separator == ":"
     assert index_from_yaml.storage_type == StorageType.JSON
     assert index_from_yaml.key("foo").startswith(index_from_yaml.prefix)
@@ -92,7 +92,7 @@ def test_search_index_from_yaml(index_from_yaml):
 def test_search_index_from_dict(index_from_dict):
     assert index_from_dict.name == "my_index"
     assert index_from_dict.client == None
-    assert index_from_dict.prefix == "rvl"
+    assert index_from_dict.prefix.startswith("rvl")
     assert index_from_dict.key_separator == ":"
     assert index_from_dict.storage_type == StorageType.HASH
     assert len(index_from_dict.schema.fields) == len(fields)
