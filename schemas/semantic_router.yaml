@@ -1,4 +1,4 @@
-name: test-router-01JSHERM5V4G94GN3W68XB45PK
+name: test-router-01JSHK4MJ79HH51PS6WEK6M9MF
 routes:
 - name: greeting
   references:

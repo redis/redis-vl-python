@@ -475,7 +475,10 @@ def test_add_delete_route_references(semantic_router):
     assert len(router_dict["routes"][1]["references"]) == 0
 
 
-def test_from_existing(redis_url, routes):
+def test_from_existing(client, redis_url, routes):
+    if not compare_versions(client.info()["redis_version"], "7.0.0"):
+        pytest.skip("Not using a late enough version of Redis")
+
     # connect separately
     router = SemanticRouter(
         name=f"test-router-{str(ULID())}",
