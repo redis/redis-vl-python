@@ -811,6 +811,7 @@ def test_range_query_normalize_bad_input(index):
     "scorer", ["BM25", "TFIDF", "TFIDF.DOCNORM", "DISMAX", "DOCSCORE"]
 )
 def test_text_query(index, scorer):
+    text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
 
