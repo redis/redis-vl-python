@@ -8,6 +8,7 @@ from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
+from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
@@ -19,6 +20,7 @@ from redisvl.extensions.router.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, model_to_dict
@@ -41,9 +43,7 @@ class SemanticRouter(BaseModel):
     """Configuration for routing behavior."""
 
     _index: SearchIndex = PrivateAttr()
-    _vectorizer: ClassVar[Union[BaseVectorizer, None]] = None
-    _name: ClassVar[str] = ""
-    _cls_index: ClassVar[Union[SearchIndex, None]] = None
+    _persist_config: bool = PrivateAttr()
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -105,19 +105,33 @@ class SemanticRouter(BaseModel):
         )
 
         self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
-        self._set_class_vars(vectorizer, name, self._index)
+
+        self._index.client.json().set(f"{self.name}:route_config", f".", self.to_dict())  # type: ignore
 
     @classmethod
-    def _set_class_vars(
+    def from_existing(
         cls,
-        vectorizer: BaseVectorizer,
         name: str,
-        index: SearchIndex,
-    ) -> None:
-        """Set class variables for the router."""
-        cls._vectorizer = vectorizer
-        cls._name = name
-        cls._cls_index = index
+        redis_client: Optional[Redis] = None,
+        redis_url: str = "redis://localhost:6379",
+        **kwargs,
+    ) -> "SemanticRouter":
+        """Return SemanticRouter instance from existing index."""
+        try:
+            if redis_url:
+                redis_client = RedisConnectionFactory.get_redis_connection(
+                    redis_url=redis_url,
+                    **kwargs,
+                )
+            elif redis_client:
+                RedisConnectionFactory.validate_sync_redis(redis_client)
+        except RedisModuleVersionError as e:
+            raise RedisModuleVersionError(
+                f"Loading from existing index failed. {str(e)}"
+            )
+
+        router_dict = redis_client.json().get(f"{name}:route_config")  # type: ignore
+        return cls.from_dict(router_dict)
 
     @deprecated_argument("dtype")
     def _initialize_index(
@@ -156,7 +170,7 @@ class SemanticRouter(BaseModel):
 
         if not existed or overwrite:
             # write the routes to Redis
-            self._add_routes(self.routes)
+            self.add_routes(self.routes)
 
     @property
     def route_names(self) -> List[str]:
@@ -199,7 +213,7 @@ class SemanticRouter(BaseModel):
         """Generate the route reference key."""
         return f"{index.prefix}:{route_name}:{reference_hash}"
 
-    def _add_routes(self, routes: List[Route]):
+    def add_routes(self, routes: List[Route]):
         """Add routes to the router and index.
 
         Args:
@@ -622,23 +636,16 @@ class SemanticRouter(BaseModel):
             yaml.dump(yaml_data, f, sort_keys=False)
 
     # reference methods
-
-    @classmethod
     def add_route_references(
-        cls,
+        self,
         route_name: str,
         references: Union[str, List[str]],
-        vectorizer: BaseVectorizer = HFTextVectorizer(),
-        router_name: str = "",
-        redis_client: Optional[Redis] = None,
-        redis_url: str = "",
     ) -> List[str]:
         """Add a reference(s) to an existing route.
 
         Args:
             router_name (str): The name of the router.
             references (Union[str, List[str]]): The reference or list of references to add.
-            vectorizer (BaseVectorizer): The vectorizer used to embed the reference.
 
         Returns:
             List[str]: The list of added references keys.
@@ -647,28 +654,11 @@ class SemanticRouter(BaseModel):
         if isinstance(references, str):
             references = [references]
 
-        if not cls._cls_index:
-            if (redis_client or redis_url) and vectorizer and router_name:
-                # connect to existing index:
-                index = SearchIndex.from_existing(
-                    router_name, redis_client=redis_client, redis_url=redis_url
-                )
-            else:
-                raise ValueError(
-                    "If class not instantiated, must provide redis_client or redis_url and vectorizer"
-                )
-        else:
-            index = cls._cls_index
-            if cls._vectorizer is None:
-                raise ValueError("Vectorizer not properly created")
-            vectorizer = cls._vectorizer
-            router_name = cls._name
-
         route_references: List[Dict[str, Any]] = []
         keys: List[str] = []
 
         # embed route references as a single batch
-        reference_vectors = vectorizer.embed_many(references, as_buffer=True)
+        reference_vectors = self.vectorizer.embed_many(references, as_buffer=True)
 
         # set route references
         for i, reference in enumerate(references):
@@ -682,9 +672,16 @@ class SemanticRouter(BaseModel):
                     "vector": reference_vectors[i],
                 }
             )
-            keys.append(cls._route_ref_key(index, route_name, reference_hash))
+            keys.append(self._route_ref_key(self._index, route_name, reference_hash))
 
-        return index.load(route_references, keys=keys)
+        keys = self._index.load(route_references, keys=keys)
+
+        route = self.get(route_name)
+        if not route:
+            raise ValueError(f"Route {route_name} not found in the SemanticRouter")
+        route.references.extend(references)
+        self._update_router_state()
+        return keys
 
     @staticmethod
     def _make_filter_queries(ids: List[str]) -> List[FilterQuery]:
@@ -702,14 +699,11 @@ class SemanticRouter(BaseModel):
 
         return queries
 
-    @classmethod
     def get_route_references(
-        cls,
+        self,
         route_name: str = "",
-        router_name: str = "",
         reference_ids: List[str] = [],
-        redis_client: Optional[Redis] = None,
-        redis_url: str = "",
+        keys: List[str] = [],
     ) -> List[Dict[str, Any]]:
         """Get references for an existing route route.
 
@@ -721,50 +715,31 @@ class SemanticRouter(BaseModel):
             List[Dict[str, Any]]]: Reference objects stored
         """
 
-        if not route_name and not reference_ids:
-            raise ValueError(
-                "Must provide a route name, router name or reference ids to get references"
-            )
-
-        if not cls._cls_index:
-            if (redis_client or redis_url) and router_name:
-                # connect to existing index:
-                index = SearchIndex.from_existing(
-                    router_name,
-                    redis_client=redis_client,
-                    redis_url=redis_url,
-                )
-            else:
-                raise ValueError(
-                    "If class not instantiated, must provide redis_client or redis_url and router_name"
-                )
-        else:
-            index = cls._cls_index
-            router_name = cls._name
-
         if reference_ids:
-            queries = cls._make_filter_queries(reference_ids)
-        else:
-            _, keys = index.client.scan(
-                cursor=0, match=f"{index.prefix}:{route_name}:*"
-            )
-            queries = cls._make_filter_queries(
+            queries = self._make_filter_queries(reference_ids)
+        elif route_name:
+            if not keys:
+                _, keys = self._index.client.scan(  # type: ignore
+                    cursor=0, match=f"{self._index.prefix}:{route_name}:*"
+                )
+
+            queries = self._make_filter_queries(
                 [key.split(":")[-1] for key in convert_bytes(keys)]
             )
+        else:
+            raise ValueError(
+                "Must provide a route name, reference ids, or keys to get references"
+            )
 
-        res = index.batch_query(queries)
+        res = self._index.batch_query(queries)
 
         return [r[0] for r in res if len(r) > 0]
 
-    @classmethod
     def delete_route_references(
-        cls,
+        self,
         route_name: str = "",
-        router_name: str = "",
         reference_ids: List[str] = [],
         keys: List[str] = [],
-        redis_client: Optional[Redis] = None,
-        redis_url: str = "",
     ) -> int:
         """Get references for an existing semantic router route.
 
@@ -777,43 +752,38 @@ class SemanticRouter(BaseModel):
             int: Number of objects deleted
         """
 
-        if not route_name and not reference_ids and not keys:
-            raise ValueError(
-                "Must provide a route name, reference ids or keys to delete"
-            )
-
-        if not cls._cls_index:
-            if (redis_client or redis_url) and router_name:
-                # connect to existing index:
-                index = SearchIndex.from_existing(
-                    router_name,
-                    redis_client=redis_client,
-                    redis_url=redis_url,
-                )
-            else:
-                raise ValueError(
-                    "If class not instantiated, must provide redis_client or redis_url and router_name"
-                )
-        else:
-            index = cls._cls_index
-            router_name = cls._name
-
-        if keys:
-            return index.drop_keys(keys)
-
-        if reference_ids:
-            queries = cls._make_filter_queries(reference_ids)
-            res = index.batch_query(queries)
+        if reference_ids and not keys:
+            queries = self._make_filter_queries(reference_ids)
+            res = self._index.batch_query(queries)
             keys = [r[0]["id"] for r in res if len(r) > 0]
-        else:
-            _, keys = index.client.scan(
-                cursor=0, match=f"{index.prefix}:{route_name}:*"
+        elif not keys:
+            _, keys = self._index.client.scan(  # type: ignore
+                cursor=0, match=f"{self._index.prefix}:{route_name}:*"
             )
             keys = convert_bytes(keys)
 
         if not keys:
-            raise ValueError(
-                f"No references found for route {route_name} in router {router_name}"
+            raise ValueError(f"No references found for route {route_name}")
+
+        to_be_deleted = []
+        for key in keys:
+            route_name = key.split(":")[-2]
+            to_be_deleted.append(
+                (route_name, convert_bytes(self._index.client.hgetall(key)))  # type: ignore
             )
 
-        return index.drop_keys(keys)
+        deleted = self._index.drop_keys(keys)
+
+        for route_name, delete in to_be_deleted:
+            route = self.get(route_name)
+            if not route:
+                raise ValueError(f"Route {route_name} not found in the SemanticRouter")
+            route.references.remove(delete["reference"])
+
+        self._update_router_state()
+
+        return deleted
+
+    def _update_router_state(self) -> None:
+        """Update the router configuration in Redis."""
+        self._index.client.json().set(f"{self.name}:route_config", f".", self.to_dict())  # type: ignore

@@ -470,23 +470,27 @@ def test_add_delete_route_references(semantic_router):
 
     assert deleted == 1
 
+    router_dict = semantic_router.to_dict()
+    assert len(router_dict["routes"][0]["references"]) == 2
+    assert len(router_dict["routes"][1]["references"]) == 0
 
-def test_add_route_references_cls(semantic_router, redis_url):
+
+def test_from_existing(redis_url, routes):
     # connect separately
-    added_refs = SemanticRouter.add_route_references(
-        route_name="farewell",
-        references=["peace out"],
+    router = SemanticRouter(
+        name=f"test-router-{str(ULID())}",
+        routes=routes,
+        routing_config=RoutingConfig(max_k=2),
         redis_url=redis_url,
-        router_name=semantic_router.name,
-        vectorizer=HFTextVectorizer(),
+        overwrite=False,
     )
 
-    # Verify references were added
-    assert len(added_refs) == 1
+    router2 = SemanticRouter.from_existing(
+        name=router.name,
+        redis_url=redis_url,
+    )
 
-    # Test that we can match against the new references
-    match = semantic_router("peace out")
-    assert match.name == "farewell"
+    assert router.to_dict() == router2.to_dict()
 
 
 def test_get_route_references(semantic_router):
@@ -507,3 +511,13 @@ def test_get_route_references(semantic_router):
 
     with pytest.raises(ValueError):
         semantic_router.get_route_references()
+
+
+def test_delete_route_references(semantic_router):
+    # Get references for a specific route
+    deleted = semantic_router.delete_route_references(route_name="greeting")
+
+    assert deleted == 2
+
+    router_dict = semantic_router.to_dict()
+    assert len(router_dict["references"]) == 0
