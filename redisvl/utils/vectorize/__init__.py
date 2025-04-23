@@ -39,7 +39,6 @@ def vectorizer_from_dict(
     if cache:
         emb_cache = EmbeddingsCache(**cache)
         args["cache"] = emb_cache
-        args["cache_folder"] = cache_folder
 
     if vectorizer_type == Vectorizers.cohere:
         return CohereTextVectorizer(**args)
