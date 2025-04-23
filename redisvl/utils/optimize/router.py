@@ -18,9 +18,9 @@ def _generate_run_router(test_data: List[LabeledData], router: SemanticRouter) -
         run_dict[td.id] = {}
         route_match = router(td.query)
         if route_match and route_match.name == td.query_match:
-            run_dict[td.id][td.query_match] = np.int64(1)
+            run_dict[td.id][td.query_match] = 1.0
         else:
-            run_dict[td.id][NULL_RESPONSE_KEY] = np.int64(1)
+            run_dict[td.id][NULL_RESPONSE_KEY] = 1.0
 
     return Run(run_dict)
 

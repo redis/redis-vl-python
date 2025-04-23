@@ -200,6 +200,7 @@ def test_from_dict(semantic_router):
 
 def test_to_yaml(semantic_router):
     yaml_file = str(get_base_path().joinpath("../../schemas/semantic_router.yaml"))
+    semantic_router.name = "test-router"
     semantic_router.to_yaml(yaml_file, overwrite=True)
     assert pathlib.Path(yaml_file).exists()
 
