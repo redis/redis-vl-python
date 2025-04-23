@@ -101,6 +101,8 @@ class SemanticRouter(BaseModel):
             routes=routes,
             vectorizer=vectorizer,
             routing_config=routing_config,
+            redis_url=redis_url,
+            redis_client=redis_client,
         )
 
         self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
@@ -130,7 +132,9 @@ class SemanticRouter(BaseModel):
             )
 
         router_dict = redis_client.json().get(f"{name}:route_config")  # type: ignore
-        return cls.from_dict(router_dict)
+        return cls.from_dict(
+            router_dict, redis_url=redis_url, redis_client=redis_client
+        )
 
     @deprecated_argument("dtype")
     def _initialize_index(
