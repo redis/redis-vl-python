@@ -32,30 +32,24 @@ def async_index(index_schema, async_client):
 
 
 @pytest.fixture
-def async_index_from_dict(request):
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
+def async_index_from_dict(worker_id):
 
     return AsyncSearchIndex.from_dict(
-        {"index": {"name": "my_index", "prefix": f"rvl_{worker_id}"}, "fields": fields}
+        {
+            "index": {"name": f"my_index_{worker_id}", "prefix": f"rvl_{worker_id}"},
+            "fields": fields,
+        }
     )
 
 
 @pytest.fixture
-def async_index_from_yaml(request):
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
+def async_index_from_yaml(worker_id):
 
-    # Load the schema from YAML
-    schema = IndexSchema.from_yaml("schemas/test_json_schema.yaml")
-
-    # Modify the prefix to include the worker ID
-    schema.index.prefix = f"{schema.index.prefix}_{worker_id}"
-
-    # Create the AsyncSearchIndex with the modified schema
-    return AsyncSearchIndex(schema=schema)
+    index = AsyncSearchIndex.from_yaml("schemas/test_json_schema.yaml")
+    # Update the index name and prefix to include worker_id
+    index.schema.index.name = f"{index.schema.index.name}_{worker_id}"
+    index.schema.index.prefix = f"{index.schema.index.prefix}_{worker_id}"
+    return index
 
 
 def test_search_index_properties(index_schema, async_index):
@@ -73,7 +67,7 @@ def test_search_index_properties(index_schema, async_index):
 
 
 def test_search_index_from_yaml(async_index_from_yaml):
-    assert async_index_from_yaml.name == "json-test"
+    assert async_index_from_yaml.name.startswith("json-test")
     assert async_index_from_yaml.client is None
     assert async_index_from_yaml.prefix == "json"
     assert async_index_from_yaml.key_separator == ":"
@@ -82,7 +76,7 @@ def test_search_index_from_yaml(async_index_from_yaml):
 
 
 def test_search_index_from_dict(async_index_from_dict):
-    assert async_index_from_dict.name == "my_index"
+    assert async_index_from_dict.name.startswith("my_index")
     assert async_index_from_dict.client is None
     assert async_index_from_dict.prefix == "rvl"
     assert async_index_from_dict.key_separator == ":"
