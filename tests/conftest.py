@@ -196,16 +196,20 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture
-def flat_index(sample_data, redis_url):
+def flat_index(sample_data, redis_url, request):
     """
     A fixture that uses the "flag" algorithm for its vector field.
     """
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
                 "name": "user_index",
-                "prefix": "v1",
+                "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [
@@ -250,16 +254,20 @@ def flat_index(sample_data, redis_url):
 
 
 @pytest.fixture
-async def async_flat_index(sample_data, redis_url):
+async def async_flat_index(sample_data, redis_url, request):
     """
     A fixture that uses the "flag" algorithm for its vector field.
     """
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
     # construct a search index from the schema
     index = AsyncSearchIndex.from_dict(
         {
             "index": {
                 "name": "user_index",
-                "prefix": "v1",
+                "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [
@@ -304,15 +312,19 @@ async def async_flat_index(sample_data, redis_url):
 
 
 @pytest.fixture
-async def async_hnsw_index(sample_data, redis_url):
+async def async_hnsw_index(sample_data, redis_url, request):
     """
     A fixture that uses the "hnsw" algorithm for its vector field.
     """
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
     index = AsyncSearchIndex.from_dict(
         {
             "index": {
                 "name": "user_index",
-                "prefix": "v1",
+                "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [
@@ -354,15 +366,19 @@ async def async_hnsw_index(sample_data, redis_url):
 
 
 @pytest.fixture
-def hnsw_index(sample_data, redis_url):
+def hnsw_index(sample_data, redis_url, request):
     """
     A fixture that uses the "hnsw" algorithm for its vector field.
     """
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
     index = SearchIndex.from_dict(
         {
             "index": {
                 "name": "user_index",
-                "prefix": "v1",
+                "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [

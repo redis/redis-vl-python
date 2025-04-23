@@ -21,7 +21,7 @@ warnings.warn(
     stacklevel=2,
 )
 
-from redisvl.extensions.llmcache.langcache_api import LangCache
+from redisvl.extensions.cache.llm.langcache_api import LangCache
 
 __all__ = [
     "BaseLLMCache",

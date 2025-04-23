@@ -21,7 +21,7 @@ class LangCache(BaseLLMCache):
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: Optional[Dict[str, Any]] = None,
         overwrite: bool = False,
         entry_scope: Scope = None,
         **kwargs,
@@ -38,7 +38,9 @@ class LangCache(BaseLLMCache):
             overwrite: Whether to overwrite an existing cache with the same name.
             entry_scope: Optional scope for cache entries.
         """
-        # Initialize the base class
+        if connection_kwargs is None:
+            connection_kwargs = {}
+
         super().__init__(
             name=name,
             ttl=ttl,
@@ -47,7 +49,6 @@ class LangCache(BaseLLMCache):
             connection_kwargs=connection_kwargs,
         )
 
-        # Store configuration
         self._name = name
         self._redis_client = redis_client
         self._redis_url = redis_url
