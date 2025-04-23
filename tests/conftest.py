@@ -80,6 +80,16 @@ def hf_vectorizer():
     )
 
 
+@pytest.fixture(scope="session")
+def hf_vectorizer_float16():
+    return HFTextVectorizer(dtype="float16")
+
+
+@pytest.fixture(scope="session")
+def hf_vectorizer_with_model():
+    return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
+
+
 @pytest.fixture
 def sample_datetimes():
     return {

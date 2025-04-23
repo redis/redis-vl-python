@@ -42,13 +42,30 @@ def index(index_schema, client):
 
 
 @pytest.fixture
-def index_from_dict():
-    return SearchIndex.from_dict({"index": {"name": "my_index"}, "fields": fields})
+def index_from_dict(request):
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
+    return SearchIndex.from_dict(
+        {"index": {"name": "my_index", "prefix": f"rvl_{worker_id}"}, "fields": fields}
+    )
 
 
 @pytest.fixture
-def index_from_yaml():
-    return SearchIndex.from_yaml("schemas/test_json_schema.yaml")
+def index_from_yaml(request):
+    # In xdist, the config has "workerid" in workerinput
+    workerinput = getattr(request.config, "workerinput", {})
+    worker_id = workerinput.get("workerid", "master")
+
+    # Load the schema from YAML
+    schema = IndexSchema.from_yaml("schemas/test_json_schema.yaml")
+
+    # Modify the prefix to include the worker ID
+    schema.index.prefix = f"{schema.index.prefix}_{worker_id}"
+
+    # Create the SearchIndex with the modified schema
+    return SearchIndex(schema=schema)
 
 
 def test_search_index_properties(index_schema, index):
