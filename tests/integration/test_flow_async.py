@@ -46,7 +46,12 @@ json_schema = {
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("schema", [hash_schema, json_schema])
-async def test_simple(async_client, schema, sample_data):
+async def test_simple(async_client, schema, sample_data, worker_id):
+    # Update schema with worker_id
+    schema = schema.copy()
+    schema["index"] = schema["index"].copy()
+    schema["index"]["name"] = f"{schema['index']['name']}_{worker_id}"
+    schema["index"]["prefix"] = f"{schema['index']['prefix']}_{worker_id}"
     index = AsyncSearchIndex.from_dict(schema, redis_client=async_client)
     # create the index
     await index.create(overwrite=True, drop=True)

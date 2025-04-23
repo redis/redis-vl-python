@@ -10,6 +10,19 @@ from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.vectorize import HFTextVectorizer
 
 
+@pytest.fixture(scope="session")
+def worker_id(request):
+    """
+    Get the worker ID for the current test.
+
+    In pytest-xdist, the config has "workerid" in workerinput.
+    This fixture abstracts that logic to provide a consistent worker_id
+    across all tests.
+    """
+    workerinput = getattr(request.config, "workerinput", {})
+    return workerinput.get("workerid", "master")
+
+
 @pytest.fixture(autouse=True)
 def set_tokenizers_parallelism():
     """Disable tokenizers parallelism in tests to avoid deadlocks"""
@@ -17,16 +30,12 @@ def set_tokenizers_parallelism():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def redis_container(request):
+def redis_container(worker_id):
     """
     If using xdist, create a unique Compose project for each xdist worker by
     setting COMPOSE_PROJECT_NAME. That prevents collisions on container/volume
     names.
     """
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
-
     # Set the Compose project name so containers do not clash across workers
     os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
     os.environ.setdefault("REDIS_IMAGE", "redis/redis-stack-server:latest")
@@ -206,19 +215,16 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture
-def flat_index(sample_data, redis_url, request):
+def flat_index(sample_data, redis_url, worker_id):
     """
     A fixture that uses the "flag" algorithm for its vector field.
     """
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
 
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": "user_index",
+                "name": f"user_index_{worker_id}",
                 "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
@@ -264,19 +270,16 @@ def flat_index(sample_data, redis_url, request):
 
 
 @pytest.fixture
-async def async_flat_index(sample_data, redis_url, request):
+async def async_flat_index(sample_data, redis_url, worker_id):
     """
     A fixture that uses the "flag" algorithm for its vector field.
     """
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
 
     # construct a search index from the schema
     index = AsyncSearchIndex.from_dict(
         {
             "index": {
-                "name": "user_index",
+                "name": f"user_index_{worker_id}",
                 "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
@@ -322,18 +325,15 @@ async def async_flat_index(sample_data, redis_url, request):
 
 
 @pytest.fixture
-async def async_hnsw_index(sample_data, redis_url, request):
+async def async_hnsw_index(sample_data, redis_url, worker_id):
     """
     A fixture that uses the "hnsw" algorithm for its vector field.
     """
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
 
     index = AsyncSearchIndex.from_dict(
         {
             "index": {
-                "name": "user_index",
+                "name": f"user_index_{worker_id}",
                 "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
@@ -376,18 +376,15 @@ async def async_hnsw_index(sample_data, redis_url, request):
 
 
 @pytest.fixture
-def hnsw_index(sample_data, redis_url, request):
+def hnsw_index(sample_data, redis_url, worker_id):
     """
     A fixture that uses the "hnsw" algorithm for its vector field.
     """
-    # In xdist, the config has "workerid" in workerinput
-    workerinput = getattr(request.config, "workerinput", {})
-    worker_id = workerinput.get("workerid", "master")
 
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": "user_index",
+                "name": f"user_index_{worker_id}",
                 "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
