@@ -17,7 +17,7 @@ from redisvl.utils.vectorize import HFTextVectorizer
 
 @pytest.fixture
 def vectorizer():
-    return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
+    return HFTextVectorizer("redis/langcache-embed-v1")
 
 
 @pytest.fixture
@@ -720,12 +720,17 @@ def test_cache_filtering(cache_with_filters):
     # test we can pass a list of tags
     combined_filter = filter_1 | filter_2 | filter_3
     results = cache_with_filters.check(
-        "test prompt 1", filter_expression=combined_filter, num_results=5
+        "test prompt 1",
+        filter_expression=combined_filter,
+        num_results=5,
+        distance_threshold=0.5,
     )
     assert len(results) == 3
 
     # test that default tag param searches full cache
-    results = cache_with_filters.check("test prompt 1", num_results=5)
+    results = cache_with_filters.check(
+        "test prompt 1", num_results=5, distance_threshold=0.6
+    )
     assert len(results) == 4
 
     # test no results are returned if we pass a nonexistant tag
@@ -784,7 +789,10 @@ def test_complex_filters(cache_with_filters):
     # test we can do range filters on inserted_at and updated_at fields
     range_filter = Num("inserted_at") < current_timestamp
     results = cache_with_filters.check(
-        "prompt 1", filter_expression=range_filter, num_results=5
+        "prompt 1",
+        filter_expression=range_filter,
+        num_results=5,
+        distance_threshold=0.5,
     )
     assert len(results) == 2
 
