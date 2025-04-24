@@ -1,3 +1,7 @@
+import os
+from typing import Optional
+
+from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
 from redisvl.utils.vectorize.text.azureopenai import AzureOpenAITextVectorizer
 from redisvl.utils.vectorize.text.bedrock import BedrockTextVectorizer
@@ -23,22 +27,32 @@ __all__ = [
 ]
 
 
-def vectorizer_from_dict(vectorizer: dict) -> BaseVectorizer:
+def vectorizer_from_dict(
+    vectorizer: dict,
+    cache: dict = {},
+    cache_folder=os.getenv("SENTENCE_TRANSFORMERS_HOME"),
+) -> BaseVectorizer:
     vectorizer_type = Vectorizers(vectorizer["type"])
     model = vectorizer["model"]
+
+    args = {"model": model}
+    if cache:
+        emb_cache = EmbeddingsCache(**cache)
+        args["cache"] = emb_cache
+
     if vectorizer_type == Vectorizers.cohere:
-        return CohereTextVectorizer(model=model)
+        return CohereTextVectorizer(**args)
     elif vectorizer_type == Vectorizers.openai:
-        return OpenAITextVectorizer(model=model)
+        return OpenAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.azure_openai:
-        return AzureOpenAITextVectorizer(model=model)
+        return AzureOpenAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.hf:
-        return HFTextVectorizer(model=model)
+        return HFTextVectorizer(**args)
     elif vectorizer_type == Vectorizers.mistral:
-        return MistralAITextVectorizer(model=model)
+        return MistralAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
-        return VertexAITextVectorizer(model=model)
+        return VertexAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
-        return VoyageAITextVectorizer(model=model)
+        return VoyageAITextVectorizer(**args)
     else:
         raise ValueError(f"Unsupported vectorizer type: {vectorizer_type}")
