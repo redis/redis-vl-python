@@ -111,8 +111,19 @@ class SemanticCache(BaseLLMCache):
             if dtype:
                 vectorizer_kwargs.update(dtype=dtype)
 
+            # raise a warning to inform users we changed the default model
+            # remove this warning in future releases
+            logger.warning(
+                "The default vectorizer has changed from `sentence-transformers/all-mpnet-base-v2` "
+                "to `redis/langcache-embed-v1` in version 0.6.0 of RedisVL. "
+                "For more information about this model, please refer to https://arxiv.org/abs/2504.02268 "
+                "or visit https://huggingface.co/redis/langcache-embed-v1. "
+                "To continue using the old vectorizer, please specify it explicitly in the constructor as: "
+                "vectorizer=HFTextVectorizer(model='sentence-transformers/all-mpnet-base-v2')"
+            )
+
             self._vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-mpnet-base-v2",
+                model="redis/langcache-embed-v1",
                 **vectorizer_kwargs,
             )
 
@@ -147,6 +158,20 @@ class SemanticCache(BaseLLMCache):
         # Check for existing cache index and handle schema mismatch
         self.overwrite = overwrite
         if not self.overwrite and self._index.exists():
+
+            if not vectorizer:
+                # user hasn't specified a vectorizer and an index already exists they're not overwriting
+                # raise a warning to inform users we changed the default embedding model
+                # remove this warning in future releases
+                logger.warning(
+                    "The default vectorizer has changed from `sentence-transformers/all-mpnet-base-v2` "
+                    "to `redis/langcache-embed-v1` in version 0.6.0 of RedisVL. "
+                    "For more information about this model, please refer to https://arxiv.org/abs/2504.02268 "
+                    "or visit https://huggingface.co/redis/langcache-embed-v1. "
+                    "To continue using the old vectorizer, please specify it explicitly in the constructor as: "
+                    "vectorizer=HFTextVectorizer(model='sentence-transformers/all-mpnet-base-v2')"
+                )
+
             existing_index = SearchIndex.from_existing(
                 name, redis_client=self._index.client
             )
