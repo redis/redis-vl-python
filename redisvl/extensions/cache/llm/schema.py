@@ -1,5 +1,9 @@
 from typing import Any, Dict, List, Optional
 
+from langcache.httpclient import AsyncHttpClient, HttpClient
+from langcache.types import UNSET, OptionalNullable
+from langcache.utils.logger import Logger
+from langcache.utils.retries import RetryConfig
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from redisvl.extensions.constants import (
@@ -108,6 +112,29 @@ class CacheHit(BaseModel):
             data.update(data["filters"])
             del data["filters"]
         return data
+
+
+class LangCacheOptions(BaseModel):
+    """Options for the LangCache SDK client."""
+
+    server_idx: Optional[int] = None
+    """The index of the server to use for all methods."""
+    server_url: Optional[str] = None
+    """The server URL to use for all methods."""
+    url_params: Optional[Dict[str, str]] = None
+    """Parameters to optionally template the server URL with."""
+    client: Optional[HttpClient] = None
+    """The HTTP client to use for all synchronous methods."""
+    async_client: Optional[AsyncHttpClient] = None
+    """The Async HTTP client to use for all asynchronous methods."""
+    retry_config: OptionalNullable[RetryConfig] = UNSET
+    """The retry configuration to use for all supported methods."""
+    timeout_ms: Optional[int] = None
+    """Optional request timeout applied to each operation in milliseconds."""
+    debug_logger: Optional[Any] = None
+    """Optional logger for debugging."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class SemanticCacheIndexSchema(IndexSchema):

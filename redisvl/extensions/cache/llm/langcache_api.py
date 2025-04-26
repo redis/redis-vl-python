@@ -1,14 +1,25 @@
+import asyncio
 import json
 from typing import Any, Dict, List, Optional, Union
 
+from langcache import APIError, APIErrorResponse
 from langcache import LangCache as LangCacheSDK
 from langcache.models import CacheEntryScope, CacheEntryScopeTypedDict
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
+from redisvl.extensions.cache.llm.schema import LangCacheOptions
 from redisvl.query.filter import FilterExpression
-from redisvl.utils.utils import current_timestamp
+from redisvl.utils.utils import (
+    current_timestamp,
+    denorm_cosine_distance,
+    norm_cosine_distance,
+)
 
 Scope = Optional[Union[CacheEntryScope, CacheEntryScopeTypedDict]]
+
+
+class CacheNotFound(RuntimeError):
+    """The specified LangCache cache was not found."""
 
 
 class LangCache(BaseLLMCache):
@@ -16,64 +27,64 @@ class LangCache(BaseLLMCache):
 
     def __init__(
         self,
-        redis_client=None,
         name: str = "llmcache",
+        cache_id: Optional[str] = None,
         distance_threshold: float = 0.1,
         ttl: Optional[int] = None,
-        redis_url: str = "redis://localhost:6379",
-        connection_kwargs: Optional[Dict[str, Any]] = None,
         overwrite: bool = False,
+        create_if_missing: bool = False,
         entry_scope: Scope = None,
+        redis_url: str = "redis://localhost:6379",
+        sdk_options: Optional[LangCacheOptions] = None,
         **kwargs,
     ):
         """Initialize a LangCache client.
 
+        TODO: What's the difference between the name and ID of a LangCache cache?
+        You can't get a cache by name, only ID...
+
         Args:
-            redis_client: A Redis client instance.
-            name: Name of the cache.
+            name: Name of the cache index to use in LangCache.
+            cache_id: ID of an existing cache to use.
             distance_threshold: Threshold for semantic similarity (0.0 to 1.0).
             ttl: Time-to-live for cache entries in seconds.
-            redis_url: URL for Redis connection if no client is provided.
-            connection_kwargs: Additional Redis connection parameters.
             overwrite: Whether to overwrite an existing cache with the same name.
             entry_scope: Optional scope for cache entries.
+            redis_url: URL for the Redis instance.
+            sdk_options: Optional configuration options for the LangCache SDK.
         """
-        if connection_kwargs is None:
-            connection_kwargs = {}
-
-        super().__init__(
-            name=name,
-            ttl=ttl,
-            redis_client=redis_client,
-            redis_url=redis_url,
-            connection_kwargs=connection_kwargs,
-        )
+        super().__init__(name=name, ttl=ttl, **kwargs)
 
         self._name = name
-        self._redis_client = redis_client
-        self._redis_url = redis_url
         self._distance_threshold = distance_threshold
         self._ttl = ttl
-        self._cache_id = name
         self._entry_scope = entry_scope
-        # Initialize LangCache SDK client
-        self._api = LangCacheSDK(server_url=redis_url, client=redis_client)
 
-        # Create cache if it doesn't exist or if overwrite is True
-        try:
-            existing_cache = self._api.cache.get(cache_id=self._cache_id)
-            if not existing_cache and overwrite:
-                self._api.cache.create(
-                    index_name=self._name,
-                    redis_urls=[self._redis_url],
-                )
-        except Exception:
-            # If the cache doesn't exist, create it
-            if overwrite:
-                self._api.cache.create(
-                    index_name=self._name,
-                    redis_urls=[self._redis_url],
-                )
+        if sdk_options is None:
+            sdk_options = LangCacheOptions()
+
+        options_dict = sdk_options.model_dump(exclude_none=True)
+        self._api = LangCacheSDK(**options_dict)
+
+        # Try to find the cache if given an ID. If not found and
+        # create_if_missing is False, raise an error. Otherwise, try to create a
+        # new cache.
+        if cache_id:
+            try:
+                self._api.cache.get(cache_id=cache_id)
+            except (APIError, APIErrorResponse):
+                if not create_if_missing:
+                    raise CacheNotFound(f"LangCache cache with ID {cache_id} not found")
+                # We can't pass the cache ID to the create method, so reset it
+                cache_id = None
+        if not cache_id:
+            self._cache_id = self._api.cache.create(
+                index_name=self._name,
+                redis_urls=[redis_url],
+                overwrite_if_exists=overwrite,
+            ).cache_id
+        assert cache_id
+        self._cache_id = cache_id
 
     @property
     def distance_threshold(self) -> float:
@@ -91,7 +102,7 @@ class LangCache(BaseLLMCache):
         """
         if not 0 <= float(distance_threshold) <= 2:
             raise ValueError("Distance threshold must be between 0 and 2")
-        self._distance_threshold = float(distance_threshold)
+        self._distance_threshold = float(norm_cosine_distance(distance_threshold))
 
     @property
     def ttl(self) -> Optional[int]:
@@ -238,7 +249,7 @@ class LangCache(BaseLLMCache):
                 "entry_id": entry.id,
                 "prompt": entry.prompt,
                 "response": entry.response,
-                "vector_distance": entry.similarity,
+                "vector_distance": denorm_cosine_distance(entry.similarity),
             }
 
             # Add metadata if available
@@ -334,7 +345,7 @@ class LangCache(BaseLLMCache):
                 "entry_id": entry.id,
                 "prompt": entry.prompt,
                 "response": entry.response,
-                "vector_distance": entry.similarity,
+                "vector_distance": denorm_cosine_distance(entry.similarity),
             }
 
             # Add metadata if available
@@ -408,6 +419,7 @@ class LangCache(BaseLLMCache):
         scope = entry_scope if entry_scope is not None else self._entry_scope
 
         # Convert TTL from seconds to milliseconds for LangCache SDK
+        ttl = ttl or self._ttl
         ttl_millis = ttl * 1000 if ttl is not None else None
 
         # Store the entry
@@ -576,7 +588,7 @@ class LangCache(BaseLLMCache):
         )
 
     def disconnect(self) -> None:
-        """Disconnect from Redis."""
+        """Disconnect from LangCache."""
         if (
             hasattr(self._api.sdk_configuration, "client")
             and self._api.sdk_configuration.client
@@ -585,11 +597,6 @@ class LangCache(BaseLLMCache):
 
     async def adisconnect(self) -> None:
         """Async disconnect from Redis."""
-        if (
-            hasattr(self._api.sdk_configuration, "client")
-            and self._api.sdk_configuration.client
-        ):
-            self._api.sdk_configuration.client.close()
         if (
             hasattr(self._api.sdk_configuration, "async_client")
             and self._api.sdk_configuration.async_client

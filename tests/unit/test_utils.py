@@ -160,7 +160,7 @@ def test_empty_list_to_bytes():
     assert array_to_buffer(array, dtype="float32") == expected
 
 
-@pytest.mark.parametrize("dtype", ["float64", "float32", "float16"])
+@pytest.mark.parametrize("dtype", ["float64", "float32", "float16", "bfloat16"])
 def test_conversion_with_various_dtypes(dtype):
     """Test conversion of a list of floats to bytes with various dtypes"""
     array = [1.0, -2.0, 3.5]

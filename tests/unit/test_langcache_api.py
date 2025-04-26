@@ -2,13 +2,120 @@ import json
 
 import pytest
 from langcache.models import CacheEntryScope
+from langcache.utils.logger import Logger
 
 from redisvl.extensions.cache.llm import LangCache
+from redisvl.extensions.cache.llm.schema import LangCacheOptions
+
+
+@pytest.fixture
+async def langcache(monkeypatch):
+    # Create a mock LangCacheSDK class
+    class MockEntries:
+        async def delete_all_async(self, *args, **kwargs):
+            return None
+
+        async def delete_async(self, *args, **kwargs):
+            return None
+
+        async def search_async(self, *args, **kwargs):
+            return []
+
+        async def create_async(self, *args, **kwargs):
+            class MockResponse:
+                entry_id = "mock_id"
+
+            return MockResponse()
+
+        async def get_async(self, *args, **kwargs):
+            class MockEntry:
+                prompt = "mock_prompt"
+                response = "mock_response"
+                attributes = {}
+
+            return MockEntry()
+
+        async def update_async(self, *args, **kwargs):
+            return None
+
+        def delete_all(self, *args, **kwargs):
+            return None
+
+        def delete(self, *args, **kwargs):
+            return None
+
+        def search(self, *args, **kwargs):
+            return []
+
+        def create(self, *args, **kwargs):
+            class MockResponse:
+                entry_id = "mock_id"
+
+            return MockResponse()
+
+        def get(self, *args, **kwargs):
+            class MockEntry:
+                prompt = "mock_prompt"
+                response = "mock_response"
+                attributes = {}
+
+            return MockEntry()
+
+        def update(self, *args, **kwargs):
+            return None
+
+    class MockCache:
+        async def delete_async(self, *args, **kwargs):
+            return None
+
+        def delete(self, *args, **kwargs):
+            return None
+
+        def get(self, *args, **kwargs):
+            return None
+
+        def create(self, *args, **kwargs):
+            class MockResponse:
+                def __init__(self):
+                    self.cache_id = "mock-cache-id"
+
+            return MockResponse()
+
+    class MockSDKConfig:
+        def __init__(self):
+            self.client = None
+            self.async_client = None
+
+    class MockLangCacheSDK:
+        def __init__(self, **kwargs):
+            self.entries = MockEntries()
+            self.cache = MockCache()
+            self.sdk_configuration = MockSDKConfig()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    # Patch the LangCacheSDK import
+    monkeypatch.setattr(
+        "redisvl.extensions.cache.llm.langcache_api.LangCacheSDK", MockLangCacheSDK
+    )
+
+    # Create and return the LangCache instance
+    return LangCache(sdk_options=LangCacheOptions(timeout_ms=100))
 
 
 @pytest.mark.asyncio
-async def test_aclear_calls_async_delete_all(monkeypatch):
-    lang_cache = LangCache()
+async def test_aclear_calls_async_delete_all(monkeypatch, langcache):
+    lang_cache = langcache
     called = {}
 
     async def dummy_delete_all_async(cache_id, attributes, scope):
@@ -28,8 +135,8 @@ async def test_aclear_calls_async_delete_all(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_adelete_calls_async_delete_all_and_cache_delete(monkeypatch):
-    lang_cache = LangCache()
+async def test_adelete_calls_async_delete_all_and_cache_delete(monkeypatch, langcache):
+    lang_cache = langcache
     delete_all_called = False
     delete_cache_called = False
     scope_used = None
@@ -56,8 +163,8 @@ async def test_adelete_calls_async_delete_all_and_cache_delete(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_adrop_deletes_each_id(monkeypatch):
-    lang_cache = LangCache()
+async def test_adrop_deletes_each_id(monkeypatch, langcache):
+    lang_cache = langcache
     called_ids = []
 
     async def dummy_delete_async(cache_id, entry_id):
@@ -70,8 +177,8 @@ async def test_adrop_deletes_each_id(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_acheck_validates_input(monkeypatch):
-    lang_cache = LangCache()
+async def test_acheck_validates_input(monkeypatch, langcache):
+    lang_cache = langcache
     with pytest.raises(ValueError):
         await lang_cache.acheck()
     with pytest.raises(TypeError):
@@ -80,8 +187,8 @@ async def test_acheck_validates_input(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_acheck_returns_formatted_results(monkeypatch):
-    lang_cache = LangCache()
+async def test_acheck_returns_formatted_results(monkeypatch, langcache):
+    lang_cache = langcache
 
     class DummyMeta:
         def __init__(self):
@@ -116,7 +223,7 @@ async def test_acheck_returns_formatted_results(monkeypatch):
         "entry_id": "1",
         "prompt": "p1",
         "response": "r1",
-        "vector_distance": 0.1,
+        "vector_distance": 1.8,  # denormalized cosine distance
     }
     assert hits[1]["metadata"] == {"foo": "bar"}
 
@@ -135,8 +242,8 @@ async def test_acheck_returns_formatted_results(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_astore_calls_create_and_returns_id(monkeypatch):
-    lang_cache = LangCache()
+async def test_astore_calls_create_and_returns_id(monkeypatch, langcache):
+    lang_cache = langcache
 
     class DummyResp:
         def __init__(self, entry_id):
@@ -163,15 +270,15 @@ async def test_astore_calls_create_and_returns_id(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_astore_metadata_type_error():
-    lang_cache = LangCache()
+async def test_astore_metadata_type_error(langcache):
+    lang_cache = langcache
     with pytest.raises(ValueError):
         # Passing wrong metadata type on purpose to validate error
         await lang_cache.astore("p", "r", metadata="not a dict")  # type: ignore[arg-type]
 
 
-def test_disconnect_closes_client(monkeypatch):
-    lang_cache = LangCache()
+def test_disconnect_closes_client(monkeypatch, langcache):
+    lang_cache = langcache
 
     # Mock scenario where client exists
     class MockClient:
@@ -197,8 +304,8 @@ def test_disconnect_closes_client(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_adisconnect_closes_clients(monkeypatch):
-    lang_cache = LangCache()
+async def test_adisconnect_closes_clients(monkeypatch, langcache):
+    lang_cache = langcache
 
     # Mock scenario where clients exist
     class MockSyncClient:
@@ -226,7 +333,6 @@ async def test_adisconnect_closes_clients(monkeypatch):
 
     # Call adisconnect and verify it closed both clients
     await lang_cache.adisconnect()
-    assert mock_sync_client.closed is True
     assert mock_async_client.closed is True
 
     # Test with no clients
@@ -236,7 +342,60 @@ async def test_adisconnect_closes_clients(monkeypatch):
     await lang_cache.adisconnect()
 
 
-def test_context_manager_calls_api_methods(monkeypatch):
+def test_init_with_sdk_options(monkeypatch):
+    # Test that LangCacheOptions are correctly passed to the SDK
+    # Use a simple object instead of Logger to avoid instantiation issues
+    debug_logger = object()
+    sdk_options = LangCacheOptions(
+        server_url="https://example.com",  # Use a valid HTTP URL
+        timeout_ms=5000,
+        debug_logger=debug_logger,
+    )
+
+    # Mock the LangCacheSDK constructor
+    init_args = {}
+
+    class MockCache:
+        def get(self, cache_id):
+            return None
+
+        def create(self, **kwargs):
+            # Create a mock response with a cache_id
+            class MockResponse:
+                def __init__(self):
+                    self.cache_id = "mock-cache-id"
+
+            return MockResponse()
+
+    class MockSDK:
+        def __init__(self, **kwargs):
+            nonlocal init_args
+            init_args = kwargs
+            self.cache = MockCache()
+
+    # Patch the LangCacheSDK import
+    monkeypatch.setattr(
+        "redisvl.extensions.cache.llm.langcache_api.LangCacheSDK", MockSDK
+    )
+
+    # Create LangCache with sdk_options
+    LangCache(sdk_options=sdk_options)
+
+    # Verify the options were passed correctly
+    assert init_args["server_url"] == "https://example.com"
+    assert init_args["timeout_ms"] == 5000
+    assert init_args["debug_logger"] == debug_logger
+
+    # Test with default options
+    init_args = {}
+    LangCache()
+
+    # Verify default options are used (retry_config is always set by default)
+    assert len(init_args) == 1
+    assert "retry_config" in init_args
+
+
+def test_context_manager_calls_api_methods(monkeypatch, langcache):
     # Create a client with a mock API
     class MockAPI:
         def __init__(self):
@@ -251,7 +410,7 @@ def test_context_manager_calls_api_methods(monkeypatch):
             self.exit_args = (exc_type, exc_val, exc_tb)
 
     mock_api = MockAPI()
-    lang_cache = LangCache()
+    lang_cache = langcache
     # Use monkeypatch to replace the API
     monkeypatch.setattr(lang_cache, "_api", mock_api)
 
@@ -273,7 +432,7 @@ def test_context_manager_calls_api_methods(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_async_context_manager_calls_api_methods(monkeypatch):
+async def test_async_context_manager_calls_api_methods(monkeypatch, langcache):
     # Create a client with a mock API
     class MockAPI:
         def __init__(self):
@@ -288,7 +447,7 @@ async def test_async_context_manager_calls_api_methods(monkeypatch):
             self.exit_args = (exc_type, exc_val, exc_tb)
 
     mock_api = MockAPI()
-    lang_cache = LangCache()
+    lang_cache = langcache
     # Use monkeypatch to replace the API
     monkeypatch.setattr(lang_cache, "_api", mock_api)
 
