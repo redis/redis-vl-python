@@ -21,8 +21,9 @@ def vectorizer():
 
 
 @pytest.fixture
-def cache(vectorizer, redis_url):
+def cache(vectorizer, redis_url, worker_id):
     cache_instance = SemanticCache(
+        name=f"llmcache_{worker_id}",
         vectorizer=vectorizer,
         distance_threshold=0.2,
         redis_url=redis_url,
@@ -32,8 +33,9 @@ def cache(vectorizer, redis_url):
 
 
 @pytest.fixture
-def cache_with_filters(vectorizer, redis_url):
+def cache_with_filters(vectorizer, redis_url, worker_id):
     cache_instance = SemanticCache(
+        name=f"llmcache_filters_{worker_id}",
         vectorizer=vectorizer,
         distance_threshold=0.2,
         filterable_fields=[{"name": "label", "type": "tag"}],
@@ -44,25 +46,33 @@ def cache_with_filters(vectorizer, redis_url):
 
 
 @pytest.fixture
-def cache_no_cleanup(vectorizer, redis_url):
+def cache_no_cleanup(vectorizer, redis_url, worker_id):
     cache_instance = SemanticCache(
-        vectorizer=vectorizer, distance_threshold=0.2, redis_url=redis_url
+        name=f"llmcache_no_cleanup_{worker_id}",
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        redis_url=redis_url,
     )
     yield cache_instance
 
 
 @pytest.fixture
-def cache_with_ttl(vectorizer, redis_url):
+def cache_with_ttl(vectorizer, redis_url, worker_id):
     cache_instance = SemanticCache(
-        vectorizer=vectorizer, distance_threshold=0.2, ttl=2, redis_url=redis_url
+        name=f"llmcache_ttl_{worker_id}",
+        vectorizer=vectorizer,
+        distance_threshold=0.2,
+        ttl=2,
+        redis_url=redis_url,
     )
     yield cache_instance
     cache_instance._index.delete(True)  # Clean up index
 
 
 @pytest.fixture
-def cache_with_redis_client(vectorizer, client):
+def cache_with_redis_client(vectorizer, client, worker_id):
     cache_instance = SemanticCache(
+        name=f"llmcache_client_{worker_id}",
         vectorizer=vectorizer,
         redis_client=client,
         distance_threshold=0.2,
@@ -545,9 +555,10 @@ async def test_async_check_invalid_input(cache):
         await cache.acheck(prompt="test", return_fields="bad value")
 
 
-def test_bad_connection_info(vectorizer):
+def test_bad_connection_info(vectorizer, worker_id):
     with pytest.raises(ConnectionError):
         SemanticCache(
+            name=f"test_bad_connection_{worker_id}",
             vectorizer=vectorizer,
             distance_threshold=0.2,
             redis_url="redis://localhost:6389",
@@ -741,9 +752,10 @@ def test_cache_filtering(cache_with_filters):
     assert len(results) == 0
 
 
-def test_cache_bad_filters(vectorizer, redis_url):
+def test_cache_bad_filters(vectorizer, redis_url, worker_id):
     with pytest.raises(ValueError):
         cache_instance = SemanticCache(
+            name=f"test_bad_filters_1_{worker_id}",
             vectorizer=vectorizer,
             distance_threshold=0.2,
             # invalid field type
@@ -756,6 +768,7 @@ def test_cache_bad_filters(vectorizer, redis_url):
 
     with pytest.raises(ValueError):
         cache_instance = SemanticCache(
+            name=f"test_bad_filters_2_{worker_id}",
             vectorizer=vectorizer,
             distance_threshold=0.2,
             # duplicate field type
@@ -768,6 +781,7 @@ def test_cache_bad_filters(vectorizer, redis_url):
 
     with pytest.raises(ValueError):
         cache_instance = SemanticCache(
+            name=f"test_bad_filters_3_{worker_id}",
             vectorizer=vectorizer,
             distance_threshold=0.2,
             # reserved field name
@@ -806,9 +820,9 @@ def test_complex_filters(cache_with_filters):
     assert len(results) == 1
 
 
-def test_cache_index_overwrite(redis_url):
+def test_cache_index_overwrite(redis_url, worker_id):
     cache_no_tags = SemanticCache(
-        name="test_cache",
+        name=f"test_cache_{worker_id}",
         redis_url=redis_url,
     )
 
@@ -837,13 +851,13 @@ def test_cache_index_overwrite(redis_url):
 
     with pytest.raises((RedisModuleVersionError, ValueError)):
         SemanticCache(
-            name="test_cache",
+            name=f"test_cache_{worker_id}",
             redis_url=redis_url,
             filterable_fields=[{"name": "some_tag", "type": "tag"}],
         )
 
     cache_overwrite = SemanticCache(
-        name="test_cache",
+        name=f"test_cache_{worker_id}",
         redis_url=redis_url,
         filterable_fields=[{"name": "some_tag", "type": "tag"}],
         overwrite=True,
@@ -856,9 +870,9 @@ def test_cache_index_overwrite(redis_url):
     assert len(response) == 1
 
 
-def test_no_key_collision_on_identical_prompts(redis_url):
+def test_no_key_collision_on_identical_prompts(redis_url, worker_id):
     private_cache = SemanticCache(
-        name="private_cache",
+        name=f"private_cache_{worker_id}",
         redis_url=redis_url,
         filterable_fields=[
             {"name": "user_id", "type": "tag"},
@@ -898,18 +912,24 @@ def test_no_key_collision_on_identical_prompts(redis_url):
     assert len(filtered_results) == 2
 
 
-def test_create_cache_with_different_vector_types():
+def test_create_cache_with_different_vector_types(worker_id):
     try:
-        bfloat_cache = SemanticCache(name="bfloat_cache", dtype="bfloat16")
+        bfloat_cache = SemanticCache(name=f"bfloat_cache_{worker_id}", dtype="bfloat16")
         bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
 
-        float16_cache = SemanticCache(name="float16_cache", dtype="float16")
+        float16_cache = SemanticCache(
+            name=f"float16_cache_{worker_id}", dtype="float16"
+        )
         float16_cache.store("float16 prompt", "float16 response")
 
-        float32_cache = SemanticCache(name="float32_cache", dtype="float32")
+        float32_cache = SemanticCache(
+            name=f"float32_cache_{worker_id}", dtype="float32"
+        )
         float32_cache.store("float32 prompt", "float32 response")
 
-        float64_cache = SemanticCache(name="float64_cache", dtype="float64")
+        float64_cache = SemanticCache(
+            name=f"float64_cache_{worker_id}", dtype="float64"
+        )
         float64_cache.store("float64 prompt", "float64 response")
 
         for cache in [bfloat_cache, float16_cache, float32_cache, float64_cache]:
@@ -919,13 +939,13 @@ def test_create_cache_with_different_vector_types():
         pytest.skip("Not using a late enough version of Redis")
 
 
-def test_bad_dtype_connecting_to_existing_cache(redis_url):
+def test_bad_dtype_connecting_to_existing_cache(redis_url, worker_id):
     try:
         cache = SemanticCache(
-            name="float64_cache", dtype="float64", redis_url=redis_url
+            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
         same_type = SemanticCache(
-            name="float64_cache", dtype="float64", redis_url=redis_url
+            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
         # under the hood uses from_existing
     except RedisModuleVersionError:
@@ -933,35 +953,35 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url):
 
     with pytest.raises(ValueError):
         bad_type = SemanticCache(
-            name="float64_cache", dtype="float16", redis_url=redis_url
+            name=f"float64_cache_{worker_id}", dtype="float16", redis_url=redis_url
         )
 
 
-def test_vectorizer_dtype_mismatch(redis_url):
+def test_vectorizer_dtype_mismatch(redis_url, hf_vectorizer_float16, worker_id):
     with pytest.raises(ValueError):
         SemanticCache(
-            name="test_dtype_mismatch",
+            name=f"test_dtype_mismatch_{worker_id}",
             dtype="float32",
-            vectorizer=HFTextVectorizer(dtype="float16"),
+            vectorizer=hf_vectorizer_float16,
             redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_invalid_vectorizer(redis_url):
+def test_invalid_vectorizer(redis_url, worker_id):
     with pytest.raises(TypeError):
         SemanticCache(
-            name="test_invalid_vectorizer",
+            name=f"test_invalid_vectorizer_{worker_id}",
             vectorizer="invalid_vectorizer",  # type: ignore
             redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_passes_through_dtype_to_default_vectorizer(redis_url):
+def test_passes_through_dtype_to_default_vectorizer(redis_url, worker_id):
     # The default is float32, so we should see float64 if we pass it in.
     cache = SemanticCache(
-        name="test_pass_through_dtype",
+        name=f"test_pass_through_dtype_{worker_id}",
         dtype="float64",
         redis_url=redis_url,
         overwrite=True,
@@ -969,10 +989,10 @@ def test_passes_through_dtype_to_default_vectorizer(redis_url):
     assert cache._vectorizer.dtype == "float64"
 
 
-def test_deprecated_dtype_argument(redis_url):
+def test_deprecated_dtype_argument(redis_url, worker_id):
     with pytest.warns(DeprecationWarning):
         SemanticCache(
-            name="test_deprecated_dtype",
+            name=f"test_deprecated_dtype_{worker_id}",
             dtype="float32",
             redis_url=redis_url,
             overwrite=True,
@@ -980,9 +1000,9 @@ def test_deprecated_dtype_argument(redis_url):
 
 
 @pytest.mark.asyncio
-async def test_cache_async_context_manager(redis_url):
+async def test_cache_async_context_manager(redis_url, worker_id):
     async with SemanticCache(
-        name="test_cache_async_context_manager", redis_url=redis_url
+        name=f"test_cache_async_context_manager_{worker_id}", redis_url=redis_url
     ) as cache:
         await cache.astore("test prompt", "test response")
         assert cache._aindex
@@ -990,10 +1010,11 @@ async def test_cache_async_context_manager(redis_url):
 
 
 @pytest.mark.asyncio
-async def test_cache_async_context_manager_with_exception(redis_url):
+async def test_cache_async_context_manager_with_exception(redis_url, worker_id):
     try:
         async with SemanticCache(
-            name="test_cache_async_context_manager_with_exception", redis_url=redis_url
+            name=f"test_cache_async_context_manager_with_exception_{worker_id}",
+            redis_url=redis_url,
         ) as cache:
             await cache.astore("test prompt", "test response")
             raise ValueError("test")
@@ -1003,15 +1024,19 @@ async def test_cache_async_context_manager_with_exception(redis_url):
 
 
 @pytest.mark.asyncio
-async def test_cache_async_disconnect(redis_url):
-    cache = SemanticCache(name="test_cache_async_disconnect", redis_url=redis_url)
+async def test_cache_async_disconnect(redis_url, worker_id):
+    cache = SemanticCache(
+        name=f"test_cache_async_disconnect_{worker_id}", redis_url=redis_url
+    )
     await cache.astore("test prompt", "test response")
     await cache.adisconnect()
     assert cache._aindex is None
 
 
-def test_cache_disconnect(redis_url):
-    cache = SemanticCache(name="test_cache_disconnect", redis_url=redis_url)
+def test_cache_disconnect(redis_url, worker_id):
+    cache = SemanticCache(
+        name=f"test_cache_disconnect_{worker_id}", redis_url=redis_url
+    )
     cache.store("test prompt", "test response")
     cache.disconnect()
     # We keep this index object around because it isn't lazily created

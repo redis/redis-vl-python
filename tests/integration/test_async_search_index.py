@@ -32,13 +32,24 @@ def async_index(index_schema, async_client):
 
 
 @pytest.fixture
-def async_index_from_dict():
-    return AsyncSearchIndex.from_dict({"index": {"name": "my_index"}, "fields": fields})
+def async_index_from_dict(worker_id):
+
+    return AsyncSearchIndex.from_dict(
+        {
+            "index": {"name": f"my_index_{worker_id}", "prefix": f"rvl_{worker_id}"},
+            "fields": fields,
+        }
+    )
 
 
 @pytest.fixture
-def async_index_from_yaml():
-    return AsyncSearchIndex.from_yaml("schemas/test_json_schema.yaml")
+def async_index_from_yaml(worker_id):
+
+    index = AsyncSearchIndex.from_yaml("schemas/test_json_schema.yaml")
+    # Update the index name and prefix to include worker_id
+    index.schema.index.name = f"{index.schema.index.name}_{worker_id}"
+    index.schema.index.prefix = f"{index.schema.index.prefix}_{worker_id}"
+    return index
 
 
 def test_search_index_properties(index_schema, async_index):
@@ -56,18 +67,18 @@ def test_search_index_properties(index_schema, async_index):
 
 
 def test_search_index_from_yaml(async_index_from_yaml):
-    assert async_index_from_yaml.name == "json-test"
+    assert async_index_from_yaml.name.startswith("json-test")
     assert async_index_from_yaml.client is None
-    assert async_index_from_yaml.prefix == "json"
+    assert async_index_from_yaml.prefix.startswith("json_")
     assert async_index_from_yaml.key_separator == ":"
     assert async_index_from_yaml.storage_type == StorageType.JSON
     assert async_index_from_yaml.key("foo").startswith(async_index_from_yaml.prefix)
 
 
 def test_search_index_from_dict(async_index_from_dict):
-    assert async_index_from_dict.name == "my_index"
+    assert async_index_from_dict.name.startswith("my_index")
     assert async_index_from_dict.client is None
-    assert async_index_from_dict.prefix == "rvl"
+    assert async_index_from_dict.prefix.startswith("rvl_")
     assert async_index_from_dict.key_separator == ":"
     assert async_index_from_dict.storage_type == StorageType.HASH
     assert len(async_index_from_dict.schema.fields) == len(fields)

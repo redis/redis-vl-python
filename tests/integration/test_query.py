@@ -143,13 +143,14 @@ def sorted_range_query():
 
 
 @pytest.fixture
-def index(sample_data, redis_url):
+def index(sample_data, redis_url, worker_id):
+
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
                 "name": "user_index",
-                "prefix": "v1",
+                "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [
@@ -194,13 +195,14 @@ def index(sample_data, redis_url):
 
 
 @pytest.fixture
-def L2_index(sample_data, redis_url):
+def L2_index(sample_data, redis_url, worker_id):
+
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
                 "name": "L2_index",
-                "prefix": "L2_index",
+                "prefix": f"L2_index_{worker_id}",
                 "storage_type": "hash",
             },
             "fields": [
@@ -822,7 +824,7 @@ def test_text_query(index, scorer):
         assert any(word in result[text_field] for word in text.split())
 
 
-# test that text queryies work with filter expressions
+# test that text queries work with filter expressions
 def test_text_query_with_filter(index):
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
@@ -845,7 +847,7 @@ def test_text_query_with_filter(index):
         assert int(result["age"]) > 30
 
 
-# test that text queryies workt with text filter expressions on the same text field
+# test that text queries worked with text filter expressions on the same text field
 def test_text_query_with_text_filter(index):
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"

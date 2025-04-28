@@ -42,13 +42,24 @@ def index(index_schema, client):
 
 
 @pytest.fixture
-def index_from_dict():
-    return SearchIndex.from_dict({"index": {"name": "my_index"}, "fields": fields})
+def index_from_dict(worker_id):
+
+    return SearchIndex.from_dict(
+        {
+            "index": {"name": f"my_index_{worker_id}", "prefix": f"rvl_{worker_id}"},
+            "fields": fields,
+        }
+    )
 
 
 @pytest.fixture
-def index_from_yaml():
-    return SearchIndex.from_yaml("schemas/test_json_schema.yaml")
+def index_from_yaml(worker_id):
+
+    index = SearchIndex.from_yaml("schemas/test_json_schema.yaml")
+    # Update the index name and prefix to include worker_id
+    index.schema.index.name = f"{index.schema.index.name}_{worker_id}"
+    index.schema.index.prefix = f"{index.schema.index.prefix}_{worker_id}"
+    return index
 
 
 def test_search_index_properties(index_schema, index):
@@ -64,18 +75,18 @@ def test_search_index_properties(index_schema, index):
 
 
 def test_search_index_from_yaml(index_from_yaml):
-    assert index_from_yaml.name == "json-test"
+    assert index_from_yaml.name.startswith("json-test")
     assert index_from_yaml.client == None
-    assert index_from_yaml.prefix == "json"
+    assert index_from_yaml.prefix.startswith("json_")
     assert index_from_yaml.key_separator == ":"
     assert index_from_yaml.storage_type == StorageType.JSON
     assert index_from_yaml.key("foo").startswith(index_from_yaml.prefix)
 
 
 def test_search_index_from_dict(index_from_dict):
-    assert index_from_dict.name == "my_index"
+    assert index_from_dict.name.startswith("my_index")
     assert index_from_dict.client == None
-    assert index_from_dict.prefix == "rvl"
+    assert index_from_dict.prefix.startswith("rvl_")
     assert index_from_dict.key_separator == ":"
     assert index_from_dict.storage_type == StorageType.HASH
     assert len(index_from_dict.schema.fields) == len(fields)
