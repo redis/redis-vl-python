@@ -16,7 +16,7 @@ def filter_query():
 
 
 @pytest.fixture
-def index(sample_data, redis_url):
+def index(sample_data, redis_url, worker_id):
     fields_spec = [
         {"name": "credit_score", "type": "tag"},
         {"name": "user", "type": "tag"},
@@ -36,8 +36,8 @@ def index(sample_data, redis_url):
 
     json_schema = {
         "index": {
-            "name": "user_index_json",
-            "prefix": "users_json",
+            "name": f"user_index_json_{worker_id}",
+            "prefix": f"users_json_{worker_id}",
             "storage_type": "json",
         },
         "fields": fields_spec,

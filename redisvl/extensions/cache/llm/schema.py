@@ -114,7 +114,6 @@ class SemanticCacheIndexSchema(IndexSchema):
 
     @classmethod
     def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str):
-
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
