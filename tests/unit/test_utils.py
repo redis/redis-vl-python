@@ -165,7 +165,15 @@ def test_empty_list_to_bytes():
 def test_conversion_with_various_dtypes(dtype):
     """Test conversion of a list of floats to bytes with various dtypes"""
     array = [1.0, -2.0, 3.5]
-    expected = np.array(array, dtype=dtype).tobytes()
+
+    # Special handling for bfloat16 which requires explicit import from ml_dtypes
+    if dtype == "bfloat16":
+        from ml_dtypes import bfloat16 as bf16
+
+        expected = np.array(array, dtype=bf16).tobytes()
+    else:
+        expected = np.array(array, dtype=dtype).tobytes()
+
     assert array_to_buffer(array, dtype=dtype) == expected
 
 

@@ -2,12 +2,11 @@ import argparse
 import sys
 from argparse import Namespace
 
-from tabulate import tabulate
-
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
+from redisvl.utils.utils import lazy_import
 
 logger = get_logger("[RedisVL]")
 
@@ -87,6 +86,8 @@ class Stats:
 
 
 def _display_stats(index_info, output_format="rounded_outline"):
+    tabulate = lazy_import("tabulate")
+
     # Extracting the statistics
     stats_data = [(key, str(index_info.get(key))) for key in STATS_KEYS]
 

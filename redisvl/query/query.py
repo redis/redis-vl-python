@@ -895,8 +895,10 @@ class TextQuery(BaseQuery):
         elif isinstance(stopwords, str):
             # Lazy import because nltk is an optional dependency
             try:
-                import nltk
-                from nltk.corpus import stopwords as nltk_stopwords
+                from redisvl.utils.utils import lazy_import
+
+                nltk = lazy_import("nltk")
+                nltk_stopwords = lazy_import("nltk.corpus.stopwords")
             except ImportError:
                 raise ValueError(
                     f"Loading stopwords for {stopwords} failed: nltk is not installed."

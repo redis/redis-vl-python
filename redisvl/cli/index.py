@@ -2,14 +2,13 @@ import argparse
 import sys
 from argparse import Namespace
 
-from tabulate import tabulate
-
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
+from redisvl.utils.utils import lazy_import
 
 logger = get_logger("[RedisVL]")
 
@@ -127,6 +126,8 @@ class Index:
 
 
 def _display_in_table(index_info, output_format="rounded_outline"):
+    tabulate = lazy_import("tabulate")
+
     print("\n")
     attributes = index_info.get("attributes", [])
     definition = make_dict(index_info.get("index_definition"))
