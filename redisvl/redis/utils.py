@@ -1,8 +1,10 @@
 import hashlib
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-from ml_dtypes import bfloat16
+from redisvl.utils.utils import lazy_import
+
+# Lazy import numpy
+np = lazy_import("numpy")
 
 from redisvl.schema.fields import VectorDataType
 
@@ -41,6 +43,13 @@ def array_to_buffer(array: List[float], dtype: str) -> bytes:
         raise ValueError(
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
+
+    # Special handling for bfloat16 which requires explicit import from ml_dtypes
+    if dtype.lower() == "bfloat16":
+        from ml_dtypes import bfloat16
+
+        return np.array(array, dtype=bfloat16).tobytes()
+
     return np.array(array, dtype=dtype.lower()).tobytes()
 
 
@@ -52,6 +61,14 @@ def buffer_to_array(buffer: bytes, dtype: str) -> List[Any]:
         raise ValueError(
             f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
         )
+
+    # Special handling for bfloat16 which requires explicit import from ml_dtypes
+    # because otherwise the (lazily imported) numpy is unaware of the type
+    if dtype.lower() == "bfloat16":
+        from ml_dtypes import bfloat16
+
+        return np.frombuffer(buffer, dtype=bfloat16).tolist()  # type: ignore[return-value]
+
     return np.frombuffer(buffer, dtype=dtype.lower()).tolist()  # type: ignore[return-value]
 
 

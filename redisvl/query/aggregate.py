@@ -5,6 +5,10 @@ from redis.commands.search.aggregation import AggregateRequest, Desc
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.token_escaper import TokenEscaper
+from redisvl.utils.utils import lazy_import
+
+nltk = lazy_import("nltk")
+nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 
 class AggregationQuery(AggregateRequest):
@@ -162,17 +166,13 @@ class HybridQuery(AggregationQuery):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
-            # Lazy import because nltk is an optional dependency
             try:
-                import nltk
-                from nltk.corpus import stopwords as nltk_stopwords
+                nltk.download("stopwords", quiet=True)
+                self._stopwords = set(nltk_stopwords.words(stopwords))
             except ImportError:
                 raise ValueError(
                     f"Loading stopwords for {stopwords} failed: nltk is not installed."
                 )
-            try:
-                nltk.download("stopwords", quiet=True)
-                self._stopwords = set(nltk_stopwords.words(stopwords))
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
         elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
