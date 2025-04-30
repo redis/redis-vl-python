@@ -549,6 +549,26 @@ class TestLazyImport:
         assert "json" in sys.modules
         assert result == '{"key": "value"}'
 
+    def test_cached_module_import(self):
+        """Test that _import_module returns the cached module if it exists"""
+        # Remove the module from sys.modules if it's already imported
+        if "json" in sys.modules:
+            del sys.modules["json"]
+
+        # Lazy import the module
+        json = lazy_import("json")
+
+        # Access an attribute to trigger the import
+        json.dumps
+
+        # The module should now be cached
+        # We need to access the private _import_module method directly
+        # to test the cached path
+        module = json._import_module()
+
+        # Verify that the cached module was returned
+        assert module is json._module
+
     def test_import_already_imported_module(self):
         """Test lazy importing of an already imported module"""
         # Make sure the module is imported
@@ -618,6 +638,17 @@ class TestLazyImport:
 
         assert "Failed to lazily import nonexistent_module_xyz" in str(excinfo.value)
 
+    def test_call_nonexistent_module(self):
+        """Test calling a nonexistent module"""
+        # Lazy import a nonexistent module
+        nonexistent = lazy_import("nonexistent_module_xyz")
+
+        # Calling the nonexistent module should raise ImportError
+        with pytest.raises(ImportError) as excinfo:
+            nonexistent()
+
+        assert "Failed to lazily import nonexistent_module_xyz" in str(excinfo.value)
+
     def test_import_nonexistent_attribute(self):
         """Test lazy importing of a nonexistent attribute"""
         # Lazy import a nonexistent attribute
@@ -626,6 +657,19 @@ class TestLazyImport:
         # Accessing the attribute should raise ImportError
         with pytest.raises(ImportError) as excinfo:
             nonexistent_attr()
+
+        assert "module 'math' has no attribute 'nonexistent_attribute'" in str(
+            excinfo.value
+        )
+
+    def test_getattr_on_nonexistent_attribute_path(self):
+        """Test accessing an attribute on a nonexistent attribute path"""
+        # Lazy import a nonexistent attribute path
+        nonexistent_attr = lazy_import("math.nonexistent_attribute")
+
+        # Accessing an attribute on the nonexistent attribute should raise AttributeError
+        with pytest.raises(AttributeError) as excinfo:
+            nonexistent_attr.some_attribute
 
         assert "module 'math' has no attribute 'nonexistent_attribute'" in str(
             excinfo.value
@@ -653,4 +697,63 @@ class TestLazyImport:
 
         assert "module 'math' has no attribute 'nonexistent_attribute'" in str(
             excinfo.value
+        )
+
+    def test_attribute_error_after_import(self):
+        """Test accessing a nonexistent attribute on a module after it's been imported"""
+        # Create a simple module with a known attribute
+        import types
+
+        test_module = types.ModuleType("test_module")
+        test_module.existing_attr = "exists"
+
+        # Add it to sys.modules so lazy_import can find it
+        sys.modules["test_module"] = test_module
+
+        try:
+            # Lazy import the module
+            lazy_mod = lazy_import("test_module")
+
+            # Access the existing attribute to trigger the import
+            assert lazy_mod.existing_attr == "exists"
+
+            # Now access a nonexistent attribute
+            with pytest.raises(AttributeError) as excinfo:
+                lazy_mod.nonexistent_attribute
+
+            assert (
+                "module 'test_module' has no attribute 'nonexistent_attribute'"
+                in str(excinfo.value)
+            )
+        finally:
+            # Clean up
+            if "test_module" in sys.modules:
+                del sys.modules["test_module"]
+
+    def test_attribute_error_with_direct_module_access(self):
+        """Test accessing a nonexistent attribute by directly setting the _module attribute"""
+        # Get the lazy_import function
+        from redisvl.utils.utils import lazy_import
+
+        # Create a lazy import for a module that doesn't exist yet
+        lazy_mod = lazy_import("test_direct_module")
+
+        # Create a simple object with no __getattr__ method
+        class SimpleObject:
+            pass
+
+        obj = SimpleObject()
+
+        # Directly set the _module attribute to our simple object
+        # This bypasses the normal import mechanism
+        lazy_mod._module = obj
+
+        # Now access a nonexistent attribute
+        # This should go through our LazyModule.__getattr__ and hit line 332
+        with pytest.raises(AttributeError) as excinfo:
+            lazy_mod.nonexistent_attribute
+
+        assert (
+            "module 'test_direct_module' has no attribute 'nonexistent_attribute'"
+            in str(excinfo.value)
         )
