@@ -1,6 +1,8 @@
 from typing import List
 
-import numpy as np
+from redisvl.utils.utils import lazy_import
+
+np = lazy_import("numpy")
 from ranx import Qrels
 
 from redisvl.utils.optimize.schema import LabeledData
