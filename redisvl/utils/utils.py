@@ -1,18 +1,22 @@
 import asyncio
+import importlib
 import inspect
 import json
 import logging
+import sys
 import warnings
 from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, Dict, Optional, Sequence
+from typing import Any, Callable, Coroutine, Dict, Optional, Sequence, TypeVar, cast
 from warnings import warn
 
 from pydantic import BaseModel
 from redis import Redis
 from ulid import ULID
+
+T = TypeVar("T")
 
 
 def create_ulid() -> str:
@@ -233,3 +237,123 @@ def scan_by_pattern(
     from redisvl.redis.utils import convert_bytes
 
     return convert_bytes(list(redis_client.scan_iter(match=pattern)))
+
+
+def lazy_import(module_path: str) -> Any:
+    """
+    Lazily import a module or object from a module only when it's actually used.
+
+    This function helps reduce startup time and avoid unnecessary dependencies
+    by only importing modules when they are actually needed.
+
+    Args:
+        module_path (str): The import path, e.g., "numpy" or "numpy.array"
+
+    Returns:
+        Any: The imported module or object, or a proxy that will import it when used
+
+    Examples:
+        >>> np = lazy_import("numpy")
+        >>> # numpy is not imported yet
+        >>> array = np.array([1, 2, 3])  # numpy is imported here
+
+        >>> array_func = lazy_import("numpy.array")
+        >>> # numpy is not imported yet
+        >>> arr = array_func([1, 2, 3])  # numpy is imported here
+    """
+    parts = module_path.split(".")
+    top_module_name = parts[0]
+
+    # Check if the module is already imported and we're not trying to access a specific attribute
+    if top_module_name in sys.modules and len(parts) == 1:
+        return sys.modules[top_module_name]
+
+    # Create a proxy class that will import the module when any attribute is accessed
+    class LazyModule:
+        def __init__(self, module_path: str):
+            self._module_path = module_path
+            self._module = None
+            self._parts = module_path.split(".")
+
+        def _import_module(self):
+            """Import the module or attribute on first use"""
+            if self._module is not None:
+                return self._module
+
+            try:
+                # Import the base module
+                base_module_name = self._parts[0]
+                module = importlib.import_module(base_module_name)
+
+                # If we're importing just the module, return it
+                if len(self._parts) == 1:
+                    self._module = module
+                    return module
+
+                # Otherwise, try to get the specified attribute or submodule
+                obj = module
+                for part in self._parts[1:]:
+                    try:
+                        obj = getattr(obj, part)
+                    except AttributeError:
+                        # Attribute doesn't exist - we'll raise this error when the attribute is accessed
+                        return None
+
+                self._module = obj
+                return obj
+            except ImportError as e:
+                # Store the error to raise it when the module is accessed
+                self._import_error = e
+                return None
+
+        def __getattr__(self, name: str) -> Any:
+            # Import the module if it hasn't been imported yet
+            if self._module is None:
+                module = self._import_module()
+
+                # If import failed, raise the appropriate error
+                if module is None:
+                    # Use direct dictionary access to avoid recursion
+                    if "_import_error" in self.__dict__:
+                        raise ImportError(
+                            f"Failed to lazily import {self._module_path}: {self._import_error}"
+                        )
+                    else:
+                        # This means we couldn't find the attribute in the module path
+                        raise AttributeError(
+                            f"{self._parts[0]} has no attribute '{self._parts[1]}'"
+                        )
+
+            # If we have a module, get the requested attribute
+            if hasattr(self._module, name):
+                return getattr(self._module, name)
+
+            # If the attribute doesn't exist, raise AttributeError
+            raise AttributeError(f"{self._module_path} has no attribute '{name}'")
+
+        def __call__(self, *args: Any, **kwargs: Any) -> Any:
+            # Import the module if it hasn't been imported yet
+            if self._module is None:
+                module = self._import_module()
+
+                # If import failed, raise the appropriate error
+                if module is None:
+                    # Use direct dictionary access to avoid recursion
+                    if "_import_error" in self.__dict__:
+                        raise ImportError(
+                            f"Failed to lazily import {self._module_path}: {self._import_error}"
+                        )
+                    else:
+                        # This means we couldn't find the attribute in the module path
+                        raise ImportError(
+                            f"Failed to find {self._module_path}: module '{self._parts[0]}' has no attribute '{self._parts[1]}'"
+                        )
+
+            # If the imported object is callable, call it
+            if callable(self._module):
+                return self._module(*args, **kwargs)
+
+            # If it's not callable, this is an error
+            raise TypeError(f"{self._module_path} is not callable")
+
+    return LazyModule(module_path)
