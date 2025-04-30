@@ -2,8 +2,6 @@ import argparse
 import sys
 from argparse import Namespace
 
-from tabulate import tabulate
-
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
@@ -139,20 +137,32 @@ def _display_in_table(index_info, output_format="rounded_outline"):
     ]
 
     # Display the index information in tabular format
+    col_width = 17
+
+    def print_table_edge(length, start, mid, stop):
+        print(f"{start}", end="")
+        for _ in range(length):
+            print("─" * col_width, mid, sep="", end="")
+        print(f"\b{stop}")
+
     print("Index Information:")
-    print(
-        tabulate(
-            [index_info],
-            headers=[
-                "Index Name",
-                "Storage Type",
-                "Prefixes",
-                "Index Options",
-                "Indexing",
-            ],
-            tablefmt=output_format,
-        )
-    )
+
+    print_table_edge(len(index_info), "╭", "┬", "╮")
+
+    # print header row
+    headers = ["Index Name", "Storage Type", "Prefixes", "Index Options", "Indexing"]
+    for header in headers:
+        print(f"│ {header.ljust(col_width-2)} ", end="")
+    print("│")
+
+    print_table_edge(len(index_info), "├", "┼", "┤")
+
+    # print data row
+    for info in index_info:
+        print(f"| {str(info):<15} ", end="")
+    print("|")
+
+    print_table_edge(len(index_info), "╰", "┴", "╯")
 
     attr_values = []
     headers = [
@@ -177,10 +187,20 @@ def _display_in_table(index_info, output_format="rounded_outline"):
 
     # Display the attributes in tabular format
     print("Index Fields:")
-    print(
-        tabulate(
-            attr_values,
-            headers=headers,
-            tablefmt=output_format,
-        )
-    )
+    print_table_edge(len(headers[:-2]), "╭", "┬", "╮")
+
+    # print header row
+    print(f"│", end="")
+    for header in headers[:-2]:
+        print(f" {str(header):<15} │", end="")
+    print()
+
+    print_table_edge(len(headers[:-2]), "├", "┼", "┤")
+
+    # print data rows
+    for row in attr_values:
+        for attr in row:
+            print(f"│ {attr:<15} ", end="")
+        print()
+
+    print_table_edge(len(headers[:-2]), "╰", "┴", "╯")
