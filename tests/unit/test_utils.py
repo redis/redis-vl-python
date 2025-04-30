@@ -16,6 +16,7 @@ from redisvl.utils.utils import (
     denorm_cosine_distance,
     deprecated_argument,
     deprecated_function,
+    lazy_import,
     norm_cosine_distance,
 )
 
@@ -518,3 +519,130 @@ class TestDeprecatedFunction:
         assert (
             has_date_pre == has_date_post
         ), f"Date format changed: was present before: {has_date_pre}, present after: {has_date_post}"
+
+
+class TestLazyImport:
+    def test_import_standard_library(self):
+        """Test lazy importing of a standard library module"""
+        # Remove the module from sys.modules if it's already imported
+        if "json" in sys.modules:
+            del sys.modules["json"]
+
+        # Lazy import the module
+        json = lazy_import("json")
+
+        # Verify the module is not imported yet
+        assert "json" not in sys.modules
+
+        # Use the module, which should trigger the import
+        result = json.dumps({"key": "value"})
+
+        # Verify the module is now imported
+        assert "json" in sys.modules
+        assert result == '{"key": "value"}'
+
+    def test_import_already_imported_module(self):
+        """Test lazy importing of an already imported module"""
+        # Make sure the module is imported
+        import math
+
+        assert "math" in sys.modules
+
+        # Lazy import the module
+        math_lazy = lazy_import("math")
+
+        # Since the module is already imported, it should be returned directly
+        assert math_lazy is sys.modules["math"]
+
+        # Use the module
+        assert math_lazy.sqrt(4) == 2.0
+
+    def test_import_submodule(self):
+        """Test lazy importing of a submodule"""
+        # Remove the module from sys.modules if it's already imported
+        if "os.path" in sys.modules:
+            del sys.modules["os.path"]
+        if "os" in sys.modules:
+            del sys.modules["os"]
+
+        # Lazy import the submodule
+        path = lazy_import("os.path")
+
+        # Verify the module is not imported yet
+        assert "os" not in sys.modules
+
+        # Use the submodule, which should trigger the import
+        result = path.join("dir", "file.txt")
+
+        # Verify the module is now imported
+        assert "os" in sys.modules
+        assert (
+            result == "dir/file.txt" or result == "dir\\file.txt"
+        )  # Handle Windows paths
+
+    def test_import_function(self):
+        """Test lazy importing of a function"""
+        # Remove the module from sys.modules if it's already imported
+        if "math" in sys.modules:
+            del sys.modules["math"]
+
+        # Lazy import the function
+        sqrt = lazy_import("math.sqrt")
+
+        # Verify the module is not imported yet
+        assert "math" not in sys.modules
+
+        # Use the function, which should trigger the import
+        result = sqrt(4)
+
+        # Verify the module is now imported
+        assert "math" in sys.modules
+        assert result == 2.0
+
+    def test_import_nonexistent_module(self):
+        """Test lazy importing of a nonexistent module"""
+        # Lazy import a nonexistent module
+        nonexistent = lazy_import("nonexistent_module_xyz")
+
+        # Accessing an attribute should raise ImportError
+        with pytest.raises(ImportError) as excinfo:
+            nonexistent.some_attribute
+
+        assert "Failed to lazily import nonexistent_module_xyz" in str(excinfo.value)
+
+    def test_import_nonexistent_attribute(self):
+        """Test lazy importing of a nonexistent attribute"""
+        # Lazy import a nonexistent attribute
+        nonexistent_attr = lazy_import("math.nonexistent_attribute")
+
+        # Accessing the attribute should raise ImportError
+        with pytest.raises(ImportError) as excinfo:
+            nonexistent_attr()
+
+        assert "module 'math' has no attribute 'nonexistent_attribute'" in str(
+            excinfo.value
+        )
+
+    def test_import_noncallable(self):
+        """Test calling a non-callable lazy imported object"""
+        # Lazy import a non-callable attribute
+        pi = lazy_import("math.pi")
+
+        # Calling it should raise TypeError
+        with pytest.raises(TypeError) as excinfo:
+            pi()
+
+        assert "math.pi is not callable" in str(excinfo.value)
+
+    def test_attribute_error(self):
+        """Test accessing a nonexistent attribute on a lazy imported module"""
+        # Lazy import a module
+        math = lazy_import("math")
+
+        # Accessing a nonexistent attribute should raise AttributeError
+        with pytest.raises(AttributeError) as excinfo:
+            math.nonexistent_attribute
+
+        assert "module 'math' has no attribute 'nonexistent_attribute'" in str(
+            excinfo.value
+        )
