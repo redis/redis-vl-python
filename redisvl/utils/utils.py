@@ -321,7 +321,7 @@ def lazy_import(module_path: str) -> Any:
                     else:
                         # This means we couldn't find the attribute in the module path
                         raise AttributeError(
-                            f"{self._parts[0]} has no attribute '{self._parts[1]}'"
+                            f"module '{self._parts[0]}' has no attribute '{self._parts[1]}'"
                         )
 
             # If we have a module, get the requested attribute
@@ -329,7 +329,9 @@ def lazy_import(module_path: str) -> Any:
                 return getattr(self._module, name)
 
             # If the attribute doesn't exist, raise AttributeError
-            raise AttributeError(f"{self._module_path} has no attribute '{name}'")
+            raise AttributeError(
+                f"module '{self._module_path}' has no attribute '{name}'"
+            )
 
         def __call__(self, *args: Any, **kwargs: Any) -> Any:
             # Import the module if it hasn't been imported yet
