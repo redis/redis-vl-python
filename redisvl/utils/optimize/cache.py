@@ -1,6 +1,8 @@
 from typing import Any, Callable, Dict, List
 
-import numpy as np
+from redisvl.utils.utils import lazy_import
+
+np = lazy_import("numpy")
 from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.cache.llm.semantic import SemanticCache

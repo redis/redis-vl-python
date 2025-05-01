@@ -5,6 +5,8 @@ import pytest
 if sys.version_info.major == 3 and sys.version_info.minor < 10:
     pytest.skip("Test requires Python 3.10 or higher", allow_module_level=True)
 
+from redis import Redis
+
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.extensions.router import Route, SemanticRouter
 from redisvl.extensions.router.schema import RoutingConfig
@@ -35,13 +37,13 @@ def routes():
 
 
 @pytest.fixture
-def semantic_router(client, routes, hf_vectorizer):
+def semantic_router(redis_url, routes, hf_vectorizer):
     router = SemanticRouter(
         name="test-router",
         routes=routes,
         vectorizer=hf_vectorizer,
         routing_config=RoutingConfig(max_k=2),
-        redis_client=client,
+        redis_url=redis_url,
         overwrite=False,
     )
     yield router
@@ -87,9 +89,10 @@ def test_data_optimization():
 
 
 def test_routes_different_distance_thresholds_optimizer_default(
-    semantic_router, routes, redis_url, test_data_optimization, hf_vectorizer
+    routes, redis_url, test_data_optimization, hf_vectorizer
 ):
-    redis_version = semantic_router._index.client.info()["redis_version"]
+    redis = Redis.from_url(redis_url)
+    redis_version = redis.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
 
@@ -121,10 +124,10 @@ def test_routes_different_distance_thresholds_optimizer_default(
 
 
 def test_routes_different_distance_thresholds_optimizer_precision(
-    semantic_router, routes, redis_url, test_data_optimization, hf_vectorizer
+    routes, redis_url, test_data_optimization, hf_vectorizer
 ):
-
-    redis_version = semantic_router._index.client.info()["redis_version"]
+    redis = Redis.from_url(redis_url)
+    redis_version = redis.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
 
@@ -158,9 +161,10 @@ def test_routes_different_distance_thresholds_optimizer_precision(
 
 
 def test_routes_different_distance_thresholds_optimizer_recall(
-    semantic_router, routes, redis_url, test_data_optimization, hf_vectorizer
+    routes, redis_url, test_data_optimization, hf_vectorizer, client
 ):
-    redis_version = semantic_router._index.client.info()["redis_version"]
+    redis = Redis.from_url(redis_url)
+    redis_version = redis.info()["redis_version"]
     if not compare_versions(redis_version, "7.0.0"):
         pytest.skip("Not using a late enough version of Redis")
 
