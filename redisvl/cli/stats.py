@@ -86,8 +86,6 @@ class Stats:
 
 
 def _display_stats(index_info, output_format="rounded_outline"):
-    tabulate = lazy_import("tabulate")
-
     # Extracting the statistics
     stats_data = [(key, str(index_info.get(key))) for key in STATS_KEYS]
 
