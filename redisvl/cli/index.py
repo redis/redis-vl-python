@@ -126,8 +126,6 @@ class Index:
 
 
 def _display_in_table(index_info, output_format="rounded_outline"):
-    tabulate = lazy_import("tabulate")
-
     print("\n")
     attributes = index_info.get("attributes", [])
     definition = make_dict(index_info.get("index_definition"))
