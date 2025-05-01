@@ -68,7 +68,7 @@ class Index:
             rvl index info -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        _display_in_table(index.info(), output_format=args.format)
+        _display_in_table(index.info())
 
     def listall(self, args: Namespace):
         """List all indices.
@@ -124,7 +124,8 @@ class Index:
         return index
 
 
-def _display_in_table(index_info, output_format="rounded_outline"):
+def _display_in_table(index_info):
+
     print("\n")
     attributes = index_info.get("attributes", [])
     definition = make_dict(index_info.get("index_definition"))
@@ -137,9 +138,10 @@ def _display_in_table(index_info, output_format="rounded_outline"):
     ]
 
     # Display the index information in tabular format
-    col_width = 17
+    headers = ["Index Name", "Storage Type", "Prefixes", "Index Options", "Indexing"]
+    col_width = max(len(str(info)) for info in index_info + headers) + 2
 
-    def print_table_edge(length, start, mid, stop):
+    def print_table_edge(length, col_width, start, mid, stop):
         print(f"{start}", end="")
         for _ in range(length):
             print("─" * col_width, mid, sep="", end="")
@@ -147,22 +149,21 @@ def _display_in_table(index_info, output_format="rounded_outline"):
 
     print("Index Information:")
 
-    print_table_edge(len(index_info), "╭", "┬", "╮")
+    print_table_edge(len(index_info), col_width, "╭", "┬", "╮")
 
     # print header row
-    headers = ["Index Name", "Storage Type", "Prefixes", "Index Options", "Indexing"]
     for header in headers:
         print(f"│ {header.ljust(col_width-2)} ", end="")
     print("│")
 
-    print_table_edge(len(index_info), "├", "┼", "┤")
+    print_table_edge(len(index_info), col_width, "├", "┼", "┤")
 
     # print data row
     for info in index_info:
-        print(f"| {str(info):<15} ", end="")
+        print(f"| {str(info).ljust(col_width-2)} ", end="")
     print("|")
 
-    print_table_edge(len(index_info), "╰", "┴", "╯")
+    print_table_edge(len(index_info), col_width, "╰", "┴", "╯")
 
     attr_values = []
     headers = [
@@ -187,20 +188,25 @@ def _display_in_table(index_info, output_format="rounded_outline"):
 
     # Display the attributes in tabular format
     print("Index Fields:")
-    print_table_edge(len(headers[:-2]), "╭", "┬", "╮")
+    headers = headers[
+        : max(len(row) for row in attr_values)
+    ]  # remove extra headers with no attr values
+    col_widths = [max([len(str(attr)) + 2 for attr in row]) for row in attr_values]
+    print_table_edge(len(headers), max(col_widths), "╭", "┬", "╮")
 
     # print header row
-    print(f"│", end="")
-    for header in headers[:-2]:
-        print(f" {str(header):<15} │", end="")
-    print()
+    for header in headers:
+        print(f"│ {str(header).ljust(max(col_widths)-2)} ", end="")
+    print("│")
 
-    print_table_edge(len(headers[:-2]), "├", "┼", "┤")
+    print_table_edge(len(headers), max(col_widths), "├", "┼", "┤")
 
     # print data rows
+    num_cols = max(len(row) for row in attr_values)
     for row in attr_values:
+        row.extend([""] * (num_cols - len(row)))
         for attr in row:
-            print(f"│ {attr:<15} ", end="")
-        print()
+            print(f"│ {str(attr).ljust(max(col_widths)-2)} ", end="")
+        print("│")
 
-    print_table_edge(len(headers[:-2]), "╰", "┴", "╯")
+    print_table_edge(len(headers), max(col_widths), "╰", "┴", "╯")
