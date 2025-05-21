@@ -68,28 +68,70 @@ def redis_cluster_container(worker_id):
     # The DockerCompose helper isn't working with multiple services because the
     # subprocess command returns non-zero exit codes even on successful
     # completion. Here, we run the commands manually.
+
+    # First attempt the docker-compose up command and handle its errors directly
+    docker_cmd = [
+        "docker",
+        "compose",
+        "-f",
+        compose_file,
+        "-p",  # Explicitly pass project name
+        project_name,
+        "up",
+        "--wait",  # Wait for healthchecks
+        "-d",  # Detach
+    ]
+
     try:
-        # Use --wait to ensure services (especially redis-cluster-setup) are healthy
-        subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                compose_file,
-                "-p",  # Explicitly pass project name
-                project_name,
-                "up",
-                "--wait",  # Wait for healthchecks
-                "-d",  # Detach
-            ],
-            check=True,  # check=True can be problematic if successful commands return non-zero, but `up --wait -d` should be 0 on success.
+        result = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            check=False,  # Don't raise exception, we'll handle it ourselves
         )
+
+        if result.returncode != 0:
+            print(f"Docker Compose up failed with exit code {result.returncode}")
+            if result.stdout:
+                print(f"STDOUT: {result.stdout.decode('utf-8', errors='replace')}")
+            if result.stderr:
+                print(f"STDERR: {result.stderr.decode('utf-8', errors='replace')}")
+
+            # Try to get logs for more details
+            print("Attempting to fetch container logs...")
+            try:
+                logs_result = subprocess.run(
+                    [
+                        "docker",
+                        "compose",
+                        "-f",
+                        compose_file,
+                        "-p",
+                        project_name,
+                        "logs",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                print("Docker Compose logs:\n", logs_result.stdout)
+                if logs_result.stderr:
+                    print("Docker Compose logs stderr:\n", logs_result.stderr)
+            except Exception as log_e:
+                print(f"Failed to get Docker Compose logs: {repr(log_e)}")
+
+            # Now raise the exception with the original result
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                docker_cmd,
+                output=result.stdout,
+                stderr=result.stderr,
+            )
+
+        # If we get here, setup was successful
         yield
-    except subprocess.CalledProcessError as e:
-        # Attempt to get logs if setup failed
-        print(f"Docker Compose up --wait failed: {e}")
+    finally:
+        # Always clean up
         try:
-            logs_result = subprocess.run(
+            subprocess.run(
                 [
                     "docker",
                     "compose",
@@ -97,30 +139,14 @@ def redis_cluster_container(worker_id):
                     compose_file,
                     "-p",
                     project_name,
-                    "logs",
+                    "down",
+                    "-v",  # Remove volumes
                 ],
+                check=False,  # Don't raise on cleanup failure
                 capture_output=True,
-                text=True,
             )
-            print("Docker Compose logs:\n", logs_result.stdout)
-            if logs_result.stderr:
-                print("Docker Compose logs stderr:\n", logs_result.stderr)
-        except Exception as log_e:
-            print(f"Failed to get Docker Compose logs: {log_e}")
-        raise  # Re-raise the original error to fail the test setup
-    finally:
-        subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                compose_file,
-                "-p",
-                project_name,
-                "down",
-                "-v",  # Remove volumes
-            ]
-        )
+        except Exception as e:
+            print(f"Error during cleanup: {repr(e)}")
 
 
 @pytest.fixture(scope="session")
