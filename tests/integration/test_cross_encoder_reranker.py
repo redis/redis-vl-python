@@ -1,10 +1,9 @@
 import pytest
-from sentence_transformers import CrossEncoder
 
 from redisvl.utils.rerank.hf_cross_encoder import HFCrossEncoderReranker
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def reranker():
     return HFCrossEncoderReranker()
 

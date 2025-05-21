@@ -1,10 +1,8 @@
 import pytest
-from redis.commands.search.aggregation import AggregateResult
-from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
 from redisvl.query import HybridQuery
-from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
+from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.connection import compare_versions
 from redisvl.redis.utils import array_to_buffer
 

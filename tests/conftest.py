@@ -1,4 +1,6 @@
 import os
+import subprocess
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -53,6 +55,75 @@ def redis_container(worker_id):
 
 
 @pytest.fixture(scope="session")
+def redis_cluster_container(worker_id):
+    project_name = f"redis_test_cluster_{worker_id}"
+    compose_file = "tests/cluster-compose.yml"
+    os.environ["COMPOSE_PROJECT_NAME"] = (
+        project_name  # For docker compose to pick it up if needed
+    )
+    # redis-stack-server comes up without modules in cluster mode, so we hard-code
+    # the Redis 8 image for now.
+    os.environ.setdefault("REDIS_IMAGE", "redis:8")
+
+    # The DockerCompose helper isn't working with multiple services because the
+    # subprocess command returns non-zero exit codes even on successful
+    # completion. Here, we run the commands manually.
+    try:
+        # Use --wait to ensure services (especially redis-cluster-setup) are healthy
+        subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                compose_file,
+                "-p",  # Explicitly pass project name
+                project_name,
+                "up",
+                "--wait",  # Wait for healthchecks
+                "-d",  # Detach
+            ],
+            check=True,  # check=True can be problematic if successful commands return non-zero, but `up --wait -d` should be 0 on success.
+        )
+        yield
+    except subprocess.CalledProcessError as e:
+        # Attempt to get logs if setup failed
+        print(f"Docker Compose up --wait failed: {e}")
+        try:
+            logs_result = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    compose_file,
+                    "-p",
+                    project_name,
+                    "logs",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            print("Docker Compose logs:\n", logs_result.stdout)
+            if logs_result.stderr:
+                print("Docker Compose logs stderr:\n", logs_result.stderr)
+        except Exception as log_e:
+            print(f"Failed to get Docker Compose logs: {log_e}")
+        raise  # Re-raise the original error to fail the test setup
+    finally:
+        subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                compose_file,
+                "-p",
+                project_name,
+                "down",
+                "-v",  # Remove volumes
+            ]
+        )
+
+
+@pytest.fixture(scope="session")
 def redis_url(redis_container):
     """
     Use the `DockerCompose` fixture to get host/port of the 'redis' service
@@ -60,6 +131,12 @@ def redis_url(redis_container):
     """
     host, port = redis_container.get_service_host_and_port("redis", 6379)
     return f"redis://{host}:{port}"
+
+
+@pytest.fixture(scope="session")
+def redis_cluster_url(redis_cluster_container):
+    # Hard-coded due to Docker issues
+    return "redis://localhost:7001"
 
 
 @pytest.fixture
@@ -80,7 +157,18 @@ def client(redis_url):
     yield conn
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture
+def cluster_client(redis_cluster_url):
+    """
+    A sync Redis client that uses the dynamic `redis_cluster_url`.
+    """
+    conn = RedisConnectionFactory.get_redis_cluster_connection(
+        redis_url=redis_cluster_url
+    )
+    yield conn
+
+
+@pytest.fixture(scope="session")
 def hf_vectorizer():
     return HFTextVectorizer(
         model="sentence-transformers/all-mpnet-base-v2",

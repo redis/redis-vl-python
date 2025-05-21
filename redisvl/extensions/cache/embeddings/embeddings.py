@@ -1,13 +1,14 @@
 """Embeddings cache implementation for RedisVL."""
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
-
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
+from typing import Any, Awaitable, Dict, List, Optional, Tuple, cast
 
 from redisvl.extensions.cache.base import BaseCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
 from redisvl.redis.utils import convert_bytes, hashify
+from redisvl.types import AsyncRedisClient, SyncRedisClient
+from redisvl.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class EmbeddingsCache(BaseCache):
@@ -17,7 +18,8 @@ class EmbeddingsCache(BaseCache):
         self,
         name: str = "embedcache",
         ttl: Optional[int] = None,
-        redis_client: Optional[Redis] = None,
+        redis_client: Optional[SyncRedisClient] = None,
+        async_redis_client: Optional[AsyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
     ):
@@ -26,7 +28,7 @@ class EmbeddingsCache(BaseCache):
         Args:
             name (str): The name of the cache. Defaults to "embedcache".
             ttl (Optional[int]): The time-to-live for cached embeddings. Defaults to None.
-            redis_client (Optional[Redis]): Redis client instance. Defaults to None.
+            redis_client (Optional[SyncRedisClient]): Redis client instance. Defaults to None.
             redis_url (str): Redis URL for connection. Defaults to "redis://localhost:6379".
             connection_kwargs (Dict[str, Any]): Redis connection arguments. Defaults to {}.
 
@@ -173,7 +175,7 @@ class EmbeddingsCache(BaseCache):
         if data:
             self.expire(key)
 
-        return self._process_cache_data(data)
+        return self._process_cache_data(data)  # type: ignore
 
     def mget_by_keys(self, keys: List[str]) -> List[Optional[Dict[str, Any]]]:
         """Get multiple embeddings by their Redis keys.
@@ -570,7 +572,7 @@ class EmbeddingsCache(BaseCache):
         client = await self._get_async_redis_client()
 
         # Get all fields
-        data = await client.hgetall(key)
+        data = await client.hgetall(key)  # type: ignore
 
         # Refresh TTL if data exists
         if data:
@@ -608,7 +610,7 @@ class EmbeddingsCache(BaseCache):
         async with client.pipeline(transaction=False) as pipeline:
             # Queue all hgetall operations
             for key in keys:
-                await pipeline.hgetall(key)
+                pipeline.hgetall(key)
             results = await pipeline.execute()
 
         # Process results and refresh TTLs separately
