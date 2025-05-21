@@ -11,10 +11,10 @@ from redisvl.redis.utils import hashify
 
 
 @pytest.fixture
-def cache(redis_url):
+def cache(redis_url, worker_id):
     """Basic EmbeddingsCache fixture with cleanup."""
     cache_instance = EmbeddingsCache(
-        name="test_embed_cache",
+        name=f"test_embed_cache_{worker_id}",
         redis_url=redis_url,
     )
     yield cache_instance

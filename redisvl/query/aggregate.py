@@ -117,16 +117,16 @@ class HybridQuery(AggregationQuery):
         query_string = self._build_query_string()
         super().__init__(query_string)
 
-        self.scorer(text_scorer)  # type: ignore[attr-defined]
-        self.add_scores()  # type: ignore[attr-defined]
+        self.scorer(text_scorer)
+        self.add_scores()
         self.apply(
             vector_similarity=f"(2 - @{self.DISTANCE_ID})/2", text_score="@__score"
         )
         self.apply(hybrid_score=f"{1-alpha}*@text_score + {alpha}*@vector_similarity")
-        self.sort_by(Desc("@hybrid_score"), max=num_results)
-        self.dialect(dialect)  # type: ignore[attr-defined]
+        self.sort_by(Desc("@hybrid_score"), max=num_results)  # type: ignore
+        self.dialect(dialect)
         if return_fields:
-            self.load(*return_fields)
+            self.load(*return_fields)  # type: ignore[arg-type]
 
     @property
     def params(self) -> Dict[str, Any]:
@@ -135,10 +135,10 @@ class HybridQuery(AggregationQuery):
         Returns:
             Dict[str, Any]: The parameters for the aggregation.
         """
-        if isinstance(self._vector, bytes):
-            vector = self._vector
-        else:
+        if isinstance(self._vector, list):
             vector = array_to_buffer(self._vector, dtype=self._dtype)
+        else:
+            vector = self._vector
 
         params = {self.VECTOR_PARAM: vector}
 

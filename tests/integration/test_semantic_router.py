@@ -13,7 +13,6 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
 )
 from redisvl.redis.connection import compare_versions
-from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 
 def get_base_path():
@@ -39,13 +38,14 @@ def routes():
 
 
 @pytest.fixture
-def semantic_router(client, routes):
+def semantic_router(client, routes, hf_vectorizer):
     router = SemanticRouter(
         name=f"test-router-{str(ULID())}",
         routes=routes,
         routing_config=RoutingConfig(max_k=2),
         redis_client=client,
         overwrite=False,
+        vectorizer=hf_vectorizer,
     )
     yield router
     router.clear()

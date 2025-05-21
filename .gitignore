@@ -222,3 +222,4 @@ libs/redis/docs/.Trash*
 .idea/*
 .vscode/settings.json
 .python-version
+tests/data

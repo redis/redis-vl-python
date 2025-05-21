@@ -6,3 +6,6 @@ DEFAULT_REQUIRED_MODULES = [
 
 # default tag separator
 REDIS_TAG_SEPARATOR = ","
+
+
+REDIS_URL_ENV_VAR = "REDIS_URL"

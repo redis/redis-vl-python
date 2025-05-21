@@ -1,10 +1,9 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Mapping, Optional, Type, Union
 
 import redis.commands.search.reducers as reducers
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from redis import Redis
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
@@ -22,6 +21,7 @@ from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
+from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, model_to_dict, scan_by_pattern
 from redisvl.utils.vectorize.base import BaseVectorizer
@@ -53,7 +53,7 @@ class SemanticRouter(BaseModel):
         routes: List[Route],
         vectorizer: Optional[BaseVectorizer] = None,
         routing_config: Optional[RoutingConfig] = None,
-        redis_client: Optional[Redis] = None,
+        redis_client: Optional[SyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         connection_kwargs: Dict[str, Any] = {},
@@ -66,7 +66,7 @@ class SemanticRouter(BaseModel):
             routes (List[Route]): List of Route objects.
             vectorizer (BaseVectorizer, optional): The vectorizer used to embed route references. Defaults to default HFTextVectorizer.
             routing_config (RoutingConfig, optional): Configuration for routing behavior. Defaults to the default RoutingConfig.
-            redis_client (Optional[Redis], optional): Redis client for connection. Defaults to None.
+            redis_client (Optional[SyncRedisClient], optional): Redis client for connection. Defaults to None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             overwrite (bool, optional): Whether to overwrite existing index. Defaults to False.
             connection_kwargs (Dict[str, Any]): The connection arguments
@@ -113,7 +113,7 @@ class SemanticRouter(BaseModel):
     def from_existing(
         cls,
         name: str,
-        redis_client: Optional[Redis] = None,
+        redis_client: Optional[SyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
         **kwargs,
     ) -> "SemanticRouter":
@@ -130,8 +130,14 @@ class SemanticRouter(BaseModel):
             raise RedisModuleVersionError(
                 f"Loading from existing index failed. {str(e)}"
             )
+        if redis_client is None:
+            raise ValueError(
+                "Creating Redis client failed. Please check the redis_url and connection_kwargs."
+            )
 
-        router_dict = redis_client.json().get(f"{name}:route_config")  # type: ignore
+        router_dict = redis_client.json().get(f"{name}:route_config")
+        if not isinstance(router_dict, dict):
+            raise ValueError(f"No valid router config found for {name}")
         return cls.from_dict(
             router_dict, redis_url=redis_url, redis_client=redis_client
         )
@@ -139,7 +145,7 @@ class SemanticRouter(BaseModel):
     @deprecated_argument("dtype")
     def _initialize_index(
         self,
-        redis_client: Optional[Redis] = None,
+        redis_client: Optional[SyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         dtype: str = "float32",
@@ -300,9 +306,10 @@ class SemanticRouter(BaseModel):
         aggregate_request = (
             AggregateRequest(aggregate_query)
             .group_by(
-                "@route_name", aggregation_func("vector_distance").alias("distance")
+                "@route_name",  # type: ignore
+                aggregation_func("vector_distance").alias("distance"),
             )
-            .sort_by("@distance", max=max_k)
+            .sort_by("@distance", max=max_k)  # type: ignore
             .dialect(2)
         )
 
