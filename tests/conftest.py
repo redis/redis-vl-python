@@ -57,7 +57,11 @@ def redis_container(worker_id):
 @pytest.fixture(scope="session")
 def redis_cluster_container(worker_id):
     project_name = f"redis_test_cluster_{worker_id}"
-    compose_file = "tests/cluster-compose.yml"
+    # Use cwd if not running in GitHub Actions
+    pwd = os.getcwd()
+    compose_file = os.path.join(
+        os.environ.get("GITHUB_WORKSPACE", pwd), "tests", "cluster-compose.yml"
+    )
     os.environ["COMPOSE_PROJECT_NAME"] = (
         project_name  # For docker compose to pick it up if needed
     )
