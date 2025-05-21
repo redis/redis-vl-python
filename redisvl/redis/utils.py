@@ -259,7 +259,7 @@ def cluster_search(
     client: Search,
     query: Union[str, Query],
     query_params: Optional[Dict[str, Union[str, int, float, bytes]]] = None,
-) -> Result | Pipeline | ProfileInformation:
+) -> Union[Result, Pipeline, ProfileInformation]:
     args, query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
@@ -282,7 +282,7 @@ async def async_cluster_search(
     client: AsyncSearch,
     query: Union[str, Query],
     query_params: Optional[Dict[str, Union[str, int, float, bytes]]] = None,
-) -> Result | Pipeline | ProfileInformation:
+) -> Union[Result, Pipeline, ProfileInformation]:
     args, query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
