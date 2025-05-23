@@ -1,6 +1,6 @@
+import logging
 import os
 import subprocess
-import time
 from datetime import datetime, timezone
 
 import pytest
@@ -10,6 +10,8 @@ from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.vectorize import HFTextVectorizer
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -94,14 +96,18 @@ def redis_cluster_container(worker_id):
         )
 
         if result.returncode != 0:
-            print(f"Docker Compose up failed with exit code {result.returncode}")
+            logger.error(f"Docker Compose up failed with exit code {result.returncode}")
             if result.stdout:
-                print(f"STDOUT: {result.stdout.decode('utf-8', errors='replace')}")
+                logger.error(
+                    f"STDOUT: {result.stdout.decode('utf-8', errors='replace')}"
+                )
             if result.stderr:
-                print(f"STDERR: {result.stderr.decode('utf-8', errors='replace')}")
+                logger.error(
+                    f"STDERR: {result.stderr.decode('utf-8', errors='replace')}"
+                )
 
             # Try to get logs for more details
-            print("Attempting to fetch container logs...")
+            logger.info("Attempting to fetch container logs...")
             try:
                 logs_result = subprocess.run(
                     [
@@ -116,11 +122,11 @@ def redis_cluster_container(worker_id):
                     capture_output=True,
                     text=True,
                 )
-                print("Docker Compose logs:\n", logs_result.stdout)
+                logger.info("Docker Compose logs:\n", logs_result.stdout)
                 if logs_result.stderr:
-                    print("Docker Compose logs stderr:\n", logs_result.stderr)
+                    logger.error("Docker Compose logs stderr:\n", logs_result.stderr)
             except Exception as log_e:
-                print(f"Failed to get Docker Compose logs: {repr(log_e)}")
+                logger.error(f"Failed to get Docker Compose logs: {repr(log_e)}")
 
             # Now raise the exception with the original result
             raise subprocess.CalledProcessError(
@@ -150,7 +156,7 @@ def redis_cluster_container(worker_id):
                 capture_output=True,
             )
         except Exception as e:
-            print(f"Error during cleanup: {repr(e)}")
+            logger.error(f"Error during cleanup: {repr(e)}")
 
 
 @pytest.fixture(scope="session")
