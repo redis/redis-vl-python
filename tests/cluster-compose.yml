@@ -132,28 +132,28 @@ services:
         NODES="redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 redis-node-4:7004 redis-node-5:7005 redis-node-6:7006"
 
         echo "Force resetting all nodes before cluster creation..."
-        for NODE_ADDR_PORT in $NODES; do
-          NODE_HOST=$(echo $NODE_ADDR_PORT | cut -d':' -f1)
-          NODE_PORT=$(echo $NODE_ADDR_PORT | cut -d':' -f2)
-          echo "Resetting node $NODE_HOST:$NODE_PORT"
+        for NODE_ADDR_PORT in $$NODES; do
+          NODE_HOST=$$(echo $$NODE_ADDR_PORT | cut -d':' -f1)
+          NODE_PORT=$$(echo $$NODE_ADDR_PORT | cut -d':' -f2)
+          echo "Resetting node $$NODE_HOST:$$NODE_PORT"
           
           # Wait for node to be responsive
           retry_count=0
           max_retries=10
-          until redis-cli -h $NODE_HOST -p $NODE_PORT ping 2>/dev/null | grep -q PONG; do
-            retry_count=$((retry_count+1))
-            if [ "$retry_count" -gt "$max_retries" ]; then
-              echo "Error: Node $NODE_HOST:$NODE_PORT did not respond after $max_retries retries."
+          until redis-cli -h $$NODE_HOST -p $$NODE_PORT ping 2>/dev/null | grep -q PONG; do
+            retry_count=$$((retry_count+1))
+            if [ "$$retry_count" -gt "$$max_retries" ]; then
+              echo "Error: Node $$NODE_HOST:$$NODE_PORT did not respond after $$max_retries retries."
               exit 1 # Exit if a node is unresponsive
             fi
-            echo "Waiting for $NODE_HOST:$NODE_PORT to respond (attempt $retry_count/$max_retries)..."
+            echo "Waiting for $$NODE_HOST:$$NODE_PORT to respond (attempt $$retry_count/$$max_retries)..."
             sleep 3 # Increased sleep between pings
           done
           
-          echo "Flushing and hard resetting $NODE_HOST:$NODE_PORT"
-          redis-cli -h $NODE_HOST -p $NODE_PORT FLUSHALL || echo "Warning: FLUSHALL failed on $NODE_HOST:$NODE_PORT, attempting to continue..."
+          echo "Flushing and hard resetting $$NODE_HOST:$$NODE_PORT"
+          redis-cli -h $$NODE_HOST -p $$NODE_PORT FLUSHALL || echo "Warning: FLUSHALL failed on $$NODE_HOST:$$NODE_PORT, attempting to continue..."
           # Use CLUSTER RESET HARD
-          redis-cli -h $NODE_HOST -p $NODE_PORT CLUSTER RESET HARD || echo "Warning: CLUSTER RESET HARD failed on $NODE_HOST:$NODE_PORT, attempting to continue..."
+          redis-cli -h $$NODE_HOST -p $$NODE_PORT CLUSTER RESET HARD || echo "Warning: CLUSTER RESET HARD failed on $$NODE_HOST:$$NODE_PORT, attempting to continue..."
         done
         echo "Node reset complete."
         sleep 5 # Give a moment for resets to settle
@@ -162,29 +162,29 @@ services:
         ATTEMPT=1
         CLUSTER_CREATED=false
 
-        while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-          echo "Attempting to create Redis cluster (Attempt $ATTEMPT/$MAX_ATTEMPTS)..."
-          output=$(echo yes | redis-cli --cluster create \
-            $NODES \
+        while [ $$ATTEMPT -le $$MAX_ATTEMPTS ]; do
+          echo "Attempting to create Redis cluster (Attempt $$ATTEMPT/$$MAX_ATTEMPTS)..."
+          output=$$(echo yes | redis-cli --cluster create \
+            $$NODES \
             --cluster-replicas 1 2>&1)
 
-          if echo "$output" | grep -q "\[OK\] All 16384 slots covered."; then
+          if echo "$$output" | grep -q "\[OK\] All 16384 slots covered."; then
             echo "Cluster created successfully."
             CLUSTER_CREATED=true
             break
           else
-            echo "Failed to create cluster on attempt $ATTEMPT."
-            echo "Output from redis-cli: $output"
-            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+            echo "Failed to create cluster on attempt $$ATTEMPT."
+            echo "Output from redis-cli: $$output"
+            if [ $$ATTEMPT -lt $$MAX_ATTEMPTS ]; then
               echo "Retrying in 10 seconds..."
               sleep 10
             fi
           fi
-          ATTEMPT=$((ATTEMPT + 1))
+          ATTEMPT=$$((ATTEMPT + 1))
         done
 
-        if [ "$CLUSTER_CREATED" = "false" ]; then
-          echo "Failed to create cluster after $MAX_ATTEMPTS attempts. Exiting."
+        if [ "$$CLUSTER_CREATED" = "false" ]; then
+          echo "Failed to create cluster after $$MAX_ATTEMPTS attempts. Exiting."
           exit 1
         fi
 
