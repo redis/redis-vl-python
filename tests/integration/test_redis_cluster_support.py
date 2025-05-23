@@ -14,6 +14,7 @@ from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema import IndexSchema
 
 
+@pytest.mark.requires_cluster
 def test_sync_client_validation(redis_url, redis_cluster_url):
     """Test validation of sync Redis client types."""
     # Test regular Redis client
@@ -25,6 +26,7 @@ def test_sync_client_validation(redis_url, redis_cluster_url):
     RedisConnectionFactory.validate_sync_redis(cluster_client)
 
 
+@pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_async_client_validation(redis_cluster_url):
     """Test validation of async Redis client types."""
@@ -34,6 +36,7 @@ async def test_async_client_validation(redis_cluster_url):
     await RedisConnectionFactory.validate_async_redis(async_cluster_client)
 
 
+@pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_sync_to_async_conversion_rejects_cluster_client(redis_cluster_url):
     """Test that sync-to-async conversion rejects RedisCluster clients."""
@@ -44,6 +47,7 @@ async def test_sync_to_async_conversion_rejects_cluster_client(redis_cluster_url
         RedisConnectionFactory.sync_to_async_redis(cluster_client)
 
 
+@pytest.mark.requires_cluster
 def test_search_index_cluster_client(redis_cluster_url):
     """Test that SearchIndex correctly accepts RedisCluster clients."""
     # Create a simple schema
@@ -66,6 +70,7 @@ def test_search_index_cluster_client(redis_cluster_url):
     index.delete(drop=True)
 
 
+@pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_async_search_index_client(redis_cluster_url):
     """Test that AsyncSearchIndex correctly handles AsyncRedis clients."""
@@ -94,6 +99,7 @@ async def test_async_search_index_client(redis_cluster_url):
         await cluster_client.aclose()
 
 
+@pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_embeddings_cache_cluster_async(redis_cluster_url):
     """Test that EmbeddingsCache correctly handles AsyncRedisCluster clients."""
@@ -117,6 +123,7 @@ async def test_embeddings_cache_cluster_async(redis_cluster_url):
         await cluster_client.aclose()
 
 
+@pytest.mark.requires_cluster
 def test_embeddings_cache_cluster_sync(redis_cluster_url):
     """Test that EmbeddingsCache correctly handles RedisCluster clients."""
     cluster_client = RedisCluster.from_url(redis_cluster_url)
@@ -147,6 +154,7 @@ def test_embeddings_cache_cluster_sync(redis_cluster_url):
     cache.clear()
 
 
+@pytest.mark.requires_cluster
 def test_semantic_router_cluster_client(redis_cluster_url, hf_vectorizer):
     """Test that SemanticRouter works correctly with RedisCluster clients."""
     routes = [
