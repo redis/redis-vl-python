@@ -335,22 +335,23 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    if config.getoption("--run-api-tests"):
-        return
-    if config.getoption("--run-cluster-tests"):
-        return
+    # Check each flag independently
+    run_api_tests = config.getoption("--run-api-tests")
+    run_cluster_tests = config.getoption("--run-cluster-tests")
 
-    # Otherwise skip all tests requiring an API key
+    # Create skip markers
     skip_api = pytest.mark.skip(
         reason="Skipping test because API keys are not provided. Use --run-api-tests to run these tests."
     )
     skip_cluster = pytest.mark.skip(
         reason="Skipping test because Redis cluster is not available. Use --run-cluster-tests to run these tests."
     )
+
+    # Apply skip markers independently based on flags
     for item in items:
-        if item.get_closest_marker("requires_api_keys"):
+        if item.get_closest_marker("requires_api_keys") and not run_api_tests:
             item.add_marker(skip_api)
-        if item.get_closest_marker("requires_cluster"):
+        if item.get_closest_marker("requires_cluster") and not run_cluster_tests:
             item.add_marker(skip_cluster)
 
 
