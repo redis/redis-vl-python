@@ -49,9 +49,11 @@ from redis.commands.helpers import get_protocol_version  # type: ignore
 
 # Redis 5.x compatibility (6 fixed the import path)
 if redis_version.startswith("5"):
-    from redis.commands.search.index_definition import IndexDefinition
+    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped]
+        IndexDefinition,
+    )
 else:
-    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped, no-redef]
+    from redis.commands.search.index_definition import (  # type: ignore[no-redef]
         IndexDefinition,
     )
 
