@@ -17,7 +17,14 @@ from pydantic import BaseModel, ValidationError
 # Add imports for Pipeline types
 from redis.asyncio.client import Pipeline as AsyncPipeline
 from redis.asyncio.cluster import ClusterPipeline as AsyncClusterPipeline
-from redis.commands.search.index_definition import IndexType
+
+# Redis 5.x compatibility (6 fixed the import path)
+try:
+    from redis.commands.search.index_definition import (  # type: ignore[import-untyped]
+        IndexType,
+    )
+except ModuleNotFoundError:
+    from redis.commands.search.indexDefinition import IndexType
 
 from redisvl.exceptions import SchemaValidationError
 from redisvl.redis.utils import convert_bytes
