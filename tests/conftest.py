@@ -124,7 +124,7 @@ def redis_cluster_container(worker_id):
                 )
                 logger.info("Docker Compose logs:\n%s", logs_result.stdout)
                 if logs_result.stderr:
-                    logger.error("Docker Compose logs stderr:\n%s", logs_result.stderr)
+                    logger.error("Docker Compose logs stderr: \n%s", logs_result.stderr)
             except Exception as log_e:
                 logger.error(f"Failed to get Docker Compose logs: {repr(log_e)}")
 
