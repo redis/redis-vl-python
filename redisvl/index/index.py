@@ -45,7 +45,14 @@ if TYPE_CHECKING:
 
 from redis.client import NEVER_DECODE
 from redis.commands.helpers import get_protocol_version  # type: ignore
-from redis.commands.search.index_definition import IndexDefinition
+
+# Redis 5.x compatibility (6 fixed the import path)
+try:
+    from redis.commands.search.index_definition import (  # type: ignore[import-untyped]
+        IndexDefinition,
+    )
+except ModuleNotFoundError:
+    from redis.commands.search.indexDefinition import IndexDefinition
 
 # Need Result outside TYPE_CHECKING for cast
 from redis.commands.search.result import Result

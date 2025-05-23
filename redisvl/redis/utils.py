@@ -21,8 +21,15 @@ from redis.commands.search.commands import (
     TEMPORARY,
 )
 from redis.commands.search.field import Field
-from redis.commands.search.index_definition import IndexDefinition
-from redis.commands.search.profile_information import ProfileInformation
+
+# Redis 5.x compatibility (6 fixed the import path)
+try:
+    from redis.commands.search.index_definition import (  # type: ignore[import-untyped]
+        IndexDefinition,
+    )
+except ModuleNotFoundError:
+    from redis.commands.search.indexDefinition import IndexDefinition
+
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
@@ -255,11 +262,12 @@ async def async_cluster_create_index(
     return await default_node.execute_command(*args)
 
 
+# TODO: The return type is incorrect because 5.x doesn't have "ProfileInformation"
 def cluster_search(
     client: Search,
     query: Union[str, Query],
     query_params: Optional[Dict[str, Union[str, int, float, bytes]]] = None,
-) -> Union[Result, Pipeline, ProfileInformation]:
+) -> Union[Result, Pipeline, Any]:  # type: ignore[type-arg]
     args, query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
@@ -278,11 +286,12 @@ def cluster_search(
     )
 
 
+# TODO: The return type is incorrect because 5.x doesn't have "ProfileInformation"
 async def async_cluster_search(
     client: AsyncSearch,
     query: Union[str, Query],
     query_params: Optional[Dict[str, Union[str, int, float, bytes]]] = None,
-) -> Union[Result, Pipeline, ProfileInformation]:
+) -> Union[Result, Pipeline, Any]:  # type: ignore[type-arg]
     args, query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 

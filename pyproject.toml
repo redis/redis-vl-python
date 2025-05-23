@@ -26,7 +26,7 @@ numpy = [
   { version = ">=1.26.0,<3", python = ">=3.12" },
 ]
 pyyaml = ">=5.4,<7.0"
-redis = "^6.0"
+redis = ">=5.0,<7.0"
 pydantic = "^2"
 tenacity = ">=8.2.2"
 ml-dtypes = ">=0.4.0,<1.0.0"
