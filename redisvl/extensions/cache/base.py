@@ -216,7 +216,14 @@ class BaseCache:
                 await client.delete(*keys)
             if cursor_int == 0:  # Redis returns 0 when scan is complete
                 break
-            cursor = cursor_int  # Update cursor for next iteration
+            # Cluster returns a dict of cursor values. We need to stop if these all
+            # come back as 0.
+            elif isinstance(cursor_int, Mapping):
+                cursor_values = list(cursor_int.values())
+                if all(v == 0 for v in cursor_values):
+                    break
+            else:
+                cursor = cursor_int  # Update cursor for next iteration
 
     def disconnect(self) -> None:
         """Disconnect from Redis."""

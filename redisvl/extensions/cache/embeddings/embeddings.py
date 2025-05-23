@@ -47,6 +47,7 @@ class EmbeddingsCache(BaseCache):
             name=name,
             ttl=ttl,
             redis_client=redis_client,
+            async_redis_client=async_redis_client,
             redis_url=redis_url,
             connection_kwargs=connection_kwargs,
         )

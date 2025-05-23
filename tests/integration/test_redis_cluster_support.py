@@ -83,29 +83,38 @@ async def test_async_search_index_client(redis_cluster_url):
     # Test with AsyncRedis client
     cluster_client = AsyncRedisCluster.from_url(redis_cluster_url)
     index = AsyncSearchIndex(schema=schema, redis_client=cluster_client)
-    await index.create(overwrite=True)
-    await index.load([{"name": "async_test", "age": 25}])
-    results = await index.query(TextQuery("async_test", "name"))
-    assert results[0]["name"] == "async_test"
-    await index.delete(drop=True)
+    try:
+        await index.create(overwrite=True)
+        await index.load([{"name": "async_test", "age": 25}])
+        results = await index.query(TextQuery("async_test", "name"))
+        assert results[0]["name"] == "async_test"
+        await index.delete(drop=True)
+    finally:
+        # Manually close the cluster client to prevent connection leaks
+        await cluster_client.aclose()
 
 
-def test_embeddings_cache_cluster_async(redis_cluster_url):
+@pytest.mark.asyncio
+async def test_embeddings_cache_cluster_async(redis_cluster_url):
     """Test that EmbeddingsCache correctly handles AsyncRedisCluster clients."""
     cluster_client = RedisConnectionFactory.get_async_redis_cluster_connection(
         redis_cluster_url
     )
     cache = EmbeddingsCache(async_redis_client=cluster_client)
 
-    cache.set(
-        text="hey",
-        model_name="test",
-        embedding=[1, 2, 3],
-    )
-    result = cache.get("hey", "test")
-    assert result is not None
-    assert result["embedding"] == [1, 2, 3]
-    cache.clear()
+    try:
+        await cache.aset(
+            text="hey",
+            model_name="test",
+            embedding=[1, 2, 3],
+        )
+        result = await cache.aget("hey", "test")
+        assert result is not None
+        assert result["embedding"] == [1, 2, 3]
+        await cache.aclear()
+    finally:
+        # Manually close the cluster client to prevent connection leaks
+        await cluster_client.aclose()
 
 
 def test_embeddings_cache_cluster_sync(redis_cluster_url):
