@@ -1,9 +1,10 @@
 import hashlib
 import itertools
 import time
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
 from redis import RedisCluster
+from redis import __version__ as redis_version
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.client import NEVER_DECODE, Pipeline
 from redis.commands.helpers import get_protocol_version
@@ -23,12 +24,12 @@ from redis.commands.search.commands import (
 from redis.commands.search.field import Field
 
 # Redis 5.x compatibility (6 fixed the import path)
-try:
-    from redis.commands.search.index_definition import (  # type: ignore[import-untyped]
+if redis_version.startswith("5"):
+    from redis.commands.search.index_definition import IndexDefinition
+else:
+    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped, no-redef]
         IndexDefinition,
     )
-except ModuleNotFoundError:
-    from redis.commands.search.indexDefinition import IndexDefinition
 
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
