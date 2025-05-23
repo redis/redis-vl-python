@@ -21,9 +21,13 @@ from redis.asyncio.cluster import ClusterPipeline as AsyncClusterPipeline
 
 # Redis 5.x compatibility (6 fixed the import path)
 if redis_version.startswith("5"):
-    from redis.commands.search.index_definition import IndexType
+    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped]
+        IndexType,
+    )
 else:
-    from redis.commands.search.indexDefinition import IndexType  # type: ignore[import-untyped, no-redef]
+    from redis.commands.search.index_definition import (  # type: ignore[no-redef]
+        IndexType,
+    )
 
 from redisvl.exceptions import SchemaValidationError
 from redisvl.redis.utils import convert_bytes
