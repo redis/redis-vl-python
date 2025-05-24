@@ -137,7 +137,9 @@ class SemanticRouter(BaseModel):
 
         router_dict = redis_client.json().get(f"{name}:route_config")
         if not isinstance(router_dict, dict):
-            raise ValueError(f"No valid router config found for {name}")
+            raise ValueError(
+                f"No valid router config found for {name}. Received: {router_dict!r}"
+            )
         return cls.from_dict(
             router_dict, redis_url=redis_url, redis_client=redis_client
         )

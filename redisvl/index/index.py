@@ -20,6 +20,8 @@ from typing import (
     cast,
 )
 
+import redis.exceptions
+
 # Add missing imports
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -28,9 +30,11 @@ from redis.cluster import RedisCluster
 
 from redisvl.query.query import VectorQuery
 from redisvl.redis.utils import (
+    _keys_share_hash_tag,
     async_cluster_create_index,
     async_cluster_search,
     cluster_create_index,
+    cluster_search,
     convert_bytes,
     make_dict,
 )
@@ -584,9 +588,15 @@ class SearchIndex(BaseSearchIndex):
                     fields=redis_fields,
                     definition=definition,
                 )
-        except:
+        except redis.exceptions.RedisError as e:
+            raise RedisSearchError(
+                f"Failed to create index '{self.name}' on Redis: {str(e)}"
+            ) from e
+        except Exception as e:
             logger.exception("Error while trying to create the index")
-            raise
+            raise RedisSearchError(
+                f"Unexpected error creating index '{self.name}': {str(e)}"
+            ) from e
 
     def delete(self, drop: bool = True):
         """Delete the search index while optionally dropping all keys associated
@@ -600,11 +610,19 @@ class SearchIndex(BaseSearchIndex):
             redis.exceptions.ResponseError: If the index does not exist.
         """
         try:
-            # redis-py doesn't know how to send this command to the right node
-            # in a Redis Cluster, so we need to do it manually
-            cmd_args = ["FT.DROPINDEX", self.schema.index.name]
-            if drop:
-                cmd_args.append("DD")
+            # For Redis Cluster with drop=True, we need to handle key deletion manually
+            # to avoid cross-slot errors since we control the keys opaquely
+            if drop and isinstance(self._redis_client, RedisCluster):
+                # First clear all keys manually (handles cluster compatibility)
+                self.clear()
+                # Then drop the index without the DD flag
+                cmd_args = ["FT.DROPINDEX", self.schema.index.name]
+            else:
+                # Standard approach for non-cluster or when not dropping keys
+                cmd_args = ["FT.DROPINDEX", self.schema.index.name]
+                if drop:
+                    cmd_args.append("DD")
+
             if isinstance(self._redis_client, RedisCluster):
                 target_nodes = [self._redis_client.get_default_node()]
                 self._redis_client.execute_command(*cmd_args, target_nodes=target_nodes)
@@ -636,9 +654,12 @@ class SearchIndex(BaseSearchIndex):
                 if is_cluster:
                     records_deleted_in_batch = 0
                     for key_to_delete in batch_keys:
-                        records_deleted_in_batch += cast(
-                            int, client.delete(key_to_delete)
-                        )
+                        try:
+                            records_deleted_in_batch += cast(
+                                int, client.delete(key_to_delete)
+                            )
+                        except redis.exceptions.RedisError as e:
+                            logger.warning(f"Failed to delete key {key_to_delete}: {e}")
                     total_records_deleted += records_deleted_in_batch
                 else:
                     record_deleted = cast(int, client.delete(*batch_keys))
@@ -680,6 +701,13 @@ class SearchIndex(BaseSearchIndex):
             if not ids:
                 return 0
             keys = [self.key(id) for id in ids]
+            # Check for cluster compatibility
+            if isinstance(
+                self._redis_client, RedisCluster
+            ) and not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
             return self._redis_client.delete(*keys)  # type: ignore
         else:
             key = self.key(ids)
@@ -805,13 +833,19 @@ class SearchIndex(BaseSearchIndex):
             return self._redis_client.ft(self.schema.index.name).aggregate(
                 *args, **kwargs
             )
-        except Exception as e:
+        except redis.exceptions.RedisError as e:
+            if "CROSSSLOT" in str(e):
+                raise RedisSearchError(
+                    "Cross-slot error during aggregation. Ensure consistent hash tags in your keys."
+                )
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
+        except Exception as e:
+            raise RedisSearchError(
+                f"Unexpected error while aggregating: {str(e)}"
+            ) from e
 
     def batch_search(
-        self,
-        queries: List[SearchParams],
-        batch_size: int = 10,
+        self, queries: List[SearchParams], batch_size: int = 10
     ) -> List["Result"]:
         """Perform a search against the index for multiple queries.
 
@@ -823,14 +857,14 @@ class SearchIndex(BaseSearchIndex):
         to avoid cross-slot operations.
 
         Args:
-            queries (List[SearchParams]): The queries to search for. batch_size
-            (int, optional): The number of queries to search for at a time.
+            queries (List[SearchParams]): The queries to search for.
+            batch_size (int, optional): The number of queries to search for at a time.
                 Defaults to 10.
 
         Returns:
             List[Result]: The search results for each query.
         """
-        all_parsed = []
+        all_results = []
         search = self._redis_client.ft(self.schema.index.name)
         options = {}
         if get_protocol_version(self._redis_client) not in ["3", 3]:
@@ -867,16 +901,16 @@ class SearchIndex(BaseSearchIndex):
                 # for all queries in the batch as the duration for each query
                 duration = (time.time() - st) * 1000.0
 
-                for i, query_results in enumerate(results):
-                    _built_query = batch_built_queries[i]
+                for j, query_results in enumerate(results):
+                    _built_query = batch_built_queries[j]
                     parsed_result = search._parse_search(  # type: ignore
                         query_results,
                         query=_built_query,
                         duration=duration,
                     )
                     # Return a parsed Result object for each query
-                    all_parsed.append(parsed_result)
-        return all_parsed
+                    all_results.append(parsed_result)
+        return all_results
 
     def search(self, *args, **kwargs) -> "Result":
         """Perform a search against the index.
@@ -889,9 +923,25 @@ class SearchIndex(BaseSearchIndex):
             Result: Raw Redis search results.
         """
         try:
-            return self._redis_client.ft(self.schema.index.name).search(*args, **kwargs)  # type: ignore
-        except Exception as e:
+            if isinstance(self._redis_client, RedisCluster):
+                # Use special cluster search for RedisCluster
+                return cluster_search(
+                    self._redis_client.ft(self.schema.index.name),
+                    *args,
+                    **kwargs,  # type: ignore
+                )
+            else:
+                return self._redis_client.ft(self.schema.index.name).search(
+                    *args, **kwargs
+                )  # type: ignore
+        except redis.exceptions.RedisError as e:
+            if "CROSSSLOT" in str(e):
+                raise RedisSearchError(
+                    "Cross-slot error during search. Ensure consistent hash tags in your keys."
+                )
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
+        except Exception as e:
+            raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
@@ -1308,9 +1358,15 @@ class AsyncSearchIndex(BaseSearchIndex):
                     fields=redis_fields,
                     definition=definition,
                 )
-        except Exception:
+        except redis.exceptions.RedisError as e:
+            raise RedisSearchError(
+                f"Failed to create index '{self.name}' on Redis: {str(e)}"
+            ) from e
+        except Exception as e:
             logger.exception("Error while trying to create the index")
-            raise
+            raise RedisSearchError(
+                f"Unexpected error creating index '{self.name}': {str(e)}"
+            ) from e
 
     async def delete(self, drop: bool = True):
         """Delete the search index.
@@ -1324,11 +1380,19 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self._get_client()
         try:
-            # redis-py doesn't know how to send this command to the right node
-            # in a Redis Cluster, so we need to do it manually
-            cmd_args = ["FT.DROPINDEX", self.schema.index.name]
-            if drop:
-                cmd_args.append("DD")
+            # For Redis Cluster with drop=True, we need to handle key deletion manually
+            # to avoid cross-slot errors since we control the keys opaquely
+            if drop and isinstance(client, AsyncRedisCluster):
+                # First clear all keys manually (handles cluster compatibility)
+                await self.clear()
+                # Then drop the index without the DD flag
+                cmd_args = ["FT.DROPINDEX", self.schema.index.name]
+            else:
+                # Standard approach for non-cluster or when not dropping keys
+                cmd_args = ["FT.DROPINDEX", self.schema.index.name]
+                if drop:
+                    cmd_args.append("DD")
+
             if isinstance(client, AsyncRedisCluster):
                 target_nodes = [client.get_default_node()]
                 await client.execute_command(*cmd_args, target_nodes=target_nodes)
@@ -1360,9 +1424,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                 if is_cluster:
                     records_deleted_in_batch = 0
                     for key_to_delete in batch_keys:
-                        records_deleted_in_batch += cast(
-                            int, await client.delete(key_to_delete)
-                        )
+                        try:
+                            records_deleted_in_batch += cast(
+                                int, await client.delete(key_to_delete)
+                            )
+                        except redis.exceptions.RedisError as e:
+                            logger.warning(f"Failed to delete key {key_to_delete}: {e}")
                     total_records_deleted += records_deleted_in_batch
                 else:
                     records_deleted = await client.delete(*batch_keys)
@@ -1406,6 +1473,11 @@ class AsyncSearchIndex(BaseSearchIndex):
             if not ids:
                 return 0
             keys = [self.key(id) for id in ids]
+            # Check for cluster compatibility
+            if isinstance(client, AsyncRedisCluster) and not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
             return await client.delete(*keys)
         else:
             key = self.key(ids)
@@ -1555,27 +1627,45 @@ class AsyncSearchIndex(BaseSearchIndex):
         client = await self._get_client()
         try:
             return await client.ft(self.schema.index.name).aggregate(*args, **kwargs)
-        except Exception as e:
+        except redis.exceptions.RedisError as e:
+            if "CROSSSLOT" in str(e):
+                raise RedisSearchError(
+                    "Cross-slot error during aggregation. Ensure consistent hash tags in your keys."
+                )
             raise RedisSearchError(f"Error while aggregating: {str(e)}") from e
+        except Exception as e:
+            raise RedisSearchError(
+                f"Unexpected error while aggregating: {str(e)}"
+            ) from e
 
     async def batch_search(
         self, queries: List[SearchParams], batch_size: int = 10
     ) -> List["Result"]:
-        """Perform a search against the index for multiple queries.
+        """Asynchronously execute a batch of search queries.
 
-        This method takes a list of queries and returns a list of Result objects
-        for each query. Results are returned in the same order as the queries.
+        This method takes a list of search queries and executes them in batches
+        to improve performance when dealing with multiple queries.
 
         NOTE: Cluster users may need to incorporate hash tags into their query
         to avoid cross-slot operations.
 
         Args:
-            queries (List[SearchParams]): The queries to search for. batch_size
-            (int, optional): The number of queries to search for at a time.
-                Defaults to 10.
+            queries (List[SearchParams]): A list of search queries to execute.
+                Each query can be either a string or a tuple of (query, params).
+            batch_size (int, optional): The number of queries to execute in each
+                batch. Defaults to 10.
 
         Returns:
-            List[Result]: The search results for each query.
+            List[Result]: A list of search results corresponding to each query.
+
+        .. code-block:: python
+
+            queries = [
+                "hello world",
+                ("goodbye world", {"num_results": 5}),
+            ]
+
+            results = await index.batch_search(queries)
         """
         all_results = []
         client = await self._get_client()
@@ -1587,7 +1677,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         for i in range(0, len(queries), batch_size):
             batch_queries = queries[i : i + batch_size]
 
-            # redis-py doesn't support calling `search` in a pipeline,
+            # redis-py doesn't support calling `search` in an async pipeline,
             # so we need to manually execute each command in a pipeline
             # and parse the results
             async with client.pipeline(transaction=False) as pipe:
@@ -1615,8 +1705,8 @@ class AsyncSearchIndex(BaseSearchIndex):
                 # for all queries in the batch as the duration for each query
                 duration = (time.time() - st) * 1000.0
 
-                for i, query_results in enumerate(results):
-                    _built_query = batch_built_queries[i]
+                for j, query_results in enumerate(results):
+                    _built_query = batch_built_queries[j]
                     parsed_result = search._parse_search(  # type: ignore
                         query_results,
                         query=_built_query,
@@ -1627,25 +1717,34 @@ class AsyncSearchIndex(BaseSearchIndex):
         return all_results
 
     async def search(self, *args, **kwargs) -> "Result":
-        """Perform a search on this index.
+        """Perform an async search against the index.
 
-        Wrapper around redis.search.Search that adds the index name
-        to the search query and passes along the rest of the arguments
-        to the redis-py ft.search() method.
+        Wrapper around the search API that adds the index name
+        to the query and passes along the rest of the arguments
+        to the redis-py ft().search() method.
 
         Returns:
             Result: Raw Redis search results.
         """
-        client = await self._get_client()
-        if isinstance(client, AsyncRedisCluster):
-            return await async_cluster_search(
-                client.ft(self.schema.index.name), *args, **kwargs
-            )  # type: ignore
-        else:
-            try:
+        try:
+            client = await self._get_client()
+            if isinstance(client, AsyncRedisCluster):
+                # Use special cluster search for AsyncRedisCluster
+                return await async_cluster_search(
+                    client.ft(self.schema.index.name),
+                    *args,
+                    **kwargs,  # type: ignore
+                )
+            else:
                 return await client.ft(self.schema.index.name).search(*args, **kwargs)  # type: ignore
-            except Exception as e:
-                raise RedisSearchError(f"Error while searching: {str(e)}") from e
+        except redis.exceptions.RedisError as e:
+            if "CROSSSLOT" in str(e):
+                raise RedisSearchError(
+                    "Cross-slot error during search. Ensure consistent hash tags in your keys."
+                )
+            raise RedisSearchError(f"Error while searching: {str(e)}") from e
+        except Exception as e:
+            raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
     async def batch_query(
         self, queries: List[BaseQuery], batch_size: int = 10

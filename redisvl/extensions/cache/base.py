@@ -135,8 +135,9 @@ class BaseCache:
                 url = str(self.redis_kwargs["redis_url"])
                 kwargs = self.redis_kwargs.get("connection_kwargs", {})
                 if not isinstance(kwargs, Mapping):
-                    raise ValueError(
-                        f"connection_kwargs must be a mapping, got {type(kwargs)}"
+                    raise TypeError(
+                        "Expected `connection_kwargs` to be a dictionary (e.g. {'decode_responses': True}), "
+                        f"but got type: {type(kwargs).__name__}"
                     )
                 self._async_redis_client = (
                     RedisConnectionFactory.get_async_redis_connection(url, **kwargs)
