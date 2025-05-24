@@ -90,7 +90,7 @@ jobs:
         python-version: ["3.9", "3.10", 3.12, 3.13] 
         connection: ["hiredis", "plain"]
         redis-py-version: ["5.x", "6.x"]
-        redis-version: ["6.2.6-v9", "latest", "8.0-M03"]
+        redis-version: ["6.2.6-v9", "latest", "8.0.1"]
 
     steps:
       - name: Check out repository
@@ -132,7 +132,7 @@ jobs:
 
       - name: Set Redis image name
         run: |
-          if [[ "${{ matrix.redis-version }}" == "8.0-M03" ]]; then
+          if [[ "${{ matrix.redis-version }}" == "8.0.1" ]]; then
             echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
           else
             echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
