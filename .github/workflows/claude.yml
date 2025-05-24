@@ -47,6 +47,7 @@ jobs:
             Bash(git branch)
             Bash(git tag)
             Bash(git diff)
+            Bash(make:*)
             View
             GlobTool
             GrepTool
