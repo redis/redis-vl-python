@@ -48,6 +48,8 @@ jobs:
             Bash(git tag)
             Bash(git diff)
             Bash(make:*)
+            Bash(pytest:*)
+            Bash(cd:*)
             View
             GlobTool
             GrepTool
