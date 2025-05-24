@@ -35,9 +35,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          # Pass the comment text as the prompt
-          prompt: "${{ github.event.comment.body }}"
-
           # Define which tools Claude can use
           allowed_tools: |
             Bash(git status)
