@@ -50,6 +50,7 @@ jobs:
             Bash(make:*)
             Bash(pytest:*)
             Bash(cd:*)
+            Bash(ls:*)
             View
             GlobTool
             GrepTool
