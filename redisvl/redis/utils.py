@@ -164,7 +164,7 @@ def cluster_create_index(
         args.append(MAXTEXTFIELDS)
     if temporary is not None and isinstance(temporary, int):
         args.append(TEMPORARY)
-        args.append(temporary)
+        args.append(str(temporary))
     if no_term_offsets:
         args.append(NOOFFSETS)
     if no_highlight:
@@ -239,7 +239,7 @@ async def async_cluster_create_index(
         args.append(MAXTEXTFIELDS)
     if temporary is not None and isinstance(temporary, int):
         args.append(TEMPORARY)
-        args.append(temporary)
+        args.append(str(temporary))
     if no_term_offsets:
         args.append(NOOFFSETS)
     if no_highlight:
@@ -313,6 +313,40 @@ async def async_cluster_search(
     return client._parse_results(
         SEARCH_CMD, res, query=query, duration=(time.monotonic() - st) * 1000.0
     )
+
+
+def _extract_hash_tag(key: str) -> str:
+    """Extract hash tag from key. Returns empty string if no hash tag.
+
+    Args:
+        key (str): Redis key that may contain a hash tag.
+
+    Returns:
+        str: The hash tag including braces, or empty string if no hash tag.
+    """
+    start = key.find("{")
+    if start == -1:
+        return ""
+    end = key.find("}", start + 1)
+    if end == -1:
+        return ""
+    return key[start : end + 1]
+
+
+def _keys_share_hash_tag(keys: List[str]) -> bool:
+    """Check if all keys share the same hash tag for Redis Cluster compatibility.
+
+    Args:
+        keys (List[str]): List of Redis keys to check.
+
+    Returns:
+        bool: True if all keys share the same hash tag, False otherwise.
+    """
+    if not keys:
+        return True
+
+    first_tag = _extract_hash_tag(keys[0])
+    return all(_extract_hash_tag(key) == first_tag for key in keys)
 
 
 def is_cluster_url(url: str, **kwargs) -> bool:
