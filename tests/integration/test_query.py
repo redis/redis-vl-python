@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 
 import pytest
@@ -21,9 +22,8 @@ from redisvl.query.filter import (
     Text,
     Timestamp,
 )
+from redisvl.redis.connection import compare_versions
 from redisvl.redis.utils import array_to_buffer
-
-# TODO expand to multiple schema types and sync + async
 
 
 @pytest.fixture
@@ -960,6 +960,14 @@ def missing_fields_index(worker_id, redis_url):
 
     # Create the index
     missing_index.create(overwrite=True)
+
+    # Skip all missing field tests if Redis version doesn't support INDEXMISSING/INDEXEMPTY (requires Redis 7.4+)
+    redis_version = missing_index.client.info()["redis_version"]
+    if not compare_versions(redis_version, "7.4.0"):
+        missing_index.delete(drop=True)  # Clean up before skipping
+        pytest.skip(
+            "INDEXMISSING/INDEXEMPTY features require Redis 7.4+ (RediSearch 2.10+)"
+        )
 
     # Load test data with different missing field scenarios
     test_data = [
