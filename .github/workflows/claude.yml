@@ -51,6 +51,8 @@ jobs:
             Bash(pytest:*)
             Bash(cd:*)
             Bash(ls:*)
+            Bash(make)
+            Bash(make:*)
             View
             GlobTool
             GrepTool
