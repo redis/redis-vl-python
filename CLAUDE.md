@@ -21,6 +21,12 @@ make docs-build       # Build documentation
 make docs-serve       # Serve docs locally
 ```
 
+Pre-commit hooks are also configured, which you should
+run before you commit:
+```bash
+uv run pre-commit run --all-files
+```
+
 ## Important Architectural Patterns
 
 ### Async/Sync Dual Interfaces
