@@ -1,5 +1,3 @@
-from typing import Any, Optional, Tuple
-
 import pytest
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
@@ -219,3 +217,208 @@ def test_create_unknown_field_type():
     with pytest.raises(ValueError) as excinfo:
         FieldFactory.create_field("unknown", "example_field")
     assert "Unknown field type: unknown" in str(excinfo.value)
+
+
+# Tests for new index_missing and index_empty attributes
+def test_field_attributes_index_missing_and_empty():
+    """Test the new index_missing and index_empty field attributes."""
+
+    # Test TextField with both attributes
+    text_field = TextField(
+        name="description",
+        attrs={"index_missing": True, "index_empty": True, "sortable": True},
+    )
+    assert text_field.attrs.index_missing == True
+    assert text_field.attrs.index_empty == True
+    assert text_field.attrs.sortable == True
+
+    # Test TagField with both attributes
+    tag_field = TagField(
+        name="tags",
+        attrs={"index_missing": True, "index_empty": True, "case_sensitive": True},
+    )
+    assert tag_field.attrs.index_missing == True
+    assert tag_field.attrs.index_empty == True
+    assert tag_field.attrs.case_sensitive == True
+
+    # Test NumericField with index_missing only (index_empty not supported)
+    num_field = NumericField(
+        name="price", attrs={"index_missing": True, "sortable": True}
+    )
+    assert num_field.attrs.index_missing == True
+    assert num_field.attrs.sortable == True
+
+    # Test GeoField with index_missing only (index_empty not supported)
+    geo_field = GeoField(name="location", attrs={"index_missing": True})
+    assert geo_field.attrs.index_missing == True
+
+    # Test vector fields with index_missing
+    flat_vector_field = FlatVectorField(
+        name="embedding",
+        attrs={"algorithm": "flat", "dims": 128, "index_missing": True},
+    )
+    assert flat_vector_field.attrs.index_missing == True
+    assert flat_vector_field.attrs.dims == 128
+
+    hnsw_vector_field = HNSWVectorField(
+        name="embedding2",
+        attrs={"algorithm": "hnsw", "dims": 256, "index_missing": True},
+    )
+    assert hnsw_vector_field.attrs.index_missing == True
+    assert hnsw_vector_field.attrs.dims == 256
+
+
+def test_default_index_missing_and_empty_values():
+    """Test that index_missing and index_empty default to False."""
+
+    # Test default values for text field
+    text_field = TextField(name="description")
+    assert text_field.attrs.index_missing == False
+    assert text_field.attrs.index_empty == False
+
+    # Test default values for tag field
+    tag_field = TagField(name="tags")
+    assert tag_field.attrs.index_missing == False
+    assert tag_field.attrs.index_empty == False
+
+    # Test default values for numeric field
+    num_field = NumericField(name="price")
+    assert num_field.attrs.index_missing == False
+
+    # Test default values for geo field
+    geo_field = GeoField(name="location")
+    assert geo_field.attrs.index_missing == False
+
+    # Test default values for vector fields
+    flat_vector_field = FlatVectorField(
+        name="embedding", attrs={"algorithm": "flat", "dims": 128}
+    )
+    assert flat_vector_field.attrs.index_missing == False
+
+    hnsw_vector_field = HNSWVectorField(
+        name="embedding2", attrs={"algorithm": "hnsw", "dims": 256}
+    )
+    assert hnsw_vector_field.attrs.index_missing == False
+
+
+@pytest.mark.parametrize(
+    "field_class,field_name,extra_attrs,supports_index_empty",
+    [
+        (TextField, "text_field", {"weight": 2.0}, True),
+        (TagField, "tag_field", {"separator": "|"}, True),
+        (NumericField, "num_field", {"sortable": True}, False),
+        (GeoField, "geo_field", {"sortable": True}, False),
+    ],
+)
+def test_redis_field_creation_with_index_attributes(
+    field_class, field_name, extra_attrs, supports_index_empty
+):
+    """Test that index_missing and index_empty are properly passed to Redis field objects."""
+
+    # Test with index_missing=True
+    attrs = {"index_missing": True}
+    attrs.update(extra_attrs)
+
+    if supports_index_empty:
+        attrs["index_empty"] = True
+
+    field = field_class(name=field_name, attrs=attrs)
+    redis_field = field.as_redis_field()
+
+    # Check that the field was created successfully
+    assert redis_field.name == field_name
+
+    # For Redis fields, these attributes would be passed as keyword arguments
+    # We can't directly inspect them, but we can verify the field creation doesn't fail
+
+
+def test_vector_fields_redis_creation_with_index_missing():
+    """Test that vector fields properly handle index_missing in Redis field creation."""
+
+    # Test FlatVectorField with index_missing
+    flat_field = FlatVectorField(
+        name="flat_embedding",
+        attrs={
+            "algorithm": "flat",
+            "dims": 128,
+            "index_missing": True,
+            "block_size": 100,
+        },
+    )
+    redis_field = flat_field.as_redis_field()
+    assert isinstance(redis_field, RedisVectorField)
+    assert redis_field.name == "flat_embedding"
+
+    # Test HNSWVectorField with index_missing
+    hnsw_field = HNSWVectorField(
+        name="hnsw_embedding",
+        attrs={"algorithm": "hnsw", "dims": 256, "index_missing": True, "m": 24},
+    )
+    redis_field = hnsw_field.as_redis_field()
+    assert isinstance(redis_field, RedisVectorField)
+    assert redis_field.name == "hnsw_embedding"
+
+
+def test_vector_field_data_includes_index_missing():
+    """Test that vector field field_data includes INDEXMISSING when enabled."""
+
+    # Test with index_missing=True
+    flat_field_with_missing = FlatVectorField(
+        name="embedding",
+        attrs={"algorithm": "flat", "dims": 128, "index_missing": True},
+    )
+    field_data = flat_field_with_missing.attrs.field_data
+    assert "INDEXMISSING" in field_data
+    assert field_data["INDEXMISSING"] == True
+
+    # Test with index_missing=False (default)
+    flat_field_without_missing = FlatVectorField(
+        name="embedding", attrs={"algorithm": "flat", "dims": 128}
+    )
+    field_data = flat_field_without_missing.attrs.field_data
+    assert "INDEXMISSING" not in field_data
+
+    # Test HNSW field with index_missing=True
+    hnsw_field_with_missing = HNSWVectorField(
+        name="embedding",
+        attrs={"algorithm": "hnsw", "dims": 256, "index_missing": True},
+    )
+    field_data = hnsw_field_with_missing.attrs.field_data
+    assert "INDEXMISSING" in field_data
+    assert field_data["INDEXMISSING"] == True
+
+
+def test_field_factory_with_new_attributes():
+    """Test FieldFactory.create_field with the new index attributes."""
+
+    # Test creating TextField with new attributes
+    text_field = FieldFactory.create_field(
+        "text", "description", attrs={"index_missing": True, "index_empty": True}
+    )
+    assert isinstance(text_field, TextField)
+    assert text_field.attrs.index_missing == True
+    assert text_field.attrs.index_empty == True
+
+    # Test creating TagField with new attributes
+    tag_field = FieldFactory.create_field(
+        "tag", "categories", attrs={"index_missing": True, "index_empty": True}
+    )
+    assert isinstance(tag_field, TagField)
+    assert tag_field.attrs.index_missing == True
+    assert tag_field.attrs.index_empty == True
+
+    # Test creating NumericField with index_missing
+    num_field = FieldFactory.create_field(
+        "numeric", "price", attrs={"index_missing": True}
+    )
+    assert isinstance(num_field, NumericField)
+    assert num_field.attrs.index_missing == True
+
+    # Test creating vector field with index_missing
+    vector_field = FieldFactory.create_field(
+        "vector",
+        "embedding",
+        attrs={"algorithm": "flat", "dims": 128, "index_missing": True},
+    )
+    assert isinstance(vector_field, FlatVectorField)
+    assert vector_field.attrs.index_missing == True

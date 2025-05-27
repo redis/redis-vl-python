@@ -45,7 +45,8 @@ def model_to_dict(model: BaseModel) -> Dict[str, Any]:
         else:
             return item
 
-    serialized_data = model.model_dump(exclude_none=True)
+    # Use exclude_defaults=False to preserve all field attributes including new ones
+    serialized_data = model.model_dump(exclude_none=True, exclude_defaults=False)
     for key, value in serialized_data.items():
         serialized_data[key] = serialize_item(value)
     return serialized_data
