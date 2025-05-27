@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -144,13 +145,14 @@ def sorted_range_query():
 
 @pytest.fixture
 def index(sample_data, redis_url, worker_id):
+    unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID for brevity
 
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": f"user_index_{worker_id}_{unique_id}",
+                "prefix": f"v1_{worker_id}_{unique_id}",
                 "storage_type": "hash",
             },
             "fields": [
@@ -196,13 +198,14 @@ def index(sample_data, redis_url, worker_id):
 
 @pytest.fixture
 def L2_index(sample_data, redis_url, worker_id):
+    unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID for brevity
 
     # construct a search index from the schema
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": f"L2_index_{worker_id}",
-                "prefix": f"L2_index_{worker_id}",
+                "name": f"L2_index_{worker_id}_{unique_id}",
+                "prefix": f"L2_index_{worker_id}_{unique_id}",
                 "storage_type": "hash",
             },
             "fields": [
