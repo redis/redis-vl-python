@@ -913,23 +913,25 @@ def test_no_key_collision_on_identical_prompts(redis_url, worker_id):
     assert len(filtered_results) == 2
 
 
-def test_create_cache_with_different_vector_types(worker_id):
+def test_create_cache_with_different_vector_types(worker_id, redis_url):
     try:
-        bfloat_cache = SemanticCache(name=f"bfloat_cache_{worker_id}", dtype="bfloat16")
+        bfloat_cache = SemanticCache(
+            name=f"bfloat_cache_{worker_id}", dtype="bfloat16", redis_url=redis_url
+        )
         bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
 
         float16_cache = SemanticCache(
-            name=f"float16_cache_{worker_id}", dtype="float16"
+            name=f"float16_cache_{worker_id}", dtype="float16", redis_url=redis_url
         )
         float16_cache.store("float16 prompt", "float16 response")
 
         float32_cache = SemanticCache(
-            name=f"float32_cache_{worker_id}", dtype="float32"
+            name=f"float32_cache_{worker_id}", dtype="float32", redis_url=redis_url
         )
         float32_cache.store("float32 prompt", "float32 response")
 
         float64_cache = SemanticCache(
-            name=f"float64_cache_{worker_id}", dtype="float64"
+            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
         float64_cache.store("float64 prompt", "float64 response")
 

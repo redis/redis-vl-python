@@ -8,7 +8,6 @@ from redis.exceptions import ConnectionError
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.connection import (
     RedisConnectionFactory,
-    compare_versions,
     convert_index_info_to_schema,
     unpack_redis_modules,
     validate_modules,

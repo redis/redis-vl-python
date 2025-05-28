@@ -17,7 +17,7 @@ from redisvl.utils.utils import deprecated_function
 from redisvl.version import __version__
 
 
-def compare_versions(version1, version2):
+def compare_versions(version1: str, version2: str):
     """
     Compare two Redis version strings numerically.
 

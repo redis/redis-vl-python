@@ -552,23 +552,32 @@ def test_semantic_drop(semantic_history):
     ]
 
 
-def test_different_vector_dtypes():
+def test_different_vector_dtypes(redis_url):
     try:
-        bfloat_sess = SemanticMessageHistory(name="bfloat_history", dtype="bfloat16")
+        bfloat_sess = SemanticMessageHistory(
+            name="bfloat_history", dtype="bfloat16", redis_url=redis_url
+        )
         bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
 
-        float16_sess = SemanticMessageHistory(name="float16_history", dtype="float16")
+        float16_sess = SemanticMessageHistory(
+            name="float16_history", dtype="float16", redis_url=redis_url
+        )
         float16_sess.add_message({"role": "user", "content": "float16 message"})
 
-        float32_sess = SemanticMessageHistory(name="float32_history", dtype="float32")
+        float32_sess = SemanticMessageHistory(
+            name="float32_history", dtype="float32", redis_url=redis_url
+        )
         float32_sess.add_message({"role": "user", "content": "float32 message"})
 
-        float64_sess = SemanticMessageHistory(name="float64_history", dtype="float64")
+        float64_sess = SemanticMessageHistory(
+            name="float64_history", dtype="float64", redis_url=redis_url
+        )
         float64_sess.add_message({"role": "user", "content": "float64 message"})
 
         for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
             sess.set_distance_threshold(0.7)
             assert len(sess.get_relevant("float message")) == 1
+            sess.delete()  # Clean up
     except RedisModuleVersionError:
         pytest.skip("Required Redis modules not available or version too low")
 

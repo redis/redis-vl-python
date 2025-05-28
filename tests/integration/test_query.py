@@ -22,7 +22,6 @@ from redisvl.query.filter import (
     Text,
     Timestamp,
 )
-from redisvl.redis.connection import compare_versions
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
 
@@ -150,7 +149,7 @@ def index(sample_data, redis_url, worker_id):
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": "user_index",
+                "name": f"user_index_{worker_id}",
                 "prefix": f"v1_{worker_id}",
                 "storage_type": "hash",
             },
@@ -202,7 +201,7 @@ def L2_index(sample_data, redis_url, worker_id):
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": "L2_index",
+                "name": f"L2_index_{worker_id}",
                 "prefix": f"L2_index_{worker_id}",
                 "storage_type": "hash",
             },
