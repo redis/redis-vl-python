@@ -13,6 +13,7 @@ from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
+from tests.conftest import skip_if_module_version_error
 
 
 @pytest.fixture
@@ -935,21 +936,24 @@ def test_create_cache_with_different_vector_types(worker_id):
         for cache in [bfloat_cache, float16_cache, float32_cache, float64_cache]:
             cache.set_threshold(0.6)
             assert len(cache.check("float prompt", num_results=5)) == 1
-    except:
-        pytest.skip("Not using a late enough version of Redis")
+    except RedisModuleVersionError:
+        pytest.skip("Required Redis modules not available or version too low")
 
 
 def test_bad_dtype_connecting_to_existing_cache(redis_url, worker_id):
-    try:
-        cache = SemanticCache(
+    def create_cache():
+        return SemanticCache(
             name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
-        same_type = SemanticCache(
+
+    def create_same_type():
+        return SemanticCache(
             name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
-        # under the hood uses from_existing
-    except RedisModuleVersionError:
-        pytest.skip("Not using a late enough version of Redis")
+
+    cache = skip_if_module_version_error(create_cache)
+    same_type = skip_if_module_version_error(create_same_type)
+    # under the hood uses from_existing
 
     with pytest.raises(ValueError):
         bad_type = SemanticCache(
