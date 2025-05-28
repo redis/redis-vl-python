@@ -105,19 +105,27 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         # TODO 'WITHSUFFIXTRIE' is another boolean attr, but is not returned by ft.info
         original = attrs.copy()
         parsed_attrs = {}
-        if "NOSTEM" in attrs:
-            parsed_attrs["no_stem"] = True
-            attrs.remove("NOSTEM")
-        if "CASESENSITIVE" in attrs:
-            parsed_attrs["case_sensitive"] = True
-            attrs.remove("CASESENSITIVE")
-        if "SORTABLE" in attrs:
-            parsed_attrs["sortable"] = True
-            attrs.remove("SORTABLE")
-            if "UNF" in attrs:
-                attrs.remove("UNF")  # UNF present on sortable numeric fields only
+
+        # Handle all boolean attributes first, regardless of position
+        boolean_attrs = {
+            "NOSTEM": "no_stem",
+            "CASESENSITIVE": "case_sensitive",
+            "SORTABLE": "sortable",
+            "INDEXMISSING": "index_missing",
+            "INDEXEMPTY": "index_empty",
+        }
+
+        for redis_attr, python_attr in boolean_attrs.items():
+            if redis_attr in attrs:
+                parsed_attrs[python_attr] = True
+                attrs.remove(redis_attr)
+
+        # Handle UNF which is associated with SORTABLE
+        if "UNF" in attrs:
+            attrs.remove("UNF")  # UNF present on sortable numeric fields only
 
         try:
+            # Parse remaining attributes as key-value pairs starting from index 6
             parsed_attrs.update(
                 {attrs[i].lower(): attrs[i + 1] for i in range(6, len(attrs), 2)}
             )
