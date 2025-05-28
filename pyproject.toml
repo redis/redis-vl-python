@@ -26,7 +26,7 @@ numpy = [
   { version = ">=1.26.0,<3", python = ">=3.12" },
 ]
 pyyaml = ">=5.4,<7.0"
-redis = "^5.0"
+redis = ">=5.0,<7.0"
 pydantic = "^2"
 tenacity = ">=8.2.2"
 ml-dtypes = ">=0.4.0,<1.0.0"
@@ -68,8 +68,8 @@ pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
 pre-commit = "^4.1.0"
 mypy = "1.9.0"
 nbval = "^0.11.0"
-types-redis = "*"
 types-pyyaml = "*"
+types-pyopenssl = "*"
 testcontainers = "^4.3.1"
 cryptography = { version = ">=44.0.1", markers = "python_version > '3.9.1'" }
 

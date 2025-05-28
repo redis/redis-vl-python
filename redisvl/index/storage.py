@@ -1,14 +1,46 @@
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from collections.abc import Collection
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 from pydantic import BaseModel, ValidationError
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
-from redis.commands.search.indexDefinition import IndexType
+from redis import __version__ as redis_version
+
+# Add imports for Pipeline types
+from redis.asyncio.client import Pipeline as AsyncPipeline
+from redis.asyncio.cluster import ClusterPipeline as AsyncClusterPipeline
+
+# Redis 5.x compatibility (6 fixed the import path)
+if redis_version.startswith("5"):
+    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped]
+        IndexType,
+    )
+else:
+    from redis.commands.search.index_definition import (  # type: ignore[no-redef]
+        IndexType,
+    )
 
 from redisvl.exceptions import SchemaValidationError
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema
 from redisvl.schema.validation import validate_object
+from redisvl.types import (
+    AsyncRedisClient,
+    AsyncRedisClientOrPipeline,
+    AsyncRedisPipeline,
+    RedisClientOrPipeline,
+    SyncRedisClient,
+    SyncRedisPipeline,
+)
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import create_ulid
 
@@ -96,51 +128,37 @@ class BaseStorage(BaseModel):
         return obj
 
     @staticmethod
-    def _set(client: Redis, key: str, obj: Dict[str, Any]):
+    def _set(
+        client: RedisClientOrPipeline, key: str, obj: Dict[str, Any]
+    ) -> Union[SyncRedisPipeline, Dict[str, Any]]:
         """Synchronously set the value in Redis for the given key.
 
         Args:
-            client (Redis): The Redis client instance.
+            client (RedisClientOrPipeline): The Redis client instance.
             key (str): The key under which to store the object.
             obj (Dict[str, Any]): The object to store in Redis.
         """
         raise NotImplementedError
 
     @staticmethod
-    async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
-        """Asynchronously set the value in Redis for the given key.
-
-        Args:
-            client (AsyncRedis): The Redis client instance.
-            key (str): The key under which to store the object.
-            obj (Dict[str, Any]): The object to store in Redis.
-        """
+    async def _aset(
+        client: AsyncRedisClientOrPipeline, key: str, obj: Dict[str, Any]
+    ) -> Union[AsyncRedisPipeline, Dict[str, Any]]:
+        """Asynchronously set data in Redis using the provided client or pipeline."""
         raise NotImplementedError
 
     @staticmethod
-    def _get(client: Redis, key: str) -> Dict[str, Any]:
-        """Synchronously get the value from Redis for the given key.
-
-        Args:
-            client (Redis): The Redis client instance.
-            key (str): The key for which to retrieve the object.
-
-        Returns:
-            Dict[str, Any]: The retrieved object from Redis.
-        """
+    def _get(
+        client: RedisClientOrPipeline, key: str
+    ) -> Union[SyncRedisPipeline, Dict[str, Any]]:
+        """Synchronously get data from Redis using the provided client or pipeline."""
         raise NotImplementedError
 
     @staticmethod
-    async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
-        """Asynchronously get the value from Redis for the given key.
-
-        Args:
-            client (AsyncRedis): The Redis client instance.
-            key (str): The key for which to retrieve the object.
-
-        Returns:
-            Dict[str, Any]: The retrieved object from Redis.
-        """
+    async def _aget(
+        client: AsyncRedisClientOrPipeline, key: str
+    ) -> Union[AsyncRedisPipeline, Dict[str, Any]]:
+        """Asynchronously get data from Redis using the provided client or pipeline."""
         raise NotImplementedError
 
     def _validate(self, obj: Dict[str, Any]) -> Dict[str, Any]:
@@ -158,6 +176,29 @@ class BaseStorage(BaseModel):
         """
         # Pass directly to validation function and let any errors propagate
         return validate_object(self.index_schema, obj)
+
+    def _get_keys(
+        self,
+        objects: List[Any],
+        keys: Optional[Iterable[str]] = None,
+        id_field: Optional[str] = None,
+    ) -> List[str]:
+        """Generate Redis keys for a list of objects."""
+        generated_keys: List[str] = []
+        keys_iterator = iter(keys) if keys else None
+
+        if keys and len(list(keys)) != len(objects):
+            raise ValueError(
+                "Length of provided keys does not match the length of objects."
+            )
+
+        for obj in objects:
+            if keys_iterator:
+                key = next(keys_iterator)
+            else:
+                key = self._create_key(obj, id_field)
+            generated_keys.append(key)
+        return generated_keys
 
     def _preprocess_and_validate_objects(
         self,
@@ -220,7 +261,7 @@ class BaseStorage(BaseModel):
 
     def write(
         self,
-        redis_client: Redis,
+        redis_client: SyncRedisClient,
         objects: Iterable[Any],
         id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
@@ -233,7 +274,7 @@ class BaseStorage(BaseModel):
         returns a list of Redis keys written to the database.
 
         Args:
-            redis_client (Redis): A Redis client used for writing data.
+            redis_client (RedisClient): A Redis client used for writing data.
             objects (Iterable[Any]): An iterable of objects to store.
             id_field (Optional[str], optional): Field used as the key for
                 each object. Defaults to None.
@@ -295,7 +336,7 @@ class BaseStorage(BaseModel):
 
     async def awrite(
         self,
-        redis_client: AsyncRedis,
+        redis_client: AsyncRedisClient,
         objects: Iterable[Any],
         id_field: Optional[str] = None,
         keys: Optional[Iterable[str]] = None,
@@ -308,7 +349,7 @@ class BaseStorage(BaseModel):
         The method returns a list of keys written to the database.
 
         Args:
-            redis_client (AsyncRedis): An asynchronous Redis client used
+            redis_client (AsyncRedisClient): An asynchronous Redis client used
                 for writing data.
             objects (Iterable[Any]): An iterable of objects to store.
             id_field (Optional[str], optional): Field used as the key for each
@@ -373,13 +414,16 @@ class BaseStorage(BaseModel):
         return added_keys
 
     def get(
-        self, redis_client: Redis, keys: Iterable[str], batch_size: Optional[int] = None
+        self,
+        redis_client: SyncRedisClient,
+        keys: Collection[str],
+        batch_size: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Retrieve objects from Redis by keys.
 
         Args:
-            redis_client (Redis): Synchronous Redis client.
-            keys (Iterable[str]): Keys to retrieve from Redis.
+            redis_client (SyncRedisClient): Synchronous Redis client.
+            keys (Collection[str]): Keys to retrieve from Redis.
             batch_size (Optional[int], optional): Number of objects to write
                 in a single Redis pipeline execution. Defaults to class's
                 default batch size.
@@ -389,10 +433,10 @@ class BaseStorage(BaseModel):
         """
         results: List = []
 
-        if not isinstance(keys, Iterable):  # type: ignore
-            raise TypeError("Keys must be an iterable of strings")
+        if not isinstance(keys, Collection):
+            raise TypeError("Keys must be a collection of strings")
 
-        if len(keys) == 0:  # type: ignore
+        if len(keys) == 0:
             return []
 
         if batch_size is None:
@@ -412,15 +456,15 @@ class BaseStorage(BaseModel):
 
     async def aget(
         self,
-        redis_client: AsyncRedis,
-        keys: Iterable[str],
+        redis_client: AsyncRedisClient,
+        keys: Collection[str],
         batch_size: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Asynchronously retrieve objects from Redis by keys.
 
         Args:
-            redis_client (AsyncRedis): Asynchronous Redis client.
-            keys (Iterable[str]): Keys to retrieve from Redis.
+            redis_client (AsyncRedisClient): Asynchronous Redis client.
+            keys (Collection[str]): Keys to retrieve from Redis.
             batch_size (Optional[int], optional): Number of objects to write
                 in a single Redis pipeline execution. Defaults to class's
                 default batch size.
@@ -431,10 +475,10 @@ class BaseStorage(BaseModel):
         """
         results: List = []
 
-        if not isinstance(keys, Iterable):  # type: ignore
-            raise TypeError("Keys must be an iterable of strings")
+        if not isinstance(keys, Collection):
+            raise TypeError("Keys must be a collection of strings")
 
-        if len(keys) == 0:  # type: ignore
+        if len(keys) == 0:
             return []
 
         if batch_size is None:
@@ -465,52 +509,60 @@ class HashStorage(BaseStorage):
     """Hash data type for the index"""
 
     @staticmethod
-    def _set(client: Redis, key: str, obj: Dict[str, Any]):
+    def _set(client: RedisClientOrPipeline, key: str, obj: Dict[str, Any]):
         """Synchronously set a hash value in Redis for the given key.
 
         Args:
-            client (Redis): The Redis client instance.
+            client (SyncRedisClient): The Redis client instance.
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
-        client.hset(name=key, mapping=obj)  # type: ignore
+        client.hset(name=key, mapping=obj)
 
     @staticmethod
-    async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
+    async def _aset(client: AsyncRedisClientOrPipeline, key: str, obj: Dict[str, Any]):
         """Asynchronously set a hash value in Redis for the given key.
 
         Args:
-            client (AsyncRedis): The Redis client instance.
+            client (AsyncClientOrPipeline): The async Redis client or pipeline instance.
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
-        await client.hset(name=key, mapping=obj)  # type: ignore
+        if isinstance(client, (AsyncPipeline, AsyncClusterPipeline)):
+            client.hset(name=key, mapping=obj)  # type: ignore
+        else:
+            await client.hset(name=key, mapping=obj)  # type: ignore
 
     @staticmethod
-    def _get(client: Redis, key: str) -> Dict[str, Any]:
+    def _get(client: SyncRedisClient, key: str) -> Dict[str, Any]:
         """Synchronously retrieve a hash value from Redis for the given key.
 
         Args:
-            client (Redis): The Redis client instance.
+            client (SyncRedisClient): The Redis client instance.
             key (str): The key for which to retrieve the hash.
 
         Returns:
             Dict[str, Any]: The retrieved hash from Redis.
         """
-        return client.hgetall(key)
+        return client.hgetall(key)  # type: ignore
 
     @staticmethod
-    async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
+    async def _aget(
+        client: AsyncRedisClientOrPipeline, key: str
+    ) -> Union[AsyncRedisPipeline, Dict[str, Any]]:
         """Asynchronously retrieve a hash value from Redis for the given key.
 
         Args:
-            client (AsyncRedis): The Redis client instance.
+            client (AsyncRedisClient): The async Redis client or pipeline instance.
             key (str): The key for which to retrieve the hash.
 
         Returns:
             Dict[str, Any]: The retrieved hash from Redis.
         """
-        return await client.hgetall(key)
+        if isinstance(client, (AsyncPipeline, AsyncClusterPipeline)):
+            return client.hgetall(key)  # type: ignore[return-value]
+        else:
+            return await client.hgetall(key)  # type: ignore[return-value, misc]
 
 
 class JsonStorage(BaseStorage):
@@ -525,49 +577,55 @@ class JsonStorage(BaseStorage):
     """JSON data type for the index"""
 
     @staticmethod
-    def _set(client: Redis, key: str, obj: Dict[str, Any]):
+    def _set(client: RedisClientOrPipeline, key: str, obj: Dict[str, Any]):
         """Synchronously set a JSON obj in Redis for the given key.
 
         Args:
-            client (AsyncRedis): The Redis client instance.
+            client (SyncRedisClient): The Redis client instance.
             key (str): The key under which to store the JSON obj.
             obj (Dict[str, Any]): The JSON obj to store in Redis.
         """
         client.json().set(key, "$", obj)
 
     @staticmethod
-    async def _aset(client: AsyncRedis, key: str, obj: Dict[str, Any]):
+    async def _aset(client: AsyncRedisClientOrPipeline, key: str, obj: Dict[str, Any]):
         """Asynchronously set a JSON obj in Redis for the given key.
 
         Args:
-            client (AsyncRedis): The Redis client instance.
+            client (AsyncClientOrPipeline): The async Redis client or pipeline instance.
             key (str): The key under which to store the JSON obj.
             obj (Dict[str, Any]): The JSON obj to store in Redis.
         """
-        await client.json().set(key, "$", obj)
+        if isinstance(client, (AsyncPipeline, AsyncClusterPipeline)):
+            client.json().set(key, "$", obj)  # type: ignore[return-value, misc]
+        else:
+            await client.json().set(key, "$", obj)  # type: ignore[return-value, misc]
 
     @staticmethod
-    def _get(client: Redis, key: str) -> Dict[str, Any]:
+    def _get(client: RedisClientOrPipeline, key: str) -> Dict[str, Any]:
         """Synchronously retrieve a JSON obj from Redis for the given key.
 
         Args:
-            client (AsyncRedis): The Redis client instance.
+            client (SyncRedisClient): The Redis client instance.
             key (str): The key for which to retrieve the JSON obj.
 
         Returns:
             Dict[str, Any]: The retrieved JSON obj from Redis.
         """
-        return client.json().get(key)
+        return client.json().get(key)  # type: ignore[return-value, misc]
 
     @staticmethod
-    async def _aget(client: AsyncRedis, key: str) -> Dict[str, Any]:
-        """Asynchronously retrieve a JSON obj from Redis for the given key.
+    async def _aget(client: AsyncRedisClientOrPipeline, key: str) -> Dict[str, Any]:
+        """Asynchronously retrieve a JSON object from Redis for the given key.
 
         Args:
-            client (AsyncRedis): The Redis client instance.
-            key (str): The key for which to retrieve the JSON obj.
+            client (AsyncRedisClient): The async Redis client or pipeline instance.
+            key (str): The key for which to retrieve the JSON object.
 
         Returns:
-            Dict[str, Any]: The retrieved JSON obj from Redis.
+            Dict[str, Any]: The retrieved JSON object from Redis.
         """
-        return await client.json().get(key)
+        if isinstance(client, (AsyncPipeline, AsyncClusterPipeline)):
+            return client.json().get(key)  # type: ignore[return-value, misc]
+        else:
+            return await client.json().get(key)  # type: ignore[return-value, misc]

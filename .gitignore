@@ -216,9 +216,17 @@ pyrightconfig.json
 [Ll]ocal
 pyvenv.cfg
 pip-selfcheck.json
+env
+venv
+.venv
 
 libs/redis/docs/.Trash*
 .python-version
 .idea/*
 .vscode/settings.json
 .python-version
+tests/data
+.git
+.cursor
+.junie
+.undodir

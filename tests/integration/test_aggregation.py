@@ -1,6 +1,4 @@
 import pytest
-from redis.commands.search.aggregation import AggregateResult
-from redis.commands.search.result import Result
 
 from redisvl.index import SearchIndex
 from redisvl.query import HybridQuery

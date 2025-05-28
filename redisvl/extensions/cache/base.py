@@ -4,12 +4,14 @@ This module defines the abstract base cache interface that is implemented by
 specific cache types such as LLM caches and embedding caches.
 """
 
-from typing import Any, Dict, Optional
+from collections.abc import Mapping
+from typing import Any, Dict, Optional, Union
 
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
+from redis import Redis  # For backwards compatibility in type checking
+from redis.cluster import RedisCluster
 
 from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
 
 
 class BaseCache:
@@ -19,14 +21,15 @@ class BaseCache:
     including TTL management, connection handling, and basic cache operations.
     """
 
-    _redis_client: Optional[Redis]
-    _async_redis_client: Optional[AsyncRedis]
+    _redis_client: Optional[SyncRedisClient]
+    _async_redis_client: Optional[AsyncRedisClient]
 
     def __init__(
         self,
         name: str,
         ttl: Optional[int] = None,
-        redis_client: Optional[Redis] = None,
+        redis_client: Optional[SyncRedisClient] = None,
+        async_redis_client: Optional[AsyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: Dict[str, Any] = {},
     ):
@@ -36,7 +39,7 @@ class BaseCache:
             name (str): The name of the cache.
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
-            redis_client (Optional[Redis], optional): A redis client connection instance.
+            redis_client (Optional[SyncRedisClient], optional): A redis client connection instance.
                 Defaults to None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
             connection_kwargs (Dict[str, Any]): The connection arguments
@@ -53,14 +56,13 @@ class BaseCache:
         }
 
         # Initialize Redis clients
-        self._async_redis_client = None
+        self._async_redis_client = async_redis_client
+        self._redis_client = redis_client
 
-        if redis_client:
+        if redis_client or async_redis_client:
             self._owns_redis_client = False
-            self._redis_client = redis_client
         else:
             self._owns_redis_client = True
-            self._redis_client = None  # type: ignore
 
     def _get_prefix(self) -> str:
         """Get the key prefix for Redis keys.
@@ -103,11 +105,11 @@ class BaseCache:
         else:
             self._ttl = None
 
-    def _get_redis_client(self) -> Redis:
+    def _get_redis_client(self) -> SyncRedisClient:
         """Get or create a Redis client.
 
         Returns:
-            Redis: A Redis client instance.
+            SyncRedisClient: A Redis client instance.
         """
         if self._redis_client is None:
             # Create new Redis client
@@ -116,22 +118,30 @@ class BaseCache:
             self._redis_client = Redis.from_url(url, **kwargs)  # type: ignore
         return self._redis_client
 
-    async def _get_async_redis_client(self) -> AsyncRedis:
+    async def _get_async_redis_client(self) -> AsyncRedisClient:
         """Get or create an async Redis client.
 
         Returns:
-            AsyncRedis: An async Redis client instance.
+            AsyncRedisClient: An async Redis client instance.
         """
         if not hasattr(self, "_async_redis_client") or self._async_redis_client is None:
             client = self.redis_kwargs.get("redis_client")
-            if isinstance(client, Redis):
+
+            if client and isinstance(client, (Redis, RedisCluster)):
                 self._async_redis_client = RedisConnectionFactory.sync_to_async_redis(
                     client
                 )
             else:
-                url = self.redis_kwargs["redis_url"]
-                kwargs = self.redis_kwargs["connection_kwargs"]
-                self._async_redis_client = RedisConnectionFactory.get_async_redis_connection(url, **kwargs)  # type: ignore
+                url = str(self.redis_kwargs["redis_url"])
+                kwargs = self.redis_kwargs.get("connection_kwargs", {})
+                if not isinstance(kwargs, Mapping):
+                    raise TypeError(
+                        "Expected `connection_kwargs` to be a dictionary (e.g. {'decode_responses': True}), "
+                        f"but got type: {type(kwargs).__name__}"
+                    )
+                self._async_redis_client = (
+                    RedisConnectionFactory.get_async_redis_connection(url, **kwargs)
+                )
         return self._async_redis_client
 
     def expire(self, key: str, ttl: Optional[int] = None) -> None:
@@ -183,7 +193,14 @@ class BaseCache:
                 client.delete(*keys)
             if cursor_int == 0:  # Redis returns 0 when scan is complete
                 break
-            cursor = cursor_int  # Update cursor for next iteration
+            # Cluster returns a dict of cursor values. We need to stop if these all
+            # come back as 0.
+            elif isinstance(cursor_int, Mapping):
+                cursor_values = list(cursor_int.values())
+                if all(v == 0 for v in cursor_values):
+                    break
+            else:
+                cursor = cursor_int  # Update cursor for next iteration
 
     async def aclear(self) -> None:
         """Async clear the cache of all keys."""
@@ -193,12 +210,21 @@ class BaseCache:
         # Scan for all keys with our prefix
         cursor = 0  # Start with cursor 0
         while True:
-            cursor_int, keys = await client.scan(cursor=cursor, match=f"{prefix}*", count=100)  # type: ignore
+            cursor_int, keys = await client.scan(
+                cursor=cursor, match=f"{prefix}*", count=100
+            )  # type: ignore
             if keys:
                 await client.delete(*keys)
             if cursor_int == 0:  # Redis returns 0 when scan is complete
                 break
-            cursor = cursor_int  # Update cursor for next iteration
+            # Cluster returns a dict of cursor values. We need to stop if these all
+            # come back as 0.
+            elif isinstance(cursor_int, Mapping):
+                cursor_values = list(cursor_int.values())
+                if all(v == 0 for v in cursor_values):
+                    break
+            else:
+                cursor = cursor_int  # Update cursor for next iteration
 
     def disconnect(self) -> None:
         """Disconnect from Redis."""
@@ -207,12 +233,10 @@ class BaseCache:
 
         if self._redis_client:
             self._redis_client.close()
-            self._redis_client = None  # type: ignore
-
-        if hasattr(self, "_async_redis_client") and self._async_redis_client:
-            # Use synchronous close for async client in synchronous context
-            self._async_redis_client.close()  # type: ignore
-            self._async_redis_client = None  # type: ignore
+            self._redis_client = None
+            # Async clients don't have a sync close method, so we just
+            # zero them out to allow garbage collection.
+            self._async_redis_client = None
 
     async def adisconnect(self) -> None:
         """Async disconnect from Redis."""
@@ -221,9 +245,9 @@ class BaseCache:
 
         if self._redis_client:
             self._redis_client.close()
-            self._redis_client = None  # type: ignore
+            self._redis_client = None
 
         if hasattr(self, "_async_redis_client") and self._async_redis_client:
             # Use proper async close method
-            await self._async_redis_client.aclose()  # type: ignore
-            self._async_redis_client = None  # type: ignore
+            await self._async_redis_client.aclose()
+            self._async_redis_client = None

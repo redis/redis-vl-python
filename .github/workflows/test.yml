@@ -78,7 +78,7 @@ jobs:
           make test-all
 
   test:
-    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} [redis ${{ matrix.redis-version }}]
+    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-version }}]
     runs-on: ubuntu-latest
     needs: service-tests
     env:
@@ -89,7 +89,8 @@ jobs:
         # 3.11 tests are run in the service-tests job
         python-version: ["3.9", "3.10", 3.12, 3.13] 
         connection: ["hiredis", "plain"]
-        redis-version: ["6.2.6-v9", "latest", "8.0-M03"]
+        redis-py-version: ["5.x", "6.x"]
+        redis-version: ["6.2.6-v9", "latest", "8.0.1"]
 
     steps:
       - name: Check out repository
@@ -116,6 +117,14 @@ jobs:
         run: |
           poetry install --all-extras
 
+      - name: Install specific redis-py version
+        run: |
+          if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
+            poetry add "redis>=5.0.0,<6.0.0"
+          else
+            poetry add "redis>=6.0.0,<7.0.0"
+          fi
+
       - name: Install hiredis if needed
         if: matrix.connection == 'hiredis'
         run: |
@@ -123,7 +132,7 @@ jobs:
 
       - name: Set Redis image name
         run: |
-          if [[ "${{ matrix.redis-version }}" == "8.0-M03" ]]; then
+          if [[ "${{ matrix.redis-version }}" == "8.0.1" ]]; then
             echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
           else
             echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
@@ -135,7 +144,7 @@ jobs:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Run tests
-        if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
+        if: matrix.connection == 'plain' && matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
@@ -144,12 +153,12 @@ jobs:
           make test
 
       - name: Run tests (alternate)
-        if: matrix.connection != 'plain' || matrix.redis-version != 'latest'
+        if: matrix.connection != 'plain' || matrix.redis-py-version != '6.x' || matrix.redis-version != 'latest'
         run: |
           make test
 
       - name: Run notebooks
-        if: matrix.connection == 'plain' && matrix.redis-version == 'latest'
+        if: matrix.connection == 'plain' && matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -169,15 +169,18 @@ def test_search_index_no_prefix(index_schema):
 
 @pytest.mark.asyncio
 async def test_search_index_redis_url(redis_url, index_schema):
-    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
-    # Client is None until a command is run
-    assert async_index.client is None
+    async with AsyncSearchIndex(
+        schema=index_schema, redis_url=redis_url
+    ) as async_index:
+        # Client is None until a command is run
+        assert async_index.client is None
 
-    # Lazily create the client by running a command
-    await async_index.create(overwrite=True, drop=True)
-    assert async_index.client
+        # Lazily create the client by running a command
+        await async_index.create(overwrite=True, drop=True)
+        assert async_index.client
 
-    await async_index.disconnect()
+    # After exiting async with, if the index owned the client, it should be disconnected
+    # and client attribute should be None again by __aexit__
     assert async_index.client is None
 
 
@@ -189,20 +192,25 @@ async def test_search_index_client(async_client, index_schema):
 
 @pytest.mark.asyncio
 async def test_search_index_set_client(client, redis_url, index_schema):
-    async_index = AsyncSearchIndex(schema=index_schema, redis_url=redis_url)
-    # Ignore deprecation warnings
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        await async_index.create(overwrite=True, drop=True)
-        assert isinstance(async_index.client, AsyncRedis)
+    # Use async with for the index that owns its initial client via redis_url
+    async with AsyncSearchIndex(
+        schema=index_schema, redis_url=redis_url
+    ) as async_index:
+        # Ignore deprecation warnings for set_client
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            await async_index.create(overwrite=True, drop=True)
+            assert isinstance(async_index.client, AsyncRedis)
 
-        # Tests deprecated sync -> async conversion behavior
-        assert isinstance(client, SyncRedis)
-        await async_index.set_client(client)
-        assert isinstance(async_index.client, AsyncRedis)
+            # Tests deprecated sync -> async conversion behavior
+            assert isinstance(client, SyncRedis)
 
-    await async_index.disconnect()
-    assert async_index.client is None
+            await async_index.set_client(client)
+            assert isinstance(async_index.client, AsyncRedis)
+
+            if async_index.client:
+                await async_index.disconnect()
+            assert async_index.client is None
 
 
 @pytest.mark.asyncio

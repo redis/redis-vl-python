@@ -22,8 +22,10 @@ def standard_history(app_name, client):
 
 
 @pytest.fixture
-def semantic_history(app_name, client):
-    history = SemanticMessageHistory(app_name, redis_client=client, overwrite=True)
+def semantic_history(app_name, client, hf_vectorizer):
+    history = SemanticMessageHistory(
+        app_name, redis_client=client, overwrite=True, vectorizer=hf_vectorizer
+    )
     yield history
     history.clear()
     history.delete()
@@ -296,19 +298,24 @@ def test_standard_clear(standard_history):
 
 
 # test semantic message history
-def test_semantic_specify_client(client):
+def test_semantic_specify_client(client, hf_vectorizer):
     history = SemanticMessageHistory(
-        name="test_app", session_tag="abc", redis_client=client, overwrite=True
+        name="test_app",
+        session_tag="abc",
+        redis_client=client,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
     )
     assert isinstance(history._index.client, type(client))
 
 
-def test_semantic_bad_connection_info():
+def test_semantic_bad_connection_info(hf_vectorizer):
     with pytest.raises(ConnectionError):
         SemanticMessageHistory(
             name="test_app",
             session_tag="abc",
             redis_url="redis://localhost:6389",
+            vectorizer=hf_vectorizer,
         )
 
 
@@ -585,7 +592,9 @@ def test_different_vector_dtypes(redis_url):
 def test_bad_dtype_connecting_to_exiting_history(redis_url):
     def create_history():
         return SemanticMessageHistory(
-            name="float64 history", dtype="float64", redis_url=redis_url
+            name="float64 history",
+            dtype="float64",
+            redis_url=redis_url
         )
 
     def create_same_type():

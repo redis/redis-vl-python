@@ -1,5 +1,4 @@
 import asyncio
-import os
 import warnings
 from collections import namedtuple
 from time import sleep, time
@@ -16,7 +15,7 @@ from redisvl.utils.vectorize import HFTextVectorizer
 from tests.conftest import skip_if_module_version_error
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def vectorizer():
     return HFTextVectorizer("redis/langcache-embed-v1")
 
@@ -821,10 +820,11 @@ def test_complex_filters(cache_with_filters):
     assert len(results) == 1
 
 
-def test_cache_index_overwrite(redis_url, worker_id):
+def test_cache_index_overwrite(redis_url, worker_id, hf_vectorizer):
     cache_no_tags = SemanticCache(
         name=f"test_cache_{worker_id}",
         redis_url=redis_url,
+        vectorizer=hf_vectorizer,
     )
 
     cache_no_tags.store(
@@ -854,12 +854,14 @@ def test_cache_index_overwrite(redis_url, worker_id):
         SemanticCache(
             name=f"test_cache_{worker_id}",
             redis_url=redis_url,
+            vectorizer=hf_vectorizer,
             filterable_fields=[{"name": "some_tag", "type": "tag"}],
         )
 
     cache_overwrite = SemanticCache(
         name=f"test_cache_{worker_id}",
         redis_url=redis_url,
+        vectorizer=hf_vectorizer,
         filterable_fields=[{"name": "some_tag", "type": "tag"}],
         overwrite=True,
     )
@@ -871,10 +873,11 @@ def test_cache_index_overwrite(redis_url, worker_id):
     assert len(response) == 1
 
 
-def test_no_key_collision_on_identical_prompts(redis_url, worker_id):
+def test_no_key_collision_on_identical_prompts(redis_url, worker_id, hf_vectorizer):
     private_cache = SemanticCache(
         name=f"private_cache_{worker_id}",
         redis_url=redis_url,
+        vectorizer=hf_vectorizer,
         filterable_fields=[
             {"name": "user_id", "type": "tag"},
             {"name": "zip_code", "type": "numeric"},
@@ -1006,9 +1009,11 @@ def test_deprecated_dtype_argument(redis_url, worker_id):
 
 
 @pytest.mark.asyncio
-async def test_cache_async_context_manager(redis_url, worker_id):
+async def test_cache_async_context_manager(redis_url, worker_id, hf_vectorizer):
     async with SemanticCache(
-        name=f"test_cache_async_context_manager_{worker_id}", redis_url=redis_url
+        name=f"test_cache_async_context_manager_{worker_id}",
+        redis_url=redis_url,
+        vectorizer=hf_vectorizer,
     ) as cache:
         await cache.astore("test prompt", "test response")
         assert cache._aindex
@@ -1016,11 +1021,14 @@ async def test_cache_async_context_manager(redis_url, worker_id):
 
 
 @pytest.mark.asyncio
-async def test_cache_async_context_manager_with_exception(redis_url, worker_id):
+async def test_cache_async_context_manager_with_exception(
+    redis_url, worker_id, hf_vectorizer
+):
     try:
         async with SemanticCache(
             name=f"test_cache_async_context_manager_with_exception_{worker_id}",
             redis_url=redis_url,
+            vectorizer=hf_vectorizer,
         ) as cache:
             await cache.astore("test prompt", "test response")
             raise ValueError("test")
@@ -1030,18 +1038,22 @@ async def test_cache_async_context_manager_with_exception(redis_url, worker_id):
 
 
 @pytest.mark.asyncio
-async def test_cache_async_disconnect(redis_url, worker_id):
+async def test_cache_async_disconnect(redis_url, worker_id, hf_vectorizer):
     cache = SemanticCache(
-        name=f"test_cache_async_disconnect_{worker_id}", redis_url=redis_url
+        name=f"test_cache_async_disconnect_{worker_id}",
+        redis_url=redis_url,
+        vectorizer=hf_vectorizer,
     )
     await cache.astore("test prompt", "test response")
     await cache.adisconnect()
     assert cache._aindex is None
 
 
-def test_cache_disconnect(redis_url, worker_id):
+def test_cache_disconnect(redis_url, worker_id, hf_vectorizer):
     cache = SemanticCache(
-        name=f"test_cache_disconnect_{worker_id}", redis_url=redis_url
+        name=f"test_cache_disconnect_{worker_id}",
+        redis_url=redis_url,
+        vectorizer=hf_vectorizer,
     )
     cache.store("test prompt", "test response")
     cache.disconnect()

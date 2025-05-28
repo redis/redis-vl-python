@@ -1,4 +1,6 @@
+import logging
 import os
+import subprocess
 from datetime import datetime, timezone
 
 import pytest
@@ -9,6 +11,8 @@ from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory, compare_versions
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.vectorize import HFTextVectorizer
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -54,6 +58,109 @@ def redis_container(worker_id):
 
 
 @pytest.fixture(scope="session")
+def redis_cluster_container(worker_id):
+    project_name = f"redis_test_cluster_{worker_id}"
+    # Use cwd if not running in GitHub Actions
+    pwd = os.getcwd()
+    compose_file = os.path.join(
+        os.environ.get("GITHUB_WORKSPACE", pwd), "tests", "cluster-compose.yml"
+    )
+    os.environ["COMPOSE_PROJECT_NAME"] = (
+        project_name  # For docker compose to pick it up if needed
+    )
+    # redis-stack-server comes up without modules in cluster mode, so we hard-code
+    # the Redis 8 image for now.
+    os.environ.setdefault("REDIS_IMAGE", "redis:8")
+
+    # The DockerCompose helper isn't working with multiple services because the
+    # subprocess command returns non-zero exit codes even on successful
+    # completion. Here, we run the commands manually.
+
+    # First attempt the docker-compose up command and handle its errors directly
+    docker_cmd = [
+        "docker",
+        "compose",
+        "-f",
+        compose_file,
+        "-p",  # Explicitly pass project name
+        project_name,
+        "up",
+        "--wait",  # Wait for healthchecks
+        "-d",  # Detach
+    ]
+
+    try:
+        result = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            check=False,  # Don't raise exception, we'll handle it ourselves
+        )
+
+        if result.returncode != 0:
+            logger.error(f"Docker Compose up failed with exit code {result.returncode}")
+            if result.stdout:
+                logger.error(
+                    f"STDOUT: {result.stdout.decode('utf-8', errors='replace')}"
+                )
+            if result.stderr:
+                logger.error(
+                    f"STDERR: {result.stderr.decode('utf-8', errors='replace')}"
+                )
+
+            # Try to get logs for more details
+            logger.info("Attempting to fetch container logs...")
+            try:
+                logs_result = subprocess.run(
+                    [
+                        "docker",
+                        "compose",
+                        "-f",
+                        compose_file,
+                        "-p",
+                        project_name,
+                        "logs",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                logger.info("Docker Compose logs:\n%s", logs_result.stdout)
+                if logs_result.stderr:
+                    logger.error("Docker Compose logs stderr: \n%s", logs_result.stderr)
+            except Exception as log_e:
+                logger.error(f"Failed to get Docker Compose logs: {repr(log_e)}")
+
+            # Now raise the exception with the original result
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                docker_cmd,
+                output=result.stdout,
+                stderr=result.stderr,
+            )
+
+        # If we get here, setup was successful
+        yield
+    finally:
+        # Always clean up
+        try:
+            subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    compose_file,
+                    "-p",
+                    project_name,
+                    "down",
+                    "-v",  # Remove volumes
+                ],
+                check=False,  # Don't raise on cleanup failure
+                capture_output=True,
+            )
+        except Exception as e:
+            logger.error(f"Error during cleanup: {repr(e)}")
+
+
+@pytest.fixture(scope="session")
 def redis_url(redis_container):
     """
     Use the `DockerCompose` fixture to get host/port of the 'redis' service
@@ -61,6 +168,12 @@ def redis_url(redis_container):
     """
     host, port = redis_container.get_service_host_and_port("redis", 6379)
     return f"redis://{host}:{port}"
+
+
+@pytest.fixture(scope="session")
+def redis_cluster_url(redis_cluster_container):
+    # Hard-coded due to Docker issues
+    return "redis://localhost:7001"
 
 
 @pytest.fixture
@@ -81,7 +194,18 @@ def client(redis_url):
     yield conn
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture
+def cluster_client(redis_cluster_url):
+    """
+    A sync Redis client that uses the dynamic `redis_cluster_url`.
+    """
+    conn = RedisConnectionFactory.get_redis_cluster_connection(
+        redis_url=redis_cluster_url
+    )
+    yield conn
+
+
+@pytest.fixture(scope="session")
 def hf_vectorizer():
     return HFTextVectorizer(
         model="sentence-transformers/all-mpnet-base-v2",
@@ -192,27 +316,44 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Run tests that require API keys",
     )
+    parser.addoption(
+        "--run-cluster-tests",
+        action="store_true",
+        default=False,
+        help="Run tests that require a Redis cluster",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "requires_api_keys: mark test as requiring API keys"
     )
+    config.addinivalue_line(
+        "markers", "requires_cluster: mark test as requiring a Redis cluster"
+    )
 
 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    if config.getoption("--run-api-tests"):
-        return
+    # Check each flag independently
+    run_api_tests = config.getoption("--run-api-tests")
+    run_cluster_tests = config.getoption("--run-cluster-tests")
 
-    # Otherwise skip all tests requiring an API key
+    # Create skip markers
     skip_api = pytest.mark.skip(
         reason="Skipping test because API keys are not provided. Use --run-api-tests to run these tests."
     )
+    skip_cluster = pytest.mark.skip(
+        reason="Skipping test because Redis cluster is not available. Use --run-cluster-tests to run these tests."
+    )
+
+    # Apply skip markers independently based on flags
     for item in items:
-        if item.get_closest_marker("requires_api_keys"):
+        if item.get_closest_marker("requires_api_keys") and not run_api_tests:
             item.add_marker(skip_api)
+        if item.get_closest_marker("requires_cluster") and not run_cluster_tests:
+            item.add_marker(skip_cluster)
 
 
 @pytest.fixture

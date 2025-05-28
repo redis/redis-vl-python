@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from redisvl.redis.utils import (
+    _keys_share_hash_tag,
     array_to_buffer,
     buffer_to_array,
     convert_bytes,
@@ -740,9 +741,10 @@ class TestLazyImport:
 
         # Create a simple object with no __getattr__ method
         class SimpleObject:
-            pass
+            def __init__(self, value):
+                self.value = value
 
-        obj = SimpleObject()
+        obj = SimpleObject(42)
 
         # Directly set the _module attribute to our simple object
         # This bypasses the normal import mechanism
@@ -757,3 +759,78 @@ class TestLazyImport:
             "module 'test_direct_module' has no attribute 'nonexistent_attribute'"
             in str(excinfo.value)
         )
+
+
+# Hash tag validation tests for Redis Cluster compatibility
+def test_keys_share_hash_tag_same_tags():
+    """Test that keys with the same hash tag are considered compatible."""
+    keys = ["prefix:{tag1}:key1", "prefix:{tag1}:key2", "prefix:{tag1}:key3"]
+    assert _keys_share_hash_tag(keys) is True
+
+
+def test_keys_share_hash_tag_different_tags():
+    """Test that keys with different hash tags are considered incompatible."""
+    keys = ["prefix:{tag1}:key1", "prefix:{tag2}:key2"]
+    assert _keys_share_hash_tag(keys) is False
+
+
+def test_keys_share_hash_tag_no_tags():
+    """Test that keys without hash tags are considered compatible."""
+    keys = ["prefix:key1", "prefix:key2", "prefix:key3"]
+    assert _keys_share_hash_tag(keys) is True
+
+
+def test_keys_share_hash_tag_mixed_tags_and_no_tags():
+    """Test that mixing keys with and without hash tags is incompatible."""
+    keys = ["prefix:{tag1}:key1", "prefix:key2"]
+    assert _keys_share_hash_tag(keys) is False
+
+
+def test_keys_share_hash_tag_empty_list():
+    """Test that an empty list of keys is considered compatible."""
+    assert _keys_share_hash_tag([]) is True
+
+
+def test_keys_share_hash_tag_single_key():
+    """Test that a single key is always compatible."""
+    assert _keys_share_hash_tag(["prefix:{tag1}:key1"]) is True
+    assert _keys_share_hash_tag(["prefix:key1"]) is True
+
+
+def test_keys_share_hash_tag_complex_tags():
+    """Test with complex hash tag patterns."""
+    keys_same = [
+        "user:{user123}:profile",
+        "user:{user123}:settings",
+        "user:{user123}:history",
+    ]
+    assert _keys_share_hash_tag(keys_same) is True
+
+    keys_different = ["user:{user123}:profile", "user:{user456}:profile"]
+    assert _keys_share_hash_tag(keys_different) is False
+
+
+def test_keys_share_hash_tag_malformed_tags():
+    """Test with malformed hash tags (missing closing brace)."""
+    keys = [
+        "prefix:{tag1:key1",  # Missing closing brace
+        "prefix:{tag1:key2",  # Missing closing brace
+    ]
+    # These should be treated as no hash tags (empty string)
+    assert _keys_share_hash_tag(keys) is True
+
+
+def test_keys_share_hash_tag_nested_braces():
+    """Test with nested braces in hash tags."""
+    keys_same = ["prefix:{{nested}tag}:key1", "prefix:{{nested}tag}:key2"]
+    assert _keys_share_hash_tag(keys_same) is True
+
+    keys_different = ["prefix:{{nested}tag}:key1", "prefix:{{other}tag}:key2"]
+    assert _keys_share_hash_tag(keys_different) is False
+
+
+def test_keys_share_hash_tag_multiple_braces():
+    """Test with multiple sets of braces in a key."""
+    keys = ["prefix:{tag1}:middle:{tag2}:key1", "prefix:{tag1}:middle:{tag2}:key2"]
+    # Should use the first hash tag found
+    assert _keys_share_hash_tag(keys) is True
