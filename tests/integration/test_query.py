@@ -926,8 +926,12 @@ def test_vector_query_with_ef_runtime_flat_index(flat_index, vector_query, sampl
 
 
 @pytest.fixture
-def missing_fields_index(worker_id, redis_url):
+def missing_fields_index(worker_id, redis_client):
     """Create an index with INDEXMISSING and INDEXEMPTY enabled fields and test data."""
+    skip_if_redis_version_below(
+        redis_client,
+        "7.2.0",
+    )
 
     # Create an index with INDEXMISSING enabled fields (filterable fields only)
     missing_index = SearchIndex.from_dict(
@@ -958,18 +962,11 @@ def missing_fields_index(worker_id, redis_url):
                 {"name": "description", "type": "text"},
             ],
         },
-        redis_url=redis_url,
+        redis_client=redis_client,
     )
 
     # Create the index
     missing_index.create(overwrite=True)
-
-    # Skip all missing field tests if Redis version doesn't support INDEXMISSING/INDEXEMPTY (requires Redis 7.4+)
-    skip_if_redis_version_below(
-        missing_index.client,
-        "7.4.0",
-        "INDEXMISSING/INDEXEMPTY features require Redis 7.4+ (RediSearch 2.10+)",
-    )
 
     # Load test data with different missing field scenarios
     test_data = [
