@@ -13,6 +13,7 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
 )
 from redisvl.redis.connection import compare_versions
+from tests.conftest import skip_if_redis_version_below
 
 
 def get_base_path():
@@ -88,9 +89,7 @@ def test_get_non_existing_route(semantic_router):
 
 
 def test_single_query(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     match = semantic_router("hello")
     assert match.name == "greeting"
@@ -98,18 +97,14 @@ def test_single_query(semantic_router):
 
 
 def test_single_query_no_match(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     match = semantic_router("unknown_phrase")
     assert match.name is None
 
 
 def test_multiple_query(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     matches = semantic_router.route_many("hello", max_k=2)
     assert len(matches) > 0
@@ -127,9 +122,7 @@ def test_update_routing_config(semantic_router):
 
 
 def test_vector_query(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     vector = semantic_router.vectorizer.embed("goodbye")
     match = semantic_router(vector=vector)
@@ -137,9 +130,7 @@ def test_vector_query(semantic_router):
 
 
 def test_vector_query_no_match(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     vector = [
         0.0
@@ -372,9 +363,7 @@ def test_deprecated_dtype_argument(routes, redis_url):
 
 
 def test_deprecated_distance_threshold_argument(semantic_router, routes, redis_url):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     router = SemanticRouter(
         name="test_pass_through_dtype",
@@ -389,9 +378,7 @@ def test_deprecated_distance_threshold_argument(semantic_router, routes, redis_u
 def test_routes_different_distance_thresholds_get_two(
     semantic_router, routes, redis_url
 ):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
     routes[0].distance_threshold = 0.5
     routes[1].distance_threshold = 0.7
 
@@ -411,9 +398,7 @@ def test_routes_different_distance_thresholds_get_two(
 def test_routes_different_distance_thresholds_get_one(
     semantic_router, routes, redis_url
 ):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     routes[0].distance_threshold = 0.5
 
@@ -433,9 +418,7 @@ def test_routes_different_distance_thresholds_get_one(
 
 
 def test_add_delete_route_references(semantic_router):
-    redis_version = semantic_router._index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
 
     # Add new references to an existing route
     added_refs = semantic_router.add_route_references(
@@ -477,8 +460,7 @@ def test_add_delete_route_references(semantic_router):
 
 
 def test_from_existing(client, redis_url, routes):
-    if not compare_versions(client.info()["redis_version"], "7.0.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(client, "7.0.0")
 
     # connect separately
     router = SemanticRouter(

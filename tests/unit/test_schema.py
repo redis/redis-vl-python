@@ -178,3 +178,131 @@ def test_from_yaml_file_not_found():
     """Test loading from yaml with file not found."""
     with pytest.raises(FileNotFoundError):
         IndexSchema.from_yaml("nonexistent_file")
+
+
+def test_schema_with_index_missing_and_empty_attributes():
+    """Test schema creation and operations with INDEXMISSING and INDEXEMPTY attributes."""
+    schema_dict = {
+        "index": {
+            "name": "test-missing-empty",
+            "prefix": "test",
+            "storage_type": "hash",
+        },
+        "fields": [
+            {
+                "name": "title",
+                "type": "text",
+                "attrs": {"index_missing": True, "index_empty": True, "sortable": True},
+            },
+            {
+                "name": "tags",
+                "type": "tag",
+                "attrs": {"index_missing": True, "index_empty": True},
+            },
+            {
+                "name": "price",
+                "type": "numeric",
+                "attrs": {"index_missing": True, "sortable": True},
+            },
+            {"name": "location", "type": "geo", "attrs": {"index_missing": True}},
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "algorithm": "flat",
+                    "dims": 128,
+                    "distance_metric": "cosine",
+                    "index_missing": True,
+                },
+            },
+        ],
+    }
+
+    # Test schema creation
+    schema = IndexSchema.from_dict(schema_dict)
+
+    # Verify field attributes are correctly set
+    assert schema.fields["title"].attrs.index_missing == True
+    assert schema.fields["title"].attrs.index_empty == True
+    assert schema.fields["title"].attrs.sortable == True
+
+    assert schema.fields["tags"].attrs.index_missing == True
+    assert schema.fields["tags"].attrs.index_empty == True
+
+    assert schema.fields["price"].attrs.index_missing == True
+    assert schema.fields["price"].attrs.sortable == True
+
+    assert schema.fields["location"].attrs.index_missing == True
+
+    assert schema.fields["embedding"].attrs.index_missing == True
+    assert schema.fields["embedding"].attrs.dims == 128
+
+    # Test Redis field conversion
+    redis_fields = schema.redis_fields
+    assert len(redis_fields) == 5
+
+    # Verify all fields can be converted to Redis fields successfully
+    for field_name, field in schema.fields.items():
+        redis_field = field.as_redis_field()
+        assert redis_field.name == field_name
+
+
+def test_schema_serialization_with_new_attributes():
+    """Test schema creation and field attribute handling with INDEXMISSING and INDEXEMPTY attributes."""
+    original_schema_dict = {
+        "index": {
+            "name": "test-serialization",
+            "prefix": "ser",
+            "storage_type": "hash",
+        },
+        "fields": [
+            {
+                "name": "description",
+                "type": "text",
+                "attrs": {"index_missing": True, "index_empty": True, "weight": 2.0},
+            },
+            {
+                "name": "categories",
+                "type": "tag",
+                "attrs": {"index_missing": True, "index_empty": True, "separator": "|"},
+            },
+            {"name": "score", "type": "numeric", "attrs": {"index_missing": True}},
+            {
+                "name": "vector_field",
+                "type": "vector",
+                "attrs": {
+                    "algorithm": "hnsw",
+                    "dims": 256,
+                    "index_missing": True,
+                    "m": 24,
+                },
+            },
+        ],
+    }
+
+    # Create schema from dict
+    schema = IndexSchema.from_dict(original_schema_dict)
+
+    # Verify field attributes are correctly set after creation
+    assert schema.fields["description"].attrs.index_missing == True
+    assert schema.fields["description"].attrs.index_empty == True
+    assert schema.fields["description"].attrs.weight == 2.0
+
+    assert schema.fields["categories"].attrs.index_missing == True
+    assert schema.fields["categories"].attrs.index_empty == True
+    assert schema.fields["categories"].attrs.separator == "|"
+
+    assert schema.fields["score"].attrs.index_missing == True
+
+    assert schema.fields["vector_field"].attrs.index_missing == True
+    assert schema.fields["vector_field"].attrs.dims == 256
+    assert schema.fields["vector_field"].attrs.m == 24
+
+    # Test that Redis field conversion works with new attributes
+    for field_name, field in schema.fields.items():
+        redis_field = field.as_redis_field()
+        assert redis_field.name == field_name
+
+    # Test that the schema has the correct number of fields
+    assert len(schema.fields) == 4
+    assert schema.index.name == "test-serialization"

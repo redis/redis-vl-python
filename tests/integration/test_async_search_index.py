@@ -22,8 +22,10 @@ fields = [{"name": "test", "type": "tag"}]
 
 
 @pytest.fixture
-def index_schema():
-    return IndexSchema.from_dict({"index": {"name": "my_index"}, "fields": fields})
+def index_schema(worker_id):
+    return IndexSchema.from_dict(
+        {"index": {"name": f"my_index_{worker_id}"}, "fields": fields}
+    )
 
 
 @pytest.fixture
@@ -55,7 +57,8 @@ def async_index_from_yaml(worker_id):
 def test_search_index_properties(index_schema, async_index):
     assert async_index.schema == index_schema
     # custom settings
-    assert async_index.name == index_schema.index.name == "my_index"
+    assert async_index.name == index_schema.index.name
+    assert async_index.name.startswith("my_index_")
     assert async_index.client
     # default settings
     assert async_index.prefix == index_schema.index.prefix == "rvl"

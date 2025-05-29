@@ -470,8 +470,6 @@ def test_timestamp_invalid_input():
 
 def test_timestamp_filter_combination():
     """Test combining timestamp filters with other filters."""
-    from redisvl.query.filter import Num, Tag
-
     ts = Timestamp("created_at") > datetime(2023, 3, 1)
     num = Num("age") > 30
     tag = Tag("status") == "active"
@@ -482,3 +480,48 @@ def test_timestamp_filter_combination():
     assert str(combined).startswith("((@created_at:")
     assert "@age:[(30 +inf]" in str(combined)
     assert "@status:{active}" in str(combined)
+
+
+def test_is_missing_filter_methods():
+    """Test the new is_missing() method for all filter types."""
+    # Test all filter types
+    tag_missing = Tag("brand").is_missing()
+    text_missing = Text("title").is_missing()
+    num_missing = Num("price").is_missing()
+    geo_missing = Geo("location").is_missing()
+    timestamp_missing = Timestamp("created_at").is_missing()
+
+    # Check that they generate the correct query strings
+    assert str(tag_missing) == "ismissing(@brand)"
+    assert str(text_missing) == "ismissing(@title)"
+    assert str(num_missing) == "ismissing(@price)"
+    assert str(geo_missing) == "ismissing(@location)"
+    assert str(timestamp_missing) == "ismissing(@created_at)"
+
+
+def test_is_missing_filter_combinations():
+    """Test combining is_missing filters with other filters."""
+    # Test combining is_missing with regular filters
+    missing_brand = Tag("brand").is_missing()
+    has_price = Num("price") > 100
+    has_tag = Tag("category") == "electronics"
+
+    # Test AND combinations
+    combined_and = missing_brand & has_price
+    combined_str = str(combined_and)
+    assert "ismissing(@brand)" in combined_str
+    assert "@price:[(100 +inf]" in combined_str
+
+    # Test OR combinations
+    combined_or = missing_brand | has_tag
+    combined_str = str(combined_or)
+    assert "ismissing(@brand)" in combined_str
+    assert "@category:{electronics}" in combined_str
+    assert " | " in combined_str
+
+    # Test complex combinations
+    complex_filter = (missing_brand & has_price) | has_tag
+    complex_str = str(complex_filter)
+    assert "ismissing(@brand)" in complex_str
+    assert "@price:[(100 +inf]" in complex_str
+    assert "@category:{electronics}" in complex_str

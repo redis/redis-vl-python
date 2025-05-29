@@ -73,6 +73,24 @@ class FilterField:
         self._value = val
         self._operator = operator
 
+    def is_missing(self) -> "FilterExpression":
+        """Create a filter expression for documents missing this field.
+
+        Returns:
+            FilterExpression: A filter expression that matches documents where the field is missing.
+
+        .. code-block:: python
+
+            from redisvl.query.filter import Tag, Text, Num, Geo, Timestamp
+
+            f = Tag("brand").is_missing()
+            f = Text("title").is_missing()
+            f = Num("price").is_missing()
+            f = Geo("location").is_missing()
+            f = Timestamp("created_at").is_missing()
+        """
+        return FilterExpression(f"ismissing(@{self._field})")
+
 
 def check_operator_misuse(func: Callable) -> Callable:
     @wraps(func)

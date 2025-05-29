@@ -12,6 +12,7 @@ from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
+from tests.conftest import skip_if_module_version_error
 
 
 @pytest.fixture(scope="session")
@@ -915,23 +916,25 @@ def test_no_key_collision_on_identical_prompts(redis_url, worker_id, hf_vectoriz
     assert len(filtered_results) == 2
 
 
-def test_create_cache_with_different_vector_types(worker_id):
+def test_create_cache_with_different_vector_types(worker_id, redis_url):
     try:
-        bfloat_cache = SemanticCache(name=f"bfloat_cache_{worker_id}", dtype="bfloat16")
+        bfloat_cache = SemanticCache(
+            name=f"bfloat_cache_{worker_id}", dtype="bfloat16", redis_url=redis_url
+        )
         bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
 
         float16_cache = SemanticCache(
-            name=f"float16_cache_{worker_id}", dtype="float16"
+            name=f"float16_cache_{worker_id}", dtype="float16", redis_url=redis_url
         )
         float16_cache.store("float16 prompt", "float16 response")
 
         float32_cache = SemanticCache(
-            name=f"float32_cache_{worker_id}", dtype="float32"
+            name=f"float32_cache_{worker_id}", dtype="float32", redis_url=redis_url
         )
         float32_cache.store("float32 prompt", "float32 response")
 
         float64_cache = SemanticCache(
-            name=f"float64_cache_{worker_id}", dtype="float64"
+            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
         float64_cache.store("float64 prompt", "float64 response")
 
@@ -939,20 +942,23 @@ def test_create_cache_with_different_vector_types(worker_id):
             cache.set_threshold(0.6)
             assert len(cache.check("float prompt", num_results=5)) == 1
     except:
-        pytest.skip("Not using a late enough version of Redis")
+        pytest.skip("Required Redis modules not available or version too low")
 
 
 def test_bad_dtype_connecting_to_existing_cache(redis_url, worker_id):
-    try:
-        cache = SemanticCache(
+    def create_cache():
+        return SemanticCache(
             name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
-        same_type = SemanticCache(
+
+    def create_same_type():
+        return SemanticCache(
             name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
-        # under the hood uses from_existing
-    except RedisModuleVersionError:
-        pytest.skip("Not using a late enough version of Redis")
+
+    cache = skip_if_module_version_error(create_cache)
+    same_type = skip_if_module_version_error(create_same_type)
+    # under the hood uses from_existing
 
     with pytest.raises(ValueError):
         bad_type = SemanticCache(

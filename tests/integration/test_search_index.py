@@ -32,8 +32,10 @@ fields = [
 
 
 @pytest.fixture
-def index_schema():
-    return IndexSchema.from_dict({"index": {"name": "my_index"}, "fields": fields})
+def index_schema(worker_id):
+    return IndexSchema.from_dict(
+        {"index": {"name": f"my_index_{worker_id}"}, "fields": fields}
+    )
 
 
 @pytest.fixture
@@ -65,7 +67,8 @@ def index_from_yaml(worker_id):
 def test_search_index_properties(index_schema, index):
     assert index.schema == index_schema
     # custom settings
-    assert index.name == index_schema.index.name == "my_index"
+    assert index.name == index_schema.index.name
+    assert index.name.startswith("my_index_")
 
     # default settings
     assert index.prefix == index_schema.index.prefix == "rvl"

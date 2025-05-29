@@ -1,7 +1,6 @@
-version: "3.9"
 services:
   redis:
-    image: "${REDIS_IMAGE}"
+    image: "${REDIS_IMAGE:-redis/redis-stack-server:latest}"
     ports:
       - "6379"
     environment:

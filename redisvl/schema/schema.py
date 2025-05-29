@@ -432,11 +432,14 @@ class IndexSchema(BaseModel):
         Returns:
             Dict[str, Any]: The index schema as a dictionary.
         """
-        dict_schema = model_to_dict(self)
-        # cast fields back to a pure list
-        dict_schema["fields"] = [
-            field for field_name, field in dict_schema["fields"].items()
-        ]
+        # Manually serialize to ensure all field attributes are preserved
+        dict_schema = {
+            "index": model_to_dict(self.index),
+            "fields": [
+                model_to_dict(field) for field_name, field in self.fields.items()
+            ],
+            "version": self.version,
+        }
         return dict_schema
 
     def to_yaml(self, file_path: str, overwrite: bool = True) -> None:

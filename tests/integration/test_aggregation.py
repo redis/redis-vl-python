@@ -2,9 +2,9 @@ import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import HybridQuery
-from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
-from redisvl.redis.connection import compare_versions
+from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
+from tests.conftest import skip_if_redis_version_below
 
 
 @pytest.fixture
@@ -58,9 +58,7 @@ def index(sample_data, redis_url, worker_id):
 
 
 def test_aggregation_query(index):
-    redis_version = index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
@@ -139,9 +137,7 @@ def test_empty_query_string():
 
 
 def test_aggregation_query_with_filter(index):
-    redis_version = index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
@@ -167,9 +163,7 @@ def test_aggregation_query_with_filter(index):
 
 
 def test_aggregation_query_with_geo_filter(index):
-    redis_version = index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
@@ -195,9 +189,7 @@ def test_aggregation_query_with_geo_filter(index):
 
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
 def test_aggregate_query_alpha(index, alpha):
-    redis_version = index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
@@ -224,9 +216,7 @@ def test_aggregate_query_alpha(index, alpha):
 
 
 def test_aggregate_query_stopwords(index):
-    redis_version = index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
@@ -260,9 +250,7 @@ def test_aggregate_query_stopwords(index):
 
 
 def test_aggregate_query_with_text_filter(index):
-    redis_version = index.client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"

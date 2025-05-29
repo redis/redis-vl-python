@@ -38,6 +38,10 @@ def model_to_dict(model: BaseModel) -> Dict[str, Any]:
     def serialize_item(item):
         if isinstance(item, Enum):
             return item.value.lower()
+        elif isinstance(item, BaseModel):
+            # Recursively serialize nested BaseModel instances with exclude_defaults=False
+            nested_data = item.model_dump(exclude_none=True, exclude_defaults=False)
+            return {key: serialize_item(value) for key, value in nested_data.items()}
         elif isinstance(item, dict):
             return {key: serialize_item(value) for key, value in item.items()}
         elif isinstance(item, list):
@@ -45,7 +49,8 @@ def model_to_dict(model: BaseModel) -> Dict[str, Any]:
         else:
             return item
 
-    serialized_data = model.model_dump(exclude_none=True)
+    # Use exclude_defaults=False to preserve all field attributes including new ones
+    serialized_data = model.model_dump(exclude_none=True, exclude_defaults=False)
     for key, value in serialized_data.items():
         serialized_data[key] = serialize_item(value)
     return serialized_data
@@ -170,29 +175,51 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
 
 def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], None]:
     def wrapper():
+        # Check if the interpreter is shutting down
+        if sys is None or getattr(sys, "_getframe", None) is None:
+            # Interpreter is shutting down, skip cleanup
+            return
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
+        except Exception:
+            # Any other exception during loop detection means we should skip cleanup
+            return
+
         try:
             if loop is None or not loop.is_running():
+                # Check if asyncio module is still available
+                if asyncio is None:
+                    return
+
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
             task = loop.create_task(fn())
             loop.run_until_complete(task)
-        except RuntimeError:
+        except (RuntimeError, AttributeError, TypeError) as e:
             # This could happen if an object stored an event loop and now
-            # that event loop is closed. There's nothing we can do other than
-            # advise the user to use explicit cleanup methods.
+            # that event loop is closed, or if asyncio modules are being
+            # torn down during interpreter shutdown.
             #
             # Uses logging module instead of get_logger() to avoid I/O errors
             # if the wrapped function is called as a finalizer.
-            logging.info(
-                f"Could not run the async function {fn.__name__} because the event loop is closed. "
-                "This usually means the object was not properly cleaned up. Please use explicit "
-                "cleanup methods (e.g., disconnect(), close()) or use the object as an async "
-                "context manager.",
-            )
+            if logging is not None:
+                try:
+                    logging.info(
+                        f"Could not run the async function {fn.__name__} because the event loop is closed "
+                        "or the interpreter is shutting down. "
+                        "This usually means the object was not properly cleaned up. Please use explicit "
+                        "cleanup methods (e.g., disconnect(), close()) or use the object as an async "
+                        "context manager.",
+                    )
+                except Exception:
+                    # Even logging failed, interpreter is really shutting down
+                    pass
+            return
+        except Exception:
+            # Any other unexpected exception should be silently ignored during shutdown
             return
 
     return wrapper

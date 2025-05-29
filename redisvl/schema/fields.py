@@ -61,6 +61,8 @@ class BaseFieldAttributes(BaseModel):
 
     sortable: bool = Field(default=False)
     """Enable faster result sorting on the field at runtime"""
+    index_missing: bool = Field(default=False)
+    """Allow indexing and searching for missing values (documents without the field)"""
 
 
 class TextFieldAttributes(BaseFieldAttributes):
@@ -74,6 +76,8 @@ class TextFieldAttributes(BaseFieldAttributes):
     """Keep a suffix trie with all terms which match the suffix to optimize certain queries"""
     phonetic_matcher: Optional[str] = None
     """Used to perform phonetic matching during search"""
+    index_empty: bool = Field(default=False)
+    """Allow indexing and searching for empty strings"""
 
 
 class TagFieldAttributes(BaseFieldAttributes):
@@ -85,6 +89,8 @@ class TagFieldAttributes(BaseFieldAttributes):
     """Treat text as case sensitive or not. By default, tag characters are converted to lowercase"""
     withsuffixtrie: bool = Field(default=False)
     """Keep a suffix trie with all terms which match the suffix to optimize certain queries"""
+    index_empty: bool = Field(default=False)
+    """Allow indexing and searching for empty strings"""
 
 
 class NumericFieldAttributes(BaseFieldAttributes):
@@ -112,6 +118,8 @@ class BaseVectorFieldAttributes(BaseModel):
     """The distance metric used to measure query relevance"""
     initial_cap: Optional[int] = None
     """Initial vector capacity in the index affecting memory allocation size of the index"""
+    index_missing: bool = Field(default=False)
+    """Allow indexing and searching for missing values (documents without the field)"""
 
     @field_validator("algorithm", "datatype", "distance_metric", mode="before")
     @classmethod
@@ -129,6 +137,8 @@ class BaseVectorFieldAttributes(BaseModel):
         }
         if self.initial_cap is not None:  # Only include it if it's set
             field_data["INITIAL_CAP"] = self.initial_cap
+        if self.index_missing:  # Only include it if it's set
+            field_data["INDEXMISSING"] = True
         return field_data
 
 
@@ -190,14 +200,30 @@ class TextField(BaseField):
 
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
-        return RedisTextField(
-            name,
-            as_name=as_name,
-            weight=self.attrs.weight,  # type: ignore
-            no_stem=self.attrs.no_stem,  # type: ignore
-            phonetic_matcher=self.attrs.phonetic_matcher,  # type: ignore
-            sortable=self.attrs.sortable,
-        )
+        # Build arguments for RedisTextField
+        kwargs: Dict[str, Any] = {
+            "weight": self.attrs.weight,  # type: ignore
+            "no_stem": self.attrs.no_stem,  # type: ignore
+            "sortable": self.attrs.sortable,
+        }
+
+        # Only add as_name if it's not None
+        if as_name is not None:
+            kwargs["as_name"] = as_name
+
+        # Only add phonetic_matcher if it's not None
+        if self.attrs.phonetic_matcher is not None:  # type: ignore
+            kwargs["phonetic_matcher"] = self.attrs.phonetic_matcher  # type: ignore
+
+        # Add INDEXMISSING if enabled
+        if self.attrs.index_missing:  # type: ignore
+            kwargs["index_missing"] = True
+
+        # Add INDEXEMPTY if enabled
+        if self.attrs.index_empty:  # type: ignore
+            kwargs["index_empty"] = True
+
+        return RedisTextField(name, **kwargs)
 
 
 class TagField(BaseField):
@@ -208,13 +234,26 @@ class TagField(BaseField):
 
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
-        return RedisTagField(
-            name,
-            as_name=as_name,
-            separator=self.attrs.separator,  # type: ignore
-            case_sensitive=self.attrs.case_sensitive,  # type: ignore
-            sortable=self.attrs.sortable,
-        )
+        # Build arguments for RedisTagField
+        kwargs: Dict[str, Any] = {
+            "separator": self.attrs.separator,  # type: ignore
+            "case_sensitive": self.attrs.case_sensitive,  # type: ignore
+            "sortable": self.attrs.sortable,
+        }
+
+        # Only add as_name if it's not None
+        if as_name is not None:
+            kwargs["as_name"] = as_name
+
+        # Add INDEXMISSING if enabled
+        if self.attrs.index_missing:  # type: ignore
+            kwargs["index_missing"] = True
+
+        # Add INDEXEMPTY if enabled
+        if self.attrs.index_empty:  # type: ignore
+            kwargs["index_empty"] = True
+
+        return RedisTagField(name, **kwargs)
 
 
 class NumericField(BaseField):
@@ -225,11 +264,20 @@ class NumericField(BaseField):
 
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
-        return RedisNumericField(
-            name,
-            as_name=as_name,
-            sortable=self.attrs.sortable,
-        )
+        # Build arguments for RedisNumericField
+        kwargs: Dict[str, Any] = {
+            "sortable": self.attrs.sortable,
+        }
+
+        # Only add as_name if it's not None
+        if as_name is not None:
+            kwargs["as_name"] = as_name
+
+        # Add INDEXMISSING if enabled
+        if self.attrs.index_missing:  # type: ignore
+            kwargs["index_missing"] = True
+
+        return RedisNumericField(name, **kwargs)
 
 
 class GeoField(BaseField):
@@ -240,11 +288,20 @@ class GeoField(BaseField):
 
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
-        return RedisGeoField(
-            name,
-            as_name=as_name,
-            sortable=self.attrs.sortable,
-        )
+        # Build arguments for RedisGeoField
+        kwargs: Dict[str, Any] = {
+            "sortable": self.attrs.sortable,
+        }
+
+        # Only add as_name if it's not None
+        if as_name is not None:
+            kwargs["as_name"] = as_name
+
+        # Add INDEXMISSING if enabled
+        if self.attrs.index_missing:  # type: ignore
+            kwargs["index_missing"] = True
+
+        return RedisGeoField(name, **kwargs)
 
 
 class FlatVectorField(BaseField):

@@ -8,13 +8,16 @@ from redis.exceptions import ConnectionError
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.connection import (
     RedisConnectionFactory,
-    compare_versions,
     convert_index_info_to_schema,
     unpack_redis_modules,
     validate_modules,
 )
 from redisvl.schema import IndexSchema
 from redisvl.version import __version__
+from tests.conftest import (
+    skip_if_redis_version_below,
+    skip_if_redis_version_below_async,
+)
 
 EXPECTED_LIB_NAME = f"redis-py(redisvl_v{__version__})"
 
@@ -166,9 +169,7 @@ class TestConnect:
 
 
 def test_validate_redis(client):
-    redis_version = client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(client, "7.2.0")
     RedisConnectionFactory.validate_sync_redis(client)
     lib_name = client.client_info()
     assert lib_name["lib-name"] == EXPECTED_LIB_NAME
@@ -176,18 +177,14 @@ def test_validate_redis(client):
 
 @pytest.mark.asyncio
 async def test_validate_async_redis(async_client):
-    redis_version = (await async_client.info())["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    await skip_if_redis_version_below_async(async_client, "7.2.0")
     await RedisConnectionFactory.validate_async_redis(async_client)
     lib_name = await async_client.client_info()
     assert lib_name["lib-name"] == EXPECTED_LIB_NAME
 
 
 def test_validate_redis_custom_lib_name(client):
-    redis_version = client.info()["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    skip_if_redis_version_below(client, "7.2.0")
     RedisConnectionFactory.validate_sync_redis(client, "langchain_v0.1.0")
     lib_name = client.client_info()
     assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"
@@ -195,9 +192,7 @@ def test_validate_redis_custom_lib_name(client):
 
 @pytest.mark.asyncio
 async def test_validate_async_redis_custom_lib_name(async_client):
-    redis_version = (await async_client.info())["redis_version"]
-    if not compare_versions(redis_version, "7.2.0"):
-        pytest.skip("Not using a late enough version of Redis")
+    await skip_if_redis_version_below_async(async_client, "7.2.0")
     await RedisConnectionFactory.validate_async_redis(async_client, "langchain_v0.1.0")
     lib_name = await async_client.client_info()
     assert lib_name["lib-name"] == f"redis-py(redisvl_v{__version__};langchain_v0.1.0)"

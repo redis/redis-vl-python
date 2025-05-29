@@ -6,6 +6,7 @@ from redis.exceptions import ConnectionError
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
+from tests.conftest import skip_if_module_version_error
 
 
 @pytest.fixture
@@ -558,38 +559,50 @@ def test_semantic_drop(semantic_history):
     ]
 
 
-def test_different_vector_dtypes():
+def test_different_vector_dtypes(redis_url):
     try:
-        bfloat_sess = SemanticMessageHistory(name="bfloat_history", dtype="bfloat16")
+        bfloat_sess = SemanticMessageHistory(
+            name="bfloat_history", dtype="bfloat16", redis_url=redis_url
+        )
         bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
 
-        float16_sess = SemanticMessageHistory(name="float16_history", dtype="float16")
+        float16_sess = SemanticMessageHistory(
+            name="float16_history", dtype="float16", redis_url=redis_url
+        )
         float16_sess.add_message({"role": "user", "content": "float16 message"})
 
-        float32_sess = SemanticMessageHistory(name="float32_history", dtype="float32")
+        float32_sess = SemanticMessageHistory(
+            name="float32_history", dtype="float32", redis_url=redis_url
+        )
         float32_sess.add_message({"role": "user", "content": "float32 message"})
 
-        float64_sess = SemanticMessageHistory(name="float64_history", dtype="float64")
+        float64_sess = SemanticMessageHistory(
+            name="float64_history", dtype="float64", redis_url=redis_url
+        )
         float64_sess.add_message({"role": "user", "content": "float64 message"})
 
         for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
             sess.set_distance_threshold(0.7)
             assert len(sess.get_relevant("float message")) == 1
+            sess.delete()  # Clean up
     except:
-        pytest.skip("Not using a late enough version of Redis")
+        pytest.skip("Required Redis modules not available or version too low")
 
 
-def test_bad_dtype_connecting_to_exiting_history(redis_url, hf_vectorizer):
-    try:
-        history = SemanticMessageHistory(
+def test_bad_dtype_connecting_to_exiting_history(redis_url):
+    def create_history():
+        return SemanticMessageHistory(
             name="float64 history", dtype="float64", redis_url=redis_url
         )
-        same_type = SemanticMessageHistory(
+
+    def create_same_type():
+        return SemanticMessageHistory(
             name="float64 history", dtype="float64", redis_url=redis_url
         )
-        # under the hood uses from_existing
-    except RedisModuleVersionError:
-        pytest.skip("Not using a late enough version of Redis")
+
+    history = skip_if_module_version_error(create_history)
+    same_type = skip_if_module_version_error(create_same_type)
+    # under the hood uses from_existing
 
     with pytest.raises(ValueError):
         bad_type = SemanticMessageHistory(

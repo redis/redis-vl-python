@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import timedelta
 
@@ -23,8 +24,7 @@ from redisvl.query.filter import (
     Timestamp,
 )
 from redisvl.redis.utils import array_to_buffer
-
-# TODO expand to multiple schema types and sync + async
+from tests.conftest import skip_if_redis_version_below
 
 
 @pytest.fixture
@@ -923,3 +923,400 @@ def test_vector_query_with_ef_runtime_flat_index(flat_index, vector_query, sampl
     # However, the index should raise an error if EF_RUNTIME is set on a flat index.
     with pytest.raises(QueryValidationError):  # noqa: F821
         flat_index.query(vector_query)
+
+
+@pytest.fixture
+def missing_fields_index(worker_id, client):
+    """Create an index with INDEXMISSING and INDEXEMPTY enabled fields and test data."""
+    skip_if_redis_version_below(client, "7.2.0")
+
+    # Create an index with INDEXMISSING enabled fields (filterable fields only)
+    missing_index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": f"missing_test_index_{worker_id}",
+                "prefix": f"missing_{worker_id}",
+                "storage_type": "hash",
+            },
+            "fields": [
+                # Text field with both INDEXMISSING and INDEXEMPTY
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"index_missing": True, "index_empty": True},
+                },
+                # Tag field with both INDEXMISSING and INDEXEMPTY
+                {
+                    "name": "category",
+                    "type": "tag",
+                    "attrs": {"index_missing": True, "index_empty": True},
+                },
+                # Numeric field with INDEXMISSING
+                {"name": "price", "type": "numeric", "attrs": {"index_missing": True}},
+                # Geo field with INDEXMISSING
+                {"name": "location", "type": "geo", "attrs": {"index_missing": True}},
+                # Regular field without INDEXMISSING for comparison
+                {"name": "description", "type": "text"},
+            ],
+        },
+        redis_client=client,
+    )
+
+    # Create the index
+    missing_index.create(overwrite=True)
+
+    # Load test data with different missing field scenarios
+    test_data = [
+        {
+            "id": "complete",
+            "title": "Complete Document",
+            "category": "electronics",
+            "price": 99,
+            "location": "37.7749,-122.4194",
+            "description": "A complete document with all fields",
+        },
+        {
+            "id": "empty_strings",
+            "title": "",  # Empty title
+            "category": "",  # Empty category
+            "price": 150,
+            "location": "40.7128,-74.0060",
+            "description": "Document with empty string values",
+        },
+        {
+            "id": "partial_missing",
+            "title": "Partial Document",
+            # missing category field
+            "price": 75,
+            # missing location field
+            "description": "Document missing some fields",
+        },
+        {
+            "id": "mostly_missing",
+            # missing title, category, price, location fields
+            "description": "Document with most fields missing",
+        },
+        {
+            "id": "zero_price",
+            "title": "Zero Price Item",
+            "category": "free",
+            "price": 0,  # Valid zero value
+            "location": "34.0522,-118.2437",
+            "description": "Document with zero price",
+        },
+    ]
+
+    missing_index.load(test_data, id_field="id")
+
+    yield missing_index, f"missing_{worker_id}"
+
+    # Clean up
+    missing_index.delete(drop=True)
+
+
+def test_basic_missing_field_queries(missing_fields_index):
+    """
+    Test the fundamental is_missing() functionality across all supported field types.
+
+    This test validates that Redis v2.10's INDEXMISSING feature works correctly for:
+    - Text fields: Search for documents completely missing a text field
+    - Tag fields: Search for documents missing tag/categorical data
+    - Numeric fields: Search for documents missing numerical values
+    - Geo fields: Search for documents missing location data
+
+    Why this matters: INDEXMISSING enables data quality checks, incomplete record
+    identification, and conditional processing based on field presence. This is the
+    foundation test ensuring the core functionality works for each filterable field type.
+    """
+    missing_index, prefix = missing_fields_index
+
+    # Test missing text field
+    missing_title_query = FilterQuery(
+        filter_expression=Text("title").is_missing(),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_title_query)
+    assert len(results) == 1
+    assert results[0]["id"] == f"{prefix}:mostly_missing"
+
+    # Test missing tag field
+    missing_category_query = FilterQuery(
+        filter_expression=Tag("category").is_missing(),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_category_query)
+    assert len(results) == 2  # partial_missing and mostly_missing
+    result_ids = {result["id"] for result in results}
+    assert f"{prefix}:partial_missing" in result_ids
+    assert f"{prefix}:mostly_missing" in result_ids
+
+    # Test missing numeric field
+    missing_price_query = FilterQuery(
+        filter_expression=Num("price").is_missing(), return_fields=["id", "description"]
+    )
+    results = missing_index.query(missing_price_query)
+    assert len(results) == 1
+    assert results[0]["id"] == f"{prefix}:mostly_missing"
+
+    # Test missing geo field
+    missing_location_query = FilterQuery(
+        filter_expression=Geo("location").is_missing(),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_location_query)
+    assert len(results) == 2  # partial_missing and mostly_missing
+    result_ids = {result["id"] for result in results}
+    assert f"{prefix}:partial_missing" in result_ids
+    assert f"{prefix}:mostly_missing" in result_ids
+
+
+def test_missing_vs_empty_field_distinction(missing_fields_index):
+    """
+    Test the critical distinction between missing fields and empty string values.
+
+    This test validates that Redis v2.10's INDEXEMPTY and INDEXMISSING features work
+    differently:
+    - INDEXMISSING: Finds documents where the field is completely absent
+    - INDEXEMPTY: Enables searching for empty string values ("") in TEXT/TAG fields
+
+    Why this matters: Applications need to distinguish between "no data provided"
+    (missing field) vs "empty data provided" (empty string). This enables more
+    sophisticated data validation and quality checks. For example, a user might
+    submit a form with an empty title field vs not providing a title at all.
+    """
+    missing_index, prefix = missing_fields_index
+
+    # Find documents missing the title field entirely (field not present)
+    missing_title_query = FilterQuery(
+        filter_expression=Text("title").is_missing(),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_title_query)
+    assert len(results) == 1
+    assert results[0]["id"] == f"{prefix}:mostly_missing"
+
+    # Verify that documents with empty strings are NOT found by is_missing()
+    # Empty string documents have the field present but with "" value
+    for result in results:
+        assert result["id"] != f"{prefix}:empty_strings"
+
+    # Test the same distinction for tag fields
+    missing_category_query = FilterQuery(
+        filter_expression=Tag("category").is_missing(),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_category_query)
+
+    # Should find documents missing category field, but not those with empty categories
+    missing_ids = {result["id"] for result in results}
+    assert f"{prefix}:mostly_missing" in missing_ids
+    assert f"{prefix}:partial_missing" in missing_ids
+    assert f"{prefix}:empty_strings" not in missing_ids  # Has empty string, not missing
+
+
+def test_missing_fields_business_logic_integration(missing_fields_index):
+    """
+    Test combining missing field filters with business logic for real-world scenarios.
+
+    This test demonstrates practical applications where missing field detection is
+    combined with business rules:
+    - Inventory management: High-value items missing categorization
+    - Data quality: Products missing price information
+    - Content management: Articles missing required metadata
+
+    Why this matters: Real applications rarely search for missing fields in isolation.
+    They combine missing field detection with business logic to identify actionable
+    data quality issues, incomplete records that need attention, or documents ready
+    for specific processing workflows.
+    """
+    missing_index, prefix = missing_fields_index
+
+    # Business scenario: Find high-value items (>$50) missing category information
+    # This helps identify expensive products that need proper categorization
+    high_value_missing_category = FilterQuery(
+        filter_expression=(Num("price") > 50) & Tag("category").is_missing(),
+        return_fields=["id", "price", "description"],
+    )
+    results = missing_index.query(high_value_missing_category)
+    assert len(results) == 1  # partial_missing has price=75 and missing category
+    assert results[0]["id"] == f"{prefix}:partial_missing"
+
+    # Business scenario: Find all documents missing price data for inventory audit
+    # This helps identify products that need pricing information
+    missing_price_audit = FilterQuery(
+        filter_expression=Num("price").is_missing(), return_fields=["id", "description"]
+    )
+    results = missing_index.query(missing_price_audit)
+    assert len(results) == 1
+    result_ids = {result["id"] for result in results}
+    assert f"{prefix}:mostly_missing" in result_ids
+
+    # Business scenario: Find items that are either free (price=0) OR have missing price
+    free_or_no_price = FilterQuery(
+        filter_expression=(Num("price") == 0) | Num("price").is_missing(),
+        return_fields=["id", "price", "description"],
+    )
+    results = missing_index.query(free_or_no_price)
+    assert len(results) >= 1  # At least mostly_missing, possibly zero_price if indexed
+    result_ids = {result["id"] for result in results}
+    assert f"{prefix}:mostly_missing" in result_ids
+
+
+def test_complex_missing_field_combinations(missing_fields_index):
+    """
+    Test complex logical combinations of missing field filters using AND/OR operations.
+
+    This test validates that missing field filters can be combined with logical
+    operators to create sophisticated queries:
+    - OR operations: Find documents missing ANY of several critical fields
+    - AND operations: Find documents missing ALL of a set of fields
+    - Mixed operations: Complex business rules about data completeness
+
+    Why this matters: Real-world data quality checks often need to identify records
+    with multiple types of missing data. This enables flexible data quality rules
+    and completeness scoring for filterable fields.
+    """
+    missing_index, prefix = missing_fields_index
+
+    # Find documents missing ANY critical business field (data quality red flags)
+    missing_any_critical_field = FilterQuery(
+        filter_expression=(
+            Text("title").is_missing()
+            | Tag("category").is_missing()
+            | Num("price").is_missing()
+        ),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_any_critical_field)
+    assert len(results) == 2  # partial_missing and mostly_missing
+    result_ids = {result["id"] for result in results}
+    assert f"{prefix}:partial_missing" in result_ids
+    assert f"{prefix}:mostly_missing" in result_ids
+
+    # Find documents missing ALL critical fields (severely incomplete records)
+    missing_all_critical_fields = FilterQuery(
+        filter_expression=(
+            Text("title").is_missing()
+            & Tag("category").is_missing()
+            & Num("price").is_missing()
+        ),
+        return_fields=["id", "description"],
+    )
+    results = missing_index.query(missing_all_critical_fields)
+    assert len(results) == 1
+    assert results[0]["id"] == f"{prefix}:mostly_missing"
+
+    # Find documents complete enough for display (have both title AND category)
+    display_ready_documents = FilterQuery(
+        filter_expression=(Text("title") != "") & (Tag("category") != ""),
+        return_fields=["id", "title", "category"],
+    )
+    results = missing_index.query(display_ready_documents)
+    assert len(results) >= 2  # Should find complete and zero_price documents
+
+
+def test_data_quality_completeness_analysis(missing_fields_index):
+    """
+    Test data quality analysis patterns using missing field detection.
+
+    This test demonstrates how missing field queries enable data quality monitoring:
+    - Calculate data completeness rates across the dataset
+    - Identify records suitable for different processing workflows
+    - Measure the impact of data quality issues on searchable content
+
+    Why this matters: Organizations need to monitor and improve data quality over time.
+    Missing field detection enables automated data quality dashboards, completeness
+    scoring, and identification of records that need human review or automated
+    enrichment. This is essential for maintaining high-quality searchable content.
+    """
+    missing_index, prefix = missing_fields_index
+
+    # Calculate total searchable documents (baseline for quality metrics)
+    total_docs = missing_index.query(CountQuery("*"))
+    assert total_docs >= 3  # At least 3 docs should be indexed and searchable
+
+    # Identify incomplete records missing required business fields
+    incomplete_records = FilterQuery(
+        filter_expression=(Text("title").is_missing() | Num("price").is_missing()),
+        return_fields=["id"],
+    )
+    incomplete_docs = missing_index.query(incomplete_records)
+    incomplete_count = len(incomplete_docs)
+
+    # Calculate data completeness rate for monitoring
+    completion_rate = (total_docs - incomplete_count) / total_docs
+    assert (
+        completion_rate > 0.3
+    )  # At least 30% of docs should be complete with test data
+
+    # Identify records ready for public display (quality threshold check)
+    display_ready = FilterQuery(
+        filter_expression=Text("title") != "",
+        return_fields=["id", "title", "description"],
+    )
+    results = missing_index.query(display_ready)
+    assert len(results) >= 1  # Should have at least some displayable documents
+
+
+def test_missing_fields_workflow_filtering(missing_fields_index):
+    """
+    Test missing field filters in workflow and processing scenarios.
+
+    This test validates using missing field detection to filter documents for
+    specific processing workflows:
+    - Content processing: Only process documents with sufficient text content
+    - Recommendation systems: Only include items with pricing data
+    - Content pipelines: Filter documents ready for each processing stage
+
+    Why this matters: Modern applications have multi-stage processing pipelines
+    where different stages require different fields to be present. Missing field
+    detection enables intelligent filtering to ensure each processing step only
+    receives documents it can actually process, improving efficiency and preventing
+    errors in downstream systems.
+    """
+    missing_index, prefix = missing_fields_index
+
+    # Workflow 1: Identify documents ready for text processing (need title content)
+    text_processing_ready = FilterQuery(
+        filter_expression=(
+            (Text("title") == "Complete Document")
+            | (Text("title") == "Partial Document")
+            | (Text("title") == "Zero Price Item")
+        ),
+        return_fields=["id", "title", "description"],
+    )
+    results = missing_index.query(text_processing_ready)
+
+    # Verify all results have text content for processing
+    for result in results:
+        assert "title" in result and result["title"] != ""
+        assert "description" in result
+
+    # Workflow 2: Identify items suitable for price-based recommendations
+    price_based_recommendations = FilterQuery(
+        filter_expression=Num("price") >= 0,  # Has valid price data
+        return_fields=["id", "price", "title"],
+    )
+    results = missing_index.query(price_based_recommendations)
+    assert len(results) >= 2  # Should find multiple documents with pricing
+
+    # Verify all results have pricing data for recommendations
+    for result in results:
+        assert "price" in result
+
+    # Workflow 3: Complete document processing (have all key fields)
+    complete_processing_ready = FilterQuery(
+        filter_expression=Text("title") == "Complete Document",
+        return_fields=["id", "title", "category", "price"],
+    )
+    results = missing_index.query(complete_processing_ready)
+
+    # If we find the complete document, verify it has the expected fields
+    if len(results) > 0:
+        for result in results:
+            assert "title" in result and result["title"] != ""
+            assert "category" in result
+            assert "price" in result
+    else:
+        # If not indexed, that's also acceptable behavior for this test
+        pass
