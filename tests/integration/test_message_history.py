@@ -592,9 +592,7 @@ def test_different_vector_dtypes(redis_url):
 def test_bad_dtype_connecting_to_exiting_history(redis_url):
     def create_history():
         return SemanticMessageHistory(
-            name="float64 history",
-            dtype="float64",
-            redis_url=redis_url
+            name="float64 history", dtype="float64", redis_url=redis_url
         )
 
     def create_same_type():
