@@ -397,7 +397,10 @@ class RedisConnectionFactory:
             redis_client.client_setinfo("LIB-NAME", _lib_name)
         except ResponseError:
             # Fall back to a simple log echo
-            redis_client.echo(_lib_name)
+            # For RedisCluster, echo is not available
+            if not isinstance(redis_client, RedisCluster):
+                redis_client.echo(_lib_name)
+
 
         # Get list of modules
         installed_modules = RedisConnectionFactory.get_modules(redis_client)
