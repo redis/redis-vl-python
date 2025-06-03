@@ -13,5 +13,5 @@ This section contains guidelines and information for RedisVL releases.
 :caption: Release Guides
 :maxdepth: 2
 
-0_5_0_release
+0_5_1_release
 ```
