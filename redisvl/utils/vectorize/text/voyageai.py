@@ -181,9 +181,9 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         if self.model in ["voyage-2", "voyage-02"]:
             return 72
-        elif self.model == "voyage-3-lite":
+        elif self.model in ["voyage-3-lite", "voyage-3.5-lite"]:
             return 30
-        elif self.model == "voyage-3":
+        elif self.model in ["voyage-3", "voyage-3.5"]:
             return 10
         else:
             return 7  # Default for other models
