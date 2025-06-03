@@ -1,5 +1,6 @@
 import os
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
 
 from redis import Redis, RedisCluster
@@ -18,6 +19,45 @@ from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.utils import deprecated_function
 from redisvl.version import __version__
+
+
+def _strip_cluster_from_url_and_kwargs(url: str, **kwargs) -> Tuple[str, Dict[str, Any]]:
+    """
+    Strip the 'cluster' parameter from URL query string and kwargs to prevent
+    TypeError when calling AsyncRedisCluster.from_url().
+    
+    Args:
+        url (str): Redis connection URL
+        **kwargs: Additional keyword arguments
+        
+    Returns:
+        Tuple[str, Dict[str, Any]]: Modified URL and kwargs with cluster parameter removed
+    """
+    # Create a copy of kwargs to avoid modifying the original
+    clean_kwargs = kwargs.copy()
+    clean_kwargs.pop("cluster", None)
+    
+    # Parse the URL and remove cluster parameter from query string
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+    
+    # Remove cluster parameter if present (case-insensitive)
+    query_params.pop("cluster", None)
+    query_params.pop("Cluster", None)
+    query_params.pop("CLUSTER", None)
+    
+    # Rebuild the URL without cluster parameter
+    new_query = urlencode(query_params, doseq=True)
+    clean_url = urlunparse((
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        parsed_url.params,
+        new_query,
+        parsed_url.fragment
+    ))
+    
+    return clean_url, clean_kwargs
 
 
 def compare_versions(version1: str, version2: str):
@@ -293,7 +333,9 @@ class RedisConnectionFactory:
         url = url or get_address_from_env()
 
         if is_cluster_url(url, **kwargs):
-            client = AsyncRedisCluster.from_url(url, **kwargs)
+            # Strip cluster parameter to prevent TypeError in AsyncRedisCluster.from_url()
+            clean_url, clean_kwargs = _strip_cluster_from_url_and_kwargs(url, **kwargs)
+            client = AsyncRedisCluster.from_url(clean_url, **clean_kwargs)
         else:
             client = AsyncRedis.from_url(url, **kwargs)
 
@@ -345,7 +387,9 @@ class RedisConnectionFactory:
     ) -> AsyncRedisCluster:
         """Creates and returns an asynchronous Redis client for a Redis cluster."""
         url = redis_url or get_address_from_env()
-        return AsyncRedisCluster.from_url(url, **kwargs)
+        # Strip cluster parameter to prevent TypeError in AsyncRedisCluster.from_url()
+        clean_url, clean_kwargs = _strip_cluster_from_url_and_kwargs(url, **kwargs)
+        return AsyncRedisCluster.from_url(clean_url, **clean_kwargs)
 
     @staticmethod
     def sync_to_async_redis(
