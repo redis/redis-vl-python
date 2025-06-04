@@ -24,34 +24,33 @@ python = ">=3.9,<3.14"
 numpy = ">=1.26.0,<3"
 pyyaml = ">=5.4,<7.0"
 redis = ">=5.0,<7.0"
-pydantic = "^2"
+pydantic = ">=2,<3"
 tenacity = ">=8.2.2"
 ml-dtypes = ">=0.4.0,<1.0.0"
-python-ulid = "^3.0.0"
+python-ulid = ">=3.0.0"
+jsonpath-ng = ">=1.5.0"
 nltk = { version = "^3.8.1", optional = true }
-jsonpath-ng = "^1.5.0"
 openai = { version = "^1.13.0", optional = true }
-sentence-transformers = { version = "^3.4.0", optional = true }
 google-cloud-aiplatform = { version = "^1.26", optional = true }
 protobuf = { version = "^5.29.1", optional = true }
 cohere = { version = ">=4.44", optional = true }
 mistralai = { version = ">=1.0.0", optional = true }
 voyageai = { version = ">=0.2.2", optional = true }
-ranx = { version = "^0.3.0", python=">=3.10", optional = true }
-boto3 = {version = "1.36.0", optional = true, extras = ["bedrock"]}
-scipy = {version = "^1.15", optional = true, python=">=3.10"}
-
+sentence-transformers = { version = "^3.4.0", optional = true }
+scipy = [
+  { version = ">=1.9.0,<1.14", python = "<3.10", optional = true },
+  { version = ">=1.14.0,<1.16", python = ">=3.10", optional = true }
+]
+ranx = {version = "^0.3.0", optional = true}
 
 [tool.poetry.extras]
 openai = ["openai"]
-sentence-transformers = ["sentence-transformers", "scipy"]
-vertexai = ["google-cloud-aiplatform", "protobuf"]
+vertexai = ["google-cloud-aiplatform"]
 cohere = ["cohere"]
 mistralai = ["mistralai"]
 voyageai = ["voyageai"]
-ranx = ["ranx", "scipy"]
-bedrock = ["boto3"]
 nltk = ["nltk"]
+sentence-transformers = ["sentence-transformers"]
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"
@@ -61,7 +60,7 @@ pytest = "^8.1.1"
 pytest-asyncio = "^0.23.6"
 pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
 pre-commit = "^4.1.0"
-mypy = "1.9.0"
+mypy = "^1.11.0"
 nbval = "^0.11.0"
 types-pyyaml = "*"
 types-pyopenssl = "*"

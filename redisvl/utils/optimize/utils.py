@@ -1,16 +1,20 @@
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from redisvl.utils.utils import lazy_import
 
+if TYPE_CHECKING:
+    from ranx import Qrels
+else:
+    Qrels = lazy_import("ranx.Qrels")
+
 np = lazy_import("numpy")
-from ranx import Qrels
 
 from redisvl.utils.optimize.schema import LabeledData
 
 NULL_RESPONSE_KEY = "no_match"
 
 
-def _format_qrels(test_data: List[LabeledData]) -> Qrels:
+def _format_qrels(test_data: List[LabeledData]) -> "Qrels":
     """Utility function for creating qrels for evaluation with ranx"""
     qrels_dict = {}
 

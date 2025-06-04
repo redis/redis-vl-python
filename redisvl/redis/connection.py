@@ -357,6 +357,9 @@ class RedisConnectionFactory:
                 "RedisCluster is not supported for sync-to-async conversion."
             )
 
+        # At this point, redis_client is guaranteed to be Redis type
+        assert isinstance(redis_client, Redis)  # Type narrowing for MyPy
+
         # pick the right connection class
         connection_class: Type[AsyncAbstractConnection] = (
             AsyncSSLConnection
