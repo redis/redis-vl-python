@@ -52,6 +52,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry install --all-extras
+          poetry run pip install ranx
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
@@ -116,19 +117,19 @@ jobs:
       - name: Install dependencies
         run: |
           poetry install --all-extras
+          poetry run pip install ranx
 
-      - name: Install specific redis-py version
-        run: |
+          # Install right redis version based on redis py
           if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
             poetry add "redis>=5.0.0,<6.0.0"
           else
             poetry add "redis>=6.0.0,<7.0.0"
           fi
 
-      - name: Install hiredis if needed
-        if: matrix.connection == 'hiredis'
-        run: |
-          poetry add hiredis
+          # Install hiredis if selected
+          if [[ "${{ matrix.connection }}" == "hiredis" ]]; then
+              poetry add hiredis
+          fi
 
       - name: Set Redis image name
         run: |
@@ -179,7 +180,7 @@ jobs:
           if [[ "${{ matrix.python-version }}" > "3.9" ]]; then
             make test-notebooks
           else
-            poetry run test-notebooks --ignore ./docs/user_guide/09_threshold_optimization.ipynb --ignore ./docs/user_guide/release_guide/0_5_0_release.ipynb
+            poetry run test-notebooks --ignore ./docs/user_guide/09_threshold_optimization.ipynb --ignore ./docs/user_guide/release_guide/0_5_1_release.ipynb
           fi
 
   docs:

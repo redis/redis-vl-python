@@ -1,9 +1,15 @@
-from typing import Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List
 
 from redisvl.utils.utils import lazy_import
 
+if TYPE_CHECKING:
+    from ranx import Qrels, Run, evaluate
+else:
+    Qrels = lazy_import("ranx.Qrels")
+    Run = lazy_import("ranx.Run")
+    evaluate = lazy_import("ranx.evaluate")
+
 np = lazy_import("numpy")
-from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.cache.llm.semantic import SemanticCache
 from redisvl.query import RangeQuery
@@ -12,7 +18,7 @@ from redisvl.utils.optimize.schema import LabeledData
 from redisvl.utils.optimize.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
-def _generate_run_cache(test_data: List[LabeledData], threshold: float) -> Run:
+def _generate_run_cache(test_data: List[LabeledData], threshold: float) -> "Run":
     """Format observed data for evaluation with ranx"""
     run_dict: Dict[str, Dict[str, int]] = {}
 
@@ -32,7 +38,7 @@ def _generate_run_cache(test_data: List[LabeledData], threshold: float) -> Run:
 
 
 def _eval_cache(
-    test_data: List[LabeledData], threshold: float, qrels: Qrels, metric: str
+    test_data: List[LabeledData], threshold: float, qrels: "Qrels", metric: str
 ) -> float:
     """Formats run data and evaluates supported metric"""
     run = _generate_run_cache(test_data, threshold)

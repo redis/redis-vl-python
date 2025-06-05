@@ -5,7 +5,9 @@ import pytest
 if sys.version_info.major == 3 and sys.version_info.minor < 10:
     pytest.skip("Test requires Python 3.10 or higher", allow_module_level=True)
 
-from ranx import evaluate
+from redisvl.utils.utils import lazy_import
+
+evaluate = lazy_import("ranx.evaluate")
 
 from redisvl.utils.optimize import LabeledData
 from redisvl.utils.optimize.cache import _generate_run_cache

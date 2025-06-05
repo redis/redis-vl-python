@@ -1,10 +1,16 @@
 import random
-from typing import Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List
 
 from redisvl.utils.utils import lazy_import
 
+if TYPE_CHECKING:
+    from ranx import Qrels, Run, evaluate
+else:
+    Qrels = lazy_import("ranx.Qrels")
+    Run = lazy_import("ranx.Run")
+    evaluate = lazy_import("ranx.evaluate")
+
 np = lazy_import("numpy")
-from ranx import Qrels, Run, evaluate
 
 from redisvl.extensions.router.semantic import SemanticRouter
 from redisvl.utils.optimize.base import BaseThresholdOptimizer, EvalMetric
@@ -12,7 +18,7 @@ from redisvl.utils.optimize.schema import LabeledData
 from redisvl.utils.optimize.utils import NULL_RESPONSE_KEY, _format_qrels
 
 
-def _generate_run_router(test_data: List[LabeledData], router: SemanticRouter) -> Run:
+def _generate_run_router(test_data: List[LabeledData], router: SemanticRouter) -> "Run":
     """Format router results into format for ranx Run"""
     run_dict: Dict[Any, Any] = {}
 
@@ -28,7 +34,10 @@ def _generate_run_router(test_data: List[LabeledData], router: SemanticRouter) -
 
 
 def _eval_router(
-    router: SemanticRouter, test_data: List[LabeledData], qrels: Qrels, eval_metric: str
+    router: SemanticRouter,
+    test_data: List[LabeledData],
+    qrels: "Qrels",
+    eval_metric: str,
 ) -> float:
     """Evaluate acceptable metric given run and qrels data"""
     run = _generate_run_router(test_data, router)
@@ -58,7 +67,7 @@ def _router_random_search(
 def _random_search_opt_router(
     router: SemanticRouter,
     test_data: List[LabeledData],
-    qrels: Qrels,
+    qrels: "Qrels",
     eval_metric: EvalMetric,
     **kwargs: Any,
 ):
