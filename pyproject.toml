@@ -43,7 +43,6 @@ scipy = [
 ]
 boto3 = { version = "^1.36.0", optional = true }
 urllib3 = { version = "<2.2.0", optional = true }
-ranx = {version = "^0.3.20", optional = true}
 
 [tool.poetry.extras]
 mistralai = ["mistralai"]
