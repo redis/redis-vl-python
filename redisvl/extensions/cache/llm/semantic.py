@@ -385,7 +385,7 @@ class SemanticCache(BaseLLMCache):
         .. code-block:: python
 
             response = cache.check(
-                prompt="What is the captial city of France?"
+                prompt="What is the capital city of France?"
             )
         """
         if not any([prompt, vector]):
@@ -476,7 +476,7 @@ class SemanticCache(BaseLLMCache):
         .. code-block:: python
 
             response = await cache.acheck(
-                prompt="What is the captial city of France?"
+                prompt="What is the capital city of France?"
             )
         """
         aindex = await self._get_async_index()
@@ -588,7 +588,7 @@ class SemanticCache(BaseLLMCache):
         .. code-block:: python
 
             key = cache.store(
-                prompt="What is the captial city of France?",
+                prompt="What is the capital city of France?",
                 response="Paris",
                 metadata={"city": "Paris", "country": "France"}
             )
@@ -656,7 +656,7 @@ class SemanticCache(BaseLLMCache):
         .. code-block:: python
 
             key = await cache.astore(
-                prompt="What is the captial city of France?",
+                prompt="What is the capital city of France?",
                 response="Paris",
                 metadata={"city": "Paris", "country": "France"}
             )

@@ -367,9 +367,9 @@ def test_string_filter_expressions(query):
     assert query.query_string().__contains__("hello world")
 
     # Optional flag
-    query.set_filter("~(@desciption:(hello | world))")
-    assert query._filter_expression == "~(@desciption:(hello | world))"
-    assert query.query_string().__contains__("~(@desciption:(hello | world))")
+    query.set_filter("~(@description:(hello | world))")
+    assert query._filter_expression == "~(@description:(hello | world))"
+    assert query.query_string().__contains__("~(@description:(hello | world))")
 
 
 def test_vector_query_hybrid_policy():

@@ -60,7 +60,7 @@ class BaseMessageHistory:
         raw: bool = False,
         session_tag: Optional[str] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
-        """Retreive the recent conversation history in sequential order.
+        """Retrieve the recent conversation history in sequential order.
 
         Args:
             top_k (int): The number of previous exchanges to return. Default is 5.

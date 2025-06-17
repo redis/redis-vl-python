@@ -26,7 +26,7 @@ def test_aggregate_hybrid_query():
 
     assert isinstance(hybrid_query, AggregateRequest)
 
-    # Check defaut properties
+    # Check default properties
     assert hybrid_query._text == sample_text
     assert hybrid_query._text_field == text_field_name
     assert hybrid_query._vector == sample_vector
