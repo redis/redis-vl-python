@@ -6,3 +6,12 @@ repos:
         entry: bash -c 'poetry run format && poetry run sort-imports && poetry run check-mypy'
         language: system
         pass_filenames: false
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+      - id: codespell
+        name: Check spelling
+        args:
+          - --write-changes
+          - --skip=*.pyc,*.pyo,*.lock,*.git,*.mypy_cache,__pycache__,*.egg-info,.pytest_cache,docs/_build,env,venv,.venv
+          - --ignore-words-list=enginee

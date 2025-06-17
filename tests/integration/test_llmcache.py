@@ -744,7 +744,7 @@ def test_cache_filtering(cache_with_filters):
     )
     assert len(results) == 4
 
-    # test no results are returned if we pass a nonexistant tag
+    # test no results are returned if we pass a nonexistent tag
     bad_filter = Tag("label") == "bad tag"
     results = cache_with_filters.check(
         "test prompt 1", filter_expression=bad_filter, num_results=5
