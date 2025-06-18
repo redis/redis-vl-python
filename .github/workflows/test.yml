@@ -52,7 +52,6 @@ jobs:
       - name: Install dependencies
         run: |
           poetry install --all-extras
-          poetry run pip install ranx
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
@@ -79,7 +78,7 @@ jobs:
           make test-all
 
   test:
-    name: Python ${{ matrix.python-version }} - ${{ matrix.connection }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-version }}]
+    name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-version }}]
     runs-on: ubuntu-latest
     needs: service-tests
     env:
@@ -89,7 +88,6 @@ jobs:
       matrix:
         # 3.11 tests are run in the service-tests job
         python-version: ["3.9", "3.10", 3.12, 3.13] 
-        connection: ["hiredis", "plain"]
         redis-py-version: ["5.x", "6.x"]
         redis-version: ["6.2.6-v9", "latest", "8.0.1"]
 
@@ -117,18 +115,12 @@ jobs:
       - name: Install dependencies
         run: |
           poetry install --all-extras
-          poetry run pip install ranx
 
           # Install right redis version based on redis py
           if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
             poetry add "redis>=5.0.0,<6.0.0"
           else
             poetry add "redis>=6.0.0,<7.0.0"
-          fi
-
-          # Install hiredis if selected
-          if [[ "${{ matrix.connection }}" == "hiredis" ]]; then
-              poetry add hiredis
           fi
 
       - name: Set Redis image name
@@ -145,7 +137,7 @@ jobs:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Run tests
-        if: matrix.connection == 'plain' && matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
+        # if: matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
@@ -153,13 +145,13 @@ jobs:
         run: |
           make test
 
-      - name: Run tests (alternate)
-        if: matrix.connection != 'plain' || matrix.redis-py-version != '6.x' || matrix.redis-version != 'latest'
-        run: |
-          make test
+      # - name: Run tests (alternate)
+      #   if: matrix.redis-py-version != '6.x' || matrix.redis-version != 'latest'
+      #   run: |
+      #     make test
 
       - name: Run notebooks
-        if: matrix.connection == 'plain' && matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
+        if: matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -177,11 +169,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
-          if [[ "${{ matrix.python-version }}" > "3.9" ]]; then
-            make test-notebooks
-          else
-            poetry run test-notebooks --ignore ./docs/user_guide/09_threshold_optimization.ipynb --ignore ./docs/user_guide/release_guide/0_5_1_release.ipynb
-          fi
+          make test-notebooks
 
   docs:
     runs-on: ubuntu-latest

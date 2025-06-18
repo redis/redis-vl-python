@@ -12,12 +12,12 @@ from redis.asyncio.connection import SSLConnection as AsyncSSLConnection
 from redis.connection import SSLConnection
 from redis.exceptions import ResponseError
 
+from redisvl import __version__
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES, REDIS_URL_ENV_VAR
 from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.utils import deprecated_function
-from redisvl.version import __version__
 
 
 def compare_versions(version1: str, version2: str):
