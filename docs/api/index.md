@@ -22,6 +22,5 @@ reranker
 cache
 message_history
 router
-threshold_optimizer
 ```
 
