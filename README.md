@@ -222,12 +222,6 @@ embeddings = co.embed_many(
 ### Rerankers
 [Integrate with popular reranking providers](https://docs.redisvl.com/en/stable/user_guide/06_rerankers.html) to improve the relevancy of the initial search results from Redis
 
-### Threshold Optimization
-[Optimize distance thresholds for cache and router](https://docs.redisvl.com/en/stable/user_guide/09_threshold_optimization.html) with the utility `ThresholdOptimizer` classes.
-
-**Note:** only available for `python > 3.9`.
-
-
 
 ## 💫 Extensions
 We're excited to announce the support for **RedisVL Extensions**. These modules implement interfaces exposing best practices and design patterns for working with LLM memory and agents. We've taken the best from what we've learned from our users (that's you) as well as bleeding-edge customers, and packaged it up.
