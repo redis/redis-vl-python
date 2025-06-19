@@ -29,6 +29,8 @@ else:
         IndexType,
     )
 
+import json
+
 from redisvl.exceptions import SchemaValidationError
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema
@@ -200,6 +202,80 @@ class BaseStorage(BaseModel):
             generated_keys.append(key)
         return generated_keys
 
+    def _create_readable_validation_error_message(
+        self, validation_error: ValidationError, obj_index: int, obj: Dict[str, Any]
+    ) -> str:
+        """
+        Create a human-readable error message from a Pydantic ValidationError.
+
+        Args:
+            validation_error: The Pydantic ValidationError
+            obj_index: The index of the object that failed validation
+            obj: The object that failed validation
+
+        Returns:
+            A detailed, actionable error message
+        """
+        error_details = []
+
+        for error in validation_error.errors():
+            field_name = ".".join(str(loc) for loc in error["loc"])
+            error_type = error["type"]
+            error_msg = error["msg"]
+            input_value = error.get("input", "N/A")
+
+            # Create a more descriptive error message based on error type
+            if error_type == "bytes_type":
+                if isinstance(input_value, bool):
+                    suggestion = (
+                        f"Field '{field_name}' expects bytes (vector data), but got boolean value '{input_value}'. "
+                        f"If this should be a vector field, provide a list of numbers or bytes. "
+                        f"If this should be a different field type, check your schema definition."
+                    )
+                else:
+                    suggestion = (
+                        f"Field '{field_name}' expects bytes (vector data), but got {type(input_value).__name__} value '{input_value}'. "
+                        f"For vector fields, provide a list of numbers or bytes."
+                    )
+            elif error_type == "bool_type":
+                suggestion = (
+                    f"Field '{field_name}' cannot be boolean. Got '{input_value}' of type {type(input_value).__name__}. "
+                    f"Provide a valid numeric value instead."
+                )
+            elif error_type == "string_type":
+                suggestion = (
+                    f"Field '{field_name}' expects a string, but got {type(input_value).__name__} value '{input_value}'. "
+                    f"Convert the value to a string or check your data types."
+                )
+            elif error_type == "list_type":
+                suggestion = (
+                    f"Field '{field_name}' expects a list (for vector data), but got {type(input_value).__name__} value '{input_value}'. "
+                    f"Provide the vector as a list of numbers."
+                )
+            elif "dimensions" in error_msg.lower():
+                suggestion = (
+                    f"Vector field '{field_name}' has incorrect dimensions. {error_msg}"
+                )
+            elif "range" in error_msg.lower():
+                suggestion = f"Vector field '{field_name}' has values outside the allowed range. {error_msg}"
+            else:
+                suggestion = f"Field '{field_name}': {error_msg}"
+
+            error_details.append(f"  • {suggestion}")
+
+        # Create the final error message
+        if len(error_details) == 1:
+            detail_msg = error_details[0].strip("  • ")
+        else:
+            detail_msg = "Multiple validation errors:\n" + "\n".join(error_details)
+
+        return (
+            f"Schema validation failed for object at index {obj_index}. {detail_msg}\n"
+            f"Object data: {json.dumps(obj, default=str, indent=2)[:200]}{'...' if len(str(obj)) > 200 else ''}\n"
+            f"Hint: Check that your data types match the schema field definitions. "
+            f"Use index.schema.fields to view expected field types."
+        )
+
     def _preprocess_and_validate_objects(
         self,
         objects: Iterable[Any],
@@ -248,8 +324,11 @@ class BaseStorage(BaseModel):
                 prepared_objects.append((key, processed_obj))
 
             except ValidationError as e:
-                # Convert Pydantic ValidationError to SchemaValidationError with index context
-                raise SchemaValidationError(str(e), index=i) from e
+                # Create detailed, readable error message
+                detailed_message = self._create_readable_validation_error_message(
+                    e, i, obj
+                )
+                raise SchemaValidationError(detailed_message) from e
             except Exception as e:
                 # Capture other exceptions with context
                 object_id = f"at index {i}"

@@ -779,9 +779,9 @@ class SearchIndex(BaseSearchIndex):
                 batch_size=batch_size,
                 validate=self._validate_on_load,
             )
-        except SchemaValidationError:
-            # Pass through validation errors directly
-            logger.exception("Schema validation error while loading data")
+        except SchemaValidationError as e:
+            # Log the detailed validation error with actionable information
+            logger.error("Data validation failed during load operation")
             raise
         except Exception as e:
             # Wrap other errors as general RedisVL errors
@@ -1573,9 +1573,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                 batch_size=batch_size,
                 validate=self._validate_on_load,
             )
-        except SchemaValidationError:
-            # Pass through validation errors directly
-            logger.exception("Schema validation error while loading data")
+        except SchemaValidationError as e:
+            # Log the detailed validation error with actionable information
+            logger.error("Data validation failed during load operation")
             raise
         except Exception as e:
             # Wrap other errors as general RedisVL errors
