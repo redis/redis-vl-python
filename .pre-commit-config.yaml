@@ -1,8 +1,8 @@
 repos:
   - repo: local
     hooks:
-      - id: poetry-checks
+      - id: code-quality-checks
         name: Run pre-commit checks (format, sort-imports, check-mypy)
-        entry: bash -c 'poetry run format && poetry run sort-imports && poetry run check-mypy'
+        entry: bash -c 'make format && make check-sort-imports && make check-types'
         language: system
         pass_filenames: false

@@ -27,7 +27,8 @@ class SchemaValidationError(RedisVLError):
     """Error when validating data against a schema."""
 
     def __init__(self, message, index=None):
-        if index is not None:
+        # Only add index prefix if the message doesn't already contain detailed validation info
+        if index is not None and not message.startswith("Schema validation failed"):
             message = f"Validation failed for object at index {index}: {message}"
         super().__init__(message)
 
