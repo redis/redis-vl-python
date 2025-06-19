@@ -118,9 +118,9 @@ jobs:
 
           # Install right redis version based on redis py
           if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
-            poetry add "redis>=5.0.0,<6.0.0"
+            poetry run pip install "redis>=5.0.0,<6.0.0"
           else
-            poetry add "redis>=6.0.0,<7.0.0"
+            poetry run pip install "redis>=6.0.0,<7.0.0"
           fi
 
       - name: Set Redis image name
