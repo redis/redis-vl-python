@@ -15,7 +15,6 @@ on:
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
-  DEFAULT_REDIS_IMAGE: "8.0.2"
 
 jobs:
   service-tests:
@@ -92,7 +91,7 @@ jobs:
         # 3.11 tests are run in the service-tests job
         python-version: ["3.9", "3.10", "3.12", "3.13"] 
         redis-py-version: ["5.x", "6.x"]
-        redis-version: ["6.2.6-v9", "latest", "${{ env.DEFAULT_REDIS_IMAGE }}"]
+        redis-version: ["6.2.6-v9", "latest", "8.0.2"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -131,7 +130,7 @@ jobs:
 
       - name: Set Redis image name
         run: |
-          if [[ "${{ matrix.redis-version }}" == "${{ env.DEFAULT_REDIS_IMAGE }}" ]]; then
+          if [[ "${{ matrix.redis-version }}" == "8.0.2" ]]; then
             echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
           else
             echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
