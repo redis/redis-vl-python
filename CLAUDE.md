@@ -79,7 +79,6 @@ redisvl/
 ├── redis/            # Redis client utilities
 ├── schema/           # Index schema definitions
 └── utils/            # Utilities (vectorizers, rerankers, optimization)
-    ├── optimize/     # Threshold optimization
     ├── rerank/       # Result reranking
     └── vectorize/    # Embedding providers integration
 ```

@@ -19,7 +19,7 @@ print(f"Python version: {sys.version}", flush=True)
 
 # -- Project information -----------------------------------------------------
 
-from redisvl.version import __version__
+from redisvl import __version__
 
 project = 'RedisVL'
 copyright = '2024, Redis Inc.'
