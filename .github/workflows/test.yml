@@ -137,18 +137,12 @@ jobs:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Run tests
-        # if: matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
         env:
           HF_HOME: ${{ github.workspace }}/hf_cache
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           make test
-
-      # - name: Run tests (alternate)
-      #   if: matrix.redis-py-version != '6.x' || matrix.redis-version != 'latest'
-      #   run: |
-      #     make test
 
       - name: Run notebooks
         if: matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
