@@ -6,27 +6,37 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  POETRY_VERSION: "2.0.1"
+  UV_VERSION: "0.7.13"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: ${{ env.POETRY_VERSION }}
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
 
       - name: Build package
-        run: poetry build
+        run: uv build
 
       - name: Upload build
         uses: actions/upload-artifact@v4
@@ -39,24 +49,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: ${{ env.POETRY_VERSION }}
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
-      - uses: actions/download-artifact@v4
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
 
       - name: Publish to PyPI
         env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI }}
-        run: poetry publish
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI }}
+        run: uv publish
