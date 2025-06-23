@@ -624,7 +624,7 @@ class FilterExpression:
         if not self._filter and not self._operator:
             raise ValueError("Improperly initialized FilterExpression")
 
-        # if theres an operator, combine expressions accordingly
+        # if there's an operator, combine expressions accordingly
         if self._operator:
             if not isinstance(self._left, FilterExpression) or not isinstance(
                 self._right, FilterExpression

@@ -1,7 +1,7 @@
 """
 Constants used within the extension classes SemanticCache, BaseMessageHistory,
 MessageHistory, SemanticMessageHistory and SemanticRouter.
-These constants are also used within theses classes corresponding schema.
+These constants are also used within these classes' corresponding schemas.
 """
 
 # BaseMessageHistory

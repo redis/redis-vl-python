@@ -546,6 +546,15 @@ wheels = [
 ]
 
 [[package]]
+name = "codespell"
+version = "2.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/e0/709453393c0ea77d007d907dd436b3ee262e28b30995ea1aa36c6ffbccaf/codespell-2.4.1.tar.gz", hash = "sha256:299fcdcb09d23e81e35a671bbe746d5ad7e8385972e65dbb833a2eaac33c01e5", size = 344740 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/01/b394922252051e97aab231d416c86da3d8a6d781eeadcdca1082867de64e/codespell-2.4.1-py3-none-any.whl", hash = "sha256:3dadafa67df7e4a3dbf51e0d7315061b80d265f9552ebd699b3dd6834b47e425", size = 344501 },
+]
+
+[[package]]
 name = "cohere"
 version = "5.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3631,6 +3640,7 @@ voyageai = [
 [package.dev-dependencies]
 dev = [
     { name = "black" },
+    { name = "codespell" },
     { name = "cryptography", marker = "python_full_version >= '3.10'" },
     { name = "isort" },
     { name = "mypy" },
@@ -3681,6 +3691,7 @@ provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentenc
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=25.1.0,<26" },
+    { name = "codespell", specifier = ">=2.4.1,<3" },
     { name = "cryptography", marker = "python_full_version >= '3.10'", specifier = ">=44.0.1" },
     { name = "isort", specifier = ">=5.6.4,<6" },
     { name = "mypy", specifier = ">=1.11.0,<2" },

@@ -37,8 +37,8 @@ from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text, Timestamp
         ("==", "tag/with/slashes", "@tag_field:{tag\\/with\\/slashes}"),
         (
             "==",
-            ["hypen-tag", "under_score", "dot.tag"],
-            "@tag_field:{hypen\\-tag|under_score|dot\\.tag}",
+            ["hyphen-tag", "under_score", "dot.tag"],
+            "@tag_field:{hyphen\\-tag|under_score|dot\\.tag}",
         ),
         # ...additional unique cases as desired...
     ],
