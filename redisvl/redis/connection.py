@@ -402,7 +402,7 @@ class RedisConnectionFactory:
             # Fall back to a simple log echo
             # For RedisCluster, echo is not available
             if hasattr(redis_client, "echo"):
-                await redis_client.echo(_lib_name)
+                redis_client.echo(_lib_name)
 
         # Get list of modules
         installed_modules = RedisConnectionFactory.get_modules(redis_client)
