@@ -20,6 +20,7 @@ jobs:
   service-tests:
     name: Service Tests
     runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
@@ -37,20 +38,20 @@ jobs:
           mkdir -p ~/.huggingface
           echo '{"token":"${{ secrets.HF_TOKEN }}"}' > ~/.huggingface/token
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      # - name: Install Python
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+      # - name: Install uv
+      #   uses: astral-sh/setup-uv@v6
+      #   with:
+      #     version: ${{ env.UV_VERSION }}
+      #     enable-cache: true
+      #     python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+      #     cache-dependency-glob: |
+      #       pyproject.toml
+      #       uv.lock
 
       - name: Install dependencies
         run: |
