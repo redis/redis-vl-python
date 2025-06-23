@@ -14,7 +14,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  POETRY_VERSION: "2.0.1"
+  UV_VERSION: "0.7.13"
 
 jobs:
   service-tests:
@@ -24,11 +24,10 @@ jobs:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Cache HuggingFace Models
-        id: hf-cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: hf_cache
           key: ${{ runner.os }}-hf-cache
@@ -38,20 +37,24 @@ jobs:
           mkdir -p ~/.huggingface
           echo '{"token":"${{ secrets.HF_TOKEN }}"}' > ~/.huggingface/token
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: ${{ env.POETRY_VERSION }}
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          uv sync --all-extras
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
@@ -61,7 +64,6 @@ jobs:
       - name: Run full test suite and prime the HF cache
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -87,45 +89,48 @@ jobs:
       fail-fast: false
       matrix:
         # 3.11 tests are run in the service-tests job
-        python-version: ["3.9", "3.10", 3.12, 3.13] 
+        python-version: ["3.9", "3.10", "3.12", "3.13"] 
         redis-py-version: ["5.x", "6.x"]
-        redis-version: ["6.2.6-v9", "latest", "8.0.1"]
-
+        redis-version: ["6.2.6-v9", "latest", "8.0.2"]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Cache HuggingFace Models
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: hf_cache
           key: ${{ runner.os }}-hf-cache
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: ${{ env.POETRY_VERSION }}
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          uv sync --all-extras
 
           # Install right redis version based on redis py
           if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
-            poetry run pip install "redis>=5.0.0,<6.0.0"
+            uv pip install "redis>=5,<6"
           else
-            poetry run pip install "redis>=6.0.0,<7.0.0"
+            uv pip install "redis>=6,<7"
           fi
 
       - name: Set Redis image name
         run: |
-          if [[ "${{ matrix.redis-version }}" == "8.0.1" ]]; then
+          if [[ "${{ matrix.redis-version }}" == "8.0.2" ]]; then
             echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
           else
             echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
@@ -138,7 +143,6 @@ jobs:
 
       - name: Run tests
         env:
-          HF_HOME: ${{ github.workspace }}/hf_cache
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
@@ -147,7 +151,6 @@ jobs:
       - name: Run notebooks
         if: matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
         env:
-          HF_HOME: ${{ github.workspace }}/hf_cache
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -171,20 +174,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          version: ${{ env.POETRY_VERSION }}
-
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+  
       - name: Install dependencies
         run: |
-          poetry install --all-extras
+          uv sync --group docs --frozen
 
       - name: Build docs
         run: |

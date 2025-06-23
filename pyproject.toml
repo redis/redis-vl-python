@@ -1,101 +1,97 @@
-[tool.poetry]
+[project]
 name = "redisvl"
 version = "0.8.0"
 description = "Python client library and CLI for using Redis as a vector database"
-authors = ["Redis Inc. <applied.ai@redis.com>"]
-license = "MIT"
+authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
+requires-python = ">=3.9,<3.14"
 readme = "README.md"
-homepage = "https://github.com/redis/redis-vl-python"
-repository = "https://github.com/redis/redis-vl-python"
-documentation = "https://docs.redisvl.com"
-keywords = ["ai", "redis", "redis-client", "vector-database", "vector-search"]
+license = "MIT"
+keywords = [
+    "ai",
+    "redis",
+    "redis-client",
+    "vector-database",
+    "vector-search",
+]
 classifiers = [
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-  "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
 ]
-packages = [{ include = "redisvl", from = "." }]
-
-[tool.poetry.dependencies]
-python = ">=3.9,<3.14"
-numpy = ">=1.26.0,<3"
-pyyaml = ">=5.4,<7.0"
-redis = ">=5.0,<7.0"
-pydantic = ">=2,<3"
-tenacity = ">=8.2.2"
-ml-dtypes = ">=0.4.0,<1.0.0"
-python-ulid = ">=3.0.0"
-jsonpath-ng = ">=1.5.0"
-nltk = { version = "^3.8.1", optional = true }
-openai = { version = ">=1.1.0", optional = true }
-google-cloud-aiplatform = { version = ">=1.26,<2.0.0", optional = true }
-protobuf = { version = ">=5.28.0,<6.0.0", optional = true }
-cohere = { version = ">=4.44", optional = true }
-mistralai = { version = ">=1.0.0", optional = true }
-voyageai = { version = ">=0.2.2", optional = true }
-sentence-transformers = { version = "^3.4.0", optional = true }
-boto3 = { version = "^1.36.0", optional = true }
-urllib3 = { version = "<2.2.0", optional = true }
-scipy = [
-  { version = ">=1.9.0,<1.14", python = "<3.10", optional = true },
-  { version = ">=1.14.0,<1.16", python = ">=3.10", optional = true }
+dependencies = [
+    "numpy>=1.26.0,<3",
+    "pyyaml>=5.4,<7.0",
+    "redis>=5.0,<7.0",
+    "pydantic>=2,<3",
+    "tenacity>=8.2.2",
+    "ml-dtypes>=0.4.0,<1.0.0",
+    "python-ulid>=3.0.0",
+    "jsonpath-ng>=1.5.0",
 ]
 
-[tool.poetry.extras]
-mistralai = ["mistralai"]
-openai = ["openai"]
-nltk = ["nltk"]
-cohere = ["cohere"]
-voyageai = ["voyageai"]
-sentence-transformers = ["sentence-transformers"]
-vertexai = ["google-cloud-aiplatform", "protobuf"]
-bedrock = ["boto3", "urllib3"]
+[project.optional-dependencies]
+mistralai = ["mistralai>=1.0.0"]
+openai = ["openai>=1.1.0"]
+nltk = ["nltk>=3.8.1,<4"]
+cohere = ["cohere>=4.44"]
+voyageai = ["voyageai>=0.2.2"]
+sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
+vertexai = [
+    "google-cloud-aiplatform>=1.26,<2.0.0",
+    "protobuf>=5.28.0,<6.0.0",
+]
+bedrock = [
+    "boto3>=1.36.0,<2",
+    "urllib3<2.2.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-black = "^25.1.0"
-isort = "^5.6.4"
-pylint = "^3.1.0"
-pytest = "^8.1.1"
-pytest-asyncio = "^0.23.6"
-pytest-xdist = {extras = ["psutil"], version = "^3.6.1"}
-pre-commit = "^4.1.0"
-mypy = "^1.11.0"
-nbval = "^0.11.0"
-types-pyyaml = "*"
-types-pyopenssl = "*"
-testcontainers = "^4.3.1"
-cryptography = { version = ">=44.0.1", markers = "python_version > '3.9.1'" }
+[project.urls]
+Homepage = "https://github.com/redis/redis-vl-python"
+Repository = "https://github.com/redis/redis-vl-python"
+Documentation = "https://docs.redisvl.com"
 
-[tool.poetry.group.docs.dependencies]
-sphinx = ">=4.4.0"
-pydata-sphinx-theme = "^0.15.2"
-nbsphinx = "^0.9.3"
-jinja2 = "^3.1.3"
-sphinx-copybutton = "^0.5.2"
-sphinx-favicon = "^1.0.1"
-sphinx-design = "^0.5.0"
-myst-nb = "^1.1.0"
-
-[tool.poetry.scripts]
+[project.scripts]
 rvl = "redisvl.cli.runner:main"
-format = "scripts:format"
-check-format = "scripts:check_format"
-sort-imports = "scripts:sort_imports"
-check-sort-imports = "scripts:check_sort_imports"
-check-lint = "scripts:check_lint"
-check-mypy = "scripts:check_mypy"
-test = "scripts:test"
-test-verbose = "scripts:test_verbose"
-test-notebooks = "scripts:test_notebooks"
-build-docs = "scripts:build_docs"
-serve-docs = "scripts:serve_docs"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0,<26",
+    "isort>=5.6.4,<6",
+    "pylint>=3.1.0,<4",
+    "pytest>=8.1.1,<9",
+    "pytest-asyncio>=0.23.6,<0.24",
+    "pytest-xdist[psutil]>=3.6.1,<4",
+    "pre-commit>=4.1.0,<5",
+    "mypy>=1.11.0,<2",
+    "nbval>=0.11.0,<0.12",
+    "types-pyyaml",
+    "types-pyopenssl",
+    "testcontainers>=4.3.1,<5",
+    "cryptography>=44.0.1 ; python_version > '3.9.1'",
+]
+docs = [
+    "sphinx>=4.4.0",
+    "pydata-sphinx-theme>=0.15.2,<0.16",
+    "nbsphinx>=0.9.3,<0.10",
+    "jinja2>=3.1.3,<4",
+    "sphinx-copybutton>=0.5.2,<0.6",
+    "sphinx-favicon>=1.0.1,<2",
+    "sphinx-design>=0.5.0,<0.6",
+    "myst-nb>=1.1.0,<2",
+]
+
+[tool.uv]
+default-groups = [
+    "dev",
+    "docs",
+]
 
 [tool.black]
 target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
