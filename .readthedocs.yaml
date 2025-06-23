@@ -10,12 +10,20 @@ build:
   tools:
     python: "3.11"
   jobs:
-    post_create_environment:
-      # Install poetry
-      - python -m pip install poetry==1.8.3
-    post_install:
-      # Install dependencies
-      - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH poetry install --with docs
+    # 1️⃣ Install uv once before we create the virtual-env
+    pre_create_environment:
+      - asdf plugin add uv || true    # ← idempotent on rebuilds
+      - asdf install uv latest
+      - asdf global uv latest
+
+    # 2️⃣ Create the virtual-env with uv (faster than venv + pip)
+    create_environment:
+      - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
+
+    # 3️⃣ Sync dependencies; pull the “docs” group so theme / plugins are present
+    install:
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" \
+        uv sync --frozen --group docs   # add --extra <name> if you need extras
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
