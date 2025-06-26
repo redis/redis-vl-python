@@ -1,16 +1,16 @@
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
     ID_FIELD_NAME,
     MESSAGE_VECTOR_FIELD_NAME,
+    METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
     TOOL_FIELD_NAME,
-    METADATA_FIELD_NAME,
 )
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema

@@ -5,18 +5,18 @@ from redis import Redis
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
     ID_FIELD_NAME,
+    METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
     TOOL_FIELD_NAME,
-    METADATA_FIELD_NAME,
 )
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import ChatMessage, MessageHistorySchema
 from redisvl.index import SearchIndex
-from redisvl.utils.utils import serialize
 from redisvl.query import FilterQuery
 from redisvl.query.filter import Tag
+from redisvl.utils.utils import serialize
 
 
 class MessageHistory(BaseMessageHistory):

@@ -2,9 +2,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
+    METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
     TOOL_FIELD_NAME,
-    METADATA_FIELD_NAME,
 )
 from redisvl.extensions.message_history.schema import ChatMessage
 from redisvl.utils.utils import create_ulid, deserialize

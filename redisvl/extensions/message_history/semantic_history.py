@@ -6,11 +6,11 @@ from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
     ID_FIELD_NAME,
     MESSAGE_VECTOR_FIELD_NAME,
+    METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
     TOOL_FIELD_NAME,
-    METADATA_FIELD_NAME,
 )
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import (
@@ -20,7 +20,7 @@ from redisvl.extensions.message_history.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
-from redisvl.utils.utils import deprecated_argument, validate_vector_dims, serialize
+from redisvl.utils.utils import deprecated_argument, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
