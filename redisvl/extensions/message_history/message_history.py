@@ -5,6 +5,7 @@ from redis import Redis
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
     ID_FIELD_NAME,
+    METADATA_FIELD_NAME,
     ROLE_FIELD_NAME,
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
@@ -15,6 +16,7 @@ from redisvl.extensions.message_history.schema import ChatMessage, MessageHistor
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery
 from redisvl.query.filter import Tag
+from redisvl.utils.utils import serialize
 
 
 class MessageHistory(BaseMessageHistory):
@@ -98,11 +100,13 @@ class MessageHistory(BaseMessageHistory):
             CONTENT_FIELD_NAME,
             TOOL_FIELD_NAME,
             TIMESTAMP_FIELD_NAME,
+            METADATA_FIELD_NAME,
         ]
 
         query = FilterQuery(
             filter_expression=self._default_session_filter,
             return_fields=return_fields,
+            num_results=1000,
         )
         query.sort_by(TIMESTAMP_FIELD_NAME, asc=True)
         messages = self._index.query(query)
@@ -144,6 +148,7 @@ class MessageHistory(BaseMessageHistory):
             CONTENT_FIELD_NAME,
             TOOL_FIELD_NAME,
             TIMESTAMP_FIELD_NAME,
+            METADATA_FIELD_NAME,
         ]
 
         session_filter = (
@@ -210,7 +215,8 @@ class MessageHistory(BaseMessageHistory):
 
             if TOOL_FIELD_NAME in message:
                 chat_message.tool_call_id = message[TOOL_FIELD_NAME]
-
+            if METADATA_FIELD_NAME in message:
+                chat_message.metadata = serialize(message[METADATA_FIELD_NAME])
             chat_messages.append(chat_message.to_dict())
 
         self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
