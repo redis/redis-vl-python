@@ -101,6 +101,7 @@ def test_standard_add_and_get(standard_history):
             "role": "tool",
             "content": "tool result 1",
             "tool_call_id": "tool call one",
+            "metadata": {"tool call params": "abc 123"},
         }
     )
     standard_history.add_message(
@@ -108,6 +109,7 @@ def test_standard_add_and_get(standard_history):
             "role": "tool",
             "content": "tool result 2",
             "tool_call_id": "tool call two",
+            "metadata": {"tool call params": "abc 456"},
         }
     )
     standard_history.add_message({"role": "user", "content": "third prompt"})
@@ -121,7 +123,12 @@ def test_standard_add_and_get(standard_history):
     partial_context = standard_history.get_recent(top_k=3)
     assert len(partial_context) == 3
     assert partial_context == [
-        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
+        {
+            "role": "tool",
+            "content": "tool result 2",
+            "tool_call_id": "tool call two",
+            "metadata": {"tool call params": "abc 456"},
+        },
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
     ]
@@ -133,8 +140,18 @@ def test_standard_add_and_get(standard_history):
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
-        {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
-        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
+        {
+            "role": "tool",
+            "content": "tool result 1",
+            "tool_call_id": "tool call one",
+            "metadata": {"tool call params": "abc 123"},
+        },
+        {
+            "role": "tool",
+            "content": "tool result 2",
+            "tool_call_id": "tool call two",
+            "metadata": {"tool call params": "abc 456"},
+        },
         {"role": "user", "content": "third prompt"},
         {"role": "llm", "content": "third response"},
     ]
@@ -160,7 +177,11 @@ def test_standard_add_messages(standard_history):
     standard_history.add_messages(
         [
             {"role": "user", "content": "first prompt"},
-            {"role": "llm", "content": "first response"},
+            {
+                "role": "llm",
+                "content": "first response",
+                "metadata": {"llm provider": "openai"},
+            },
             {"role": "user", "content": "second prompt"},
             {"role": "llm", "content": "second response"},
             {
@@ -182,7 +203,11 @@ def test_standard_add_messages(standard_history):
     assert len(full_context) == 8
     assert full_context == [
         {"role": "user", "content": "first prompt"},
-        {"role": "llm", "content": "first response"},
+        {
+            "role": "llm",
+            "content": "first response",
+            "metadata": {"llm provider": "openai"},
+        },
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
         {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
@@ -198,8 +223,12 @@ def test_standard_messages_property(standard_history):
             {"role": "user", "content": "first prompt"},
             {"role": "llm", "content": "first response"},
             {"role": "user", "content": "second prompt"},
-            {"role": "llm", "content": "second response"},
-            {"role": "user", "content": "third prompt"},
+            {
+                "role": "llm",
+                "content": "second response",
+                "metadata": {"params": "abc"},
+            },
+            {"role": "user", "content": "third prompt", "metadata": 42},
         ]
     )
 
@@ -207,8 +236,8 @@ def test_standard_messages_property(standard_history):
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
         {"role": "user", "content": "second prompt"},
-        {"role": "llm", "content": "second response"},
-        {"role": "user", "content": "third prompt"},
+        {"role": "llm", "content": "second response", "metadata": {"params": "abc"}},
+        {"role": "user", "content": "third prompt", "metadata": 42},
     ]
 
 
@@ -357,7 +386,14 @@ def test_semantic_store_and_get_recent(semantic_history):
     semantic_history.add_message(
         {"role": "tool", "content": "tool result", "tool_call_id": "tool id"}
     )
-    # test default context history size
+    semantic_history.add_message(
+        {
+            "role": "tool",
+            "content": "tool result",
+            "tool_call_id": "tool id",
+            "metadata": "return value from tool",
+        }
+    )  # test default context history size
     default_context = semantic_history.get_recent()
     assert len(default_context) == 5  # 5 is default
 
@@ -367,10 +403,10 @@ def test_semantic_store_and_get_recent(semantic_history):
 
     # test larger context history returns full history
     too_large_context = semantic_history.get_recent(top_k=100)
-    assert len(too_large_context) == 9
+    assert len(too_large_context) == 10
 
     # test that order is maintained
-    full_context = semantic_history.get_recent(top_k=9)
+    full_context = semantic_history.get_recent(top_k=10)
     assert full_context == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
@@ -381,15 +417,26 @@ def test_semantic_store_and_get_recent(semantic_history):
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
         {"role": "tool", "content": "tool result", "tool_call_id": "tool id"},
+        {
+            "role": "tool",
+            "content": "tool result",
+            "tool_call_id": "tool id",
+            "metadata": "return value from tool",
+        },
     ]
 
     # test that more recent entries are returned
     context = semantic_history.get_recent(top_k=4)
     assert context == [
-        {"role": "llm", "content": "third response"},
         {"role": "user", "content": "fourth prompt"},
         {"role": "llm", "content": "fourth response"},
         {"role": "tool", "content": "tool result", "tool_call_id": "tool id"},
+        {
+            "role": "tool",
+            "content": "tool result",
+            "tool_call_id": "tool id",
+            "metadata": "return value from tool",
+        },
     ]
 
     # test no entries are returned and no error is raised if top_k == 0
@@ -422,11 +469,13 @@ def test_semantic_messages_property(semantic_history):
                 "role": "tool",
                 "content": "tool result 1",
                 "tool_call_id": "tool call one",
+                "metadata": 42,
             },
             {
                 "role": "tool",
                 "content": "tool result 2",
                 "tool_call_id": "tool call two",
+                "metadata": [1, 2, 3],
             },
             {"role": "user", "content": "second prompt"},
             {"role": "llm", "content": "second response"},
@@ -437,8 +486,18 @@ def test_semantic_messages_property(semantic_history):
     assert semantic_history.messages == [
         {"role": "user", "content": "first prompt"},
         {"role": "llm", "content": "first response"},
-        {"role": "tool", "content": "tool result 1", "tool_call_id": "tool call one"},
-        {"role": "tool", "content": "tool result 2", "tool_call_id": "tool call two"},
+        {
+            "role": "tool",
+            "content": "tool result 1",
+            "tool_call_id": "tool call one",
+            "metadata": 42,
+        },
+        {
+            "role": "tool",
+            "content": "tool result 2",
+            "tool_call_id": "tool call two",
+            "metadata": [1, 2, 3],
+        },
         {"role": "user", "content": "second prompt"},
         {"role": "llm", "content": "second response"},
         {"role": "user", "content": "third prompt"},

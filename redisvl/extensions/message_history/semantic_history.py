@@ -10,6 +10,7 @@ from redisvl.extensions.constants import (
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
     TOOL_FIELD_NAME,
+    METADATA_FIELD_NAME,
 )
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import (
@@ -19,7 +20,7 @@ from redisvl.extensions.message_history.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
-from redisvl.utils.utils import deprecated_argument, validate_vector_dims
+from redisvl.utils.utils import deprecated_argument, validate_vector_dims, serialize
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
 
 
@@ -149,8 +150,9 @@ class SemanticMessageHistory(BaseMessageHistory):
             SESSION_FIELD_NAME,
             ROLE_FIELD_NAME,
             CONTENT_FIELD_NAME,
-            TOOL_FIELD_NAME,
             TIMESTAMP_FIELD_NAME,
+            TOOL_FIELD_NAME,
+            METADATA_FIELD_NAME,
         ]
 
         query = FilterQuery(
@@ -214,6 +216,7 @@ class SemanticMessageHistory(BaseMessageHistory):
             CONTENT_FIELD_NAME,
             TIMESTAMP_FIELD_NAME,
             TOOL_FIELD_NAME,
+            METADATA_FIELD_NAME,
         ]
 
         session_filter = (
@@ -274,8 +277,9 @@ class SemanticMessageHistory(BaseMessageHistory):
             SESSION_FIELD_NAME,
             ROLE_FIELD_NAME,
             CONTENT_FIELD_NAME,
-            TOOL_FIELD_NAME,
             TIMESTAMP_FIELD_NAME,
+            TOOL_FIELD_NAME,
+            METADATA_FIELD_NAME,
         ]
 
         session_filter = (
@@ -355,6 +359,8 @@ class SemanticMessageHistory(BaseMessageHistory):
 
             if TOOL_FIELD_NAME in message:
                 chat_message.tool_call_id = message[TOOL_FIELD_NAME]
+            if METADATA_FIELD_NAME in message:
+                chat_message.metadata = serialize(message[METADATA_FIELD_NAME])
 
             chat_messages.append(chat_message.to_dict(dtype=self._vectorizer.dtype))
 

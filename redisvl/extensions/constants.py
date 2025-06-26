@@ -23,7 +23,7 @@ RESPONSE_FIELD_NAME: str = "response"
 CACHE_VECTOR_FIELD_NAME: str = "prompt_vector"
 INSERTED_AT_FIELD_NAME: str = "inserted_at"
 UPDATED_AT_FIELD_NAME: str = "updated_at"
-METADATA_FIELD_NAME: str = "metadata"
+METADATA_FIELD_NAME: str = "metadata"  # also used in MessageHistory
 
 # EmbeddingsCache
 TEXT_FIELD_NAME: str = "text"

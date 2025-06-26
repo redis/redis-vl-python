@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
@@ -10,10 +10,11 @@ from redisvl.extensions.constants import (
     SESSION_FIELD_NAME,
     TIMESTAMP_FIELD_NAME,
     TOOL_FIELD_NAME,
+    METADATA_FIELD_NAME,
 )
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
-from redisvl.utils.utils import current_timestamp
+from redisvl.utils.utils import current_timestamp, deserialize
 
 
 class ChatMessage(BaseModel):
@@ -33,6 +34,8 @@ class ChatMessage(BaseModel):
     """An optional identifier for a tool call associated with the message."""
     vector_field: Optional[List[float]] = Field(default=None)
     """The vector representation of the message content."""
+    metadata: Optional[str] = Field(default=None)
+    """Optional additional data to store alongside the message"""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="before")
@@ -54,6 +57,7 @@ class ChatMessage(BaseModel):
             data[MESSAGE_VECTOR_FIELD_NAME] = array_to_buffer(
                 data[MESSAGE_VECTOR_FIELD_NAME], dtype  # type: ignore[arg-type]
             )
+
         return data
 
 
@@ -70,6 +74,7 @@ class MessageHistorySchema(IndexSchema):
                 {"name": TOOL_FIELD_NAME, "type": "tag"},
                 {"name": TIMESTAMP_FIELD_NAME, "type": "numeric"},
                 {"name": SESSION_FIELD_NAME, "type": "tag"},
+                {"name": METADATA_FIELD_NAME, "type": "text"},
             ],
         )
 
@@ -87,6 +92,7 @@ class SemanticMessageHistorySchema(IndexSchema):
                 {"name": TOOL_FIELD_NAME, "type": "tag"},
                 {"name": TIMESTAMP_FIELD_NAME, "type": "numeric"},
                 {"name": SESSION_FIELD_NAME, "type": "tag"},
+                {"name": METADATA_FIELD_NAME, "type": "text"},
                 {
                     "name": MESSAGE_VECTOR_FIELD_NAME,
                     "type": "vector",
