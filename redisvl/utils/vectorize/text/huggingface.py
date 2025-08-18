@@ -128,6 +128,10 @@ class HFTextVectorizer(BaseVectorizer):
         if not isinstance(text, str):
             raise TypeError("Must pass in a str value to embed.")
 
+        if "show_progress_bar" not in kwargs:
+            # disable annoying tqdm by default
+            kwargs["show_progress_bar"] = False
+
         embedding = self._client.encode([text], **kwargs)[0]
         return embedding.tolist()
 
@@ -151,6 +155,9 @@ class HFTextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
         if len(texts) > 0 and not isinstance(texts[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
+        if "show_progress_bar" not in kwargs:
+            # disable annoying tqdm by default
+            kwargs["show_progress_bar"] = False
 
         embeddings: List = []
         for batch in self.batchify(texts, batch_size, None):
