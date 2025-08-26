@@ -939,8 +939,6 @@ class TextQuery(BaseQuery):
         filter_expression = self._filter_expression
         if isinstance(filter_expression, FilterExpression):
             filter_expression = str(filter_expression)
-        else:
-            filter_expression = ""
 
         text = (
             f"@{self._text_field_name}:({self._tokenize_and_escape_query(self._text)})"
