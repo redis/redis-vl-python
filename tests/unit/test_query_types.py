@@ -280,6 +280,74 @@ def test_text_query():
         text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
 
+def test_text_query_with_string_filter():
+    """Test that TextQuery correctly includes string filter expressions in query string.
+
+    This test ensures that when a string filter expression is passed to TextQuery,
+    it's properly included in the generated query string and not set to empty.
+    Regression test for bug where string filters were being ignored.
+    """
+    text = "search for document 12345"
+    text_field_name = "description"
+
+    # Test with string filter expression - should include filter in query string
+    string_filter = "@category:{tech|science|engineering}"
+    text_query = TextQuery(
+        text=text,
+        text_field_name=text_field_name,
+        filter_expression=string_filter,
+    )
+
+    # Check that filter is stored correctly
+    assert text_query.filter == string_filter
+
+    # Check that the generated query string includes both text search and filter
+    query_string = str(text_query)
+    assert f"@{text_field_name}:(search | document | 12345)" in query_string
+    assert f"AND {string_filter}" in query_string
+    assert string_filter in query_string
+
+    # Test with FilterExpression - should also work (existing functionality)
+    filter_expression = Tag("category") == "tech"
+    text_query_with_filter_expr = TextQuery(
+        text=text,
+        text_field_name=text_field_name,
+        filter_expression=filter_expression,
+    )
+
+    # Check that filter is stored correctly
+    assert text_query_with_filter_expr.filter == filter_expression
+
+    # Check that the generated query string includes both text search and filter
+    query_string_with_filter_expr = str(text_query_with_filter_expr)
+    assert (
+        f"@{text_field_name}:(search | document | 12345)"
+        in query_string_with_filter_expr
+    )
+    assert "AND @category:{tech}" in query_string_with_filter_expr
+
+    # Test with no filter - should only have text search
+    text_query_no_filter = TextQuery(
+        text=text,
+        text_field_name=text_field_name,
+    )
+
+    query_string_no_filter = str(text_query_no_filter)
+    assert f"@{text_field_name}:(search | document | 12345)" in query_string_no_filter
+    assert "AND" not in query_string_no_filter
+
+    # Test with wildcard filter - should only have text search (no AND clause)
+    text_query_wildcard = TextQuery(
+        text=text,
+        text_field_name=text_field_name,
+        filter_expression="*",
+    )
+
+    query_string_wildcard = str(text_query_wildcard)
+    assert f"@{text_field_name}:(search | document | 12345)" in query_string_wildcard
+    assert "AND" not in query_string_wildcard
+
+
 @pytest.mark.parametrize(
     "query",
     [
