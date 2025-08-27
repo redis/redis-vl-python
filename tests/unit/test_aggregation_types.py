@@ -4,12 +4,16 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index.index import process_results
-from redisvl.query.aggregate import HybridQuery
+from redisvl.query.aggregate import HybridQuery, MultiVectorQuery
 from redisvl.query.filter import Tag
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
 sample_text = "the toon squad play basketball against a gang of aliens"
+
+sample_vector_2 = [0.1, 0.2, 0.3, 0.4]
+sample_vector_3 = [0.5, 0.5]
+sample_vector_4 = [0.1, 0.1, 0.1]
 
 
 # Test Cases
@@ -190,3 +194,146 @@ def test_hybrid_query_with_string_filter():
     query_string_wildcard = str(hybrid_query_wildcard)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_wildcard
     assert "AND" not in query_string_wildcard
+
+
+def test_aggregate_multi_vector_query():
+    # test we require vectors and field names
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery()
+
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery(vectors=[sample_vector], vector_field_names=[])
+
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery(vectors=[], vector_field_names=["field 1"])
+
+    # test we can initialize with a single vector and single field name
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector], vector_field_names=["field 1"]
+    )
+    assert query.query is not None
+
+    # check default properties
+    assert multivector_query._vectors == [sample_vector]
+    assert multivector_query._vector_field_names == ["field 1"]
+    assert multivector_query._filter_expression == None
+    assert multivector_query._weights == 1.0
+    assert multivector_query._num_results == 10
+    assert multivector_query._loadfields == []
+    assert multivector_query._dialect == 2
+
+    # test we can initialize with mutliple vectors and field names
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector, sample_vector_2, sample_vector_3, sample_vector_4],
+        vector_field_names=["field 1", "field 2", "field 3", "field 4"],
+        weights=[0.2, 0.5, 0.6, 0, 1],
+        dtypes=[],
+    )
+
+    assert len(multivector_query._vectors) == 4
+    assert len(multivector_query._vector_field_names) == 4
+    assert len(multivector_query._weights) == 4
+
+    # test defaults can be overwritten
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector, sample_vector_2, sample_vector_3, sample_vector_4],
+        vector_field_names=["field 1", "field 2", "field 3", "field 4"],
+        filter_expression=(Tag("user group") == ["group A", "group C"]),
+        weights=[0.2, 0.5, 0.6, 0, 1],
+        dtypes=["float32", "float32", "float64", "bfloat16"],
+        num_results=5,
+        return_fields=["field 1", "user name", "address"],
+        dialect=4,
+    )
+
+    assert multivector_query._vectors == [
+        sample_vector,
+        sample_vector_2,
+        sample_vector_3,
+        sample_vector_4,
+    ]
+    assert multivector_query._vector_field_names == [
+        "field 1",
+        "field 2",
+        "field 3",
+        "field 4",
+    ]
+    assert multivector_query._weights == [0.2, 0.5, 0.6, 0, 1]
+    assert multivector_query._filter_expression == Tag("user group")
+    assert multivector_query._num_results == 5
+    assert multivector_query._loadfields == ["field 1", "user name", "address"]
+    assert multivector_query._dialect == 4
+
+
+def test_aggregate_multi_vector_query_broadcasting():
+    # if a single vector and multiple fields is passed we search with the same vector over all fields
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector],
+        vector_field_names=["text embedding", "image embedding"],
+    )
+    assert multi_vector_query.query == "<raw text here>"
+
+    # vector being broadcast doesn't need to be in a list
+    multivector_query = MultiVectorQuery(
+        vectors=sample_vector, vector_field_names=["text embedding", "image embedding"]
+    )
+    assert multi_vector_query.query == "<raw text here>"
+
+    # if multiple vectors are passed and a single field name we search with all vectors on that field
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector_2, sample_vector_3],
+        vector_field_names=["text embedding"],
+    )
+    assert multi_vector_query.query == "<raw text here>"
+
+    # vector field name does not need to be in a list if only one is provided
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector_2, sample_vector_3], vector_field_names="text embedding"
+    )
+    assert multi_vector_query.query == "<raw text here>"
+
+    # if a single weight is passed it is applied to all similarity scores
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector_2, sample_vector_3],
+        vector_field_names=["text embedding", "image embedding"],
+        weights=[0.2],
+    )
+    assert multi_vector_query.query == "<raw text here>"
+
+    # weight does not need to be in a list if only one is provided
+    multivector_query = MultiVectorQuery(
+        vectors=[sample_vector_2, sample_vector_3],
+        vector_field_names=["text embedding", "image embedding"],
+        weights=0.2,
+    )
+    assert multi_vector_query.query == "<raw text here>"
+
+
+def test_aggregate_multi_vector_query_errors():
+    # test an error is raised if the number of vectors and number of fields don't match
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery(
+            vectors=[sample_vector, sample_vector_2, sample_vector_3],
+            vector_field_names=["text embedding", "image embedding"],
+        )
+
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery(
+            vectors=[sample_vector, sample_vector_2],
+            vector_field_names=["text embedding", "image embedding", "features"],
+        )
+
+    # test an error is raised if the number of weights is incorrect
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery(
+            vectors=[sample_vector, sample_vector_2],
+            vector_field_names=["text embedding", "image embedding"],
+            weights=[0.1, 0.2, 0.3],
+        )
+
+    # test an error is raised if none of the field names are present
+    with pytest.raises(ValueError):
+        _ = MultiVectorQuery(
+            vectors=[],
+            vector_field_names=[],
+        )

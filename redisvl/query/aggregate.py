@@ -227,3 +227,163 @@ class HybridQuery(AggregationQuery):
     def __str__(self) -> str:
         """Return the string representation of the query."""
         return " ".join([str(x) for x in self.build_args()])
+
+
+class MultiVectorQuery(AggregationQuery):
+    """
+        MultiVectorQuery allows for search over multiple vector fields in a document simulateously.
+        The final score will be a weighted combination of the individual vector similarity scores
+        following the formula:
+
+        score = (w_1 * score_1 + w_2 * score_2 + w_3 * score_3 + ... ) / (w_1 + w_2 + w_3 + ...)
+
+        Vectors may be of different size and datatype.
+
+        .. code-block:: python
+
+            from redisvl.query import MultiVectorQuery
+            from redisvl.index import SearchIndex
+
+            index = SearchIndex.from_yaml("path/to/index.yaml")
+
+            query = MultiVectorQuery(
+                vectors=[[0.1, 0.2, 0.3], [0.5, 0.5], [0.1, 0.1, 0.1, 0.1]],
+                vector_field_names=["text_vector", "image_vector", "feature_vector"]
+                filter_expression=None,
+                weights=[0.7],
+                dtypes=["float32", "float32", "float32"],
+                num_results=10,
+                return_fields=["field1", "field2"],
+                dialect=2,
+            )
+
+            results = index.query(query)
+
+
+    FT.AGGREGATE 'idx:characters'
+     "@embedding1:[VECTOR_RANGE .7 $vector1]=>{$YIELD_DISTANCE_AS: vector_distance1} | @embedding2:[VECTOR_RANGE 1.0 $vector2]=>{$YIELD_DISTANCE_AS: vector_distance2} | @embedding3:[VECTOR_RANGE 1.7 $vector3]=>{$YIELD_DISTANCE_AS: vector_distance3}  | @name:(James)"
+     ADDSCORES
+     SCORER BM25STD.NORM
+     LOAD 2 created_at @embedding
+     APPLY 'case(exists(@vector_distance1), @vector_distance1, 0.0)' as v1
+     APPLY 'case(exists(@vector_distance2), @vector_distance2, 0.0)' as v2
+     APPLY 'case(exists(@vector_distance3), @vector_distance3, 0.0)' as v3
+     APPLY '(@__score * 0.3 + (@v1 * 0.3) + (@v2 * 1.2) + (@v3 * 0.1))' AS final_score
+     PARAMS 6 vector1 "\xe4\xd6..." vector2 "\x89\xa0..." vector3 "\x3c\x19..."
+     SORTBY 2 @final_score DESC
+     DIALECT 2
+     LIMIT 0 100
+
+
+    """
+
+    DISTANCE_ID: str = "vector_distance"
+    VECTOR_PARAM: str = "vector"
+
+    def __init__(
+        self,
+        vectors: Union[bytes, List[bytes], List[float], List[List[float]]],
+        vector_field_names: Union[str, List[str]],
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        weights: Union[float, List[float]] = 1.0,
+        dtypes: Union[str, List[str]] = "float32",
+        num_results: int = 10,
+        return_fields: Optional[List[str]] = None,
+        dialect: int = 2,
+    ):
+        """
+        Instantiates a MultiVectorQuery object.
+
+        Args:
+            vectors (Union[bytes, List[bytes], List[float], List[List[float]]): The vectors to perform vector similarity search.
+            vector_field_names (str): The vector field names to search in.
+            filter_expression (Optional[FilterExpression], optional): The filter expression to use.
+                Defaults to None.
+            weights (Union[float, List[float]], optional): The weights of the vector similarity.
+                Documents will be scored as:
+                score = (w1) * score1 + (w2) * score2 + (w3) * score3 + ...
+                Defaults to 1.0, which corresponds to equal weighting
+            dtype (Union[str, List[str]] optional): The data types of the vectors. Defaults to "float32" for all vectors.
+            num_results (int, optional): The number of results to return. Defaults to 10.
+            return_fields (Optional[List[str]], optional): The fields to return. Defaults to None.
+            dialect (int, optional): The Redis dialect version. Defaults to 2.
+
+        Raises:
+            ValueError: The number of vectors, vector field names, and weights do not agree.
+            TypeError: If the stopwords are not a set, list, or tuple of strings.
+        """
+
+        self._vectors = vectors
+        self._vector_fields = vector_field_names
+        self._filter_expression = filter_expression
+        self._weights = weights
+        self._dtypes = dtypes
+        self._num_results = num_results
+
+        query_string = self._build_query_string()
+        super().__init__(query_string)
+
+        self.scorer(text_scorer)
+        self.add_scores()
+        self.apply(
+            vector_similarity=f"(2 - @{self.DISTANCE_ID})/2", text_score="@__score"
+        )
+        self.apply(hybrid_score=f"{1-alpha}*@text_score + {alpha}*@vector_similarity")
+        self.sort_by(Desc("@hybrid_score"), max=num_results)  # type: ignore
+        self.dialect(dialect)
+        if return_fields:
+            self.load(*return_fields)  # type: ignore[arg-type]
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """Return the parameters for the aggregation.
+
+        Returns:
+            Dict[str, Any]: The parameters for the aggregation.
+        """
+        if isinstance(self._vector, list):
+            vector = array_to_buffer(self._vector, dtype=self._dtype)
+        else:
+            vector = self._vector
+
+        params = {self.VECTOR_PARAM: vector}
+
+        return params
+
+    def _tokenize_and_escape_query(self, user_query: str) -> str:
+        """Convert a raw user query to a redis full text query joined by ORs
+        Args:
+            user_query (str): The user query to tokenize and escape.
+
+        Returns:
+            str: The tokenized and escaped query string.
+        Raises:
+            ValueError: If the text string becomes empty after stopwords are removed.
+        """
+        escaper = TokenEscaper()
+
+        tokens = [
+            escaper.escape(
+                token.strip().strip(",").replace("“", "").replace("”", "").lower()
+            )
+            for token in user_query.split()
+        ]
+        tokenized = " | ".join(
+            [token for token in tokens if token and token not in self._stopwords]
+        )
+
+        if not tokenized:
+            raise ValueError("text string cannot be empty after removing stopwords")
+        return tokenized
+
+    def _build_query_string(self) -> str:
+        """Build the full query string for text search with optional filtering."""
+        if isinstance(self._filter_expression, FilterExpression):
+            filter_expression = str(self._filter_expression)
+        else:
+            filter_expression = ""
+
+        # base KNN query
+        knn_query = f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}"
+
+        return f"{filter_expression})=>[{knn_query}]"
