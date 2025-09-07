@@ -167,6 +167,13 @@ class EmbeddingsCache(BaseCache):
 
             embedding_data = cache.get_by_key("embedcache:1234567890abcdef")
         """
+        if self._owns_redis_client is False and self._redis_client is None:
+            logger.warning(
+                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
+                "If you intended to use async_redis_client, please use async aget(text, model_name) method of EmbeddingCache instead "
+                "of get(text, model_name)."
+            )
+
         client = self._get_redis_client()
 
         # Get all fields
@@ -201,6 +208,13 @@ class EmbeddingsCache(BaseCache):
         """
         if not keys:
             return []
+
+        if self._owns_redis_client is False and self._redis_client is None:
+            logger.warning(
+                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
+                "If you intended to use async_redis_client, please use async amget(texts, model_name) method of EmbeddingCache instead "
+                "of mget(texts, model_name)."
+            )
 
         client = self._get_redis_client()
 
@@ -283,6 +297,13 @@ class EmbeddingsCache(BaseCache):
             text, model_name, embedding, metadata
         )
 
+        if self._owns_redis_client is False and self._redis_client is None:
+            logger.warning(
+                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
+                "If you intended to use async_redis_client, please use async aset(text, model_name, embedding, metadata=None, ttl=None) "
+                "method of EmbeddingCache instead of set(text, model_name, embedding, metadata=None, ttl=None)."
+            )
+
         # Store in Redis
         client = self._get_redis_client()
         client.hset(name=key, mapping=cache_entry)  # type: ignore
@@ -332,6 +353,13 @@ class EmbeddingsCache(BaseCache):
         """
         if not items:
             return []
+
+        if self._owns_redis_client is False and self._redis_client is None:
+            logger.warning(
+                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
+                "If you intended to use async_redis_client, please use async amset(items, ttl=None) method of EmbeddingCache instead "
+                "of mset(items, ttl=None)."
+            )
 
         client = self._get_redis_client()
         keys = []
