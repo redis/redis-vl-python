@@ -305,7 +305,6 @@ def test_text_query_with_string_filter():
     query_string = str(text_query)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string
     assert f"AND {string_filter}" in query_string
-    assert string_filter in query_string
 
     # Test with FilterExpression - should also work (existing functionality)
     filter_expression = Tag("category") == "tech"
