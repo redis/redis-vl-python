@@ -210,10 +210,9 @@ class HybridQuery(AggregationQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
+        filter_expression = self._filter_expression
         if isinstance(self._filter_expression, FilterExpression):
             filter_expression = str(self._filter_expression)
-        else:
-            filter_expression = ""
 
         # base KNN query
         knn_query = f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}"
@@ -224,3 +223,7 @@ class HybridQuery(AggregationQuery):
             text += f" AND {filter_expression}"
 
         return f"{text})=>[{knn_query}]"
+
+    def __str__(self) -> str:
+        """Return the string representation of the query."""
+        return " ".join([str(x) for x in self.build_args()])
