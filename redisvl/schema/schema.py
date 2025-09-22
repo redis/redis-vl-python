@@ -1,7 +1,7 @@
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Union
 
 import yaml
 from pydantic import BaseModel, model_validator
@@ -144,7 +144,10 @@ class IndexSchema(BaseModel):
     index: IndexInfo
     """Details of the basic index configurations."""
     fields: Dict[str, BaseField] = {}
-    """Fields associated with the search index and their properties"""
+    """Fields associated with the search index and their properties.
+
+    Note: When creating from dict/YAML, provide fields as a list of field definitions.
+    The validator will convert them to a Dict[str, BaseField] internally."""
     version: Literal["0.1.0"] = "0.1.0"
     """Version of the underlying index schema."""
 
@@ -181,17 +184,32 @@ class IndexSchema(BaseModel):
 
         input_fields = values.get("fields", [])
         prepared_fields: Dict[str, BaseField] = {}
-        # Handle old fields format temporarily
+
+        # Handle both list and dict formats for fields
         if isinstance(input_fields, dict):
-            raise ValueError("New schema format introduced; please update schema spec.")
-        # Process and create fields
-        for field_input in input_fields:
-            field = cls._make_field(index.storage_type, **field_input)
-            if field.name in prepared_fields:
-                raise ValueError(
-                    f"Duplicate field name: {field.name}. Field names must be unique across all fields."
-                )
-            prepared_fields[field.name] = field
+            # If fields is already a dict of BaseField instances, use it directly
+            for name, field in input_fields.items():
+                if isinstance(field, BaseField):
+                    prepared_fields[name] = field
+                elif isinstance(field, dict):
+                    # If it's a dict of field definitions, create fields
+                    field_obj = cls._make_field(index.storage_type, **field)
+                    if field_obj.name != name:
+                        raise ValueError(f"Field name mismatch: key '{name}' vs field name '{field_obj.name}'")
+                    prepared_fields[name] = field_obj
+                else:
+                    raise ValueError(f"Invalid field type for '{name}': expected BaseField or dict")
+        elif isinstance(input_fields, list):
+            # Process list of field definitions (standard format)
+            for field_input in input_fields:
+                field = cls._make_field(index.storage_type, **field_input)
+                if field.name in prepared_fields:
+                    raise ValueError(
+                        f"Duplicate field name: {field.name}. Field names must be unique across all fields."
+                    )
+                prepared_fields[field.name] = field
+        else:
+            raise ValueError(f"Fields must be a list or dict, got {type(input_fields)}")
 
         values["fields"] = prepared_fields
         values["index"] = index
