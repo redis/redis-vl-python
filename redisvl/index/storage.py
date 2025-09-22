@@ -81,7 +81,15 @@ class BaseStorage(BaseModel):
         if not prefix:
             return id
         else:
-            return f"{prefix}{key_separator}{id}"
+            # Normalize prefix by removing trailing separators to avoid doubles
+            normalized_prefix = (
+                prefix.rstrip(key_separator) if key_separator else prefix
+            )
+            if normalized_prefix:
+                return f"{normalized_prefix}{key_separator}{id}"
+            else:
+                # If prefix was only separators, just return the id
+                return id
 
     def _create_key(self, obj: Dict[str, Any], id_field: Optional[str] = None) -> str:
         """Construct a Redis key for a given object, optionally using a
