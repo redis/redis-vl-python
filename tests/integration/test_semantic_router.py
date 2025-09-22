@@ -5,7 +5,6 @@ import pytest
 from redis.exceptions import ConnectionError
 from ulid import ULID
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
@@ -290,23 +289,19 @@ def test_different_vector_dtypes(redis_url, routes):
 
 
 def test_bad_dtype_connecting_to_exiting_router(redis_url, routes):
-    try:
-        router = SemanticRouter(
-            name="float64-router",
-            routes=routes,
-            dtype="float64",
-            redis_url=redis_url,
-        )
+    router = SemanticRouter(
+        name="float64-router",
+        routes=routes,
+        dtype="float64",
+        redis_url=redis_url,
+    )
 
-        same_type = SemanticRouter(
-            name="float64-router",
-            routes=routes,
-            dtype="float64",
-            redis_url=redis_url,
-        )
-        # under the hood uses from_existing
-    except RedisModuleVersionError:
-        pytest.skip("Not using a late enough version of Redis")
+    same_type = SemanticRouter(
+        name="float64-router",
+        routes=routes,
+        dtype="float64",
+        redis_url=redis_url,
+    )
 
     with pytest.raises(ValueError):
         bad_type = SemanticRouter(

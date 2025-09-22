@@ -162,7 +162,7 @@ class SemanticCache(BaseLLMCache):
                 )
 
             existing_index = SearchIndex.from_existing(
-                name, redis_client=self._index.client
+                name, redis_client=self._index._redis_client
             )
             if existing_index.schema.to_dict() != self._index.schema.to_dict():
                 raise ValueError(

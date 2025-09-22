@@ -230,3 +230,4 @@ tests/data
 .cursor
 .junie
 .undodir
+.claude/settings.local.json

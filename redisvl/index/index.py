@@ -66,7 +66,6 @@ from redis.commands.search.result import Result
 
 from redisvl.exceptions import (
     QueryValidationError,
-    RedisModuleVersionError,
     RedisSearchError,
     RedisVLError,
     SchemaValidationError,
@@ -438,23 +437,15 @@ class SearchIndex(BaseSearchIndex):
 
         Raises:
             ValueError: If redis_url or redis_client is not provided.
-            RedisModuleVersionError: If required Redis modules are not installed.
         """
-        try:
-            if redis_url:
-                redis_client = RedisConnectionFactory.get_redis_connection(
-                    redis_url=redis_url,
-                    required_modules=REQUIRED_MODULES_FOR_INTROSPECTION,
-                    **kwargs,
-                )
-            elif redis_client:
-                RedisConnectionFactory.validate_sync_redis(
-                    redis_client, required_modules=REQUIRED_MODULES_FOR_INTROSPECTION
-                )
-        except RedisModuleVersionError as e:
-            raise RedisModuleVersionError(
-                f"Loading from existing index failed. {str(e)}"
+        if redis_url:
+            redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=redis_url,
+                **kwargs,
             )
+        elif redis_client:
+            # Validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client)
 
         if not redis_client:
             raise ValueError("Must provide either a redis_url or redis_client")
@@ -480,11 +471,16 @@ class SearchIndex(BaseSearchIndex):
         if self.__redis_client is None:
             with self._lock:
                 if self.__redis_client is None:
+                    # Pass lib_name to connection factory
+                    kwargs = {**self._connection_kwargs}
+                    if self._lib_name:
+                        kwargs["lib_name"] = self._lib_name
                     self.__redis_client = RedisConnectionFactory.get_redis_connection(
                         redis_url=self._redis_url,
-                        **self._connection_kwargs,
+                        **kwargs,
                     )
-        if not self._validated_client:
+        if not self._validated_client and self._lib_name:
+            # Only set lib name for user-provided clients
             RedisConnectionFactory.validate_sync_redis(
                 self.__redis_client,
                 self._lib_name,
@@ -1192,21 +1188,14 @@ class AsyncSearchIndex(BaseSearchIndex):
                 "Must provide either a redis_url or redis_client to fetch Redis index info."
             )
 
-        try:
-            if redis_url:
-                redis_client = await RedisConnectionFactory._get_aredis_connection(
-                    url=redis_url,
-                    required_modules=REQUIRED_MODULES_FOR_INTROSPECTION,
-                    **kwargs,
-                )
-            elif redis_client:
-                await RedisConnectionFactory.validate_async_redis(
-                    redis_client, required_modules=REQUIRED_MODULES_FOR_INTROSPECTION
-                )
-        except RedisModuleVersionError as e:
-            raise RedisModuleVersionError(
-                f"Loading from existing index failed. {str(e)}"
-            ) from e
+        if redis_url:
+            redis_client = await RedisConnectionFactory._get_aredis_connection(
+                url=redis_url,
+                **kwargs,
+            )
+        elif redis_client:
+            # Validate client type and set lib name
+            await RedisConnectionFactory.validate_async_redis(redis_client)
 
         if redis_client is None:
             raise ValueError(
@@ -1255,13 +1244,17 @@ class AsyncSearchIndex(BaseSearchIndex):
             async with self._lock:
                 # Double-check to protect against concurrent access
                 if self._redis_client is None:
-                    kwargs = self._connection_kwargs
+                    # Pass lib_name to connection factory
+                    kwargs = {**self._connection_kwargs}
                     if self._redis_url:
                         kwargs["url"] = self._redis_url
+                    if self._lib_name:
+                        kwargs["lib_name"] = self._lib_name
                     self._redis_client = (
                         await RedisConnectionFactory._get_aredis_connection(**kwargs)
                     )
-        if not self._validated_client:
+        if not self._validated_client and self._lib_name:
+            # Set lib name for user-provided clients
             await RedisConnectionFactory.validate_async_redis(
                 self._redis_client,
                 self._lib_name,

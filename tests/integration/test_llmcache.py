@@ -7,12 +7,10 @@ import pytest
 from pydantic import ValidationError
 from redis.exceptions import ConnectionError
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
 from redisvl.utils.vectorize import HFTextVectorizer
-from tests.conftest import skip_if_module_version_error
 
 
 @pytest.fixture(scope="session")
@@ -850,7 +848,7 @@ def test_cache_index_overwrite(redis_url, worker_id, hf_vectorizer):
 
     assert response == []
 
-    with pytest.raises((RedisModuleVersionError, ValueError)):
+    with pytest.raises((ValueError)):
         SemanticCache(
             name=f"test_cache_{worker_id}",
             redis_url=redis_url,
@@ -956,8 +954,8 @@ def test_bad_dtype_connecting_to_existing_cache(redis_url, worker_id):
             name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
         )
 
-    cache = skip_if_module_version_error(create_cache)
-    same_type = skip_if_module_version_error(create_same_type)
+    cache = create_cache()
+    same_type = create_same_type()
     # under the hood uses from_existing
 
     with pytest.raises(ValueError):

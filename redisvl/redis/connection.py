@@ -13,8 +13,7 @@ from redis.connection import SSLConnection
 from redis.exceptions import ResponseError
 
 from redisvl import __version__
-from redisvl.exceptions import RedisModuleVersionError
-from redisvl.redis.constants import DEFAULT_REQUIRED_MODULES, REDIS_URL_ENV_VAR
+from redisvl.redis.constants import REDIS_URL_ENV_VAR
 from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.utils import deprecated_function
@@ -155,40 +154,6 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def validate_modules(
-    installed_modules: Dict[str, Any],
-    required_modules: Optional[List[Dict[str, Any]]] = None,
-) -> None:
-    """
-    Validates if required Redis modules are installed.
-
-    Args:
-        installed_modules: List of installed modules.
-        required_modules: List of required modules.
-
-    Raises:
-        RedisModuleVersionError: If required Redis modules are not installed.
-    """
-    required_modules = required_modules or DEFAULT_REQUIRED_MODULES
-
-    for required_module in required_modules:
-        if required_module["name"] in installed_modules:
-            installed_version = installed_modules[required_module["name"]]  # type: ignore
-            if int(installed_version) >= int(required_module["ver"]):  # type: ignore
-                return
-
-    # Build the error message dynamically
-    required_modules_str = " OR ".join(
-        [f'{module["name"]} >= {module["ver"]}' for module in required_modules]
-    )
-    error_message = (
-        f"Required Redis db module {required_modules_str} not installed. "
-        "See Redis Stack docs at https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/."
-    )
-
-    raise RedisModuleVersionError(error_message)
-
-
 class RedisConnectionFactory:
     """Builds connections to a Redis database, supporting both synchronous and
     asynchronous clients.
@@ -232,7 +197,6 @@ class RedisConnectionFactory:
     @staticmethod
     def get_redis_connection(
         redis_url: Optional[str] = None,
-        required_modules: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> SyncRedisClient:
         """Creates and returns a synchronous Redis client.
@@ -240,8 +204,6 @@ class RedisConnectionFactory:
         Args:
             url (Optional[str]): The URL of the Redis server. If not provided,
                 the environment variable REDIS_URL is used.
-            required_modules (Optional[List[Dict[str, Any]]]): List of required
-                Redis modules with version requirements.
             **kwargs: Additional keyword arguments to be passed to the Redis
                 client constructor.
 
@@ -251,22 +213,26 @@ class RedisConnectionFactory:
         Raises:
             ValueError: If url is not provided and REDIS_URL environment
                 variable is not set.
-            RedisModuleVersionError: If required Redis modules are not installed.
         """
         url = redis_url or get_address_from_env()
         if is_cluster_url(url, **kwargs):
             client = RedisCluster.from_url(url, **kwargs)
         else:
             client = Redis.from_url(url, **kwargs)
-        RedisConnectionFactory.validate_sync_redis(
-            client, required_modules=required_modules
-        )
+        # Module validation removed - operations will fail naturally if modules are missing
+        # Set client library name only
+        _lib_name = make_lib_name(kwargs.get("lib_name"))
+        try:
+            client.client_setinfo("LIB-NAME", _lib_name)
+        except ResponseError:
+            # Fall back to a simple log echo
+            if hasattr(client, "echo"):
+                client.echo(_lib_name)
         return client
 
     @staticmethod
     async def _get_aredis_connection(
         url: Optional[str] = None,
-        required_modules: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
@@ -277,8 +243,6 @@ class RedisConnectionFactory:
         Args:
             url (Optional[str]): The URL of the Redis server. If not provided,
                 the environment variable REDIS_URL is used.
-            required_modules (Optional[List[Dict[str, Any]]]): List of required
-                Redis modules with version requirements.
             **kwargs: Additional keyword arguments to be passed to the async
                 Redis client constructor.
 
@@ -288,7 +252,6 @@ class RedisConnectionFactory:
         Raises:
             ValueError: If url is not provided and REDIS_URL environment
                 variable is not set.
-            RedisModuleVersionError: If required Redis modules are not installed.
         """
         url = url or get_address_from_env()
 
@@ -297,9 +260,15 @@ class RedisConnectionFactory:
         else:
             client = AsyncRedis.from_url(url, **kwargs)
 
-        await RedisConnectionFactory.validate_async_redis(
-            client, required_modules=required_modules
-        )
+        # Module validation removed - operations will fail naturally if modules are missing
+        # Set client library name only
+        _lib_name = make_lib_name(kwargs.get("lib_name"))
+        try:
+            await client.client_setinfo("LIB-NAME", _lib_name)
+        except ResponseError:
+            # Fall back to a simple log echo
+            if hasattr(client, "echo"):
+                await client.echo(_lib_name)
         return client
 
     @staticmethod
@@ -386,9 +355,12 @@ class RedisConnectionFactory:
     def validate_sync_redis(
         redis_client: SyncRedisClient,
         lib_name: Optional[str] = None,
-        required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Validates the sync Redis client."""
+        """Validates the sync Redis client.
+
+        Note: Module validation has been removed. This method now only validates
+        the client type and sets the library name.
+        """
         if not issubclass(type(redis_client), (Redis, RedisCluster)):
             raise TypeError(
                 "Invalid Redis client instance. Must be Redis or RedisCluster."
@@ -404,19 +376,18 @@ class RedisConnectionFactory:
             if hasattr(redis_client, "echo"):
                 redis_client.echo(_lib_name)
 
-        # Get list of modules
-        installed_modules = RedisConnectionFactory.get_modules(redis_client)
-
-        # Validate available modules
-        validate_modules(installed_modules, required_modules)
+        # Module validation removed - operations will fail naturally if modules are missing
 
     @staticmethod
     async def validate_async_redis(
         redis_client: AsyncRedisClient,
         lib_name: Optional[str] = None,
-        required_modules: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
-        """Validates the async Redis client."""
+        """Validates the async Redis client.
+
+        Note: Module validation has been removed. This method now only validates
+        the client type and sets the library name.
+        """
         if not issubclass(type(redis_client), (AsyncRedis, AsyncRedisCluster)):
             raise TypeError(
                 "Invalid async Redis client instance. Must be async Redis or async RedisCluster."
@@ -427,12 +398,7 @@ class RedisConnectionFactory:
             await redis_client.client_setinfo("LIB-NAME", _lib_name)
         except ResponseError:
             # Fall back to a simple log echo
-            await redis_client.echo(_lib_name)
             if hasattr(redis_client, "echo"):
                 await redis_client.echo(_lib_name)
 
-        # Get list of modules
-        installed_modules = await RedisConnectionFactory.get_modules_async(redis_client)
-
-        # Validate available modules
-        validate_modules(installed_modules, required_modules)
+        # Module validation removed - operations will fail naturally if modules are missing
