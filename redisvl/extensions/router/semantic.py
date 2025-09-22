@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
@@ -118,18 +117,14 @@ class SemanticRouter(BaseModel):
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
-        try:
-            if redis_url:
-                redis_client = RedisConnectionFactory.get_redis_connection(
-                    redis_url=redis_url,
-                    **kwargs,
-                )
-            elif redis_client:
-                RedisConnectionFactory.validate_sync_redis(redis_client)
-        except RedisModuleVersionError as e:
-            raise RedisModuleVersionError(
-                f"Loading from existing index failed. {str(e)}"
+        if redis_url:
+            redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=redis_url,
+                **kwargs,
             )
+        elif redis_client:
+            # Just validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client)
         if redis_client is None:
             raise ValueError(
                 "Creating Redis client failed. Please check the redis_url and connection_kwargs."

@@ -4,12 +4,7 @@ from unittest import mock
 import pytest
 from redis import Redis
 
-from redisvl.exceptions import (
-    QueryValidationError,
-    RedisModuleVersionError,
-    RedisSearchError,
-    RedisVLError,
-)
+from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
@@ -418,28 +413,32 @@ def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
     assert index.client is None
 
 
-def test_search_index_validates_redis_modules(redis_url):
+def test_search_index_no_proactive_module_validation(redis_url):
     """
-    A regression test for RAAE-694: we should validate that a passed-in
-    Redis client has the correct modules installed.
+    Updated test for issue #370: SearchIndex should not validate modules proactively.
+    Operations should fail naturally if modules are missing.
     """
     client = Redis.from_url(redis_url)
     with mock.patch(
         "redisvl.index.index.RedisConnectionFactory.validate_sync_redis"
     ) as mock_validate_sync_redis:
-        mock_validate_sync_redis.side_effect = RedisModuleVersionError(
-            "Required modules not installed"
+        # Create index - validation should only set lib name, not check modules
+        index = SearchIndex(
+            schema=IndexSchema.from_dict(
+                {"index": {"name": "my_index"}, "fields": fields}
+            ),
+            redis_client=client,
         )
-        with pytest.raises(RedisModuleVersionError):
-            index = SearchIndex(
-                schema=IndexSchema.from_dict(
-                    {"index": {"name": "my_index"}, "fields": fields}
-                ),
-                redis_client=client,
-            )
-            index.create(overwrite=True, drop=True)
 
-        mock_validate_sync_redis.assert_called_once()
+        # Access client to trigger lazy init
+        _ = index._redis_client
+
+        # validate_sync_redis might be called to set lib name, but won't raise module errors
+        # The actual operation (create) will succeed if modules are present
+        index.create(overwrite=True, drop=True)
+
+        # Verify index was created successfully (modules are present in test env)
+        assert index.exists()
 
 
 def test_batch_search(index):

@@ -5,12 +5,7 @@ import pytest
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 
-from redisvl.exceptions import (
-    QueryValidationError,
-    RedisModuleVersionError,
-    RedisSearchError,
-    RedisVLError,
-)
+from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import AsyncSearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
@@ -474,28 +469,32 @@ async def test_search_index_that_owns_client_disconnect_sync(index_schema, redis
 
 
 @pytest.mark.asyncio
-async def test_async_search_index_validates_redis_modules(redis_url):
+async def test_async_search_index_no_proactive_module_validation(redis_url):
     """
-    A regression test for RAAE-694: we should validate that a passed-in
-    Redis client has the correct modules installed.
+    Updated test for issue #370: AsyncSearchIndex should not validate modules proactively.
+    Operations should fail naturally if modules are missing.
     """
     client = AsyncRedis.from_url(redis_url)
     with mock.patch(
         "redisvl.index.index.RedisConnectionFactory.validate_async_redis"
     ) as mock_validate_async_redis:
-        mock_validate_async_redis.side_effect = RedisModuleVersionError(
-            "Required modules not installed"
+        # Create index - validation should only set lib name, not check modules
+        index = AsyncSearchIndex(
+            schema=IndexSchema.from_dict(
+                {"index": {"name": "my_index"}, "fields": fields}
+            ),
+            redis_client=client,
         )
-        with pytest.raises(RedisModuleVersionError):
-            index = AsyncSearchIndex(
-                schema=IndexSchema.from_dict(
-                    {"index": {"name": "my_index"}, "fields": fields}
-                ),
-                redis_client=client,
-            )
-            await index.create(overwrite=True, drop=True)
 
-        mock_validate_async_redis.assert_called_once()
+        # Access client to trigger lazy init
+        _ = await index._get_client()
+
+        # validate_async_redis might be called to set lib name, but won't raise module errors
+        # The actual operation (create) will succeed if modules are present
+        await index.create(overwrite=True, drop=True)
+
+        # Verify index was created successfully (modules are present in test env)
+        assert await index.exists()
 
 
 @pytest.mark.asyncio

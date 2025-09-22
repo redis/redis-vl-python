@@ -3,10 +3,8 @@ import warnings
 import pytest
 from redis.exceptions import ConnectionError
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
-from tests.conftest import skip_if_module_version_error
 
 
 @pytest.fixture
@@ -648,7 +646,14 @@ def test_different_vector_dtypes(redis_url):
         pytest.skip("Required Redis modules not available or version too low")
 
 
-def test_bad_dtype_connecting_to_exiting_history(redis_url):
+def test_bad_dtype_connecting_to_exiting_history(client, redis_url):
+    # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
+    redis_version = client.info()["redis_version"]
+    if redis_version.startswith("6.2"):
+        pytest.skip(
+            "Redis 6.2.x FT.INFO doesn't properly return vector dims for reconnection"
+        )
+
     def create_history():
         return SemanticMessageHistory(
             name="float64 history", dtype="float64", redis_url=redis_url
@@ -659,8 +664,8 @@ def test_bad_dtype_connecting_to_exiting_history(redis_url):
             name="float64 history", dtype="float64", redis_url=redis_url
         )
 
-    history = skip_if_module_version_error(create_history)
-    same_type = skip_if_module_version_error(create_same_type)
+    history = create_history()
+    same_type = create_same_type()
     # under the hood uses from_existing
 
     with pytest.raises(ValueError):
