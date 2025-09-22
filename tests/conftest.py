@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import pytest
 from testcontainers.compose import DockerCompose
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory, compare_versions
 from redisvl.redis.utils import array_to_buffer
@@ -610,33 +609,3 @@ async def skip_if_redis_version_below_async(
     if not compare_versions(redis_version, min_version):
         skip_msg = message or f"Redis version {redis_version} < {min_version} required"
         pytest.skip(skip_msg)
-
-
-def skip_if_module_version_error(func, *args, **kwargs):
-    """
-    Execute function and skip test if RedisModuleVersionError is raised.
-
-    Args:
-        func: Function to execute
-        *args: Arguments for the function
-        **kwargs: Keyword arguments for the function
-    """
-    try:
-        return func(*args, **kwargs)
-    except RedisModuleVersionError:
-        pytest.skip("Required Redis modules not available or version too low")
-
-
-async def skip_if_module_version_error_async(func, *args, **kwargs):
-    """
-    Execute async function and skip test if RedisModuleVersionError is raised.
-
-    Args:
-        func: Async function to execute
-        *args: Arguments for the function
-        **kwargs: Keyword arguments for the function
-    """
-    try:
-        return await func(*args, **kwargs)
-    except RedisModuleVersionError:
-        pytest.skip("Required Redis modules not available or version too low")
