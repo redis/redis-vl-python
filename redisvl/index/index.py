@@ -49,7 +49,8 @@ if TYPE_CHECKING:
 
 from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
-from redis.commands.helpers import get_protocol_version  # type: ignore
+
+from redisvl.utils.redis_protocol import get_protocol_version
 
 # Redis 5.x compatibility (6 fixed the import path)
 if redis_version.startswith("5"):

@@ -7,7 +7,6 @@ from redis import RedisCluster
 from redis import __version__ as redis_version
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.client import NEVER_DECODE, Pipeline
-from redis.commands.helpers import get_protocol_version
 from redis.commands.search import AsyncSearch, Search
 from redis.commands.search.commands import (
     CREATE_CMD,
@@ -22,6 +21,8 @@ from redis.commands.search.commands import (
     TEMPORARY,
 )
 from redis.commands.search.field import Field
+
+from redisvl.utils.redis_protocol import get_protocol_version
 
 # Redis 5.x compatibility (6 fixed the import path)
 if redis_version.startswith("5"):
