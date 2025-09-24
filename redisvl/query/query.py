@@ -801,7 +801,7 @@ class TextQuery(BaseQuery):
     def __init__(
         self,
         text: str,
-        text_field_name: str,
+        text_field_name: Union[str, Dict[str, float]],
         text_scorer: str = "BM25STD",
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         return_fields: Optional[List[str]] = None,
@@ -817,7 +817,8 @@ class TextQuery(BaseQuery):
 
         Args:
             text (str): The text string to perform the text search with.
-            text_field_name (str): The name of the document field to perform text search on.
+            text_field_name (Union[str, Dict[str, float]]): The name of the document field to perform
+                text search on, or a dictionary mapping field names to their weights.
             text_scorer (str, optional): The text scoring algorithm to use.
                 Defaults to BM25STD. Options are {TFIDF, BM25STD, BM25, TFIDF.DOCNORM, DISMAX, DOCSCORE}.
                 See https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/scoring/
@@ -849,7 +850,7 @@ class TextQuery(BaseQuery):
             TypeError: If stopwords is not a valid iterable set of strings.
         """
         self._text = text
-        self._text_field_name = text_field_name
+        self._field_weights = self._parse_field_weights(text_field_name)
         self._num_results = num_results
 
         self._set_stopwords(stopwords)
@@ -934,15 +935,97 @@ class TextQuery(BaseQuery):
             [token for token in tokens if token and token not in self._stopwords]
         )
 
+    def _parse_field_weights(
+        self, field_spec: Union[str, Dict[str, float]]
+    ) -> Dict[str, float]:
+        """Parse the field specification into a weights dictionary.
+
+        Args:
+            field_spec: Either a single field name or dictionary of field:weight mappings
+
+        Returns:
+            Dictionary mapping field names to their weights
+        """
+        if isinstance(field_spec, str):
+            return {field_spec: 1.0}
+        elif isinstance(field_spec, dict):
+            # Validate all weights are numeric and positive
+            for field, weight in field_spec.items():
+                if not isinstance(field, str):
+                    raise TypeError(f"Field name must be a string, got {type(field)}")
+                if not isinstance(weight, (int, float)):
+                    raise TypeError(
+                        f"Weight for field '{field}' must be numeric, got {type(weight)}"
+                    )
+                if weight <= 0:
+                    raise ValueError(
+                        f"Weight for field '{field}' must be positive, got {weight}"
+                    )
+            return field_spec
+        else:
+            raise TypeError(
+                "text_field_name must be a string or dictionary of field:weight mappings"
+            )
+
+    def set_field_weights(self, field_weights: Union[str, Dict[str, float]]):
+        """Set or update the field weights for the query.
+
+        Args:
+            field_weights: Either a single field name or dictionary of field:weight mappings
+        """
+        self._field_weights = self._parse_field_weights(field_weights)
+        # Invalidate the query string
+        self._built_query_string = None
+
+    @property
+    def field_weights(self) -> Dict[str, float]:
+        """Get the field weights for the query.
+
+        Returns:
+            Dictionary mapping field names to their weights
+        """
+        return self._field_weights.copy()
+
+    @property
+    def text_field_name(self) -> Union[str, Dict[str, float]]:
+        """Get the text field name(s) - for backward compatibility.
+
+        Returns:
+            Either a single field name string (if only one field with weight 1.0)
+            or a dictionary of field:weight mappings.
+        """
+        if len(self._field_weights) == 1:
+            field, weight = next(iter(self._field_weights.items()))
+            if weight == 1.0:
+                return field
+        return self._field_weights.copy()
+
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
         filter_expression = self._filter_expression
         if isinstance(filter_expression, FilterExpression):
             filter_expression = str(filter_expression)
 
-        text = (
-            f"@{self._text_field_name}:({self._tokenize_and_escape_query(self._text)})"
-        )
+        escaped_query = self._tokenize_and_escape_query(self._text)
+
+        # Build query parts for each field with its weight
+        field_queries = []
+        for field, weight in self._field_weights.items():
+            if weight == 1.0:
+                # Default weight doesn't need explicit weight syntax
+                field_queries.append(f"@{field}:({escaped_query})")
+            else:
+                # Use Redis weight syntax for non-default weights
+                field_queries.append(
+                    f"@{field}:({escaped_query}) => {{ $weight: {weight} }}"
+                )
+
+        # Join multiple field queries with OR operator
+        if len(field_queries) == 1:
+            text = field_queries[0]
+        else:
+            text = "(" + " | ".join(field_queries) + ")"
+
         if filter_expression and filter_expression != "*":
             text += f" AND {filter_expression}"
         return text

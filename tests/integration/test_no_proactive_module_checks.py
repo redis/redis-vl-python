@@ -19,26 +19,12 @@ from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema import IndexSchema
 from redisvl.utils.vectorize.base import BaseVectorizer
-
-
-def has_redisearch_module(client):
-    """Check if RediSearch module is available."""
-    try:
-        # Try to list indices - this is a RediSearch command
-        client.execute_command("FT._LIST")
-        return True
-    except (ResponseError, Exception):
-        return False
-
-
-async def has_redisearch_module_async(client):
-    """Check if RediSearch module is available (async)."""
-    try:
-        # Try to list indices - this is a RediSearch command
-        await client.execute_command("FT._LIST")
-        return True
-    except (ResponseError, Exception):
-        return False
+from tests.conftest import (
+    has_redisearch_module,
+    has_redisearch_module_async,
+    skip_if_no_redisearch,
+    skip_if_no_redisearch_async,
+)
 
 
 @pytest.fixture
@@ -143,8 +129,7 @@ class TestNoProactiveModuleChecks:
     def test_search_index_create_with_modules(self, client, sample_schema, worker_id):
         """Test that index.create() works with RediSearch available."""
         # Skip if RediSearch is not available
-        if not has_redisearch_module(client):
-            pytest.skip("RediSearch module not available")
+        skip_if_no_redisearch(client)
 
         # Update schema name to be unique
         schema_copy = IndexSchema.from_dict(sample_schema.to_dict())
@@ -172,8 +157,7 @@ class TestNoProactiveModuleChecks:
     ):
         """Test that async index.create() works with RediSearch available."""
         # Skip if RediSearch is not available
-        if not await has_redisearch_module_async(async_client):
-            pytest.skip("RediSearch module not available")
+        await skip_if_no_redisearch_async(async_client)
 
         # Update schema name to be unique
         schema_copy = IndexSchema.from_dict(sample_schema.to_dict())
@@ -345,8 +329,7 @@ class TestEdgeCases:
     def test_from_existing_index_no_validation(self, client, worker_id):
         """Test that SearchIndex.from_existing doesn't validate modules."""
         # Skip if RediSearch is not available
-        if not has_redisearch_module(client):
-            pytest.skip("RediSearch module not available")
+        skip_if_no_redisearch(client)
 
         # First create an index normally
         schema = IndexSchema.from_dict(
