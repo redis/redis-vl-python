@@ -579,6 +579,26 @@ async def get_redis_version_async(client):
     return info["redis_version"]
 
 
+def has_redisearch_module(client):
+    """Check if RediSearch module is available."""
+    try:
+        # Try to list indices - this is a RediSearch command
+        client.execute_command("FT._LIST")
+        return True
+    except Exception:
+        return False
+
+
+async def has_redisearch_module_async(client):
+    """Check if RediSearch module is available (async)."""
+    try:
+        # Try to list indices - this is a RediSearch command
+        await client.execute_command("FT._LIST")
+        return True
+    except Exception:
+        return False
+
+
 def skip_if_redis_version_below(client, min_version: str, message: str = None):
     """
     Skip test if Redis version is below minimum required.
@@ -608,4 +628,30 @@ async def skip_if_redis_version_below_async(
     redis_version = await get_redis_version_async(client)
     if not compare_versions(redis_version, min_version):
         skip_msg = message or f"Redis version {redis_version} < {min_version} required"
+        pytest.skip(skip_msg)
+
+
+def skip_if_no_redisearch(client, message: str = None):
+    """
+    Skip test if RediSearch module is not available.
+
+    Args:
+        client: Redis client instance
+        message: Custom skip message
+    """
+    if not has_redisearch_module(client):
+        skip_msg = message or "RediSearch module not available"
+        pytest.skip(skip_msg)
+
+
+async def skip_if_no_redisearch_async(client, message: str = None):
+    """
+    Skip test if RediSearch module is not available (async version).
+
+    Args:
+        client: Async Redis client instance
+        message: Custom skip message
+    """
+    if not await has_redisearch_module_async(client):
+        skip_msg = message or "RediSearch module not available"
         pytest.skip(skip_msg)
