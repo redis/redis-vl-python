@@ -136,7 +136,7 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
 
         return normalized
 
-    def parse_attrs(attrs):
+    def parse_attrs(attrs, field_type=None):
         # 'SORTABLE', 'NOSTEM' don't have corresponding values.
         # Their presence indicates boolean True
         # TODO 'WITHSUFFIXTRIE' is another boolean attr, but is not returned by ft.info
@@ -150,16 +150,22 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
             "SORTABLE": "sortable",
             "INDEXMISSING": "index_missing",
             "INDEXEMPTY": "index_empty",
+            "NOINDEX": "no_index",
         }
+
+        # Special handling for UNF:
+        # - For NUMERIC fields, Redis always adds UNF when SORTABLE is present
+        # - For TEXT fields, UNF is only present when explicitly set
+        # We only set unf=True for TEXT fields to avoid false positives
+        if "UNF" in attrs:
+            if field_type == "TEXT":
+                parsed_attrs["unf"] = True
+            attrs.remove("UNF")
 
         for redis_attr, python_attr in boolean_attrs.items():
             if redis_attr in attrs:
                 parsed_attrs[python_attr] = True
                 attrs.remove(redis_attr)
-
-        # Handle UNF which is associated with SORTABLE
-        if "UNF" in attrs:
-            attrs.remove("UNF")  # UNF present on sortable numeric fields only
 
         try:
             # Parse remaining attributes as key-value pairs starting from index 6
@@ -182,7 +188,7 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         if field_attrs[5] == "VECTOR":
             field["attrs"] = parse_vector_attrs(field_attrs)
         else:
-            field["attrs"] = parse_attrs(field_attrs)
+            field["attrs"] = parse_attrs(field_attrs, field_type=field_attrs[5])
         # append field
         schema_fields.append(field)
 
