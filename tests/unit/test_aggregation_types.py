@@ -141,7 +141,6 @@ def test_hybrid_query_with_string_filter():
     )
 
     # Check that filter is stored correctly
-    print("hybrid_query.filter ===", hybrid_query.filter)
     assert hybrid_query._filter_expression == string_filter
 
     # Check that the generated query string includes both text search and filter
@@ -198,26 +197,25 @@ def test_hybrid_query_with_string_filter():
 
 def test_aggregate_multi_vector_query():
     # test we require vectors and field names
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         _ = MultiVectorQuery()
 
     with pytest.raises(ValueError):
         _ = MultiVectorQuery(vectors=[sample_vector], vector_field_names=[])
 
     with pytest.raises(ValueError):
-        _ = MultiVectorQuery(vectors=[], vector_field_names=["field 1"])
+        _ = MultiVectorQuery(vectors=[], vector_field_names=["field_1"])
 
     # test we can initialize with a single vector and single field name
     multivector_query = MultiVectorQuery(
-        vectors=[sample_vector], vector_field_names=["field 1"]
+        vectors=[sample_vector], vector_field_names=["field_1"]
     )
-    assert query.query is not None
 
     # check default properties
     assert multivector_query._vectors == [sample_vector]
-    assert multivector_query._vector_field_names == ["field 1"]
+    assert multivector_query._vector_field_names == ["field_1"]
     assert multivector_query._filter_expression == None
-    assert multivector_query._weights == 1.0
+    assert multivector_query._weights == [1.0]
     assert multivector_query._num_results == 10
     assert multivector_query._loadfields == []
     assert multivector_query._dialect == 2
@@ -225,24 +223,26 @@ def test_aggregate_multi_vector_query():
     # test we can initialize with mutliple vectors and field names
     multivector_query = MultiVectorQuery(
         vectors=[sample_vector, sample_vector_2, sample_vector_3, sample_vector_4],
-        vector_field_names=["field 1", "field 2", "field 3", "field 4"],
-        weights=[0.2, 0.5, 0.6, 0, 1],
-        dtypes=[],
+        vector_field_names=["field_1", "field_2", "field_3", "field_4"],
+        weights=[0.2, 0.5, 0.6, 0.1],
+        dtypes=["float32", "float32", "float32", "float32"],
     )
 
     assert len(multivector_query._vectors) == 4
     assert len(multivector_query._vector_field_names) == 4
     assert len(multivector_query._weights) == 4
+    assert len(multivector_query._dtypes) == 4
 
     # test defaults can be overwritten
+    filter_expression = Tag("user group") == ["group A", "group C"]
     multivector_query = MultiVectorQuery(
         vectors=[sample_vector, sample_vector_2, sample_vector_3, sample_vector_4],
-        vector_field_names=["field 1", "field 2", "field 3", "field 4"],
-        filter_expression=(Tag("user group") == ["group A", "group C"]),
-        weights=[0.2, 0.5, 0.6, 0, 1],
+        vector_field_names=["field_1", "field_2", "field_3", "field_4"],
+        filter_expression=filter_expression,
+        weights=[0.2, 0.5, 0.6, 0.1],
         dtypes=["float32", "float32", "float64", "bfloat16"],
         num_results=5,
-        return_fields=["field 1", "user name", "address"],
+        return_fields=["field_1", "user name", "address"],
         dialect=4,
     )
 
@@ -253,15 +253,15 @@ def test_aggregate_multi_vector_query():
         sample_vector_4,
     ]
     assert multivector_query._vector_field_names == [
-        "field 1",
-        "field 2",
-        "field 3",
-        "field 4",
+        "field_1",
+        "field_2",
+        "field_3",
+        "field_4",
     ]
-    assert multivector_query._weights == [0.2, 0.5, 0.6, 0, 1]
-    assert multivector_query._filter_expression == Tag("user group")
+    assert multivector_query._weights == [0.2, 0.5, 0.6, 0.1]
+    assert multivector_query._filter_expression == filter_expression
     assert multivector_query._num_results == 5
-    assert multivector_query._loadfields == ["field 1", "user name", "address"]
+    assert multivector_query._loadfields == ["field_1", "user name", "address"]
     assert multivector_query._dialect == 4
 
 
