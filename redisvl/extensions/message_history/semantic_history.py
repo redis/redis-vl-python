@@ -173,6 +173,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         session_tag: Optional[str] = None,
         raw: bool = False,
         distance_threshold: Optional[float] = None,
+        role: Optional[Union[str, List[str]]] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Searches the message history for information semantically related to
         the specified prompt.
@@ -195,17 +196,24 @@ class SemanticMessageHistory(BaseMessageHistory):
                 if no relevant context is found.
             raw (bool): Whether to return the full Redis hash entry or just the
                 message.
+            role (Optional[Union[str, List[str]]]): Filter messages by role(s).
+                Can be a single role string ("system", "user", "llm", "tool") or
+                a list of roles. If None, all roles are returned.
 
         Returns:
             Union[List[str], List[Dict[str,str]]: Either a list of strings, or a
             list of prompts and responses in JSON containing the most relevant.
 
-        Raises ValueError: if top_k is not an integer greater or equal to 0.
+        Raises ValueError: if top_k is not an integer greater or equal to 0,
+            or if role contains invalid values.
         """
         if type(top_k) != int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to -1")
         if top_k == 0:
             return []
+
+        # Validate and normalize role parameter
+        roles_to_filter = self._validate_roles(role)
 
         # override distance threshold
         distance_threshold = distance_threshold or self._distance_threshold
@@ -225,6 +233,20 @@ class SemanticMessageHistory(BaseMessageHistory):
             else self._default_session_filter
         )
 
+        # Combine session filter with role filter if provided
+        filter_expression = session_filter
+        if roles_to_filter is not None:
+            if len(roles_to_filter) == 1:
+                role_filter = Tag(ROLE_FIELD_NAME) == roles_to_filter[0]
+            else:
+                # Multiple roles - use OR logic
+                role_filters = [Tag(ROLE_FIELD_NAME) == r for r in roles_to_filter]
+                role_filter = role_filters[0]
+                for rf in role_filters[1:]:
+                    role_filter = role_filter | rf
+
+            filter_expression = session_filter & role_filter
+
         query = RangeQuery(
             vector=self._vectorizer.embed(prompt),
             vector_field_name=MESSAGE_VECTOR_FIELD_NAME,
@@ -232,14 +254,14 @@ class SemanticMessageHistory(BaseMessageHistory):
             distance_threshold=distance_threshold,
             num_results=top_k,
             return_score=True,
-            filter_expression=session_filter,
+            filter_expression=filter_expression,
             dtype=self._vectorizer.dtype,
         )
         messages = self._index.query(query)
 
         # if we don't find semantic matches fallback to returning recent context
         if not messages and fall_back:
-            return self.get_recent(as_text=as_text, top_k=top_k, raw=raw)
+            return self.get_recent(as_text=as_text, top_k=top_k, raw=raw, role=role)
         if raw:
             return messages
         return self._format_context(messages, as_text)
@@ -250,6 +272,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         as_text: bool = False,
         raw: bool = False,
         session_tag: Optional[str] = None,
+        role: Optional[Union[str, List[str]]] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retrieve the recent message history in sequential order.
 
@@ -261,16 +284,23 @@ class SemanticMessageHistory(BaseMessageHistory):
                 prompt and response
             session_tag (Optional[str]): Tag of the entries linked to a specific
                 conversation session. Defaults to instance ULID.
+            role (Optional[Union[str, List[str]]]): Filter messages by role(s).
+                Can be a single role string ("system", "user", "llm", "tool") or
+                a list of roles. If None, all roles are returned.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the session
                 or list of strings if as_text is false.
 
         Raises:
-            ValueError: if top_k is not an integer greater than or equal to 0.
+            ValueError: if top_k is not an integer greater than or equal to 0,
+                or if role contains invalid values.
         """
         if type(top_k) != int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to 0")
+
+        # Validate and normalize role parameter
+        roles_to_filter = self._validate_roles(role)
 
         return_fields = [
             ID_FIELD_NAME,
@@ -288,8 +318,22 @@ class SemanticMessageHistory(BaseMessageHistory):
             else self._default_session_filter
         )
 
+        # Combine session filter with role filter if provided
+        filter_expression = session_filter
+        if roles_to_filter is not None:
+            if len(roles_to_filter) == 1:
+                role_filter = Tag(ROLE_FIELD_NAME) == roles_to_filter[0]
+            else:
+                # Multiple roles - use OR logic
+                role_filters = [Tag(ROLE_FIELD_NAME) == r for r in roles_to_filter]
+                role_filter = role_filters[0]
+                for rf in role_filters[1:]:
+                    role_filter = role_filter | rf
+
+            filter_expression = session_filter & role_filter
+
         query = FilterQuery(
-            filter_expression=session_filter,
+            filter_expression=filter_expression,
             return_fields=return_fields,
             num_results=top_k,
         )

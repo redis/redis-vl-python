@@ -48,6 +48,12 @@ index = SearchIndex(schema, redis_url="redis://localhost:6379")
   token.strip().strip(",").replace(""", "").replace(""", "").lower()
   ```
 
+### Git Operations
+**CRITICAL**: NEVER use `git push` or attempt to push to remote repositories. The user will handle all git push operations.
+
+### Code Quality
+**IMPORTANT**: Always run `make format` before committing code to ensure proper formatting and linting compliance.
+
 ### README.md Maintenance
 **IMPORTANT**: DO NOT modify README.md unless explicitly requested.
 

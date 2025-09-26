@@ -60,6 +60,7 @@ class BaseMessageHistory:
         as_text: bool = False,
         raw: bool = False,
         session_tag: Optional[str] = None,
+        role: Optional[Union[str, List[str]]] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retrieve the recent conversation history in sequential order.
 
@@ -72,15 +73,59 @@ class BaseMessageHistory:
                 prompt and response
             session_tag (str): Tag to be added to entries to link to a specific
                 conversation session. Defaults to instance ULID.
+            role (Optional[Union[str, List[str]]]): Filter messages by role(s).
+                Can be a single role string ("system", "user", "llm", "tool") or
+                a list of roles. If None, all roles are returned.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the messages
                                    or list of strings if as_text is false.
 
         Raises:
-            ValueError: If top_k is not an integer greater than or equal to 0.
+            ValueError: If top_k is not an integer greater than or equal to 0,
+                or if role contains invalid values.
         """
         raise NotImplementedError
+
+    def _validate_roles(
+        self, role: Optional[Union[str, List[str]]]
+    ) -> Optional[List[str]]:
+        """Validate and normalize role parameter.
+
+        Args:
+            role: A single role string, list of roles, or None.
+
+        Returns:
+            List of valid role strings if role is provided, None otherwise.
+
+        Raises:
+            ValueError: If role contains invalid values.
+        """
+        if role is None:
+            return None
+
+        valid_roles = {"system", "user", "llm", "tool"}
+
+        # Handle single role string
+        if isinstance(role, str):
+            if role not in valid_roles:
+                raise ValueError(
+                    f"Invalid role '{role}'. Valid roles are: {valid_roles}"
+                )
+            return [role]
+
+        # Handle list of roles
+        if isinstance(role, list):
+            if not role:  # Empty list
+                raise ValueError("roles cannot be empty")
+            for r in role:
+                if r not in valid_roles:
+                    raise ValueError(
+                        f"Invalid role '{r}'. Valid roles are: {valid_roles}"
+                    )
+            return role
+
+        raise ValueError("role must be a string or list of strings")
 
     def _format_context(
         self, messages: List[Dict[str, Any]], as_text: bool
