@@ -47,6 +47,9 @@ class BaseQuery(RedisQuery):
         # has not been built yet.
         self._built_query_string = None
 
+        # Initialize skip_decode_fields set
+        self._skip_decode_fields: Set[str] = set()
+
     def __str__(self) -> str:
         """Return the string representation of the query."""
         return " ".join([str(x) for x in self.get_args()])
@@ -106,6 +109,58 @@ class BaseQuery(RedisQuery):
     def _query_string(self, value: Optional[str]):
         """Setter for _query_string to maintain compatibility with parent class."""
         self._built_query_string = value
+
+    def return_fields(
+        self, *fields, skip_decode: Optional[Union[str, List[str]]] = None
+    ):
+        """
+        Set the fields to return with search results.
+
+        Args:
+            *fields: Variable number of field names to return.
+            skip_decode: Optional field name or list of field names that should not be
+                decoded. Useful for binary data like embeddings.
+
+        Returns:
+            self: Returns the query object for method chaining.
+
+        Raises:
+            TypeError: If skip_decode is not a string, list, or None.
+        """
+        # Only clear fields when skip_decode is provided (indicating user is explicitly setting fields)
+        # This preserves backward compatibility when return_fields is called multiple times
+        if skip_decode is not None:
+            # Clear existing fields to provide replacement behavior
+            self._return_fields = []
+            self._return_fields_decode_as = {}
+
+            # Process skip_decode parameter to prepare decode settings
+            if isinstance(skip_decode, str):
+                skip_decode_set = {skip_decode}
+                self._skip_decode_fields = {skip_decode}
+            elif isinstance(skip_decode, list):
+                skip_decode_set = set(skip_decode)
+                self._skip_decode_fields = set(skip_decode)
+            else:
+                raise TypeError("skip_decode must be a string or list of strings")
+
+            # Add fields using parent's return_field method with proper decode settings
+            for field in fields:
+                if field in skip_decode_set:
+                    # Use return_field with decode_field=False for skip_decode fields
+                    super().return_field(field, decode_field=False)
+                else:
+                    # Use normal return_field for other fields
+                    super().return_field(field)
+        else:
+            # Standard additive behavior (backward compatible)
+            super().return_fields(*fields)
+
+            # Initialize skip_decode_fields if not already set
+            if not hasattr(self, "_skip_decode_fields"):
+                self._skip_decode_fields = set()
+
+        return self
 
 
 class FilterQuery(BaseQuery):
