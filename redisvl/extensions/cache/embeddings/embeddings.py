@@ -14,6 +14,8 @@ logger = get_logger(__name__)
 class EmbeddingsCache(BaseCache):
     """Embeddings Cache for storing embedding vectors with exact key matching."""
 
+    _warning_shown: bool = False  # Class-level flag to prevent warning spam
+
     def __init__(
         self,
         name: str = "embedcache",
@@ -168,11 +170,12 @@ class EmbeddingsCache(BaseCache):
             embedding_data = cache.get_by_key("embedcache:1234567890abcdef")
         """
         if self._owns_redis_client is False and self._redis_client is None:
-            logger.warning(
-                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
-                "If you intended to use async_redis_client, please use async aget(text, model_name) method of EmbeddingCache instead "
-                "of get(text, model_name)."
-            )
+            if not EmbeddingsCache._warning_shown:
+                logger.warning(
+                    "EmbeddingsCache initialized with async_redis_client only. "
+                    "Use async methods (aget_by_key) instead of sync methods (get_by_key)."
+                )
+                EmbeddingsCache._warning_shown = True
 
         client = self._get_redis_client()
 
@@ -210,11 +213,12 @@ class EmbeddingsCache(BaseCache):
             return []
 
         if self._owns_redis_client is False and self._redis_client is None:
-            logger.warning(
-                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
-                "If you intended to use async_redis_client, please use async amget(texts, model_name) method of EmbeddingCache instead "
-                "of mget(texts, model_name)."
-            )
+            if not EmbeddingsCache._warning_shown:
+                logger.warning(
+                    "EmbeddingsCache initialized with async_redis_client only. "
+                    "Use async methods (amget_by_keys) instead of sync methods (mget_by_keys)."
+                )
+                EmbeddingsCache._warning_shown = True
 
         client = self._get_redis_client()
 
@@ -298,11 +302,12 @@ class EmbeddingsCache(BaseCache):
         )
 
         if self._owns_redis_client is False and self._redis_client is None:
-            logger.warning(
-                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
-                "If you intended to use async_redis_client, please use async aset(text, model_name, embedding, metadata=None, ttl=None) "
-                "method of EmbeddingCache instead of set(text, model_name, embedding, metadata=None, ttl=None)."
-            )
+            if not EmbeddingsCache._warning_shown:
+                logger.warning(
+                    "EmbeddingsCache initialized with async_redis_client only. "
+                    "Use async methods (aset) instead of sync methods (set)."
+                )
+                EmbeddingsCache._warning_shown = True
 
         # Store in Redis
         client = self._get_redis_client()
@@ -355,11 +360,12 @@ class EmbeddingsCache(BaseCache):
             return []
 
         if self._owns_redis_client is False and self._redis_client is None:
-            logger.warning(
-                "You are using redis_client but you had initialised the EmbeddingCache with an async_redis_client only. "
-                "If you intended to use async_redis_client, please use async amset(items, ttl=None) method of EmbeddingCache instead "
-                "of mset(items, ttl=None)."
-            )
+            if not EmbeddingsCache._warning_shown:
+                logger.warning(
+                    "EmbeddingsCache initialized with async_redis_client only. "
+                    "Use async methods (amset) instead of sync methods (mset)."
+                )
+                EmbeddingsCache._warning_shown = True
 
         client = self._get_redis_client()
         keys = []
