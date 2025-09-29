@@ -88,9 +88,10 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         """Initialize the AzureOpenAI vectorizer.
 
         Args:
-            model (str): Deployment to use for embedding. Must be the
-                'Deployment name' not the 'Model name'. Defaults to
-                'text-embedding-ada-002'.
+            model (str): Azure deployment name to use for embedding. Must be the
+                'Deployment name' from your Azure OpenAI resource, not the underlying
+                model name. Defaults to 'text-embedding-ada-002', but a specific
+                deployment should be provided.
             api_config (Optional[Dict], optional): Dictionary containing the
                 API key, API version, Azure endpoint, Azure deployment, and any other API options.
                 Defaults to None.
@@ -177,18 +178,34 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
                 "AzureOpenAI API key is required. "
                 "Provide it in api_config or set the AZURE_OPENAI_API_KEY environment variable."
             )
-        
+
+        # Note: azure_deployment can be passed via api_config, but the model parameter
+        # is what actually gets used with the Azure OpenAI API calls.
+        # We validate that either model is explicitly set or azure_deployment is provided.
         azure_deployment = (
-            api_config.pop("azure_deployment")
-            if api_config
+            api_config.get("azure_deployment")  # Use get() instead of pop()
+            if api_config and "azure_deployment" in api_config
             else os.getenv("AZURE_OPENAI_DEPLOYMENT")
         )
 
-        if not azure_deployment:
+        # If azure_deployment is provided, it should match or override the model
+        if azure_deployment:
+            if (
+                self.model == "text-embedding-ada-002"
+                and azure_deployment != self.model
+            ):
+                # User provided a specific deployment, use it
+                self.model = azure_deployment
+            # Remove azure_deployment from api_config to avoid passing it twice
+            if api_config and "azure_deployment" in api_config:
+                api_config.pop("azure_deployment")
+        elif self.model == "text-embedding-ada-002":
+            # No deployment specified and using default model name
             raise ValueError(
-                "AzureOpenAI API deployment is required. "
-                "Provide it in api_config or set the AZURE_OPENAI_DEPLOYMENT\
-                    environment variable."
+                "Azure deployment name is required. "
+                "Either provide a specific model/deployment name, "
+                "set 'azure_deployment' in api_config, "
+                "or set the AZURE_OPENAI_DEPLOYMENT environment variable."
             )
 
         # Store clients as regular attributes instead of PrivateAttr
