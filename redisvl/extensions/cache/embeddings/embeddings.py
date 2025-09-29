@@ -126,6 +126,14 @@ class EmbeddingsCache(BaseCache):
         cache_hit = CacheEntry(**convert_bytes(data))
         return cache_hit.model_dump(exclude_none=True)
 
+    def _should_warn_for_async_only(self) -> bool:
+        """Check if warning should be shown for async-only client usage.
+
+        Returns:
+            bool: True if only async client is available and warning hasn't been shown.
+        """
+        return self._owns_redis_client is False and self._redis_client is None
+
     def get(
         self,
         text: str,
@@ -169,7 +177,7 @@ class EmbeddingsCache(BaseCache):
 
             embedding_data = cache.get_by_key("embedcache:1234567890abcdef")
         """
-        if self._owns_redis_client is False and self._redis_client is None:
+        if self._should_warn_for_async_only():
             if not EmbeddingsCache._warning_shown:
                 logger.warning(
                     "EmbeddingsCache initialized with async_redis_client only. "
@@ -212,7 +220,7 @@ class EmbeddingsCache(BaseCache):
         if not keys:
             return []
 
-        if self._owns_redis_client is False and self._redis_client is None:
+        if self._should_warn_for_async_only():
             if not EmbeddingsCache._warning_shown:
                 logger.warning(
                     "EmbeddingsCache initialized with async_redis_client only. "
@@ -301,7 +309,7 @@ class EmbeddingsCache(BaseCache):
             text, model_name, embedding, metadata
         )
 
-        if self._owns_redis_client is False and self._redis_client is None:
+        if self._should_warn_for_async_only():
             if not EmbeddingsCache._warning_shown:
                 logger.warning(
                     "EmbeddingsCache initialized with async_redis_client only. "
@@ -359,7 +367,7 @@ class EmbeddingsCache(BaseCache):
         if not items:
             return []
 
-        if self._owns_redis_client is False and self._redis_client is None:
+        if self._should_warn_for_async_only():
             if not EmbeddingsCache._warning_shown:
                 logger.warning(
                     "EmbeddingsCache initialized with async_redis_client only. "

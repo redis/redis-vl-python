@@ -9,12 +9,18 @@ from redis import Redis
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 
 
+@pytest.fixture(autouse=True)
+def reset_warning_flag():
+    """Reset the warning flag before each test to ensure test isolation."""
+    EmbeddingsCache._warning_shown = False
+    yield
+    # Optionally reset after test as well for cleanup
+    EmbeddingsCache._warning_shown = False
+
+
 @pytest.mark.asyncio
 async def test_sync_methods_warn_with_async_only_client(async_client, caplog):
     """Test that sync methods warn when only async client is provided."""
-    # Reset the warning flag for testing
-    EmbeddingsCache._warning_shown = False
-
     # Initialize EmbeddingsCache with only async_redis_client
     cache = EmbeddingsCache(name="test_cache", async_redis_client=async_client)
 
@@ -49,9 +55,6 @@ async def test_sync_methods_warn_with_async_only_client(async_client, caplog):
 
 def test_no_warning_with_sync_client(redis_url):
     """Test that no warning is shown when sync client is provided."""
-    # Reset the warning flag for testing
-    EmbeddingsCache._warning_shown = False
-
     # Create sync redis client from redis_url
     sync_client = Redis.from_url(redis_url)
 
@@ -73,9 +76,6 @@ def test_no_warning_with_sync_client(redis_url):
 @pytest.mark.asyncio
 async def test_async_methods_no_warning(async_client):
     """Test that async methods don't trigger warnings."""
-    # Reset the warning flag for testing
-    EmbeddingsCache._warning_shown = False
-
     # Initialize EmbeddingsCache with only async_redis_client
     cache = EmbeddingsCache(name="test_cache", async_redis_client=async_client)
 
