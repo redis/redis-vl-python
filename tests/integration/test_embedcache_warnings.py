@@ -18,26 +18,33 @@ async def test_sync_methods_warn_with_async_only_client(async_client, caplog):
     # Initialize EmbeddingsCache with only async_redis_client
     cache = EmbeddingsCache(name="test_cache", async_redis_client=async_client)
 
-    # Capture log warnings
-    with caplog.at_level(logging.WARNING):
-        # First sync method call should warn
-        _ = cache.get_by_key("test_key")
+    # Mock _get_redis_client to prevent actual connection attempt
+    with patch.object(cache, "_get_redis_client") as mock_get_client:
+        # Mock the Redis client methods that would be called
+        mock_client = mock_get_client.return_value
+        mock_client.hgetall.return_value = {}  # Empty result for get_by_key
+        mock_client.hset.return_value = 1  # Success for set
 
-        # Check warning was logged
-        assert len(caplog.records) == 1
-        assert (
-            "initialized with async_redis_client only" in caplog.records[0].message
-        )
-        assert "Use async methods" in caplog.records[0].message
+        # Capture log warnings
+        with caplog.at_level(logging.WARNING):
+            # First sync method call should warn
+            _ = cache.get_by_key("test_key")
 
-        # Clear captured logs
-        caplog.clear()
+            # Check warning was logged
+            assert len(caplog.records) == 1
+            assert (
+                "initialized with async_redis_client only" in caplog.records[0].message
+            )
+            assert "Use async methods" in caplog.records[0].message
 
-        # Second sync method call should NOT warn (flag prevents spam)
-        _ = cache.set(text="test", model_name="model", embedding=[0.1, 0.2])
+            # Clear captured logs
+            caplog.clear()
 
-        # Should not have logged another warning
-        assert len(caplog.records) == 0
+            # Second sync method call should NOT warn (flag prevents spam)
+            _ = cache.set(text="test", model_name="model", embedding=[0.1, 0.2])
+
+            # Should not have logged another warning
+            assert len(caplog.records) == 0
 
 
 def test_no_warning_with_sync_client(redis_url):
