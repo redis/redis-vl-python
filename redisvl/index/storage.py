@@ -114,9 +114,13 @@ class BaseStorage(BaseModel):
             except KeyError:
                 raise ValueError(f"Key field {id_field} not found in record {obj}")
 
+        # Normalize prefix: use first prefix if multiple are configured
+        prefix = self.index_schema.index.prefix
+        normalized_prefix = prefix[0] if isinstance(prefix, list) else prefix
+
         return self._key(
             key_value,
-            prefix=self.index_schema.index.prefix,
+            prefix=normalized_prefix,
             key_separator=self.index_schema.index.key_separator,
         )
 
