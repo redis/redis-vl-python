@@ -127,10 +127,10 @@ class EmbeddingsCache(BaseCache):
         return cache_hit.model_dump(exclude_none=True)
 
     def _should_warn_for_async_only(self) -> bool:
-        """Check if warning should be shown for async-only client usage.
+        """Check if only async client is available (no sync client).
 
         Returns:
-            bool: True if only async client is available and warning hasn't been shown.
+            bool: True if only async client is available (no sync client).
         """
         return self._owns_redis_client is False and self._redis_client is None
 
