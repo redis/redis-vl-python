@@ -30,7 +30,7 @@ class TestMultiFieldSortingFilterQuery:
     def test_sort_by_multiple_fields_list_of_strings(self):
         """Test multiple fields as list of strings (all ASC by default).
 
-        Note: Only the first field is actually used in Redis sorting.
+        Note: Redis Search only supports single-field sorting. Only the first field is used.
         """
         query = FilterQuery(sort_by=["price", "rating", "age"])
 
