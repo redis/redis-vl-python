@@ -203,20 +203,8 @@ def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Non
             # that event loop is closed, or if asyncio modules are being
             # torn down during interpreter shutdown.
             #
-            # Uses logging module instead of get_logger() to avoid I/O errors
-            # if the wrapped function is called as a finalizer.
-            if logging is not None:
-                try:
-                    logging.info(
-                        f"Could not run the async function {fn.__name__} because the event loop is closed "
-                        "or the interpreter is shutting down. "
-                        "This usually means the object was not properly cleaned up. Please use explicit "
-                        "cleanup methods (e.g., disconnect(), close()) or use the object as an async "
-                        "context manager.",
-                    )
-                except Exception:
-                    # Even logging failed, interpreter is really shutting down
-                    pass
+            # Silently ignore - attempting to log during shutdown can cause
+            # errors when logging handlers are being torn down.
             return
         except Exception:
             # Any other unexpected exception should be silently ignored during shutdown

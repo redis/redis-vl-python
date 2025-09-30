@@ -115,6 +115,9 @@ exclude = '''
 [tool.pytest.ini_options]
 log_cli = true
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:get_async_redis_connection will become async in the next major release:DeprecationWarning",
+]
 
 [tool.mypy]
 warn_unused_configs = true
