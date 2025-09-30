@@ -6,6 +6,7 @@ from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, TextQuery, VectorQuery
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
+from tests.conftest import skip_if_redis_version_below
 
 
 @pytest.fixture
@@ -301,6 +302,10 @@ class TestMultiFieldSortingTextQuery:
 
     def test_text_query_with_custom_sort(self, products_index):
         """Test TextQuery with custom sort field."""
+        skip_if_redis_version_below(
+            products_index.client, "7.0.0", "BM25STD scorer requires Redis 7.0+"
+        )
+
         query = TextQuery(
             text="tech",
             text_field_name="name",
@@ -317,6 +322,10 @@ class TestMultiFieldSortingTextQuery:
 
     def test_text_query_multiple_fields(self, products_index, caplog):
         """Test TextQuery with multiple sort fields."""
+        skip_if_redis_version_below(
+            products_index.client, "7.0.0", "BM25STD scorer requires Redis 7.0+"
+        )
+
         import logging
 
         caplog.set_level(logging.WARNING)
