@@ -17,7 +17,8 @@ def test_sentinel_url_connection(use_async):
         mock_sentinel.return_value.master_for.return_value = mock_master
 
         if use_async:
-            client = RedisConnectionFactory.get_async_redis_connection(sentinel_url)
+            with pytest.warns(DeprecationWarning):
+                client = RedisConnectionFactory.get_async_redis_connection(sentinel_url)
         else:
             client = RedisConnectionFactory.get_redis_connection(sentinel_url)
 
@@ -46,7 +47,8 @@ def test_sentinel_url_connection_no_auth_no_db(use_async):
         mock_sentinel.return_value.master_for.return_value = mock_master
 
         if use_async:
-            client = RedisConnectionFactory.get_async_redis_connection(sentinel_url)
+            with pytest.warns(DeprecationWarning):
+                client = RedisConnectionFactory.get_async_redis_connection(sentinel_url)
         else:
             client = RedisConnectionFactory.get_redis_connection(sentinel_url)
 
@@ -77,7 +79,8 @@ def test_sentinel_url_connection_error(use_async):
 
         with pytest.raises(ConnectionError):
             if use_async:
-                RedisConnectionFactory.get_async_redis_connection(sentinel_url)
+                with pytest.warns(DeprecationWarning):
+                    RedisConnectionFactory.get_async_redis_connection(sentinel_url)
             else:
                 RedisConnectionFactory.get_redis_connection(sentinel_url)
 

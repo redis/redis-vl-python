@@ -72,7 +72,7 @@ class TestAsyncClusterConnection:
 
         await client.aclose()
 
-    def test_get_async_redis_connection_deprecated_with_cluster(self, redis_url):
+    async def test_get_async_redis_connection_deprecated_with_cluster(self, redis_url):
         """Test deprecated get_async_redis_connection handles cluster parameter."""
         # Add cluster=false to the URL
         cluster_url = f"{redis_url}?cluster=false"
@@ -83,3 +83,5 @@ class TestAsyncClusterConnection:
 
         assert client is not None
         assert isinstance(client, (AsyncRedis, AsyncRedisCluster))
+
+        await client.aclose()
