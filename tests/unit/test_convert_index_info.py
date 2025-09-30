@@ -67,7 +67,7 @@ def test_convert_index_info_json_storage():
     result = convert_index_info_to_schema(index_info)
 
     assert result["index"]["name"] == "test_json_index"
-    assert result["index"]["prefix"] == "json_prefix"  # Normalized to string
+    assert result["index"]["prefix"] == "json_prefix"  # normalized to string
     assert result["index"]["storage_type"] == "json"
 
 
