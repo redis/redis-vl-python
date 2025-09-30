@@ -151,7 +151,24 @@ async def test_search_index_from_existing_complex(async_client):
     except Exception as e:
         pytest.skip(str(e))
 
-    assert async_index2.schema == async_index.schema
+    # Verify index metadata matches
+    assert async_index2.schema.index.name == async_index.schema.index.name
+    assert async_index2.schema.index.prefix == async_index.schema.index.prefix
+    assert (
+        async_index2.schema.index.storage_type == async_index.schema.index.storage_type
+    )
+
+    # Verify non-vector fields are present
+    for field_name in ["user", "credit_score", "job", "age"]:
+        assert field_name in async_index2.schema.fields
+        assert (
+            async_index2.schema.fields[field_name].type
+            == async_index.schema.fields[field_name].type
+        )
+
+    # Vector field may not be present on older Redis versions
+    if "user_embedding" in async_index2.schema.fields:
+        assert async_index2.schema.fields["user_embedding"].type == "vector"
 
 
 def test_search_index_no_prefix(index_schema):

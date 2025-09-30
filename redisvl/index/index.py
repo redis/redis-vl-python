@@ -245,8 +245,10 @@ class BaseSearchIndex:
     @property
     def prefix(self) -> str:
         """The optional key prefix that comes before a unique key value in
-        forming a Redis key."""
-        return self.schema.index.prefix
+        forming a Redis key. If multiple prefixes are configured, returns the
+        first one."""
+        prefix = self.schema.index.prefix
+        return prefix[0] if isinstance(prefix, list) else prefix
 
     @property
     def key_separator(self) -> str:
@@ -329,7 +331,7 @@ class BaseSearchIndex:
         """
         return self._storage._key(
             id=id,
-            prefix=self.schema.index.prefix,
+            prefix=self.prefix,
             key_separator=self.schema.index.key_separator,
         )
 

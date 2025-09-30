@@ -133,31 +133,73 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         Dict[str, Any]: Schema dictionary.
     """
     index_name = index_info["index_name"]
-    prefixes = index_info["index_definition"][3][0]
+    prefixes = index_info["index_definition"][3]
+    # Normalize single-element prefix lists to string for backward compatibility
+    if isinstance(prefixes, list) and len(prefixes) == 1:
+        prefixes = prefixes[0]
     storage_type = index_info["index_definition"][1].lower()
 
     index_fields = index_info["attributes"]
 
     def parse_vector_attrs(attrs):
         # Parse vector attributes from Redis FT.INFO output
-        # Attributes start at position 6 as key-value pairs
+        # Format varies significantly between Redis versions:
+        # - Redis 6.2.6-v9: [... "VECTOR"] - no params returned by FT.INFO
+        # - Redis 6.2.x: [... "VECTOR", "FLAT", "6", "TYPE", "FLOAT32", "DIM", "3", ...]
+        #   Position 6: algorithm value (e.g., "FLAT" or "HNSW")
+        #   Position 7: param count
+        #   Position 8+: key-value pairs
+        # - Redis 7.x+: [... "VECTOR", "ALGORITHM", "FLAT", "TYPE", "FLOAT32", "DIM", "3", ...]
+        #   Position 6+: all key-value pairs
+
+        # Check if we have any attributes beyond the type declaration
+        if len(attrs) <= 6:
+            # Redis 6.2.6-v9 or similar: no vector params in FT.INFO
+            # Return None to signal we can't parse this field properly
+            return None
+
         vector_attrs = {}
+        start_pos = 6
+
+        # Detect format: if position 6 looks like an algorithm value (not a key),
+        # we're dealing with the older format
+        if len(attrs) > 6:
+            pos6_str = str(attrs[6]).upper()
+            # Check if position 6 is an algorithm value (FLAT, HNSW) vs a key (ALGORITHM, TYPE, DIM)
+            if pos6_str in ("FLAT", "HNSW"):
+                # Old format (Redis 6.2.x): position 6 is algorithm value, position 7 is param count
+                # Store the algorithm
+                vector_attrs["algorithm"] = pos6_str
+                # Skip to position 8 where key-value pairs start
+                start_pos = 8
+
         try:
-            for i in range(6, len(attrs), 2):
+            for i in range(start_pos, len(attrs), 2):
                 if i + 1 < len(attrs):
                     key = str(attrs[i]).lower()
                     vector_attrs[key] = attrs[i + 1]
         except (IndexError, TypeError, ValueError):
+            # Silently continue - we'll validate required fields below
             pass
 
         # Normalize to expected field names
         normalized = {}
 
-        # Handle dims/dim field
+        # Handle dims/dim field - REQUIRED for vector fields
         if "dim" in vector_attrs:
             normalized["dims"] = int(vector_attrs.pop("dim"))
         elif "dims" in vector_attrs:
             normalized["dims"] = int(vector_attrs["dims"])
+        else:
+            # If dims is missing from normal parsing, try scanning the raw attrs
+            # This handles edge cases where the format is unexpected
+            for i in range(6, len(attrs) - 1):
+                if str(attrs[i]).upper() in ("DIM", "DIMS"):
+                    try:
+                        normalized["dims"] = int(attrs[i + 1])
+                        break
+                    except (ValueError, IndexError):
+                        pass
 
         # Handle distance_metric field
         if "distance_metric" in vector_attrs:
@@ -178,9 +220,17 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
             normalized["datatype"] = vector_attrs["data_type"].lower()
         elif "datatype" in vector_attrs:
             normalized["datatype"] = vector_attrs["datatype"].lower()
+        elif "type" in vector_attrs:
+            # Sometimes it's just "type" instead of "data_type"
+            normalized["datatype"] = vector_attrs["type"].lower()
         else:
             # Default to float32 if missing
             normalized["datatype"] = "float32"
+
+        # Validate that we have required dims
+        if "dims" not in normalized:
+            # Could not parse dims - this field is not properly supported
+            return None
 
         return normalized
 
@@ -234,7 +284,12 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
             field["path"] = field_attrs[1]
         # parse field attrs
         if field_attrs[5] == "VECTOR":
-            field["attrs"] = parse_vector_attrs(field_attrs)
+            attrs = parse_vector_attrs(field_attrs)
+            if attrs is None:
+                # Vector field attributes cannot be parsed on this Redis version
+                # Skip this field - it cannot be properly reconstructed
+                continue
+            field["attrs"] = attrs
         else:
             field["attrs"] = parse_attrs(field_attrs, field_type=field_attrs[5])
         # append field

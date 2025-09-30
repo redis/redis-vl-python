@@ -58,8 +58,8 @@ class IndexInfo(BaseModel):
 
     name: str
     """The unique name of the index."""
-    prefix: str = "rvl"
-    """The prefix used for Redis keys associated with this index."""
+    prefix: Union[str, List[str]] = "rvl"
+    """The prefix(es) used for Redis keys associated with this index. Can be a single string or a list of strings."""
     key_separator: str = ":"
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
