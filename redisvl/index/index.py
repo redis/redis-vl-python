@@ -406,7 +406,7 @@ class SearchIndex(BaseSearchIndex):
         self._connection_kwargs = connection_kwargs or {}
         self._lock = threading.Lock()
 
-        self._validated_client = False
+        self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = redis_client is None
         if self._owns_redis_client:
             weakref.finalize(self, self.disconnect)
@@ -449,6 +449,8 @@ class SearchIndex(BaseSearchIndex):
         elif redis_client:
             # Validate client type and set lib name
             RedisConnectionFactory.validate_sync_redis(redis_client)
+            # Mark that client was already validated to avoid duplicate calls
+            kwargs["_client_validated"] = True
 
         if not redis_client:
             raise ValueError("Must provide either a redis_url or redis_client")
@@ -1163,7 +1165,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._connection_kwargs = connection_kwargs or {}
         self._lock = asyncio.Lock()
 
-        self._validated_client = False
+        self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = redis_client is None
         if self._owns_redis_client:
             weakref.finalize(self, sync_wrapper(self.disconnect))
@@ -1199,6 +1201,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         elif redis_client:
             # Validate client type and set lib name
             await RedisConnectionFactory.validate_async_redis(redis_client)
+            # Mark that client was already validated to avoid duplicate calls
+            kwargs["_client_validated"] = True
 
         if redis_client is None:
             raise ValueError(
