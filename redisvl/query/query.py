@@ -5,11 +5,21 @@ from redis.commands.search.query import Query as RedisQuery
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
+from redisvl.utils.log import get_logger
 from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import denorm_cosine_distance, lazy_import
 
+logger = get_logger(__name__)
+
 nltk = lazy_import("nltk")
 nltk_stopwords = lazy_import("nltk.corpus.stopwords")
+
+# Type alias for sort specification
+# Can be:
+# - str: single field name (ASC by default)
+# - Tuple[str, str]: (field_name, direction)
+# - List: list of field names or tuples
+SortSpec = Union[str, Tuple[str, str], List[Union[str, Tuple[str, str]]]]
 
 
 class BaseQuery(RedisQuery):
@@ -57,6 +67,144 @@ class BaseQuery(RedisQuery):
     def _build_query_string(self) -> str:
         """Build the full Redis query string."""
         raise NotImplementedError("Must be implemented by subclasses")
+
+    @staticmethod
+    def _parse_sort_spec(sort_spec: Optional[SortSpec]) -> List[Tuple[str, bool]]:
+        """Parse sort specification into list of (field, ascending) tuples.
+
+        Args:
+            sort_spec: Sort specification in various formats:
+                - str: single field name (defaults to ASC)
+                - Tuple[str, str]: (field_name, "ASC"|"DESC")
+                - List: list of strings or tuples
+
+        Returns:
+            List of (field_name, ascending) tuples where ascending is a boolean.
+
+        Raises:
+            TypeError: If sort_spec is not a valid type.
+            ValueError: If direction is not "ASC" or "DESC".
+
+        Examples:
+            >>> BaseQuery._parse_sort_spec("price")
+            [("price", True)]
+            >>> BaseQuery._parse_sort_spec(("price", "DESC"))
+            [("price", False)]
+            >>> BaseQuery._parse_sort_spec(["price", ("rating", "DESC")])
+            [("price", True), ("rating", False)]
+        """
+        if sort_spec is None or sort_spec == []:
+            return []
+
+        result: List[Tuple[str, bool]] = []
+
+        # Single field as string
+        if isinstance(sort_spec, str):
+            result.append((sort_spec, True))  # Default to ASC
+
+        # Single field as tuple
+        elif isinstance(sort_spec, tuple):
+            if len(sort_spec) != 2:
+                raise ValueError(
+                    f"Sort tuple must have exactly 2 elements (field, direction), got {len(sort_spec)}"
+                )
+            field, direction = sort_spec
+            if not isinstance(field, str):
+                raise TypeError(f"Field name must be a string, got {type(field)}")
+            if not isinstance(direction, str):
+                raise TypeError(f"Direction must be a string, got {type(direction)}")
+
+            direction_upper = direction.upper()
+            if direction_upper not in ("ASC", "DESC"):
+                raise ValueError(
+                    f"Sort direction must be 'ASC' or 'DESC', got '{direction}'"
+                )
+
+            result.append((field, direction_upper == "ASC"))
+
+        # Multiple fields as list
+        elif isinstance(sort_spec, list):
+            for item in sort_spec:
+                # Recursively parse each item
+                parsed = BaseQuery._parse_sort_spec(item)
+                result.extend(parsed)
+
+        else:
+            raise TypeError(
+                f"sort_by must be a string, tuple, or list, got {type(sort_spec)}"
+            )
+
+        return result
+
+    def sort_by(
+        self, sort_spec: Optional[SortSpec] = None, asc: bool = True
+    ) -> "BaseQuery":
+        """Set the sort order for query results.
+
+        This method supports sorting by single or multiple fields. Note that Redis Search
+        natively supports only a single SORTBY field. When multiple fields are specified,
+        only the FIRST field is used for the Redis SORTBY clause.
+
+        Args:
+            sort_spec: Sort specification in various formats:
+                - str: single field name
+                - Tuple[str, str]: (field_name, "ASC"|"DESC")
+                - List: list of field names or tuples
+            asc: Default sort direction when not specified (only used when sort_spec is a string).
+                Defaults to True (ascending).
+
+        Returns:
+            self: Returns the query object for method chaining.
+
+        Raises:
+            TypeError: If sort_spec is not a valid type.
+            ValueError: If direction is not "ASC" or "DESC".
+
+        Examples:
+            >>> query.sort_by("price")  # Single field, ascending
+            >>> query.sort_by(("price", "DESC"))  # Single field, descending
+            >>> query.sort_by(["price", "rating"])  # Multiple fields (only first used)
+            >>> query.sort_by([("price", "DESC"), ("rating", "ASC")])
+
+        Note:
+            When multiple fields are specified, only the first field is used for sorting
+            in Redis. Future versions may support multi-field sorting through post-query
+            sorting in Python.
+        """
+        if sort_spec is None or sort_spec == []:
+            # No sorting
+            self._sortby = None
+            return self
+
+        # Handle backward compatibility: if sort_spec is a string and asc is specified
+        # treat it as the old (field, asc) format
+        parsed: List[Tuple[str, bool]]
+        if isinstance(sort_spec, str) and asc is not True:
+            # Old API: query.sort_by("field", asc=False)
+            parsed = [(sort_spec, asc)]
+        else:
+            # New API: parse the sort_spec
+            parsed = self._parse_sort_spec(sort_spec)
+
+        if not parsed:
+            self._sortby = None
+            return self
+
+        # Use the first field for Redis SORTBY
+        first_field, first_asc = parsed[0]
+
+        # Log warning if multiple fields specified
+        if len(parsed) > 1:
+            logger.warning(
+                f"Multiple sort fields specified: {[f[0] for f in parsed]}. "
+                f"Redis Search only supports single-field sorting. Using first field: '{first_field}'. "
+                "Additional fields are ignored."
+            )
+
+        # Call parent's sort_by with the first field
+        super().sort_by(first_field, asc=first_asc)
+
+        return self
 
     def set_filter(
         self, filter_expression: Optional[Union[str, FilterExpression]] = None
@@ -170,7 +318,7 @@ class FilterQuery(BaseQuery):
         return_fields: Optional[List[str]] = None,
         num_results: int = 10,
         dialect: int = 2,
-        sort_by: Optional[str] = None,
+        sort_by: Optional[SortSpec] = None,
         in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
     ):
@@ -182,7 +330,12 @@ class FilterQuery(BaseQuery):
             return_fields (Optional[List[str]], optional): The fields to return.
             num_results (Optional[int], optional): The number of results to return. Defaults to 10.
             dialect (int, optional): The query dialect. Defaults to 2.
-            sort_by (Optional[str], optional): The field to order the results by. Defaults to None.
+            sort_by (Optional[SortSpec], optional): The field(s) to order the results by. Can be:
+                - str: single field name (e.g., "price")
+                - Tuple[str, str]: (field_name, "ASC"|"DESC") (e.g., ("price", "DESC"))
+                - List: list of fields or tuples (e.g., ["price", ("rating", "DESC")])
+                Note: Redis Search only supports single-field sorting, so only the first field is used.
+                Defaults to None.
             in_order (bool, optional): Requires the terms in the field to have the same order as the
                 terms in the query filter. Defaults to False.
             params (Optional[Dict[str, Any]], optional): The parameters for the query. Defaults to None.
@@ -292,7 +445,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
-        sort_by: Optional[str] = None,
+        sort_by: Optional[SortSpec] = None,
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
@@ -319,8 +472,12 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
                 distance. Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
                 Defaults to 2.
-            sort_by (Optional[str]): The field to order the results by. Defaults
-                to None. Results will be ordered by vector distance.
+            sort_by (Optional[SortSpec]): The field(s) to order the results by. Can be:
+                - str: single field name
+                - Tuple[str, str]: (field_name, "ASC"|"DESC")
+                - List: list of fields or tuples
+                Note: Only the first field is used for Redis sorting.
+                Defaults to None. Results will be ordered by vector distance.
             in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
                 the offsets between them. Defaults to False.
@@ -543,7 +700,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
-        sort_by: Optional[str] = None,
+        sort_by: Optional[SortSpec] = None,
         in_order: bool = False,
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
@@ -576,8 +733,12 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 distance. Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
                 Defaults to 2.
-            sort_by (Optional[str]): The field to order the results by. Defaults
-                to None. Results will be ordered by vector distance.
+            sort_by (Optional[SortSpec]): The field(s) to order the results by. Can be:
+                - str: single field name
+                - Tuple[str, str]: (field_name, "ASC"|"DESC")
+                - List: list of fields or tuples
+                Note: Only the first field is used for Redis sorting.
+                Defaults to None. Results will be ordered by vector distance.
             in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
                 the offsets between them. Defaults to False.
@@ -863,7 +1024,7 @@ class TextQuery(BaseQuery):
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
-        sort_by: Optional[str] = None,
+        sort_by: Optional[SortSpec] = None,
         in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
         stopwords: Optional[Union[str, Set[str]]] = "english",
@@ -887,8 +1048,12 @@ class TextQuery(BaseQuery):
                 Defaults to True.
             dialect (int, optional): The RediSearch query dialect.
                 Defaults to 2.
-            sort_by (Optional[str]): The field to order the results by. Defaults
-                to None. Results will be ordered by text score.
+            sort_by (Optional[SortSpec]): The field(s) to order the results by. Can be:
+                - str: single field name
+                - Tuple[str, str]: (field_name, "ASC"|"DESC")
+                - List: list of fields or tuples
+                Note: Only the first field is used for Redis sorting.
+                Defaults to None. Results will be ordered by text score.
             in_order (bool): Requires the terms in the field to have
                 the same order as the terms in the query filter, regardless of
                 the offsets between them. Defaults to False.
