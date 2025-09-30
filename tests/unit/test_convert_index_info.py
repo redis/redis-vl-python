@@ -24,7 +24,7 @@ def test_convert_index_info_single_prefix():
     result = convert_index_info_to_schema(index_info)
 
     assert result["index"]["name"] == "test_index"
-    assert result["index"]["prefix"] == "prefix_a"  # Normalized to string
+    assert result["index"]["prefix"] == "prefix_a"  # normalized to string
     assert result["index"]["storage_type"] == "hash"
 
 
