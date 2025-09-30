@@ -9,6 +9,18 @@ from redisvl.schema import IndexSchema
 from tests.conftest import skip_if_redis_version_below
 
 
+def assert_warning_logged(caplog, message_fragment):
+    """Helper to assert that a warning containing the message fragment was logged.
+
+    Args:
+        caplog: pytest caplog fixture
+        message_fragment: String fragment to search for in log messages
+    """
+    assert any(
+        message_fragment in record.message for record in caplog.records
+    ), f"Expected warning containing '{message_fragment}' to be logged"
+
+
 @pytest.fixture
 def products_schema():
     """Create a schema for product data with multiple sortable fields."""
@@ -179,13 +191,8 @@ class TestMultiFieldSortingFilterQuery:
         results = products_index.query(query)
 
         # Check that warning was logged
-        assert any(
-            "Multiple sort fields specified" in record.message
-            for record in caplog.records
-        ), "Should log warning about multiple fields"
-        assert any(
-            "Using first field: 'price'" in record.message for record in caplog.records
-        ), "Should indicate which field is being used"
+        assert_warning_logged(caplog, "Multiple sort fields specified")
+        assert_warning_logged(caplog, "Using first field: 'price'")
 
         # Verify only first field (price) is used for sorting
         assert len(results) > 0
@@ -204,10 +211,7 @@ class TestMultiFieldSortingFilterQuery:
         results = products_index.query(query)
 
         # Check warning
-        assert any(
-            "Multiple sort fields specified" in record.message
-            for record in caplog.records
-        )
+        assert_warning_logged(caplog, "Multiple sort fields specified")
 
         # Verify first field (stock) is used - ascending order
         assert len(results) > 0
@@ -283,13 +287,8 @@ class TestMultiFieldSortingVectorQuery:
         results = products_index.query(query)
 
         # Check warning
-        assert any(
-            "Multiple sort fields specified" in record.message
-            for record in caplog.records
-        )
-        assert any(
-            "Using first field: 'rating'" in record.message for record in caplog.records
-        )
+        assert_warning_logged(caplog, "Multiple sort fields specified")
+        assert_warning_logged(caplog, "Using first field: 'rating'")
 
         # Verify first field (rating) is used
         assert len(results) > 0
@@ -340,10 +339,7 @@ class TestMultiFieldSortingTextQuery:
         results = products_index.query(query)
 
         # Check warning
-        assert any(
-            "Multiple sort fields specified" in record.message
-            for record in caplog.records
-        )
+        assert_warning_logged(caplog, "Multiple sort fields specified")
 
         # Should use first field (price ASC)
         if len(results) > 0:
