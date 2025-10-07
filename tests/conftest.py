@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 import pytest
 from testcontainers.compose import DockerCompose
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory, compare_versions
 from redisvl.redis.utils import array_to_buffer
@@ -753,6 +752,26 @@ async def get_redis_version_async(client):
     return info["redis_version"]
 
 
+def has_redisearch_module(client):
+    """Check if RediSearch module is available."""
+    try:
+        # Try to list indices - this is a RediSearch command
+        client.execute_command("FT._LIST")
+        return True
+    except Exception:
+        return False
+
+
+async def has_redisearch_module_async(client):
+    """Check if RediSearch module is available (async)."""
+    try:
+        # Try to list indices - this is a RediSearch command
+        await client.execute_command("FT._LIST")
+        return True
+    except Exception:
+        return False
+
+
 def skip_if_redis_version_below(client, min_version: str, message: str = None):
     """
     Skip test if Redis version is below minimum required.
@@ -785,31 +804,27 @@ async def skip_if_redis_version_below_async(
         pytest.skip(skip_msg)
 
 
-def skip_if_module_version_error(func, *args, **kwargs):
+def skip_if_no_redisearch(client, message: str = None):
     """
-    Execute function and skip test if RedisModuleVersionError is raised.
+    Skip test if RediSearch module is not available.
 
     Args:
-        func: Function to execute
-        *args: Arguments for the function
-        **kwargs: Keyword arguments for the function
+        client: Redis client instance
+        message: Custom skip message
     """
-    try:
-        return func(*args, **kwargs)
-    except RedisModuleVersionError:
-        pytest.skip("Required Redis modules not available or version too low")
+    if not has_redisearch_module(client):
+        skip_msg = message or "RediSearch module not available"
+        pytest.skip(skip_msg)
 
 
-async def skip_if_module_version_error_async(func, *args, **kwargs):
+async def skip_if_no_redisearch_async(client, message: str = None):
     """
-    Execute async function and skip test if RedisModuleVersionError is raised.
+    Skip test if RediSearch module is not available (async version).
 
     Args:
-        func: Async function to execute
-        *args: Arguments for the function
-        **kwargs: Keyword arguments for the function
+        client: Async Redis client instance
+        message: Custom skip message
     """
-    try:
-        return await func(*args, **kwargs)
-    except RedisModuleVersionError:
-        pytest.skip("Required Redis modules not available or version too low")
+    if not await has_redisearch_module_async(client):
+        skip_msg = message or "RediSearch module not available"
+        pytest.skip(skip_msg)

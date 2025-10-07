@@ -72,6 +72,8 @@ Each field type supports specific attributes that customize its behavior. Below 
 - `withsuffixtrie`: Optimizes queries by maintaining a suffix trie.
 - `phonetic_matcher`: Enables phonetic matching.
 - `sortable`: Allows sorting on this field.
+- `no_index`: When True, field is not indexed but can be returned in results (requires `sortable=True`).
+- `unf`: Un-normalized form. When True, preserves original case for sorting (requires `sortable=True`).
 
 **Tag Field Attributes**:
 
@@ -79,10 +81,18 @@ Each field type supports specific attributes that customize its behavior. Below 
 - `case_sensitive`: Case sensitivity in tag matching.
 - `withsuffixtrie`: Suffix trie optimization for queries.
 - `sortable`: Enables sorting based on the tag field.
+- `no_index`: When True, field is not indexed but can be returned in results (requires `sortable=True`).
 
-**Numeric and Geo Field Attributes**:
+**Numeric Field Attributes**:
 
-- Both numeric and geo fields support the `sortable` attribute, enabling sorting on these fields.
+- `sortable`: Enables sorting on the numeric field.
+- `no_index`: When True, field is not indexed but can be returned in results (requires `sortable=True`).
+- `unf`: Un-normalized form. When True, maintains original numeric representation for sorting (requires `sortable=True`).
+
+**Geo Field Attributes**:
+
+- `sortable`: Enables sorting based on the geo field.
+- `no_index`: When True, field is not indexed but can be returned in results (requires `sortable=True`).
 
 **Common Vector Field Attributes**:
 

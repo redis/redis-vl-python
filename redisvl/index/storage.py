@@ -81,7 +81,15 @@ class BaseStorage(BaseModel):
         if not prefix:
             return id
         else:
-            return f"{prefix}{key_separator}{id}"
+            # Normalize prefix by removing trailing separators to avoid doubles
+            normalized_prefix = (
+                prefix.rstrip(key_separator) if key_separator else prefix
+            )
+            if normalized_prefix:
+                return f"{normalized_prefix}{key_separator}{id}"
+            else:
+                # If prefix was only separators, just return the id
+                return id
 
     def _create_key(self, obj: Dict[str, Any], id_field: Optional[str] = None) -> str:
         """Construct a Redis key for a given object, optionally using a
@@ -106,9 +114,13 @@ class BaseStorage(BaseModel):
             except KeyError:
                 raise ValueError(f"Key field {id_field} not found in record {obj}")
 
+        # Normalize prefix: use first prefix if multiple are configured
+        prefix = self.index_schema.index.prefix
+        normalized_prefix = prefix[0] if isinstance(prefix, list) else prefix
+
         return self._key(
             key_value,
-            prefix=self.index_schema.index.prefix,
+            prefix=normalized_prefix,
             key_separator=self.index_schema.index.key_separator,
         )
 

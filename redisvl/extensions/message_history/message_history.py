@@ -119,6 +119,7 @@ class MessageHistory(BaseMessageHistory):
         as_text: bool = False,
         raw: bool = False,
         session_tag: Optional[str] = None,
+        role: Optional[Union[str, List[str]]] = None,
     ) -> Union[List[str], List[Dict[str, str]]]:
         """Retrieve the recent message history in sequential order.
 
@@ -130,16 +131,23 @@ class MessageHistory(BaseMessageHistory):
                 prompt and response.
             session_tag (Optional[str]): Tag of the entries linked to a specific
                 conversation session. Defaults to instance ULID.
+            role (Optional[Union[str, List[str]]]): Filter messages by role(s).
+                Can be a single role string ("system", "user", "llm", "tool") or
+                a list of roles. If None, all roles are returned.
 
         Returns:
             Union[str, List[str]]: A single string transcription of the messages
                 or list of strings if as_text is false.
 
         Raises:
-            ValueError: if top_k is not an integer greater than or equal to 0.
+            ValueError: if top_k is not an integer greater than or equal to 0,
+                or if role contains invalid values.
         """
         if type(top_k) != int or top_k < 0:
             raise ValueError("top_k must be an integer greater than or equal to 0")
+
+        # Validate and normalize role parameter
+        roles_to_filter = self._validate_roles(role)
 
         return_fields = [
             ID_FIELD_NAME,
@@ -157,8 +165,22 @@ class MessageHistory(BaseMessageHistory):
             else self._default_session_filter
         )
 
+        # Combine session filter with role filter if provided
+        filter_expression = session_filter
+        if roles_to_filter is not None:
+            if len(roles_to_filter) == 1:
+                role_filter = Tag(ROLE_FIELD_NAME) == roles_to_filter[0]
+            else:
+                # Multiple roles - use OR logic
+                role_filters = [Tag(ROLE_FIELD_NAME) == r for r in roles_to_filter]
+                role_filter = role_filters[0]
+                for rf in role_filters[1:]:
+                    role_filter = role_filter | rf
+
+            filter_expression = session_filter & role_filter
+
         query = FilterQuery(
-            filter_expression=session_filter,
+            filter_expression=filter_expression,
             return_fields=return_fields,
             num_results=top_k,
         )

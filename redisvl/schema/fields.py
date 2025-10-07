@@ -63,6 +63,8 @@ class BaseFieldAttributes(BaseModel):
     """Enable faster result sorting on the field at runtime"""
     index_missing: bool = Field(default=False)
     """Allow indexing and searching for missing values (documents without the field)"""
+    no_index: bool = Field(default=False)
+    """Store field without indexing it (requires sortable=True or field is ignored)"""
 
 
 class TextFieldAttributes(BaseFieldAttributes):
@@ -78,6 +80,8 @@ class TextFieldAttributes(BaseFieldAttributes):
     """Used to perform phonetic matching during search"""
     index_empty: bool = Field(default=False)
     """Allow indexing and searching for empty strings"""
+    unf: bool = Field(default=False)
+    """Un-normalized form - disable normalization on sortable fields (only applies when sortable=True)"""
 
 
 class TagFieldAttributes(BaseFieldAttributes):
@@ -96,7 +100,8 @@ class TagFieldAttributes(BaseFieldAttributes):
 class NumericFieldAttributes(BaseFieldAttributes):
     """Numeric field attributes"""
 
-    pass
+    unf: bool = Field(default=False)
+    """Un-normalized form - disable normalization on sortable fields (only applies when sortable=True)"""
 
 
 class GeoFieldAttributes(BaseFieldAttributes):
@@ -223,7 +228,24 @@ class TextField(BaseField):
         if self.attrs.index_empty:  # type: ignore
             kwargs["index_empty"] = True
 
-        return RedisTextField(name, **kwargs)
+        # Add NOINDEX if enabled
+        if self.attrs.no_index:  # type: ignore
+            kwargs["no_index"] = True
+
+        field = RedisTextField(name, **kwargs)
+
+        # Add UNF support (only when sortable)
+        # UNF must come before NOINDEX in the args_suffix
+        if self.attrs.unf and self.attrs.sortable:  # type: ignore
+            if "NOINDEX" in field.args_suffix:
+                # Insert UNF before NOINDEX
+                noindex_idx = field.args_suffix.index("NOINDEX")
+                field.args_suffix.insert(noindex_idx, "UNF")
+            else:
+                # No NOINDEX, append normally
+                field.args_suffix.append("UNF")
+
+        return field
 
 
 class TagField(BaseField):
@@ -253,6 +275,10 @@ class TagField(BaseField):
         if self.attrs.index_empty:  # type: ignore
             kwargs["index_empty"] = True
 
+        # Add NOINDEX if enabled
+        if self.attrs.no_index:  # type: ignore
+            kwargs["no_index"] = True
+
         return RedisTagField(name, **kwargs)
 
 
@@ -277,7 +303,24 @@ class NumericField(BaseField):
         if self.attrs.index_missing:  # type: ignore
             kwargs["index_missing"] = True
 
-        return RedisNumericField(name, **kwargs)
+        # Add NOINDEX if enabled
+        if self.attrs.no_index:  # type: ignore
+            kwargs["no_index"] = True
+
+        field = RedisNumericField(name, **kwargs)
+
+        # Add UNF support (only when sortable)
+        # UNF must come before NOINDEX in the args_suffix
+        if self.attrs.unf and self.attrs.sortable:  # type: ignore
+            if "NOINDEX" in field.args_suffix:
+                # Insert UNF before NOINDEX
+                noindex_idx = field.args_suffix.index("NOINDEX")
+                field.args_suffix.insert(noindex_idx, "UNF")
+            else:
+                # No NOINDEX, append normally
+                field.args_suffix.append("UNF")
+
+        return field
 
 
 class GeoField(BaseField):
@@ -300,6 +343,10 @@ class GeoField(BaseField):
         # Add INDEXMISSING if enabled
         if self.attrs.index_missing:  # type: ignore
             kwargs["index_missing"] = True
+
+        # Add NOINDEX if enabled
+        if self.attrs.no_index:  # type: ignore
+            kwargs["no_index"] = True
 
         return RedisGeoField(name, **kwargs)
 

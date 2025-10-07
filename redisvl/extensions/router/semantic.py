@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
-from redisvl.exceptions import RedisModuleVersionError
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.extensions.router.schema import (
     DistanceAggregationMethod,
@@ -118,18 +117,14 @@ class SemanticRouter(BaseModel):
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
-        try:
-            if redis_url:
-                redis_client = RedisConnectionFactory.get_redis_connection(
-                    redis_url=redis_url,
-                    **kwargs,
-                )
-            elif redis_client:
-                RedisConnectionFactory.validate_sync_redis(redis_client)
-        except RedisModuleVersionError as e:
-            raise RedisModuleVersionError(
-                f"Loading from existing index failed. {str(e)}"
+        if redis_url:
+            redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=redis_url,
+                **kwargs,
             )
+        elif redis_client:
+            # Just validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client)
         if redis_client is None:
             raise ValueError(
                 "Creating Redis client failed. Please check the redis_url and connection_kwargs."
@@ -221,8 +216,25 @@ class SemanticRouter(BaseModel):
 
     @staticmethod
     def _route_ref_key(index: SearchIndex, route_name: str, reference_hash: str) -> str:
-        """Generate the route reference key."""
-        return f"{index.prefix}:{route_name}:{reference_hash}"
+        """Generate the route reference key using the index's key_separator."""
+        sep = index.key_separator
+        # Normalize prefix to avoid double separators
+        prefix = index.prefix.rstrip(sep) if sep and index.prefix else index.prefix
+        if prefix:
+            return f"{prefix}{sep}{route_name}{sep}{reference_hash}"
+        else:
+            return f"{route_name}{sep}{reference_hash}"
+
+    @staticmethod
+    def _route_pattern(index: SearchIndex, route_name: str) -> str:
+        """Generate a search pattern for route references."""
+        sep = index.key_separator
+        # Normalize prefix to avoid double separators
+        prefix = index.prefix.rstrip(sep) if sep and index.prefix else index.prefix
+        if prefix:
+            return f"{prefix}{sep}{route_name}{sep}*"
+        else:
+            return f"{route_name}{sep}*"
 
     def _add_routes(self, routes: List[Route]):
         """Add routes to the router and index.
@@ -731,12 +743,12 @@ class SemanticRouter(BaseModel):
             queries = self._make_filter_queries(reference_ids)
         elif route_name:
             if not keys:
-                keys = scan_by_pattern(
-                    self._index.client, f"{self._index.prefix}:{route_name}:*"  # type: ignore
-                )
+                pattern = self._route_pattern(self._index, route_name)
+                keys = scan_by_pattern(self._index.client, pattern)  # type: ignore
 
+            sep = self._index.key_separator
             queries = self._make_filter_queries(
-                [key.split(":")[-1] for key in convert_bytes(keys)]
+                [key.split(sep)[-1] for key in convert_bytes(keys)]
             )
         else:
             raise ValueError(
@@ -769,9 +781,8 @@ class SemanticRouter(BaseModel):
             res = self._index.batch_query(queries)
             keys = [r[0]["id"] for r in res if len(r) > 0]
         elif not keys:
-            keys = scan_by_pattern(
-                self._index.client, f"{self._index.prefix}:{route_name}:*"  # type: ignore
-            )
+            pattern = self._route_pattern(self._index, route_name)
+            keys = scan_by_pattern(self._index.client, pattern)  # type: ignore
 
         if not keys:
             raise ValueError(f"No references found for route {route_name}")

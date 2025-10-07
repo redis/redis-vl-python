@@ -11,12 +11,6 @@ class RedisVLError(Exception):
     pass
 
 
-class RedisModuleVersionError(RedisVLError):
-    """Error raised when required Redis modules are missing or have incompatible versions."""
-
-    pass
-
-
 class RedisSearchError(RedisVLError):
     """Error raised for Redis Search specific operations."""
 
