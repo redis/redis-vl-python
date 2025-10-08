@@ -56,6 +56,7 @@ class VectorIndexAlgorithm(str, Enum):
 
 class CompressionType(str, Enum):
     """Vector compression types for SVS-VAMANA algorithm"""
+
     LVQ4 = "LVQ4"
     LVQ4x4 = "LVQ4x4"
     LVQ4x8 = "LVQ4x8"
@@ -182,10 +183,12 @@ class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     """Relative factor that sets the boundaries in which a range query may search for candidates"""
 
 
-
 class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
     """SVS-VAMANA vector field attributes with optional compression support"""
-    algorithm: Literal[VectorIndexAlgorithm.SVS_VAMANA] = VectorIndexAlgorithm.SVS_VAMANA
+
+    algorithm: Literal[VectorIndexAlgorithm.SVS_VAMANA] = (
+        VectorIndexAlgorithm.SVS_VAMANA
+    )
     """The indexing algorithm for the vector field"""
 
     # SVS-VAMANA graph parameters
@@ -206,7 +209,7 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
     training_threshold: Optional[int] = None
     """Minimum number of vectors required before compression training"""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_svs_params(self):
         """Validate SVS-VAMANA specific constraints"""
         # Datatype validation: SVS only supports FLOAT16 and FLOAT32
@@ -237,6 +240,8 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
         #     )
 
         return self
+
+
 ### Field Classes ###
 
 
@@ -455,12 +460,13 @@ class HNSWVectorField(BaseField):
 
 class SVSVectorField(BaseField):
     """Vector field with an SVS-VAMANA index"""
+
     type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: SVSVectorFieldAttributes
 
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
-        field_data=self.attrs.field_data
+        field_data = self.attrs.field_data
         field_data.update(
             {
                 "GRAPH_MAX_DEGREE": self.attrs.graph_max_degree,
