@@ -8,7 +8,7 @@ Reference Redis vector search documentation as needed: https://redis.io/docs/int
 from enum import Enum
 from typing import Any, Dict, Literal, Optional, Tuple, Type, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.field import Field as RedisField
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
@@ -51,6 +51,17 @@ class VectorDataType(str, Enum):
 class VectorIndexAlgorithm(str, Enum):
     FLAT = "FLAT"
     HNSW = "HNSW"
+    SVS_VAMANA = "SVS-VAMANA"
+
+
+class CompressionType(str, Enum):
+    """Vector compression types for SVS-VAMANA algorithm"""
+    LVQ4 = "LVQ4"
+    LVQ4x4 = "LVQ4x4"
+    LVQ4x8 = "LVQ4x8"
+    LVQ8 = "LVQ8"
+    LeanVec4x8 = "LeanVec4x8"
+    LeanVec8x8 = "LeanVec8x8"
 
 
 ### Field Attributes ###
@@ -171,6 +182,61 @@ class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
     """Relative factor that sets the boundaries in which a range query may search for candidates"""
 
 
+
+class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
+    """SVS-VAMANA vector field attributes with optional compression support"""
+    algorithm: Literal[VectorIndexAlgorithm.SVS_VAMANA] = VectorIndexAlgorithm.SVS_VAMANA
+    """The indexing algorithm for the vector field"""
+
+    # SVS-VAMANA graph parameters
+    graph_max_degree: int = Field(default=40)
+    """Maximum degree of the Vamana graph (number of edges per node)"""
+    construction_window_size: int = Field(default=250)
+    """Size of the candidate list during graph construction"""
+    search_window_size: int = Field(default=20)
+    """Size of the candidate list during search"""
+    epsilon: float = Field(default=0.01)
+    """Relative factor for range query boundaries"""
+
+    # SVS-VAMANA compression parameters (optional, to be implemented)
+    compression: Optional[CompressionType] = None
+    """Vector compression type (LVQ or LeanVec)"""
+    reduce: Optional[int] = None
+    """Reduced dimensionality for LeanVec compression (must be < dims)"""
+    training_threshold: Optional[int] = None
+    """Minimum number of vectors required before compression training"""
+
+    @model_validator(mode='after')
+    def validate_svs_params(self):
+        """Validate SVS-VAMANA specific constraints"""
+        # Datatype validation: SVS only supports FLOAT16 and FLOAT32
+        if self.datatype not in (VectorDataType.FLOAT16, VectorDataType.FLOAT32):
+            raise ValueError(
+                f"SVS-VAMANA only supports FLOAT16 and FLOAT32 datatypes. "
+                f"Got: {self.datatype}. "
+                f"Unsupported types: BFLOAT16, FLOAT64, INT8, UINT8."
+            )
+
+        # Reduce validation: must be less than dims
+        if self.reduce is not None:
+            if self.reduce >= self.dims:
+                raise ValueError(
+                    f"reduce ({self.reduce}) must be less than dims ({self.dims})"
+                )
+            # Phase C: Add warning for reduce without LeanVec
+            # if not self.compression or not self.compression.value.startswith("LeanVec"):
+            #     logger.warning(
+            #         "reduce parameter is recommended with LeanVec compression"
+            #     )
+
+        # Phase C: Add warning for LeanVec without reduce
+        # if self.compression and self.compression.value.startswith("LeanVec") and not self.reduce:
+        #     logger.warning(
+        #         f"LeanVec compression selected without 'reduce'. "
+        #         f"Consider setting reduce={self.dims//2} for better performance"
+        #     )
+
+        return self
 ### Field Classes ###
 
 
@@ -352,7 +418,7 @@ class GeoField(BaseField):
 
 
 class FlatVectorField(BaseField):
-    "Vector field with a FLAT index (brute force nearest neighbors search)"
+    """Vector field with a FLAT index (brute force nearest neighbors search)"""
 
     type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: FlatVectorFieldAttributes
@@ -387,6 +453,32 @@ class HNSWVectorField(BaseField):
         return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
 
 
+class SVSVectorField(BaseField):
+    """Vector field with an SVS-VAMANA index"""
+    type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
+    attrs: SVSVectorFieldAttributes
+
+    def as_redis_field(self) -> RedisField:
+        name, as_name = self._handle_names()
+        field_data=self.attrs.field_data
+        field_data.update(
+            {
+                "GRAPH_MAX_DEGREE": self.attrs.graph_max_degree,
+                "CONSTRUCTION_WINDOW_SIZE": self.attrs.construction_window_size,
+                "SEARCH_WINDOW_SIZE": self.attrs.search_window_size,
+                "EPSILON": self.attrs.epsilon,
+            }
+        )
+        # Add compression parameters if specified
+        if self.attrs.compression is not None:
+            field_data["COMPRESSION"] = self.attrs.compression
+        if self.attrs.reduce is not None:
+            field_data["REDUCE"] = self.attrs.reduce
+        if self.attrs.training_threshold is not None:
+            field_data["TRAINING_THRESHOLD"] = self.attrs.training_threshold
+        return RedisVectorField(name, self.attrs.algorithm, field_data, as_name=as_name)
+
+
 FIELD_TYPE_MAP = {
     "tag": TagField,
     "text": TextField,
@@ -397,6 +489,7 @@ FIELD_TYPE_MAP = {
 VECTOR_FIELD_TYPE_MAP = {
     "flat": FlatVectorField,
     "hnsw": HNSWVectorField,
+    "svs-vamana": SVSVectorField,
 }
 
 
