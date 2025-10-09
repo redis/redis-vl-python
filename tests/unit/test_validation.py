@@ -690,3 +690,296 @@ class TestEdgeCases:
         assert "title" in validated
         assert "rating" not in validated
         assert "location" not in validated
+
+
+# -------------------- SVS-VAMANA VALIDATION TESTS --------------------
+
+
+class TestSVSVamanaValidation:
+    """Tests for SVS-VAMANA specific validation rules."""
+
+    def test_svs_vamana_with_valid_float32(self):
+        """Test SVS-VAMANA field with valid float32 datatype."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 128,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                    },
+                }
+            ],
+        }
+        # Should not raise any errors
+        schema = IndexSchema.from_dict(schema_dict)
+        assert schema is not None
+        assert len(schema.fields) == 1
+
+    def test_svs_vamana_with_valid_float16(self):
+        """Test SVS-VAMANA field with valid float16 datatype."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 128,
+                        "datatype": "float16",
+                        "distance_metric": "cosine",
+                    },
+                }
+            ],
+        }
+        # Should not raise any errors
+        schema = IndexSchema.from_dict(schema_dict)
+        assert schema is not None
+
+    def test_svs_vamana_with_invalid_float64(self):
+        """Test SVS-VAMANA field rejects float64 datatype."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 128,
+                        "datatype": "float64",
+                        "distance_metric": "cosine",
+                    },
+                }
+            ],
+        }
+        # Should raise validation error
+        with pytest.raises(
+            Exception, match="SVS-VAMANA only supports FLOAT16 and FLOAT32"
+        ):
+            IndexSchema.from_dict(schema_dict)
+
+    def test_svs_vamana_with_leanvec_and_reduce(self):
+        """Test SVS-VAMANA with LeanVec compression and reduce parameter."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "compression": "LeanVec4x8",
+                        "reduce": 384,
+                    },
+                }
+            ],
+        }
+        # Should not raise any errors
+        schema = IndexSchema.from_dict(schema_dict)
+        assert schema is not None
+
+    def test_svs_vamana_reduce_with_lvq4_raises_error(self):
+        """Test SVS-VAMANA rejects reduce parameter with LVQ4 compression."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "compression": "LVQ4",
+                        "reduce": 384,
+                    },
+                }
+            ],
+        }
+        # Should raise validation error
+        with pytest.raises(
+            Exception, match="reduce parameter is only supported with LeanVec"
+        ):
+            IndexSchema.from_dict(schema_dict)
+
+    def test_svs_vamana_reduce_without_compression_raises_error(self):
+        """Test SVS-VAMANA rejects reduce parameter without compression."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "reduce": 384,
+                    },
+                }
+            ],
+        }
+        # Should raise validation error
+        with pytest.raises(Exception, match="reduce parameter requires compression"):
+            IndexSchema.from_dict(schema_dict)
+
+    def test_svs_vamana_reduce_greater_than_dims_raises_error(self):
+        """Test SVS-VAMANA rejects reduce >= dims."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "compression": "LeanVec4x8",
+                        "reduce": 768,
+                    },
+                }
+            ],
+        }
+        # Should raise validation error
+        with pytest.raises(Exception, match="reduce.*must be less than dims"):
+            IndexSchema.from_dict(schema_dict)
+
+    def test_svs_vamana_with_all_compression_types(self):
+        """Test SVS-VAMANA with all valid compression types."""
+        compression_types = [
+            "LVQ4",
+            "LVQ4x4",
+            "LVQ4x8",
+            "LVQ8",
+            "LeanVec4x8",
+            "LeanVec8x8",
+        ]
+
+        for compression in compression_types:
+            schema_dict = {
+                "index": {
+                    "name": f"test-svs-{compression}",
+                    "prefix": "test",
+                    "storage_type": "hash",
+                },
+                "fields": [
+                    {
+                        "name": "embedding",
+                        "type": "vector",
+                        "attrs": {
+                            "algorithm": "svs-vamana",
+                            "dims": 128,
+                            "datatype": "float32",
+                            "distance_metric": "cosine",
+                            "compression": compression,
+                        },
+                    }
+                ],
+            }
+            # Should not raise any errors
+            schema = IndexSchema.from_dict(schema_dict)
+            assert schema is not None
+
+    def test_svs_vamana_with_graph_parameters(self):
+        """Test SVS-VAMANA with custom graph parameters."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "graph_max_degree": 64,
+                        "construction_window_size": 500,
+                        "search_window_size": 40,
+                        "epsilon": 0.02,
+                    },
+                }
+            ],
+        }
+        # Should not raise any errors
+        schema = IndexSchema.from_dict(schema_dict)
+        assert schema is not None
+        vector_field = schema.fields["embedding"]
+        assert vector_field.attrs.graph_max_degree == 64
+        assert vector_field.attrs.construction_window_size == 500
+        assert vector_field.attrs.search_window_size == 40
+        assert vector_field.attrs.epsilon == 0.02
+
+    def test_svs_vamana_with_training_threshold(self):
+        """Test SVS-VAMANA with training_threshold parameter."""
+        schema_dict = {
+            "index": {
+                "name": "test-svs-index",
+                "prefix": "test",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "svs-vamana",
+                        "dims": 768,
+                        "datatype": "float32",
+                        "distance_metric": "cosine",
+                        "compression": "LVQ4",
+                        "training_threshold": 10000,
+                    },
+                }
+            ],
+        }
+        # Should not raise any errors
+        schema = IndexSchema.from_dict(schema_dict)
+        assert schema is not None
+        vector_field = schema.fields["embedding"]
+        assert vector_field.attrs.training_threshold == 10000
