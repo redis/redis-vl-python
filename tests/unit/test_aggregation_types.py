@@ -91,6 +91,7 @@ def test_aggregate_hybrid_query():
         stopwords=["the", "a", "of"],
     )
     assert hybrid_query.stopwords == set(["the", "a", "of"])
+
     hybrid_query = HybridQuery(
         sample_text,
         text_field_name,
@@ -195,7 +196,7 @@ def test_hybrid_query_with_string_filter():
     assert "AND" not in query_string_wildcard
 
 
-def test_aggregate_multi_vector_query():
+def test_multi_vector_query():
     # test we require vectors and field names
     with pytest.raises(TypeError):
         _ = MultiVectorQuery()
@@ -265,51 +266,37 @@ def test_aggregate_multi_vector_query():
     assert multivector_query._dialect == 4
 
 
-def test_aggregate_multi_vector_query_broadcasting():
-    # if a single vector and multiple fields is passed we search with the same vector over all fields
-    multivector_query = MultiVectorQuery(
-        vectors=[sample_vector],
-        vector_field_names=["text embedding", "image embedding"],
-    )
-    assert multi_vector_query.query == "<raw text here>"
-
-    # vector being broadcast doesn't need to be in a list
-    multivector_query = MultiVectorQuery(
-        vectors=sample_vector, vector_field_names=["text embedding", "image embedding"]
-    )
-    assert multi_vector_query.query == "<raw text here>"
-
-    # if multiple vectors are passed and a single field name we search with all vectors on that field
-    multivector_query = MultiVectorQuery(
-        vectors=[sample_vector_2, sample_vector_3],
-        vector_field_names=["text embedding"],
-    )
-    assert multi_vector_query.query == "<raw text here>"
-
-    # vector field name does not need to be in a list if only one is provided
-    multivector_query = MultiVectorQuery(
-        vectors=[sample_vector_2, sample_vector_3], vector_field_names="text embedding"
-    )
-    assert multi_vector_query.query == "<raw text here>"
-
+def test_multi_vector_query_broadcasting():
     # if a single weight is passed it is applied to all similarity scores
-    multivector_query = MultiVectorQuery(
+    field_1 = "text embedding"
+    field_2 = "image embedding"
+    weight = 0.2
+    multi_vector_query = MultiVectorQuery(
+        vectors=[sample_vector_2, sample_vector_3],
+        vector_field_names=[field_1, field_2],
+        weights=[weight],
+    )
+
+    assert (
+        str(multi_vector_query)
+        == f"@{field_1}:[VECTOR_RANGE 2.0 $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE 2.0 $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight} + @score_1 * {weight} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
+    )
+
+    # if a single dtype is passed it is applied to all vectors
+    multi_vector_query = MultiVectorQuery(
         vectors=[sample_vector_2, sample_vector_3],
         vector_field_names=["text embedding", "image embedding"],
-        weights=[0.2],
+        dtypes=["float16"],
     )
-    assert multi_vector_query.query == "<raw text here>"
 
-    # weight does not need to be in a list if only one is provided
-    multivector_query = MultiVectorQuery(
-        vectors=[sample_vector_2, sample_vector_3],
-        vector_field_names=["text embedding", "image embedding"],
-        weights=0.2,
+    assert multi_vector_query._dtypes == ["float16", "float16"]
+    assert (
+        str(multi_vector_query)
+        == f"@{field_1}:[VECTOR_RANGE 2.0 $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE 2.0 $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * 1.0 + @score_1 * 1.0 AS combined_score SORTBY 2 @combined_score DESC MAX 10"
     )
-    assert multi_vector_query.query == "<raw text here>"
 
 
-def test_aggregate_multi_vector_query_errors():
+def test_multi_vector_query_errors():
     # test an error is raised if the number of vectors and number of fields don't match
     with pytest.raises(ValueError):
         _ = MultiVectorQuery(
