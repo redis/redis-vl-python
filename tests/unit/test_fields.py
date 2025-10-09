@@ -11,6 +11,7 @@ from redisvl.schema.fields import (
     GeoField,
     HNSWVectorField,
     NumericField,
+    SVSVectorField,
     TagField,
     TextField,
 )
@@ -70,6 +71,24 @@ def create_hnsw_vector_field(**kwargs):
     }
     defaults["attrs"].update(kwargs)
     return HNSWVectorField(**defaults)
+
+
+def create_svs_vector_field(**kwargs):
+    defaults = {
+        "name": "example_svsvectorfield",
+        "attrs": {
+            "dims": 128,
+            "algorithm": "SVS-VAMANA",
+            "datatype": "float32",
+            "distance_metric": "cosine",
+            "graph_max_degree": 40,
+            "construction_window_size": 250,
+            "search_window_size": 20,
+            "epsilon": 0.01,
+        },
+    }
+    defaults["attrs"].update(kwargs)
+    return SVSVectorField(**defaults)
 
 
 # Tests for field schema creation and validation
@@ -422,3 +441,198 @@ def test_field_factory_with_new_attributes():
     )
     assert isinstance(vector_field, FlatVectorField)
     assert vector_field.attrs.index_missing == True
+
+
+# ==================== SVS-VAMANA TESTS ====================
+
+
+def test_svs_vector_field_creation():
+    """Test basic SVS-VAMANA vector field creation."""
+    svs_field = create_svs_vector_field()
+    assert svs_field.name == "example_svsvectorfield"
+    assert svs_field.attrs.algorithm == "SVS-VAMANA"
+    assert svs_field.attrs.dims == 128
+    assert svs_field.attrs.datatype.value == "FLOAT32"
+    assert svs_field.attrs.distance_metric.value == "COSINE"
+    assert svs_field.attrs.graph_max_degree == 40
+    assert svs_field.attrs.construction_window_size == 250
+    assert svs_field.attrs.search_window_size == 20
+    assert svs_field.attrs.epsilon == 0.01
+
+
+def test_svs_vector_field_as_redis_field():
+    """Test SVS-VAMANA field conversion to Redis field."""
+    svs_field = create_svs_vector_field()
+    redis_field = svs_field.as_redis_field()
+
+    assert isinstance(redis_field, RedisVectorField)
+    assert redis_field.name == "example_svsvectorfield"
+
+    # Check that SVS-VAMANA specific parameters are in args
+    assert "GRAPH_MAX_DEGREE" in redis_field.args
+    assert "CONSTRUCTION_WINDOW_SIZE" in redis_field.args
+    assert "SEARCH_WINDOW_SIZE" in redis_field.args
+    assert "EPSILON" in redis_field.args
+
+
+def test_svs_vector_field_default_params():
+    """Test SVS-VAMANA field with default parameters."""
+    svs_field = SVSVectorField(
+        name="test_vector",
+        attrs={
+            "dims": 768,
+            "algorithm": "SVS-VAMANA",
+            "datatype": "float32",
+            "distance_metric": "cosine",
+        },
+    )
+
+    # Check defaults are applied
+    assert svs_field.attrs.graph_max_degree == 40
+    assert svs_field.attrs.construction_window_size == 250
+    assert svs_field.attrs.search_window_size == 20
+    assert svs_field.attrs.epsilon == 0.01
+    assert svs_field.attrs.compression is None
+    assert svs_field.attrs.reduce is None
+    assert svs_field.attrs.training_threshold is None
+
+
+def test_svs_vector_field_with_custom_graph_params():
+    """Test SVS-VAMANA field with custom graph parameters."""
+    svs_field = create_svs_vector_field(
+        graph_max_degree=64,
+        construction_window_size=500,
+        search_window_size=40,
+        epsilon=0.02,
+    )
+
+    redis_field = svs_field.as_redis_field()
+
+    # Verify custom parameters are set
+    assert redis_field.args[redis_field.args.index("GRAPH_MAX_DEGREE") + 1] == 64
+    assert (
+        redis_field.args[redis_field.args.index("CONSTRUCTION_WINDOW_SIZE") + 1] == 500
+    )
+    assert redis_field.args[redis_field.args.index("SEARCH_WINDOW_SIZE") + 1] == 40
+    assert redis_field.args[redis_field.args.index("EPSILON") + 1] == 0.02
+
+
+def test_svs_vector_field_with_lvq4_compression():
+    """Test SVS-VAMANA field with LVQ4 compression."""
+    svs_field = create_svs_vector_field(compression="LVQ4")
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LVQ4"
+
+
+def test_svs_vector_field_with_lvq8_compression():
+    """Test SVS-VAMANA field with LVQ8 compression."""
+    svs_field = create_svs_vector_field(compression="LVQ8")
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LVQ8"
+
+
+def test_svs_vector_field_with_leanvec_compression():
+    """Test SVS-VAMANA field with LeanVec4x8 compression."""
+    svs_field = create_svs_vector_field(compression="LeanVec4x8")
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec4x8"
+
+
+def test_svs_vector_field_with_leanvec_and_reduce():
+    """Test SVS-VAMANA field with LeanVec compression and reduce parameter."""
+    svs_field = create_svs_vector_field(dims=768, compression="LeanVec4x8", reduce=384)
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec4x8"
+    assert "REDUCE" in redis_field.args
+    assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 384
+
+
+def test_svs_vector_field_with_training_threshold():
+    """Test SVS-VAMANA field with training_threshold parameter."""
+    svs_field = create_svs_vector_field(compression="LVQ4", training_threshold=10000)
+    redis_field = svs_field.as_redis_field()
+
+    assert "TRAINING_THRESHOLD" in redis_field.args
+    assert redis_field.args[redis_field.args.index("TRAINING_THRESHOLD") + 1] == 10000
+
+
+def test_svs_vector_field_reduce_with_lvq4_raises_error():
+    """Test that reduce parameter with LVQ4 compression raises ValueError."""
+    with pytest.raises(
+        ValueError, match="reduce parameter is only supported with LeanVec"
+    ):
+        create_svs_vector_field(dims=768, compression="LVQ4", reduce=384)
+
+
+def test_svs_vector_field_reduce_with_lvq8_raises_error():
+    """Test that reduce parameter with LVQ8 compression raises ValueError."""
+    with pytest.raises(
+        ValueError, match="reduce parameter is only supported with LeanVec"
+    ):
+        create_svs_vector_field(dims=768, compression="LVQ8", reduce=384)
+
+
+def test_svs_vector_field_reduce_without_compression_raises_error():
+    """Test that reduce parameter without compression raises ValueError."""
+    with pytest.raises(ValueError, match="reduce parameter requires compression"):
+        create_svs_vector_field(dims=768, reduce=384)
+
+
+def test_svs_vector_field_reduce_greater_than_dims_raises_error():
+    """Test that reduce >= dims raises ValueError."""
+    with pytest.raises(ValueError, match="reduce.*must be less than dims"):
+        create_svs_vector_field(dims=768, compression="LeanVec4x8", reduce=768)
+
+
+def test_svs_vector_field_reduce_equal_to_dims_raises_error():
+    """Test that reduce == dims raises ValueError."""
+    with pytest.raises(ValueError, match="reduce.*must be less than dims"):
+        create_svs_vector_field(dims=768, compression="LeanVec4x8", reduce=768)
+
+
+def test_svs_vector_field_invalid_datatype_raises_error():
+    """Test that invalid datatype (not float16/float32) raises ValueError."""
+    with pytest.raises(Exception, match="SVS-VAMANA only supports FLOAT16 and FLOAT32"):
+        create_svs_vector_field(datatype="float64")
+
+
+def test_svs_vector_field_float16_datatype():
+    """Test SVS-VAMANA field with float16 datatype."""
+    svs_field = create_svs_vector_field(datatype="float16")
+    redis_field = svs_field.as_redis_field()
+
+    assert "TYPE" in redis_field.args
+    assert redis_field.args[redis_field.args.index("TYPE") + 1] == "FLOAT16"
+
+
+def test_svs_vector_field_all_compression_types():
+    """Test all valid compression types for SVS-VAMANA."""
+    compression_types = ["LVQ4", "LVQ4x4", "LVQ4x8", "LVQ8", "LeanVec4x8", "LeanVec8x8"]
+
+    for compression in compression_types:
+        svs_field = create_svs_vector_field(compression=compression)
+        redis_field = svs_field.as_redis_field()
+
+        assert "COMPRESSION" in redis_field.args
+        assert (
+            redis_field.args[redis_field.args.index("COMPRESSION") + 1] == compression
+        )
+
+
+def test_svs_vector_field_leanvec8x8_with_reduce():
+    """Test SVS-VAMANA field with LeanVec8x8 compression and reduce."""
+    svs_field = create_svs_vector_field(dims=1024, compression="LeanVec8x8", reduce=512)
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec8x8"
+    assert "REDUCE" in redis_field.args
+    assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 512
