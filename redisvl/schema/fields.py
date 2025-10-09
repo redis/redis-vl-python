@@ -220,17 +220,26 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
                 f"Unsupported types: BFLOAT16, FLOAT64, INT8, UINT8."
             )
 
-        # Reduce validation: must be less than dims
+        # Reduce validation: must be less than dims and only valid with LeanVec
         if self.reduce is not None:
             if self.reduce >= self.dims:
                 raise ValueError(
                     f"reduce ({self.reduce}) must be less than dims ({self.dims})"
                 )
-            # Phase C: Add warning for reduce without LeanVec
-            # if not self.compression or not self.compression.value.startswith("LeanVec"):
-            #     logger.warning(
-            #         "reduce parameter is recommended with LeanVec compression"
-            #     )
+
+            # Validate that reduce is only used with LeanVec compression
+            if self.compression is None:
+                raise ValueError(
+                    "reduce parameter requires compression to be set. "
+                    "Use LeanVec4x8 or LeanVec8x8 compression with reduce."
+                )
+
+            if not self.compression.value.startswith("LeanVec"):
+                raise ValueError(
+                    f"reduce parameter is only supported with LeanVec compression types. "
+                    f"Got compression={self.compression.value}. "
+                    f"Either use LeanVec4x8/LeanVec8x8 or remove the reduce parameter."
+                )
 
         # Phase C: Add warning for LeanVec without reduce
         # if self.compression and self.compression.value.startswith("LeanVec") and not self.reduce:
