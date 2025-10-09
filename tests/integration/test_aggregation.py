@@ -582,4 +582,5 @@ def test_multivector_query_datatypes(index):
 
 
 def test_multivector_query_broadcasting(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
     pass
