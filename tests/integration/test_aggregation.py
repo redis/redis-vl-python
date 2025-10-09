@@ -50,7 +50,7 @@ def index(multi_vector_data, redis_url, worker_id):
                     "attrs": {
                         "dims": 6,
                         "distance_metric": "cosine",
-                        "algorithm": "hnsw",
+                        "algorithm": "flat",
                         "datatype": "bfloat16",
                     },
                 },
@@ -581,6 +581,64 @@ def test_multivector_query_datatypes(index):
         )
 
 
-def test_multivector_query_broadcasting(index):
+def test_multivector_query_mixed_index(index):
+    # test that we can do multi vector queries on indices with both a 'flat' and 'hnsw' index
     skip_if_redis_version_below(index.client, "7.2.0")
-    pass
+    try:
+        index.schema.remove_field("audio_embedding")
+        index.schema.add_field(
+            {
+                "name": "audio_embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 6,
+                    "distance_metric": "cosine",
+                    "algorithm": "hnsw",
+                    "datatype": "bfloat16",
+                },
+            },
+        )
+
+    except:
+        pytest.skip("Required Redis modules not available or version too low")
+
+    vectors = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
+    vector_fields = ["user_embedding", "audio_embedding"]
+    return_fields = [
+        "distance_0",
+        "distance_1",
+        "score_0",
+        "score_1",
+        "user_embedding",
+        "audio_embedding",
+    ]
+
+    # changing the weights does indeed change the result order
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        vector_field_names=vector_fields,
+        return_fields=return_fields,
+        dtypes=["float32", "bfloat16"],
+    )
+    results = index.query(multi_query)
+
+    for i in range(1, len(results)):
+        assert results[i]["combined_score"] <= results[i - 1]["combined_score"]
+
+    # verify we're doing the combined score math correctly
+    weights = [-1.322, 0.851]
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        vector_field_names=vector_fields,
+        return_fields=return_fields,
+        dtypes=["float32", "bfloat16"],
+        weights=weights,
+    )
+
+    results = index.query(multi_query)
+    assert results
+    for r in results:
+        score = float(r["score_0"]) * weights[0] + float(r["score_1"]) * weights[1]
+        assert (
+            float(r["combined_score"]) - score <= 0.0001
+        )  # allow for small floating point error
