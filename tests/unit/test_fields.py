@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
@@ -5,6 +7,9 @@ from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
+from redisvl.exceptions import RedisModuleVersionError
+from redisvl.index import AsyncSearchIndex, SearchIndex
+from redisvl.schema import IndexSchema
 from redisvl.schema.fields import (
     FieldFactory,
     FlatVectorField,
@@ -636,3 +641,188 @@ def test_svs_vector_field_leanvec8x8_with_reduce():
     assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec8x8"
     assert "REDUCE" in redis_field.args
     assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 512
+
+
+# ==================== SVS-VAMANA INDEX VALIDATION TESTS ====================
+
+
+def test_uses_svs_vamana_true():
+    """Test _uses_svs_vamana returns True for SVS schema."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {"name": "id", "type": "tag"},
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = Mock()
+
+    with patch.object(SearchIndex, "_redis_client", mock_client):
+        index = SearchIndex(schema=schema)
+        assert index._uses_svs_vamana() is True
+
+
+def test_check_svs_support_raises_error():
+    """Test _check_svs_support raises error when not supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = Mock()
+    mock_client.info.return_value = {"redis_version": "7.2.4"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20612, "searchlight": 20612}
+
+        index = SearchIndex(schema=schema)
+
+        # Mock the _redis_client property
+        with patch.object(
+            type(index),
+            "_redis_client",
+            new_callable=lambda: property(lambda self: mock_client),
+        ):
+            with pytest.raises(RedisModuleVersionError) as exc_info:
+                index._check_svs_support()
+
+            error_msg = str(exc_info.value)
+            assert "SVS-VAMANA requires Redis >= 8.2.0" in error_msg
+            assert "Redis 7.2.4" in error_msg
+
+
+def test_check_svs_support_passes():
+    """Test _check_svs_support passes when supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = Mock()
+    mock_client.info.return_value = {"redis_version": "8.2.0"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20810, "searchlight": 20810}
+
+        index = SearchIndex(schema=schema)
+
+        # Mock the _redis_client property
+        with patch.object(
+            type(index),
+            "_redis_client",
+            new_callable=lambda: property(lambda self: mock_client),
+        ):
+            # Should not raise
+            index._check_svs_support()
+
+
+@pytest.mark.asyncio
+async def test_check_svs_support_async_raises_error():
+    """Test _check_svs_support_async raises error when not supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = AsyncMock()
+    mock_client.info.return_value = {"redis_version": "7.2.4"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules_async"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20612, "searchlight": 20612}
+
+        index = AsyncSearchIndex(schema=schema)
+
+        with patch.object(index, "_get_client", return_value=mock_client):
+            with pytest.raises(RedisModuleVersionError) as exc_info:
+                await index._check_svs_support_async()
+
+            error_msg = str(exc_info.value)
+            assert "SVS-VAMANA requires Redis >= 8.2.0" in error_msg
+
+
+@pytest.mark.asyncio
+async def test_check_svs_support_async_passes():
+    """Test _check_svs_support_async passes when supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = AsyncMock()
+    mock_client.info.return_value = {"redis_version": "8.2.0"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules_async"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20810, "searchlight": 20810}
+
+        index = AsyncSearchIndex(schema=schema)
+
+        with patch.object(index, "_get_client", return_value=mock_client):
+            # Should not raise
+            await index._check_svs_support_async()
