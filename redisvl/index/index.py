@@ -67,6 +67,7 @@ from redis.commands.search.result import Result
 
 from redisvl.exceptions import (
     QueryValidationError,
+    RedisModuleVersionError,
     RedisSearchError,
     RedisVLError,
     SchemaValidationError,
@@ -82,11 +83,15 @@ from redisvl.query import (
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
+    check_vector_capabilities,
+    check_vector_capabilities_async,
     convert_index_info_to_schema,
 )
+from redisvl.redis.constants import SVS_MIN_REDIS_VERSION
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.schema.fields import (
     VECTOR_NORM_MAP,
+    SVSVectorField,
     VectorDistanceMetric,
     VectorIndexAlgorithm,
 )
@@ -226,6 +231,12 @@ class BaseSearchIndex:
         """The storage type for the index schema."""
         return self._STORAGE_MAP[self.schema.index.storage_type](
             index_schema=self.schema
+        )
+
+    def _uses_svs_vamana(self) -> bool:
+        """Check if schema contains any SVS-VAMANA vector fields."""
+        return any(
+            isinstance(field, SVSVectorField) for field in self.schema.fields.values()
         )
 
     def _validate_query(self, query: BaseQuery) -> None:
@@ -535,6 +546,17 @@ class SearchIndex(BaseSearchIndex):
         self.__redis_client = redis_client
         return self
 
+    def _check_svs_support(self) -> None:
+        """Validate SVS-VAMANA support.
+
+        Raises:
+            RedisModuleVersionError: If SVS-VAMANA requirements are not met.
+        """
+        caps = check_vector_capabilities(self._redis_client)
+
+        if not caps.svs_vamana_supported:
+            raise RedisModuleVersionError.for_svs_vamana(caps, SVS_MIN_REDIS_VERSION)
+
     def create(self, overwrite: bool = False, drop: bool = False) -> None:
         """Create an index in Redis with the current schema and properties.
 
@@ -565,6 +587,10 @@ class SearchIndex(BaseSearchIndex):
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
+
+        # Check if schema uses SVS-VAMANA and validate Redis capabilities
+        if self._uses_svs_vamana():
+            self._check_svs_support()
 
         if self.exists():
             if not overwrite:
@@ -1302,6 +1328,18 @@ class AsyncSearchIndex(BaseSearchIndex):
                 f"Error while fetching {name} index info: {str(e)}"
             ) from e
 
+    async def _check_svs_support_async(self) -> None:
+        """Validate SVS-VAMANA support.
+
+        Raises:
+            RedisModuleVersionError: If SVS-VAMANA requirements are not met.
+        """
+        client = await self._get_client()
+        caps = await check_vector_capabilities_async(client)
+
+        if not caps.svs_vamana_supported:
+            raise RedisModuleVersionError.for_svs_vamana(caps, SVS_MIN_REDIS_VERSION)
+
     async def create(self, overwrite: bool = False, drop: bool = False) -> None:
         """Asynchronously create an index in Redis with the current schema
             and properties.
@@ -1334,6 +1372,10 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise ValueError("No fields defined for index")
         if not isinstance(overwrite, bool):
             raise TypeError("overwrite must be of type bool")
+
+        # Check if schema uses SVS-VAMANA and validate Redis capabilities
+        if self._uses_svs_vamana():
+            await self._check_svs_support_async()
 
         if await self.exists():
             if not overwrite:
