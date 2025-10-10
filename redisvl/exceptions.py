@@ -31,3 +31,29 @@ class QueryValidationError(RedisVLError):
     """Error when validating a query."""
 
     pass
+
+
+class RedisModuleVersionError(RedisVLError):
+    """Error when Redis or module versions are incompatible with requested features."""
+
+    @classmethod
+    def for_svs_vamana(cls, capabilities, min_redis_version: str):
+        """Create error for unsupported SVS-VAMANA.
+
+        Args:
+            capabilities: VectorSupport instance with version info
+            min_redis_version: Minimum required Redis version
+
+        Returns:
+            RedisModuleVersionError with formatted message
+        """
+        message = (
+            f"SVS-VAMANA requires Redis >= {min_redis_version} with RediSearch >= 2.8.10. "
+            f"Current: Redis {capabilities.redis_version}, "
+            f"RediSearch {capabilities.search_version_str}, "
+            f"SearchLight {capabilities.searchlight_version_str}. "
+            f"Options: 1) Upgrade Redis Stack, "
+            f"2) Use algorithm='hnsw' or 'flat', "
+            f"3) Remove compression parameters"
+        )
+        return cls(message)

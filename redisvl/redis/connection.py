@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
@@ -15,7 +16,11 @@ from redis.exceptions import ResponseError
 from redis.sentinel import Sentinel
 
 from redisvl import __version__
-from redisvl.redis.constants import REDIS_URL_ENV_VAR
+from redisvl.redis.constants import (
+    REDIS_URL_ENV_VAR,
+    SVS_MIN_REDIS_VERSION,
+    SVS_REQUIRED_MODULES,
+)
 from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.utils import deprecated_function
@@ -99,6 +104,152 @@ def compare_versions(version1: str, version2: str):
 def unpack_redis_modules(module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Unpack a list of Redis modules pulled from the MODULES LIST command."""
     return {module["name"]: module["ver"] for module in module_list}
+
+
+@dataclass
+class VectorSupport:
+    """Redis server capabilities for vector operations."""
+
+    redis_version: str
+    search_version: int
+    searchlight_version: int
+    svs_vamana_supported: bool
+
+    @property
+    def search_version_str(self) -> str:
+        """Format search module version as string."""
+        return format_module_version(self.search_version)
+
+    @property
+    def searchlight_version_str(self) -> str:
+        """Format searchlight module version as string."""
+        return format_module_version(self.searchlight_version)
+
+
+def format_module_version(version: int) -> str:
+    """Format module version from integer (20810) to string (2.8.10)."""
+    if version == 0:
+        return "not installed"
+    major = version // 10000
+    minor = (version % 10000) // 100
+    patch = version % 100
+    return f"{major}.{minor}.{patch}"
+
+
+def check_vector_capabilities(client: SyncRedisClient) -> VectorSupport:
+    """Check Redis server capabilities for vector features.
+
+    Args:
+        client: Sync Redis client instance
+
+    Returns:
+        VectorSupport with version info and supported features
+    """
+    info = client.info("server")
+    redis_version = info.get("redis_version", "0.0.0")
+
+    modules = RedisConnectionFactory.get_modules(client)
+    search_ver = modules.get("search", 0)
+    searchlight_ver = modules.get("searchlight", 0)
+
+    # Check if SVS-VAMANA requirements are met
+    redis_ok = compare_versions(redis_version, SVS_MIN_REDIS_VERSION)
+    modules_ok = search_ver >= 20810 or searchlight_ver >= 20810
+
+    return VectorSupport(
+        redis_version=redis_version,
+        search_version=search_ver,
+        searchlight_version=searchlight_ver,
+        svs_vamana_supported=redis_ok and modules_ok,
+    )
+
+
+async def check_vector_capabilities_async(client: AsyncRedisClient) -> VectorSupport:
+    """Async version of check_vector_capabilities.
+
+    Args:
+        client: Async Redis client instance
+
+    Returns:
+        VectorSupport with version info and supported features
+    """
+    info = await client.info("server")
+    redis_version = info.get("redis_version", "0.0.0")
+
+    modules = await RedisConnectionFactory.get_modules_async(client)
+    search_ver = modules.get("search", 0)
+    searchlight_ver = modules.get("searchlight", 0)
+
+    # Check if SVS-VAMANA requirements are met
+    redis_ok = compare_versions(redis_version, SVS_MIN_REDIS_VERSION)
+    modules_ok = search_ver >= 20810 or searchlight_ver >= 20810
+
+    return VectorSupport(
+        redis_version=redis_version,
+        search_version=search_ver,
+        searchlight_version=searchlight_ver,
+        svs_vamana_supported=redis_ok and modules_ok,
+    )
+
+
+def supports_svs_vamana(client: SyncRedisClient) -> bool:
+    """Check if Redis server supports SVS-VAMANA algorithm.
+
+    SVS-Vamana requires:
+    - Redis version >= 8.2.0
+    - RediSearch version >= 2.8.10 (20810)
+
+    Args:
+        client: Sync Redis client instance
+
+    Returns:
+        bool: True if SVS-VAMANA is supported, False otherwise
+    """
+    info = client.info()
+    redis_version = info.get("redis_version", "0.0.0")
+    if not compare_versions(redis_version, SVS_MIN_REDIS_VERSION):
+        return False
+
+    # Check module versions
+    modules = unpack_redis_modules(convert_bytes(client.module_list()))
+    for module in SVS_REQUIRED_MODULES:
+        module_name = module["name"]
+        required_version = module["ver"]
+        if module_name not in modules:
+            return False
+        if modules[module_name] < required_version:
+            return False
+    return True
+
+
+async def async_supports_svs_vamana(client: AsyncRedisClient) -> bool:
+    """Check if Redis server supports SVS-VAMANA algorithm asynchronously.
+
+    SVS-Vamana requires:
+    - Redis version >= 8.2.0
+    - RediSearch version >= 2.8.10 (20810)
+
+    Args:
+        client: Sync Redis client instance
+
+    Returns:
+        bool: True if SVS-VAMANA is supported, False otherwise
+    """
+    info = await client.info()
+    redis_version = info.get("redis_version", "0.0.0")
+    if not compare_versions(redis_version, SVS_MIN_REDIS_VERSION):
+        return False
+
+    # Check module versions
+    modules = unpack_redis_modules(convert_bytes(await client.module_list()))
+    for module in SVS_REQUIRED_MODULES:
+        module_name = module["name"]
+        required_version = module["ver"]
+        if module_name not in modules:
+            return False
+        if modules[module_name] < required_version:
+            return False
+    return True
 
 
 def get_address_from_env() -> str:
