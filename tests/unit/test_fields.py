@@ -448,9 +448,6 @@ def test_field_factory_with_new_attributes():
     assert vector_field.attrs.index_missing == True
 
 
-# ==================== SVS-VAMANA TESTS ====================
-
-
 def test_svs_vector_field_creation():
     """Test basic SVS-VAMANA vector field creation."""
     svs_field = create_svs_vector_field()
@@ -641,9 +638,6 @@ def test_svs_vector_field_leanvec8x8_with_reduce():
     assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec8x8"
     assert "REDUCE" in redis_field.args
     assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 512
-
-
-# ==================== SVS-VAMANA INDEX VALIDATION TESTS ====================
 
 
 def test_uses_svs_vamana_true():

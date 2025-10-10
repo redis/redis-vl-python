@@ -12,17 +12,11 @@ import pytest
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.redis.connection import (
     VectorSupport,
-    async_supports_svs_vamana,
     check_vector_capabilities,
     check_vector_capabilities_async,
     compare_versions,
     format_module_version,
-    supports_svs_vamana,
 )
-
-# ============================================================================
-# Helper Function Tests
-# ============================================================================
 
 
 def test_format_version_20810():
@@ -42,11 +36,6 @@ def test_compare_lesser_version():
     assert compare_versions("7.2.4", "8.2.0") is False
     assert compare_versions("8.1.9", "8.2.0") is False
     assert compare_versions("8.2.0", "8.2.1") is False
-
-
-# ============================================================================
-# check_vector_capabilities Tests
-# ============================================================================
 
 
 def test_check_vector_capabilities_supported():
@@ -116,47 +105,6 @@ async def test_check_vector_capabilities_async_supported():
         assert caps.redis_version == "8.2.0"
         assert caps.search_version == 20810
         assert caps.svs_vamana_supported is True
-
-
-# ============================================================================
-# supports_svs_vamana Tests
-# ============================================================================
-
-
-def test_supports_svs_vamana_true():
-    """Test supports_svs_vamana returns True when supported."""
-    mock_client = Mock()
-    mock_client.info.return_value = {"redis_version": "8.2.0"}
-    mock_client.module_list.return_value = [
-        {"name": b"search", "ver": 20810},
-        {"name": b"searchlight", "ver": 20810},
-    ]
-
-    assert supports_svs_vamana(mock_client) is True
-
-
-def test_supports_svs_vamana_false_old_redis():
-    """Test supports_svs_vamana returns False with old Redis."""
-    mock_client = Mock()
-    mock_client.info.return_value = {"redis_version": "7.2.4"}
-    mock_client.module_list.return_value = [
-        {"name": b"search", "ver": 20810},
-    ]
-
-    assert supports_svs_vamana(mock_client) is False
-
-
-def test_supports_svs_vamana_exception_handling():
-    """Test supports_svs_vamana handles exceptions gracefully."""
-    mock_client = Mock()
-    mock_client.info.side_effect = Exception("Connection error")
-
-    assert supports_svs_vamana(mock_client) is False
-
-
-# ============================================================================
-# Exception Tests
-# ============================================================================
 
 
 def test_for_svs_vamana_error_message():
