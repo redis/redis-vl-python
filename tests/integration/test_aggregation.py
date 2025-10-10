@@ -51,7 +51,7 @@ def index(multi_vector_data, redis_url, worker_id):
                         "dims": 6,
                         "distance_metric": "cosine",
                         "algorithm": "flat",
-                        "datatype": "bfloat16",
+                        "datatype": "float64",
                     },
                 },
             ],
@@ -68,7 +68,7 @@ def index(multi_vector_data, redis_url, worker_id):
             **item,
             "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
             "image_embedding": array_to_buffer(item["image_embedding"], "float32"),
-            "audio_embedding": array_to_buffer(item["audio_embedding"], "bfloat16"),
+            "audio_embedding": array_to_buffer(item["audio_embedding"], "float64"),
         }
 
     ### TODO get sample data that has two vector fields
@@ -546,7 +546,7 @@ def test_multivector_query_datatypes(index):
         vectors=vectors,
         vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "bfloat16"],
+        dtypes=["float32", "float64"],
     )
     results = index.query(multi_query)
 
@@ -559,7 +559,7 @@ def test_multivector_query_datatypes(index):
         vectors=vectors,
         vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "bfloat16"],
+        dtypes=["float32", "float64"],
         weights=weights,
     )
 
@@ -594,7 +594,7 @@ def test_multivector_query_mixed_index(index):
                     "dims": 6,
                     "distance_metric": "cosine",
                     "algorithm": "hnsw",
-                    "datatype": "bfloat16",
+                    "datatype": "float64",
                 },
             },
         )
@@ -618,7 +618,7 @@ def test_multivector_query_mixed_index(index):
         vectors=vectors,
         vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "bfloat16"],
+        dtypes=["float32", "float64"],
     )
     results = index.query(multi_query)
 
@@ -631,7 +631,7 @@ def test_multivector_query_mixed_index(index):
         vectors=vectors,
         vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "bfloat16"],
+        dtypes=["float32", "float64"],
         weights=weights,
     )
 
