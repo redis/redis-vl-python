@@ -692,9 +692,6 @@ class TestEdgeCases:
         assert "location" not in validated
 
 
-# -------------------- SVS-VAMANA VALIDATION TESTS --------------------
-
-
 class TestSVSVamanaValidation:
     """Tests for SVS-VAMANA specific validation rules."""
 
