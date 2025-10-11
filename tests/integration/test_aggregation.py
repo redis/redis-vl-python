@@ -1,14 +1,15 @@
 import pytest
 
 from redisvl.index import SearchIndex
-from redisvl.query import HybridQuery
+from redisvl.query import HybridQuery, MultiVectorQuery, Vector
 from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
 
 
 @pytest.fixture
-def index(sample_data, redis_url, worker_id):
+def index(multi_vector_data, redis_url, worker_id):
+
     index = SearchIndex.from_dict(
         {
             "index": {
@@ -33,6 +34,26 @@ def index(sample_data, redis_url, worker_id):
                         "datatype": "float32",
                     },
                 },
+                {
+                    "name": "image_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 5,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                    },
+                },
+                {
+                    "name": "audio_embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 6,
+                        "distance_metric": "cosine",
+                        "algorithm": "flat",
+                        "datatype": "float64",
+                    },
+                },
             ],
         },
         redis_url=redis_url,
@@ -46,9 +67,11 @@ def index(sample_data, redis_url, worker_id):
         return {
             **item,
             "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+            "image_embedding": array_to_buffer(item["image_embedding"], "float32"),
+            "audio_embedding": array_to_buffer(item["audio_embedding"], "float64"),
         }
 
-    index.load(sample_data, preprocess=hash_preprocess)
+    index.load(multi_vector_data, preprocess=hash_preprocess)
 
     # run the test
     yield index
@@ -57,7 +80,7 @@ def index(sample_data, redis_url, worker_id):
     index.delete(drop=True)
 
 
-def test_aggregation_query(index):
+def test_hybrid_query(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
@@ -136,7 +159,7 @@ def test_empty_query_string():
         )
 
 
-def test_aggregation_query_with_filter(index):
+def test_hybrid_query_with_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
@@ -162,7 +185,7 @@ def test_aggregation_query_with_filter(index):
         assert int(result["age"]) > 30
 
 
-def test_aggregation_query_with_geo_filter(index):
+def test_hybrid_query_with_geo_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
@@ -188,7 +211,7 @@ def test_aggregation_query_with_geo_filter(index):
 
 
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
-def test_aggregate_query_alpha(index, alpha):
+def test_hybrid_query_alpha(index, alpha):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
@@ -215,7 +238,7 @@ def test_aggregate_query_alpha(index, alpha):
         )  # allow for small floating point error
 
 
-def test_aggregate_query_stopwords(index):
+def test_hybrid_query_stopwords(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
@@ -249,7 +272,7 @@ def test_aggregate_query_stopwords(index):
         )  # allow for small floating point error
 
 
-def test_aggregate_query_with_text_filter(index):
+def test_hybrid_query_with_text_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text = "a medical professional with expertise in lung cancer"
@@ -292,3 +315,330 @@ def test_aggregate_query_with_text_filter(index):
     for result in results:
         assert "medical" in result[text_field].lower()
         assert "research" not in result[text_field].lower()
+
+
+def test_multivector_query(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_vals = [[0.1, 0.1, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
+    vector_fields = ["user_embedding", "image_embedding"]
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert isinstance(results, list)
+    assert len(results) == 7
+    for doc in results:
+        assert doc["user"] in [
+            "john",
+            "derrick",
+            "nancy",
+            "tyler",
+            "tim",
+            "taimur",
+            "joe",
+            "mary",
+        ]
+        assert int(doc["age"]) in [18, 14, 94, 100, 12, 15, 35]
+        assert doc["job"] in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
+        assert doc["credit_score"] in ["high", "low", "medium"]
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        num_results=3,
+    )
+
+    results = index.query(multi_query)
+    assert len(results) == 3
+    assert (
+        results[0]["combined_score"]
+        >= results[1]["combined_score"]
+        >= results[2]["combined_score"]
+    )
+
+
+def test_multivector_query_with_filter(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    text_field = "description"
+    vector_vals = [[0.1, 0.1, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
+    vector_fields = ["user_embedding", "image_embedding"]
+    filter_expression = Text(text_field) == ("medical")
+
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
+    # make sure we can still apply filters to the same text field we are querying
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        filter_expression=filter_expression,
+        return_fields=["job", "description"],
+    )
+
+    results = index.query(multi_query)
+    assert len(results) == 2
+    for result in results:
+        assert "medical" in result[text_field].lower()
+
+    filter_expression = (Text(text_field) == ("medical")) & (
+        (Text(text_field) != ("research"))
+    )
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        filter_expression=filter_expression,
+        return_fields=["description"],
+    )
+
+    results = index.query(multi_query)
+    assert len(results) == 2
+    for result in results:
+        assert "medical" in result[text_field].lower()
+        assert "research" not in result[text_field].lower()
+
+    filter_expression = (Num("age") > 30) & ((Num("age") < 30))
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        filter_expression=filter_expression,
+        return_fields=["description"],
+    )
+
+    results = index.query(multi_query)
+    assert len(results) == 0
+
+
+def test_multivector_query_with_geo_filter(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_vals = [[0.2, 0.4, 0.1], [0.1, 0.8, 0.3, -0.2, 0.3]]
+    vector_fields = ["user_embedding", "image_embedding"]
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+    filter_expression = Geo("location") == GeoRadius(-122.4194, 37.7749, 1000, "m")
+
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        filter_expression=filter_expression,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert len(results) == 3
+    for result in results:
+        assert result["location"] is not None
+
+
+def test_multivector_query_weights(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_vals = [[0.1, 0.2, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
+    vector_fields = ["user_embedding", "image_embedding"]
+    return_fields = [
+        "distance_0",
+        "distance_1",
+        "score_0",
+        "score_1",
+        "user_embedding",
+        "image_embedding",
+    ]
+
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
+    # changing the weights does indeed change the result order
+    multi_query_1 = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+    results_1 = index.query(multi_query_1)
+
+    weights = [0.2, 0.9]
+    vectors = []
+    for vector, field, weight in zip(vector_vals, vector_fields, weights):
+        vectors.append(Vector(vector=vector, field_name=field, weight=weight))
+
+    multi_query_2 = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+    results_2 = index.query(multi_query_2)
+
+    assert results_1 != results_2
+
+    for i in range(1, len(results_1)):
+        assert results_1[i]["combined_score"] <= results_1[i - 1]["combined_score"]
+
+    for i in range(1, len(results_2)):
+        assert results_2[i]["combined_score"] <= results_2[i - 1]["combined_score"]
+
+    # weights can be negative, 0.0, or greater than 1.0
+    weights = [-5.2, 0.0]
+    vectors = []
+    for vector, field, weight in zip(vector_vals, vector_fields, weights):
+        vectors.append(Vector(vector=vector, field_name=field, weight=weight))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert results
+    for r in results:
+        score = float(r["score_0"]) * weights[0]
+        assert (
+            float(r["combined_score"]) - score <= 0.0001
+        )  # allow for small floating point error
+
+    # verify we're doing the combined score math correctly
+    weights = [-1.322, 0.851]
+    vectors = []
+    for vector, field, weight in zip(vector_vals, vector_fields, weights):
+        vectors.append(Vector(vector=vector, field_name=field, weight=weight))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert results
+    for r in results:
+        score = float(r["score_0"]) * weights[0] + float(r["score_1"]) * weights[1]
+        assert (
+            float(r["combined_score"]) - score <= 0.0001
+        )  # allow for small floating point error
+
+
+def test_multivector_query_datatypes(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
+    vector_fields = ["user_embedding", "audio_embedding"]
+    dtypes = ["float32", "float64"]
+    return_fields = [
+        "distance_0",
+        "distance_1",
+        "score_0",
+        "score_1",
+        "user_embedding",
+        "audio_embedding",
+    ]
+
+    vectors = []
+    for vector, field, dtype in zip(vector_vals, vector_fields, dtypes):
+        vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+    results = index.query(multi_query)
+
+    for i in range(1, len(results)):
+        assert results[i]["combined_score"] <= results[i - 1]["combined_score"]
+
+    # verify we're doing the combined score math correctly
+    weights = [-1.322, 0.851]
+    vectors = []
+    for vector, field, weight, dtype in zip(
+        vector_vals, vector_fields, weights, dtypes
+    ):
+        vectors.append(
+            Vector(vector=vector, field_name=field, weight=weight, dtype=dtype)
+        )
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert results
+    for r in results:
+        score = float(r["score_0"]) * weights[0] + float(r["score_1"]) * weights[1]
+        assert (
+            float(r["combined_score"]) - score <= 0.0001
+        )  # allow for small floating point error
+
+
+def test_multivector_query_mixed_index(index):
+    # test that we can do multi vector queries on indices with both a 'flat' and 'hnsw' index
+    skip_if_redis_version_below(index.client, "7.2.0")
+    try:
+        index.schema.remove_field("audio_embedding")
+        index.schema.add_field(
+            {
+                "name": "audio_embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 6,
+                    "distance_metric": "cosine",
+                    "algorithm": "hnsw",
+                    "datatype": "float64",
+                },
+            },
+        )
+
+    except:
+        pytest.skip("Required Redis modules not available or version too low")
+
+    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
+    vector_fields = ["user_embedding", "audio_embedding"]
+    dtypes = ["float32", "float64"]
+    return_fields = [
+        "distance_0",
+        "distance_1",
+        "score_0",
+        "score_1",
+        "user_embedding",
+        "audio_embedding",
+    ]
+
+    vectors = []
+    for vector, field, dtype in zip(vector_vals, vector_fields, dtypes):
+        vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+    results = index.query(multi_query)
+
+    for i in range(1, len(results)):
+        assert results[i]["combined_score"] <= results[i - 1]["combined_score"]
+
+    # verify we're doing the combined score math correctly
+    weights = [-1.322, 0.851]
+    vectors = []
+    for vector, field, dtype, weight in zip(
+        vector_vals, vector_fields, dtypes, weights
+    ):
+        vectors.append(
+            Vector(vector=vector, field_name=field, dtype=dtype, weight=weight)
+        )
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert results
+    for r in results:
+        score = float(r["score_0"]) * weights[0] + float(r["score_1"]) * weights[1]
+        assert (
+            float(r["combined_score"]) - score <= 0.0001
+        )  # allow for small floating point error

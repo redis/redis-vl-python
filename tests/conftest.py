@@ -308,6 +308,96 @@ def sample_data(sample_datetimes):
     ]
 
 
+@pytest.fixture
+def multi_vector_data(sample_datetimes):
+    return [
+        {
+            "user": "john",
+            "age": 18,
+            "job": "engineer",
+            "description": "engineers conduct trains that ride on train tracks",
+            "last_updated": sample_datetimes["low"].timestamp(),
+            "credit_score": "high",
+            "location": "-122.4194,37.7749",
+            "user_embedding": [0.1, 0.1, 0.5],
+            "image_embedding": [0.1, 0.1, 0.1, 0.1, 0.1],
+            "audio_embedding": [34, 18.5, -6.0, -12, 115, 96.5],
+        },
+        {
+            "user": "mary",
+            "age": 14,
+            "job": "doctor",
+            "description": "a medical professional who treats diseases and helps people stay healthy",
+            "last_updated": sample_datetimes["low"].timestamp(),
+            "credit_score": "low",
+            "location": "-122.4194,37.7749",
+            "user_embedding": [0.1, 0.1, 0.5],
+            "image_embedding": [0.1, 0.2, 0.3, 0.4, 0.5],
+            "audio_embedding": [0.0, -1.06, 4.55, -1.93, 0.0, 1.53],
+        },
+        {
+            "user": "nancy",
+            "age": 94,
+            "job": "doctor",
+            "description": "a research scientist specializing in cancers and diseases of the lungs",
+            "last_updated": sample_datetimes["mid"].timestamp(),
+            "credit_score": "high",
+            "location": "-122.4194,37.7749",
+            "user_embedding": [0.7, 0.1, 0.5],
+            "image_embedding": [0.1, 0.1, 0.3, 0.3, 0.5],
+            "audio_embedding": [2.75, -0.33, -3.01, -0.52, 5.59, -2.30],
+        },
+        {
+            "user": "tyler",
+            "age": 100,
+            "job": "engineer",
+            "description": "a software developer with expertise in mathematics and computer science",
+            "last_updated": sample_datetimes["mid"].timestamp(),
+            "credit_score": "high",
+            "location": "-110.0839,37.3861",
+            "user_embedding": [0.1, 0.4, 0.5],
+            "image_embedding": [-0.1, -0.2, -0.3, -0.4, -0.5],
+            "audio_embedding": [1.11, -6.73, 5.41, 1.04, 3.92, 0.73],
+        },
+        {
+            "user": "tim",
+            "age": 12,
+            "job": "dermatologist",
+            "description": "a medical professional specializing in diseases of the skin",
+            "last_updated": sample_datetimes["mid"].timestamp(),
+            "credit_score": "high",
+            "location": "-110.0839,37.3861",
+            "user_embedding": [0.4, 0.4, 0.5],
+            "image_embedding": [-0.1, 0.0, 0.6, 0.0, -0.9],
+            "audio_embedding": [0.03, -2.67, -2.08, 4.57, -2.33, 0.0],
+        },
+        {
+            "user": "taimur",
+            "age": 15,
+            "job": "CEO",
+            "description": "high stress, but financially rewarding position at the head of a company",
+            "last_updated": sample_datetimes["high"].timestamp(),
+            "credit_score": "low",
+            "location": "-110.0839,37.3861",
+            "user_embedding": [0.6, 0.1, 0.5],
+            "image_embedding": [1.1, 1.2, -0.3, -4.1, 5.0],
+            "audio_embedding": [0.68, 0.26, 2.08, 2.96, 0.01, 5.13],
+        },
+        {
+            "user": "joe",
+            "age": 35,
+            "job": "dentist",
+            "description": "like the tooth fairy because they'll take your teeth, but you have to pay them!",
+            "last_updated": sample_datetimes["high"].timestamp(),
+            "credit_score": "medium",
+            "location": "-110.0839,37.3861",
+            "user_embedding": [-0.1, -0.1, -0.5],
+            "image_embedding": [-0.8, 2.0, 3.1, 1.5, -1.6],
+            "audio_embedding": [0.91, 7.10, -2.14, -0.52, -6.08, -5.53],
+        },
+    ]
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--run-api-tests",
