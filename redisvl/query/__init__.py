@@ -1,4 +1,9 @@
-from redisvl.query.aggregate import AggregationQuery, HybridQuery, MultiVectorQuery
+from redisvl.query.aggregate import (
+    AggregationQuery,
+    HybridQuery,
+    MultiVectorQuery,
+    Vector,
+)
 from redisvl.query.query import (
     BaseQuery,
     BaseVectorQuery,
@@ -22,4 +27,5 @@ __all__ = [
     "AggregationQuery",
     "HybridQuery",
     "MultiVectorQuery",
+    "Vector",
 ]

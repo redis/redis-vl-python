@@ -1,7 +1,7 @@
 import pytest
 
 from redisvl.index import SearchIndex
-from redisvl.query import HybridQuery, MultiVectorQuery
+from redisvl.query import HybridQuery, MultiVectorQuery, Vector
 from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
@@ -71,7 +71,6 @@ def index(multi_vector_data, redis_url, worker_id):
             "audio_embedding": array_to_buffer(item["audio_embedding"], "float64"),
         }
 
-    ### TODO get sample data that has two vector fields
     index.load(multi_vector_data, preprocess=hash_preprocess)
 
     # run the test
@@ -321,13 +320,16 @@ def test_hybrid_query_with_text_filter(index):
 def test_multivector_query(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
-    vectors = [[0.1, 0.1, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
+    vector_vals = [[0.1, 0.1, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
     vector_fields = ["user_embedding", "image_embedding"]
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
 
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
     )
 
@@ -351,7 +353,6 @@ def test_multivector_query(index):
 
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         num_results=3,
     )
 
@@ -368,14 +369,17 @@ def test_multivector_query_with_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
     text_field = "description"
-    vectors = [[0.1, 0.1, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
+    vector_vals = [[0.1, 0.1, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
     vector_fields = ["user_embedding", "image_embedding"]
     filter_expression = Text(text_field) == ("medical")
+
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
 
     # make sure we can still apply filters to the same text field we are querying
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         filter_expression=filter_expression,
         return_fields=["job", "description"],
     )
@@ -390,7 +394,6 @@ def test_multivector_query_with_filter(index):
     )
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         filter_expression=filter_expression,
         return_fields=["description"],
     )
@@ -404,7 +407,6 @@ def test_multivector_query_with_filter(index):
     filter_expression = (Num("age") > 30) & ((Num("age") < 30))
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         filter_expression=filter_expression,
         return_fields=["description"],
     )
@@ -416,14 +418,17 @@ def test_multivector_query_with_filter(index):
 def test_multivector_query_with_geo_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
-    vectors = [[0.2, 0.4, 0.1], [0.1, 0.8, 0.3, -0.2, 0.3]]
+    vector_vals = [[0.2, 0.4, 0.1], [0.1, 0.8, 0.3, -0.2, 0.3]]
     vector_fields = ["user_embedding", "image_embedding"]
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
     filter_expression = Geo("location") == GeoRadius(-122.4194, 37.7749, 1000, "m")
 
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         filter_expression=filter_expression,
         return_fields=return_fields,
     )
@@ -435,11 +440,9 @@ def test_multivector_query_with_geo_filter(index):
 
 
 def test_multivector_query_weights(index):
-    skip_if_redis_version_below(
-        index.client, "7.2.0"
-    )  ## TODO figure out min version for 'case()'
+    skip_if_redis_version_below(index.client, "7.2.0")
 
-    vectors = [[0.1, 0.2, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
+    vector_vals = [[0.1, 0.2, 0.5], [0.3, 0.4, 0.7, 0.2, -0.3]]
     vector_fields = ["user_embedding", "image_embedding"]
     return_fields = [
         "distance_0",
@@ -450,20 +453,25 @@ def test_multivector_query_weights(index):
         "image_embedding",
     ]
 
+    vectors = []
+    for vector, field in zip(vector_vals, vector_fields):
+        vectors.append(Vector(vector=vector, field_name=field))
+
     # changing the weights does indeed change the result order
     multi_query_1 = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        weights=[0.2, 0.9],
     )
     results_1 = index.query(multi_query_1)
 
+    weights = [0.2, 0.9]
+    vectors = []
+    for vector, field, weight in zip(vector_vals, vector_fields, weights):
+        vectors.append(Vector(vector=vector, field_name=field, weight=weight))
+
     multi_query_2 = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        weights=[0.5, 0.1],
     )
     results_2 = index.query(multi_query_2)
 
@@ -477,11 +485,13 @@ def test_multivector_query_weights(index):
 
     # weights can be negative, 0.0, or greater than 1.0
     weights = [-5.2, 0.0]
+    vectors = []
+    for vector, field, weight in zip(vector_vals, vector_fields, weights):
+        vectors.append(Vector(vector=vector, field_name=field, weight=weight))
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        weights=weights,
     )
 
     results = index.query(multi_query)
@@ -494,11 +504,13 @@ def test_multivector_query_weights(index):
 
     # verify we're doing the combined score math correctly
     weights = [-1.322, 0.851]
+    vectors = []
+    for vector, field, weight in zip(vector_vals, vector_fields, weights):
+        vectors.append(Vector(vector=vector, field_name=field, weight=weight))
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        weights=weights,
     )
 
     results = index.query(multi_query)
@@ -509,29 +521,13 @@ def test_multivector_query_weights(index):
             float(r["combined_score"]) - score <= 0.0001
         )  # allow for small floating point error
 
-    # raise error if wrong number of weights are passed
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=vectors,
-            vector_field_names=vector_fields,
-            return_fields=return_fields,
-            weights=[],
-        )
-
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=vectors,
-            vector_field_names=vector_fields,
-            return_fields=return_fields,
-            weights=[1.2, 0.23, 0.52],
-        )
-
 
 def test_multivector_query_datatypes(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
-    vectors = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
+    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
     vector_fields = ["user_embedding", "audio_embedding"]
+    dtypes = ["float32", "float64"]
     return_fields = [
         "distance_0",
         "distance_1",
@@ -541,12 +537,13 @@ def test_multivector_query_datatypes(index):
         "audio_embedding",
     ]
 
-    # changing the weights does indeed change the result order
+    vectors = []
+    for vector, field, dtype in zip(vector_vals, vector_fields, dtypes):
+        vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "float64"],
     )
     results = index.query(multi_query)
 
@@ -555,12 +552,17 @@ def test_multivector_query_datatypes(index):
 
     # verify we're doing the combined score math correctly
     weights = [-1.322, 0.851]
+    vectors = []
+    for vector, field, weight, dtype in zip(
+        vector_vals, vector_fields, weights, dtypes
+    ):
+        vectors.append(
+            Vector(vector=vector, field_name=field, weight=weight, dtype=dtype)
+        )
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "float64"],
-        weights=weights,
     )
 
     results = index.query(multi_query)
@@ -570,15 +572,6 @@ def test_multivector_query_datatypes(index):
         assert (
             float(r["combined_score"]) - score <= 0.0001
         )  # allow for small floating point error
-
-    # raise error if wrong number of datatypes are passed
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=vectors,
-            vector_field_names=vector_fields,
-            return_fields=return_fields,
-            dtypes=["float32", "float32", "float64"],
-        )
 
 
 def test_multivector_query_mixed_index(index):
@@ -602,8 +595,9 @@ def test_multivector_query_mixed_index(index):
     except:
         pytest.skip("Required Redis modules not available or version too low")
 
-    vectors = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
+    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
     vector_fields = ["user_embedding", "audio_embedding"]
+    dtypes = ["float32", "float64"]
     return_fields = [
         "distance_0",
         "distance_1",
@@ -613,12 +607,13 @@ def test_multivector_query_mixed_index(index):
         "audio_embedding",
     ]
 
-    # changing the weights does indeed change the result order
+    vectors = []
+    for vector, field, dtype in zip(vector_vals, vector_fields, dtypes):
+        vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "float64"],
     )
     results = index.query(multi_query)
 
@@ -627,12 +622,17 @@ def test_multivector_query_mixed_index(index):
 
     # verify we're doing the combined score math correctly
     weights = [-1.322, 0.851]
+    vectors = []
+    for vector, field, dtype, weight in zip(
+        vector_vals, vector_fields, dtypes, weights
+    ):
+        vectors.append(
+            Vector(vector=vector, field_name=field, dtype=dtype, weight=weight)
+        )
+
     multi_query = MultiVectorQuery(
         vectors=vectors,
-        vector_field_names=vector_fields,
         return_fields=return_fields,
-        dtypes=["float32", "float64"],
-        weights=weights,
     )
 
     results = index.query(multi_query)

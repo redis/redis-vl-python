@@ -4,7 +4,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index.index import process_results
-from redisvl.query.aggregate import HybridQuery, MultiVectorQuery
+from redisvl.query.aggregate import HybridQuery, MultiVectorQuery, Vector
 from redisvl.query.filter import Tag
 
 # Sample data for testing
@@ -197,130 +197,120 @@ def test_hybrid_query_with_string_filter():
 
 
 def test_multi_vector_query():
-    # test we require vectors and field names
+    # test we require Vector objects
     with pytest.raises(TypeError):
         _ = MultiVectorQuery()
 
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(vectors=[sample_vector], vector_field_names=[])
+    with pytest.raises(TypeError):
+        _ = MultiVectorQuery(vector=[sample_vector])
 
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(vectors=[], vector_field_names=["field_1"])
+    with pytest.raises(TypeError):
+        _ = MultiVectorQuery(vectors=[[0.1, 0.1, 0.1], "field_1"])
 
     # test we can initialize with a single vector and single field name
     multivector_query = MultiVectorQuery(
-        vectors=[sample_vector], vector_field_names=["field_1"]
+        Vector(vector=sample_vector, field_name="field_1")
     )
 
     # check default properties
-    assert multivector_query._vectors == [sample_vector]
-    assert multivector_query._vector_field_names == ["field_1"]
+    assert multivector_query._vectors == [
+        Vector(vector=sample_vector, field_name="field_1")
+    ]
+    assert multivector_query._vectors[0].field_name == "field_1"
+    assert multivector_query._vectors[0].weight == 1.0
+    assert multivector_query._vectors[0].dtype == "float32"
     assert multivector_query._filter_expression == None
-    assert multivector_query._weights == [1.0]
     assert multivector_query._num_results == 10
     assert multivector_query._loadfields == []
     assert multivector_query._dialect == 2
 
-    # test we can initialize with mutliple vectors and field names
-    multivector_query = MultiVectorQuery(
-        vectors=[sample_vector, sample_vector_2, sample_vector_3, sample_vector_4],
-        vector_field_names=["field_1", "field_2", "field_3", "field_4"],
-        weights=[0.2, 0.5, 0.6, 0.1],
-        dtypes=["float32", "float32", "float32", "float32"],
-    )
+    # test we can initialize with mutliple Vectors
+    vectors = [sample_vector, sample_vector_2, sample_vector_3, sample_vector_4]
+    vector_field_names = ["field_1", "field_2", "field_3", "field_4"]
+    weights = [0.2, 0.5, 0.6, 0.1]
+    dtypes = ["float32", "float32", "float32", "float32"]
+
+    args = []
+    for vec, field, weight, dtype in zip(vectors, vector_field_names, weights, dtypes):
+        args.append(Vector(vector=vec, field_name=field, weight=weight, dtype=dtype))
+
+    multivector_query = MultiVectorQuery(vectors=args)
 
     assert len(multivector_query._vectors) == 4
-    assert len(multivector_query._vector_field_names) == 4
-    assert len(multivector_query._weights) == 4
-    assert len(multivector_query._dtypes) == 4
+    assert multivector_query._vectors == args
 
     # test defaults can be overwritten
     filter_expression = Tag("user group") == ["group A", "group C"]
+
     multivector_query = MultiVectorQuery(
-        vectors=[sample_vector, sample_vector_2, sample_vector_3, sample_vector_4],
-        vector_field_names=["field_1", "field_2", "field_3", "field_4"],
+        vectors=args,
         filter_expression=filter_expression,
-        weights=[0.2, 0.5, 0.6, 0.1],
-        dtypes=["float32", "float32", "float64", "bfloat16"],
         num_results=5,
         return_fields=["field_1", "user name", "address"],
         dialect=4,
     )
 
-    assert multivector_query._vectors == [
-        sample_vector,
-        sample_vector_2,
-        sample_vector_3,
-        sample_vector_4,
-    ]
-    assert multivector_query._vector_field_names == [
-        "field_1",
-        "field_2",
-        "field_3",
-        "field_4",
-    ]
-    assert multivector_query._weights == [0.2, 0.5, 0.6, 0.1]
     assert multivector_query._filter_expression == filter_expression
     assert multivector_query._num_results == 5
     assert multivector_query._loadfields == ["field_1", "user name", "address"]
     assert multivector_query._dialect == 4
 
 
-def test_multi_vector_query_broadcasting():
+def test_multi_vector_query_string():
     # if a single weight is passed it is applied to all similarity scores
     field_1 = "text embedding"
     field_2 = "image embedding"
-    weight = 0.2
+    weight_1 = 0.2
+    weight_2 = 0.7
     multi_vector_query = MultiVectorQuery(
-        vectors=[sample_vector_2, sample_vector_3],
-        vector_field_names=[field_1, field_2],
-        weights=[weight],
+        vectors=[
+            Vector(vector=sample_vector_2, field_name=field_1, weight=weight_1),
+            Vector(vector=sample_vector_3, field_name=field_2, weight=weight_2),
+        ]
     )
 
     assert (
         str(multi_vector_query)
-        == f"@{field_1}:[VECTOR_RANGE 2.0 $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE 2.0 $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight} + @score_1 * {weight} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
-    )
-
-    # if a single dtype is passed it is applied to all vectors
-    multi_vector_query = MultiVectorQuery(
-        vectors=[sample_vector_2, sample_vector_3],
-        vector_field_names=["text embedding", "image embedding"],
-        dtypes=["float16"],
-    )
-
-    assert multi_vector_query._dtypes == ["float16", "float16"]
-    assert (
-        str(multi_vector_query)
-        == f"@{field_1}:[VECTOR_RANGE 2.0 $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE 2.0 $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * 1.0 + @score_1 * 1.0 AS combined_score SORTBY 2 @combined_score DESC MAX 10"
+        == f"@{field_1}:[VECTOR_RANGE 2.0 $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE 2.0 $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
     )
 
 
-def test_multi_vector_query_errors():
-    # test an error is raised if the number of vectors and number of fields don't match
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=[sample_vector, sample_vector_2, sample_vector_3],
-            vector_field_names=["text embedding", "image embedding"],
-        )
-
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=[sample_vector, sample_vector_2],
-            vector_field_names=["text embedding", "image embedding", "features"],
-        )
-
-    # test an error is raised if the number of weights is incorrect
-    with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=[sample_vector, sample_vector_2],
-            vector_field_names=["text embedding", "image embedding"],
-            weights=[0.1, 0.2, 0.3],
-        )
-
+def test_vector_object_validation():
     # test an error is raised if none of the field names are present
     with pytest.raises(ValueError):
-        _ = MultiVectorQuery(
-            vectors=[],
-            vector_field_names=[],
+        _ = Vector()
+
+    with pytest.raises(ValueError):
+        _ = Vector(
+            vector=[],
+            field_name=[],
         )
+
+    # test an error is raised if the type of vector or fields are incorrect
+    # no list of list of floats
+    with pytest.raises(ValueError):
+        _ = Vector(
+            vector=[sample_vector, sample_vector_2, sample_vector_3],
+            field_name="text embedding",
+        )
+
+    # no list as field name
+    with pytest.raises(ValueError):
+        _ = Vector(
+            vector=sample_vector,
+            field_name=["text embedding", "image embedding", "features"],
+        )
+
+    # dtype must be one of the supported values
+    with pytest.raises(ValueError):
+        _ = Vector(vector=sample_vector, field_name="text embedding", dtype="float")
+
+    with pytest.raises(ValueError):
+        _ = Vector(vector=sample_vector, field_name="text embedding", dtype="normal")
+
+    with pytest.raises(ValueError):
+        _ = Vector(vector=sample_vector, field_name="text embedding", dtype="")
+
+    for dtype in ["bfloat16", "float16", "float32", "float64", "int8", "uint8"]:
+        vec = Vector(vector=sample_vector, field_name="text embedding", dtype=dtype)
+        assert isinstance(vec, Vector)

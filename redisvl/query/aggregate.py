@@ -1,14 +1,39 @@
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from pydantic import BaseModel, field_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
+from redisvl.schema.fields import VectorDataType
 from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import lazy_import
 
 nltk = lazy_import("nltk")
 nltk_stopwords = lazy_import("nltk.corpus.stopwords")
+
+
+class Vector(BaseModel):
+    """
+    Simple object containing the necessary arguments to perform a multi vector query.
+    """
+
+    vector: Union[List[float], bytes]
+    field_name: str
+    dtype: str = "float32"
+    weight: float = 1.0
+
+    @field_validator("dtype")
+    @classmethod
+    def validate_dtype(cls, dtype: str) -> str:
+        try:
+            VectorDataType(dtype.upper())
+        except ValueError:
+            raise ValueError(
+                f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
+            )
+
+        return dtype
 
 
 class AggregationQuery(AggregateRequest):
@@ -241,17 +266,33 @@ class MultiVectorQuery(AggregationQuery):
 
     .. code-block:: python
 
-        from redisvl.query import MultiVectorQuery
+        from redisvl.query import MultiVectorQuery, Vector
         from redisvl.index import SearchIndex
 
         index = SearchIndex.from_yaml("path/to/index.yaml")
 
+        vector_1 = Vector(
+            vector=[0.1, 0.2, 0.3],
+            field_name="text_vector",
+            dtype="float32",
+            weight=0.7,
+        )
+        vector_2 = Vector(
+            vector=[0.5, 0.5],
+            field_name="image_vector",
+            dtype="bfloat16",
+            weight=0.2,
+        )
+        vector_3 = Vector(
+            vector=[0.1, 0.2, 0.3],
+            field_name="text_vector",
+            dtype="float64",
+            weight=0.5,
+        )
+
         query = MultiVectorQuery(
-            vectors=[[0.1, 0.2, 0.3], [0.5, 0.5], [0.1, 0.1, 0.1, 0.1]],
-            vector_field_names=["text_vector", "image_vector", "feature_vector"]
+            vectors=[vector_1, vector_2, vector_3],
             filter_expression=None,
-            weights=[0.7, 0.2, 0.5],
-            dtypes=["float32", "bfloat16", "float64"],
             num_results=10,
             return_fields=["field1", "field2"],
             dialect=2,
@@ -260,14 +301,13 @@ class MultiVectorQuery(AggregationQuery):
         results = index.query(query)
     """
 
+    _vectors: List[Vector]
+
     def __init__(
         self,
-        vectors: Union[bytes, List[bytes], List[float], List[List[float]]],
-        vector_field_names: Union[str, List[str]],
-        weights: List[float] = [1.0],
+        vectors: Union[Vector, List[Vector]],
         return_fields: Optional[List[str]] = None,
         filter_expression: Optional[Union[str, FilterExpression]] = None,
-        dtypes: List[str] = ["float32"],
         num_results: int = 10,
         return_score: bool = False,
         dialect: int = 2,
@@ -276,87 +316,39 @@ class MultiVectorQuery(AggregationQuery):
         Instantiates a MultiVectorQuery object.
 
         Args:
-            vectors (Union[bytes, List[bytes], List[float], List[List[float]]): The vectors to perform vector similarity search.
-            vector_field_names (Union[str, List[str]]): The vector field names to search in.
-            weights (List[float]): The weights of the vector similarity.
-                Documents will be scored as:
-                score = (w1) * score1 + (w2) * score2 + (w3) * score3 + ...
-                Defaults to [1.0], which corresponds to equal weighting
+            vectors (Union[Vector, List[Vector]]): The Vectors to perform vector similarity search.
             return_fields (Optional[List[str]], optional): The fields to return. Defaults to None.
             filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to use.
                 Defaults to None.
-            dtypes (List[str]): The data types of the vectors. Defaults to ["float32"] for all vectors.
             num_results (int, optional): The number of results to return. Defaults to 10.
             return_score (bool): Whether to return the combined vector similarity score.
                 Defaults to False.
             dialect (int, optional): The Redis dialect version. Defaults to 2.
-
-        Raises:
-            ValueError: The number of vectors, vector field names, and weights do not agree.
         """
 
         self._filter_expression = filter_expression
-        self._dtypes = dtypes
         self._num_results = num_results
 
-        if any([len(x) == 0 for x in [vectors, vector_field_names, weights, dtypes]]):
-            raise ValueError(
-                f"""The number of vectors and vector field names must be equal.
-                    If weights or dtypes are specified their number must match the number of vectors and vector field names also.
-                    Length of vectors list: {len(vectors) = }
-                    Length of vector_field_names list: {len(vector_field_names) = }
-                    Length of weights list: {len(weights) = }
-                    length of dtypes list: {len(dtypes) = }
-                    """
-            )
-
-        if isinstance(vectors, bytes) or isinstance(vectors[0], float):
+        if isinstance(vectors, Vector):
             self._vectors = [vectors]
         else:
             self._vectors = vectors  # type: ignore
 
-        if isinstance(vector_field_names, str):
-            self._vector_field_names = [vector_field_names]
-        else:
-            self._vector_field_names = vector_field_names
-
-        if len(weights) == 1:
-            self._weights = weights * len(vectors)
-        else:
-            self._weights = weights
-
-        if len(dtypes) == 1:
-            self._dtypes = dtypes * len(vectors)
-        else:
-            self._dtypes = dtypes
-
-        num_vectors = len(self._vectors)
-        if any(
-            [
-                len(x) != num_vectors  # type: ignore
-                for x in [self._vector_field_names, self._weights, self._dtypes]
-            ]
-        ):
-            raise ValueError(
-                f"""The number of vectors and vector field names must be equal.
-                    If weights or dtypes are specified their number must match the number of vectors and vector field names also.
-                    Length of vectors list: {len(self._vectors) = }
-                    Length of vector_field_names list: {len(self._vector_field_names) = }
-                    Length of weights list: {len(self._weights) = }
-                    Length of dtypes list: {len(self._dtypes) = }
-                    """
+        if not all([isinstance(v, Vector) for v in self._vectors]):
+            raise TypeError(
+                "vector arugment must be a Vector object or list of Vector objects."
             )
 
         query_string = self._build_query_string()
         super().__init__(query_string)
 
         # calculate the respective vector similarities
-        for i in range(len(vectors)):
+        for i in range(len(self._vectors)):
             self.apply(**{f"score_{i}": f"(2 - @distance_{i})/2"})
 
         # construct the scoring string based on the vector similarity scores and weights
         combined_scores = []
-        for i, w in enumerate(self._weights):
+        for i, w in enumerate([v.weight for v in self._vectors]):
             combined_scores.append(f"@score_{i} * {w}")
         combined_score_string = " + ".join(combined_scores)
 
@@ -375,7 +367,9 @@ class MultiVectorQuery(AggregationQuery):
             Dict[str, Any]: The parameters for the aggregation.
         """
         params = {}
-        for i, (vector, dtype) in enumerate(zip(self._vectors, self._dtypes)):
+        for i, (vector, dtype) in enumerate(
+            [(v.vector, v.dtype) for v in self._vectors]
+        ):
             if isinstance(vector, list):
                 vector = array_to_buffer(vector, dtype=dtype)  # type: ignore
             params[f"vector_{i}"] = vector
@@ -387,7 +381,7 @@ class MultiVectorQuery(AggregationQuery):
         # base KNN query
         range_queries = []
         for i, (vector, field) in enumerate(
-            zip(self._vectors, self._vector_field_names)
+            [(v.vector, v.field_name) for v in self._vectors]
         ):
             range_queries.append(
                 f"@{field}:[VECTOR_RANGE 2.0 $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
