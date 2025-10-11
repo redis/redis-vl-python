@@ -318,6 +318,57 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
             # Default to float32 if missing
             normalized["datatype"] = "float32"
 
+        # Handle SVS-VAMANA specific parameters
+        # Compression - Redis uses different internal names, so we need to map them
+        if "compression" in vector_attrs:
+            compression_value = vector_attrs["compression"]
+            # Map Redis internal names to our enum values
+            compression_mapping = {
+                "GlobalSQ8": "LVQ4x4",  # Default mapping
+                "GlobalSQ4": "LVQ4",
+                # Add more mappings as we discover them
+            }
+            # Try to map, otherwise use the value as-is
+            normalized["compression"] = compression_mapping.get(
+                compression_value, compression_value
+            )
+
+        # Dimensionality reduction (reduce parameter)
+        if "reduce" in vector_attrs:
+            try:
+                normalized["reduce"] = int(vector_attrs["reduce"])
+            except (ValueError, TypeError):
+                pass
+
+        # Graph parameters
+        if "graph_max_degree" in vector_attrs:
+            try:
+                normalized["graph_max_degree"] = int(vector_attrs["graph_max_degree"])
+            except (ValueError, TypeError):
+                pass
+
+        if "construction_window_size" in vector_attrs:
+            try:
+                normalized["construction_window_size"] = int(
+                    vector_attrs["construction_window_size"]
+                )
+            except (ValueError, TypeError):
+                pass
+
+        if "search_window_size" in vector_attrs:
+            try:
+                normalized["search_window_size"] = int(
+                    vector_attrs["search_window_size"]
+                )
+            except (ValueError, TypeError):
+                pass
+
+        if "epsilon" in vector_attrs:
+            try:
+                normalized["epsilon"] = float(vector_attrs["epsilon"])
+            except (ValueError, TypeError):
+                pass
+
         # Validate that we have required dims
         if "dims" not in normalized:
             # Could not parse dims - this field is not properly supported
