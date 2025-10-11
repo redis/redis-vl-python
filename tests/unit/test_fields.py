@@ -820,3 +820,161 @@ async def test_check_svs_support_async_passes():
         with patch.object(index, "_get_client", return_value=mock_client):
             # Should not raise
             await index._check_svs_support_async()
+
+
+# Phase C: Warning Tests
+
+
+def test_leanvec_without_reduce_warning(caplog):
+    """Test warning when LeanVec compression is used without reduce parameter."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 1536,
+                "algorithm": "svs-vamana",
+                "datatype": "float16",
+                "distance_metric": "cosine",
+                "compression": "LeanVec4x8",
+                # No reduce parameter
+            },
+        )
+
+    # Check warning was logged
+    assert len(caplog.records) == 1
+    assert "LeanVec compression selected without 'reduce'" in caplog.records[0].message
+    assert "Consider setting reduce=768" in caplog.records[0].message
+
+
+def test_leanvec_with_reduce_no_warning(caplog):
+    """Test no warning when LeanVec compression is used with reduce parameter."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 1536,
+                "algorithm": "svs-vamana",
+                "datatype": "float16",
+                "distance_metric": "cosine",
+                "compression": "LeanVec4x8",
+                "reduce": 768,
+            },
+        )
+
+    # No warnings should be logged
+    assert len(caplog.records) == 0
+
+
+def test_low_graph_max_degree_warning(caplog):
+    """Test warning when graph_max_degree is too low."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "graph_max_degree": 16,  # Too low
+            },
+        )
+
+    # Check warning was logged
+    assert len(caplog.records) == 1
+    assert "graph_max_degree=16 is low" in caplog.records[0].message
+    assert "Consider values between 32-64" in caplog.records[0].message
+
+
+def test_normal_graph_max_degree_no_warning(caplog):
+    """Test no warning when graph_max_degree is in normal range."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "graph_max_degree": 40,  # Normal value
+            },
+        )
+
+    # No warnings should be logged
+    assert len(caplog.records) == 0
+
+
+def test_high_search_window_size_warning(caplog):
+    """Test warning when search_window_size is too high."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "search_window_size": 150,  # Too high
+            },
+        )
+
+    # Check warning was logged
+    assert len(caplog.records) == 1
+    assert "search_window_size=150 is high" in caplog.records[0].message
+    assert "This may impact query latency" in caplog.records[0].message
+
+
+def test_normal_search_window_size_no_warning(caplog):
+    """Test no warning when search_window_size is in normal range."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "search_window_size": 30,  # Normal value
+            },
+        )
+
+    # No warnings should be logged
+    assert len(caplog.records) == 0
+
+
+def test_multiple_warnings(caplog):
+    """Test multiple warnings are logged when multiple issues exist."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 1536,
+                "algorithm": "svs-vamana",
+                "datatype": "float16",
+                "distance_metric": "cosine",
+                "compression": "LeanVec4x8",
+                # No reduce parameter - warning 1
+                "graph_max_degree": 20,  # Too low - warning 2
+                "search_window_size": 120,  # Too high - warning 3
+            },
+        )
+
+    # Check all three warnings were logged
+    assert len(caplog.records) == 3
+    messages = [record.message for record in caplog.records]
+    assert any("LeanVec compression" in msg for msg in messages)
+    assert any("graph_max_degree=20" in msg for msg in messages)
+    assert any("search_window_size=120" in msg for msg in messages)
