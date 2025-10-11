@@ -16,7 +16,10 @@ from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import norm_cosine_distance, norm_l2_distance
+
+logger = get_logger(__name__)
 
 VECTOR_NORM_MAP = {
     "COSINE": norm_cosine_distance,
@@ -241,12 +244,28 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
                     f"Either use LeanVec4x8/LeanVec8x8 or remove the reduce parameter."
                 )
 
-        # Phase C: Add warning for LeanVec without reduce
-        # if self.compression and self.compression.value.startswith("LeanVec") and not self.reduce:
-        #     logger.warning(
-        #         f"LeanVec compression selected without 'reduce'. "
-        #         f"Consider setting reduce={self.dims//2} for better performance"
-        #     )
+        # LeanVec without reduce is not recommended
+        if (
+            self.compression
+            and self.compression.value.startswith("LeanVec")
+            and not self.reduce
+        ):
+            logger.warning(
+                f"LeanVec compression selected without 'reduce'. "
+                f"Consider setting reduce={self.dims//2} for better performance"
+            )
+
+        if self.graph_max_degree and self.graph_max_degree < 32:
+            logger.warning(
+                f"graph_max_degree={self.graph_max_degree} is low. "
+                f"Consider values between 32-64 for better recall."
+            )
+
+        if self.search_window_size and self.search_window_size > 100:
+            logger.warning(
+                f"search_window_size={self.search_window_size} is high. "
+                f"This may impact query latency. Consider values between 20-50."
+            )
 
         return self
 
