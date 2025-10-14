@@ -224,7 +224,7 @@ def test_multi_vector_query():
     assert multivector_query._loadfields == []
     assert multivector_query._dialect == 2
 
-    # test we can initialize with mutliple Vectors
+    # test we can initialize with multiple Vectors
     vectors = [sample_vector, sample_vector_2, sample_vector_3, sample_vector_4]
     vector_field_names = ["field_1", "field_2", "field_3", "field_4"]
     weights = [0.2, 0.5, 0.6, 0.1]
