@@ -336,7 +336,7 @@ class MultiVectorQuery(AggregationQuery):
 
         if not all([isinstance(v, Vector) for v in self._vectors]):
             raise TypeError(
-                "vector arugment must be a Vector object or list of Vector objects."
+                "vector argument must be a Vector object or list of Vector objects."
             )
 
         query_string = self._build_query_string()
