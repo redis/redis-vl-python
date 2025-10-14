@@ -309,7 +309,6 @@ class MultiVectorQuery(AggregationQuery):
         return_fields: Optional[List[str]] = None,
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         num_results: int = 10,
-        return_score: bool = False,
         dialect: int = 2,
     ):
         """
@@ -321,8 +320,6 @@ class MultiVectorQuery(AggregationQuery):
             filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to use.
                 Defaults to None.
             num_results (int, optional): The number of results to return. Defaults to 10.
-            return_score (bool): Whether to return the combined vector similarity score.
-                Defaults to False.
             dialect (int, optional): The Redis dialect version. Defaults to 2.
         """
 
