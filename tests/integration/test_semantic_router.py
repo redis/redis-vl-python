@@ -11,7 +11,7 @@ from redisvl.extensions.router.schema import (
     Route,
     RoutingConfig,
 )
-from redisvl.redis.connection import compare_versions
+from redisvl.redis.connection import is_version_gte
 from tests.conftest import skip_if_no_redisearch, skip_if_redis_version_below
 
 
@@ -159,7 +159,7 @@ def test_add_route(semantic_router):
     assert "political speech" in route.references
 
     redis_version = semantic_router._index.client.info()["redis_version"]
-    if compare_versions(redis_version, "7.0.0"):
+    if is_version_gte(redis_version, "7.0.0"):
         match = semantic_router("political speech")
         print(match, flush=True)
         assert match is not None

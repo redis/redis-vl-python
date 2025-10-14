@@ -10,7 +10,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from redisvl.exceptions import RedisModuleVersionError
-from redisvl.redis.connection import check_vector_capabilities
+from redisvl.redis.connection import supports_svs
+from redisvl.redis.constants import SVS_MIN_REDIS_VERSION
 from redisvl.schema import IndexSchema
 from redisvl.utils.compression import CompressionAdvisor
 from redisvl.utils.log import get_logger
@@ -101,11 +102,8 @@ class IndexMigrator:
         from redisvl.query.filter import FilterExpression
 
         # Check SVS-VAMANA support
-        caps = check_vector_capabilities(old_index._redis_client)
-        if not caps.svs_vamana_supported:
-            raise RedisModuleVersionError.for_svs_vamana(
-                caps.redis_version, caps.search_version
-            )
+        if not supports_svs(old_index._redis_client):
+            raise RedisModuleVersionError.for_svs_vamana(SVS_MIN_REDIS_VERSION)
 
         # Find vector fields in the old schema
         vector_fields = [
@@ -294,15 +292,12 @@ class IndexMigrator:
         from redisvl.index import AsyncSearchIndex
         from redisvl.query import FilterQuery
         from redisvl.query.filter import FilterExpression
-        from redisvl.redis.connection import check_vector_capabilities_async
+        from redisvl.redis.connection import supports_svs_async
 
         # Check SVS-VAMANA support
         client = await old_index._get_client()
-        caps = await check_vector_capabilities_async(client)
-        if not caps.svs_vamana_supported:
-            raise RedisModuleVersionError.for_svs_vamana(
-                caps.redis_version, caps.search_version
-            )
+        if not await supports_svs_async(client):
+            raise RedisModuleVersionError.for_svs_vamana(SVS_MIN_REDIS_VERSION)
 
         # Find vector fields
         vector_fields = [
