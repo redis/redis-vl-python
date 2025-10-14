@@ -83,9 +83,9 @@ from redisvl.query import (
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
-    check_vector_capabilities,
-    check_vector_capabilities_async,
     convert_index_info_to_schema,
+    supports_svs,
+    supports_svs_async,
 )
 from redisvl.redis.constants import SVS_MIN_REDIS_VERSION
 from redisvl.schema import IndexSchema, StorageType
@@ -552,10 +552,8 @@ class SearchIndex(BaseSearchIndex):
         Raises:
             RedisModuleVersionError: If SVS-VAMANA requirements are not met.
         """
-        caps = check_vector_capabilities(self._redis_client)
-
-        if not caps.svs_vamana_supported:
-            raise RedisModuleVersionError.for_svs_vamana(caps, SVS_MIN_REDIS_VERSION)
+        if not supports_svs(self._redis_client):
+            raise RedisModuleVersionError.for_svs_vamana(SVS_MIN_REDIS_VERSION)
 
     def create(self, overwrite: bool = False, drop: bool = False) -> None:
         """Create an index in Redis with the current schema and properties.
@@ -1335,10 +1333,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             RedisModuleVersionError: If SVS-VAMANA requirements are not met.
         """
         client = await self._get_client()
-        caps = await check_vector_capabilities_async(client)
-
-        if not caps.svs_vamana_supported:
-            raise RedisModuleVersionError.for_svs_vamana(caps, SVS_MIN_REDIS_VERSION)
+        if not await supports_svs_async(client):
+            raise RedisModuleVersionError.for_svs_vamana(SVS_MIN_REDIS_VERSION)
 
     async def create(self, overwrite: bool = False, drop: bool = False) -> None:
         """Asynchronously create an index in Redis with the current schema

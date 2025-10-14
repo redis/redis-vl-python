@@ -25,7 +25,7 @@ import pytest
 from redisvl.exceptions import RedisModuleVersionError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
-from redisvl.redis.connection import check_vector_capabilities
+from redisvl.redis.connection import supports_svs
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 from redisvl.utils import CompressionAdvisor
@@ -138,13 +138,10 @@ class TestSVSCapabilityDetection:
 
     def test_check_svs_capabilities(self, client):
         """Test that SVS-VAMANA is supported on the test Redis instance."""
-        caps = check_vector_capabilities(client)
-
         # These tests require Redis 8.2+ with RediSearch 2.8.10+
-        assert caps.svs_vamana_supported is True, (
-            f"SVS-VAMANA not supported. "
-            f"Redis: {caps.redis_version}, "
-            f"RediSearch: {caps.search_version}"
+        assert supports_svs(client) is True, (
+            "SVS-VAMANA not supported. "
+            "Requires Redis >= 8.2.0 with RediSearch >= 2.8.10"
         )
 
 

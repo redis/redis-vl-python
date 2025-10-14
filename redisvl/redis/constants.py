@@ -12,6 +12,8 @@ SVS_REQUIRED_MODULES = [
 
 # Minimum Redis version for SVS-VAMANA
 SVS_MIN_REDIS_VERSION = "8.2.0"
+# Minimum search module version for SVS-VAMANA (2.8.10)
+SVS_MIN_SEARCH_VERSION = 20810
 
 # default tag separator
 REDIS_TAG_SEPARATOR = ","

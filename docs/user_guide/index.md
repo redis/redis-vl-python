@@ -23,3 +23,4 @@ User guides provide helpful resources for using RedisVL and its different compon
 08_semantic_router
 11_advanced_queries
 ```
+# TODO: Nitin Add the new user guide for SVS-VAMANA
