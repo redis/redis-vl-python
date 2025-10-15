@@ -261,23 +261,9 @@ def test_text_query():
     with pytest.raises(TypeError):
         text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
-    text_query = TextQuery(
-        text_string, text_field_name, stopwords=set(["the", "a", "of"])
-    )
-    assert text_query.stopwords == set(["the", "a", "of"])
-
-    text_query = TextQuery(text_string, text_field_name, stopwords="german")
-    assert text_query.stopwords != set([])
-
     # test that filter expression is set correctly
     text_query.set_filter(filter_expression)
     assert text_query.filter == filter_expression
-
-    with pytest.raises(ValueError):
-        text_query = TextQuery(text_string, text_field_name, stopwords="gibberish")
-
-    with pytest.raises(TypeError):
-        text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
 
 def test_text_query_with_string_filter():
