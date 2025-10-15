@@ -38,6 +38,7 @@ class TestRedisErrorHandling:
         # Create a mock schema
         schema = Mock(spec=IndexSchema)
         schema.redis_fields = ["test_field"]
+        schema.fields = {}  # Dict[str, BaseField] for compatibility
         schema.index = Mock()
         schema.index.name = "test_index"
         schema.index.prefix = "test:"
@@ -68,6 +69,7 @@ class TestRedisErrorHandling:
         # Create a mock schema
         schema = Mock(spec=IndexSchema)
         schema.redis_fields = ["test_field"]
+        schema.fields = {}  # Dict[str, BaseField] for compatibility
         schema.index = Mock()
         schema.index.name = "test_index"
         schema.index.prefix = "test:"

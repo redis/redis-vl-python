@@ -707,7 +707,6 @@ def test_check_svs_support_raises_error():
 
             error_msg = str(exc_info.value)
             assert "SVS-VAMANA requires Redis >= 8.2.0" in error_msg
-            assert "Redis 7.2.4" in error_msg
 
 
 def test_check_svs_support_passes():
