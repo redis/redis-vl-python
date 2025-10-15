@@ -88,3 +88,17 @@ CountQuery
    :inherited-members:
    :show-inheritance:
    :exclude-members: add_filter,get_args,highlight,return_field,summarize
+
+
+
+MultiVectorQuery
+==========
+
+.. currentmodule:: redisvl.query
+
+
+.. autoclass:: MultiVectorQuery
+   :members:
+   :inherited-members:
+   :show-inheritance:
+   :exclude-members: add_filter,get_args,highlight,return_field,summarize

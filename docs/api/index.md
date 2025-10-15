@@ -15,6 +15,7 @@ Reference documentation for the RedisVL API.
 
 schema
 searchindex
+vector
 query
 filter
 vectorizer

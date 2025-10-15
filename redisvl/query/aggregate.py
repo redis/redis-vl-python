@@ -1,14 +1,39 @@
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from pydantic import BaseModel, field_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
+from redisvl.schema.fields import VectorDataType
 from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import lazy_import
 
 nltk = lazy_import("nltk")
 nltk_stopwords = lazy_import("nltk.corpus.stopwords")
+
+
+class Vector(BaseModel):
+    """
+    Simple object containing the necessary arguments to perform a multi vector query.
+    """
+
+    vector: Union[List[float], bytes]
+    field_name: str
+    dtype: str = "float32"
+    weight: float = 1.0
+
+    @field_validator("dtype")
+    @classmethod
+    def validate_dtype(cls, dtype: str) -> str:
+        try:
+            VectorDataType(dtype.upper())
+        except ValueError:
+            raise ValueError(
+                f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
+            )
+
+        return dtype
 
 
 class AggregationQuery(AggregateRequest):
@@ -223,6 +248,152 @@ class HybridQuery(AggregationQuery):
             text += f" AND {filter_expression}"
 
         return f"{text})=>[{knn_query}]"
+
+    def __str__(self) -> str:
+        """Return the string representation of the query."""
+        return " ".join([str(x) for x in self.build_args()])
+
+
+class MultiVectorQuery(AggregationQuery):
+    """
+    MultiVectorQuery allows for search over multiple vector fields in a document simulateously.
+    The final score will be a weighted combination of the individual vector similarity scores
+    following the formula:
+
+    score = (w_1 * score_1 + w_2 * score_2 + w_3 * score_3 + ... )
+
+    Vectors may be of different size and datatype, but must be indexed using the 'cosine' distance_metric.
+
+    .. code-block:: python
+
+        from redisvl.query import MultiVectorQuery, Vector
+        from redisvl.index import SearchIndex
+
+        index = SearchIndex.from_yaml("path/to/index.yaml")
+
+        vector_1 = Vector(
+            vector=[0.1, 0.2, 0.3],
+            field_name="text_vector",
+            dtype="float32",
+            weight=0.7,
+        )
+        vector_2 = Vector(
+            vector=[0.5, 0.5],
+            field_name="image_vector",
+            dtype="bfloat16",
+            weight=0.2,
+        )
+        vector_3 = Vector(
+            vector=[0.1, 0.2, 0.3],
+            field_name="text_vector",
+            dtype="float64",
+            weight=0.5,
+        )
+
+        query = MultiVectorQuery(
+            vectors=[vector_1, vector_2, vector_3],
+            filter_expression=None,
+            num_results=10,
+            return_fields=["field1", "field2"],
+            dialect=2,
+        )
+
+        results = index.query(query)
+    """
+
+    _vectors: List[Vector]
+
+    def __init__(
+        self,
+        vectors: Union[Vector, List[Vector]],
+        return_fields: Optional[List[str]] = None,
+        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        num_results: int = 10,
+        dialect: int = 2,
+    ):
+        """
+        Instantiates a MultiVectorQuery object.
+
+        Args:
+            vectors (Union[Vector, List[Vector]]): The Vectors to perform vector similarity search.
+            return_fields (Optional[List[str]], optional): The fields to return. Defaults to None.
+            filter_expression (Optional[Union[str, FilterExpression]]): The filter expression to use.
+                Defaults to None.
+            num_results (int, optional): The number of results to return. Defaults to 10.
+            dialect (int, optional): The Redis dialect version. Defaults to 2.
+        """
+
+        self._filter_expression = filter_expression
+        self._num_results = num_results
+
+        if isinstance(vectors, Vector):
+            self._vectors = [vectors]
+        else:
+            self._vectors = vectors  # type: ignore
+
+        if not all([isinstance(v, Vector) for v in self._vectors]):
+            raise TypeError(
+                "vector argument must be a Vector object or list of Vector objects."
+            )
+
+        query_string = self._build_query_string()
+        super().__init__(query_string)
+
+        # calculate the respective vector similarities
+        for i in range(len(self._vectors)):
+            self.apply(**{f"score_{i}": f"(2 - @distance_{i})/2"})
+
+        # construct the scoring string based on the vector similarity scores and weights
+        combined_scores = []
+        for i, w in enumerate([v.weight for v in self._vectors]):
+            combined_scores.append(f"@score_{i} * {w}")
+        combined_score_string = " + ".join(combined_scores)
+
+        self.apply(combined_score=combined_score_string)
+
+        self.sort_by(Desc("@combined_score"), max=num_results)  # type: ignore
+        self.dialect(dialect)
+        if return_fields:
+            self.load(*return_fields)  # type: ignore[arg-type]
+
+    @property
+    def params(self) -> Dict[str, Any]:
+        """Return the parameters for the aggregation.
+
+        Returns:
+            Dict[str, Any]: The parameters for the aggregation.
+        """
+        params = {}
+        for i, (vector, dtype) in enumerate(
+            [(v.vector, v.dtype) for v in self._vectors]
+        ):
+            if isinstance(vector, list):
+                vector = array_to_buffer(vector, dtype=dtype)  # type: ignore
+            params[f"vector_{i}"] = vector
+        return params
+
+    def _build_query_string(self) -> str:
+        """Build the full query string for text search with optional filtering."""
+
+        # base KNN query
+        range_queries = []
+        for i, (vector, field) in enumerate(
+            [(v.vector, v.field_name) for v in self._vectors]
+        ):
+            range_queries.append(
+                f"@{field}:[VECTOR_RANGE 2.0 $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
+            )
+
+        range_query = " | ".join(range_queries)
+
+        filter_expression = self._filter_expression
+        if isinstance(self._filter_expression, FilterExpression):
+            filter_expression = str(self._filter_expression)
+
+        if filter_expression:
+            return f"({range_query}) AND ({filter_expression})"
+        else:
+            return f"{range_query}"
 
     def __str__(self) -> str:
         """Return the string representation of the query."""
