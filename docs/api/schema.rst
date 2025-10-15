@@ -96,7 +96,7 @@ Each field type supports specific attributes that customize its behavior. Below 
 
   - `flat`: Brute-force exact search. 100% recall, slower for large datasets. Best for <10K vectors.
   - `hnsw`: Graph-based approximate search. Fast with high recall (95-99%). Best for general use.
-  - `svs-vamana`: Compressed approximate search. Memory-efficient with compression. Best for large datasets on Intel hardware.
+  - `svs-vamana`: SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast approximate nearest neighbor search with optional compression support. This algorithm is optimized for Intel hardware and offers reduced memory usage through vector compression.
 
   .. note::
      For detailed algorithm comparison and selection guidance, see :ref:`vector-algorithm-comparison`.
@@ -169,7 +169,7 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
 
 **SVS-VAMANA Vector Field Specific Attributes**:
 
-SVS-VAMANA - High-performance search with optional compression. **Best for large datasets (>100K vectors) on Intel hardware with memory constraints.**
+SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast approximate nearest neighbor search with optional compression support. This algorithm is optimized for Intel hardware and offers reduced memory usage through vector compression. **Best for large datasets (>100K vectors) on Intel hardware with memory constraints.**
 
 .. dropdown:: When to use SVS-VAMANA & Detailed Guide
    :color: info
