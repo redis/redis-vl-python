@@ -26,7 +26,8 @@ Algorithm-Specific Parameters:
     - FLAT: block_size (memory management for dynamic indices)
     - HNSW: m, ef_construction, ef_runtime, epsilon (graph tuning)
     - SVS-VAMANA: graph_max_degree, construction_window_size, search_window_size,
-                  compression, reduce, training_threshold (graph + compression)
+                  compression, reduce, training_threshold (VAMANA graph algorithm
+                  with Intel hardware optimization and vector compression)
 
 References:
     - Redis FT.CREATE: https://redis.io/commands/ft.create/
