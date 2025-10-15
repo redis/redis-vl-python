@@ -1,8 +1,36 @@
 """
-RedisVL Fields, FieldAttributes, and Enums
+RedisVL Schema Fields and Attributes
 
-Reference Redis search source documentation as needed: https://redis.io/commands/ft.create/
-Reference Redis vector search documentation as needed: https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/
+This module defines field types and their attributes for creating Redis search indices.
+
+Field Types:
+    - TextField: Full-text search with stemming, phonetic matching
+    - TagField: Exact-match categorical data (tags, categories, IDs)
+    - NumericField: Numeric values for range queries and sorting
+    - GeoField: Geographic coordinates for location-based search
+    - VectorField: Vector embeddings for semantic similarity search
+        - FlatVectorField: Brute-force exact search (100% recall)
+        - HNSWVectorField: Approximate nearest neighbor search (fast, high recall)
+        - SVSVectorField: Compressed vector search with memory savings
+
+Common Vector Field Attributes (all algorithms):
+    - dims: Number of dimensions in the vector (e.g., 768, 1536)
+    - algorithm: Indexing algorithm ('flat', 'hnsw', or 'svs-vamana')
+    - datatype: Float precision ('float16', 'float32', 'float64', 'bfloat16')
+        Note: SVS-VAMANA only supports 'float16' and 'float32'
+    - distance_metric: Similarity metric ('COSINE', 'L2', 'IP')
+    - initial_cap: Initial capacity hint for memory allocation (optional)
+    - index_missing: Allow searching for documents without this field (optional)
+
+Algorithm-Specific Parameters:
+    - FLAT: block_size (memory management for dynamic indices)
+    - HNSW: m, ef_construction, ef_runtime, epsilon (graph tuning)
+    - SVS-VAMANA: graph_max_degree, construction_window_size, search_window_size,
+                  compression, reduce, training_threshold (graph + compression)
+
+References:
+    - Redis FT.CREATE: https://redis.io/commands/ft.create/
+    - Vector Search: https://redis.io/docs/interact/search-and-query/advanced-concepts/vectors/
 """
 
 from enum import Enum
@@ -126,12 +154,12 @@ class GeoFieldAttributes(BaseFieldAttributes):
 
 
 class BaseVectorFieldAttributes(BaseModel):
-    """Base vector field attributes shared by both FLAT and HNSW fields"""
+    """Base vector field attributes shared by FLAT, HNSW, and SVS-VAMANA fields"""
 
     dims: int
     """Dimensionality of the vector embeddings field"""
     algorithm: VectorIndexAlgorithm
-    """The indexing algorithm for the field: HNSW or FLAT"""
+    """The indexing algorithm for the field: FLAT, HNSW, or SVS-VAMANA"""
     datatype: VectorDataType = Field(default=VectorDataType.FLOAT32)
     """The float datatype for the vector embeddings"""
     distance_metric: VectorDistanceMetric = Field(default=VectorDistanceMetric.COSINE)
@@ -163,54 +191,63 @@ class BaseVectorFieldAttributes(BaseModel):
 
 
 class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
-    """FLAT vector field attributes"""
+    """FLAT vector field attributes for exact nearest neighbor search."""
 
     algorithm: Literal[VectorIndexAlgorithm.FLAT] = VectorIndexAlgorithm.FLAT
-    """The indexing algorithm for the vector field"""
+    """The indexing algorithm (fixed as 'flat')"""
+
     block_size: Optional[int] = None
-    """Block size to hold amount of vectors in a contiguous array. This is useful when the index is dynamic with respect to addition and deletion"""
+    """Block size for processing (optional) - improves batch operation throughput"""
 
 
 class HNSWVectorFieldAttributes(BaseVectorFieldAttributes):
-    """HNSW vector field attributes"""
+    """HNSW vector field attributes for approximate nearest neighbor search."""
 
     algorithm: Literal[VectorIndexAlgorithm.HNSW] = VectorIndexAlgorithm.HNSW
-    """The indexing algorithm for the vector field"""
+    """The indexing algorithm (fixed as 'hnsw')"""
     m: int = Field(default=16)
-    """Number of max outgoing edges for each graph node in each layer"""
+    """Max outgoing edges per node in each layer (default: 16, range: 8-64)"""
+
     ef_construction: int = Field(default=200)
-    """Number of max allowed potential outgoing edges candidates for each node in the graph during build time"""
+    """Max edge candidates during build time (default: 200, range: 100-800)"""
+
     ef_runtime: int = Field(default=10)
-    """Number of maximum top candidates to hold during KNN search"""
+    """Max top candidates during search (default: 10) - primary tuning parameter"""
+
     epsilon: float = Field(default=0.01)
-    """Relative factor that sets the boundaries in which a range query may search for candidates"""
+    """Range search boundary factor (default: 0.01)"""
 
 
 class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
-    """SVS-VAMANA vector field attributes with optional compression support"""
+    """SVS-VAMANA vector field attributes with compression support."""
 
     algorithm: Literal[VectorIndexAlgorithm.SVS_VAMANA] = (
         VectorIndexAlgorithm.SVS_VAMANA
     )
     """The indexing algorithm for the vector field"""
 
-    # SVS-VAMANA graph parameters
+    # Graph Construction Parameters
     graph_max_degree: int = Field(default=40)
-    """Maximum degree of the Vamana graph (number of edges per node)"""
-    construction_window_size: int = Field(default=250)
-    """Size of the candidate list during graph construction"""
-    search_window_size: int = Field(default=20)
-    """Size of the candidate list during search"""
-    epsilon: float = Field(default=0.01)
-    """Relative factor for range query boundaries"""
+    """Max edges per node (default: 40) - affects recall vs memory"""
 
-    # SVS-VAMANA compression parameters (optional, to be implemented)
+    construction_window_size: int = Field(default=250)
+    """Build-time candidates (default: 250) - affects quality vs build time"""
+
+    search_window_size: int = Field(default=20)
+    """Search candidates (default: 20) - primary tuning parameter"""
+
+    epsilon: float = Field(default=0.01)
+    """Range query boundary factor (default: 0.01)"""
+
+    # Compression Parameters
     compression: Optional[CompressionType] = None
-    """Vector compression type (LVQ or LeanVec)"""
+    """Vector compression: LVQ4, LVQ8, LeanVec4x8, LeanVec8x8"""
+
     reduce: Optional[int] = None
-    """Reduced dimensionality for LeanVec compression (must be < dims)"""
+    """Dimensionality reduction for LeanVec types (must be < dims)"""
+
     training_threshold: Optional[int] = None
-    """Minimum number of vectors required before compression training"""
+    """Min vectors before compression training (default: 10,240)"""
 
     @model_validator(mode="after")
     def validate_svs_params(self):
@@ -451,7 +488,7 @@ class GeoField(BaseField):
 
 
 class FlatVectorField(BaseField):
-    """Vector field with a FLAT index (brute force nearest neighbors search)"""
+    """Vector field with FLAT (brute-force) indexing for exact nearest neighbor search."""
 
     type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: FlatVectorFieldAttributes
@@ -466,7 +503,7 @@ class FlatVectorField(BaseField):
 
 
 class HNSWVectorField(BaseField):
-    """Vector field with an HNSW index (approximate nearest neighbors search)"""
+    """Vector field with HNSW (Hierarchical Navigable Small World) indexing for approximate nearest neighbor search."""
 
     type: Literal["vector"] = "vector"
     attrs: HNSWVectorFieldAttributes
@@ -487,7 +524,7 @@ class HNSWVectorField(BaseField):
 
 
 class SVSVectorField(BaseField):
-    """Vector field with an SVS-VAMANA index"""
+    """Vector field with SVS-VAMANA indexing and compression for memory-efficient approximate nearest neighbor search."""
 
     type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: SVSVectorFieldAttributes
