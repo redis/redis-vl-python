@@ -1229,7 +1229,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             DeprecationWarning,
         )
         client = await RedisConnectionFactory._get_aredis_connection(
-            redis_url=redis_url, **kwargs
+            url=redis_url, **kwargs
         )
         await self.set_client(client)
 
