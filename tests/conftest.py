@@ -7,7 +7,7 @@ import pytest
 from testcontainers.compose import DockerCompose
 
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
-from redisvl.redis.connection import RedisConnectionFactory, compare_versions
+from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.vectorize import HFTextVectorizer
 
@@ -699,7 +699,7 @@ def skip_if_redis_version_below(client, min_version: str, message: str = None):
         message: Custom skip message
     """
     redis_version = get_redis_version(client)
-    if not compare_versions(redis_version, min_version):
+    if not is_version_gte(redis_version, min_version):
         skip_msg = message or f"Redis version {redis_version} < {min_version} required"
         pytest.skip(skip_msg)
 
@@ -716,7 +716,7 @@ async def skip_if_redis_version_below_async(
         message: Custom skip message
     """
     redis_version = await get_redis_version_async(client)
-    if not compare_versions(redis_version, min_version):
+    if not is_version_gte(redis_version, min_version):
         skip_msg = message or f"Redis version {redis_version} < {min_version} required"
         pytest.skip(skip_msg)
 
