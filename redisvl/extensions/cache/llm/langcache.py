@@ -4,12 +4,13 @@ This module provides an LLM cache implementation that uses the LangCache
 managed service via the langcache Python SDK.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import CacheHit
 from redisvl.query.filter import FilterExpression
 from redisvl.utils.log import get_logger
+from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 
 logger = get_logger(__name__)
 
@@ -62,6 +63,7 @@ class LangCacheWrapper(BaseLLMCache):
         ttl: Optional[int] = None,
         use_exact_search: bool = True,
         use_semantic_search: bool = True,
+        distance_scale: Literal["normalized", "redis"] = "normalized",
         **kwargs,
     ):
         """Initialize a LangCache wrapper.
@@ -74,12 +76,19 @@ class LangCacheWrapper(BaseLLMCache):
             ttl (Optional[int]): Time-to-live for cache entries in seconds.
             use_exact_search (bool): Whether to use exact matching. Defaults to True.
             use_semantic_search (bool): Whether to use semantic search. Defaults to True.
+            distance_scale (str): Threshold scale for distance_threshold:
+                - "normalized": 0–1 semantic distance (lower is better)
+                - "redis": Redis COSINE distance 0–2 (lower is better)
             **kwargs: Additional arguments (ignored for compatibility).
 
         Raises:
             ImportError: If the langcache package is not installed.
             ValueError: If cache_id or api_key is not provided.
         """
+        if distance_scale not in {"normalized", "redis"}:
+            raise ValueError("distance_scale must be 'normalized' or 'redis'")
+        self._distance_scale = distance_scale
+
         if not LANGCACHE_AVAILABLE:
             raise ImportError(
                 "The langcache package is required to use LangCacheWrapper. "
@@ -128,10 +137,13 @@ class LangCacheWrapper(BaseLLMCache):
         # Extract attributes (metadata) from the result
         attributes = result.get("attributes", {})
 
-        # LangCache returns similarity (0-1, higher is better)
-        # Convert to distance (lower is better) for consistency
+        # LangCache returns similarity in [0,1] (higher is better)
         similarity = result.get("similarity", 0.0)
-        distance = 1.0 - similarity if similarity else 0.0
+        # Convert to the configured distance scale (lower is better)
+        if self._distance_scale == "redis":
+            distance = denorm_cosine_distance(similarity)  # -> [0,2]
+        else:
+            distance = 1.0 - similarity  # normalized [0,1]
 
         return CacheHit(
             entry_id=result.get("id", ""),
@@ -181,12 +193,15 @@ class LangCacheWrapper(BaseLLMCache):
         if filter_expression is not None:
             logger.warning("LangCache does not support filter expressions")
 
-        # Convert distance_threshold to similarity_threshold
-        # Distance: lower is better (0.0 = exact match)
-        # Similarity: higher is better (1.0 = exact match)
+        # Convert distance threshold to similarity threshold according to configured scale
         similarity_threshold = None
         if distance_threshold is not None:
-            similarity_threshold = 1.0 - distance_threshold
+            if self._distance_scale == "redis":
+                similarity_threshold = norm_cosine_distance(
+                    distance_threshold
+                )  # [0,2] -> [0,1]
+            else:
+                similarity_threshold = 1.0 - float(distance_threshold)  # [0,1] -> [0,1]
 
         # Search using the LangCache client
         # The client itself is the context manager
@@ -256,12 +271,15 @@ class LangCacheWrapper(BaseLLMCache):
         if filter_expression is not None:
             logger.warning("LangCache does not support filter expressions")
 
-        # Convert distance_threshold to similarity_threshold
-        # Distance: lower is better (0.0 = exact match)
-        # Similarity: higher is better (1.0 = exact match)
+        # Convert distance threshold to similarity threshold according to configured scale
         similarity_threshold = None
         if distance_threshold is not None:
-            similarity_threshold = 1.0 - distance_threshold
+            if self._distance_scale == "redis":
+                similarity_threshold = norm_cosine_distance(
+                    distance_threshold
+                )  # [0,2] -> [0,1]
+            else:
+                similarity_threshold = 1.0 - float(distance_threshold)  # [0,1] -> [0,1]
 
         # Search using the LangCache client (async)
         # The client itself is the context manager
