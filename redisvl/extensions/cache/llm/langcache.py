@@ -125,6 +125,49 @@ class LangCacheWrapper(BaseLLMCache):
             api_key=self._api_key,
         )
 
+    def _similarity_threshold(
+        self, distance_threshold: Optional[float]
+    ) -> Optional[float]:
+        """Convert a distance threshold to a similarity threshold based on scale.
+
+        - If distance_scale == "redis": use norm_cosine_distance (0–2 -> 0–1)
+        - Otherwise: use (1.0 - distance_threshold) for normalized 0–1 distances
+        """
+        if distance_threshold is None:
+            return None
+        if self._distance_scale == "redis":
+            return norm_cosine_distance(distance_threshold)
+        return 1.0 - float(distance_threshold)
+
+    def _build_search_kwargs(
+        self,
+        prompt: str,
+        similarity_threshold: Optional[float],
+        attributes: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {
+            "prompt": prompt,
+            "search_strategies": self._search_strategies,
+            "similarity_threshold": similarity_threshold,
+        }
+        if attributes:
+            kwargs["attributes"] = attributes
+        return kwargs
+
+    def _hits_from_response(
+        self, response: Any, num_results: int
+    ) -> List[Dict[str, Any]]:
+        results = response.data if hasattr(response, "data") else []
+        hits: List[Dict[str, Any]] = []
+        for result in results[:num_results]:
+            if hasattr(result, "model_dump"):
+                result_dict = result.model_dump()
+            else:
+                result_dict = dict(result)  # type: ignore[arg-type]
+            hit = self._convert_to_cache_hit(result_dict)
+            hits.append(hit.to_dict())
+        return hits
+
     def _convert_to_cache_hit(self, result: Dict[str, Any]) -> CacheHit:
         """Convert a LangCache result to a CacheHit object.
 
@@ -163,7 +206,7 @@ class LangCacheWrapper(BaseLLMCache):
         return_fields: Optional[List[str]] = None,
         filter_expression: Optional[FilterExpression] = None,
         distance_threshold: Optional[float] = None,
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Check the cache for semantically similar prompts.
 
@@ -174,8 +217,10 @@ class LangCacheWrapper(BaseLLMCache):
             return_fields (Optional[List[str]]): Not used (for compatibility).
             filter_expression (Optional[FilterExpression]): Not supported.
             distance_threshold (Optional[float]): Maximum distance threshold.
-                Converted to similarity_threshold (1.0 - distance_threshold).
-            attributes (Optional[Dict[str, str]]): LangCache attributes to filter by.
+                Converted to similarity_threshold according to distance_scale:
+                  - If "redis": uses norm_cosine_distance(distance_threshold) ([0,2] → [0,1])
+                  - If "normalized": uses (1.0 - distance_threshold) ([0,1] → [0,1])
+            attributes (Optional[Dict[str, Any]]): LangCache attributes to filter by.
                 Note: Attributes must be pre-configured in your LangCache instance.
 
         Returns:
@@ -196,42 +241,20 @@ class LangCacheWrapper(BaseLLMCache):
         # Convert distance threshold to similarity threshold according to configured scale
         similarity_threshold = None
         if distance_threshold is not None:
-            if self._distance_scale == "redis":
-                similarity_threshold = norm_cosine_distance(
-                    distance_threshold
-                )  # [0,2] -> [0,1]
-            else:
-                similarity_threshold = 1.0 - float(distance_threshold)  # [0,1] -> [0,1]
+            similarity_threshold = self._similarity_threshold(distance_threshold)
 
         # Search using the LangCache client
         # The client itself is the context manager
-        search_kwargs: Dict[str, Any] = {
-            "prompt": prompt,
-            "search_strategies": self._search_strategies,
-            "similarity_threshold": similarity_threshold,
-        }
-
-        # Add attributes if provided
-        if attributes:
-            search_kwargs["attributes"] = attributes
+        search_kwargs = self._build_search_kwargs(
+            prompt=prompt,
+            similarity_threshold=similarity_threshold,
+            attributes=attributes,
+        )
 
         response = self._client.search(**search_kwargs)
 
         # Convert results to cache hits
-        # Response is a SearchResponse Pydantic model with a 'data' attribute
-        results = response.data if hasattr(response, "data") else []
-        cache_hits = []
-        for result in results[:num_results]:
-            # Convert CacheEntry to dict
-            result_dict: Dict[str, Any]
-            if hasattr(result, "model_dump"):
-                result_dict = result.model_dump()
-            else:
-                result_dict = dict(result)  # type: ignore[arg-type]
-            hit = self._convert_to_cache_hit(result_dict)
-            cache_hits.append(hit.to_dict())
-
-        return cache_hits
+        return self._hits_from_response(response, num_results)
 
     async def acheck(
         self,
@@ -241,7 +264,7 @@ class LangCacheWrapper(BaseLLMCache):
         return_fields: Optional[List[str]] = None,
         filter_expression: Optional[FilterExpression] = None,
         distance_threshold: Optional[float] = None,
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Async check the cache for semantically similar prompts.
 
@@ -252,8 +275,10 @@ class LangCacheWrapper(BaseLLMCache):
             return_fields (Optional[List[str]]): Not used (for compatibility).
             filter_expression (Optional[FilterExpression]): Not supported.
             distance_threshold (Optional[float]): Maximum distance threshold.
-                Converted to similarity_threshold (1.0 - distance_threshold).
-            attributes (Optional[Dict[str, str]]): LangCache attributes to filter by.
+                Converted to similarity_threshold according to distance_scale:
+                  - If "redis": uses norm_cosine_distance(distance_threshold) ([0,2] 												 -> [0,1])
+                  - If "normalized": uses (1.0 - distance_threshold) ([0,1] -> [0,1])
+            attributes (Optional[Dict[str, Any]]): LangCache attributes to filter by.
                 Note: Attributes must be pre-configured in your LangCache instance.
 
         Returns:
@@ -274,42 +299,22 @@ class LangCacheWrapper(BaseLLMCache):
         # Convert distance threshold to similarity threshold according to configured scale
         similarity_threshold = None
         if distance_threshold is not None:
-            if self._distance_scale == "redis":
-                similarity_threshold = norm_cosine_distance(
-                    distance_threshold
-                )  # [0,2] -> [0,1]
-            else:
-                similarity_threshold = 1.0 - float(distance_threshold)  # [0,1] -> [0,1]
+            similarity_threshold = self._similarity_threshold(distance_threshold)
 
         # Search using the LangCache client (async)
         # The client itself is the context manager
-        search_kwargs: Dict[str, Any] = {
-            "prompt": prompt,
-            "search_strategies": self._search_strategies,
-            "similarity_threshold": similarity_threshold,
-        }
+        search_kwargs = self._build_search_kwargs(
+            prompt=prompt,
+            similarity_threshold=similarity_threshold,
+            attributes=attributes,
+        )
 
-        # Add attributes if provided
-        if attributes:
-            search_kwargs["attributes"] = attributes
+        # Add attributes if provided (already handled by builder)
 
         response = await self._client.search_async(**search_kwargs)
 
         # Convert results to cache hits
-        # Response is a SearchResponse Pydantic model with a 'data' attribute
-        results = response.data if hasattr(response, "data") else []
-        cache_hits = []
-        for result in results[:num_results]:
-            # Convert CacheEntry to dict
-            result_dict: Dict[str, Any]
-            if hasattr(result, "model_dump"):
-                result_dict = result.model_dump()
-            else:
-                result_dict = dict(result)  # type: ignore[arg-type]
-            hit = self._convert_to_cache_hit(result_dict)
-            cache_hits.append(hit.to_dict())
-
-        return cache_hits
+        return self._hits_from_response(response, num_results)
 
     def store(
         self,
