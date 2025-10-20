@@ -365,6 +365,7 @@ class RedisConnectionFactory:
                 variable is not set.
         """
         url = redis_url or get_address_from_env()
+        client: SyncRedisClient
         if url.startswith("redis+sentinel"):
             client = RedisConnectionFactory._redis_sentinel_client(url, Redis, **kwargs)
         elif is_cluster_url(url, **kwargs):
@@ -407,6 +408,7 @@ class RedisConnectionFactory:
         """
         url = url or get_address_from_env()
 
+        client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
             client = RedisConnectionFactory._redis_sentinel_client(
                 url, AsyncRedis, **kwargs
