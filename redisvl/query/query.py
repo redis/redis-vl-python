@@ -1155,7 +1155,9 @@ class TextQuery(BaseQuery):
             )
             for token in user_query.split()
         ]
-        token_list = [token for token in tokens if token and token not in self._stopwords]
+        token_list = [
+            token for token in tokens if token and token not in self._stopwords
+        ]
         for i, token in enumerate(token_list):
             if token in self._text_weights:
                 token_list[i] = f"{token}=>{{weight:{self._text_weights[token]}}}"
@@ -1227,18 +1229,29 @@ class TextQuery(BaseQuery):
                 return field
         return self._field_weights.copy()
 
-    def _parse_text_weights(self, weights: Dict[str, float]) -> Dict[str, float]:
-        parsed_weights = {}
+    def _parse_text_weights(
+        self, weights: Optional[Dict[str, float]]
+    ) -> Dict[str, float]:
+        parsed_weights: Dict[str, float] = {}
+        if not weights:
+            return parsed_weights
         for word, weight in weights.items():
             word = word.strip().lower()
             if not word or " " in word:
-                raise ValueError("Only individual words may be weighted. Got {{ {word}:{weight} }}")
-            if not isinstance(weight, float) or weight <0.0:
-                raise ValueError("Weights must be positive floats. Got {{ {word}:{weight} }}")
+                raise ValueError(
+                    f"Only individual words may be weighted. Got {{ {word}:{weight} }}"
+                )
+            if (
+                not (isinstance(weight, float) or isinstance(weight, int))
+                or weight < 0.0
+            ):
+                raise ValueError(
+                    f"Weights must be positive number. Got {{ {word}:{weight} }}"
+                )
             parsed_weights[word] = weight
         return parsed_weights
 
-    def set_text_weights(self, weights:Dict[str, float]):
+    def set_text_weights(self, weights: Dict[str, float]):
         """Set or update the text weights for the query.
 
         Args:
@@ -1248,7 +1261,7 @@ class TextQuery(BaseQuery):
         self._built_query_string = None
 
     @property
-    def text_weights() -> Dict[str, float]:
+    def text_weights(self) -> Dict[str, float]:
         """Get the text weights.
 
         Returns:
