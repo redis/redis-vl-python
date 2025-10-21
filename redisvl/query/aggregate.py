@@ -238,7 +238,7 @@ class HybridQuery(AggregationQuery):
         ]
         for i, token in enumerate(token_list):
             if token in self._text_weights:
-                token_list[i] = f"{token}=>{{weight:{self._text_weights[token]}}}"
+                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
 
         if not token_list:
             raise ValueError("text string cannot be empty after removing stopwords")

@@ -1160,7 +1160,7 @@ class TextQuery(BaseQuery):
         ]
         for i, token in enumerate(token_list):
             if token in self._text_weights:
-                token_list[i] = f"{token}=>{{weight:{self._text_weights[token]}}}"
+                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
 
         return " | ".join(token_list)
 

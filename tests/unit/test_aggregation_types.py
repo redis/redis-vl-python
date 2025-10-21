@@ -211,7 +211,7 @@ def test_hybrid_query_text_weights():
 
     assert (
         str(query)
-        == "(~@description:(query | string | alpha=>{weight:2} | bravo | delta=>{weight:0.555} | tango | alpha=>{weight:2}))=>[KNN 10 @user_embedding $vector AS vector_distance] SCORER BM25STD ADDSCORES DIALECT 2 APPLY (2 - @vector_distance)/2 AS vector_similarity APPLY @__score AS text_score APPLY 0.30000000000000004*@text_score + 0.7*@vector_similarity AS hybrid_score SORTBY 2 @hybrid_score DESC MAX 10"
+        == "(~@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}))=>[KNN 10 @user_embedding $vector AS vector_distance] SCORER BM25STD ADDSCORES DIALECT 2 APPLY (2 - @vector_distance)/2 AS vector_similarity APPLY @__score AS text_score APPLY 0.30000000000000004*@text_score + 0.7*@vector_similarity AS hybrid_score SORTBY 2 @hybrid_score DESC MAX 10"
     )
 
     # raise an error if weights are not positive floats

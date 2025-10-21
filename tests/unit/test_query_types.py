@@ -343,7 +343,7 @@ def test_text_query_word_weights():
 
     assert (
         str(query)
-        == "@description:(query | string | alpha=>{weight:2} | bravo | delta=>{weight:0.555} | tango | alpha=>{weight:2}) SCORER BM25STD WITHSCORES DIALECT 2 LIMIT 0 10"
+        == "@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}) SCORER BM25STD WITHSCORES DIALECT 2 LIMIT 0 10"
     )
 
     # raise an error if weights are not positive floats
