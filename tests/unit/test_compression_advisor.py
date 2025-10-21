@@ -12,116 +12,116 @@ class TestCompressionAdvisorRecommend:
         """Test memory-optimized config for high-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=1536, priority="memory")
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["datatype"] == "float16"
-        assert config["compression"] == "LeanVec4x8"
-        assert config["reduce"] == 768  # dims // 2
-        assert config["graph_max_degree"] == 64
-        assert config["construction_window_size"] == 300
-        assert config["search_window_size"] == 20
+        assert config.algorithm == "svs-vamana"
+        assert config.datatype == "float16"
+        assert config.compression == "LeanVec4x8"
+        assert config.reduce == 768  # dims // 2
+        assert config.graph_max_degree == 64
+        assert config.construction_window_size == 300
+        assert config.search_window_size == 20
 
     def test_recommend_high_dim_speed_priority(self):
         """Test speed-optimized config for high-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=1536, priority="speed")
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["datatype"] == "float16"
-        assert config["compression"] == "LeanVec4x8"
-        assert config["reduce"] == 384  # dims // 4
-        assert config["graph_max_degree"] == 64
-        assert config["construction_window_size"] == 300
-        assert config["search_window_size"] == 40
+        assert config.algorithm == "svs-vamana"
+        assert config.datatype == "float16"
+        assert config.compression == "LeanVec4x8"
+        assert config.reduce == 384  # dims // 4
+        assert config.graph_max_degree == 64
+        assert config.construction_window_size == 300
+        assert config.search_window_size == 40
 
     def test_recommend_high_dim_balanced_priority(self):
         """Test balanced config for high-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=1536, priority="balanced")
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["datatype"] == "float16"
-        assert config["compression"] == "LeanVec4x8"
-        assert config["reduce"] == 768  # dims // 2
-        assert config["graph_max_degree"] == 64
-        assert config["construction_window_size"] == 300
-        assert config["search_window_size"] == 30
+        assert config.algorithm == "svs-vamana"
+        assert config.datatype == "float16"
+        assert config.compression == "LeanVec4x8"
+        assert config.reduce == 768  # dims // 2
+        assert config.graph_max_degree == 64
+        assert config.construction_window_size == 300
+        assert config.search_window_size == 30
 
     def test_recommend_high_dim_default_priority(self):
         """Test default priority (balanced) for high-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=2048)
 
-        assert config["compression"] == "LeanVec4x8"
-        assert config["reduce"] == 1024
-        assert config["search_window_size"] == 30
+        assert config.compression == "LeanVec4x8"
+        assert config.reduce == 1024
+        assert config.search_window_size == 30
 
     def test_recommend_low_dim_memory_priority(self):
         """Test memory-optimized config for low-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=384, priority="memory")
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["datatype"] == "float32"
-        assert config["compression"] == "LVQ4"
-        assert "reduce" not in config  # LVQ doesn't use reduce
-        assert config["graph_max_degree"] == 40
-        assert config["construction_window_size"] == 250
-        assert config["search_window_size"] == 20
+        assert config.algorithm == "svs-vamana"
+        assert config.datatype == "float32"
+        assert config.compression == "LVQ4"
+        assert config.reduce is None  # LVQ doesn't use reduce
+        assert config.graph_max_degree == 40
+        assert config.construction_window_size == 250
+        assert config.search_window_size == 20
 
     def test_recommend_low_dim_speed_priority(self):
         """Test speed-optimized config for low-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=384, priority="speed")
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["datatype"] == "float32"
-        assert config["compression"] == "LVQ4x8"
-        assert "reduce" not in config
-        assert config["graph_max_degree"] == 40
-        assert config["construction_window_size"] == 250
-        assert config["search_window_size"] == 20
+        assert config.algorithm == "svs-vamana"
+        assert config.datatype == "float32"
+        assert config.compression == "LVQ4x8"
+        assert config.reduce is None
+        assert config.graph_max_degree == 40
+        assert config.construction_window_size == 250
+        assert config.search_window_size == 20
 
     def test_recommend_low_dim_balanced_priority(self):
         """Test balanced config for low-dimensional vectors."""
         config = CompressionAdvisor.recommend(dims=768, priority="balanced")
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["datatype"] == "float32"
-        assert config["compression"] == "LVQ4x4"
-        assert "reduce" not in config
-        assert config["graph_max_degree"] == 40
-        assert config["construction_window_size"] == 250
-        assert config["search_window_size"] == 20
+        assert config.algorithm == "svs-vamana"
+        assert config.datatype == "float32"
+        assert config.compression == "LVQ4x4"
+        assert config.reduce is None
+        assert config.graph_max_degree == 40
+        assert config.construction_window_size == 250
+        assert config.search_window_size == 20
 
     def test_recommend_threshold_boundary_low(self):
         """Test recommendation at threshold boundary (1023 dims)."""
         config = CompressionAdvisor.recommend(dims=1023)
 
         # Should use LVQ (below threshold)
-        assert config["compression"] in ["LVQ4", "LVQ4x4", "LVQ4x8"]
-        assert config["datatype"] == "float32"
-        assert "reduce" not in config
+        assert config.compression in ["LVQ4", "LVQ4x4", "LVQ4x8"]
+        assert config.datatype == "float32"
+        assert config.reduce is None
 
     def test_recommend_threshold_boundary_high(self):
         """Test recommendation at threshold boundary (1024 dims)."""
         config = CompressionAdvisor.recommend(dims=1024)
 
         # Should use LeanVec (at threshold)
-        assert config["compression"] == "LeanVec4x8"
-        assert config["datatype"] == "float16"
-        assert "reduce" in config
+        assert config.compression == "LeanVec4x8"
+        assert config.datatype == "float16"
+        assert config.reduce is not None
 
     def test_recommend_custom_datatype(self):
         """Test custom datatype override."""
         config = CompressionAdvisor.recommend(dims=1536, datatype="float32")
 
-        assert config["datatype"] == "float32"
+        assert config.datatype == "float32"
 
     def test_recommend_speed_reduce_minimum(self):
         """Test that speed priority respects minimum reduce value."""
         config = CompressionAdvisor.recommend(dims=1024, priority="speed")
 
         # dims // 4 = 256, max(256, 256) = 256
-        assert config["reduce"] == 256
+        assert config.reduce == 256
 
         config = CompressionAdvisor.recommend(dims=512, priority="speed")
         # Below threshold, should use LVQ
-        assert "reduce" not in config
+        assert config.reduce is None
 
     def test_recommend_invalid_dims_zero(self):
         """Test that zero dims raises ValueError."""
@@ -217,34 +217,34 @@ class TestCompressionAdvisorEstimateMemorySavings:
         assert isinstance(savings, float)
 
 
-class TestSVSConfigTypedDict:
-    """Tests for SVSConfig TypedDict structure."""
+class TestSVSConfigModel:
+    """Tests for SVSConfig Pydantic model structure."""
 
     def test_svs_config_structure(self):
         """Test that SVSConfig can be constructed with all fields."""
-        config: SVSConfig = {
-            "algorithm": "svs-vamana",
-            "datatype": "float16",
-            "compression": "LeanVec4x8",
-            "reduce": 768,
-            "graph_max_degree": 64,
-            "construction_window_size": 300,
-            "search_window_size": 30,
-        }
+        config = SVSConfig(
+            algorithm="svs-vamana",
+            datatype="float16",
+            compression="LeanVec4x8",
+            reduce=768,
+            graph_max_degree=64,
+            construction_window_size=300,
+            search_window_size=30,
+        )
 
-        assert config["algorithm"] == "svs-vamana"
-        assert config["reduce"] == 768
+        assert config.algorithm == "svs-vamana"
+        assert config.reduce == 768
 
     def test_svs_config_without_reduce(self):
         """Test that SVSConfig can be constructed without reduce field."""
-        config: SVSConfig = {
-            "algorithm": "svs-vamana",
-            "datatype": "float32",
-            "compression": "LVQ4",
-            "graph_max_degree": 40,
-            "construction_window_size": 250,
-            "search_window_size": 20,
-        }
+        config = SVSConfig(
+            algorithm="svs-vamana",
+            datatype="float32",
+            compression="LVQ4",
+            graph_max_degree=40,
+            construction_window_size=250,
+            search_window_size=20,
+        )
 
-        assert "reduce" not in config
-        assert config["compression"] == "LVQ4"
+        assert config.reduce is None
+        assert config.compression == "LVQ4"

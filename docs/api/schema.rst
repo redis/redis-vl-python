@@ -262,7 +262,7 @@ FLAT - Brute-force exact search. **Best for small datasets (<10K vectors) requir
    :color: info
 
    **Use FLAT when:**
-    - Small datasets (<10K vectors) where exact results are required
+    - Small datasets (<100K vectors) where exact results are required
     - Search accuracy is critical and approximate results are not acceptable
     - Baseline comparisons when evaluating approximate algorithms
     - Simple use cases where setup simplicity is more important than performance
@@ -317,7 +317,7 @@ Algorithm Selection Guide
      - Memory Usage
      - Trade-offs
    * - **FLAT**
-     - Small datasets (<10K vectors)
+     - Small datasets (<100K vectors)
      - 100% recall, O(n) search
      - Minimal overhead
      - Exact but slow for large data

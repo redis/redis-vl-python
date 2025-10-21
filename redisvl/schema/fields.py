@@ -9,7 +9,7 @@ Field Types:
     - NumericField: Numeric values for range queries and sorting
     - GeoField: Geographic coordinates for location-based search
     - VectorField: Vector embeddings for semantic similarity search
-        - FlatVectorField: Brute-force exact search (100% recall)
+        - FlatVectorField: Exact search (100% recall)
         - HNSWVectorField: Approximate nearest neighbor search (fast, high recall)
         - SVSVectorField: Compressed vector search with memory savings
 
@@ -489,7 +489,7 @@ class GeoField(BaseField):
 
 
 class FlatVectorField(BaseField):
-    """Vector field with FLAT (brute-force) indexing for exact nearest neighbor search."""
+    """Vector field with FLAT (exact search) indexing for exact nearest neighbor search."""
 
     type: Literal[FieldTypes.VECTOR] = FieldTypes.VECTOR
     attrs: FlatVectorFieldAttributes

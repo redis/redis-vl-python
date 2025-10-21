@@ -1,10 +1,12 @@
 """SVS-VAMANA compression configuration utilities."""
 
-from typing import Literal, Optional, TypedDict, cast
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field
 
 
-class SVSConfig(TypedDict, total=False):
-    """SVS-VAMANA configuration dictionary.
+class SVSConfig(BaseModel):
+    """SVS-VAMANA configuration model.
 
     Attributes:
         algorithm: Always "svs-vamana"
@@ -16,13 +18,15 @@ class SVSConfig(TypedDict, total=False):
         search_window_size: Query-time candidates
     """
 
-    algorithm: Literal["svs-vamana"]
-    datatype: str
-    compression: str
-    reduce: int  # only for LeanVec
-    graph_max_degree: int
-    construction_window_size: int
-    search_window_size: int
+    algorithm: Literal["svs-vamana"] = "svs-vamana"
+    datatype: Optional[str] = None
+    compression: Optional[str] = None
+    reduce: Optional[int] = Field(
+        default=None, description="Reduced dimensionality (only for LeanVec)"
+    )
+    graph_max_degree: Optional[int] = None
+    construction_window_size: Optional[int] = None
+    search_window_size: Optional[int] = None
 
 
 class CompressionAdvisor:
@@ -35,9 +39,9 @@ class CompressionAdvisor:
     Examples:
         >>> # Get recommendations for high-dimensional vectors
         >>> config = CompressionAdvisor.recommend(dims=1536, priority="balanced")
-        >>> config["compression"]
+        >>> config.compression
         'LeanVec4x8'
-        >>> config["reduce"]
+        >>> config.reduce
         768
 
         >>> # Estimate memory savings
@@ -95,14 +99,14 @@ class CompressionAdvisor:
         Examples:
             >>> # High-dimensional embeddings (e.g., OpenAI ada-002)
             >>> config = CompressionAdvisor.recommend(dims=1536, priority="memory")
-            >>> config["compression"]
+            >>> config.compression
             'LeanVec4x8'
-            >>> config["reduce"]
+            >>> config.reduce
             768
 
             >>> # Lower-dimensional embeddings
             >>> config = CompressionAdvisor.recommend(dims=384, priority="speed")
-            >>> config["compression"]
+            >>> config.compression
             'LVQ4x8'
         """
         if dims <= 0:
@@ -118,34 +122,25 @@ class CompressionAdvisor:
             }
 
             if priority == "memory":
-                return cast(
-                    SVSConfig,
-                    {
-                        **base,
-                        "compression": "LeanVec4x8",
-                        "reduce": dims // 2,
-                        "search_window_size": 20,
-                    },
+                return SVSConfig(
+                    **base,
+                    compression="LeanVec4x8",
+                    reduce=dims // 2,
+                    search_window_size=20,
                 )
             elif priority == "speed":
-                return cast(
-                    SVSConfig,
-                    {
-                        **base,
-                        "compression": "LeanVec4x8",
-                        "reduce": max(256, dims // 4),
-                        "search_window_size": 40,
-                    },
+                return SVSConfig(
+                    **base,
+                    compression="LeanVec4x8",
+                    reduce=max(256, dims // 4),
+                    search_window_size=40,
                 )
             else:  # balanced
-                return cast(
-                    SVSConfig,
-                    {
-                        **base,
-                        "compression": "LeanVec4x8",
-                        "reduce": dims // 2,
-                        "search_window_size": 30,
-                    },
+                return SVSConfig(
+                    **base,
+                    compression="LeanVec4x8",
+                    reduce=dims // 2,
+                    search_window_size=30,
                 )
 
         # Lower-dimensional vectors - use LVQ
@@ -159,11 +154,11 @@ class CompressionAdvisor:
             }
 
             if priority == "memory":
-                return cast(SVSConfig, {**base, "compression": "LVQ4"})
+                return SVSConfig(**base, compression="LVQ4")
             elif priority == "speed":
-                return cast(SVSConfig, {**base, "compression": "LVQ4x8"})
+                return SVSConfig(**base, compression="LVQ4x8")
             else:  # balanced
-                return cast(SVSConfig, {**base, "compression": "LVQ4x4"})
+                return SVSConfig(**base, compression="LVQ4x4")
 
     @staticmethod
     def estimate_memory_savings(

@@ -22,6 +22,6 @@ User guides provide helpful resources for using RedisVL and its different compon
 07_message_history
 08_semantic_router
 09_svs_vamana
+10_embeddings_cache
 11_advanced_queries
 ```
-# TODO: Nitin Add the new user guide for SVS-VAMANA
