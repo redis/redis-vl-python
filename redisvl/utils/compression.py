@@ -114,30 +114,34 @@ class CompressionAdvisor:
 
         # High-dimensional vectors (>= 1024) - use LeanVec
         if dims >= CompressionAdvisor.HIGH_DIM_THRESHOLD:
-            base = {
-                "algorithm": "svs-vamana",
-                "datatype": datatype or "float16",
-                "graph_max_degree": 64,
-                "construction_window_size": 300,
-            }
+            base_datatype = datatype or "float16"
 
             if priority == "memory":
                 return SVSConfig(
-                    **base,
+                    algorithm="svs-vamana",
+                    datatype=base_datatype,
+                    graph_max_degree=64,
+                    construction_window_size=300,
                     compression="LeanVec4x8",
                     reduce=dims // 2,
                     search_window_size=20,
                 )
             elif priority == "speed":
                 return SVSConfig(
-                    **base,
+                    algorithm="svs-vamana",
+                    datatype=base_datatype,
+                    graph_max_degree=64,
+                    construction_window_size=300,
                     compression="LeanVec4x8",
                     reduce=max(256, dims // 4),
                     search_window_size=40,
                 )
             else:  # balanced
                 return SVSConfig(
-                    **base,
+                    algorithm="svs-vamana",
+                    datatype=base_datatype,
+                    graph_max_degree=64,
+                    construction_window_size=300,
                     compression="LeanVec4x8",
                     reduce=dims // 2,
                     search_window_size=30,
@@ -145,20 +149,35 @@ class CompressionAdvisor:
 
         # Lower-dimensional vectors - use LVQ
         else:
-            base = {
-                "algorithm": "svs-vamana",
-                "datatype": datatype or "float32",
-                "graph_max_degree": 40,
-                "construction_window_size": 250,
-                "search_window_size": 20,
-            }
+            base_datatype = datatype or "float32"
 
             if priority == "memory":
-                return SVSConfig(**base, compression="LVQ4")
+                return SVSConfig(
+                    algorithm="svs-vamana",
+                    datatype=base_datatype,
+                    graph_max_degree=40,
+                    construction_window_size=250,
+                    search_window_size=20,
+                    compression="LVQ4",
+                )
             elif priority == "speed":
-                return SVSConfig(**base, compression="LVQ4x8")
+                return SVSConfig(
+                    algorithm="svs-vamana",
+                    datatype=base_datatype,
+                    graph_max_degree=40,
+                    construction_window_size=250,
+                    search_window_size=20,
+                    compression="LVQ4x8",
+                )
             else:  # balanced
-                return SVSConfig(**base, compression="LVQ4x4")
+                return SVSConfig(
+                    algorithm="svs-vamana",
+                    datatype=base_datatype,
+                    graph_max_degree=40,
+                    construction_window_size=250,
+                    search_window_size=20,
+                    compression="LVQ4x4",
+                )
 
     @staticmethod
     def estimate_memory_savings(
