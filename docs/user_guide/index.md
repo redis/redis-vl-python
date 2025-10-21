@@ -21,4 +21,5 @@ User guides provide helpful resources for using RedisVL and its different compon
 06_rerankers
 07_message_history
 08_semantic_router
+11_advanced_queries
 ```
