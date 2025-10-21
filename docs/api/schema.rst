@@ -60,36 +60,80 @@ Fields in the schema can be defined in YAML format or as a Python dictionary, sp
         }
     }
 
-Supported Field Types and Attributes
-====================================
+Basic Field Types
+=================
 
-Each field type supports specific attributes that customize its behavior. Below are the field types and their available attributes:
+RedisVL supports several basic field types for indexing different kinds of data. Each field type has specific attributes that customize its indexing and search behavior.
 
-**Text Field Attributes**:
+Text Fields
+-----------
+
+Text fields support full-text search with stemming, phonetic matching, and other text analysis features.
+
+.. currentmodule:: redisvl.schema.fields
+
+.. autoclass:: TextField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: TextFieldAttributes
    :members:
    :undoc-members:
 
-**Tag Field Attributes**:
+Tag Fields
+----------
+
+Tag fields are optimized for exact-match filtering and faceted search on categorical data.
+
+.. autoclass:: TagField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: TagFieldAttributes
    :members:
    :undoc-members:
 
-**Numeric Field Attributes**:
+Numeric Fields
+--------------
+
+Numeric fields support range queries and sorting on numeric data.
+
+.. autoclass:: NumericField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: NumericFieldAttributes
    :members:
    :undoc-members:
 
-**Geo Field Attributes**:
+Geo Fields
+----------
+
+Geo fields enable location-based search with geographic coordinates.
+
+.. autoclass:: GeoField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: GeoFieldAttributes
    :members:
    :undoc-members:
 
-**Common Vector Field Attributes**:
+Vector Field Types
+==================
+
+Vector fields enable semantic similarity search using various algorithms. All vector fields share common attributes but have algorithm-specific configurations.
+
+Common Vector Attributes
+------------------------
+
+All vector field types share these base attributes:
+
+.. autoclass:: BaseVectorFieldAttributes
+   :members:
+   :undoc-members:
+
+**Key Attributes:**
 
 - `dims`: Dimensionality of the vector (e.g., 768, 1536).
 - `algorithm`: Indexing algorithm for vector search:
@@ -106,7 +150,8 @@ Each field type supports specific attributes that customize its behavior. Below 
 - `initial_cap`: Initial capacity hint for memory allocation (optional).
 - `index_missing`: When True, allows searching for documents missing this field (optional).
 
-**HNSW Vector Field Specific Attributes**:
+HNSW Vector Fields
+------------------
 
 HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with excellent recall. **Best for general-purpose vector search (10K-1M+ vectors).**
 
@@ -127,7 +172,9 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
     - **Recall quality**: Excellent recall rates (95-99%), often better than other approximate methods
     - **Build time**: Moderate construction time, faster than SVS-VAMANA for smaller datasets
 
-.. currentmodule:: redisvl.schema.fields
+.. autoclass:: HNSWVectorField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: HNSWVectorFieldAttributes
    :members:
@@ -167,7 +214,8 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
         ef_construction: 400
         ef_runtime: 50
 
-**SVS-VAMANA Vector Field Specific Attributes**:
+SVS-VAMANA Vector Fields
+------------------------
 
 SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast approximate nearest neighbor search with optional compression support. This algorithm is optimized for Intel hardware and offers reduced memory usage through vector compression. **Best for large datasets (>100K vectors) on Intel hardware with memory constraints.**
 
@@ -203,6 +251,10 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
     - LVQ4x4 compression: 1.6 GB (~48% savings)
 
     - LeanVec4x8 + reduce to 384: 580 MB (~81% savings)
+
+.. autoclass:: SVSVectorField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: SVSVectorFieldAttributes
    :members:
@@ -254,7 +306,8 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
 - **Platform considerations**: Intel's proprietary LVQ and LeanVec optimizations are not available in Redis Open Source. On non-Intel platforms and Redis Open Source, SVS-VAMANA with compression falls back to basic 8-bit scalar quantization.
 - **Performance tip**: Start with default parameters and tune `search_window_size` first for your speed vs accuracy requirements.
 
-**FLAT Vector Field Specific Attributes**:
+FLAT Vector Fields
+------------------
 
 FLAT - Brute-force exact search. **Best for small datasets (<10K vectors) requiring 100% accuracy.**
 
@@ -276,6 +329,10 @@ FLAT - Brute-force exact search. **Best for small datasets (<10K vectors) requir
    **Trade-offs vs other algorithms:**
     - **vs HNSW**: Much slower search but exact results, faster index building
     - **vs SVS-VAMANA**: Slower search and higher memory usage, but exact results
+
+.. autoclass:: FlatVectorField
+   :members:
+   :show-inheritance:
 
 .. autoclass:: FlatVectorFieldAttributes
    :members:
