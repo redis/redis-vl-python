@@ -297,6 +297,27 @@ FLAT - Brute-force exact search. **Best for small datasets (<10K vectors) requir
 
 **Note**: FLAT is recommended for small datasets or when exact results are mandatory. For larger datasets, consider HNSW or SVS-VAMANA for better performance.
 
+SVS-VAMANA Configuration Utilities
+==================================
+
+For SVS-VAMANA indices, RedisVL provides utilities to help configure compression settings and estimate memory savings.
+
+CompressionAdvisor
+------------------
+
+.. currentmodule:: redisvl.utils.compression
+
+.. autoclass:: CompressionAdvisor
+   :members:
+   :show-inheritance:
+
+SVSConfig
+---------
+
+.. autoclass:: SVSConfig
+   :members:
+   :show-inheritance:
+
 .. _vector-algorithm-comparison:
 
 Vector Algorithm Comparison
