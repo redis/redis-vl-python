@@ -400,7 +400,7 @@ Algorithm Selection Guide
      - Minimal overhead
      - Exact but slow for large data
    * - **HNSW**
-     - General purpose (10K-1M+ vectors)
+     - General purpose (100K-1M+ vectors)
      - 95-99% recall, O(log n) search
      - Moderate (graph overhead)
      - Fast approximate search
@@ -414,13 +414,13 @@ When to Use Each Algorithm
 --------------------------
 
 **Choose FLAT when:**
- - Dataset size < 10,000 vectors
+ - Dataset size < 100,000 vectors
  - Exact results are mandatory
  - Simple setup is preferred
  - Query latency is not critical
 
 **Choose HNSW when:**
- - Dataset size 10K - 1M+ vectors
+ - Dataset size 100K - 1M+ vectors
  - Need balanced speed and accuracy
  - Cross-platform compatibility required
  - Most common choice for production
