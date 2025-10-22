@@ -160,7 +160,7 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
 
    **Use HNSW when:**
 
-    - Medium to large datasets (10K-1M+ vectors) requiring high recall rates
+    - Medium to large datasets (100K-1M+ vectors) requiring high recall rates
     - Search accuracy is more important than memory usage
     - Need general-purpose vector search with balanced performance
     - Cross-platform deployments where hardware-specific optimizations aren't available
@@ -400,7 +400,7 @@ Algorithm Selection Guide
      - Minimal overhead
      - Exact but slow for large data
    * - **HNSW**
-     - General purpose (10K-1M+ vectors)
+     - General purpose (100K-1M+ vectors)
      - 95-99% recall, O(log n) search
      - Moderate (graph overhead)
      - Fast approximate search
@@ -414,13 +414,13 @@ When to Use Each Algorithm
 --------------------------
 
 **Choose FLAT when:**
- - Dataset size < 10,000 vectors
+ - Dataset size < 100,000 vectors
  - Exact results are mandatory
  - Simple setup is preferred
  - Query latency is not critical
 
 **Choose HNSW when:**
- - Dataset size 10K - 1M+ vectors
+ - Dataset size 100K - 1M+ vectors
  - Need balanced speed and accuracy
  - Cross-platform compatibility required
  - Most common choice for production
