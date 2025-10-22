@@ -123,6 +123,7 @@ class HybridQuery(AggregationQuery):
             text_weights (Optional[Dict[str, float]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
+
         Raises:
             ValueError: If the text string is empty, or if the text string becomes empty after
                 stopwords are removed.
@@ -189,6 +190,7 @@ class HybridQuery(AggregationQuery):
                 language will be used. if a list, set, or tuple of strings is provided then those
                 will be used as stopwords. Defaults to "english". if set to "None" then no stopwords
                 will be removed.
+
         Raises:
             TypeError: If the stopwords are not a set, list, or tuple of strings.
         """
@@ -218,6 +220,7 @@ class HybridQuery(AggregationQuery):
 
         Returns:
             str: The tokenized and escaped query string.
+
         Raises:
             ValueError: If the text string becomes empty after stopwords are removed.
         """
@@ -229,9 +232,6 @@ class HybridQuery(AggregationQuery):
             )
             for token in user_query.split()
         ]
-        ##tokenized = " | ".join(
-        ##    [token for token in tokens if token and token not in self._stopwords]
-        ##)
 
         token_list = [
             token for token in tokens if token and token not in self._stopwords
@@ -273,7 +273,7 @@ class HybridQuery(AggregationQuery):
             text_weights: Dictionary of word:weight mappings
         """
         self._text_weights = self._parse_text_weights(weights)
-        self._built_query_string = None
+        self._query = self._build_query_string()
 
     @property
     def text_weights(self) -> Dict[str, float]:
