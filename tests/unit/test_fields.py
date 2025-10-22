@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 from redis.commands.search.field import GeoField as RedisGeoField
 from redis.commands.search.field import NumericField as RedisNumericField
@@ -5,12 +7,16 @@ from redis.commands.search.field import TagField as RedisTagField
 from redis.commands.search.field import TextField as RedisTextField
 from redis.commands.search.field import VectorField as RedisVectorField
 
+from redisvl.exceptions import RedisModuleVersionError
+from redisvl.index import AsyncSearchIndex, SearchIndex
+from redisvl.schema import IndexSchema
 from redisvl.schema.fields import (
     FieldFactory,
     FlatVectorField,
     GeoField,
     HNSWVectorField,
     NumericField,
+    SVSVectorField,
     TagField,
     TextField,
 )
@@ -70,6 +76,24 @@ def create_hnsw_vector_field(**kwargs):
     }
     defaults["attrs"].update(kwargs)
     return HNSWVectorField(**defaults)
+
+
+def create_svs_vector_field(**kwargs):
+    defaults = {
+        "name": "example_svsvectorfield",
+        "attrs": {
+            "dims": 128,
+            "algorithm": "SVS-VAMANA",
+            "datatype": "float32",
+            "distance_metric": "cosine",
+            "graph_max_degree": 40,
+            "construction_window_size": 250,
+            "search_window_size": 20,
+            "epsilon": 0.01,
+        },
+    }
+    defaults["attrs"].update(kwargs)
+    return SVSVectorField(**defaults)
 
 
 # Tests for field schema creation and validation
@@ -422,3 +446,534 @@ def test_field_factory_with_new_attributes():
     )
     assert isinstance(vector_field, FlatVectorField)
     assert vector_field.attrs.index_missing == True
+
+
+def test_svs_vector_field_creation():
+    """Test basic SVS-VAMANA vector field creation."""
+    svs_field = create_svs_vector_field()
+    assert svs_field.name == "example_svsvectorfield"
+    assert svs_field.attrs.algorithm == "SVS-VAMANA"
+    assert svs_field.attrs.dims == 128
+    assert svs_field.attrs.datatype.value == "FLOAT32"
+    assert svs_field.attrs.distance_metric.value == "COSINE"
+    assert svs_field.attrs.graph_max_degree == 40
+    assert svs_field.attrs.construction_window_size == 250
+    assert svs_field.attrs.search_window_size == 20
+    assert svs_field.attrs.epsilon == 0.01
+
+
+def test_svs_vector_field_as_redis_field():
+    """Test SVS-VAMANA field conversion to Redis field."""
+    svs_field = create_svs_vector_field()
+    redis_field = svs_field.as_redis_field()
+
+    assert isinstance(redis_field, RedisVectorField)
+    assert redis_field.name == "example_svsvectorfield"
+
+    # Check that SVS-VAMANA specific parameters are in args
+    assert "GRAPH_MAX_DEGREE" in redis_field.args
+    assert "CONSTRUCTION_WINDOW_SIZE" in redis_field.args
+    assert "SEARCH_WINDOW_SIZE" in redis_field.args
+    assert "EPSILON" in redis_field.args
+
+
+def test_svs_vector_field_default_params():
+    """Test SVS-VAMANA field with default parameters."""
+    svs_field = SVSVectorField(
+        name="test_vector",
+        attrs={
+            "dims": 768,
+            "algorithm": "SVS-VAMANA",
+            "datatype": "float32",
+            "distance_metric": "cosine",
+        },
+    )
+
+    # Check defaults are applied
+    assert svs_field.attrs.graph_max_degree == 40
+    assert svs_field.attrs.construction_window_size == 250
+    assert svs_field.attrs.search_window_size == 20
+    assert svs_field.attrs.epsilon == 0.01
+    assert svs_field.attrs.compression is None
+    assert svs_field.attrs.reduce is None
+    assert svs_field.attrs.training_threshold is None
+
+
+def test_svs_vector_field_with_custom_graph_params():
+    """Test SVS-VAMANA field with custom graph parameters."""
+    svs_field = create_svs_vector_field(
+        graph_max_degree=64,
+        construction_window_size=500,
+        search_window_size=40,
+        epsilon=0.02,
+    )
+
+    redis_field = svs_field.as_redis_field()
+
+    # Verify custom parameters are set
+    assert redis_field.args[redis_field.args.index("GRAPH_MAX_DEGREE") + 1] == 64
+    assert (
+        redis_field.args[redis_field.args.index("CONSTRUCTION_WINDOW_SIZE") + 1] == 500
+    )
+    assert redis_field.args[redis_field.args.index("SEARCH_WINDOW_SIZE") + 1] == 40
+    assert redis_field.args[redis_field.args.index("EPSILON") + 1] == 0.02
+
+
+def test_svs_vector_field_with_lvq4_compression():
+    """Test SVS-VAMANA field with LVQ4 compression."""
+    svs_field = create_svs_vector_field(compression="LVQ4")
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LVQ4"
+
+
+def test_svs_vector_field_with_lvq8_compression():
+    """Test SVS-VAMANA field with LVQ8 compression."""
+    svs_field = create_svs_vector_field(compression="LVQ8")
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LVQ8"
+
+
+def test_svs_vector_field_with_leanvec_compression():
+    """Test SVS-VAMANA field with LeanVec4x8 compression."""
+    svs_field = create_svs_vector_field(compression="LeanVec4x8")
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec4x8"
+
+
+def test_svs_vector_field_with_leanvec_and_reduce():
+    """Test SVS-VAMANA field with LeanVec compression and reduce parameter."""
+    svs_field = create_svs_vector_field(dims=768, compression="LeanVec4x8", reduce=384)
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec4x8"
+    assert "REDUCE" in redis_field.args
+    assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 384
+
+
+def test_svs_vector_field_with_training_threshold():
+    """Test SVS-VAMANA field with training_threshold parameter."""
+    svs_field = create_svs_vector_field(compression="LVQ4", training_threshold=10000)
+    redis_field = svs_field.as_redis_field()
+
+    assert "TRAINING_THRESHOLD" in redis_field.args
+    assert redis_field.args[redis_field.args.index("TRAINING_THRESHOLD") + 1] == 10000
+
+
+def test_svs_vector_field_reduce_with_lvq4_raises_error():
+    """Test that reduce parameter with LVQ4 compression raises ValueError."""
+    with pytest.raises(
+        ValueError, match="reduce parameter is only supported with LeanVec"
+    ):
+        create_svs_vector_field(dims=768, compression="LVQ4", reduce=384)
+
+
+def test_svs_vector_field_reduce_with_lvq8_raises_error():
+    """Test that reduce parameter with LVQ8 compression raises ValueError."""
+    with pytest.raises(
+        ValueError, match="reduce parameter is only supported with LeanVec"
+    ):
+        create_svs_vector_field(dims=768, compression="LVQ8", reduce=384)
+
+
+def test_svs_vector_field_reduce_without_compression_raises_error():
+    """Test that reduce parameter without compression raises ValueError."""
+    with pytest.raises(ValueError, match="reduce parameter requires compression"):
+        create_svs_vector_field(dims=768, reduce=384)
+
+
+def test_svs_vector_field_reduce_greater_than_dims_raises_error():
+    """Test that reduce >= dims raises ValueError."""
+    with pytest.raises(ValueError, match="reduce.*must be less than dims"):
+        create_svs_vector_field(dims=768, compression="LeanVec4x8", reduce=768)
+
+
+def test_svs_vector_field_reduce_equal_to_dims_raises_error():
+    """Test that reduce == dims raises ValueError."""
+    with pytest.raises(ValueError, match="reduce.*must be less than dims"):
+        create_svs_vector_field(dims=768, compression="LeanVec4x8", reduce=768)
+
+
+def test_svs_vector_field_invalid_datatype_raises_error():
+    """Test that invalid datatype (not float16/float32) raises ValueError."""
+    with pytest.raises(Exception, match="SVS-VAMANA only supports FLOAT16 and FLOAT32"):
+        create_svs_vector_field(datatype="float64")
+
+
+def test_svs_vector_field_float16_datatype():
+    """Test SVS-VAMANA field with float16 datatype."""
+    svs_field = create_svs_vector_field(datatype="float16")
+    redis_field = svs_field.as_redis_field()
+
+    assert "TYPE" in redis_field.args
+    assert redis_field.args[redis_field.args.index("TYPE") + 1] == "FLOAT16"
+
+
+def test_svs_vector_field_all_compression_types():
+    """Test all valid compression types for SVS-VAMANA."""
+    compression_types = ["LVQ4", "LVQ4x4", "LVQ4x8", "LVQ8", "LeanVec4x8", "LeanVec8x8"]
+
+    for compression in compression_types:
+        svs_field = create_svs_vector_field(compression=compression)
+        redis_field = svs_field.as_redis_field()
+
+        assert "COMPRESSION" in redis_field.args
+        assert (
+            redis_field.args[redis_field.args.index("COMPRESSION") + 1] == compression
+        )
+
+
+def test_svs_vector_field_leanvec8x8_with_reduce():
+    """Test SVS-VAMANA field with LeanVec8x8 compression and reduce."""
+    svs_field = create_svs_vector_field(dims=1024, compression="LeanVec8x8", reduce=512)
+    redis_field = svs_field.as_redis_field()
+
+    assert "COMPRESSION" in redis_field.args
+    assert redis_field.args[redis_field.args.index("COMPRESSION") + 1] == "LeanVec8x8"
+    assert "REDUCE" in redis_field.args
+    assert redis_field.args[redis_field.args.index("REDUCE") + 1] == 512
+
+
+def test_uses_svs_vamana_true():
+    """Test _uses_svs_vamana returns True for SVS schema."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {"name": "id", "type": "tag"},
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = Mock()
+
+    with patch.object(SearchIndex, "_redis_client", mock_client):
+        index = SearchIndex(schema=schema)
+        assert index._uses_svs_vamana() is True
+
+
+def test_check_svs_support_raises_error():
+    """Test _check_svs_support raises error when not supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = Mock()
+    mock_client.info.return_value = {"redis_version": "7.2.4"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20612, "searchlight": 20612}
+
+        index = SearchIndex(schema=schema)
+
+        # Mock the _redis_client property
+        with patch.object(
+            type(index),
+            "_redis_client",
+            new_callable=lambda: property(lambda self: mock_client),
+        ):
+            with pytest.raises(RedisModuleVersionError) as exc_info:
+                index._check_svs_support()
+
+            error_msg = str(exc_info.value)
+            assert "SVS-VAMANA requires Redis >= 8.2.0" in error_msg
+
+
+def test_check_svs_support_passes():
+    """Test _check_svs_support passes when supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = Mock()
+    mock_client.info.return_value = {"redis_version": "8.2.0"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20810, "searchlight": 20810}
+
+        index = SearchIndex(schema=schema)
+
+        # Mock the _redis_client property
+        with patch.object(
+            type(index),
+            "_redis_client",
+            new_callable=lambda: property(lambda self: mock_client),
+        ):
+            # Should not raise
+            index._check_svs_support()
+
+
+@pytest.mark.asyncio
+async def test_check_svs_support_async_raises_error():
+    """Test _check_svs_support_async raises error when not supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = AsyncMock()
+    mock_client.info.return_value = {"redis_version": "7.2.4"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules_async"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20612, "searchlight": 20612}
+
+        index = AsyncSearchIndex(schema=schema)
+
+        with patch.object(index, "_get_client", return_value=mock_client):
+            with pytest.raises(RedisModuleVersionError) as exc_info:
+                await index._check_svs_support_async()
+
+            error_msg = str(exc_info.value)
+            assert "SVS-VAMANA requires Redis >= 8.2.0" in error_msg
+
+
+@pytest.mark.asyncio
+async def test_check_svs_support_async_passes():
+    """Test _check_svs_support_async passes when supported."""
+    schema_dict = {
+        "index": {"name": "test_index", "prefix": "doc"},
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "dims": 128,
+                    "algorithm": "svs-vamana",
+                    "datatype": "float32",
+                    "distance_metric": "cosine",
+                },
+            },
+        ],
+    }
+    schema = IndexSchema.from_dict(schema_dict)
+
+    mock_client = AsyncMock()
+    mock_client.info.return_value = {"redis_version": "8.2.0"}
+
+    with patch(
+        "redisvl.redis.connection.RedisConnectionFactory.get_modules_async"
+    ) as mock_get_modules:
+        mock_get_modules.return_value = {"search": 20810, "searchlight": 20810}
+
+        index = AsyncSearchIndex(schema=schema)
+
+        with patch.object(index, "_get_client", return_value=mock_client):
+            # Should not raise
+            await index._check_svs_support_async()
+
+
+# Phase C: Warning Tests
+
+
+def test_leanvec_without_reduce_warning(caplog):
+    """Test warning when LeanVec compression is used without reduce parameter."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 1536,
+                "algorithm": "svs-vamana",
+                "datatype": "float16",
+                "distance_metric": "cosine",
+                "compression": "LeanVec4x8",
+                # No reduce parameter
+            },
+        )
+
+    # Check warning was logged
+    assert len(caplog.records) == 1
+    assert "LeanVec compression selected without 'reduce'" in caplog.records[0].message
+    assert "Consider setting reduce=768" in caplog.records[0].message
+
+
+def test_leanvec_with_reduce_no_warning(caplog):
+    """Test no warning when LeanVec compression is used with reduce parameter."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 1536,
+                "algorithm": "svs-vamana",
+                "datatype": "float16",
+                "distance_metric": "cosine",
+                "compression": "LeanVec4x8",
+                "reduce": 768,
+            },
+        )
+
+    # No warnings should be logged
+    assert len(caplog.records) == 0
+
+
+def test_low_graph_max_degree_warning(caplog):
+    """Test warning when graph_max_degree is too low."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "graph_max_degree": 16,  # Too low
+            },
+        )
+
+    # Check warning was logged
+    assert len(caplog.records) == 1
+    assert "graph_max_degree=16 is low" in caplog.records[0].message
+    assert "Consider values between 32-64" in caplog.records[0].message
+
+
+def test_normal_graph_max_degree_no_warning(caplog):
+    """Test no warning when graph_max_degree is in normal range."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "graph_max_degree": 40,  # Normal value
+            },
+        )
+
+    # No warnings should be logged
+    assert len(caplog.records) == 0
+
+
+def test_high_search_window_size_warning(caplog):
+    """Test warning when search_window_size is too high."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "search_window_size": 150,  # Too high
+            },
+        )
+
+    # Check warning was logged
+    assert len(caplog.records) == 1
+    assert "search_window_size=150 is high" in caplog.records[0].message
+    assert "This may impact query latency" in caplog.records[0].message
+
+
+def test_normal_search_window_size_no_warning(caplog):
+    """Test no warning when search_window_size is in normal range."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 512,
+                "algorithm": "svs-vamana",
+                "datatype": "float32",
+                "distance_metric": "cosine",
+                "search_window_size": 30,  # Normal value
+            },
+        )
+
+    # No warnings should be logged
+    assert len(caplog.records) == 0
+
+
+def test_multiple_warnings(caplog):
+    """Test multiple warnings are logged when multiple issues exist."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        field = SVSVectorField(
+            name="embedding",
+            attrs={
+                "dims": 1536,
+                "algorithm": "svs-vamana",
+                "datatype": "float16",
+                "distance_metric": "cosine",
+                "compression": "LeanVec4x8",
+                # No reduce parameter - warning 1
+                "graph_max_degree": 20,  # Too low - warning 2
+                "search_window_size": 120,  # Too high - warning 3
+            },
+        )
+
+    # Check all three warnings were logged
+    assert len(caplog.records) == 3
+    messages = [record.message for record in caplog.records]
+    assert any("LeanVec compression" in msg for msg in messages)
+    assert any("graph_max_degree=20" in msg for msg in messages)
+    assert any("search_window_size=120" in msg for msg in messages)

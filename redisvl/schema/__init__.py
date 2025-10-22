@@ -1,10 +1,12 @@
 from redisvl.schema.fields import (
     BaseField,
+    CompressionType,
     FieldTypes,
     FlatVectorField,
     GeoField,
     HNSWVectorField,
     NumericField,
+    SVSVectorField,
     TagField,
     TextField,
     VectorDataType,
@@ -24,6 +26,7 @@ __all__ = [
     "VectorDistanceMetric",
     "VectorDataType",
     "VectorIndexAlgorithm",
+    "CompressionType",
     "BaseField",
     "TextField",
     "TagField",
@@ -31,5 +34,6 @@ __all__ = [
     "GeoField",
     "FlatVectorField",
     "HNSWVectorField",
+    "SVSVectorField",
     "validate_object",
 ]

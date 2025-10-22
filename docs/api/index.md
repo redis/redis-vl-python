@@ -20,6 +20,7 @@ query
 filter
 vectorizer
 reranker
+utils
 cache
 message_history
 router
