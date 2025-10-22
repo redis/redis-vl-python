@@ -890,6 +890,8 @@ def test_text_query_with_text_filter(index):
 
 @pytest.mark.parametrize("scorer", ["BM25", "BM25STD", "TFIDF", "TFIDF.DOCNORM"])
 def test_text_query_word_weights(index, scorer):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
     text = "a medical professional with expertise in lung cancers"
     text_field = "description"
     return_fields = ["description"]
