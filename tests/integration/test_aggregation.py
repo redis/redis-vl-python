@@ -317,6 +317,80 @@ def test_hybrid_query_with_text_filter(index):
         assert "research" not in result[text_field].lower()
 
 
+@pytest.mark.parametrize("scorer", ["BM25", "BM25STD", "TFIDF", "TFIDF.DOCNORM"])
+def test_hybrid_query_word_weights(index, scorer):
+    text = "a medical professional with expertise in lung cancers"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+    return_fields = ["description"]
+
+    weights = {"medical": 3.4, "cancers": 5}
+
+    # test we can run a query with text weights
+    weighted_query = HybridQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights=weights,
+    )
+
+    weighted_results = index.query(weighted_query)
+    assert len(weighted_results) == 7
+
+    # test that weights do change the scores on results
+    unweighted_query = HybridQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights={},
+    )
+
+    unweighted_results = index.query(unweighted_query)
+
+    for weighted, unweighted in zip(weighted_results, unweighted_results):
+        for word in weights:
+            if word in weighted["description"] or word in unweighted["description"]:
+                assert float(weighted["text_score"]) > float(unweighted["text_score"])
+
+    # test that weights do change the document score and order of results
+    weights = {"medical": 5, "cancers": 3.4}  # switch the weights
+    weighted_query = HybridQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights=weights,
+    )
+
+    weighted_results = index.query(weighted_query)
+    assert weighted_results != unweighted_results
+
+    # test assigning weights on construction is equivalent to setting them on the query object
+    new_query = HybridQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights=None,
+    )
+
+    new_query.set_text_weights(weights)
+
+    new_weighted_results = index.query(new_query)
+    assert new_weighted_results == weighted_results
+
+
 def test_multivector_query(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
