@@ -1065,7 +1065,7 @@ class TextQuery(BaseQuery):
                 a default set of stopwords for that language will be used. Users may specify
                 their own stop words by providing a List or Set of words. if set to None,
                 then no words will be removed. Defaults to 'english'.
-            text_weights (Optional[Dict[str, float]): The importance weighting of individual words
+            text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
         Raises:
