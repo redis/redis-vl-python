@@ -120,7 +120,7 @@ class HybridQuery(AggregationQuery):
                 set, or tuple of strings is provided then those will be used as stopwords.
                 Defaults to "english". if set to "None" then no stopwords will be removed.
             dialect (int, optional): The Redis dialect version. Defaults to 2.
-            text_weights (Optional[Dict[str, float]): The importance weighting of individual words
+            text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
 
