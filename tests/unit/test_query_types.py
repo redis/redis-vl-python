@@ -361,7 +361,7 @@ def test_text_query_word_weights():
             text_weights={"first": 0.2, "second": "0.1"},
         )
 
-    # no error is weights dictiionary is empty or None
+    # no error if weights dictionary is empty or None
     query = TextQuery(
         text="sample text query", text_field_name="description", text_weights={}
     )
