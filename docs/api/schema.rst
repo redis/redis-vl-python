@@ -160,7 +160,7 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
 
    **Use HNSW when:**
 
-    - Medium to large datasets (10K-1M+ vectors) requiring high recall rates
+    - Medium to large datasets (100K-1M+ vectors) requiring high recall rates
     - Search accuracy is more important than memory usage
     - Need general-purpose vector search with balanced performance
     - Cross-platform deployments where hardware-specific optimizations aren't available
