@@ -374,7 +374,6 @@ def test_multivector_query_accepts_bytes(index):
     ]
     vector_fields = ["user_embedding", "audio_embedding"]
     dtypes = ["float32", "float64"]
-    dtypes = ["float16", "float16"]
     vectors = []
     for vector, field, dtype in zip(vector_bytes, vector_fields, dtypes):
         vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
