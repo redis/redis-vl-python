@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
@@ -15,7 +16,11 @@ from redis.exceptions import ResponseError
 from redis.sentinel import Sentinel
 
 from redisvl import __version__
-from redisvl.redis.constants import REDIS_URL_ENV_VAR
+from redisvl.redis.constants import (
+    REDIS_URL_ENV_VAR,
+    SVS_MIN_REDIS_VERSION,
+    SVS_MIN_SEARCH_VERSION,
+)
 from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.utils import deprecated_function
@@ -67,16 +72,16 @@ def _strip_cluster_from_url_and_kwargs(
     return cleaned_url, cleaned_kwargs
 
 
-def compare_versions(version1: str, version2: str):
+def is_version_gte(version1: str, version2: str) -> bool:
     """
-    Compare two Redis version strings numerically.
+    Check if version1 >= version2.
 
     Parameters:
-    version1 (str): The first version string (e.g., "7.2.4").
-    version2 (str): The second version string (e.g., "6.2.1").
+        version1 (str): The first version string (e.g., "7.2.4").
+        version2 (str): The second version string (e.g., "6.2.1").
 
     Returns:
-    int: -1 if version1 < version2, 0 if version1 == version2, 1 if version1 > version2.
+        bool: True if version1 >= version2, False otherwise.
     """
     v1_parts = list(map(int, version1.split(".")))
     v2_parts = list(map(int, version2.split(".")))
@@ -99,6 +104,64 @@ def compare_versions(version1: str, version2: str):
 def unpack_redis_modules(module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Unpack a list of Redis modules pulled from the MODULES LIST command."""
     return {module["name"]: module["ver"] for module in module_list}
+
+
+def supports_svs(client: SyncRedisClient) -> bool:
+    """Check if Redis server supports SVS-VAMANA.
+
+    Args:
+        client: Sync Redis client instance
+
+    Returns:
+        True if SVS-VAMANA is supported, False otherwise
+    """
+    info = client.info("server")  # type: ignore[union-attr]
+    redis_version = info.get("redis_version", "0.0.0")  # type: ignore[union-attr]
+
+    modules = RedisConnectionFactory.get_modules(client)
+    search_ver = modules.get("search", 0)
+    searchlight_ver = modules.get("searchlight", 0)
+
+    # Check if SVS-VAMANA requirements are met
+    redis_ok = is_version_gte(redis_version, SVS_MIN_REDIS_VERSION)
+
+    # Check either search or searchlight module (only one is typically installed)
+    # RediSearch is the open-source module, SearchLight is the enterprise version
+    modules_ok = (
+        search_ver >= SVS_MIN_SEARCH_VERSION
+        or searchlight_ver >= SVS_MIN_SEARCH_VERSION
+    )
+
+    return redis_ok and modules_ok
+
+
+async def supports_svs_async(client: AsyncRedisClient) -> bool:
+    """Async version of _supports_svs.
+
+    Args:
+        client: Async Redis client instance
+
+    Returns:
+        True if SVS-VAMANA is supported, False otherwise
+    """
+    info = await client.info("server")  # type: ignore[union-attr]
+    redis_version = info.get("redis_version", "0.0.0")  # type: ignore[union-attr]
+
+    modules = await RedisConnectionFactory.get_modules_async(client)
+    search_ver = modules.get("search", 0)
+    searchlight_ver = modules.get("searchlight", 0)
+
+    # Check if SVS-VAMANA requirements are met
+    redis_ok = is_version_gte(redis_version, SVS_MIN_REDIS_VERSION)
+
+    # Check either search or searchlight module (only one is typically installed)
+    # RediSearch is the open-source module, SearchLight is the enterprise version
+    modules_ok = (
+        search_ver >= SVS_MIN_SEARCH_VERSION
+        or searchlight_ver >= SVS_MIN_SEARCH_VERSION
+    )
+
+    return redis_ok and modules_ok
 
 
 def get_address_from_env() -> str:
@@ -226,6 +289,57 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         else:
             # Default to float32 if missing
             normalized["datatype"] = "float32"
+
+        # Handle SVS-VAMANA specific parameters
+        # Compression - Redis uses different internal names, so we need to map them
+        if "compression" in vector_attrs:
+            compression_value = vector_attrs["compression"]
+            # Map Redis internal names to our enum values
+            compression_mapping = {
+                "GlobalSQ8": "LVQ4x4",  # Default mapping
+                "GlobalSQ4": "LVQ4",
+                # Add more mappings as we discover them
+            }
+            # Try to map, otherwise use the value as-is
+            normalized["compression"] = compression_mapping.get(
+                compression_value, compression_value
+            )
+
+        # Dimensionality reduction (reduce parameter)
+        if "reduce" in vector_attrs:
+            try:
+                normalized["reduce"] = int(vector_attrs["reduce"])
+            except (ValueError, TypeError):
+                pass
+
+        # Graph parameters
+        if "graph_max_degree" in vector_attrs:
+            try:
+                normalized["graph_max_degree"] = int(vector_attrs["graph_max_degree"])
+            except (ValueError, TypeError):
+                pass
+
+        if "construction_window_size" in vector_attrs:
+            try:
+                normalized["construction_window_size"] = int(
+                    vector_attrs["construction_window_size"]
+                )
+            except (ValueError, TypeError):
+                pass
+
+        if "search_window_size" in vector_attrs:
+            try:
+                normalized["search_window_size"] = int(
+                    vector_attrs["search_window_size"]
+                )
+            except (ValueError, TypeError):
+                pass
+
+        if "epsilon" in vector_attrs:
+            try:
+                normalized["epsilon"] = float(vector_attrs["epsilon"])
+            except (ValueError, TypeError):
+                pass
 
         # Validate that we have required dims
         if "dims" not in normalized:
