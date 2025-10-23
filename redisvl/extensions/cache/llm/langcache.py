@@ -14,15 +14,10 @@ from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 
 logger = get_logger(__name__)
 
-try:
-    from langcache import LangCache as LangCacheClient
-    from langcache.models import SearchStrategy
 
-    LANGCACHE_AVAILABLE = True
-except ImportError:
-    LANGCACHE_AVAILABLE = False
-    LangCacheClient = None  # type: ignore
-    SearchStrategy = None  # type: ignore
+# Placeholders for test patching; actual imports happen at runtime in __init__
+LangCacheClient = None  # type: ignore
+SearchStrategy = None  # type: ignore
 
 
 class LangCacheWrapper(BaseLLMCache):
@@ -89,11 +84,22 @@ class LangCacheWrapper(BaseLLMCache):
             raise ValueError("distance_scale must be 'normalized' or 'redis'")
         self._distance_scale = distance_scale
 
-        if not LANGCACHE_AVAILABLE:
+        # Import optional dependency at use time; raise clear error if missing
+        global LangCacheClient, SearchStrategy
+        try:
+            if LangCacheClient is None or SearchStrategy is None:
+                from langcache import LangCache as _LangCacheClient
+                from langcache.models import SearchStrategy as _SearchStrategy
+
+                if LangCacheClient is None:
+                    LangCacheClient = _LangCacheClient
+                if SearchStrategy is None:
+                    SearchStrategy = _SearchStrategy
+        except ImportError as e:
             raise ImportError(
                 "The langcache package is required to use LangCacheWrapper. "
-                "Install it with: pip install langcache"
-            )
+                "Install it with: pip install redisvl[langcache]"
+            ) from e
 
         if not cache_id:
             raise ValueError("cache_id is required for LangCacheWrapper")

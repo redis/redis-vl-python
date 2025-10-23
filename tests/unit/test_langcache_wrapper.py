@@ -1,10 +1,11 @@
 """Unit tests for LangCacheWrapper."""
 
+import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from redisvl.extensions.cache.llm.langcache import LANGCACHE_AVAILABLE, LangCacheWrapper
+from redisvl.extensions.cache.llm.langcache import LangCacheWrapper
 
 
 @pytest.fixture
@@ -25,7 +26,10 @@ def mock_langcache_client():
         yield mock_client_class, mock_client
 
 
-@pytest.mark.skipif(not LANGCACHE_AVAILABLE, reason="langcache package not installed")
+@pytest.mark.skipif(
+    importlib.util.find_spec("langcache") is None,
+    reason="langcache package not installed",
+)
 class TestLangCacheWrapper:
     """Test suite for LangCacheWrapper."""
 
@@ -366,11 +370,14 @@ class TestLangCacheWrapper:
 
 def test_import_error_when_langcache_not_installed():
     """Test that ImportError is raised when langcache is not installed."""
-    with patch("redisvl.extensions.cache.llm.langcache.LANGCACHE_AVAILABLE", False):
-        with pytest.raises(ImportError, match="langcache package is required"):
-            LangCacheWrapper(
-                name="test",
-                server_url="https://api.example.com",
-                cache_id="test-cache",
-                api_key="test-key",
-            )
+    # If langcache is installed in this environment, this test is not applicable
+    if importlib.util.find_spec("langcache") is not None:
+        pytest.skip("langcache package is installed")
+
+    with pytest.raises(ImportError, match="langcache package is required"):
+        LangCacheWrapper(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
