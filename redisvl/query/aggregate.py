@@ -1,10 +1,11 @@
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
+from typing_extensions import Self
 
 from redisvl.query.filter import FilterExpression
-from redisvl.redis.utils import array_to_buffer
+from redisvl.redis.utils import array_to_buffer, buffer_to_array
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import lazy_import
@@ -32,8 +33,15 @@ class Vector(BaseModel):
             raise ValueError(
                 f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
             )
-
         return dtype
+
+    @model_validator(mode="after")
+    def validate_vector(self) -> Self:
+        """If the vector passed in is an array of float convert it to a byte string."""
+        if isinstance(self.vector, bytes):
+            return self
+        self.vector = array_to_buffer(self.vector, self.dtype)
+        return self
 
 
 class AggregationQuery(AggregateRequest):
@@ -364,12 +372,8 @@ class MultiVectorQuery(AggregationQuery):
             Dict[str, Any]: The parameters for the aggregation.
         """
         params = {}
-        for i, (vector, dtype) in enumerate(
-            [(v.vector, v.dtype) for v in self._vectors]
-        ):
-            if isinstance(vector, list):
-                vector = array_to_buffer(vector, dtype=dtype)  # type: ignore
-            params[f"vector_{i}"] = vector
+        for i, v in enumerate(self._vectors):
+            params[f"vector_{i}"] = v.vector
         return params
 
     def _build_query_string(self) -> str:

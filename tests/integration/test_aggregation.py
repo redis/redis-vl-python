@@ -365,6 +365,32 @@ def test_multivector_query(index):
     )
 
 
+def test_multivector_query_accepts_bytes(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_bytes = [
+        array_to_buffer([0.1, 0.1, 0.5], "float32"),
+        array_to_buffer([0.3, 0.4, 0.7, 0.2, -0.3, 0.25], "float64"),
+    ]
+    vector_fields = ["user_embedding", "audio_embedding"]
+    dtypes = ["float32", "float64"]
+    dtypes = ["float16", "float16"]
+    vectors = []
+    for vector, field, dtype in zip(vector_bytes, vector_fields, dtypes):
+        vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
+
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+
+    results = index.query(multi_query)
+    assert isinstance(results, list)
+    assert len(results) == 7
+
+
 def test_multivector_query_with_filter(index):
     skip_if_redis_version_below(index.client, "7.2.0")
 
