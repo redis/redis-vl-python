@@ -1195,7 +1195,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         if redis_url:
             redis_client = await RedisConnectionFactory._get_aredis_connection(
-                url=redis_url,
+                redis_url=redis_url,
                 **kwargs,
             )
         elif redis_client:
@@ -1229,7 +1229,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             DeprecationWarning,
         )
         client = await RedisConnectionFactory._get_aredis_connection(
-            url=redis_url, **kwargs
+            redis_url=redis_url, **kwargs
         )
         await self.set_client(client)
 
@@ -1254,7 +1254,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                     # Pass lib_name to connection factory
                     kwargs = {**self._connection_kwargs}
                     if self._redis_url:
-                        kwargs["url"] = self._redis_url
+                        kwargs["redis_url"] = self._redis_url
                     if self._lib_name:
                         kwargs["lib_name"] = self._lib_name
                     self._redis_client = (

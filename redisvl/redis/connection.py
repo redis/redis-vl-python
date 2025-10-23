@@ -386,6 +386,7 @@ class RedisConnectionFactory:
     @staticmethod
     async def _get_aredis_connection(
         url: Optional[str] = None,
+        redis_url: Optional[str] = None,
         **kwargs,
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
@@ -394,8 +395,9 @@ class RedisConnectionFactory:
         only used internally by the library now.
 
         Args:
-            url (Optional[str]): The URL of the Redis server. If not provided,
-                the environment variable REDIS_URL is used.
+            url (Optional[str]): The URL of the Redis server.
+            redis_url (Optional[str]): Alias for url for consistency with public APIs.
+                If neither is provided, the environment variable REDIS_URL is used.
             **kwargs: Additional keyword arguments to be passed to the async
                 Redis client constructor.
 
@@ -406,7 +408,7 @@ class RedisConnectionFactory:
             ValueError: If url is not provided and REDIS_URL environment
                 variable is not set.
         """
-        url = url or get_address_from_env()
+        url = url or redis_url or get_address_from_env()
 
         client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
