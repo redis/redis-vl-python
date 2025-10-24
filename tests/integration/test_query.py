@@ -888,6 +888,72 @@ def test_text_query_with_text_filter(index):
         assert "research" not in result[text_field]
 
 
+@pytest.mark.parametrize("scorer", ["BM25", "BM25STD", "TFIDF", "TFIDF.DOCNORM"])
+def test_text_query_word_weights(index, scorer):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    text = "a medical professional with expertise in lung cancers"
+    text_field = "description"
+    return_fields = ["description"]
+
+    weights = {"medical": 3.4, "cancers": 5}
+
+    # test we can run a query with text weights
+    weighted_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights=weights,
+    )
+
+    weighted_results = index.query(weighted_query)
+    assert len(weighted_results) == 4
+
+    # test that weights do change the scores on results
+    unweighted_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights={},
+    )
+
+    unweighted_results = index.query(unweighted_query)
+
+    for weighted, unweighted in zip(weighted_results, unweighted_results):
+        for word in weights:
+            if word in weighted["description"] or word in unweighted["description"]:
+                assert weighted["score"] > unweighted["score"]
+
+    # test that weights do change the document score and order of results
+    weights = {"medical": 5, "cancers": 3.4}  # switch the weights
+    weighted_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights=weights,
+    )
+
+    weighted_results = index.query(weighted_query)
+    assert weighted_results != unweighted_results
+
+    # test assigning weights on construction is equivalent to setting them on the query object
+    new_query = TextQuery(
+        text=text,
+        text_field_name=text_field,
+        return_fields=return_fields,
+        text_scorer=scorer,
+        text_weights=None,
+    )
+
+    new_query.set_text_weights(weights)
+
+    new_weighted_results = index.query(new_query)
+    assert new_weighted_results == weighted_results
+
+
 def test_vector_query_with_ef_runtime(index, vector_query, sample_data):
     """
     Integration test: Verify that setting EF_RUNTIME on a VectorQuery works correctly.

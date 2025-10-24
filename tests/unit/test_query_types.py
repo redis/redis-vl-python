@@ -261,23 +261,9 @@ def test_text_query():
     with pytest.raises(TypeError):
         text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
-    text_query = TextQuery(
-        text_string, text_field_name, stopwords=set(["the", "a", "of"])
-    )
-    assert text_query.stopwords == set(["the", "a", "of"])
-
-    text_query = TextQuery(text_string, text_field_name, stopwords="german")
-    assert text_query.stopwords != set([])
-
     # test that filter expression is set correctly
     text_query.set_filter(filter_expression)
     assert text_query.filter == filter_expression
-
-    with pytest.raises(ValueError):
-        text_query = TextQuery(text_string, text_field_name, stopwords="gibberish")
-
-    with pytest.raises(TypeError):
-        text_query = TextQuery(text_string, text_field_name, stopwords=[1, 2, 3])
 
 
 def test_text_query_with_string_filter():
@@ -345,6 +331,64 @@ def test_text_query_with_string_filter():
     query_string_wildcard = str(text_query_wildcard)
     assert f"@{text_field_name}:(search | document | 12345)" in query_string_wildcard
     assert "AND" not in query_string_wildcard
+
+
+def test_text_query_word_weights():
+    # verify word weights get added into the raw Redis query syntax
+    query = TextQuery(
+        text="query string alpha bravo delta tango alpha",
+        text_field_name="description",
+        text_weights={"alpha": 2, "delta": 0.555, "gamma": 0.95},
+    )
+
+    assert (
+        str(query)
+        == "@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}) SCORER BM25STD WITHSCORES DIALECT 2 LIMIT 0 10"
+    )
+
+    # raise an error if weights are not positive floats
+    with pytest.raises(ValueError):
+        _ = TextQuery(
+            text="sample text query",
+            text_field_name="description",
+            text_weights={"first": 0.2, "second": -0.1},
+        )
+
+    with pytest.raises(ValueError):
+        _ = TextQuery(
+            text="sample text query",
+            text_field_name="description",
+            text_weights={"first": 0.2, "second": "0.1"},
+        )
+
+    # no error if weights dictionary is empty or None
+    query = TextQuery(
+        text="sample text query", text_field_name="description", text_weights={}
+    )
+    assert query
+
+    query = TextQuery(
+        text="sample text query", text_field_name="description", text_weights=None
+    )
+    assert query
+
+    # no error if the words in weights dictionary don't appear in query
+    query = TextQuery(
+        text="sample text query",
+        text_field_name="description",
+        text_weights={"alpha": 0.2, "bravo": 0.4},
+    )
+    assert query
+
+    # we can access the word weights on a query object
+    assert query.text_weights == {"alpha": 0.2, "bravo": 0.4}
+
+    # we can change the text weights on a query object
+    query.set_text_weights(weights={"new": 0.3, "words": 0.125, "here": 99})
+    assert query.text_weights == {"new": 0.3, "words": 0.125, "here": 99}
+
+    query.set_text_weights(weights={})
+    assert query.text_weights == {}
 
 
 @pytest.mark.parametrize(

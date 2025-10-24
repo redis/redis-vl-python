@@ -197,6 +197,83 @@ def test_hybrid_query_with_string_filter():
     assert "AND" not in query_string_wildcard
 
 
+def test_hybrid_query_text_weights():
+    # verify word weights get added into the raw Redis query syntax
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+
+    query = HybridQuery(
+        text="query string alpha bravo delta tango alpha",
+        text_field_name="description",
+        vector=vector,
+        vector_field_name=vector_field,
+        text_weights={"alpha": 2, "delta": 0.555, "gamma": 0.95},
+    )
+
+    assert (
+        str(query)
+        == "(~@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}))=>[KNN 10 @user_embedding $vector AS vector_distance] SCORER BM25STD ADDSCORES DIALECT 2 APPLY (2 - @vector_distance)/2 AS vector_similarity APPLY @__score AS text_score APPLY 0.30000000000000004*@text_score + 0.7*@vector_similarity AS hybrid_score SORTBY 2 @hybrid_score DESC MAX 10"
+    )
+
+    # raise an error if weights are not positive floats
+    with pytest.raises(ValueError):
+        _ = HybridQuery(
+            text="sample text query",
+            text_field_name="description",
+            vector=vector,
+            vector_field_name=vector_field,
+            text_weights={"first": 0.2, "second": -0.1},
+        )
+
+    with pytest.raises(ValueError):
+        _ = HybridQuery(
+            text="sample text query",
+            text_field_name="description",
+            vector=vector,
+            vector_field_name=vector_field,
+            text_weights={"first": 0.2, "second": "0.1"},
+        )
+
+    # no error if weights dictionary is empty or None
+    query = HybridQuery(
+        text="sample text query",
+        text_field_name="description",
+        vector=vector,
+        vector_field_name=vector_field,
+        text_weights={},
+    )
+    assert query
+
+    query = HybridQuery(
+        text="sample text query",
+        text_field_name="description",
+        vector=vector,
+        vector_field_name=vector_field,
+        text_weights=None,
+    )
+    assert query
+
+    # no error if the words in weights dictionary don't appear in query
+    query = HybridQuery(
+        text="sample text query",
+        text_field_name="description",
+        vector=vector,
+        vector_field_name=vector_field,
+        text_weights={"alpha": 0.2, "bravo": 0.4},
+    )
+    assert query
+
+    # we can access the word weights on a query object
+    assert query.text_weights == {"alpha": 0.2, "bravo": 0.4}
+
+    # we can change the text weights on a query object
+    query.set_text_weights(weights={"new": 0.3, "words": 0.125, "here": 99})
+    assert query.text_weights == {"new": 0.3, "words": 0.125, "here": 99}
+
+    query.set_text_weights(weights={})
+    assert query.text_weights == {}
+
+
 def test_multi_vector_query():
     # test we require Vector objects
     with pytest.raises(TypeError):
