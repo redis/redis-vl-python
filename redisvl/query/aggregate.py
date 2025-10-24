@@ -5,7 +5,7 @@ from redis.commands.search.aggregation import AggregateRequest, Desc
 from typing_extensions import Self
 
 from redisvl.query.filter import FilterExpression
-from redisvl.redis.utils import array_to_buffer, buffer_to_array
+from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import lazy_import
