@@ -15,7 +15,6 @@ User guides provide helpful resources for using RedisVL and its different compon
 01_getting_started
 02_hybrid_queries
 03_llmcache
-10_embeddings_cache
 04_vectorizers
 05_hash_vs_json
 06_rerankers
