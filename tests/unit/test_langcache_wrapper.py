@@ -10,12 +10,10 @@ from redisvl.extensions.cache.llm.langcache import LangCacheWrapper
 
 @pytest.fixture
 def mock_langcache_client():
-    """Create a mock LangCache client."""
-    with patch(
-        "redisvl.extensions.cache.llm.langcache.LangCacheClient"
-    ) as mock_client_class:
+    """Create a mock LangCache client via the wrapper factory method."""
+    with patch.object(LangCacheWrapper, "_create_client") as mock_create_client:
         mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
+        mock_create_client.return_value = mock_client
 
         # Mock context manager
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -23,7 +21,7 @@ def mock_langcache_client():
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        yield mock_client_class, mock_client
+        yield mock_create_client, mock_client
 
 
 @pytest.mark.skipif(
@@ -67,7 +65,7 @@ class TestLangCacheWrapper:
 
     def test_init_success(self, mock_langcache_client):
         """Test successful initialization."""
-        mock_client_class, _ = mock_langcache_client
+        mock_create_client, _ = mock_langcache_client
 
         cache = LangCacheWrapper(
             name="test_cache",
@@ -84,7 +82,7 @@ class TestLangCacheWrapper:
         assert cache.ttl == 3600
 
         # Verify client was initialized
-        mock_client_class.assert_called_once()
+        mock_create_client.assert_called_once()
 
     def test_store(self, mock_langcache_client):
         """Test storing a cache entry."""
