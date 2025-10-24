@@ -6,6 +6,7 @@ from redis.commands.search.result import Result
 from redisvl.index.index import process_results
 from redisvl.query.aggregate import HybridQuery, MultiVectorQuery, Vector
 from redisvl.query.filter import Tag
+from redisvl.redis.utils import array_to_buffer
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
@@ -314,3 +315,20 @@ def test_vector_object_validation():
     for dtype in ["bfloat16", "float16", "float32", "float64", "int8", "uint8"]:
         vec = Vector(vector=sample_vector, field_name="text embedding", dtype=dtype)
         assert isinstance(vec, Vector)
+
+
+def test_vector_object_handles_byte_conversion():
+    # test that passing an array of floats gets converted to bytes
+    vec = Vector(vector=sample_vector, field_name="field 1", dtype="float16")
+    assert vec.vector == array_to_buffer(sample_vector, dtype="float16")
+
+    # test we can pass an array of floats and convert to all supported dtypes
+    for datatype in ["bfloat16", "float16", "float32", "float64"]:
+        vec = Vector(vector=sample_vector, field_name="field 1", dtype=datatype)
+        assert vec.vector == array_to_buffer(sample_vector, dtype=datatype)
+
+    # test that passing in a byte string it is stored unchanged
+    for datatype in ["bfloat16", "float16", "float32", "float64"]:
+        byte_string = array_to_buffer(sample_vector, datatype)
+        vec = Vector(vector=byte_string, field_name="field 1")
+        assert vec.vector == byte_string
