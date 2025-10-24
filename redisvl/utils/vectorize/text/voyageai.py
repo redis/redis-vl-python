@@ -111,7 +111,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         # Token counting for API usage management
         token_counts = vectorizer.count_tokens(["text one", "text two"])
         print(f"Token counts: {token_counts}")
-        print(f"Model token limit: {vectorizer.get_token_limit()}")
+        print(f"Model token limit: {VOYAGE_TOTAL_TOKEN_LIMITS.get(vectorizer.model, 120_000)}")
 
     """
 
@@ -119,7 +119,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
 
     def __init__(
         self,
-        model: str = "voyage-3.5",
+        model: str,
         api_config: Optional[Dict] = None,
         dtype: str = "float32",
         cache: Optional["EmbeddingsCache"] = None,
@@ -130,7 +130,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         Visit https://docs.voyageai.com/docs/embeddings to learn about embeddings and check the available models.
 
         Args:
-            model (str): Model to use for embedding. Defaults to "voyage-3.5".
+            model (str): Model to use for embedding (e.g., "voyage-3.5", "voyage-context-3").
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
             dtype (str): the default datatype to use when embedding text as byte arrays.
@@ -213,22 +213,6 @@ class VoyageAITextVectorizer(BaseVectorizer):
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
 
-    def _get_batch_size(self) -> int:
-        """
-        Determine the appropriate batch size based on the model being used.
-
-        Returns:
-            int: Recommended batch size for the current model
-        """
-        if self.model in ["voyage-2", "voyage-02"]:
-            return 72
-        elif self.model in ["voyage-3-lite", "voyage-3.5-lite"]:
-            return 30
-        elif self.model in ["voyage-3", "voyage-3.5"]:
-            return 10
-        else:
-            return 7  # Default for other models
-
     def _validate_input(
         self, texts: List[str], input_type: Optional[str], truncation: Optional[bool]
     ):
@@ -285,16 +269,12 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         Generate vector embeddings for a batch of texts using the VoyageAI API.
 
+        Uses token-aware batching to respect model token limits and optimize API calls.
+
         Args:
             texts: List of texts to embed
-            batch_size: Number of texts to process in each API call.
-                Ignored if use_token_batching=True.
+            batch_size: Deprecated. Token-aware batching is now always used.
             **kwargs: Additional parameters to pass to the VoyageAI API.
-                Special kwargs:
-                - use_token_batching (bool): If True, use token-aware batching
-                  instead of simple batch_size-based batching. This respects
-                  model token limits and is recommended for large documents.
-                  Default: False.
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
@@ -305,20 +285,12 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         input_type = kwargs.pop("input_type", None)
         truncation = kwargs.pop("truncation", None)
-        use_token_batching = kwargs.pop("use_token_batching", False)
 
         # Validate inputs
         self._validate_input(texts, input_type, truncation)
 
-        # Determine batching strategy
-        if use_token_batching:
-            # Use token-aware batching
-            batches = self._build_token_aware_batches(texts, max_batch_size=1000)
-        else:
-            # Use simple batch_size-based batching
-            if batch_size is None:
-                batch_size = self._get_batch_size()
-            batches = list(self.batchify(texts, batch_size))
+        # Use token-aware batching
+        batches = self._build_token_aware_batches(texts)
 
         try:
             embeddings: List = []
@@ -342,10 +314,10 @@ class VoyageAITextVectorizer(BaseVectorizer):
                         texts=batch,
                         model=self.model,
                         input_type=input_type,
-                        truncation=truncation,
+                        truncation=truncation,  # type: ignore[assignment]
                         **kwargs,
                     )
-                    embeddings.extend(response.embeddings)
+                    embeddings.extend(response.embeddings)  # type: ignore[attr-defined]
             return embeddings
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
@@ -380,16 +352,12 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         Asynchronously generate vector embeddings for a batch of texts using the VoyageAI API.
 
+        Uses token-aware batching to respect model token limits and optimize API calls.
+
         Args:
             texts: List of texts to embed
-            batch_size: Number of texts to process in each API call.
-                Ignored if use_token_batching=True.
+            batch_size: Deprecated. Token-aware batching is now always used.
             **kwargs: Additional parameters to pass to the VoyageAI API.
-                Special kwargs:
-                - use_token_batching (bool): If True, use token-aware batching
-                  instead of simple batch_size-based batching. This respects
-                  model token limits and is recommended for large documents.
-                  Default: False.
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
@@ -400,20 +368,12 @@ class VoyageAITextVectorizer(BaseVectorizer):
         """
         input_type = kwargs.pop("input_type", None)
         truncation = kwargs.pop("truncation", None)
-        use_token_batching = kwargs.pop("use_token_batching", False)
 
         # Validate inputs
         self._validate_input(texts, input_type, truncation)
 
-        # Determine batching strategy
-        if use_token_batching:
-            # Use token-aware batching
-            batches = await self._abuild_token_aware_batches(texts, max_batch_size=1000)
-        else:
-            # Use simple batch_size-based batching
-            if batch_size is None:
-                batch_size = self._get_batch_size()
-            batches = list(self.batchify(texts, batch_size))
+        # Use token-aware batching (synchronous - tokenization is sync-only)
+        batches = self._build_token_aware_batches(texts)
 
         try:
             embeddings: List = []
@@ -437,10 +397,10 @@ class VoyageAITextVectorizer(BaseVectorizer):
                         texts=batch,
                         model=self.model,
                         input_type=input_type,
-                        truncation=truncation,
+                        truncation=truncation,  # type: ignore[assignment]
                         **kwargs,
                     )
-                    embeddings.extend(response.embeddings)
+                    embeddings.extend(response.embeddings)  # type: ignore[attr-defined]
             return embeddings
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
@@ -472,48 +432,6 @@ class VoyageAITextVectorizer(BaseVectorizer):
             return [len(token_list) for token_list in token_lists]
         except Exception as e:
             raise ValueError(f"Token counting failed: {e}")
-
-    async def acount_tokens(self, texts: List[str]) -> List[int]:
-        """
-        Asynchronously count tokens for the given texts using VoyageAI's tokenization API.
-
-        Args:
-            texts: List of texts to count tokens for.
-
-        Returns:
-            List[int]: List of token counts for each text.
-
-        Raises:
-            ValueError: If tokenization fails.
-
-        Example:
-            >>> vectorizer = VoyageAITextVectorizer(model="voyage-3.5")
-            >>> token_counts = await vectorizer.acount_tokens(["Hello world", "Another text"])
-            >>> print(token_counts)  # [2, 2]
-        """
-        if not texts:
-            return []
-
-        try:
-            # Use the VoyageAI async tokenize API to get token counts
-            token_lists = await self._aclient.tokenize(texts, model=self.model)
-            return [len(token_list) for token_list in token_lists]
-        except Exception as e:
-            raise ValueError(f"Token counting failed: {e}")
-
-    def get_token_limit(self) -> int:
-        """
-        Get the total token limit for the current model.
-
-        Returns:
-            int: Token limit for the model, or default of 120_000 if not found.
-
-        Example:
-            >>> vectorizer = VoyageAITextVectorizer(model="voyage-context-3")
-            >>> limit = vectorizer.get_token_limit()
-            >>> print(limit)  # 32000
-        """
-        return VOYAGE_TOTAL_TOKEN_LIMITS.get(self.model, 120_000)
 
     def _is_context_model(self) -> bool:
         """
@@ -550,7 +468,7 @@ class VoyageAITextVectorizer(BaseVectorizer):
         if not texts:
             return []
 
-        max_tokens_per_batch = self.get_token_limit()
+        max_tokens_per_batch = VOYAGE_TOTAL_TOKEN_LIMITS.get(self.model, 120_000)
         batches = []
         current_batch: List[str] = []
         current_batch_tokens = 0
@@ -558,62 +476,6 @@ class VoyageAITextVectorizer(BaseVectorizer):
         # Tokenize all texts in one API call for efficiency
         try:
             token_counts = self.count_tokens(texts)
-        except Exception as e:
-            raise ValueError(f"Failed to count tokens for batching: {e}")
-
-        for i, text in enumerate(texts):
-            n_tokens = token_counts[i]
-
-            # Check if adding this text would exceed limits
-            if current_batch and (
-                len(current_batch) >= max_batch_size
-                or (current_batch_tokens + n_tokens > max_tokens_per_batch)
-            ):
-                # Save the current batch and start a new one
-                batches.append(current_batch)
-                current_batch = []
-                current_batch_tokens = 0
-
-            current_batch.append(text)
-            current_batch_tokens += n_tokens
-
-        # Add the last batch if it has any texts
-        if current_batch:
-            batches.append(current_batch)
-
-        return batches
-
-    async def _abuild_token_aware_batches(
-        self, texts: List[str], max_batch_size: int = 1000
-    ) -> List[List[str]]:
-        """
-        Asynchronously generate batches of texts based on token limits and batch size constraints.
-
-        This method uses VoyageAI's tokenization API to count tokens for all texts
-        in a single call, then creates batches that respect both the model's token
-        limit and a maximum batch size.
-
-        Args:
-            texts: List of texts to batch.
-            max_batch_size: Maximum number of texts per batch (default: 1000).
-
-        Returns:
-            List[List[str]]: List of batches, where each batch is a list of texts.
-
-        Raises:
-            ValueError: If tokenization fails.
-        """
-        if not texts:
-            return []
-
-        max_tokens_per_batch = self.get_token_limit()
-        batches = []
-        current_batch: List[str] = []
-        current_batch_tokens = 0
-
-        # Tokenize all texts in one API call for efficiency
-        try:
-            token_counts = await self.acount_tokens(texts)
         except Exception as e:
             raise ValueError(f"Failed to count tokens for batching: {e}")
 
