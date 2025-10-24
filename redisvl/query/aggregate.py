@@ -264,7 +264,7 @@ class HybridQuery(AggregationQuery):
 
 class MultiVectorQuery(AggregationQuery):
     """
-    MultiVectorQuery allows for search over multiple vector fields in a document simulateously.
+    MultiVectorQuery allows for search over multiple vector fields in a document simultaneously.
     The final score will be a weighted combination of the individual vector similarity scores
     following the formula:
 
