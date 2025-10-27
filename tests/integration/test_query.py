@@ -896,7 +896,10 @@ def test_text_query_word_weights(index, scorer):
     text_field = "description"
     return_fields = ["description"]
 
-    weights = {"medical": 3.4, "cancers": 5}
+    weights = {
+        "medical": 1.1,
+        "cancers": 1.15,
+    }  # use small weights to not change results
 
     # test we can run a query with text weights
     weighted_query = TextQuery(
@@ -905,6 +908,7 @@ def test_text_query_word_weights(index, scorer):
         return_fields=return_fields,
         text_scorer=scorer,
         text_weights=weights,
+        sort_by="description",
     )
 
     weighted_results = index.query(weighted_query)
@@ -917,14 +921,17 @@ def test_text_query_word_weights(index, scorer):
         return_fields=return_fields,
         text_scorer=scorer,
         text_weights={},
+        sort_by="description",
     )
 
     unweighted_results = index.query(unweighted_query)
 
     for weighted, unweighted in zip(weighted_results, unweighted_results):
-        for word in weights:
-            if word in weighted["description"] or word in unweighted["description"]:
-                assert weighted["score"] > unweighted["score"]
+        # test that the same results are returned when small weights are used
+        assert weighted["description"] == unweighted["description"]
+        # test the score still changes slightly with small weights
+        if any([word in weighted["description"] for word in weights]):
+            assert weighted["score"] > unweighted["score"]
 
     # test that weights do change the document score and order of results
     weights = {"medical": 5, "cancers": 3.4}  # switch the weights
