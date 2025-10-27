@@ -1028,6 +1028,7 @@ class TextQuery(BaseQuery):
         in_order: bool = False,
         params: Optional[Dict[str, Any]] = None,
         stopwords: Optional[Union[str, Set[str]]] = "english",
+        text_weights: Optional[Dict[str, float]] = None,
     ):
         """A query for running a full text search, along with an optional filter expression.
 
@@ -1064,13 +1065,16 @@ class TextQuery(BaseQuery):
                 a default set of stopwords for that language will be used. Users may specify
                 their own stop words by providing a List or Set of words. if set to None,
                 then no words will be removed. Defaults to 'english'.
-
+            text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
+                within the query text. Defaults to None, as no modifications will be made to the
+                text_scorer score.
         Raises:
             ValueError: if stopwords language string cannot be loaded.
             TypeError: If stopwords is not a valid iterable set of strings.
         """
         self._text = text
         self._field_weights = self._parse_field_weights(text_field_name)
+        self._text_weights = self._parse_text_weights(text_weights)
         self._num_results = num_results
 
         self._set_stopwords(stopwords)
@@ -1151,9 +1155,14 @@ class TextQuery(BaseQuery):
             )
             for token in user_query.split()
         ]
-        return " | ".join(
-            [token for token in tokens if token and token not in self._stopwords]
-        )
+        token_list = [
+            token for token in tokens if token and token not in self._stopwords
+        ]
+        for i, token in enumerate(token_list):
+            if token in self._text_weights:
+                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
+
+        return " | ".join(token_list)
 
     def _parse_field_weights(
         self, field_spec: Union[str, Dict[str, float]]
@@ -1219,6 +1228,46 @@ class TextQuery(BaseQuery):
             if weight == 1.0:
                 return field
         return self._field_weights.copy()
+
+    def _parse_text_weights(
+        self, weights: Optional[Dict[str, float]]
+    ) -> Dict[str, float]:
+        parsed_weights: Dict[str, float] = {}
+        if not weights:
+            return parsed_weights
+        for word, weight in weights.items():
+            word = word.strip().lower()
+            if not word or " " in word:
+                raise ValueError(
+                    f"Only individual words may be weighted. Got {{ {word}:{weight} }}"
+                )
+            if (
+                not (isinstance(weight, float) or isinstance(weight, int))
+                or weight < 0.0
+            ):
+                raise ValueError(
+                    f"Weights must be positive number. Got {{ {word}:{weight} }}"
+                )
+            parsed_weights[word] = weight
+        return parsed_weights
+
+    def set_text_weights(self, weights: Dict[str, float]):
+        """Set or update the text weights for the query.
+
+        Args:
+            text_weights: Dictionary of word:weight mappings
+        """
+        self._text_weights = self._parse_text_weights(weights)
+        self._built_query_string = None
+
+    @property
+    def text_weights(self) -> Dict[str, float]:
+        """Get the text weights.
+
+        Returns:
+            Dictionary of word:weight mappings.
+        """
+        return self._text_weights
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
