@@ -1,5 +1,4 @@
 version = 1
-revision = 3
 requires-python = ">=3.9.2, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -4180,9 +4179,9 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "async-timeout", marker = "python_full_version < '3.11.3'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0d/d6/e8b92798a5bd67d659d51a18170e91c16ac3b59738d91894651ee255ed49/redis-6.4.0.tar.gz", hash = "sha256:b01bc7282b8444e28ec36b261df5375183bb47a07eb9c603f284e89cbc5ef010", size = 4647399, upload-time = "2025-08-07T08:10:11.441Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/d6/e8b92798a5bd67d659d51a18170e91c16ac3b59738d91894651ee255ed49/redis-6.4.0.tar.gz", hash = "sha256:b01bc7282b8444e28ec36b261df5375183bb47a07eb9c603f284e89cbc5ef010", size = 4647399 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/02/89e2ed7e85db6c93dfa9e8f691c5087df4e3551ab39081a4d7c6d1f90e05/redis-6.4.0-py3-none-any.whl", hash = "sha256:f0544fa9604264e9464cdf4814e7d4830f74b165d52f2a330a760a88dd248b7f", size = 279847, upload-time = "2025-08-07T08:10:09.84Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/02/89e2ed7e85db6c93dfa9e8f691c5087df4e3551ab39081a4d7c6d1f90e05/redis-6.4.0-py3-none-any.whl", hash = "sha256:f0544fa9604264e9464cdf4814e7d4830f74b165d52f2a330a760a88dd248b7f", size = 279847 },
 ]
 
 [[package]]
@@ -4240,6 +4239,7 @@ dev = [
     { name = "codespell" },
     { name = "cryptography", marker = "python_full_version >= '3.10'" },
     { name = "isort" },
+    { name = "langcache" },
     { name = "mypy" },
     { name = "nbval" },
     { name = "pre-commit" },
@@ -4291,6 +4291,7 @@ dev = [
     { name = "codespell", specifier = ">=2.4.1,<3" },
     { name = "cryptography", marker = "python_full_version >= '3.10'", specifier = ">=44.0.1" },
     { name = "isort", specifier = ">=5.6.4,<6" },
+    { name = "langcache", specifier = ">=0.9.0" },
     { name = "mypy", specifier = ">=1.11.0,<2" },
     { name = "nbval", specifier = ">=0.11.0,<0.12" },
     { name = "pre-commit", specifier = ">=4.1.0,<5" },

@@ -15,11 +15,6 @@ from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 logger = get_logger(__name__)
 
 
-# Placeholders for test patching; actual imports happen at runtime in __init__
-LangCacheClient = None  # type: ignore
-SearchStrategy = None  # type: ignore
-
-
 class LangCacheWrapper(BaseLLMCache):
     """LLM Cache implementation using the LangCache managed service.
 
@@ -84,23 +79,6 @@ class LangCacheWrapper(BaseLLMCache):
             raise ValueError("distance_scale must be 'normalized' or 'redis'")
         self._distance_scale = distance_scale
 
-        # Import optional dependency at use time; raise clear error if missing
-        global LangCacheClient, SearchStrategy
-        try:
-            if LangCacheClient is None or SearchStrategy is None:
-                from langcache import LangCache as _LangCacheClient
-                from langcache.models import SearchStrategy as _SearchStrategy
-
-                if LangCacheClient is None:
-                    LangCacheClient = _LangCacheClient
-                if SearchStrategy is None:
-                    SearchStrategy = _SearchStrategy
-        except ImportError as e:
-            raise ImportError(
-                "The langcache package is required to use LangCacheWrapper. "
-                "Install it with: pip install redisvl[langcache]"
-            ) from e
-
         if not cache_id:
             raise ValueError("cache_id is required for LangCacheWrapper")
         if not api_key:
@@ -115,17 +93,36 @@ class LangCacheWrapper(BaseLLMCache):
         # Determine search strategies
         self._search_strategies = []
         if use_exact_search:
-            self._search_strategies.append(SearchStrategy.EXACT)
+            self._search_strategies.append("exact")
         if use_semantic_search:
-            self._search_strategies.append(SearchStrategy.SEMANTIC)
+            self._search_strategies.append("semantic")
 
         if not self._search_strategies:
             raise ValueError(
                 "At least one of use_exact_search or use_semantic_search must be True"
             )
 
-        # Initialize the LangCache client
-        self._client = LangCacheClient(
+        self._client = self._create_client()
+
+    def _create_client(self):
+        """
+        Initialize the LangCache client.
+
+        Returns:
+            LangCacheClient: The LangCache client.
+
+        Raises:
+            ImportError: If the langcache package is not installed.
+        """
+        try:
+            from langcache import LangCacheClient
+        except ImportError as e:
+            raise ImportError(
+                "The langcache package is required to use LangCacheWrapper. "
+                "Install it with: pip install langcache"
+            ) from e
+
+        return LangCacheClient(
             server_url=self._server_url,
             cache_id=self._cache_id,
             api_key=self._api_key,
@@ -151,9 +148,17 @@ class LangCacheWrapper(BaseLLMCache):
         similarity_threshold: Optional[float],
         attributes: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        from langcache.models import SearchStrategy
+
+        # Build enum list lazily here instead of during __init__ to avoid
+        # import errors at startup. By now, we know langcache is installed.
+        search_strategies = [
+            SearchStrategy.EXACT if "exact" in self._search_strategies else None,
+            SearchStrategy.SEMANTIC if "semantic" in self._search_strategies else None,
+        ]
         kwargs: Dict[str, Any] = {
             "prompt": prompt,
-            "search_strategies": self._search_strategies,
+            "search_strategies": search_strategies,
             "similarity_threshold": similarity_threshold,
         }
         if attributes:
