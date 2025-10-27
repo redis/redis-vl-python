@@ -1,5 +1,4 @@
 import os
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
@@ -23,7 +22,10 @@ from redisvl.redis.constants import (
 )
 from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
+from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_function
+
+logger = get_logger(__name__)
 
 
 def _strip_cluster_from_url_and_kwargs(
@@ -499,7 +501,6 @@ class RedisConnectionFactory:
 
     @staticmethod
     async def _get_aredis_connection(
-        url: Optional[str] = None,
         redis_url: Optional[str] = None,
         **kwargs,
     ) -> AsyncRedisClient:
@@ -509,9 +510,11 @@ class RedisConnectionFactory:
         only used internally by the library now.
 
         Args:
-            url (Optional[str]): The URL of the Redis server.
-            redis_url (Optional[str]): Alias for url for consistency with public APIs.
-                If neither is provided, the environment variable REDIS_URL is used.
+            redis_url (Optional[str]): The URL of the Redis server. If neither
+                `redis_url` nor `url` are provided, the environment variable
+                REDIS_URL is used.
+            url (Optional[str]): Former parameter for the URL of the Redis
+                server. Use `redis_url` instead. (Deprecated)
             **kwargs: Additional keyword arguments to be passed to the async
                 Redis client constructor.
 
@@ -522,7 +525,13 @@ class RedisConnectionFactory:
             ValueError: If url is not provided and REDIS_URL environment
                 variable is not set.
         """
-        url = url or redis_url or get_address_from_env()
+        _deprecated_url = kwargs.pop("url", None)
+        url = _deprecated_url or redis_url or get_address_from_env()
+
+        if _deprecated_url is not None:
+            logger.warning(
+                "The `url` parameter is deprecated. Please use `redis_url` instead."
+            )
 
         client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
@@ -555,14 +564,17 @@ class RedisConnectionFactory:
 
     @staticmethod
     def get_async_redis_connection(
-        url: Optional[str] = None,
+        redis_url: Optional[str] = None,
         **kwargs,
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
 
         Args:
-            url (Optional[str]): The URL of the Redis server. If not provided,
-                the environment variable REDIS_URL is used.
+            redis_url (Optional[str]): The URL of the Redis server. If neither
+                `redis_url` nor `url` are provided, the environment variable
+                REDIS_URL is used.
+            url (Optional[str]): Former parameter for the URL of the Redis
+                server. Use `redis_url` instead. (Deprecated)
             **kwargs: Additional keyword arguments to be passed to the async
                 Redis client constructor.
 
@@ -577,7 +589,12 @@ class RedisConnectionFactory:
             "get_async_redis_connection will become async in the next major release.",
             DeprecationWarning,
         )
-        url = url or get_address_from_env()
+        _deprecated_url = kwargs.pop("url", None)
+        url = _deprecated_url or redis_url or get_address_from_env()
+        if _deprecated_url is not None:
+            logger.warning(
+                "The `url` parameter is deprecated. Please use `redis_url` instead."
+            )
 
         if url.startswith("redis+sentinel"):
             return RedisConnectionFactory._redis_sentinel_client(

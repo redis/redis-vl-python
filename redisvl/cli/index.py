@@ -8,7 +8,6 @@ from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, make_dict
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import lazy_import
 
 logger = get_logger("[RedisVL]")
 

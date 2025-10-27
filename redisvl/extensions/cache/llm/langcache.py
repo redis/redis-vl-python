@@ -69,7 +69,6 @@ class LangCacheWrapper(BaseLLMCache):
             distance_scale (str): Threshold scale for distance_threshold:
                 - "normalized": 0–1 semantic distance (lower is better)
                 - "redis": Redis COSINE distance 0–2 (lower is better)
-            **kwargs: Additional arguments (ignored for compatibility).
 
         Raises:
             ImportError: If the langcache package is not installed.
