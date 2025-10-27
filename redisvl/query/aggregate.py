@@ -1,7 +1,8 @@
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
+from typing_extensions import Self
 
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
@@ -32,8 +33,15 @@ class Vector(BaseModel):
             raise ValueError(
                 f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
             )
-
         return dtype
+
+    @model_validator(mode="after")
+    def validate_vector(self) -> Self:
+        """If the vector passed in is an array of float convert it to a byte string."""
+        if isinstance(self.vector, bytes):
+            return self
+        self.vector = array_to_buffer(self.vector, self.dtype)
+        return self
 
 
 class AggregationQuery(AggregateRequest):
@@ -94,6 +102,7 @@ class HybridQuery(AggregationQuery):
         return_fields: Optional[List[str]] = None,
         stopwords: Optional[Union[str, Set[str]]] = "english",
         dialect: int = 2,
+        text_weights: Optional[Dict[str, float]] = None,
     ):
         """
         Instantiates a HybridQuery object.
@@ -119,6 +128,9 @@ class HybridQuery(AggregationQuery):
                 set, or tuple of strings is provided then those will be used as stopwords.
                 Defaults to "english". if set to "None" then no stopwords will be removed.
             dialect (int, optional): The Redis dialect version. Defaults to 2.
+            text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
+                within the query text. Defaults to None, as no modifications will be made to the
+                text_scorer score.
 
         Raises:
             ValueError: If the text string is empty, or if the text string becomes empty after
@@ -138,6 +150,7 @@ class HybridQuery(AggregationQuery):
         self._dtype = dtype
         self._num_results = num_results
         self._set_stopwords(stopwords)
+        self._text_weights = self._parse_text_weights(text_weights)
 
         query_string = self._build_query_string()
         super().__init__(query_string)
@@ -185,6 +198,7 @@ class HybridQuery(AggregationQuery):
                 language will be used. if a list, set, or tuple of strings is provided then those
                 will be used as stopwords. Defaults to "english". if set to "None" then no stopwords
                 will be removed.
+
         Raises:
             TypeError: If the stopwords are not a set, list, or tuple of strings.
         """
@@ -214,6 +228,7 @@ class HybridQuery(AggregationQuery):
 
         Returns:
             str: The tokenized and escaped query string.
+
         Raises:
             ValueError: If the text string becomes empty after stopwords are removed.
         """
@@ -225,13 +240,57 @@ class HybridQuery(AggregationQuery):
             )
             for token in user_query.split()
         ]
-        tokenized = " | ".join(
-            [token for token in tokens if token and token not in self._stopwords]
-        )
 
-        if not tokenized:
+        token_list = [
+            token for token in tokens if token and token not in self._stopwords
+        ]
+        for i, token in enumerate(token_list):
+            if token in self._text_weights:
+                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
+
+        if not token_list:
             raise ValueError("text string cannot be empty after removing stopwords")
-        return tokenized
+        return " | ".join(token_list)
+
+    def _parse_text_weights(
+        self, weights: Optional[Dict[str, float]]
+    ) -> Dict[str, float]:
+        parsed_weights: Dict[str, float] = {}
+        if not weights:
+            return parsed_weights
+        for word, weight in weights.items():
+            word = word.strip().lower()
+            if not word or " " in word:
+                raise ValueError(
+                    f"Only individual words may be weighted. Got {{ {word}:{weight} }}"
+                )
+            if (
+                not (isinstance(weight, float) or isinstance(weight, int))
+                or weight < 0.0
+            ):
+                raise ValueError(
+                    f"Weights must be positive number. Got {{ {word}:{weight} }}"
+                )
+            parsed_weights[word] = weight
+        return parsed_weights
+
+    def set_text_weights(self, weights: Dict[str, float]):
+        """Set or update the text weights for the query.
+
+        Args:
+            text_weights: Dictionary of word:weight mappings
+        """
+        self._text_weights = self._parse_text_weights(weights)
+        self._query = self._build_query_string()
+
+    @property
+    def text_weights(self) -> Dict[str, float]:
+        """Get the text weights.
+
+        Returns:
+            Dictionary of word:weight mappings.
+        """
+        return self._text_weights
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
@@ -256,7 +315,7 @@ class HybridQuery(AggregationQuery):
 
 class MultiVectorQuery(AggregationQuery):
     """
-    MultiVectorQuery allows for search over multiple vector fields in a document simulateously.
+    MultiVectorQuery allows for search over multiple vector fields in a document simultaneously.
     The final score will be a weighted combination of the individual vector similarity scores
     following the formula:
 
@@ -364,12 +423,8 @@ class MultiVectorQuery(AggregationQuery):
             Dict[str, Any]: The parameters for the aggregation.
         """
         params = {}
-        for i, (vector, dtype) in enumerate(
-            [(v.vector, v.dtype) for v in self._vectors]
-        ):
-            if isinstance(vector, list):
-                vector = array_to_buffer(vector, dtype=dtype)  # type: ignore
-            params[f"vector_{i}"] = vector
+        for i, v in enumerate(self._vectors):
+            params[f"vector_{i}"] = v.vector
         return params
 
     def _build_query_string(self) -> str:
