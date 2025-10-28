@@ -4,6 +4,7 @@ Redis Vector Library - LLM Cache Extensions
 This module provides LLM cache implementations for RedisVL.
 """
 
+from redisvl.extensions.cache.llm.langcache import LangCacheWrapper
 from redisvl.extensions.cache.llm.schema import (
     CacheEntry,
     CacheHit,
@@ -11,4 +12,10 @@ from redisvl.extensions.cache.llm.schema import (
 )
 from redisvl.extensions.cache.llm.semantic import SemanticCache
 
-__all__ = ["SemanticCache", "CacheEntry", "CacheHit", "SemanticCacheIndexSchema"]
+__all__ = [
+    "SemanticCache",
+    "LangCacheWrapper",
+    "CacheEntry",
+    "CacheHit",
+    "SemanticCacheIndexSchema",
+]

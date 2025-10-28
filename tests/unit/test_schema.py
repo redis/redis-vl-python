@@ -252,7 +252,7 @@ def test_schema_serialization_with_new_attributes():
     original_schema_dict = {
         "index": {
             "name": "test-serialization",
-            "prefix": "ser",
+            "prefix": "set",
             "storage_type": "hash",
         },
         "fields": [

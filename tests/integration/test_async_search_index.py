@@ -696,3 +696,14 @@ async def test_search_index_validates_query_with_hnsw_algorithm(
     )
     # Should not raise
     await async_hnsw_index.query(query)
+
+
+@pytest.mark.asyncio
+async def test_async_search_index_connect(index_schema, redis_url):
+    """Test that AsyncSearchIndex.connect() works with redis_url parameter."""
+    async_index = AsyncSearchIndex(schema=index_schema)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        await async_index.connect(redis_url=redis_url)
+    assert async_index.client is not None
+    await async_index.disconnect()
