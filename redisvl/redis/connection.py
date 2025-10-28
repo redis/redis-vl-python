@@ -23,7 +23,7 @@ from redisvl.redis.constants import (
 from redisvl.redis.utils import convert_bytes, is_cluster_url
 from redisvl.types import AsyncRedisClient, RedisClient, SyncRedisClient
 from redisvl.utils.log import get_logger
-from redisvl.utils.utils import deprecated_function
+from redisvl.utils.utils import deprecated_argument, deprecated_function
 
 logger = get_logger(__name__)
 
@@ -500,6 +500,7 @@ class RedisConnectionFactory:
         return client
 
     @staticmethod
+    @deprecated_argument("url", "redis_url")
     async def _get_aredis_connection(
         redis_url: Optional[str] = None,
         **kwargs,
@@ -527,11 +528,6 @@ class RedisConnectionFactory:
         """
         _deprecated_url = kwargs.pop("url", None)
         url = _deprecated_url or redis_url or get_address_from_env()
-
-        if _deprecated_url is not None:
-            logger.warning(
-                "The `url` parameter is deprecated. Please use `redis_url` instead."
-            )
 
         client: AsyncRedisClient
         if url.startswith("redis+sentinel"):
@@ -563,6 +559,7 @@ class RedisConnectionFactory:
         return client
 
     @staticmethod
+    @deprecated_argument("url", "redis_url")
     def get_async_redis_connection(
         redis_url: Optional[str] = None,
         **kwargs,
@@ -591,10 +588,6 @@ class RedisConnectionFactory:
         )
         _deprecated_url = kwargs.pop("url", None)
         url = _deprecated_url or redis_url or get_address_from_env()
-        if _deprecated_url is not None:
-            logger.warning(
-                "The `url` parameter is deprecated. Please use `redis_url` instead."
-            )
 
         if url.startswith("redis+sentinel"):
             return RedisConnectionFactory._redis_sentinel_client(
