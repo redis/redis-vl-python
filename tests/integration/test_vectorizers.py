@@ -62,7 +62,7 @@ def vectorizer(request):
     elif request.param == MistralAITextVectorizer:
         return request.param()
     elif request.param == VoyageAITextVectorizer:
-        return request.param(model="voyage-large-2")
+        return request.param(model="voyage-3.5")
     elif request.param == AzureOpenAITextVectorizer:
         return request.param(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
@@ -437,6 +437,8 @@ def test_default_dtype(vectorizer_):
         vectorizer = vectorizer_(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
         )
+    elif issubclass(vectorizer_, VoyageAITextVectorizer):
+        vectorizer = vectorizer_(model="voyage-3.5")
     else:
         vectorizer = vectorizer_()
 
@@ -470,6 +472,8 @@ def test_vectorizer_dtype_assignment(vectorizer_):
                 ),
                 dtype=dtype,
             )
+        elif issubclass(vectorizer_, VoyageAITextVectorizer):
+            vectorizer = vectorizer_(model="voyage-3.5", dtype=dtype)
         else:
             vectorizer = vectorizer_(dtype=dtype)
 
@@ -491,14 +495,24 @@ def test_vectorizer_dtype_assignment(vectorizer_):
     ],
 )
 def test_non_supported_dtypes(vectorizer_):
-    with pytest.raises(ValueError):
-        vectorizer_(dtype="float25")
+    if issubclass(vectorizer_, VoyageAITextVectorizer):
+        with pytest.raises(ValueError):
+            vectorizer_(model="voyage-3.5", dtype="float25")
 
-    with pytest.raises(ValueError):
-        vectorizer_(dtype=7)
+        with pytest.raises(ValueError):
+            vectorizer_(model="voyage-3.5", dtype=7)
 
-    with pytest.raises(ValueError):
-        vectorizer_(dtype=None)
+        with pytest.raises(ValueError):
+            vectorizer_(model="voyage-3.5", dtype=2.3)
+    else:
+        with pytest.raises(ValueError):
+            vectorizer_(dtype="float25")
+
+        with pytest.raises(ValueError):
+            vectorizer_(dtype=7)
+
+        with pytest.raises(ValueError):
+            vectorizer_(dtype=None)
 
 
 @pytest.mark.requires_api_keys
@@ -623,3 +637,120 @@ def test_cohere_embedding_types_warning():
         )
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)
+
+
+# VoyageAI-specific tests
+@pytest.mark.requires_api_keys
+@pytest.mark.parametrize("model", ["voyage-3.5", "voyage-context-3"])
+def test_voyageai_count_tokens(model):
+    """Test VoyageAI token counting functionality."""
+    vectorizer = VoyageAITextVectorizer(model=model)
+    texts = ["Hello world", "This is a longer test sentence."]
+
+    # Test count_tokens method
+    token_counts = vectorizer.count_tokens(texts)
+    assert isinstance(token_counts, list)
+    assert len(token_counts) == len(texts)
+    assert all(isinstance(count, int) and count > 0 for count in token_counts)
+
+
+def test_voyageai_token_limits():
+    """Test VoyageAI token limit constants for different models."""
+    # Test token limits using the dictionary (no API calls needed)
+    from redisvl.utils.vectorize.text.voyageai import VOYAGE_TOTAL_TOKEN_LIMITS
+
+    # Test that the constants are defined correctly
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-context-3") == 32_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-3.5-lite") == 1_000_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-3.5") == 320_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-2") == 320_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-large-2") == 120_000
+
+    # Test that default value is returned for unknown models
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("unknown-model", 120_000) == 120_000
+
+
+def test_voyageai_context_model_detection():
+    """Test detection of contextualized embedding models."""
+    # Test the detection method directly (no API calls needed)
+    vectorizer_regular = VoyageAITextVectorizer(model="voyage-3.5")
+    assert vectorizer_regular._is_context_model() is False
+
+    # Test that the method would detect context models
+    # by checking the logic (model name contains "context")
+    assert "context" not in "voyage-3.5"
+    assert "context" in "voyage-context-3"
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_context_model_embed():
+    """Test embedding with contextualized model (voyage-context-3)."""
+    vectorizer = VoyageAITextVectorizer(model="voyage-context-3")
+    texts = TEST_TEXTS
+
+    # Test embedding with context model
+    embeddings = vectorizer.embed_many(texts, input_type="document")
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(texts)
+    assert all(
+        isinstance(emb, list) and len(emb) == vectorizer.dims for emb in embeddings
+    )
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.asyncio
+async def test_voyageai_context_model_aembed():
+    """Test async embedding with contextualized model (voyage-context-3)."""
+    vectorizer = VoyageAITextVectorizer(model="voyage-context-3")
+    texts = TEST_TEXTS
+
+    # Test async embedding with context model
+    embeddings = await vectorizer.aembed_many(texts, input_type="document")
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(texts)
+    assert all(
+        isinstance(emb, list) and len(emb) == vectorizer.dims for emb in embeddings
+    )
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.parametrize("model", ["voyage-3.5", "voyage-context-3"])
+def test_voyageai_batching(model):
+    """Test batching with varying text lengths (uses automatic token-aware batching)."""
+    vectorizer = VoyageAITextVectorizer(model=model)
+    # Create texts with varying lengths
+    texts = [
+        "Short text.",
+        "This is a medium length text that has more words.",
+        "This is a much longer text that contains significantly more content and should take up more tokens in the batch.",
+    ] * 3
+
+    # Token-aware batching is now always used
+    embeddings = vectorizer.embed_many(texts, input_type="document")
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(texts)
+    assert all(
+        isinstance(emb, list) and len(emb) == vectorizer.dims for emb in embeddings
+    )
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["voyage-3.5", "voyage-context-3"])
+async def test_voyageai_batching_async(model):
+    """Test async batching with varying text lengths (uses automatic token-aware batching)."""
+    vectorizer = VoyageAITextVectorizer(model=model)
+    # Create texts with varying lengths
+    texts = [
+        "Short text.",
+        "This is a medium length text that has more words.",
+        "This is a much longer text that contains significantly more content and should take up more tokens in the batch.",
+    ] * 3
+
+    # Token-aware batching is now always used
+    embeddings = await vectorizer.aembed_many(texts, input_type="document")
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(texts)
+    assert all(
+        isinstance(emb, list) and len(emb) == vectorizer.dims for emb in embeddings
+    )

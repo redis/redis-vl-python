@@ -13,14 +13,15 @@ from redisvl.utils.rerank import (
 @pytest.fixture(
     params=[
         CohereReranker,
-        VoyageAIReranker,
+        (VoyageAIReranker, "rerank-lite-1"),
+        (VoyageAIReranker, "rerank-2.5"),
     ]
 )
 def reranker(request):
     if request.param == CohereReranker:
         return request.param()
-    elif request.param == VoyageAIReranker:
-        return request.param(model="rerank-lite-1")
+    elif isinstance(request.param, tuple) and request.param[0] == VoyageAIReranker:
+        return request.param[0](model=request.param[1])
 
 
 @pytest.fixture
