@@ -50,7 +50,7 @@ def index(multi_vector_data, redis_url, worker_id):
                     "attrs": {
                         "dims": 6,
                         "distance_metric": "cosine",
-                        "algorithm": "flat",
+                        "algorithm": "hnsw",
                         "datatype": "float64",
                     },
                 },
@@ -659,76 +659,6 @@ def test_multivector_query_datatypes(index):
     ):
         vectors.append(
             Vector(vector=vector, field_name=field, weight=weight, dtype=dtype)
-        )
-
-    multi_query = MultiVectorQuery(
-        vectors=vectors,
-        return_fields=return_fields,
-    )
-
-    results = index.query(multi_query)
-    assert results
-    for r in results:
-        score = float(r["score_0"]) * weights[0] + float(r["score_1"]) * weights[1]
-        assert (
-            float(r["combined_score"]) - score <= 0.0001
-        )  # allow for small floating point error
-
-
-def test_multivector_query_mixed_index(index):
-    # test that we can do multi vector queries on indices with both a 'flat' and 'hnsw' index
-    skip_if_redis_version_below(index.client, "7.2.0")
-    try:
-        index.schema.remove_field("audio_embedding")
-        index.schema.add_field(
-            {
-                "name": "audio_embedding",
-                "type": "vector",
-                "attrs": {
-                    "dims": 6,
-                    "distance_metric": "cosine",
-                    "algorithm": "hnsw",
-                    "datatype": "float64",
-                },
-            },
-        )
-
-    except:
-        pytest.skip("Required Redis modules not available or version too low")
-
-    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2, -0.3]]
-    vector_fields = ["user_embedding", "audio_embedding"]
-    dtypes = ["float32", "float64"]
-    return_fields = [
-        "distance_0",
-        "distance_1",
-        "score_0",
-        "score_1",
-        "user_embedding",
-        "audio_embedding",
-    ]
-
-    vectors = []
-    for vector, field, dtype in zip(vector_vals, vector_fields, dtypes):
-        vectors.append(Vector(vector=vector, field_name=field, dtype=dtype))
-
-    multi_query = MultiVectorQuery(
-        vectors=vectors,
-        return_fields=return_fields,
-    )
-    results = index.query(multi_query)
-
-    for i in range(1, len(results)):
-        assert results[i]["combined_score"] <= results[i - 1]["combined_score"]
-
-    # verify we're doing the combined score math correctly
-    weights = [-1.322, 0.851]
-    vectors = []
-    for vector, field, dtype, weight in zip(
-        vector_vals, vector_fields, dtypes, weights
-    ):
-        vectors.append(
-            Vector(vector=vector, field_name=field, dtype=dtype, weight=weight)
         )
 
     multi_query = MultiVectorQuery(
