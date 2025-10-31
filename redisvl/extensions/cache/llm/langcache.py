@@ -15,7 +15,7 @@ from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 logger = get_logger(__name__)
 
 
-class LangCacheWrapper(BaseLLMCache):
+class LangCacheSemanticCache(BaseLLMCache):
     """LLM Cache implementation using the LangCache managed service.
 
     This cache uses the LangCache API service for semantic caching of LLM
@@ -24,9 +24,9 @@ class LangCacheWrapper(BaseLLMCache):
     Example:
         .. code-block:: python
 
-            from redisvl.extensions.cache.llm import LangCacheWrapper
+            from redisvl.extensions.cache.llm import LangCacheSemanticCache
 
-            cache = LangCacheWrapper(
+            cache = LangCacheSemanticCache(
                 name="my_cache",
                 server_url="https://api.langcache.com",
                 cache_id="your-cache-id",
@@ -79,9 +79,9 @@ class LangCacheWrapper(BaseLLMCache):
         self._distance_scale = distance_scale
 
         if not cache_id:
-            raise ValueError("cache_id is required for LangCacheWrapper")
+            raise ValueError("cache_id is required for LangCacheSemanticCache")
         if not api_key:
-            raise ValueError("api_key is required for LangCacheWrapper")
+            raise ValueError("api_key is required for LangCacheSemanticCache")
 
         super().__init__(name=name, ttl=ttl, **kwargs)
 
@@ -117,7 +117,7 @@ class LangCacheWrapper(BaseLLMCache):
             from langcache import LangCacheClient
         except ImportError as e:
             raise ImportError(
-                "The langcache package is required to use LangCacheWrapper. "
+                "The langcache package is required to use LangCacheSemanticCache. "
                 "Install it with: pip install langcache"
             ) from e
 
