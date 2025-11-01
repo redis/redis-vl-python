@@ -15,7 +15,7 @@ from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 logger = get_logger(__name__)
 
 
-class LangCacheWrapper(BaseLLMCache):
+class LangCacheSemanticCache(BaseLLMCache):
     """LLM Cache implementation using the LangCache managed service.
 
     This cache uses the LangCache API service for semantic caching of LLM
@@ -24,9 +24,9 @@ class LangCacheWrapper(BaseLLMCache):
     Example:
         .. code-block:: python
 
-            from redisvl.extensions.cache.llm import LangCacheWrapper
+            from redisvl.extensions.cache.llm import LangCacheSemanticCache
 
-            cache = LangCacheWrapper(
+            cache = LangCacheSemanticCache(
                 name="my_cache",
                 server_url="https://api.langcache.com",
                 cache_id="your-cache-id",
@@ -47,7 +47,7 @@ class LangCacheWrapper(BaseLLMCache):
     def __init__(
         self,
         name: str = "langcache",
-        server_url: str = "https://api.langcache.com",
+        server_url: str = "https://aws-us-east-1.langcache.redis.io",
         cache_id: str = "",
         api_key: str = "",
         ttl: Optional[int] = None,
@@ -56,7 +56,7 @@ class LangCacheWrapper(BaseLLMCache):
         distance_scale: Literal["normalized", "redis"] = "normalized",
         **kwargs,
     ):
-        """Initialize a LangCache wrapper.
+        """Initialize a LangCache semantic cache.
 
         Args:
             name (str): The name of the cache. Defaults to "langcache".
@@ -79,9 +79,9 @@ class LangCacheWrapper(BaseLLMCache):
         self._distance_scale = distance_scale
 
         if not cache_id:
-            raise ValueError("cache_id is required for LangCacheWrapper")
+            raise ValueError("cache_id is required for LangCacheSemanticCache")
         if not api_key:
-            raise ValueError("api_key is required for LangCacheWrapper")
+            raise ValueError("api_key is required for LangCacheSemanticCache")
 
         super().__init__(name=name, ttl=ttl, **kwargs)
 
@@ -108,20 +108,20 @@ class LangCacheWrapper(BaseLLMCache):
         Initialize the LangCache client.
 
         Returns:
-            LangCacheClient: The LangCache client.
+            LangCache: The LangCache client.
 
         Raises:
             ImportError: If the langcache package is not installed.
         """
         try:
-            from langcache import LangCacheClient
+            from langcache import LangCache
         except ImportError as e:
             raise ImportError(
-                "The langcache package is required to use LangCacheWrapper. "
+                "The langcache package is required to use LangCacheSemanticCache. "
                 "Install it with: pip install langcache"
             ) from e
 
-        return LangCacheClient(
+        return LangCache(
             server_url=self._server_url,
             cache_id=self._cache_id,
             api_key=self._api_key,
@@ -155,6 +155,8 @@ class LangCacheWrapper(BaseLLMCache):
             SearchStrategy.EXACT if "exact" in self._search_strategies else None,
             SearchStrategy.SEMANTIC if "semantic" in self._search_strategies else None,
         ]
+        # Filter out Nones to avoid sending invalid enum values
+        search_strategies = [s for s in search_strategies if s is not None]
         kwargs: Dict[str, Any] = {
             "prompt": prompt,
             "search_strategies": search_strategies,
@@ -253,15 +255,31 @@ class LangCacheWrapper(BaseLLMCache):
         if distance_threshold is not None:
             similarity_threshold = self._similarity_threshold(distance_threshold)
 
-        # Search using the LangCache client
-        # The client itself is the context manager
+        # Build kwargs
         search_kwargs = self._build_search_kwargs(
             prompt=prompt,
             similarity_threshold=similarity_threshold,
             attributes=attributes,
         )
 
-        response = self._client.search(**search_kwargs)
+        try:
+            response = self._client.search(**search_kwargs)
+        except Exception as e:
+            try:
+                from langcache.errors import BadRequestErrorResponseContent
+            except Exception:
+                raise
+            if (
+                isinstance(e, BadRequestErrorResponseContent)
+                and "no attributes are configured" in str(e).lower()
+                and attributes
+            ):
+                raise RuntimeError(
+                    "LangCache reported attributes are not configured for this cache, "
+                    "but attributes were provided to check(). Remove attributes or configure them on the cache."
+                ) from e
+            else:
+                raise
 
         # Convert results to cache hits
         return self._hits_from_response(response, num_results)
@@ -321,7 +339,24 @@ class LangCacheWrapper(BaseLLMCache):
 
         # Add attributes if provided (already handled by builder)
 
-        response = await self._client.search_async(**search_kwargs)
+        try:
+            response = await self._client.search_async(**search_kwargs)
+        except Exception as e:
+            try:
+                from langcache.errors import BadRequestErrorResponseContent
+            except Exception:
+                raise
+            if (
+                isinstance(e, BadRequestErrorResponseContent)
+                and "no attributes are configured" in str(e).lower()
+                and attributes
+            ):
+                raise RuntimeError(
+                    "LangCache reported attributes are not configured for this cache, "
+                    "but attributes were provided to acheck(). Remove attributes or configure them on the cache."
+                ) from e
+            else:
+                raise
 
         # Convert results to cache hits
         return self._hits_from_response(response, num_results)
@@ -365,16 +400,30 @@ class LangCacheWrapper(BaseLLMCache):
         if ttl is not None:
             logger.warning("LangCache does not support per-entry TTL")
 
-        # Store using the LangCache client
-        # The client itself is the context manager
-        # Only pass attributes if metadata is provided
-        # Some caches may not have attributes configured
-        if metadata:
-            result = self._client.set(
-                prompt=prompt, response=response, attributes=metadata
-            )
-        else:
-            result = self._client.set(prompt=prompt, response=response)
+        # Store using the LangCache client; only send attributes if provided (non-empty)
+        try:
+            if metadata:
+                result = self._client.set(
+                    prompt=prompt, response=response, attributes=metadata
+                )
+            else:
+                result = self._client.set(prompt=prompt, response=response)
+        except Exception as e:  # narrow for known SDK error when possible
+            try:
+                from langcache.errors import BadRequestErrorResponseContent
+            except Exception:
+                raise
+            if (
+                isinstance(e, BadRequestErrorResponseContent)
+                and "no attributes are configured" in str(e).lower()
+                and metadata
+            ):
+                raise RuntimeError(
+                    "LangCache reported attributes are not configured for this cache, "
+                    "but metadata was provided to store(). Remove metadata or configure attributes on the cache."
+                ) from e
+            else:
+                raise
 
         # Return the entry ID
         # Result is a SetResponse Pydantic model with entry_id attribute
@@ -419,16 +468,30 @@ class LangCacheWrapper(BaseLLMCache):
         if ttl is not None:
             logger.warning("LangCache does not support per-entry TTL")
 
-        # Store using the LangCache client (async)
-        # The client itself is the context manager
-        # Only pass attributes if metadata is provided
-        # Some caches may not have attributes configured
-        if metadata:
-            result = await self._client.set_async(
-                prompt=prompt, response=response, attributes=metadata
-            )
-        else:
-            result = await self._client.set_async(prompt=prompt, response=response)
+        # Store using the LangCache client (async); only send attributes if provided (non-empty)
+        try:
+            if metadata:
+                result = await self._client.set_async(
+                    prompt=prompt, response=response, attributes=metadata
+                )
+            else:
+                result = await self._client.set_async(prompt=prompt, response=response)
+        except Exception as e:
+            try:
+                from langcache.errors import BadRequestErrorResponseContent
+            except Exception:
+                raise
+            if (
+                isinstance(e, BadRequestErrorResponseContent)
+                and "no attributes are configured" in str(e).lower()
+                and metadata
+            ):
+                raise RuntimeError(
+                    "LangCache reported attributes are not configured for this cache, "
+                    "but metadata was provided to astore(). Remove metadata or configure attributes on the cache."
+                ) from e
+            else:
+                raise
 
         # Return the entry ID
         # Result is a SetResponse Pydantic model with entry_id attribute

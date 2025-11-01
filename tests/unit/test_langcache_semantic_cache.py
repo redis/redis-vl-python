@@ -1,17 +1,17 @@
-"""Unit tests for LangCacheWrapper."""
+"""Unit tests for LangCacheSemanticCache."""
 
 import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from redisvl.extensions.cache.llm.langcache import LangCacheWrapper
+from redisvl.extensions.cache.llm.langcache import LangCacheSemanticCache
 
 
 @pytest.fixture
 def mock_langcache_client():
     """Create a mock LangCache client via the wrapper factory method."""
-    with patch.object(LangCacheWrapper, "_create_client") as mock_create_client:
+    with patch.object(LangCacheSemanticCache, "_create_client") as mock_create_client:
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
 
@@ -28,13 +28,13 @@ def mock_langcache_client():
     importlib.util.find_spec("langcache") is None,
     reason="langcache package not installed",
 )
-class TestLangCacheWrapper:
-    """Test suite for LangCacheWrapper."""
+class TestLangCacheSemanticCache:
+    """Test suite for LangCacheSemanticCache."""
 
     def test_init_requires_cache_id(self):
         """Test that cache_id is required."""
         with pytest.raises(ValueError, match="cache_id is required"):
-            LangCacheWrapper(
+            LangCacheSemanticCache(
                 name="test",
                 server_url="https://api.example.com",
                 cache_id="",
@@ -44,7 +44,7 @@ class TestLangCacheWrapper:
     def test_init_requires_api_key(self):
         """Test that api_key is required."""
         with pytest.raises(ValueError, match="api_key is required"):
-            LangCacheWrapper(
+            LangCacheSemanticCache(
                 name="test",
                 server_url="https://api.example.com",
                 cache_id="test-cache",
@@ -54,7 +54,7 @@ class TestLangCacheWrapper:
     def test_init_requires_at_least_one_search_strategy(self):
         """Test that at least one search strategy must be enabled."""
         with pytest.raises(ValueError, match="At least one of use_exact_search"):
-            LangCacheWrapper(
+            LangCacheSemanticCache(
                 name="test",
                 server_url="https://api.example.com",
                 cache_id="test-cache",
@@ -67,7 +67,7 @@ class TestLangCacheWrapper:
         """Test successful initialization."""
         mock_create_client, _ = mock_langcache_client
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test_cache",
             server_url="https://api.example.com",
             cache_id="test-cache-id",
@@ -93,7 +93,7 @@ class TestLangCacheWrapper:
         mock_response.entry_id = "entry-123"
         mock_client.set.return_value = mock_response
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -123,7 +123,7 @@ class TestLangCacheWrapper:
         mock_response.entry_id = "entry-456"
         mock_client.set_async = AsyncMock(return_value=mock_response)
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -158,7 +158,7 @@ class TestLangCacheWrapper:
         mock_response.data = [mock_entry]
         mock_client.search.return_value = mock_response
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -198,7 +198,7 @@ class TestLangCacheWrapper:
         mock_response.data = [mock_entry]
         mock_client.search_async = AsyncMock(return_value=mock_response)
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -232,7 +232,7 @@ class TestLangCacheWrapper:
         mock_response.data = [mock_entry]
         mock_client.search.return_value = mock_response
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -268,7 +268,7 @@ class TestLangCacheWrapper:
         mock_response.data = [mock_entry]
         mock_client.search.return_value = mock_response
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -292,11 +292,73 @@ class TestLangCacheWrapper:
             "topic": "programming",
         }
 
+        def test_store_with_empty_metadata_does_not_send_attributes(
+            self, mock_langcache_client
+        ):
+            """Empty metadata {} should not be forwarded as attributes to the SDK."""
+            _, mock_client = mock_langcache_client
+
+            mock_response = MagicMock()
+            mock_response.entry_id = "entry-empty"
+            mock_client.set.return_value = mock_response
+
+            cache = LangCacheSemanticCache(
+                name="test",
+                server_url="https://api.example.com",
+                cache_id="test-cache",
+                api_key="test-key",
+            )
+
+            entry_id = cache.store(
+                prompt="Q?",
+                response="A",
+                metadata={},  # should be ignored
+            )
+
+            assert entry_id == "entry-empty"
+            # Ensure attributes kwarg was NOT sent when metadata is {}
+            _, call_kwargs = mock_client.set.call_args
+            assert "attributes" not in call_kwargs
+
+        def test_check_with_empty_attributes_does_not_send_attributes(
+            self, mock_langcache_client
+        ):
+            """Empty attributes {} should not be forwarded to the SDK search call."""
+            _, mock_client = mock_langcache_client
+
+            mock_entry = MagicMock()
+            mock_entry.model_dump.return_value = {
+                "id": "e1",
+                "prompt": "Q?",
+                "response": "A",
+                "similarity": 1.0,
+                "created_at": 0.0,
+                "updated_at": 0.0,
+                "attributes": {},
+            }
+            mock_response = MagicMock()
+            mock_response.data = [mock_entry]
+            mock_client.search.return_value = mock_response
+
+            cache = LangCacheSemanticCache(
+                name="test",
+                server_url="https://api.example.com",
+                cache_id="test-cache",
+                api_key="test-key",
+            )
+
+            results = cache.check(prompt="Q?", attributes={})  # should be ignored
+            assert results and results[0]["entry_id"] == "e1"
+
+            # Ensure attributes kwarg was NOT sent when attributes is {}
+            _, call_kwargs = mock_client.search.call_args
+            assert "attributes" not in call_kwargs
+
     def test_delete(self, mock_langcache_client):
         """Test deleting the entire cache."""
         _, mock_client = mock_langcache_client
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -314,7 +376,7 @@ class TestLangCacheWrapper:
 
         mock_client.delete_query_async = AsyncMock()
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -329,7 +391,7 @@ class TestLangCacheWrapper:
         """Test deleting a single entry by ID."""
         _, mock_client = mock_langcache_client
 
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -342,7 +404,7 @@ class TestLangCacheWrapper:
 
     def test_update_not_supported(self, mock_langcache_client):
         """Test that update raises NotImplementedError."""
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -355,7 +417,7 @@ class TestLangCacheWrapper:
     @pytest.mark.asyncio
     async def test_aupdate_not_supported(self, mock_langcache_client):
         """Test that async update raises NotImplementedError."""
-        cache = LangCacheWrapper(
+        cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
@@ -373,7 +435,7 @@ def test_import_error_when_langcache_not_installed():
         pytest.skip("langcache package is installed")
 
     with pytest.raises(ImportError, match="langcache package is required"):
-        LangCacheWrapper(
+        LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
             cache_id="test-cache",
