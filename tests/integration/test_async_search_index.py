@@ -707,3 +707,26 @@ async def test_async_search_index_connect(index_schema, redis_url):
         await async_index.connect(redis_url=redis_url)
     assert async_index.client is not None
     await async_index.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ttl", [None, 30])
+async def test_search_index_load_with_ttl(async_index, ttl):
+    """Test that TTL is correctly set on keys when using load() with ttl parameter."""
+    await async_index.create(overwrite=True, drop=True)
+
+    # Load test data with TTL parameter
+    data = [{"id": "1", "test": "foo"}]
+    keys = await async_index.load(data, id_field="id", ttl=ttl)
+
+    # Check TTL on the loaded key
+    client = await async_index._get_client()
+    key_ttl = await client.ttl(keys[0])
+
+    if ttl is None:
+        # No TTL set, should return -1
+        assert key_ttl == -1
+    else:
+        # TTL should be set and close to the expected value
+        assert key_ttl > 0
+        assert abs(key_ttl - ttl) <= 5
