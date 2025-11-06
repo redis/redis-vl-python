@@ -673,3 +673,9 @@ def test_multivector_query_datatypes(index):
         assert (
             float(r["combined_score"]) - score <= 0.0001
         )  # allow for small floating point error
+
+
+def test_multivector_query_max_range(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+    ### TODO
+    pass

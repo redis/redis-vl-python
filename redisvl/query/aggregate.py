@@ -23,6 +23,7 @@ class Vector(BaseModel):
     field_name: str
     dtype: str = "float32"
     weight: float = 1.0
+    max_distance: float = 2.0
 
     @field_validator("dtype")
     @classmethod
@@ -34,6 +35,15 @@ class Vector(BaseModel):
                 f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
             )
         return dtype
+
+    @field_validator("max_distance")
+    @classmethod
+    def validate_max_distance(cls, max_distance: float) -> float:
+        if max_distance < 0.0 or max_distance > 2.0:
+            raise ValueError(
+                f"Invalid max_distance: {max_distance}. max_distance must between 0.0 and 2.0"
+            )
+        return max_distance
 
     @model_validator(mode="after")
     def validate_vector(self) -> Self:

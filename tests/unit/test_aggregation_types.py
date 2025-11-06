@@ -393,6 +393,19 @@ def test_vector_object_validation():
         vec = Vector(vector=sample_vector, field_name="text embedding", dtype=dtype)
         assert isinstance(vec, Vector)
 
+    # max_distance of cosine similarity should be between 0.0 and 2.0
+    for dist in [-0.0001, -0.5, -2.2, -4, 2.0001, 10]:
+        with pytest.raises(ValueError):
+            _ = Vector(
+                vector=sample_vector, field_name="text embedding", max_distance=dist
+            )
+
+    for dist in [0.0, 2.0]:
+        vec = Vector(
+            vector=sample_vector, field_name="text embedding", max_distance=dist
+        )
+        assert isinstance(vec, Vector)
+
 
 def test_vector_object_handles_byte_conversion():
     # test that passing an array of floats gets converted to bytes
