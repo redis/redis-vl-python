@@ -320,14 +320,14 @@ class HybridQuery(AggregateHybridQuery):
     .. deprecated::
         HybridQuery is a backward compatibility wrapper around AggregateHybridQuery
         and will eventually be replaced with a new hybrid query implementation.
-        to maintain current functionality please use AggregateHybridQuery directly.",
+        To maintain current functionality please use AggregateHybridQuery directly.",
     """
 
     def __init__(self, *args, **kwargs):
         warnings.warn(
             "HybridQuery is a backward compatibility wrapper around AggregateHybridQuery "
             "and will eventually be replaced with a new hybrid query implementation. "
-            "to maintain current functionality please use AggregateHybridQuery directly.",
+            "To maintain current functionality please use AggregateHybridQuery directly.",
             DeprecationWarning,
             stacklevel=2,
         )
