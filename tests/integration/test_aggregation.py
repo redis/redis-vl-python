@@ -1,7 +1,7 @@
 import pytest
 
 from redisvl.index import SearchIndex
-from redisvl.query import HybridQuery, MultiVectorQuery, Vector
+from redisvl.query import AggregateHybridQuery, HybridQuery, MultiVectorQuery, Vector
 from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
@@ -89,7 +89,7 @@ def test_hybrid_query(index):
     vector_field = "user_embedding"
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -115,7 +115,7 @@ def test_hybrid_query(index):
         assert doc["job"] in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
         assert doc["credit_score"] in ["high", "low", "medium"]
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -141,7 +141,7 @@ def test_empty_query_string():
 
     # test if text is empty
     with pytest.raises(ValueError):
-        hybrid_query = HybridQuery(
+        hybrid_query = AggregateHybridQuery(
             text=text,
             text_field_name=text_field,
             vector=vector,
@@ -151,7 +151,7 @@ def test_empty_query_string():
     # test if text becomes empty after stopwords are removed
     text = "with a for but and"  # will all be removed as default stopwords
     with pytest.raises(ValueError):
-        hybrid_query = HybridQuery(
+        hybrid_query = AggregateHybridQuery(
             text=text,
             text_field_name=text_field,
             vector=vector,
@@ -169,7 +169,7 @@ def test_hybrid_query_with_filter(index):
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
     filter_expression = (Tag("credit_score") == ("high")) & (Num("age") > 30)
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -195,7 +195,7 @@ def test_hybrid_query_with_geo_filter(index):
     return_fields = ["user", "credit_score", "age", "job", "location", "description"]
     filter_expression = Geo("location") == GeoRadius(-122.4194, 37.7749, 1000, "m")
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -219,7 +219,7 @@ def test_hybrid_query_alpha(index, alpha):
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -247,7 +247,7 @@ def test_hybrid_query_stopwords(index):
     vector_field = "user_embedding"
     alpha = 0.5
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -282,7 +282,7 @@ def test_hybrid_query_with_text_filter(index):
     filter_expression = Text(text_field) == ("medical")
 
     # make sure we can still apply filters to the same text field we are querying
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -300,7 +300,7 @@ def test_hybrid_query_with_text_filter(index):
     filter_expression = (Text(text_field) == ("medical")) & (
         (Text(text_field) != ("research"))
     )
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -330,7 +330,7 @@ def test_hybrid_query_word_weights(index, scorer):
     weights = {"medical": 3.4, "cancers": 5}
 
     # test we can run a query with text weights
-    weighted_query = HybridQuery(
+    weighted_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -344,7 +344,7 @@ def test_hybrid_query_word_weights(index, scorer):
     assert len(weighted_results) == 7
 
     # test that weights do change the scores on results
-    unweighted_query = HybridQuery(
+    unweighted_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -363,7 +363,7 @@ def test_hybrid_query_word_weights(index, scorer):
 
     # test that weights do change the document score and order of results
     weights = {"medical": 5, "cancers": 3.4}  # switch the weights
-    weighted_query = HybridQuery(
+    weighted_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -377,7 +377,7 @@ def test_hybrid_query_word_weights(index, scorer):
     assert weighted_results != unweighted_results
 
     # test assigning weights on construction is equivalent to setting them on the query object
-    new_query = HybridQuery(
+    new_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field,
         vector=vector,
@@ -743,3 +743,44 @@ def test_multivector_query_mixed_index(index):
         assert (
             float(r["combined_score"]) - score <= 0.0001
         )  # allow for small floating point error
+
+
+def test_hybrid_query_backward_compatibility(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+
+    hybrid_query = AggregateHybridQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        return_fields=return_fields,
+    )
+
+    results = index.query(hybrid_query)
+    assert len(results) == 7
+    for result in results:
+        assert result["user"] in [
+            "john",
+            "derrick",
+            "nancy",
+            "tyler",
+            "tim",
+            "taimur",
+            "joe",
+            "mary",
+        ]
+
+    with pytest.warns(DeprecationWarning):
+        _ = HybridQuery(
+            text=text,
+            text_field_name=text_field,
+            vector=vector,
+            vector_field_name=vector_field,
+            return_fields=return_fields,
+        )

@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from pydantic import BaseModel, field_validator, model_validator
@@ -53,20 +54,20 @@ class AggregationQuery(AggregateRequest):
         super().__init__(query_string)
 
 
-class HybridQuery(AggregationQuery):
+class AggregateHybridQuery(AggregationQuery):
     """
-    HybridQuery combines text and vector search in Redis.
+    AggregateHybridQuery combines text and vector search in Redis.
     It allows you to perform a hybrid search using both text and vector similarity.
     It scores documents based on a weighted combination of text and vector similarity.
 
     .. code-block:: python
 
-        from redisvl.query import HybridQuery
+        from redisvl.query import AggregateHybridQuery
         from redisvl.index import SearchIndex
 
         index = SearchIndex.from_yaml("path/to/index.yaml")
 
-        query = HybridQuery(
+        query = AggregateHybridQuery(
             text="example text",
             text_field_name="text_field",
             vector=[0.1, 0.2, 0.3],
@@ -105,7 +106,7 @@ class HybridQuery(AggregationQuery):
         text_weights: Optional[Dict[str, float]] = None,
     ):
         """
-        Instantiates a HybridQuery object.
+        Instantiates a AggregateHybridQuery object.
 
         Args:
             text (str): The text to search for.
@@ -311,6 +312,26 @@ class HybridQuery(AggregationQuery):
     def __str__(self) -> str:
         """Return the string representation of the query."""
         return " ".join([str(x) for x in self.build_args()])
+
+
+class HybridQuery(AggregateHybridQuery):
+    """Backward compatibility wrapper for AggregateHybridQuery.
+
+    .. deprecated::
+        HybridQuery is a backward compatibility wrapper around AggregateHybridQuery
+        and will eventually be replaced with a new hybrid query implementation.
+        To maintain current functionality please use AggregateHybridQuery directly.",
+    """
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "HybridQuery is a backward compatibility wrapper around AggregateHybridQuery "
+            "and will eventually be replaced with a new hybrid query implementation. "
+            "To maintain current functionality please use AggregateHybridQuery directly.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)
 
 
 class MultiVectorQuery(AggregationQuery):
