@@ -1,12 +1,32 @@
+import warnings
+from contextlib import contextmanager
+
 import pytest
 from redis.commands.search.aggregation import AggregateRequest
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
 from redisvl.index.index import process_results
-from redisvl.query.aggregate import HybridQuery, MultiVectorQuery, Vector
+from redisvl.query.aggregate import (
+    AggregateHybridQuery,
+    HybridQuery,
+    MultiVectorQuery,
+    Vector,
+)
 from redisvl.query.filter import Tag
 from redisvl.redis.utils import array_to_buffer
+
+
+@contextmanager
+def assert_no_warnings():
+    """Context manager that asserts no warnings are emitted."""
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        yield
+        if caught_warnings:
+            warning_messages = [str(w.message) for w in caught_warnings]
+            pytest.fail(f"Expected no warnings, but got: {warning_messages}")
+
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
@@ -22,7 +42,7 @@ def test_aggregate_hybrid_query():
     text_field_name = "description"
     vector_field_name = "embedding"
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=sample_text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -52,7 +72,7 @@ def test_aggregate_hybrid_query():
     stopwords = []
     dialect = 2
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=sample_text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -79,12 +99,12 @@ def test_aggregate_hybrid_query():
     assert hybrid_query.stopwords == set()
 
     # Test stopwords are configurable
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         sample_text, text_field_name, sample_vector, vector_field_name, stopwords=None
     )
     assert hybrid_query.stopwords == set([])
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         sample_text,
         text_field_name,
         sample_vector,
@@ -93,7 +113,7 @@ def test_aggregate_hybrid_query():
     )
     assert hybrid_query.stopwords == set(["the", "a", "of"])
 
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         sample_text,
         text_field_name,
         sample_vector,
@@ -103,7 +123,7 @@ def test_aggregate_hybrid_query():
     assert hybrid_query.stopwords != set([])
 
     with pytest.raises(ValueError):
-        hybrid_query = HybridQuery(
+        hybrid_query = AggregateHybridQuery(
             sample_text,
             text_field_name,
             sample_vector,
@@ -112,7 +132,7 @@ def test_aggregate_hybrid_query():
         )
 
     with pytest.raises(TypeError):
-        hybrid_query = HybridQuery(
+        hybrid_query = AggregateHybridQuery(
             sample_text,
             text_field_name,
             sample_vector,
@@ -122,9 +142,9 @@ def test_aggregate_hybrid_query():
 
 
 def test_hybrid_query_with_string_filter():
-    """Test that HybridQuery correctly includes string filter expressions in query string.
+    """Test that AggregateHybridQuery correctly includes string filter expressions in query string.
 
-    This test ensures that when a string filter expression is passed to HybridQuery,
+    This test ensures that when a string filter expression is passed to AggregateHybridQuery,
     it's properly included in the generated query string and not set to empty.
     Regression test for bug where string filters were being ignored.
     """
@@ -134,7 +154,7 @@ def test_hybrid_query_with_string_filter():
 
     # Test with string filter expression - should include filter in query string
     string_filter = "@category:{tech|science|engineering}"
-    hybrid_query = HybridQuery(
+    hybrid_query = AggregateHybridQuery(
         text=text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -152,7 +172,7 @@ def test_hybrid_query_with_string_filter():
 
     # Test with FilterExpression - should also work (existing functionality)
     filter_expression = Tag("category") == "tech"
-    hybrid_query_with_filter_expr = HybridQuery(
+    hybrid_query_with_filter_expr = AggregateHybridQuery(
         text=text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -172,7 +192,7 @@ def test_hybrid_query_with_string_filter():
     assert "AND @category:{tech}" in query_string_with_filter_expr
 
     # Test with no filter - should only have text search
-    hybrid_query_no_filter = HybridQuery(
+    hybrid_query_no_filter = AggregateHybridQuery(
         text=text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -184,7 +204,7 @@ def test_hybrid_query_with_string_filter():
     assert "AND" not in query_string_no_filter
 
     # Test with wildcard filter - should only have text search (no AND clause)
-    hybrid_query_wildcard = HybridQuery(
+    hybrid_query_wildcard = AggregateHybridQuery(
         text=text,
         text_field_name=text_field_name,
         vector=sample_vector,
@@ -202,7 +222,7 @@ def test_hybrid_query_text_weights():
     vector = [0.1, 0.1, 0.5]
     vector_field = "user_embedding"
 
-    query = HybridQuery(
+    query = AggregateHybridQuery(
         text="query string alpha bravo delta tango alpha",
         text_field_name="description",
         vector=vector,
@@ -217,7 +237,7 @@ def test_hybrid_query_text_weights():
 
     # raise an error if weights are not positive floats
     with pytest.raises(ValueError):
-        _ = HybridQuery(
+        _ = AggregateHybridQuery(
             text="sample text query",
             text_field_name="description",
             vector=vector,
@@ -226,7 +246,7 @@ def test_hybrid_query_text_weights():
         )
 
     with pytest.raises(ValueError):
-        _ = HybridQuery(
+        _ = AggregateHybridQuery(
             text="sample text query",
             text_field_name="description",
             vector=vector,
@@ -235,7 +255,7 @@ def test_hybrid_query_text_weights():
         )
 
     # no error if weights dictionary is empty or None
-    query = HybridQuery(
+    query = AggregateHybridQuery(
         text="sample text query",
         text_field_name="description",
         vector=vector,
@@ -244,7 +264,7 @@ def test_hybrid_query_text_weights():
     )
     assert query
 
-    query = HybridQuery(
+    query = AggregateHybridQuery(
         text="sample text query",
         text_field_name="description",
         vector=vector,
@@ -254,7 +274,7 @@ def test_hybrid_query_text_weights():
     assert query
 
     # no error if the words in weights dictionary don't appear in query
-    query = HybridQuery(
+    query = AggregateHybridQuery(
         text="sample text query",
         text_field_name="description",
         vector=vector,
@@ -409,3 +429,35 @@ def test_vector_object_handles_byte_conversion():
         byte_string = array_to_buffer(sample_vector, datatype)
         vec = Vector(vector=byte_string, field_name="field 1")
         assert vec.vector == byte_string
+
+
+def test_hybrid_query_backward_compatibility():
+    # test that HybridQuery is a backward compatibility wrapper for AggregateHybridQuery
+    with pytest.warns(DeprecationWarning):
+        hybrid_query = HybridQuery(
+            text="sample text query",
+            text_field_name="description",
+            vector=sample_vector,
+            vector_field_name="embedding",
+        )
+
+    # Verify HybridQuery is actually an instance of AggregateHybridQuery
+    assert isinstance(hybrid_query, AggregateHybridQuery)
+
+    # Verify AggregateHybridQuery does not emit warnings
+    with assert_no_warnings():
+        aggregate_query = AggregateHybridQuery(
+            text="sample text query",
+            text_field_name="description",
+            vector=sample_vector,
+            vector_field_name="embedding",
+        )
+
+    # Verify that creating another HybridQuery also warns
+    with pytest.warns(DeprecationWarning):
+        another_hybrid_query = HybridQuery(
+            text="sample text query",
+            text_field_name="description",
+            vector=sample_vector,
+            vector_field_name="embedding",
+        )
