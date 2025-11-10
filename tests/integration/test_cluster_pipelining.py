@@ -152,3 +152,42 @@ def test_batch_search_with_real_cluster(redis_cluster_url):
 
     finally:
         index.delete()
+
+
+@pytest.mark.requires_cluster
+@pytest.mark.parametrize("ttl", [None, 30])
+def test_cluster_load_with_ttl(redis_cluster_url, ttl):
+    """
+    Test that TTL is correctly set on keys when using load() with ttl parameter on cluster.
+    """
+    schema_dict = {
+        "index": {"name": "test-ttl-cluster", "prefix": "ttl", "storage_type": "hash"},
+        "fields": [
+            {"name": "id", "type": "tag"},
+            {"name": "text", "type": "text"},
+        ],
+    }
+
+    schema = IndexSchema.from_dict(schema_dict)
+    index = SearchIndex(schema, redis_url=redis_cluster_url)
+
+    index.create(overwrite=True)
+
+    try:
+        # Load test data with TTL parameter
+        data = [{"id": "1", "text": "foo"}]
+        keys = index.load(data, id_field="id", ttl=ttl)
+
+        # Check TTL on the loaded key
+        key_ttl = index.client.ttl(keys[0])
+
+        if ttl is None:
+            # No TTL set, should return -1
+            assert key_ttl == -1
+        else:
+            # TTL should be set and close to the expected value
+            assert key_ttl > 0
+            assert abs(key_ttl - ttl) <= 5
+
+    finally:
+        index.delete()
