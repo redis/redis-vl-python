@@ -505,7 +505,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
         Note:
-            Learn more about vector queries in Redis: https://redis.io/docs/interact/search-and-query/search/vectors/#knn-search
+            Learn more about vector queries in Redis: https://redis.io/docs/latest/develop/ai/search-and-query/vectors/#knn-vector-search
         """
         self._vector = vector
         self._vector_field_name = vector_field_name
