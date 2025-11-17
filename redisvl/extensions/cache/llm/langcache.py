@@ -582,20 +582,14 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             attributes (Dict[str, Any]): Attributes to match for deletion.
-                Cannot be empty.
+                If empty, no deletion is performed.
 
         Returns:
             Dict[str, Any]: Result of the deletion operation.
-
-        Raises:
-            ValueError: If attributes is empty.
         """
         if not attributes:
-            raise ValueError(
-                "attributes cannot be empty. Provide specific attributes to match, "
-                "use delete() or clear() to delete all entries, "
-                "or use delete_by_id(entry_id) to delete individual entries."
-            )
+            # No attributes provided, return empty result without calling API
+            return {}
         result = self._client.delete_query(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
@@ -605,20 +599,14 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             attributes (Dict[str, Any]): Attributes to match for deletion.
-                Cannot be empty.
+                If empty, no deletion is performed.
 
         Returns:
             Dict[str, Any]: Result of the deletion operation.
-
-        Raises:
-            ValueError: If attributes is empty.
         """
         if not attributes:
-            raise ValueError(
-                "attributes cannot be empty. Provide specific attributes to match, "
-                "use adelete() or aclear() to delete all entries, "
-                "or use adelete_by_id(entry_id) to delete individual entries."
-            )
+            # No attributes provided, return empty result without calling API
+            return {}
         result = await self._client.delete_query_async(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
