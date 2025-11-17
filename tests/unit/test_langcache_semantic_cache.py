@@ -354,10 +354,8 @@ class TestLangCacheSemanticCache:
             _, call_kwargs = mock_client.search.call_args
             assert "attributes" not in call_kwargs
 
-    def test_delete(self, mock_langcache_client):
-        """Test deleting the entire cache."""
-        _, mock_client = mock_langcache_client
-
+    def test_delete_not_supported(self, mock_langcache_client):
+        """Test that delete() raises NotImplementedError."""
         cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
@@ -365,17 +363,14 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        cache.delete()
-
-        mock_client.delete_query.assert_called_once_with(attributes={})
+        with pytest.raises(
+            NotImplementedError, match="does not support deleting all entries"
+        ):
+            cache.delete()
 
     @pytest.mark.asyncio
-    async def test_adelete(self, mock_langcache_client):
-        """Test async deleting the entire cache."""
-        _, mock_client = mock_langcache_client
-
-        mock_client.delete_query_async = AsyncMock()
-
+    async def test_adelete_not_supported(self, mock_langcache_client):
+        """Test that async delete() raises NotImplementedError."""
         cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
@@ -383,9 +378,39 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        await cache.adelete()
+        with pytest.raises(
+            NotImplementedError, match="does not support deleting all entries"
+        ):
+            await cache.adelete()
 
-        mock_client.delete_query_async.assert_called_once_with(attributes={})
+    def test_clear_not_supported(self, mock_langcache_client):
+        """Test that clear() raises NotImplementedError."""
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        with pytest.raises(
+            NotImplementedError, match="does not support deleting all entries"
+        ):
+            cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_aclear_not_supported(self, mock_langcache_client):
+        """Test that async clear() raises NotImplementedError."""
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        with pytest.raises(
+            NotImplementedError, match="does not support deleting all entries"
+        ):
+            await cache.aclear()
 
     def test_delete_by_id(self, mock_langcache_client):
         """Test deleting a single entry by ID."""
@@ -401,6 +426,80 @@ class TestLangCacheSemanticCache:
         cache.delete_by_id("entry-123")
 
         mock_client.delete_by_id.assert_called_once_with(entry_id="entry-123")
+
+    def test_delete_by_attributes_with_valid_attributes(self, mock_langcache_client):
+        """Test deleting entries by attributes with valid attributes."""
+        _, mock_client = mock_langcache_client
+
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {"deleted_count": 5}
+        mock_client.delete_query.return_value = mock_response
+
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        result = cache.delete_by_attributes({"topic": "python"})
+
+        assert result == {"deleted_count": 5}
+        mock_client.delete_query.assert_called_once_with(attributes={"topic": "python"})
+
+    def test_delete_by_attributes_with_empty_attributes_raises_error(
+        self, mock_langcache_client
+    ):
+        """Test that delete_by_attributes raises ValueError with empty attributes."""
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        with pytest.raises(ValueError, match="attributes cannot be empty"):
+            cache.delete_by_attributes({})
+
+    @pytest.mark.asyncio
+    async def test_adelete_by_attributes_with_valid_attributes(
+        self, mock_langcache_client
+    ):
+        """Test async deleting entries by attributes with valid attributes."""
+        _, mock_client = mock_langcache_client
+
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {"deleted_count": 3}
+        mock_client.delete_query_async = AsyncMock(return_value=mock_response)
+
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        result = await cache.adelete_by_attributes({"language": "python"})
+
+        assert result == {"deleted_count": 3}
+        mock_client.delete_query_async.assert_called_once_with(
+            attributes={"language": "python"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_adelete_by_attributes_with_empty_attributes_raises_error(
+        self, mock_langcache_client
+    ):
+        """Test that async delete_by_attributes raises ValueError with empty attributes."""
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        with pytest.raises(ValueError, match="attributes cannot be empty"):
+            await cache.adelete_by_attributes({})
 
     def test_update_not_supported(self, mock_langcache_client):
         """Test that update raises NotImplementedError."""
