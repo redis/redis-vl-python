@@ -354,8 +354,10 @@ class TestLangCacheSemanticCache:
             _, call_kwargs = mock_client.search.call_args
             assert "attributes" not in call_kwargs
 
-    def test_delete_not_supported(self, mock_langcache_client):
-        """Test that delete() raises NotImplementedError."""
+    def test_delete(self, mock_langcache_client):
+        """Test deleting the entire cache using flush()."""
+        _, mock_client = mock_langcache_client
+
         cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
@@ -363,14 +365,17 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        with pytest.raises(
-            NotImplementedError, match="does not support deleting all entries"
-        ):
-            cache.delete()
+        cache.delete()
+
+        mock_client.flush.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_adelete_not_supported(self, mock_langcache_client):
-        """Test that async delete() raises NotImplementedError."""
+    async def test_adelete(self, mock_langcache_client):
+        """Test async deleting the entire cache using flush()."""
+        _, mock_client = mock_langcache_client
+
+        mock_client.flush_async = AsyncMock()
+
         cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
@@ -378,13 +383,14 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        with pytest.raises(
-            NotImplementedError, match="does not support deleting all entries"
-        ):
-            await cache.adelete()
+        await cache.adelete()
 
-    def test_clear_not_supported(self, mock_langcache_client):
-        """Test that clear() raises NotImplementedError."""
+        mock_client.flush_async.assert_called_once()
+
+    def test_clear(self, mock_langcache_client):
+        """Test that clear() calls delete() which uses flush()."""
+        _, mock_client = mock_langcache_client
+
         cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
@@ -392,14 +398,17 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        with pytest.raises(
-            NotImplementedError, match="does not support deleting all entries"
-        ):
-            cache.clear()
+        cache.clear()
+
+        mock_client.flush.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_aclear_not_supported(self, mock_langcache_client):
-        """Test that async clear() raises NotImplementedError."""
+    async def test_aclear(self, mock_langcache_client):
+        """Test that async clear() calls adelete() which uses flush()."""
+        _, mock_client = mock_langcache_client
+
+        mock_client.flush_async = AsyncMock()
+
         cache = LangCacheSemanticCache(
             name="test",
             server_url="https://api.example.com",
@@ -407,10 +416,9 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        with pytest.raises(
-            NotImplementedError, match="does not support deleting all entries"
-        ):
-            await cache.aclear()
+        await cache.aclear()
+
+        mock_client.flush_async.assert_called_once()
 
     def test_delete_by_id(self, mock_langcache_client):
         """Test deleting a single entry by ID."""
