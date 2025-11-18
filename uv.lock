@@ -2114,16 +2114,16 @@ wheels = [
 
 [[package]]
 name = "langcache"
-version = "0.10.1"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpcore" },
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/01/c4d41f05d86c7838032114037d8c1c449bd0a0e32a1b62fc64b9c63ecdeb/langcache-0.10.1.tar.gz", hash = "sha256:a60f5974712a9be7c249bea97bb412ef2b8d8fe8509623c8fbbaf183ee7a441f", size = 38945 }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/1d/f0b306e5c710956bd32521da87bb4f01836f8ea6ebd447160a41055dd6ee/langcache-0.11.0.tar.gz", hash = "sha256:91fa5a3f2758a6a1ba00c2733f95c2dd625b511f3ea728e89bf32646472abd77", size = 39676 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/2a/1d221efcff30e418f1e14fc7959023f0f3156ab9b87ff5a42e44170ce96d/langcache-0.10.1-py3-none-any.whl", hash = "sha256:a8d54bb5478d4a079f0705aa3a178af1250d9edfc75fbd5abd17fadb3f3baa74", size = 63191 },
+    { url = "https://files.pythonhosted.org/packages/0d/8f/3e2299dafa43f831b5fdaaa6ce329b4050a118faa3e4134fe331be5b0101/langcache-0.11.0-py3-none-any.whl", hash = "sha256:9373e9f0a00de06ebc0fb5942b4cd82281979ba8f3126b580030e23fc18dd947", size = 64336 },
 ]
 
 [[package]]
@@ -4278,7 +4278,7 @@ requires-dist = [
     { name = "cohere", marker = "extra == 'cohere'", specifier = ">=4.44" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertexai'", specifier = ">=1.26,<2.0.0" },
     { name = "jsonpath-ng", specifier = ">=1.5.0" },
-    { name = "langcache", marker = "extra == 'langcache'", specifier = ">=0.9.0" },
+    { name = "langcache", marker = "extra == 'langcache'", specifier = ">=0.11.0" },
     { name = "mistralai", marker = "extra == 'mistralai'", specifier = ">=1.0.0" },
     { name = "ml-dtypes", specifier = ">=0.4.0,<1.0.0" },
     { name = "nltk", marker = "extra == 'nltk'", specifier = ">=3.8.1,<4" },
