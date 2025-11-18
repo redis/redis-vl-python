@@ -536,18 +536,16 @@ class LangCacheSemanticCache(BaseLLMCache):
     def delete(self) -> None:
         """Delete the entire cache.
 
-        This deletes all entries in the cache by calling delete_query
-        with no attributes.
+        This deletes all entries in the cache by calling the flush API.
         """
-        self._client.delete_query(attributes={})
+        self._client.flush()
 
     async def adelete(self) -> None:
         """Async delete the entire cache.
 
-        This deletes all entries in the cache by calling delete_query
-        with no attributes.
+        This deletes all entries in the cache by calling the flush API.
         """
-        await self._client.delete_query_async(attributes={})
+        await self._client.flush_async()
 
     def clear(self) -> None:
         """Clear the cache of all entries.
@@ -584,10 +582,18 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             attributes (Dict[str, Any]): Attributes to match for deletion.
+                Cannot be empty.
 
         Returns:
             Dict[str, Any]: Result of the deletion operation.
+
+        Raises:
+            ValueError: If attributes is an empty dictionary.
         """
+        if not attributes:
+            raise ValueError(
+                "Cannot delete by attributes with an empty attributes dictionary."
+            )
         result = self._client.delete_query(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
@@ -597,10 +603,18 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             attributes (Dict[str, Any]): Attributes to match for deletion.
+                Cannot be empty.
 
         Returns:
             Dict[str, Any]: Result of the deletion operation.
+
+        Raises:
+            ValueError: If attributes is an empty dictionary.
         """
+        if not attributes:
+            raise ValueError(
+                "Cannot delete by attributes with an empty attributes dictionary."
+            )
         result = await self._client.delete_query_async(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
