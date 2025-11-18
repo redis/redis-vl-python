@@ -440,7 +440,7 @@ class TestLangCacheSemanticCache:
         _, mock_client = mock_langcache_client
 
         mock_response = MagicMock()
-        mock_response.model_dump.return_value = {"deleted_count": 5}
+        mock_response.model_dump.return_value = {"deleted_entries_count": 5}
         mock_client.delete_query.return_value = mock_response
 
         cache = LangCacheSemanticCache(
@@ -452,7 +452,7 @@ class TestLangCacheSemanticCache:
 
         result = cache.delete_by_attributes({"topic": "python"})
 
-        assert result == {"deleted_count": 5}
+        assert result == {"deleted_entries_count": 5}
         mock_client.delete_query.assert_called_once_with(attributes={"topic": "python"})
 
     def test_delete_by_attributes_with_empty_attributes_returns_empty(
@@ -482,7 +482,7 @@ class TestLangCacheSemanticCache:
         _, mock_client = mock_langcache_client
 
         mock_response = MagicMock()
-        mock_response.model_dump.return_value = {"deleted_count": 3}
+        mock_response.model_dump.return_value = {"deleted_entries_count": 3}
         mock_client.delete_query_async = AsyncMock(return_value=mock_response)
 
         cache = LangCacheSemanticCache(
@@ -494,7 +494,7 @@ class TestLangCacheSemanticCache:
 
         result = await cache.adelete_by_attributes({"language": "python"})
 
-        assert result == {"deleted_count": 3}
+        assert result == {"deleted_entries_count": 3}
         mock_client.delete_query_async.assert_called_once_with(
             attributes={"language": "python"}
         )
