@@ -458,7 +458,7 @@ class TestLangCacheSemanticCache:
     def test_delete_by_attributes_with_empty_attributes_returns_empty(
         self, mock_langcache_client
     ):
-        """Test that delete_by_attributes returns empty dict with empty attributes."""
+        """Test that delete_by_attributes returns correct shape with empty attributes."""
         _, mock_client = mock_langcache_client
 
         cache = LangCacheSemanticCache(
@@ -470,8 +470,8 @@ class TestLangCacheSemanticCache:
 
         result = cache.delete_by_attributes({})
 
-        # Should return empty dict without calling delete_query
-        assert result == {}
+        # Should return dict with correct shape without calling delete_query
+        assert result == {"deleted_entries_count": 0}
         mock_client.delete_query.assert_not_called()
 
     @pytest.mark.asyncio
@@ -503,7 +503,7 @@ class TestLangCacheSemanticCache:
     async def test_adelete_by_attributes_with_empty_attributes_returns_empty(
         self, mock_langcache_client
     ):
-        """Test that async delete_by_attributes returns empty dict with empty attributes."""
+        """Test that async delete_by_attributes returns correct shape with empty attributes."""
         _, mock_client = mock_langcache_client
 
         cache = LangCacheSemanticCache(
@@ -515,8 +515,8 @@ class TestLangCacheSemanticCache:
 
         result = await cache.adelete_by_attributes({})
 
-        # Should return empty dict without calling delete_query_async
-        assert result == {}
+        # Should return dict with correct shape without calling delete_query_async
+        assert result == {"deleted_entries_count": 0}
         mock_client.delete_query_async.assert_not_called()
 
     def test_update_not_supported(self, mock_langcache_client):

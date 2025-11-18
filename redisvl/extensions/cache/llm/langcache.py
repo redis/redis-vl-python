@@ -588,8 +588,8 @@ class LangCacheSemanticCache(BaseLLMCache):
             Dict[str, Any]: Result of the deletion operation.
         """
         if not attributes:
-            # No attributes provided, return empty result without calling API
-            return {}
+            # No attributes provided, return result with zero deletions
+            return {"deleted_entries_count": 0}
         result = self._client.delete_query(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
@@ -605,8 +605,8 @@ class LangCacheSemanticCache(BaseLLMCache):
             Dict[str, Any]: Result of the deletion operation.
         """
         if not attributes:
-            # No attributes provided, return empty result without calling API
-            return {}
+            # No attributes provided, return result with zero deletions
+            return {"deleted_entries_count": 0}
         result = await self._client.delete_query_async(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
