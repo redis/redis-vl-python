@@ -582,14 +582,18 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             attributes (Dict[str, Any]): Attributes to match for deletion.
-                If empty, no deletion is performed.
+                Cannot be empty.
 
         Returns:
             Dict[str, Any]: Result of the deletion operation.
+
+        Raises:
+            ValueError: If attributes is an empty dictionary.
         """
         if not attributes:
-            # No attributes provided, return result with zero deletions
-            return {"deleted_entries_count": 0}
+            raise ValueError(
+                "Cannot delete by attributes with an empty attributes dictionary."
+            )
         result = self._client.delete_query(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
@@ -599,14 +603,18 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             attributes (Dict[str, Any]): Attributes to match for deletion.
-                If empty, no deletion is performed.
+                Cannot be empty.
 
         Returns:
             Dict[str, Any]: Result of the deletion operation.
+
+        Raises:
+            ValueError: If attributes is an empty dictionary.
         """
         if not attributes:
-            # No attributes provided, return result with zero deletions
-            return {"deleted_entries_count": 0}
+            raise ValueError(
+                "Cannot delete by attributes with an empty attributes dictionary."
+            )
         result = await self._client.delete_query_async(attributes=attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
