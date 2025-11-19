@@ -17,6 +17,7 @@ import os
 from typing import Dict
 
 import pytest
+from langcache.errors import BadRequestErrorResponseContent
 
 from redisvl.extensions.cache.llm.langcache import LangCacheSemanticCache
 
@@ -241,7 +242,6 @@ class TestLangCacheSemanticCacheIntegrationWithoutAttributes:
         self, langcache_no_attrs: LangCacheSemanticCache
     ) -> None:
 
-
         prompt = "Attributes not configured"
         response = "This should fail due to missing attributes configuration."
 
@@ -289,9 +289,6 @@ class TestLangCacheSemanticCacheIntegrationWithoutAttributes:
         error is raised by the backend. If this behavior changes, this test will
         need to be updated.
         """
-
-        from langcache.errors import BadRequestErrorResponseContent
-
         prompt = "Comma attribute value"
         response = "This may fail depending on the remote validation rules."
 
