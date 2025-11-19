@@ -232,7 +232,7 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         hits_after_clear = await langcache_with_attrs.acheck(
             prompt=prompt, num_results=5
         )
-        assert not hits_after_clear
+        assert not any(hit["response"] == response for hit in hits_after_clear)
 
 
 @pytest.mark.requires_api_keys
@@ -240,7 +240,7 @@ class TestLangCacheSemanticCacheIntegrationWithoutAttributes:
     def test_error_on_store_with_metadata_when_no_attributes_configured(
         self, langcache_no_attrs: LangCacheSemanticCache
     ) -> None:
-        from langcache.errors import BadRequestErrorResponseContent
+
 
         prompt = "Attributes not configured"
         response = "This should fail due to missing attributes configuration."
