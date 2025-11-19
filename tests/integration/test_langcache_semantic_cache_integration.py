@@ -17,9 +17,12 @@ import os
 from typing import Dict
 
 import pytest
+from dotenv import load_dotenv
 from langcache.errors import BadRequestErrorResponseContent
 
 from redisvl.extensions.cache.llm.langcache import LangCacheSemanticCache
+
+load_dotenv()
 
 REQUIRED_WITH_ATTRS_VARS = (
     "LANGCACHE_WITH_ATTRIBUTES_API_KEY",
@@ -235,13 +238,31 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         )
         assert not any(hit["response"] == response for hit in hits_after_clear)
 
+    def test_attribute_value_with_comma_passes_through_to_api(
+        self, langcache_with_attrs: LangCacheSemanticCache
+    ) -> None:
+        """We currently rely on the LangCache API to validate commas in attribute values.
+
+        This test verifies we do not perform client-side validation and that the
+        error is raised by the backend. If this behavior changes, this test will
+        need to be updated.
+        """
+        prompt = "Comma attribute value"
+        response = "This may fail depending on the remote validation rules."
+
+        with pytest.raises(BadRequestErrorResponseContent):
+            langcache_with_attrs.store(
+                prompt=prompt,
+                response=response,
+                metadata={"llm_string": "tenant,with,comma"},
+            )
+
 
 @pytest.mark.requires_api_keys
 class TestLangCacheSemanticCacheIntegrationWithoutAttributes:
     def test_error_on_store_with_metadata_when_no_attributes_configured(
         self, langcache_no_attrs: LangCacheSemanticCache
     ) -> None:
-
         prompt = "Attributes not configured"
         response = "This should fail due to missing attributes configuration."
 
@@ -279,22 +300,3 @@ class TestLangCacheSemanticCacheIntegrationWithoutAttributes:
         hits = langcache_no_attrs.check(prompt=prompt)
         assert hits
         assert any(hit["response"] == response for hit in hits)
-
-    def test_attribute_value_with_comma_passes_through_to_api(
-        self, langcache_with_attrs: LangCacheSemanticCache
-    ) -> None:
-        """We currently rely on the LangCache API to validate commas in attribute values.
-
-        This test verifies we do not perform client-side validation and that the
-        error is raised by the backend. If this behavior changes, this test will
-        need to be updated.
-        """
-        prompt = "Comma attribute value"
-        response = "This may fail depending on the remote validation rules."
-
-        with pytest.raises(BadRequestErrorResponseContent):
-            langcache_with_attrs.store(
-                prompt=prompt,
-                response=response,
-                metadata={"llm_string": "tenant,with,comma"},
-            )
