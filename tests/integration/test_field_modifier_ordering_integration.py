@@ -7,8 +7,26 @@ without error - if the modifiers are in the wrong order, Redis will reject
 the FT.CREATE command.
 """
 
+import pytest
+
 from redisvl.index import SearchIndex
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema import IndexSchema
+
+MIN_SEARCH_VERSION_FOR_INDEXMISSING = 21000  # RediSearch 2.10.0+
+
+
+def skip_if_search_version_below_for_indexmissing(client) -> None:
+    """Skip tests that require INDEXMISSING/INDEXEMPTY if RediSearch is too old."""
+    modules = RedisConnectionFactory.get_modules(client)
+    search_ver = modules.get("search", 0)
+    searchlight_ver = modules.get("searchlight", 0)
+    current_ver = max(search_ver, searchlight_ver)
+    if current_ver < MIN_SEARCH_VERSION_FOR_INDEXMISSING:
+        pytest.skip(
+            "INDEXMISSING/INDEXEMPTY require RediSearch 2.10+ "
+            f"(found module version {current_ver})"
+        )
 
 
 class TestTextFieldModifierOrderingIntegration:
@@ -16,6 +34,7 @@ class TestTextFieldModifierOrderingIntegration:
 
     def test_textfield_sortable_and_index_missing(self, client, redis_url, worker_id):
         """Test TextField with sortable and index_missing creates successfully."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_text_sortable_missing_{worker_id}",
@@ -44,10 +63,14 @@ class TestTextFieldModifierOrderingIntegration:
             )
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
     def test_textfield_all_modifiers(self, client, redis_url, worker_id):
         """Test TextField with all modifiers."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_text_all_mods_{worker_id}",
@@ -79,7 +102,10 @@ class TestTextFieldModifierOrderingIntegration:
             info = client.execute_command("FT.INFO", f"test_text_all_mods_{worker_id}")
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
 
 class TestTagFieldModifierOrderingIntegration:
@@ -87,6 +113,7 @@ class TestTagFieldModifierOrderingIntegration:
 
     def test_tagfield_sortable_and_index_missing(self, client, redis_url, worker_id):
         """Test TagField with sortable and index_missing creates successfully."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_tag_sortable_missing_{worker_id}",
@@ -115,10 +142,14 @@ class TestTagFieldModifierOrderingIntegration:
             )
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
     def test_tagfield_all_modifiers(self, client, redis_url, worker_id):
         """Test TagField with all modifiers."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_tag_all_mods_{worker_id}",
@@ -149,7 +180,10 @@ class TestTagFieldModifierOrderingIntegration:
             info = client.execute_command("FT.INFO", f"test_tag_all_mods_{worker_id}")
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
 
 class TestGeoFieldModifierOrderingIntegration:
@@ -157,6 +191,7 @@ class TestGeoFieldModifierOrderingIntegration:
 
     def test_geofield_sortable_and_index_missing(self, client, redis_url, worker_id):
         """Test GeoField with sortable and index_missing creates successfully."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_geo_sortable_missing_{worker_id}",
@@ -185,7 +220,10 @@ class TestGeoFieldModifierOrderingIntegration:
             )
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
 
 class TestNumericFieldModifierOrderingIntegration:
@@ -195,6 +233,7 @@ class TestNumericFieldModifierOrderingIntegration:
         self, client, redis_url, worker_id
     ):
         """Test NumericField with sortable and index_missing creates successfully."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_numeric_sortable_missing_{worker_id}",
@@ -223,7 +262,10 @@ class TestNumericFieldModifierOrderingIntegration:
             )
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
 
 class TestMultiFieldModifierOrderingIntegration:
@@ -231,6 +273,7 @@ class TestMultiFieldModifierOrderingIntegration:
 
     def test_mixed_field_types_with_modifiers(self, client, redis_url, worker_id):
         """Test index with multiple field types all using modifiers."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_mixed_fields_{worker_id}",
@@ -276,7 +319,10 @@ class TestMultiFieldModifierOrderingIntegration:
             attrs_list = info[7]
             assert len(attrs_list) == 4
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
 
 class TestMultipleCommandsScenarioIntegration:
@@ -289,6 +335,7 @@ class TestMultipleCommandsScenarioIntegration:
         (INDEXMISSING, SORTABLE, UNF) can be created successfully with
         correct field ordering.
         """
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"testidx_{worker_id}",
@@ -315,10 +362,14 @@ class TestMultipleCommandsScenarioIntegration:
             info = client.execute_command("FT.INFO", f"testidx_{worker_id}")
             assert info is not None
         finally:
-            index.delete(drop=True)
+            try:
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
     def test_indexmissing_enables_ismissing_query(self, client, redis_url, worker_id):
         """Test that INDEXMISSING enables ismissing() query function."""
+        skip_if_search_version_below_for_indexmissing(client)
         schema_dict = {
             "index": {
                 "name": f"test_ismissing_{worker_id}",
@@ -359,12 +410,15 @@ class TestMultipleCommandsScenarioIntegration:
             assert f"ismiss_{worker_id}:2" in str(result)
 
         finally:
-            client.delete(
-                f"ismiss_{worker_id}:1",
-                f"ismiss_{worker_id}:2",
-                f"ismiss_{worker_id}:3",
-            )
-            index.delete(drop=True)
+            try:
+                client.delete(
+                    f"ismiss_{worker_id}:1",
+                    f"ismiss_{worker_id}:2",
+                    f"ismiss_{worker_id}:3",
+                )
+                index.delete(drop=True)
+            except Exception:
+                pass  # Index may not exist if test was skipped or failed early
 
 
 class TestFieldTypeModifierSupport:
