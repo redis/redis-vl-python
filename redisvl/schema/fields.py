@@ -105,7 +105,7 @@ def _normalize_field_modifiers(
 ) -> None:
     """Normalize field modifier ordering for RediSearch parser.
 
-    RediSearch has a parser limitation (redis/redis#5177) where INDEXEMPTY and
+    RediSearch has a parser limitation where INDEXEMPTY and
     INDEXMISSING must appear BEFORE SORTABLE in field definitions. This function
     reorders field.args_suffix to match the canonical order.
 

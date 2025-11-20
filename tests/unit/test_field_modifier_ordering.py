@@ -5,7 +5,7 @@ Tests verify that field modifiers are generated in the correct order
 to satisfy RediSearch parser requirements. The canonical order is:
     [INDEXEMPTY] [INDEXMISSING] [SORTABLE [UNF]] [NOINDEX]
 
-This is required because RediSearch has a parser limitation (redis/redis#5177)
+This is required because RediSearch has a parser limitation
 where INDEXEMPTY/INDEXMISSING must appear BEFORE SORTABLE in field definitions.
 """
 
