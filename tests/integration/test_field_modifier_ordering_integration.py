@@ -384,7 +384,11 @@ class TestMLPCommandsScenarioIntegration:
 
             # Query for missing fields
             result = redis_client.execute_command(
-                "FT.SEARCH", "test_ismissing", "ismissing(@optional_field)", "DIALECT", "2"
+                "FT.SEARCH",
+                "test_ismissing",
+                "ismissing(@optional_field)",
+                "DIALECT",
+                "2",
             )
 
             # Should return 1 result (ismiss:2)

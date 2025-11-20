@@ -252,8 +252,6 @@ class TestNormalizeFieldModifiersHelper:
 
         assert field.args_suffix == ["INDEXMISSING", "SORTABLE"]
 
-
-
     def test_unf_added_with_sortable(self):
         """Test that UNF is added when want_unf=True and SORTABLE is present."""
         field = RedisTextField("test")
@@ -309,8 +307,6 @@ class TestNormalizeFieldModifiersHelper:
         _normalize_field_modifiers(field, canonical_order)
 
         assert field.args_suffix == []
-
-
 
 
 class TestMLPCommandsScenario:
