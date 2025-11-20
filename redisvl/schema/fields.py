@@ -35,7 +35,7 @@ References:
 """
 
 from enum import Enum
-from typing import Any, Dict, Literal, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.field import Field as RedisField
@@ -95,6 +95,51 @@ class CompressionType(str, Enum):
     LVQ8 = "LVQ8"
     LeanVec4x8 = "LeanVec4x8"
     LeanVec8x8 = "LeanVec8x8"
+
+
+### Helper Functions ###
+
+
+def _normalize_field_modifiers(
+    field: RedisField, canonical_order: List[str], want_unf: bool = False
+) -> None:
+    """Normalize field modifier ordering for RediSearch parser.
+
+    RediSearch has a parser limitation (redis/redis#5177) where INDEXEMPTY and
+    INDEXMISSING must appear BEFORE SORTABLE in field definitions. This function
+    reorders field.args_suffix to match the canonical order while preserving
+    unknown modifiers at the start.
+
+    Args:
+        field: Redis field object whose args_suffix will be normalized
+        canonical_order: List of modifiers in desired canonical order
+        want_unf: Whether UNF should be added after SORTABLE (default: False)
+
+    Time Complexity: O(n + m) where n = len(field.args_suffix), m = len(canonical_order)
+    Space Complexity: O(n + m)
+
+    Example:
+        >>> field = RedisTextField("title")
+        >>> field.args_suffix = ["SORTABLE", "INDEXMISSING"]
+        >>> _normalize_field_modifiers(field, ["INDEXEMPTY", "INDEXMISSING", "SORTABLE"])
+        >>> field.args_suffix
+        ['INDEXMISSING', 'SORTABLE']
+    """
+    suffix_set = set(field.args_suffix)
+    known_set = set(canonical_order)
+
+    # Preserve unknown modifiers in original order
+    new_suffix = [t for t in field.args_suffix if t not in known_set]
+
+    # Add known modifiers in canonical order
+    for modifier in canonical_order:
+        if modifier in suffix_set:
+            new_suffix.append(modifier)
+            # Special case: UNF only appears with SORTABLE
+            if modifier == "SORTABLE" and want_unf and "UNF" not in suffix_set:
+                new_suffix.append("UNF")
+
+    field.args_suffix = new_suffix
 
 
 ### Field Attributes ###
@@ -290,7 +335,7 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
         ):
             logger.warning(
                 f"LeanVec compression selected without 'reduce'. "
-                f"Consider setting reduce={self.dims//2} for better performance"
+                f"Consider setting reduce={self.dims // 2} for better performance"
             )
 
         if self.graph_max_degree and self.graph_max_degree < 32:
@@ -371,16 +416,11 @@ class TextField(BaseField):
 
         field = RedisTextField(name, **kwargs)
 
-        # Add UNF support (only when sortable)
-        # UNF must come before NOINDEX in the args_suffix
-        if self.attrs.unf and self.attrs.sortable:  # type: ignore
-            if "NOINDEX" in field.args_suffix:
-                # Insert UNF before NOINDEX
-                noindex_idx = field.args_suffix.index("NOINDEX")
-                field.args_suffix.insert(noindex_idx, "UNF")
-            else:
-                # No NOINDEX, append normally
-                field.args_suffix.append("UNF")
+        # Normalize suffix ordering to satisfy RediSearch parser expectations.
+        # Canonical order: [INDEXEMPTY] [INDEXMISSING] [SORTABLE [UNF]] [NOINDEX]
+        canonical_order = ["INDEXEMPTY", "INDEXMISSING", "SORTABLE", "UNF", "NOINDEX"]
+        want_unf = self.attrs.unf and self.attrs.sortable  # type: ignore
+        _normalize_field_modifiers(field, canonical_order, want_unf)
 
         return field
 
@@ -416,7 +456,14 @@ class TagField(BaseField):
         if self.attrs.no_index:  # type: ignore
             kwargs["no_index"] = True
 
-        return RedisTagField(name, **kwargs)
+        field = RedisTagField(name, **kwargs)
+
+        # Normalize suffix ordering to satisfy RediSearch parser expectations.
+        # Canonical order: [INDEXEMPTY] [INDEXMISSING] [SORTABLE] [NOINDEX]
+        canonical_order = ["INDEXEMPTY", "INDEXMISSING", "SORTABLE", "NOINDEX"]
+        _normalize_field_modifiers(field, canonical_order)
+
+        return field
 
 
 class NumericField(BaseField):
@@ -446,16 +493,11 @@ class NumericField(BaseField):
 
         field = RedisNumericField(name, **kwargs)
 
-        # Add UNF support (only when sortable)
-        # UNF must come before NOINDEX in the args_suffix
-        if self.attrs.unf and self.attrs.sortable:  # type: ignore
-            if "NOINDEX" in field.args_suffix:
-                # Insert UNF before NOINDEX
-                noindex_idx = field.args_suffix.index("NOINDEX")
-                field.args_suffix.insert(noindex_idx, "UNF")
-            else:
-                # No NOINDEX, append normally
-                field.args_suffix.append("UNF")
+        # Normalize suffix ordering to satisfy RediSearch parser expectations.
+        # Canonical order: [INDEXEMPTY] [INDEXMISSING] [SORTABLE [UNF]] [NOINDEX]
+        canonical_order = ["INDEXEMPTY", "INDEXMISSING", "SORTABLE", "UNF", "NOINDEX"]
+        want_unf = self.attrs.unf and self.attrs.sortable  # type: ignore
+        _normalize_field_modifiers(field, canonical_order, want_unf)
 
         return field
 
@@ -485,7 +527,14 @@ class GeoField(BaseField):
         if self.attrs.no_index:  # type: ignore
             kwargs["no_index"] = True
 
-        return RedisGeoField(name, **kwargs)
+        field = RedisGeoField(name, **kwargs)
+
+        # Normalize suffix ordering to satisfy RediSearch parser expectations.
+        # Canonical order: [INDEXEMPTY] [INDEXMISSING] [SORTABLE] [NOINDEX]
+        canonical_order = ["INDEXEMPTY", "INDEXMISSING", "SORTABLE", "NOINDEX"]
+        _normalize_field_modifiers(field, canonical_order)
+
+        return field
 
 
 class FlatVectorField(BaseField):
