@@ -252,15 +252,7 @@ class TestNormalizeFieldModifiersHelper:
 
         assert field.args_suffix == ["INDEXMISSING", "SORTABLE"]
 
-    def test_preserves_unknown_modifiers(self):
-        """Test that unknown modifiers are preserved at the start."""
-        field = RedisTextField("test")
-        field.args_suffix = ["CUSTOM", "SORTABLE", "INDEXMISSING"]
-        canonical_order = ["INDEXMISSING", "SORTABLE"]
 
-        _normalize_field_modifiers(field, canonical_order)
-
-        assert field.args_suffix == ["CUSTOM", "INDEXMISSING", "SORTABLE"]
 
     def test_unf_added_with_sortable(self):
         """Test that UNF is added when want_unf=True and SORTABLE is present."""
@@ -318,25 +310,7 @@ class TestNormalizeFieldModifiersHelper:
 
         assert field.args_suffix == []
 
-    def test_only_unknown_modifiers(self):
-        """Test with only unknown modifiers."""
-        field = RedisTextField("test")
-        field.args_suffix = ["CUSTOM1", "CUSTOM2"]
-        canonical_order = ["INDEXMISSING", "SORTABLE"]
 
-        _normalize_field_modifiers(field, canonical_order)
-
-        assert field.args_suffix == ["CUSTOM1", "CUSTOM2"]
-
-    def test_multiple_unknown_modifiers_preserved_order(self):
-        """Test that multiple unknown modifiers preserve their original order."""
-        field = RedisTextField("test")
-        field.args_suffix = ["CUSTOM1", "SORTABLE", "CUSTOM2", "INDEXMISSING"]
-        canonical_order = ["INDEXMISSING", "SORTABLE"]
-
-        _normalize_field_modifiers(field, canonical_order)
-
-        assert field.args_suffix == ["CUSTOM1", "CUSTOM2", "INDEXMISSING", "SORTABLE"]
 
 
 class TestMLPCommandsScenario:

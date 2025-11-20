@@ -107,8 +107,7 @@ def _normalize_field_modifiers(
 
     RediSearch has a parser limitation (redis/redis#5177) where INDEXEMPTY and
     INDEXMISSING must appear BEFORE SORTABLE in field definitions. This function
-    reorders field.args_suffix to match the canonical order while preserving
-    unknown modifiers at the start.
+    reorders field.args_suffix to match the canonical order.
 
     Args:
         field: Redis field object whose args_suffix will be normalized
@@ -116,7 +115,7 @@ def _normalize_field_modifiers(
         want_unf: Whether UNF should be added after SORTABLE (default: False)
 
     Time Complexity: O(n + m) where n = len(field.args_suffix), m = len(canonical_order)
-    Space Complexity: O(n + m)
+    Space Complexity: O(n)
 
     Example:
         >>> field = RedisTextField("title")
@@ -126,12 +125,9 @@ def _normalize_field_modifiers(
         ['INDEXMISSING', 'SORTABLE']
     """
     suffix_set = set(field.args_suffix)
-    known_set = set(canonical_order)
 
-    # Preserve unknown modifiers in original order
-    new_suffix = [t for t in field.args_suffix if t not in known_set]
-
-    # Add known modifiers in canonical order
+    # Build new suffix with only known modifiers in canonical order
+    new_suffix = []
     for modifier in canonical_order:
         if modifier in suffix_set:
             new_suffix.append(modifier)
