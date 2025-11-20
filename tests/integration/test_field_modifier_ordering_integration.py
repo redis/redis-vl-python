@@ -365,3 +365,83 @@ class TestMultipleCommandsScenarioIntegration:
                 f"ismiss_{worker_id}:3",
             )
             index.delete(drop=True)
+
+
+class TestFieldTypeModifierSupport:
+    """Test that field types only support their documented modifiers."""
+
+    def test_numeric_field_does_not_support_index_empty(
+        self, client, redis_url, worker_id
+    ):
+        """Verify that NumericField does not have index_empty attribute.
+
+        INDEXEMPTY is only supported for TEXT and TAG fields according to
+        RediSearch documentation. NumericFieldAttributes should not have
+        an index_empty attribute.
+        """
+        import inspect
+
+        from redisvl.schema.fields import NumericFieldAttributes
+
+        # Verify NumericFieldAttributes doesn't have index_empty
+        attrs = inspect.signature(NumericFieldAttributes).parameters
+        assert (
+            "index_empty" not in attrs
+        ), "NumericFieldAttributes should not have index_empty parameter"
+
+        # Verify the attribute doesn't exist on the class
+        field_attrs = NumericFieldAttributes()
+        assert not hasattr(
+            field_attrs, "index_empty"
+        ), "NumericFieldAttributes should not have index_empty attribute"
+
+    def test_geo_field_does_not_support_index_empty(self, client, redis_url, worker_id):
+        """Verify that GeoField does not have index_empty attribute.
+
+        INDEXEMPTY is only supported for TEXT and TAG fields according to
+        RediSearch documentation. GeoFieldAttributes should not have
+        an index_empty attribute.
+        """
+        import inspect
+
+        from redisvl.schema.fields import GeoFieldAttributes
+
+        # Verify GeoFieldAttributes doesn't have index_empty
+        attrs = inspect.signature(GeoFieldAttributes).parameters
+        assert (
+            "index_empty" not in attrs
+        ), "GeoFieldAttributes should not have index_empty parameter"
+
+        # Verify the attribute doesn't exist on the class
+        field_attrs = GeoFieldAttributes()
+        assert not hasattr(
+            field_attrs, "index_empty"
+        ), "GeoFieldAttributes should not have index_empty attribute"
+
+    def test_text_field_supports_index_empty(self, client, redis_url, worker_id):
+        """Verify that TextField supports index_empty attribute.
+
+        INDEXEMPTY is supported for TEXT fields according to RediSearch documentation.
+        """
+        from redisvl.schema.fields import TextFieldAttributes
+
+        # Verify TextFieldAttributes has index_empty
+        field_attrs = TextFieldAttributes(index_empty=True)
+        assert hasattr(
+            field_attrs, "index_empty"
+        ), "TextFieldAttributes should have index_empty attribute"
+        assert field_attrs.index_empty is True
+
+    def test_tag_field_supports_index_empty(self, client, redis_url, worker_id):
+        """Verify that TagField supports index_empty attribute.
+
+        INDEXEMPTY is supported for TAG fields according to RediSearch documentation.
+        """
+        from redisvl.schema.fields import TagFieldAttributes
+
+        # Verify TagFieldAttributes has index_empty
+        field_attrs = TagFieldAttributes(index_empty=True)
+        assert hasattr(
+            field_attrs, "index_empty"
+        ), "TagFieldAttributes should have index_empty attribute"
+        assert field_attrs.index_empty is True

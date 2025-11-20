@@ -490,8 +490,9 @@ class NumericField(BaseField):
         field = RedisNumericField(name, **kwargs)
 
         # Normalize suffix ordering to satisfy RediSearch parser expectations.
-        # Canonical order: [INDEXEMPTY] [INDEXMISSING] [SORTABLE [UNF]] [NOINDEX]
-        canonical_order = ["INDEXEMPTY", "INDEXMISSING", "SORTABLE", "UNF", "NOINDEX"]
+        # Canonical order: [INDEXMISSING] [SORTABLE [UNF]] [NOINDEX]
+        # Note: INDEXEMPTY is not supported for NUMERIC fields
+        canonical_order = ["INDEXMISSING", "SORTABLE", "UNF", "NOINDEX"]
         want_unf = self.attrs.unf and self.attrs.sortable  # type: ignore
         _normalize_field_modifiers(field, canonical_order, want_unf)
 
@@ -526,8 +527,9 @@ class GeoField(BaseField):
         field = RedisGeoField(name, **kwargs)
 
         # Normalize suffix ordering to satisfy RediSearch parser expectations.
-        # Canonical order: [INDEXEMPTY] [INDEXMISSING] [SORTABLE] [NOINDEX]
-        canonical_order = ["INDEXEMPTY", "INDEXMISSING", "SORTABLE", "NOINDEX"]
+        # Canonical order: [INDEXMISSING] [SORTABLE] [NOINDEX]
+        # Note: INDEXEMPTY is not supported for GEO fields
+        canonical_order = ["INDEXMISSING", "SORTABLE", "NOINDEX"]
         _normalize_field_modifiers(field, canonical_order)
 
         return field
