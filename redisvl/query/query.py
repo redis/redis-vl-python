@@ -1061,10 +1061,15 @@ class TextQuery(BaseQuery):
             params (Optional[Dict[str, Any]], optional): The parameters for the query.
                 Defaults to None.
             stopwords (Optional[Union[str, Set[str]]): The set of stop words to remove
-                from the query text. If a language like 'english' or 'spanish' is provided
+                from the query text (client-side filtering). If a language like 'english' or 'spanish' is provided
                 a default set of stopwords for that language will be used. Users may specify
                 their own stop words by providing a List or Set of words. if set to None,
                 then no words will be removed. Defaults to 'english'.
+
+                Note: This parameter controls query-time stopword filtering (client-side).
+                For index-level stopwords configuration (server-side), see IndexInfo.stopwords.
+                Using query-time stopwords with index-level STOPWORDS 0 is counterproductive.
+                See docs/stopwords_interaction_guide.md for details.
             text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
