@@ -261,7 +261,12 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
             num_results=3,
         )
         assert hits
+        # Response must match, and metadata should contain the original value
+        # (the client handles encoding/decoding around the LangCache API).
         assert any(hit["response"] == response for hit in hits)
+        assert any(
+            hit.get("metadata", {}).get("llm_string") == raw_llm_string for hit in hits
+        )
 
 
 @pytest.mark.requires_api_keys

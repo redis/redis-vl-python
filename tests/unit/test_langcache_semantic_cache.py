@@ -175,6 +175,9 @@ class TestLangCacheSemanticCache:
             abs(results[0]["vector_distance"] - 0.05) < 0.001
         )  # 1.0 - 0.95 similarity
 
+        # Attributes should round-trip decoded in metadata
+        assert results[0]["metadata"] == {"topic": "programming"}
+
         mock_client.search.assert_called_once()
 
     @pytest.mark.asyncio
@@ -261,7 +264,12 @@ class TestLangCacheSemanticCache:
             "similarity": 0.95,
             "created_at": 1234567890.0,
             "updated_at": 1234567890.0,
-            "attributes": {"language": "python", "topic": "programming"},
+            # Attributes come back from LangCache already encoded; the client
+            # should decode them before exposing them to callers.
+            "attributes": {
+                "language": "python",
+                "topic": "programming，with∕encoding",
+            },
         }
 
         mock_response = MagicMock()
@@ -275,21 +283,32 @@ class TestLangCacheSemanticCache:
             api_key="test-key",
         )
 
-        # Search with attributes filter
+        # Search with attributes filter – we pass raw, unencoded values and
+        # expect to see those same values in the returned metadata.
         results = cache.check(
             prompt="What is Python?",
-            attributes={"language": "python", "topic": "programming"},
+            attributes={
+                "language": "python",
+                "topic": "programming,with/encoding",
+            },
         )
 
         assert len(results) == 1
         assert results[0]["entry_id"] == "entry-123"
 
-        # Verify attributes were passed to search
+        # Verify attributes were passed to search (encoded by the client)
         mock_client.search.assert_called_once()
         call_kwargs = mock_client.search.call_args.kwargs
         assert call_kwargs["attributes"] == {
             "language": "python",
-            "topic": "programming",
+            # The comma and slash should be encoded for LangCache.
+            "topic": "programming，with∕encoding",
+        }
+
+        # And the decoded, original values should appear in metadata
+        assert results[0]["metadata"] == {
+            "language": "python",
+            "topic": "programming,with/encoding",
         }
 
         def test_store_with_empty_metadata_does_not_send_attributes(
