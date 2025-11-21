@@ -263,7 +263,11 @@ class BaseSearchIndex:
                 and len(index_stopwords) == 0
                 and len(query_stopwords) > 0
             ):
-                query_type = "TextQuery" if isinstance(query, TextQuery) else "AggregateHybridQuery"
+                query_type = (
+                    "TextQuery"
+                    if isinstance(query, TextQuery)
+                    else "AggregateHybridQuery"
+                )
                 warnings.warn(
                     f"Query-time stopwords are configured but the index has STOPWORDS 0 (stopwords = []). "
                     "This is counterproductive: all words including common words like 'of', 'the', 'a' are indexed, "
