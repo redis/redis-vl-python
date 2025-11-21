@@ -754,6 +754,122 @@ def test_vector_range_query_error_handling():
     # Removed: Test invalid ef_runtime since VectorRangeQuery doesn't use EF_RUNTIME
 
 
+def test_vector_range_query_search_window_size():
+    """Test that VectorRangeQuery correctly handles search_window_size parameter (SVS-VAMANA)."""
+    # Create a range query with search_window_size
+    range_query = VectorRangeQuery(
+        [0.1, 0.2, 0.3, 0.4],
+        "vector_field",
+        distance_threshold=0.3,
+        search_window_size=40,
+    )
+
+    # Check properties
+    assert range_query.search_window_size == 40
+
+    # Check query string
+    query_string = str(range_query)
+    assert "$SEARCH_WINDOW_SIZE: 40" in query_string
+
+
+def test_vector_range_query_invalid_search_window_size():
+    """Test error handling for invalid search_window_size values in VectorRangeQuery."""
+    # Test with invalid type
+    with pytest.raises(TypeError, match="search_window_size must be an integer"):
+        VectorRangeQuery(
+            [0.1, 0.2, 0.3, 0.4],
+            "vector_field",
+            distance_threshold=0.3,
+            search_window_size="40",
+        )
+
+    # Test with invalid value
+    with pytest.raises(ValueError, match="search_window_size must be positive"):
+        VectorRangeQuery(
+            [0.1, 0.2, 0.3, 0.4],
+            "vector_field",
+            distance_threshold=0.3,
+            search_window_size=0,
+        )
+
+
+def test_vector_range_query_use_search_history():
+    """Test that VectorRangeQuery correctly handles use_search_history parameter (SVS-VAMANA)."""
+    # Test with valid values
+    for value in ["OFF", "ON", "AUTO"]:
+        range_query = VectorRangeQuery(
+            [0.1, 0.2, 0.3, 0.4],
+            "vector_field",
+            distance_threshold=0.3,
+            use_search_history=value,
+        )
+
+        # Check properties
+        assert range_query.use_search_history == value
+
+        # Check query string
+        query_string = str(range_query)
+        assert f"$USE_SEARCH_HISTORY: {value}" in query_string
+
+
+def test_vector_range_query_invalid_use_search_history():
+    """Test error handling for invalid use_search_history values in VectorRangeQuery."""
+    # Test with invalid value
+    with pytest.raises(
+        ValueError, match="use_search_history must be one of OFF, ON, AUTO"
+    ):
+        VectorRangeQuery(
+            [0.1, 0.2, 0.3, 0.4],
+            "vector_field",
+            distance_threshold=0.3,
+            use_search_history="INVALID",
+        )
+
+
+def test_vector_range_query_search_buffer_capacity():
+    """Test that VectorRangeQuery correctly handles search_buffer_capacity parameter (SVS-VAMANA)."""
+    # Create a range query with search_buffer_capacity
+    range_query = VectorRangeQuery(
+        [0.1, 0.2, 0.3, 0.4],
+        "vector_field",
+        distance_threshold=0.3,
+        search_buffer_capacity=50,
+    )
+
+    # Check properties
+    assert range_query.search_buffer_capacity == 50
+
+    # Check query string
+    query_string = str(range_query)
+    assert "$SEARCH_BUFFER_CAPACITY: 50" in query_string
+
+
+def test_vector_range_query_all_svs_params():
+    """Test VectorRangeQuery with all SVS-VAMANA runtime parameters."""
+    range_query = VectorRangeQuery(
+        [0.1, 0.2, 0.3, 0.4],
+        "vector_field",
+        distance_threshold=0.3,
+        epsilon=0.05,
+        search_window_size=40,
+        use_search_history="ON",
+        search_buffer_capacity=50,
+    )
+
+    # Check all properties
+    assert range_query.epsilon == 0.05
+    assert range_query.search_window_size == 40
+    assert range_query.use_search_history == "ON"
+    assert range_query.search_buffer_capacity == 50
+
+    # Check query string contains all parameters
+    query_string = str(range_query)
+    assert "$EPSILON: 0.05" in query_string
+    assert "$SEARCH_WINDOW_SIZE: 40" in query_string
+    assert "$USE_SEARCH_HISTORY: ON" in query_string
+    assert "$SEARCH_BUFFER_CAPACITY: 50" in query_string
+
+
 def test_vector_query_ef_runtime():
     """Test that VectorQuery correctly handles EF_RUNTIME parameter."""
     # Create a vector query with ef_runtime
@@ -848,3 +964,213 @@ def test_vector_query_update_ef_runtime():
     assert f"{VectorQuery.EF_RUNTIME} ${VectorQuery.EF_RUNTIME_PARAM}" in qs2
     params2 = vq.params
     assert params2.get(VectorQuery.EF_RUNTIME_PARAM) == 200
+
+
+def test_vector_query_epsilon():
+    """Test that VectorQuery correctly handles epsilon parameter."""
+    # Create a vector query with epsilon
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=0.05)
+
+    # Check properties
+    assert vector_query.epsilon == 0.05
+
+    # Check query string
+    query_string = str(vector_query)
+    assert f"EPSILON ${VectorQuery.EPSILON_PARAM}" in query_string
+
+    # Check params dictionary
+    assert vector_query.params.get(VectorQuery.EPSILON_PARAM) == 0.05
+
+
+def test_vector_query_invalid_epsilon():
+    """Test error handling for invalid epsilon values in VectorQuery."""
+    # Test with invalid epsilon type
+    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon="0.05")
+
+    # Test with negative epsilon
+    with pytest.raises(ValueError, match="epsilon must be non-negative"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=-0.05)
+
+    # Create a valid vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid epsilon via setter
+    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
+        vector_query.set_epsilon("0.05")
+
+    with pytest.raises(ValueError, match="epsilon must be non-negative"):
+        vector_query.set_epsilon(-0.05)
+
+
+def test_vector_query_search_window_size():
+    """Test that VectorQuery correctly handles search_window_size parameter (SVS-VAMANA)."""
+    # Create a vector query with search_window_size
+    vector_query = VectorQuery(
+        [0.1, 0.2, 0.3, 0.4], "vector_field", search_window_size=40
+    )
+
+    # Check properties
+    assert vector_query.search_window_size == 40
+
+    # Check query string
+    query_string = str(vector_query)
+    assert (
+        f"{VectorQuery.SEARCH_WINDOW_SIZE} ${VectorQuery.SEARCH_WINDOW_SIZE_PARAM}"
+        in query_string
+    )
+
+    # Check params dictionary
+    assert vector_query.params.get(VectorQuery.SEARCH_WINDOW_SIZE_PARAM) == 40
+
+
+def test_vector_query_invalid_search_window_size():
+    """Test error handling for invalid search_window_size values."""
+    # Test with invalid type
+    with pytest.raises(TypeError, match="search_window_size must be an integer"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", search_window_size="40")
+
+    # Test with invalid value
+    with pytest.raises(ValueError, match="search_window_size must be positive"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", search_window_size=0)
+
+    with pytest.raises(ValueError, match="search_window_size must be positive"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", search_window_size=-10)
+
+    # Create a valid vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid search_window_size via setter
+    with pytest.raises(TypeError, match="search_window_size must be an integer"):
+        vector_query.set_search_window_size("40")
+
+    with pytest.raises(ValueError, match="search_window_size must be positive"):
+        vector_query.set_search_window_size(0)
+
+
+def test_vector_query_use_search_history():
+    """Test that VectorQuery correctly handles use_search_history parameter (SVS-VAMANA)."""
+    # Test with valid values
+    for value in ["OFF", "ON", "AUTO"]:
+        vector_query = VectorQuery(
+            [0.1, 0.2, 0.3, 0.4], "vector_field", use_search_history=value
+        )
+
+        # Check properties
+        assert vector_query.use_search_history == value
+
+        # Check query string
+        query_string = str(vector_query)
+        assert (
+            f"{VectorQuery.USE_SEARCH_HISTORY} ${VectorQuery.USE_SEARCH_HISTORY_PARAM}"
+            in query_string
+        )
+
+        # Check params dictionary
+        assert vector_query.params.get(VectorQuery.USE_SEARCH_HISTORY_PARAM) == value
+
+
+def test_vector_query_invalid_use_search_history():
+    """Test error handling for invalid use_search_history values."""
+    # Test with invalid type
+    with pytest.raises(TypeError, match="use_search_history must be a string"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", use_search_history=123)
+
+    # Test with invalid value
+    with pytest.raises(
+        ValueError, match="use_search_history must be one of OFF, ON, AUTO"
+    ):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", use_search_history="INVALID")
+
+    # Create a valid vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid use_search_history via setter
+    with pytest.raises(TypeError, match="use_search_history must be a string"):
+        vector_query.set_use_search_history(123)
+
+    with pytest.raises(
+        ValueError, match="use_search_history must be one of OFF, ON, AUTO"
+    ):
+        vector_query.set_use_search_history("MAYBE")
+
+
+def test_vector_query_search_buffer_capacity():
+    """Test that VectorQuery correctly handles search_buffer_capacity parameter (SVS-VAMANA)."""
+    # Create a vector query with search_buffer_capacity
+    vector_query = VectorQuery(
+        [0.1, 0.2, 0.3, 0.4], "vector_field", search_buffer_capacity=50
+    )
+
+    # Check properties
+    assert vector_query.search_buffer_capacity == 50
+
+    # Check query string
+    query_string = str(vector_query)
+    assert (
+        f"{VectorQuery.SEARCH_BUFFER_CAPACITY} ${VectorQuery.SEARCH_BUFFER_CAPACITY_PARAM}"
+        in query_string
+    )
+
+    # Check params dictionary
+    assert vector_query.params.get(VectorQuery.SEARCH_BUFFER_CAPACITY_PARAM) == 50
+
+
+def test_vector_query_invalid_search_buffer_capacity():
+    """Test error handling for invalid search_buffer_capacity values."""
+    # Test with invalid type
+    with pytest.raises(TypeError, match="search_buffer_capacity must be an integer"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", search_buffer_capacity="50")
+
+    # Test with invalid value
+    with pytest.raises(ValueError, match="search_buffer_capacity must be positive"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", search_buffer_capacity=0)
+
+    with pytest.raises(ValueError, match="search_buffer_capacity must be positive"):
+        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", search_buffer_capacity=-10)
+
+    # Create a valid vector query
+    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
+
+    # Test with invalid search_buffer_capacity via setter
+    with pytest.raises(TypeError, match="search_buffer_capacity must be an integer"):
+        vector_query.set_search_buffer_capacity("50")
+
+    with pytest.raises(ValueError, match="search_buffer_capacity must be positive"):
+        vector_query.set_search_buffer_capacity(0)
+
+
+def test_vector_query_all_runtime_params():
+    """Test VectorQuery with all runtime parameters combined (HNSW + SVS-VAMANA)."""
+    vector_query = VectorQuery(
+        [0.1, 0.2, 0.3, 0.4],
+        "vector_field",
+        ef_runtime=100,
+        epsilon=0.05,
+        search_window_size=40,
+        use_search_history="ON",
+        search_buffer_capacity=50,
+    )
+
+    # Check all properties
+    assert vector_query.ef_runtime == 100
+    assert vector_query.epsilon == 0.05
+    assert vector_query.search_window_size == 40
+    assert vector_query.use_search_history == "ON"
+    assert vector_query.search_buffer_capacity == 50
+
+    # Check query string contains all parameters
+    query_string = str(vector_query)
+    assert "EF_RUNTIME $EF" in query_string
+    assert "EPSILON $EPSILON" in query_string
+    assert "SEARCH_WINDOW_SIZE $SEARCH_WINDOW_SIZE" in query_string
+    assert "USE_SEARCH_HISTORY $USE_SEARCH_HISTORY" in query_string
+    assert "SEARCH_BUFFER_CAPACITY $SEARCH_BUFFER_CAPACITY" in query_string
+
+    # Check params dictionary contains all parameters
+    params = vector_query.params
+    assert params["EF"] == 100
+    assert params["EPSILON"] == 0.05
+    assert params["SEARCH_WINDOW_SIZE"] == 40
+    assert params["USE_SEARCH_HISTORY"] == "ON"
+    assert params["SEARCH_BUFFER_CAPACITY"] == 50
