@@ -1,7 +1,5 @@
 """Unit tests for convert_index_info_to_schema function."""
 
-import pytest
-
 from redisvl.redis.connection import convert_index_info_to_schema
 
 
@@ -110,3 +108,67 @@ def test_convert_index_info_with_fields():
     assert result["fields"][0]["type"] == "tag"
     assert result["fields"][1]["name"] == "text"
     assert result["fields"][1]["type"] == "text"
+
+
+def test_convert_index_info_stopwords_disabled():
+    """Test converting index info with STOPWORDS 0 (disabled stopwords)."""
+    index_info = {
+        "index_name": "test_stopwords_disabled",
+        "index_definition": [
+            "key_type",
+            "HASH",
+            "prefixes",
+            ["test_sw:"],
+        ],
+        "attributes": [],
+        "stopwords_list": [],  # STOPWORDS 0
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["index"]["name"] == "test_stopwords_disabled"
+    assert result["index"]["stopwords"] == []
+
+
+def test_convert_index_info_custom_stopwords():
+    """Test converting index info with custom stopwords list."""
+    index_info = {
+        "index_name": "test_custom_stopwords",
+        "index_definition": [
+            "key_type",
+            "HASH",
+            "prefixes",
+            ["test_csw:"],
+        ],
+        "attributes": [],
+        "stopwords_list": [b"the", b"a", b"an"],  # Custom stopwords (as bytes)
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["index"]["name"] == "test_custom_stopwords"
+    assert result["index"]["stopwords"] == ["the", "a", "an"]
+
+
+def test_convert_index_info_default_stopwords():
+    """Test converting index info with default stopwords (no stopwords_list key).
+
+    When no STOPWORDS clause is specified in FT.CREATE, Redis uses its default
+    stopwords list, and FT.INFO does not include a stopwords_list key.
+    """
+    index_info = {
+        "index_name": "test_default_stopwords",
+        "index_definition": [
+            "key_type",
+            "HASH",
+            "prefixes",
+            ["test_dsw:"],
+        ],
+        "attributes": [],
+        # No stopwords_list key - indicates default behavior
+    }
+
+    result = convert_index_info_to_schema(index_info)
+
+    assert result["index"]["name"] == "test_default_stopwords"
+    assert "stopwords" not in result["index"]  # Should not be present

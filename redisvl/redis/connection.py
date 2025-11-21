@@ -204,6 +204,17 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         prefixes = prefixes[0]
     storage_type = index_info["index_definition"][1].lower()
 
+    # Parse stopwords if present in FT.INFO output
+    # stopwords_list is only present when explicitly set (STOPWORDS 0 or custom list)
+    # If not present, we use None to indicate default Redis behavior
+    stopwords = None
+    if "stopwords_list" in index_info:
+        # Convert bytes to strings if needed
+        stopwords_list = index_info["stopwords_list"]
+        stopwords = [
+            sw.decode("utf-8") if isinstance(sw, bytes) else sw for sw in stopwords_list
+        ]
+
     index_fields = index_info["attributes"]
 
     def parse_vector_attrs(attrs):
@@ -411,8 +422,12 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         # append field
         schema_fields.append(field)
 
+    index_dict = {"name": index_name, "prefix": prefixes, "storage_type": storage_type}
+    if stopwords is not None:
+        index_dict["stopwords"] = stopwords
+
     return {
-        "index": {"name": index_name, "prefix": prefixes, "storage_type": storage_type},
+        "index": index_dict,
         "fields": schema_fields,
     }
 

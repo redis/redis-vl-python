@@ -1,8 +1,7 @@
-import re
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -31,7 +30,7 @@ class StorageType(Enum):
 
 class IndexInfo(BaseModel):
     """Index info includes the essential details regarding index settings,
-    such as its name, prefix, key separator, and storage type in Redis.
+    such as its name, prefix, key separator, storage type, and stopwords in Redis.
 
     In yaml format, the index info section looks like:
 
@@ -42,6 +41,7 @@ class IndexInfo(BaseModel):
             prefix: user
             key_separtor: ':'
             storage_type: json
+            stopwords: []  # Disable stopwords (STOPWORDS 0)
 
     In dict format, the index info section looks like:
 
@@ -51,7 +51,8 @@ class IndexInfo(BaseModel):
             "name": "user-index",
             "prefix": "user",
             "key_separator": ":",
-            "storage_type": "json"
+            "storage_type": "json",
+            "stopwords": ["the", "a", "an"]  # Custom stopwords
         }}
 
     """
@@ -64,6 +65,9 @@ class IndexInfo(BaseModel):
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
+    stopwords: Optional[List[str]] = None
+    """Index-level stopwords configuration. None (default) uses Redis default stopwords,
+    empty list [] disables stopwords (STOPWORDS 0), or provide a custom list of stopwords."""
 
 
 class IndexSchema(BaseModel):

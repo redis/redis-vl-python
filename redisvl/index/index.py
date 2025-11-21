@@ -79,6 +79,7 @@ from redisvl.query import (
     BaseVectorQuery,
     CountQuery,
     FilterQuery,
+    TextQuery,
 )
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
@@ -246,6 +247,30 @@ class BaseSearchIndex:
             if query.ef_runtime and field.attrs.algorithm != VectorIndexAlgorithm.HNSW:  # type: ignore
                 raise QueryValidationError(
                     "Vector field using 'flat' algorithm does not support EF_RUNTIME query parameter."
+                )
+
+        # Warn if using query-time stopwords with index-level STOPWORDS 0
+        if isinstance(query, TextQuery):
+            index_stopwords = self.schema.index.stopwords
+            query_stopwords = query.stopwords
+
+            # Check if index has STOPWORDS 0 (empty list) and query has stopwords configured
+            # Note: query.stopwords is a set, and when stopwords=None is passed to TextQuery,
+            # it becomes an empty set. So we check if the set is non-empty.
+            if (
+                index_stopwords is not None
+                and len(index_stopwords) == 0
+                and len(query_stopwords) > 0
+            ):
+                warnings.warn(
+                    "Query-time stopwords are configured but the index has STOPWORDS 0 (stopwords = []). "
+                    "This is counterproductive: all words including common words like 'of', 'the', 'a' are indexed, "
+                    "but your query-time stopwords will filter them from the search query. "
+                    "This makes your search less precise than it could be. "
+                    "Consider setting stopwords=None in TextQuery to search for all indexed words. "
+                    "See docs/stopwords_interaction_guide.md for more information.",
+                    UserWarning,
+                    stacklevel=3,
                 )
 
     @property
@@ -601,17 +626,22 @@ class SearchIndex(BaseSearchIndex):
             definition = IndexDefinition(
                 prefix=[self.schema.index.prefix], index_type=self._storage.type
             )
+            # Extract stopwords from schema
+            stopwords = self.schema.index.stopwords
+
             if isinstance(self._redis_client, RedisCluster):
                 cluster_create_index(
                     index_name=self.name,
                     client=self._redis_client,
                     fields=redis_fields,
                     definition=definition,
+                    stopwords=stopwords,
                 )
             else:
                 self._redis_client.ft(self.name).create_index(
                     fields=redis_fields,
                     definition=definition,
+                    stopwords=stopwords,
                 )
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
@@ -1384,17 +1414,22 @@ class AsyncSearchIndex(BaseSearchIndex):
             definition = IndexDefinition(
                 prefix=[self.schema.index.prefix], index_type=self._storage.type
             )
+            # Extract stopwords from schema
+            stopwords = self.schema.index.stopwords
+
             if isinstance(client, AsyncRedisCluster):
                 await async_cluster_create_index(
                     index_name=self.schema.index.name,
                     client=client,
                     fields=redis_fields,
                     definition=definition,
+                    stopwords=stopwords,
                 )
             else:
                 await client.ft(self.schema.index.name).create_index(
                     fields=redis_fields,
                     definition=definition,
+                    stopwords=stopwords,
                 )
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
