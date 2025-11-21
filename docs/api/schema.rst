@@ -65,11 +65,11 @@ the ``stopwords`` field. This controls which words are filtered during indexing
 **Important Notes:**
 
 - Index-level stopwords affect what gets indexed (server-side)
-- Query-time stopwords (in :class:`TextQuery`) affect what gets searched (client-side)
+- Query-time stopwords (in :class:`TextQuery` and :class:`AggregateHybridQuery`) affect what gets searched (client-side)
 - Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive
 
 For detailed information about stopwords configuration and best practices, see the
-`Stopwords Interaction Guide <../stopwords_interaction_guide.html>`_.
+Advanced Queries user guide (``docs/user_guide/11_advanced_queries.ipynb``).
 
 
 Defining Fields

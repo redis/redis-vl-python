@@ -256,8 +256,8 @@ class BaseSearchIndex:
             query_stopwords = query.stopwords
 
             # Check if index has STOPWORDS 0 (empty list) and query has stopwords configured
-            # Note: query.stopwords is a set, and when stopwords=None is passed to TextQuery/AggregateHybridQuery,
-            # it becomes an empty set. So we check if the set is non-empty.
+            # Note: query.stopwords is a set, and when any falsy value (None, False, '', 0, [], etc.)
+            # is passed to TextQuery/AggregateHybridQuery, it becomes an empty set. So we check if the set is non-empty.
             if (
                 index_stopwords is not None
                 and len(index_stopwords) == 0
@@ -269,8 +269,7 @@ class BaseSearchIndex:
                     "This is counterproductive: all words including common words like 'of', 'the', 'a' are indexed, "
                     "but your query-time stopwords will filter them from the search query. "
                     "This makes your search less precise than it could be. "
-                    f"Consider setting stopwords=None in {query_type} to search for all indexed words. "
-                    "See docs/stopwords_interaction_guide.md for more information.",
+                    f"Consider setting stopwords=None (or any falsy value) in {query_type} to search for all indexed words.",
                     UserWarning,
                     stacklevel=3,
                 )

@@ -132,7 +132,6 @@ class AggregateHybridQuery(AggregationQuery):
                 Note: This parameter controls query-time stopword filtering (client-side).
                 For index-level stopwords configuration (server-side), see IndexInfo.stopwords.
                 Using query-time stopwords with index-level STOPWORDS 0 is counterproductive.
-                See docs/stopwords_interaction_guide.md for details.
             dialect (int, optional): The Redis dialect version. Defaults to 2.
             text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
