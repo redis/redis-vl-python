@@ -67,7 +67,10 @@ index = SearchIndex(schema, redis_url="redis://localhost:6379")
 RedisVL uses `pytest` with `testcontainers` for testing.
 
 - `make test` - unit tests only (no external APIs)
-- `make test-all` - includes integration tests requiring API keys
+- `make test-all` - run the full suite, including tests that call external APIs
+- `pytest --run-api-tests` - explicitly run API-dependent tests (e.g., LangCache,
+  external vectorizer/reranker providers). These require the appropriate API
+  keys and environment variables to be set.
 
 ## Project Structure
 

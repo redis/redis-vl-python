@@ -15,6 +15,53 @@ from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 logger = get_logger(__name__)
 
 
+_LANGCACHE_ATTR_ENCODE_TRANS = str.maketrans(
+    {
+        ",": "，",  # U+FF0C FULLWIDTH COMMA
+        "/": "∕",  # U+2215 DIVISION SLASH
+    }
+)
+
+
+def _encode_attribute_value_for_langcache(value: str) -> str:
+    """Encode a string attribute value for use with the LangCache service.
+
+    LangCache applies validation and matching rules to attribute values. In
+    particular, the managed service can reject values containing commas (",")
+    and may not reliably match filters on values containing slashes ("/").
+
+    To keep attribute values round-trippable *and* usable for attribute
+    filtering, we replace these characters with visually similar Unicode
+    variants that the service accepts. A precomputed ``str.translate`` table is
+    used so values are scanned only once.
+    """
+
+    return value.translate(_LANGCACHE_ATTR_ENCODE_TRANS)
+
+
+def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *attributes* with string values safely encoded.
+
+    Only top-level string values are encoded; non-string values are left
+    unchanged. If no values require encoding, the original dict is returned
+    unchanged.
+    """
+
+    if not attributes:
+        return attributes
+
+    changed = False
+    safe_attributes: Dict[str, Any] = dict(attributes)
+    for key, value in attributes.items():
+        if isinstance(value, str):
+            encoded = _encode_attribute_value_for_langcache(value)
+            if encoded != value:
+                safe_attributes[key] = encoded
+                changed = True
+
+    return safe_attributes if changed else attributes
+
+
 class LangCacheSemanticCache(BaseLLMCache):
     """LLM Cache implementation using the LangCache managed service.
 
@@ -163,7 +210,9 @@ class LangCacheSemanticCache(BaseLLMCache):
             "similarity_threshold": similarity_threshold,
         }
         if attributes:
-            kwargs["attributes"] = attributes
+            # Encode all string attribute values so they are accepted by the
+            # LangCache service and remain filterable.
+            kwargs["attributes"] = _encode_attributes_for_langcache(attributes)
         return kwargs
 
     def _hits_from_response(
@@ -403,8 +452,9 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Store using the LangCache client; only send attributes if provided (non-empty)
         try:
             if metadata:
+                safe_metadata = _encode_attributes_for_langcache(metadata)
                 result = self._client.set(
-                    prompt=prompt, response=response, attributes=metadata
+                    prompt=prompt, response=response, attributes=safe_metadata
                 )
             else:
                 result = self._client.set(prompt=prompt, response=response)
@@ -471,8 +521,9 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Store using the LangCache client (async); only send attributes if provided (non-empty)
         try:
             if metadata:
+                safe_metadata = _encode_attributes_for_langcache(metadata)
                 result = await self._client.set_async(
-                    prompt=prompt, response=response, attributes=metadata
+                    prompt=prompt, response=response, attributes=safe_metadata
                 )
             else:
                 result = await self._client.set_async(prompt=prompt, response=response)
@@ -594,7 +645,8 @@ class LangCacheSemanticCache(BaseLLMCache):
             raise ValueError(
                 "Cannot delete by attributes with an empty attributes dictionary."
             )
-        result = self._client.delete_query(attributes=attributes)
+        safe_attributes = _encode_attributes_for_langcache(attributes)
+        result = self._client.delete_query(attributes=safe_attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
 
@@ -615,6 +667,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             raise ValueError(
                 "Cannot delete by attributes with an empty attributes dictionary."
             )
-        result = await self._client.delete_query_async(attributes=attributes)
+        safe_attributes = _encode_attributes_for_langcache(attributes)
+        result = await self._client.delete_query_async(attributes=safe_attributes)
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
