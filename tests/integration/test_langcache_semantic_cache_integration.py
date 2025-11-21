@@ -250,10 +250,7 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         entry_id = langcache_with_attrs.store(
             prompt=prompt,
             response=response,
-            metadata={
-                "llm_string": raw_llm_string,
-                "other": "keep_me",
-            },
+            metadata={"llm_string": raw_llm_string},
         )
         assert entry_id
 
