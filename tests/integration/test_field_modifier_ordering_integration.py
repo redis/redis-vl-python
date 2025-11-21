@@ -297,7 +297,13 @@ class TestMultiFieldModifierOrderingIntegration:
         assert info is not None
 
         # Verify all fields were created
-        attrs_list = info[7]
+        # Find the 'attributes' key in the FT.INFO response (flat list format)
+        attrs_list = None
+        for i in range(0, len(info) - 1, 2):
+            if info[i] == b"attributes" or info[i] == "attributes":
+                attrs_list = info[i + 1]
+                break
+        assert attrs_list is not None, "'attributes' key not found in FT.INFO response"
         assert len(attrs_list) == 4
 
         # Cleanup

@@ -114,7 +114,9 @@ def _normalize_field_modifiers(
         canonical_order: List of modifiers in desired canonical order
         want_unf: Whether UNF should be added after SORTABLE (default: False)
 
-    Time Complexity: O(n + m) where n = len(field.args_suffix), m = len(canonical_order)
+    Time Complexity: O(n + m), where n = len(field.args_suffix), m = len(canonical_order).
+        - O(n) to create the set from field.args_suffix
+        - O(m) to iterate over canonical_order and perform set lookups (O(1) average case per lookup)
     Space Complexity: O(n)
 
     Example:
