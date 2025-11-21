@@ -19,6 +19,8 @@ _LANGCACHE_ATTR_ENCODE_TRANS = str.maketrans(
     {
         ",": "，",  # U+FF0C FULLWIDTH COMMA
         "/": "∕",  # U+2215 DIVISION SLASH
+        "\\": "＼",  # U+FF3C FULLWIDTH REVERSE SOLIDUS (backslash)
+        "?": "？",  # U+FF1F FULLWIDTH QUESTION MARK
     }
 )
 

@@ -268,6 +268,92 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
             hit.get("metadata", {}).get("llm_string") == raw_llm_string for hit in hits
         )
 
+    def test_attribute_value_with_all_tokenizer_separators_round_trip_and_filter(
+        self, langcache_with_attrs: LangCacheSemanticCache
+    ) -> None:
+        """All tokenizer separator characters should round-trip via filters.
+
+        This exercises the set of punctuation described in the underlying
+        RediSearch text-field tokenization docs to ensure that our
+        client-side encoding/decoding and LangCache's attribute handling
+        together can store and filter on values containing these characters.
+        """
+
+        separators = ",.<>{}[]\"':;!@#$%^&*()-+=~"
+        raw_llm_string = f"tenant {separators} value"
+
+        prompt = "Attribute encoding for all tokenizer separators"
+        response = "Response for all tokenizer separators."
+
+        entry_id = langcache_with_attrs.store(
+            prompt=prompt,
+            response=response,
+            metadata={"llm_string": raw_llm_string},
+        )
+        assert entry_id
+
+        hits = langcache_with_attrs.check(
+            prompt=prompt,
+            attributes={"llm_string": raw_llm_string},
+            num_results=5,
+        )
+
+        assert hits, "No hits returned for llm_string value with separators"
+        assert any(
+            hit.get("prompt") == prompt
+            and hit.get("response") == response
+            and hit.get("metadata", {}).get("llm_string") == raw_llm_string
+            for hit in hits
+        )
+
+    @pytest.mark.parametrize(
+        "raw_value",
+        [
+            r"tenant\\with\\backslash",
+            "tenant?with?question",
+        ],
+    )
+    def test_attribute_values_with_special_chars_round_trip_and_filter(
+        self,
+        langcache_with_attrs: LangCacheSemanticCache,
+        raw_value: str,
+    ) -> None:
+        """Backslash and question-mark values should round-trip via filters.
+
+        These values previously failed attribute filtering on this LangCache
+        instance; with client-side encoding/decoding they should now be
+        filterable and round-trip correctly.
+        """
+
+        prompt = f"Special chars attribute {raw_value}"
+        response = f"Response for {raw_value}"
+
+        entry_id = langcache_with_attrs.store(
+            prompt=prompt,
+            response=response,
+            metadata={"llm_string": raw_value},
+        )
+        assert entry_id
+
+        hits = langcache_with_attrs.check(
+            prompt=prompt,
+            attributes={"llm_string": raw_value},
+            num_results=5,
+        )
+
+        # Look for a matching hit for this prompt/response/metadata triple.
+        match_found = any(
+            hit.get("prompt") == prompt
+            and hit.get("response") == response
+            and hit.get("metadata", {}).get("llm_string") == raw_value
+            for hit in hits
+        )
+
+        assert match_found, (
+            "Expected llm_string value to be filterable, but no matching "
+            f"hit was found: {raw_value!r}"
+        )
+
 
 @pytest.mark.requires_api_keys
 class TestLangCacheSemanticCacheIntegrationWithoutAttributes:
