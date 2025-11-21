@@ -50,7 +50,7 @@ the ``stopwords`` field. This controls which words are filtered during indexing
 
     from redisvl.schema import IndexSchema
 
-    # Disable stopwords to search for phrases like "Bank of America"
+    # Disable stopwords to search for phrases like "Bank of Glasberliner"
     schema = IndexSchema.from_dict({
         "index": {
             "name": "company-idx",

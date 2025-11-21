@@ -168,7 +168,7 @@ def test_stopwords_disabled_allows_searching_common_words(
     """Test that STOPWORDS 0 allows searching for common stopwords like 'the', 'a', 'of'."""
     # Add test data with common stopwords
     test_data = [
-        {"title": "Bank of America", "description": "A major bank"},
+        {"title": "Bank of Glasberliner", "description": "A major bank"},
         {"title": "The Great Gatsby", "description": "A classic novel"},
         {
             "title": "An Introduction to Python",
@@ -180,7 +180,7 @@ def test_stopwords_disabled_allows_searching_common_words(
         key = f"test_sw_disabled:{i}"
         client.hset(key, mapping=data)
 
-    # Search for "of" - should find "Bank of America"
+    # Search for "of" - should find "Bank of Glasberliner"
     query = FilterQuery(
         filter_expression="@title:(of)",
         return_fields=["title"],
