@@ -238,24 +238,34 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         )
         assert not any(hit["response"] == response for hit in hits_after_clear)
 
-    def test_attribute_value_with_comma_passes_through_to_api(
+    def test_attribute_value_with_comma_and_slash_is_encoded_for_llm_string(
         self, langcache_with_attrs: LangCacheSemanticCache
     ) -> None:
-        """We currently rely on the LangCache API to validate commas in attribute values.
+        """llm_string attribute values with commas/slashes are client-encoded."""
 
-        This test verifies we do not perform client-side validation and that the
-        error is raised by the backend. If this behavior changes, this test will
-        need to be updated.
-        """
-        prompt = "Comma attribute value"
-        response = "This may fail depending on the remote validation rules."
+        prompt = "Attribute encoding for llm_string"
+        response = "Response for encoded llm_string."
 
-        with pytest.raises(BadRequestErrorResponseContent):
-            langcache_with_attrs.store(
-                prompt=prompt,
-                response=response,
-                metadata={"llm_string": "tenant,with,comma"},
-            )
+        raw_llm_string = "tenant,with/slash"
+        entry_id = langcache_with_attrs.store(
+            prompt=prompt,
+            response=response,
+            metadata={
+                "llm_string": raw_llm_string,
+                "other": "keep_me",
+            },
+        )
+        assert entry_id
+
+        # When we search using the *raw* llm_string value, the client should
+        # transparently encode it before sending it to LangCache.
+        hits = langcache_with_attrs.check(
+            prompt=prompt,
+            attributes={"llm_string": raw_llm_string},
+            num_results=3,
+        )
+        assert hits
+        assert any(hit["response"] == response for hit in hits)
 
 
 @pytest.mark.requires_api_keys
