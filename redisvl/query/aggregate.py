@@ -92,7 +92,6 @@ class AggregateHybridQuery(AggregationQuery):
     # HNSW runtime parameters
     EF_RUNTIME: str = "EF_RUNTIME"
     EF_RUNTIME_PARAM: str = "EF"
-    EPSILON_PARAM: str = "EPSILON"
 
     # SVS-VAMANA runtime parameters
     SEARCH_WINDOW_SIZE: str = "SEARCH_WINDOW_SIZE"
@@ -118,7 +117,6 @@ class AggregateHybridQuery(AggregationQuery):
         dialect: int = 2,
         text_weights: Optional[Dict[str, float]] = None,
         ef_runtime: Optional[int] = None,
-        epsilon: Optional[float] = None,
         search_window_size: Optional[int] = None,
         use_search_history: Optional[str] = None,
         search_buffer_capacity: Optional[int] = None,
@@ -157,10 +155,6 @@ class AggregateHybridQuery(AggregationQuery):
             ef_runtime (Optional[int]): The size of the dynamic candidate list for HNSW indexes.
                 Increasing this value generally yields more accurate but slower search results.
                 Defaults to None, which uses the index-defined value (typically 10).
-            epsilon (Optional[float]): The relative factor for vector range queries (HNSW and SVS-VAMANA),
-                setting boundaries for candidates within radius * (1 + epsilon).
-                Higher values increase recall at the expense of performance.
-                Defaults to None, which uses the index-defined epsilon (typically 0.01).
             search_window_size (Optional[int]): The size of the search window for SVS-VAMANA KNN searches.
                 Increasing this value generally yields more accurate but slower search results.
                 Defaults to None, which uses the index-defined value (typically 10).
@@ -192,7 +186,6 @@ class AggregateHybridQuery(AggregationQuery):
         self._dtype = dtype
         self._num_results = num_results
         self._ef_runtime = ef_runtime
-        self._epsilon = epsilon
         self._search_window_size = search_window_size
         self._use_search_history = use_search_history
         self._search_buffer_capacity = search_buffer_capacity
@@ -230,10 +223,6 @@ class AggregateHybridQuery(AggregationQuery):
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
             params[self.EF_RUNTIME_PARAM] = self._ef_runtime
-
-        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
-        if self._epsilon is not None:
-            params[self.EPSILON_PARAM] = self._epsilon
 
         # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
         if self._search_window_size is not None:
@@ -373,10 +362,6 @@ class AggregateHybridQuery(AggregationQuery):
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
             knn_query += f" {self.EF_RUNTIME} ${self.EF_RUNTIME_PARAM}"
-
-        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
-        if self._epsilon is not None:
-            knn_query += f" EPSILON ${self.EPSILON_PARAM}"
 
         # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
         if self._search_window_size is not None:

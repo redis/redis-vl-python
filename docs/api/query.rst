@@ -28,11 +28,9 @@ VectorQuery
    **HNSW Parameters:**
 
    - ``ef_runtime``: Controls search accuracy (higher = better recall, slower search)
-   - ``epsilon``: Range search approximation factor (for range queries)
 
    **SVS-VAMANA Parameters:**
 
-   - ``epsilon``: Range search approximation factor
    - ``search_window_size``: Size of search window for KNN searches
    - ``use_search_history``: Whether to use search buffer (OFF/ON/AUTO)
    - ``search_buffer_capacity``: Tuning parameter for 2-level compression
@@ -47,8 +45,7 @@ VectorQuery
           vector=[0.1, 0.2, 0.3],
           vector_field_name="embedding",
           num_results=10,
-          ef_runtime=150,  # Higher for better recall
-          epsilon=0.05     # For range search approximation
+          ef_runtime=150  # Higher for better recall
       )
 
    Example with SVS-VAMANA runtime parameters:
@@ -61,8 +58,7 @@ VectorQuery
           num_results=10,
           search_window_size=20,
           use_search_history='ON',
-          search_buffer_capacity=30,
-          epsilon=0.01
+          search_buffer_capacity=30
       )
 
 
@@ -130,21 +126,21 @@ HybridQuery
 .. note::
    **Runtime Parameters for Hybrid Queries**
 
-   AggregateHybridQuery (and the deprecated HybridQuery) support runtime parameters for the vector search component:
+   AggregateHybridQuery (and the deprecated HybridQuery) support runtime parameters for the vector search component.
+
+   **Note:** The ``epsilon`` parameter is only supported for range queries (VectorRangeQuery), not for KNN queries used in hybrid search.
 
    **HNSW Parameters:**
 
    - ``ef_runtime``: Controls search accuracy for the vector component
-   - ``epsilon``: Range search approximation factor
 
    **SVS-VAMANA Parameters:**
 
-   - ``epsilon``: Range search approximation factor
    - ``search_window_size``: Size of search window for KNN searches
    - ``use_search_history``: Whether to use search buffer (OFF/ON/AUTO)
    - ``search_buffer_capacity``: Tuning parameter for 2-level compression
 
-   Example:
+   Example with HNSW:
 
    .. code-block:: python
 
@@ -156,10 +152,22 @@ HybridQuery
           vector=[0.1, 0.2, 0.3],
           vector_field_name="embedding",
           alpha=0.7,
-          ef_runtime=150,           # HNSW parameter
-          epsilon=0.05,             # HNSW & SVS-VAMANA
-          search_window_size=20,    # SVS-VAMANA only
-          use_search_history='ON'   # SVS-VAMANA only
+          ef_runtime=150  # HNSW parameter
+      )
+
+   Example with SVS-VAMANA:
+
+   .. code-block:: python
+
+      query = AggregateHybridQuery(
+          text="search query",
+          text_field_name="description",
+          vector=[0.1, 0.2, 0.3],
+          vector_field_name="embedding",
+          alpha=0.7,
+          search_window_size=20,    # SVS-VAMANA
+          use_search_history='ON',  # SVS-VAMANA
+          search_buffer_capacity=30 # SVS-VAMANA
       )
 
 

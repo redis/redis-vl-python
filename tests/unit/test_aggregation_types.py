@@ -267,27 +267,6 @@ def test_aggregate_hybrid_query_ef_runtime():
     assert query.params.get("EF") == 100
 
 
-def test_aggregate_hybrid_query_epsilon():
-    """Test that AggregateHybridQuery correctly handles epsilon parameter."""
-    query = AggregateHybridQuery(
-        text=sample_text,
-        text_field_name="description",
-        vector=sample_vector,
-        vector_field_name="embedding",
-        epsilon=0.05,
-    )
-
-    # Check properties
-    assert query._epsilon == 0.05
-
-    # Check query string
-    query_string = str(query)
-    assert "EPSILON $EPSILON" in query_string
-
-    # Check params dictionary
-    assert query.params.get("EPSILON") == 0.05
-
-
 def test_aggregate_hybrid_query_search_window_size():
     """Test that AggregateHybridQuery correctly handles search_window_size parameter (SVS-VAMANA)."""
     query = AggregateHybridQuery(
@@ -360,7 +339,6 @@ def test_aggregate_hybrid_query_all_runtime_params():
         vector=sample_vector,
         vector_field_name="embedding",
         ef_runtime=100,
-        epsilon=0.05,
         search_window_size=40,
         use_search_history="ON",
         search_buffer_capacity=50,
@@ -368,7 +346,6 @@ def test_aggregate_hybrid_query_all_runtime_params():
 
     # Check all properties
     assert query._ef_runtime == 100
-    assert query._epsilon == 0.05
     assert query._search_window_size == 40
     assert query._use_search_history == "ON"
     assert query._search_buffer_capacity == 50
@@ -376,7 +353,6 @@ def test_aggregate_hybrid_query_all_runtime_params():
     # Check query string contains all parameters
     query_string = str(query)
     assert "EF_RUNTIME $EF" in query_string
-    assert "EPSILON $EPSILON" in query_string
     assert "SEARCH_WINDOW_SIZE $SEARCH_WINDOW_SIZE" in query_string
     assert "USE_SEARCH_HISTORY $USE_SEARCH_HISTORY" in query_string
     assert "SEARCH_BUFFER_CAPACITY $SEARCH_BUFFER_CAPACITY" in query_string
@@ -384,7 +360,6 @@ def test_aggregate_hybrid_query_all_runtime_params():
     # Check params dictionary contains all parameters
     params = query.params
     assert params["EF"] == 100
-    assert params["EPSILON"] == 0.05
     assert params["SEARCH_WINDOW_SIZE"] == 40
     assert params["USE_SEARCH_HISTORY"] == "ON"
     assert params["SEARCH_BUFFER_CAPACITY"] == 50
