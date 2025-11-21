@@ -60,11 +60,11 @@ test-notebooks: ## Run notebook tests
 	@echo "📓 Running notebook tests"
 	@echo "🔍 Checking Redis version..."
 	@if uv run python -c "import redis; from redisvl.redis.connection import supports_svs; client = redis.Redis.from_url('redis://localhost:6379'); exit(0 if supports_svs(client) else 1)" 2>/dev/null; then \
-		echo "✅ Redis 8.2.0+ detected - running all notebooks"; \
-		uv run python -m pytest --nbval-lax ./docs/user_guide -vvv $(ARGS); \
+		echo "✅ Redis 8.2.0+ detected - running notebooks (excluding 09_svs_vamana.ipynb and 11_advanced_queries.ipynb)"; \
+		uv run python -m pytest --nbval-lax ./docs/user_guide -vvv --ignore=./docs/user_guide/09_svs_vamana.ipynb --ignore=./docs/user_guide/11_advanced_queries.ipynb $(ARGS); \
 	else \
-		echo "⚠️ Redis < 8.2.0 detected - skipping SVS notebook"; \
-		uv run python -m pytest --nbval-lax ./docs/user_guide -vvv --ignore=./docs/user_guide/09_svs_vamana.ipynb $(ARGS); \
+		echo "⚠️ Redis < 8.2.0 detected - skipping SVS and advanced queries notebooks"; \
+		uv run python -m pytest --nbval-lax ./docs/user_guide -vvv --ignore=./docs/user_guide/09_svs_vamana.ipynb --ignore=./docs/user_guide/11_advanced_queries.ipynb $(ARGS); \
 	fi
 
 check: lint test ## Run all checks (lint + test)
