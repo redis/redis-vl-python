@@ -23,6 +23,11 @@ _LANGCACHE_ATTR_ENCODE_TRANS = str.maketrans(
 )
 
 
+_LANGCACHE_ATTR_DECODE_TRANS = str.maketrans(
+    {v: k for k, v in _LANGCACHE_ATTR_ENCODE_TRANS.items()}
+)
+
+
 def _encode_attribute_value_for_langcache(value: str) -> str:
     """Encode a string attribute value for use with the LangCache service.
 
@@ -60,6 +65,40 @@ def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, An
                 changed = True
 
     return safe_attributes if changed else attributes
+
+
+def _decode_attribute_value_from_langcache(value: str) -> str:
+    """Decode a string attribute value returned from the LangCache service.
+
+    This reverses :func:`_encode_attribute_value_for_langcache`, translating the
+    fullwidth comma and division slash characters back to their ASCII
+    counterparts so callers see the original values they stored.
+    """
+
+    return value.translate(_LANGCACHE_ATTR_DECODE_TRANS)
+
+
+def _decode_attributes_from_langcache(attributes: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *attributes* with string values safely decoded.
+
+    This is the inverse of :func:`_encode_attributes_for_langcache`. Only
+    top-level string values are decoded; non-string values are left unchanged.
+    If no values require decoding, the original dict is returned unchanged.
+    """
+
+    if not attributes:
+        return attributes
+
+    changed = False
+    decoded_attributes: Dict[str, Any] = dict(attributes)
+    for key, value in attributes.items():
+        if isinstance(value, str):
+            decoded = _decode_attribute_value_from_langcache(value)
+            if decoded != value:
+                decoded_attributes[key] = decoded
+                changed = True
+
+    return decoded_attributes if changed else attributes
 
 
 class LangCacheSemanticCache(BaseLLMCache):
@@ -239,7 +278,11 @@ class LangCacheSemanticCache(BaseLLMCache):
             CacheHit: The converted cache hit.
         """
         # Extract attributes (metadata) from the result
-        attributes = result.get("attributes", {})
+        attributes = result.get("attributes", {}) or {}
+        if attributes:
+            # Decode attribute values that were encoded for LangCache so callers
+            # see the original metadata values they stored.
+            attributes = _decode_attributes_from_langcache(attributes)
 
         # LangCache returns similarity in [0,1] (higher is better)
         similarity = result.get("similarity", 0.0)
