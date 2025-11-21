@@ -126,27 +126,24 @@ HybridQuery
 .. note::
    **Runtime Parameters for Hybrid Queries**
 
-   AggregateHybridQuery (and the deprecated HybridQuery) support runtime parameters for the vector search component.
+   **Important:** AggregateHybridQuery uses FT.AGGREGATE commands which do NOT support runtime parameters.
+   Runtime parameters (``ef_runtime``, ``search_window_size``, ``use_search_history``, ``search_buffer_capacity``)
+   are only supported with FT.SEARCH commands.
 
-   **Note:** AggregateHybridQuery uses FT.AGGREGATE commands which only support the ``ef_runtime`` parameter for HNSW indexes. SVS-VAMANA runtime parameters (``search_window_size``, ``use_search_history``, ``search_buffer_capacity``) are NOT supported in FT.AGGREGATE commands. For full runtime parameter support including SVS-VAMANA, use VectorQuery or VectorRangeQuery which use FT.SEARCH commands.
+   For runtime parameter support, use :class:`VectorQuery` or :class:`VectorRangeQuery` instead of AggregateHybridQuery.
 
-   **Supported Runtime Parameter:**
-
-   - ``ef_runtime``: Controls search accuracy for HNSW indexes (higher = better recall, slower search)
-
-   Example:
+   Example with VectorQuery (supports runtime parameters):
 
    .. code-block:: python
 
-      from redisvl.query import AggregateHybridQuery
+      from redisvl.query import VectorQuery
 
-      query = AggregateHybridQuery(
-          text="search query",
-          text_field_name="description",
+      query = VectorQuery(
           vector=[0.1, 0.2, 0.3],
           vector_field_name="embedding",
-          alpha=0.7,
-          ef_runtime=150  # Only HNSW ef_runtime is supported
+          return_fields=["description"],
+          num_results=10,
+          ef_runtime=150  # Runtime parameters work with VectorQuery
       )
 
 

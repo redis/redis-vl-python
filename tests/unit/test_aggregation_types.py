@@ -246,32 +246,6 @@ def test_hybrid_query_text_weights():
         )
 
 
-def test_aggregate_hybrid_query_ef_runtime():
-    """Test that AggregateHybridQuery correctly handles ef_runtime parameter (HNSW)."""
-    query = AggregateHybridQuery(
-        text=sample_text,
-        text_field_name="description",
-        vector=sample_vector,
-        vector_field_name="embedding",
-        ef_runtime=100,
-    )
-
-    # Check properties
-    assert query._ef_runtime == 100
-
-    # Check query string
-    query_string = str(query)
-    assert "EF_RUNTIME $EF" in query_string
-
-    # Check params dictionary
-    assert query.params.get("EF") == 100
-
-
-# Note: AggregateHybridQuery does not validate runtime parameters in __init__
-# It stores them directly and they are validated when the query is executed by Redis
-# Therefore, we don't test for invalid parameter validation here
-
-
 def test_aggregate_hybrid_query_text_weights_validation():
     """Test that AggregateHybridQuery validates text_weights properly."""
     vector = [0.1, 0.2, 0.3, 0.4]

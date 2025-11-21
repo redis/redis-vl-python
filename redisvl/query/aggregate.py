@@ -89,10 +89,6 @@ class AggregateHybridQuery(AggregationQuery):
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
 
-    # HNSW runtime parameters
-    EF_RUNTIME: str = "EF_RUNTIME"
-    EF_RUNTIME_PARAM: str = "EF"
-
     def __init__(
         self,
         text: str,
@@ -108,7 +104,6 @@ class AggregateHybridQuery(AggregationQuery):
         stopwords: Optional[Union[str, Set[str]]] = "english",
         dialect: int = 2,
         text_weights: Optional[Dict[str, float]] = None,
-        ef_runtime: Optional[int] = None,
     ):
         """
         Instantiates a AggregateHybridQuery object.
@@ -141,12 +136,11 @@ class AggregateHybridQuery(AggregationQuery):
             text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
-            ef_runtime (Optional[int]): The size of the dynamic candidate list for HNSW indexes.
-                Increasing this value generally yields more accurate but slower search results.
-                Defaults to None, which uses the index-defined value (typically 10).
-                Note: Only ef_runtime is supported for AggregateHybridQuery. SVS-VAMANA runtime
-                parameters (search_window_size, use_search_history, search_buffer_capacity) are
-                not supported in FT.AGGREGATE commands.
+
+        Note:
+            AggregateHybridQuery uses FT.AGGREGATE commands which do NOT support runtime
+            parameters. For runtime parameter support (ef_runtime, search_window_size, etc.),
+            use VectorQuery or VectorRangeQuery which use FT.SEARCH commands.
 
         Raises:
             ValueError: If the text string is empty, or if the text string becomes empty after
@@ -165,7 +159,6 @@ class AggregateHybridQuery(AggregationQuery):
         self._alpha = alpha
         self._dtype = dtype
         self._num_results = num_results
-        self._ef_runtime = ef_runtime
         self._set_stopwords(stopwords)
         self._text_weights = self._parse_text_weights(text_weights)
 
@@ -196,10 +189,6 @@ class AggregateHybridQuery(AggregationQuery):
             vector = self._vector
 
         params: Dict[str, Any] = {self.VECTOR_PARAM: vector}
-
-        # Add EF_RUNTIME parameter if specified (HNSW)
-        if self._ef_runtime is not None:
-            params[self.EF_RUNTIME_PARAM] = self._ef_runtime
 
         return params
 
@@ -319,14 +308,10 @@ class AggregateHybridQuery(AggregationQuery):
         if isinstance(self._filter_expression, FilterExpression):
             filter_expression = str(self._filter_expression)
 
-        # Build KNN query with runtime parameters
+        # Build KNN query
         knn_query = (
             f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM}"
         )
-
-        # Add EF_RUNTIME parameter if specified (HNSW)
-        if self._ef_runtime is not None:
-            knn_query += f" {self.EF_RUNTIME} ${self.EF_RUNTIME_PARAM}"
 
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
