@@ -81,6 +81,7 @@ from redisvl.query import (
     FilterQuery,
     TextQuery,
 )
+from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
@@ -250,24 +251,25 @@ class BaseSearchIndex:
                 )
 
         # Warn if using query-time stopwords with index-level STOPWORDS 0
-        if isinstance(query, TextQuery):
+        if isinstance(query, (TextQuery, AggregateHybridQuery)):
             index_stopwords = self.schema.index.stopwords
             query_stopwords = query.stopwords
 
             # Check if index has STOPWORDS 0 (empty list) and query has stopwords configured
-            # Note: query.stopwords is a set, and when stopwords=None is passed to TextQuery,
+            # Note: query.stopwords is a set, and when stopwords=None is passed to TextQuery/AggregateHybridQuery,
             # it becomes an empty set. So we check if the set is non-empty.
             if (
                 index_stopwords is not None
                 and len(index_stopwords) == 0
                 and len(query_stopwords) > 0
             ):
+                query_type = "TextQuery" if isinstance(query, TextQuery) else "AggregateHybridQuery"
                 warnings.warn(
-                    "Query-time stopwords are configured but the index has STOPWORDS 0 (stopwords = []). "
+                    f"Query-time stopwords are configured but the index has STOPWORDS 0 (stopwords = []). "
                     "This is counterproductive: all words including common words like 'of', 'the', 'a' are indexed, "
                     "but your query-time stopwords will filter them from the search query. "
                     "This makes your search less precise than it could be. "
-                    "Consider setting stopwords=None in TextQuery to search for all indexed words. "
+                    f"Consider setting stopwords=None in {query_type} to search for all indexed words. "
                     "See docs/stopwords_interaction_guide.md for more information.",
                     UserWarning,
                     stacklevel=3,

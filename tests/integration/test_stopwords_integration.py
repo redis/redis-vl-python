@@ -3,6 +3,7 @@
 import pytest
 
 from redisvl.index import SearchIndex
+from redisvl.query import FilterQuery
 from redisvl.schema import IndexSchema
 
 
@@ -180,8 +181,6 @@ def test_stopwords_disabled_allows_searching_common_words(
         client.hset(key, mapping=data)
 
     # Search for "of" - should find "Bank of America"
-    from redisvl.query import FilterQuery
-
     query = FilterQuery(
         filter_expression="@title:(of)",
         return_fields=["title"],
