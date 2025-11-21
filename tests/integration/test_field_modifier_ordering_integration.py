@@ -53,20 +53,17 @@ class TestTextFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command(
-                "FT.INFO", f"test_text_sortable_missing_{worker_id}"
-            )
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command(
+            "FT.INFO", f"test_text_sortable_missing_{worker_id}"
+        )
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
     def test_textfield_all_modifiers(self, client, redis_url, worker_id):
         """Test TextField with all modifiers."""
@@ -94,18 +91,15 @@ class TestTextFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command("FT.INFO", f"test_text_all_mods_{worker_id}")
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command("FT.INFO", f"test_text_all_mods_{worker_id}")
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
 
 class TestTagFieldModifierOrderingIntegration:
@@ -132,20 +126,17 @@ class TestTagFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command(
-                "FT.INFO", f"test_tag_sortable_missing_{worker_id}"
-            )
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command(
+            "FT.INFO", f"test_tag_sortable_missing_{worker_id}"
+        )
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
     def test_tagfield_all_modifiers(self, client, redis_url, worker_id):
         """Test TagField with all modifiers."""
@@ -172,18 +163,15 @@ class TestTagFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command("FT.INFO", f"test_tag_all_mods_{worker_id}")
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command("FT.INFO", f"test_tag_all_mods_{worker_id}")
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
 
 class TestGeoFieldModifierOrderingIntegration:
@@ -210,20 +198,17 @@ class TestGeoFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command(
-                "FT.INFO", f"test_geo_sortable_missing_{worker_id}"
-            )
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command(
+            "FT.INFO", f"test_geo_sortable_missing_{worker_id}"
+        )
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
 
 class TestNumericFieldModifierOrderingIntegration:
@@ -252,20 +237,17 @@ class TestNumericFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command(
-                "FT.INFO", f"test_numeric_sortable_missing_{worker_id}"
-            )
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command(
+            "FT.INFO", f"test_numeric_sortable_missing_{worker_id}"
+        )
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
 
 class TestMultiFieldModifierOrderingIntegration:
@@ -307,28 +289,25 @@ class TestMultiFieldModifierOrderingIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed - if modifiers are in wrong order, it will fail
-            index.create(overwrite=True)
+        # This should succeed - if modifiers are in wrong order, it will fail
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command("FT.INFO", f"test_mixed_fields_{worker_id}")
-            assert info is not None
+        # Verify index was created
+        info = client.execute_command("FT.INFO", f"test_mixed_fields_{worker_id}")
+        assert info is not None
 
-            # Verify all fields were created
-            attrs_list = info[7]
-            assert len(attrs_list) == 4
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify all fields were created
+        attrs_list = info[7]
+        assert len(attrs_list) == 4
+
+        # Cleanup
+        index.delete(drop=True)
 
 
-class TestMultipleCommandsScenarioIntegration:
-    """Integration tests for mlp_commands.txt scenario."""
+class TestFieldModifierIntegration:
+    """Integration tests for complex field modifier combinations."""
 
-    def test_mlp_commands_index_creation(self, client, redis_url, worker_id):
+    def test_index_creation_with_multiple_modifiers(self, client, redis_url, worker_id):
         """Test creating index with INDEXMISSING SORTABLE UNF modifiers.
 
         This test verifies that an index with all three modifiers
@@ -354,18 +333,15 @@ class TestMultipleCommandsScenarioIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            # This should succeed with correct modifier ordering
-            index.create(overwrite=True)
+        # This should succeed with correct modifier ordering
+        index.create(overwrite=True)
 
-            # Verify index was created
-            info = client.execute_command("FT.INFO", f"testidx_{worker_id}")
-            assert info is not None
-        finally:
-            try:
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Verify index was created
+        info = client.execute_command("FT.INFO", f"testidx_{worker_id}")
+        assert info is not None
+
+        # Cleanup
+        index.delete(drop=True)
 
     def test_indexmissing_enables_ismissing_query(self, client, redis_url, worker_id):
         """Test that INDEXMISSING enables ismissing() query function."""
@@ -388,37 +364,33 @@ class TestMultipleCommandsScenarioIntegration:
         schema = IndexSchema.from_dict(schema_dict)
         index = SearchIndex(schema=schema, redis_url=redis_url)
 
-        try:
-            index.create(overwrite=True)
+        index.create(overwrite=True)
 
-            # Create documents with and without the field
-            client.hset(f"ismiss_{worker_id}:1", "optional_field", "has value")
-            client.hset(f"ismiss_{worker_id}:2", "other_field", "no optional_field")
-            client.hset(f"ismiss_{worker_id}:3", "optional_field", "also has value")
+        # Create documents with and without the field
+        client.hset(f"ismiss_{worker_id}:1", "optional_field", "has value")
+        client.hset(f"ismiss_{worker_id}:2", "other_field", "no optional_field")
+        client.hset(f"ismiss_{worker_id}:3", "optional_field", "also has value")
 
-            # Query for missing fields
-            result = client.execute_command(
-                "FT.SEARCH",
-                f"test_ismissing_{worker_id}",
-                "ismissing(@optional_field)",
-                "DIALECT",
-                "2",
-            )
+        # Query for missing fields
+        result = client.execute_command(
+            "FT.SEARCH",
+            f"test_ismissing_{worker_id}",
+            "ismissing(@optional_field)",
+            "DIALECT",
+            "2",
+        )
 
-            # Should return 1 result (ismiss_{worker_id}:2)
-            assert result[0] == 1
-            assert f"ismiss_{worker_id}:2" in str(result)
+        # Should return 1 result (ismiss_{worker_id}:2)
+        assert result[0] == 1
+        assert f"ismiss_{worker_id}:2" in str(result)
 
-        finally:
-            try:
-                client.delete(
-                    f"ismiss_{worker_id}:1",
-                    f"ismiss_{worker_id}:2",
-                    f"ismiss_{worker_id}:3",
-                )
-                index.delete(drop=True)
-            except Exception:
-                pass  # Index may not exist if test was skipped or failed early
+        # Cleanup
+        client.delete(
+            f"ismiss_{worker_id}:1",
+            f"ismiss_{worker_id}:2",
+            f"ismiss_{worker_id}:3",
+        )
+        index.delete(drop=True)
 
 
 class TestFieldTypeModifierSupport:
