@@ -93,14 +93,6 @@ class AggregateHybridQuery(AggregationQuery):
     EF_RUNTIME: str = "EF_RUNTIME"
     EF_RUNTIME_PARAM: str = "EF"
 
-    # SVS-VAMANA runtime parameters
-    SEARCH_WINDOW_SIZE: str = "SEARCH_WINDOW_SIZE"
-    SEARCH_WINDOW_SIZE_PARAM: str = "SEARCH_WINDOW_SIZE"
-    USE_SEARCH_HISTORY: str = "USE_SEARCH_HISTORY"
-    USE_SEARCH_HISTORY_PARAM: str = "USE_SEARCH_HISTORY"
-    SEARCH_BUFFER_CAPACITY: str = "SEARCH_BUFFER_CAPACITY"
-    SEARCH_BUFFER_CAPACITY_PARAM: str = "SEARCH_BUFFER_CAPACITY"
-
     def __init__(
         self,
         text: str,
@@ -117,9 +109,6 @@ class AggregateHybridQuery(AggregationQuery):
         dialect: int = 2,
         text_weights: Optional[Dict[str, float]] = None,
         ef_runtime: Optional[int] = None,
-        search_window_size: Optional[int] = None,
-        use_search_history: Optional[str] = None,
-        search_buffer_capacity: Optional[int] = None,
     ):
         """
         Instantiates a AggregateHybridQuery object.
@@ -155,18 +144,9 @@ class AggregateHybridQuery(AggregationQuery):
             ef_runtime (Optional[int]): The size of the dynamic candidate list for HNSW indexes.
                 Increasing this value generally yields more accurate but slower search results.
                 Defaults to None, which uses the index-defined value (typically 10).
-            search_window_size (Optional[int]): The size of the search window for SVS-VAMANA KNN searches.
-                Increasing this value generally yields more accurate but slower search results.
-                Defaults to None, which uses the index-defined value (typically 10).
-            use_search_history (Optional[str]): For SVS-VAMANA indexes, controls whether to use the
-                search buffer or entire search history. Options are "OFF", "ON", or "AUTO".
-                "AUTO" is always evaluated internally as "ON". Using the entire history may yield
-                a slightly better graph at the cost of more search time.
-                Defaults to None, which uses the index-defined value (typically "AUTO").
-            search_buffer_capacity (Optional[int]): Tuning parameter for SVS-VAMANA indexes using
-                two-level compression (LVQ<X>x<Y> or LeanVec types). Determines the number of vector
-                candidates to collect in the first level of search before the re-ranking level.
-                Defaults to None, which uses the index-defined value (typically SEARCH_WINDOW_SIZE).
+                Note: Only ef_runtime is supported for AggregateHybridQuery. SVS-VAMANA runtime
+                parameters (search_window_size, use_search_history, search_buffer_capacity) are
+                not supported in FT.AGGREGATE commands.
 
         Raises:
             ValueError: If the text string is empty, or if the text string becomes empty after
@@ -186,9 +166,6 @@ class AggregateHybridQuery(AggregationQuery):
         self._dtype = dtype
         self._num_results = num_results
         self._ef_runtime = ef_runtime
-        self._search_window_size = search_window_size
-        self._use_search_history = use_search_history
-        self._search_buffer_capacity = search_buffer_capacity
         self._set_stopwords(stopwords)
         self._text_weights = self._parse_text_weights(text_weights)
 
@@ -223,18 +200,6 @@ class AggregateHybridQuery(AggregationQuery):
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
             params[self.EF_RUNTIME_PARAM] = self._ef_runtime
-
-        # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
-        if self._search_window_size is not None:
-            params[self.SEARCH_WINDOW_SIZE_PARAM] = self._search_window_size
-
-        # Add USE_SEARCH_HISTORY parameter if specified (SVS-VAMANA)
-        if self._use_search_history is not None:
-            params[self.USE_SEARCH_HISTORY_PARAM] = self._use_search_history
-
-        # Add SEARCH_BUFFER_CAPACITY parameter if specified (SVS-VAMANA)
-        if self._search_buffer_capacity is not None:
-            params[self.SEARCH_BUFFER_CAPACITY_PARAM] = self._search_buffer_capacity
 
         return params
 
@@ -362,20 +327,6 @@ class AggregateHybridQuery(AggregationQuery):
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
             knn_query += f" {self.EF_RUNTIME} ${self.EF_RUNTIME_PARAM}"
-
-        # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
-        if self._search_window_size is not None:
-            knn_query += f" {self.SEARCH_WINDOW_SIZE} ${self.SEARCH_WINDOW_SIZE_PARAM}"
-
-        # Add USE_SEARCH_HISTORY parameter if specified (SVS-VAMANA)
-        if self._use_search_history is not None:
-            knn_query += f" {self.USE_SEARCH_HISTORY} ${self.USE_SEARCH_HISTORY_PARAM}"
-
-        # Add SEARCH_BUFFER_CAPACITY parameter if specified (SVS-VAMANA)
-        if self._search_buffer_capacity is not None:
-            knn_query += (
-                f" {self.SEARCH_BUFFER_CAPACITY} ${self.SEARCH_BUFFER_CAPACITY_PARAM}"
-            )
 
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
