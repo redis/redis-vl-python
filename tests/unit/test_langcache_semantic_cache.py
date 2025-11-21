@@ -268,7 +268,7 @@ class TestLangCacheSemanticCache:
             # should decode them before exposing them to callers.
             "attributes": {
                 "language": "python",
-                "topic": "programming，with∕encoding",
+                "topic": "programming，with∕encoding＼and？",
             },
         }
 
@@ -289,7 +289,7 @@ class TestLangCacheSemanticCache:
             prompt="What is Python?",
             attributes={
                 "language": "python",
-                "topic": "programming,with/encoding",
+                "topic": r"programming,with/encoding\and?",
             },
         )
 
@@ -301,14 +301,15 @@ class TestLangCacheSemanticCache:
         call_kwargs = mock_client.search.call_args.kwargs
         assert call_kwargs["attributes"] == {
             "language": "python",
-            # The comma and slash should be encoded for LangCache.
-            "topic": "programming，with∕encoding",
+            # The comma, slash, backslash, and question mark should be encoded
+            # for LangCache.
+            "topic": "programming，with∕encoding＼and？",
         }
 
         # And the decoded, original values should appear in metadata
         assert results[0]["metadata"] == {
             "language": "python",
-            "topic": "programming,with/encoding",
+            "topic": r"programming,with/encoding\and?",
         }
 
         def test_store_with_empty_metadata_does_not_send_attributes(
