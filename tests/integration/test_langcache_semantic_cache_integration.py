@@ -18,7 +18,6 @@ from typing import Dict
 
 import pytest
 from dotenv import load_dotenv
-from langcache.errors import BadRequestErrorResponseContent
 
 from redisvl.extensions.cache.llm.langcache import LangCacheSemanticCache
 
