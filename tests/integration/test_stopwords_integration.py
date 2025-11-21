@@ -75,6 +75,7 @@ def test_create_index_with_stopwords_disabled(client, stopwords_disabled_schema)
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
 
 
@@ -105,6 +106,7 @@ def test_create_index_with_custom_stopwords(client, custom_stopwords_schema):
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
 
 
@@ -120,17 +122,15 @@ def test_create_index_with_default_stopwords(client, default_stopwords_schema):
         # Verify index was created
         assert index.exists()
 
-        # Get FT.INFO - stopwords_list should NOT be present for default behavior
-        info = client.ft(index.name).info()
         # When no STOPWORDS clause is used, Redis doesn't include stopwords_list in FT.INFO
         # (or it may include the default list depending on Redis version)
-        # We just verify the index was created successfully
-        assert index.exists()
+        # We just verify the index was created successfully with default behavior
 
     finally:
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
 
 
@@ -153,6 +153,7 @@ def test_from_existing_preserves_stopwords_disabled(client, stopwords_disabled_s
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
 
 
@@ -175,6 +176,7 @@ def test_from_existing_preserves_custom_stopwords(client, custom_stopwords_schem
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
 
 
@@ -197,6 +199,7 @@ def test_from_existing_default_stopwords(client, default_stopwords_schema):
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
 
 
@@ -242,4 +245,5 @@ def test_stopwords_disabled_allows_searching_common_words(
         try:
             index.delete(drop=True)
         except Exception:
+            # Silently ignore cleanup errors (e.g., index already deleted or never created)
             pass
