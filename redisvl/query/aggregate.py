@@ -128,6 +128,10 @@ class AggregateHybridQuery(AggregationQuery):
                 provided then a default set of stopwords for that language will be used. if a list,
                 set, or tuple of strings is provided then those will be used as stopwords.
                 Defaults to "english". if set to "None" then no stopwords will be removed.
+
+                Note: This parameter controls query-time stopword filtering (client-side).
+                For index-level stopwords configuration (server-side), see IndexInfo.stopwords.
+                Using query-time stopwords with index-level STOPWORDS 0 is counterproductive.
             dialect (int, optional): The Redis dialect version. Defaults to 2.
             text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the

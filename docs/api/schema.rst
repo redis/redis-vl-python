@@ -31,6 +31,47 @@ IndexSchema
    :exclude-members: generate_fields,validate_and_create_fields,redis_fields
 
 
+Index-Level Stopwords Configuration
+====================================
+
+The :class:`IndexInfo` class supports index-level stopwords configuration through
+the ``stopwords`` field. This controls which words are filtered during indexing
+(server-side), as opposed to query-time filtering (client-side).
+
+**Configuration Options:**
+
+- ``None`` (default): Use Redis default stopwords (~300 common words)
+- ``[]`` (empty list): Disable stopwords completely (``STOPWORDS 0``)
+- Custom list: Specify your own stopwords (e.g., ``["the", "a", "an"]``)
+
+**Example:**
+
+.. code-block:: python
+
+    from redisvl.schema import IndexSchema
+
+    # Disable stopwords to search for phrases like "Bank of Glasberliner"
+    schema = IndexSchema.from_dict({
+        "index": {
+            "name": "company-idx",
+            "prefix": "company",
+            "stopwords": []  # STOPWORDS 0
+        },
+        "fields": [
+            {"name": "name", "type": "text"}
+        ]
+    })
+
+**Important Notes:**
+
+- Index-level stopwords affect what gets indexed (server-side)
+- Query-time stopwords (in :class:`TextQuery` and :class:`AggregateHybridQuery`) affect what gets searched (client-side)
+- Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive
+
+For detailed information about stopwords configuration and best practices, see the
+Advanced Queries user guide (``docs/user_guide/11_advanced_queries.ipynb``).
+
+
 Defining Fields
 ===============
 

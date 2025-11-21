@@ -47,6 +47,11 @@ HybridQuery
    :show-inheritance:
    :exclude-members: add_filter,get_args,highlight,return_field,summarize
 
+.. note::
+   The ``stopwords`` parameter in :class:`HybridQuery` (and :class:`AggregateHybridQuery`) controls query-time stopword filtering (client-side).
+   For index-level stopwords configuration (server-side), see :class:`redisvl.schema.IndexInfo.stopwords`.
+   Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
+
 
 TextQuery
 ================
@@ -60,6 +65,11 @@ TextQuery
    :inherited-members:
    :show-inheritance:
    :exclude-members: add_filter,get_args,highlight,return_field,summarize
+
+.. note::
+   The ``stopwords`` parameter in :class:`TextQuery` controls query-time stopword filtering (client-side).
+   For index-level stopwords configuration (server-side), see :class:`redisvl.schema.IndexInfo.stopwords`.
+   Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
 
 
 FilterQuery

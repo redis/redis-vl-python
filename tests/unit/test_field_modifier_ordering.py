@@ -309,11 +309,11 @@ class TestNormalizeFieldModifiersHelper:
         assert field.args_suffix == []
 
 
-class TestMLPCommandsScenario:
-    """Test the exact scenario from mlp_commands.txt."""
+class TestFieldModifierScenario:
+    """Test field modifier ordering scenario."""
 
     def test_work_experience_summary_field(self):
-        """Test TextField with INDEXMISSING SORTABLE UNF (mlp_commands.txt scenario)."""
+        """Test TextField with INDEXMISSING SORTABLE UNF (field modifier scenario)."""
         field = TextField(
             name="work_experience_summary",
             attrs={"index_missing": True, "sortable": True, "unf": True},
@@ -321,11 +321,11 @@ class TestMLPCommandsScenario:
         redis_field = field.as_redis_field()
         suffix = redis_field.args_suffix
 
-        # Verify exact order from mlp_commands.txt
+        # Verify exact order from field modifier requirements
         assert suffix == ["INDEXMISSING", "SORTABLE", "UNF"]
 
-    def test_mlp_scenario_redis_args(self):
-        """Test that redis_args() produces correct command for mlp_commands.txt scenario."""
+    def test_field_modifier_scenario_redis_args(self):
+        """Test that redis_args() produces correct command for field modifier scenario."""
         field = TextField(
             name="work_experience_summary",
             attrs={"index_missing": True, "sortable": True, "unf": True},
