@@ -208,10 +208,15 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
 
    **Performance characteristics:**
 
-    - **Search speed**: Very fast approximate search with tunable accuracy
+    - **Search speed**: Very fast approximate search with tunable accuracy (via ``ef_runtime`` at query time)
     - **Memory usage**: Higher than compressed SVS-VAMANA but reasonable for most applications
-    - **Recall quality**: Excellent recall rates (95-99%), often better than other approximate methods
+    - **Recall quality**: Excellent recall rates (95-99%), tunable via ``ef_runtime`` parameter
     - **Build time**: Moderate construction time, faster than SVS-VAMANA for smaller datasets
+
+   **Runtime parameters** (adjustable at query time without rebuilding index):
+
+    - ``ef_runtime``: Controls search accuracy (higher = better recall, slower search). Default: 10
+    - ``epsilon``: Range search approximation factor for VectorRangeQuery. Default: 0.01
 
 .. autoclass:: HNSWVectorField
    :members:
@@ -234,10 +239,10 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
         dims: 768
         distance_metric: cosine
         datatype: float32
-        # Balanced settings for good recall and performance
-        m: 16
-        ef_construction: 200
-        ef_runtime: 10
+        # Index-time parameters (set during index creation)
+        m: 16                    # Graph connectivity
+        ef_construction: 200     # Build-time accuracy
+        # Note: ef_runtime can be set at query time via VectorQuery
 
 **High-recall configuration:**
 
@@ -250,10 +255,10 @@ HNSW (Hierarchical Navigable Small World) - Graph-based approximate search with 
         dims: 768
         distance_metric: cosine
         datatype: float32
-        # Tuned for maximum accuracy
+        # Index-time parameters tuned for maximum accuracy
         m: 32
         ef_construction: 400
-        ef_runtime: 50
+        # Note: ef_runtime=50 can be set at query time for higher recall
 
 SVS-VAMANA Vector Fields
 ------------------------
@@ -277,6 +282,13 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
     - **vs FLAT**: Much faster search, significantly lower memory usage with compression, but approximate results
 
     - **vs HNSW**: Better memory efficiency with compression, similar or better recall, Intel-optimized
+
+   **Runtime parameters** (adjustable at query time without rebuilding index):
+
+    - ``epsilon``: Range search approximation factor. Default: 0.01
+    - ``search_window_size``: Size of search window for KNN searches. Higher = better recall, slower search
+    - ``use_search_history``: Whether to use search buffer (OFF/ON/AUTO). Default: AUTO
+    - ``search_buffer_capacity``: Tuning parameter for 2-level compression. Default: search_window_size
 
    **Compression selection guide:**
 
@@ -314,10 +326,10 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
         dims: 768
         distance_metric: cosine
         datatype: float32
-        # Standard settings for balanced performance
+        # Index-time parameters (set during index creation)
         graph_max_degree: 40
         construction_window_size: 250
-        search_window_size: 20
+        # Note: search_window_size and other runtime params can be set at query time
 
 **High-performance configuration with compression:**
 
@@ -330,14 +342,14 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
         dims: 768
         distance_metric: cosine
         datatype: float32
-        # Tuned for better recall
+        # Index-time parameters tuned for better recall
         graph_max_degree: 64
         construction_window_size: 500
-        search_window_size: 40
         # Maximum compression with dimensionality reduction
         compression: LeanVec4x8
         reduce: 384  # 50% dimensionality reduction
         training_threshold: 1000
+        # Note: search_window_size=40 can be set at query time for higher recall
 
 **Important Notes:**
 
@@ -345,7 +357,7 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
 - **Datatype limitations**: SVS-VAMANA only supports `float16` and `float32` datatypes (not `bfloat16` or `float64`).
 - **Compression compatibility**: The `reduce` parameter is only valid with LeanVec compression types (`LeanVec4x8` or `LeanVec8x8`).
 - **Platform considerations**: Intel's proprietary LVQ and LeanVec optimizations are not available in Redis Open Source. On non-Intel platforms and Redis Open Source, SVS-VAMANA with compression falls back to basic 8-bit scalar quantization.
-- **Performance tip**: Start with default parameters and tune `search_window_size` first for your speed vs accuracy requirements.
+- **Performance tip**: Runtime parameters like ``search_window_size``, ``epsilon``, and ``use_search_history`` can be adjusted at query time without rebuilding the index. Start with defaults and tune ``search_window_size`` first for your speed vs accuracy requirements.
 
 FLAT Vector Fields
 ------------------
@@ -487,8 +499,8 @@ Performance Characteristics
 
 **Recall Quality:**
  - FLAT: 100% (exact search)
- - HNSW: 95-99% (tunable via ef_runtime)
- - SVS-VAMANA: 90-95% (depends on compression)
+ - HNSW: 95-99% (tunable via ``ef_runtime`` at query time)
+ - SVS-VAMANA: 90-95% (tunable via ``search_window_size`` at query time, also depends on compression)
 
 Migration Considerations
 ------------------------
@@ -496,7 +508,7 @@ Migration Considerations
 **From FLAT to HNSW:**
  - Straightforward migration
  - Expect slight recall reduction but major speed improvement
- - Tune ef_runtime to balance speed vs accuracy
+ - Tune ``ef_runtime`` at query time to balance speed vs accuracy (no index rebuild needed)
 
 **From HNSW to SVS-VAMANA:**
  - Requires Redis >= 8.2 with RediSearch >= 2.8.10

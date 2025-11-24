@@ -421,8 +421,19 @@ class CountQuery(BaseQuery):
 class BaseVectorQuery:
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
+
+    # HNSW runtime parameters
     EF_RUNTIME: str = "EF_RUNTIME"
     EF_RUNTIME_PARAM: str = "EF"
+    EPSILON_PARAM: str = "EPSILON"
+
+    # SVS-VAMANA runtime parameters
+    SEARCH_WINDOW_SIZE: str = "SEARCH_WINDOW_SIZE"
+    SEARCH_WINDOW_SIZE_PARAM: str = "SEARCH_WINDOW_SIZE"
+    USE_SEARCH_HISTORY: str = "USE_SEARCH_HISTORY"
+    USE_SEARCH_HISTORY_PARAM: str = "USE_SEARCH_HISTORY"
+    SEARCH_BUFFER_CAPACITY: str = "SEARCH_BUFFER_CAPACITY"
+    SEARCH_BUFFER_CAPACITY_PARAM: str = "SEARCH_BUFFER_CAPACITY"
 
     _normalize_vector_distance: bool = False
 
@@ -450,6 +461,10 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         hybrid_policy: Optional[str] = None,
         batch_size: Optional[int] = None,
         ef_runtime: Optional[int] = None,
+        epsilon: Optional[float] = None,
+        search_window_size: Optional[int] = None,
+        use_search_history: Optional[str] = None,
+        search_buffer_capacity: Optional[int] = None,
         normalize_vector_distance: bool = False,
     ):
         """A query for running a vector search along with an optional filter
@@ -494,6 +509,22 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             ef_runtime (Optional[int]): Controls the size of the dynamic candidate list for HNSW
                 algorithm at query time. Higher values improve recall at the expense of
                 slower search performance. Defaults to None, which uses the index-defined value.
+            epsilon (Optional[float]): The range search approximation factor for HNSW and SVS-VAMANA
+                indexes. Sets boundaries for candidates within radius * (1 + epsilon). Higher values
+                allow more extensive search and more accurate results at the expense of run time.
+                Defaults to None, which uses the index-defined value (typically 0.01).
+            search_window_size (Optional[int]): The size of the search window for SVS-VAMANA KNN searches.
+                Increasing this value generally yields more accurate but slower search results.
+                Defaults to None, which uses the index-defined value (typically 10).
+            use_search_history (Optional[str]): For SVS-VAMANA indexes, controls whether to use the
+                search buffer or entire search history. Options are "OFF", "ON", or "AUTO".
+                "AUTO" is always evaluated internally as "ON". Using the entire history may yield
+                a slightly better graph at the cost of more search time.
+                Defaults to None, which uses the index-defined value (typically "AUTO").
+            search_buffer_capacity (Optional[int]): Tuning parameter for SVS-VAMANA indexes using
+                two-level compression (LVQ<X>x<Y> or LeanVec types). Determines the number of vector
+                candidates to collect in the first level of search before the re-ranking level.
+                Defaults to None, which uses the index-defined value (typically SEARCH_WINDOW_SIZE).
             normalize_vector_distance (bool): Redis supports 3 distance metrics: L2 (euclidean),
                 IP (inner product), and COSINE. By default, L2 distance returns an unbounded value.
                 COSINE distance returns a value between 0 and 2. IP returns a value determined by
@@ -514,6 +545,10 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
         self._ef_runtime: Optional[int] = None
+        self._epsilon: Optional[float] = None
+        self._search_window_size: Optional[int] = None
+        self._use_search_history: Optional[str] = None
+        self._search_buffer_capacity: Optional[int] = None
         self._normalize_vector_distance = normalize_vector_distance
         self.set_filter(filter_expression)
 
@@ -547,6 +582,18 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if ef_runtime is not None:
             self.set_ef_runtime(ef_runtime)
 
+        if epsilon is not None:
+            self.set_epsilon(epsilon)
+
+        if search_window_size is not None:
+            self.set_search_window_size(search_window_size)
+
+        if use_search_history is not None:
+            self.set_use_search_history(use_search_history)
+
+        if search_buffer_capacity is not None:
+            self.set_search_buffer_capacity(search_buffer_capacity)
+
     def _build_query_string(self) -> str:
         """Build the full query string for vector search with optional filtering."""
         filter_expression = self._filter_expression
@@ -566,9 +613,27 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             if self._hybrid_policy == HybridPolicy.BATCHES and self._batch_size:
                 knn_query += f" BATCH_SIZE {self._batch_size}"
 
-        # Add EF_RUNTIME parameter if specified
+        # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime:
             knn_query += f" {self.EF_RUNTIME} ${self.EF_RUNTIME_PARAM}"
+
+        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
+        if self._epsilon is not None:
+            knn_query += f" EPSILON ${self.EPSILON_PARAM}"
+
+        # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
+        if self._search_window_size is not None:
+            knn_query += f" {self.SEARCH_WINDOW_SIZE} ${self.SEARCH_WINDOW_SIZE_PARAM}"
+
+        # Add USE_SEARCH_HISTORY parameter if specified (SVS-VAMANA)
+        if self._use_search_history is not None:
+            knn_query += f" {self.USE_SEARCH_HISTORY} ${self.USE_SEARCH_HISTORY_PARAM}"
+
+        # Add SEARCH_BUFFER_CAPACITY parameter if specified (SVS-VAMANA)
+        if self._search_buffer_capacity is not None:
+            knn_query += (
+                f" {self.SEARCH_BUFFER_CAPACITY} ${self.SEARCH_BUFFER_CAPACITY_PARAM}"
+            )
 
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
@@ -634,6 +699,92 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         # Invalidate the query string
         self._built_query_string = None
 
+    def set_epsilon(self, epsilon: float):
+        """Set the epsilon parameter for the query.
+
+        Args:
+            epsilon (float): The range search approximation factor for HNSW and SVS-VAMANA
+                indexes. Sets boundaries for candidates within radius * (1 + epsilon).
+                Higher values allow more extensive search and more accurate results at the
+                expense of run time.
+
+        Raises:
+            TypeError: If epsilon is not a float or int
+            ValueError: If epsilon is negative
+        """
+        if not isinstance(epsilon, (float, int)):
+            raise TypeError("epsilon must be of type float or int")
+        if epsilon < 0:
+            raise ValueError("epsilon must be non-negative")
+        self._epsilon = epsilon
+
+        # Invalidate the query string
+        self._built_query_string = None
+
+    def set_search_window_size(self, search_window_size: int):
+        """Set the SEARCH_WINDOW_SIZE parameter for the query.
+
+        Args:
+            search_window_size (int): The size of the search window for SVS-VAMANA KNN searches.
+                Increasing this value generally yields more accurate but slower search results.
+
+        Raises:
+            TypeError: If search_window_size is not an integer
+            ValueError: If search_window_size is not positive
+        """
+        if not isinstance(search_window_size, int):
+            raise TypeError("search_window_size must be an integer")
+        if search_window_size <= 0:
+            raise ValueError("search_window_size must be positive")
+        self._search_window_size = search_window_size
+
+        # Invalidate the query string
+        self._built_query_string = None
+
+    def set_use_search_history(self, use_search_history: str):
+        """Set the USE_SEARCH_HISTORY parameter for the query.
+
+        Args:
+            use_search_history (str): For SVS-VAMANA indexes, controls whether to use the
+                search buffer or entire search history. Options are "OFF", "ON", or "AUTO".
+
+        Raises:
+            TypeError: If use_search_history is not a string
+            ValueError: If use_search_history is not one of "OFF", "ON", or "AUTO"
+        """
+        if not isinstance(use_search_history, str):
+            raise TypeError("use_search_history must be a string")
+        valid_options = ["OFF", "ON", "AUTO"]
+        if use_search_history not in valid_options:
+            raise ValueError(
+                f"use_search_history must be one of {', '.join(valid_options)}"
+            )
+        self._use_search_history = use_search_history
+
+        # Invalidate the query string
+        self._built_query_string = None
+
+    def set_search_buffer_capacity(self, search_buffer_capacity: int):
+        """Set the SEARCH_BUFFER_CAPACITY parameter for the query.
+
+        Args:
+            search_buffer_capacity (int): Tuning parameter for SVS-VAMANA indexes using
+                two-level compression. Determines the number of vector candidates to collect
+                in the first level of search before the re-ranking level.
+
+        Raises:
+            TypeError: If search_buffer_capacity is not an integer
+            ValueError: If search_buffer_capacity is not positive
+        """
+        if not isinstance(search_buffer_capacity, int):
+            raise TypeError("search_buffer_capacity must be an integer")
+        if search_buffer_capacity <= 0:
+            raise ValueError("search_buffer_capacity must be positive")
+        self._search_buffer_capacity = search_buffer_capacity
+
+        # Invalidate the query string
+        self._built_query_string = None
+
     @property
     def hybrid_policy(self) -> Optional[str]:
         """Return the hybrid policy for the query.
@@ -662,6 +813,42 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._ef_runtime
 
     @property
+    def epsilon(self) -> Optional[float]:
+        """Return the epsilon parameter for the query.
+
+        Returns:
+            Optional[float]: The epsilon value for the query.
+        """
+        return self._epsilon
+
+    @property
+    def search_window_size(self) -> Optional[int]:
+        """Return the SEARCH_WINDOW_SIZE parameter for the query.
+
+        Returns:
+            Optional[int]: The SEARCH_WINDOW_SIZE value for the query.
+        """
+        return self._search_window_size
+
+    @property
+    def use_search_history(self) -> Optional[str]:
+        """Return the USE_SEARCH_HISTORY parameter for the query.
+
+        Returns:
+            Optional[str]: The USE_SEARCH_HISTORY value for the query.
+        """
+        return self._use_search_history
+
+    @property
+    def search_buffer_capacity(self) -> Optional[int]:
+        """Return the SEARCH_BUFFER_CAPACITY parameter for the query.
+
+        Returns:
+            Optional[int]: The SEARCH_BUFFER_CAPACITY value for the query.
+        """
+        return self._search_buffer_capacity
+
+    @property
     def params(self) -> Dict[str, Any]:
         """Return the parameters for the query.
 
@@ -675,9 +862,25 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
         params: Dict[str, Any] = {self.VECTOR_PARAM: vector}
 
-        # Add EF_RUNTIME parameter if specified
+        # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
             params[self.EF_RUNTIME_PARAM] = self._ef_runtime
+
+        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
+        if self._epsilon is not None:
+            params[self.EPSILON_PARAM] = self._epsilon
+
+        # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
+        if self._search_window_size is not None:
+            params[self.SEARCH_WINDOW_SIZE_PARAM] = self._search_window_size
+
+        # Add USE_SEARCH_HISTORY parameter if specified (SVS-VAMANA)
+        if self._use_search_history is not None:
+            params[self.USE_SEARCH_HISTORY_PARAM] = self._use_search_history
+
+        # Add SEARCH_BUFFER_CAPACITY parameter if specified (SVS-VAMANA)
+        if self._search_buffer_capacity is not None:
+            params[self.SEARCH_BUFFER_CAPACITY_PARAM] = self._search_buffer_capacity
 
         return params
 
@@ -697,6 +900,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         dtype: str = "float32",
         distance_threshold: float = 0.2,
         epsilon: Optional[float] = None,
+        search_window_size: Optional[int] = None,
+        use_search_history: Optional[str] = None,
+        search_buffer_capacity: Optional[int] = None,
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
@@ -727,6 +933,18 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 This controls how extensive the search is beyond the specified radius.
                 Higher values increase recall at the expense of performance.
                 Defaults to None, which uses the index-defined epsilon (typically 0.01).
+            search_window_size (Optional[int]): The size of the search window for SVS-VAMANA range searches.
+                Increasing this value generally yields more accurate but slower search results.
+                Defaults to None, which uses the index-defined value (typically 10).
+            use_search_history (Optional[str]): For SVS-VAMANA indexes, controls whether to use the
+                search buffer or entire search history. Options are "OFF", "ON", or "AUTO".
+                "AUTO" is always evaluated internally as "ON". Using the entire history may yield
+                a slightly better graph at the cost of more search time.
+                Defaults to None, which uses the index-defined value (typically "AUTO").
+            search_buffer_capacity (Optional[int]): Tuning parameter for SVS-VAMANA indexes using
+                two-level compression (LVQ<X>x<Y> or LeanVec types). Determines the number of vector
+                candidates to collect in the first level of search before the re-ranking level.
+                Defaults to None, which uses the index-defined value (typically SEARCH_WINDOW_SIZE).
             num_results (int): The MAX number of results to return.
                 Defaults to 10.
             return_score (bool, optional): Whether to return the vector
@@ -772,6 +990,9 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._num_results = num_results
         self._distance_threshold: float = 0.2  # Initialize with default
         self._epsilon: Optional[float] = None
+        self._search_window_size: Optional[int] = None
+        self._use_search_history: Optional[str] = None
+        self._search_buffer_capacity: Optional[int] = None
         self._hybrid_policy: Optional[HybridPolicy] = None
         self._batch_size: Optional[int] = None
         self._normalize_vector_distance = normalize_vector_distance
@@ -782,6 +1003,15 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
         if epsilon is not None:
             self.set_epsilon(epsilon)
+
+        if search_window_size is not None:
+            self.set_search_window_size(search_window_size)
+
+        if use_search_history is not None:
+            self.set_use_search_history(use_search_history)
+
+        if search_buffer_capacity is not None:
+            self.set_search_buffer_capacity(search_buffer_capacity)
 
         if hybrid_policy is not None:
             self.set_hybrid_policy(hybrid_policy)
@@ -856,6 +1086,68 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         # Invalidate the query string
         self._built_query_string = None
 
+    def set_search_window_size(self, search_window_size: int):
+        """Set the SEARCH_WINDOW_SIZE parameter for the range query.
+
+        Args:
+            search_window_size (int): The size of the search window for SVS-VAMANA range searches.
+
+        Raises:
+            TypeError: If search_window_size is not an integer
+            ValueError: If search_window_size is not positive
+        """
+        if not isinstance(search_window_size, int):
+            raise TypeError("search_window_size must be an integer")
+        if search_window_size <= 0:
+            raise ValueError("search_window_size must be positive")
+        self._search_window_size = search_window_size
+
+        # Invalidate the query string
+        self._built_query_string = None
+
+    def set_use_search_history(self, use_search_history: str):
+        """Set the USE_SEARCH_HISTORY parameter for the range query.
+
+        Args:
+            use_search_history (str): Controls whether to use the search buffer or entire history.
+                Must be one of "OFF", "ON", or "AUTO".
+
+        Raises:
+            TypeError: If use_search_history is not a string
+            ValueError: If use_search_history is not one of the valid options
+        """
+        if not isinstance(use_search_history, str):
+            raise TypeError("use_search_history must be a string")
+        valid_options = ["OFF", "ON", "AUTO"]
+        if use_search_history not in valid_options:
+            raise ValueError(
+                f"use_search_history must be one of {', '.join(valid_options)}"
+            )
+        self._use_search_history = use_search_history
+
+        # Invalidate the query string
+        self._built_query_string = None
+
+    def set_search_buffer_capacity(self, search_buffer_capacity: int):
+        """Set the SEARCH_BUFFER_CAPACITY parameter for the range query.
+
+        Args:
+            search_buffer_capacity (int): Tuning parameter for SVS-VAMANA indexes using
+                two-level compression.
+
+        Raises:
+            TypeError: If search_buffer_capacity is not an integer
+            ValueError: If search_buffer_capacity is not positive
+        """
+        if not isinstance(search_buffer_capacity, int):
+            raise TypeError("search_buffer_capacity must be an integer")
+        if search_buffer_capacity <= 0:
+            raise ValueError("search_buffer_capacity must be positive")
+        self._search_buffer_capacity = search_buffer_capacity
+
+        # Invalidate the query string
+        self._built_query_string = None
+
     def set_hybrid_policy(self, hybrid_policy: str):
         """Set the hybrid policy for the query.
 
@@ -904,8 +1196,23 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         attr_parts = []
         attr_parts.append(f"$YIELD_DISTANCE_AS: {self.DISTANCE_ID}")
 
+        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
         if self._epsilon is not None:
             attr_parts.append(f"$EPSILON: {self._epsilon}")
+
+        # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
+        if self._search_window_size is not None:
+            attr_parts.append(f"$SEARCH_WINDOW_SIZE: {self._search_window_size}")
+
+        # Add USE_SEARCH_HISTORY parameter if specified (SVS-VAMANA)
+        if self._use_search_history is not None:
+            attr_parts.append(f"$USE_SEARCH_HISTORY: {self._use_search_history}")
+
+        # Add SEARCH_BUFFER_CAPACITY parameter if specified (SVS-VAMANA)
+        if self._search_buffer_capacity is not None:
+            attr_parts.append(
+                f"$SEARCH_BUFFER_CAPACITY: {self._search_buffer_capacity}"
+            )
 
         # Add query attributes section
         attr_section = f"=>{{{'; '.join(attr_parts)}}}"
@@ -936,6 +1243,33 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             Optional[float]: The epsilon for the query, or None if not set.
         """
         return self._epsilon
+
+    @property
+    def search_window_size(self) -> Optional[int]:
+        """Return the SEARCH_WINDOW_SIZE parameter for the query.
+
+        Returns:
+            Optional[int]: The SEARCH_WINDOW_SIZE value for the query.
+        """
+        return self._search_window_size
+
+    @property
+    def use_search_history(self) -> Optional[str]:
+        """Return the USE_SEARCH_HISTORY parameter for the query.
+
+        Returns:
+            Optional[str]: The USE_SEARCH_HISTORY value for the query.
+        """
+        return self._use_search_history
+
+    @property
+    def search_buffer_capacity(self) -> Optional[int]:
+        """Return the SEARCH_BUFFER_CAPACITY parameter for the query.
+
+        Returns:
+            Optional[int]: The SEARCH_BUFFER_CAPACITY value for the query.
+        """
+        return self._search_buffer_capacity
 
     @property
     def hybrid_policy(self) -> Optional[str]:

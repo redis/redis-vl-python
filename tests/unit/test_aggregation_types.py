@@ -245,6 +245,12 @@ def test_hybrid_query_text_weights():
             text_weights={"first": 0.2, "second": -0.1},
         )
 
+
+def test_aggregate_hybrid_query_text_weights_validation():
+    """Test that AggregateHybridQuery validates text_weights properly."""
+    vector = [0.1, 0.2, 0.3, 0.4]
+    vector_field = "embedding"
+
     with pytest.raises(ValueError):
         _ = AggregateHybridQuery(
             text="sample text query",

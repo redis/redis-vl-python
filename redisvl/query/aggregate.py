@@ -137,6 +137,11 @@ class AggregateHybridQuery(AggregationQuery):
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
 
+        Note:
+            AggregateHybridQuery uses FT.AGGREGATE commands which do NOT support runtime
+            parameters. For runtime parameter support (ef_runtime, search_window_size, etc.),
+            use VectorQuery or VectorRangeQuery which use FT.SEARCH commands.
+
         Raises:
             ValueError: If the text string is empty, or if the text string becomes empty after
                 stopwords are removed.
@@ -183,7 +188,7 @@ class AggregateHybridQuery(AggregationQuery):
         else:
             vector = self._vector
 
-        params = {self.VECTOR_PARAM: vector}
+        params: Dict[str, Any] = {self.VECTOR_PARAM: vector}
 
         return params
 
@@ -303,8 +308,13 @@ class AggregateHybridQuery(AggregationQuery):
         if isinstance(self._filter_expression, FilterExpression):
             filter_expression = str(self._filter_expression)
 
-        # base KNN query
-        knn_query = f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM} AS {self.DISTANCE_ID}"
+        # Build KNN query
+        knn_query = (
+            f"KNN {self._num_results} @{self._vector_field} ${self.VECTOR_PARAM}"
+        )
+
+        # Add distance field alias
+        knn_query += f" AS {self.DISTANCE_ID}"
 
         text = f"(~@{self._text_field}:({self._tokenize_and_escape_query(self._text)})"
 

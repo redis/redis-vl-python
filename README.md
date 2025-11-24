@@ -190,7 +190,9 @@ Define queries and perform advanced searches over your indices, including the co
     query = VectorQuery(
       vector=[0.16, -0.34, 0.98, 0.23],
       vector_field_name="embedding",
-      num_results=3
+      num_results=3,
+      # Optional: tune search performance with runtime parameters
+      ef_runtime=100  # HNSW: higher for better recall
     )
     # run the vector search query against the embedding field
     results = index.query(query)
