@@ -1,5 +1,6 @@
 """Unit tests for LangCacheSemanticCache."""
 
+import builtins
 import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -107,11 +108,13 @@ class TestLangCacheSemanticCache:
         )
 
         assert entry_id == "entry-123"
-        mock_client.set.assert_called_once_with(
-            prompt="What is Python?",
-            response="Python is a programming language.",
-            attributes={"topic": "programming"},
-        )
+        mock_client.set.assert_called_once()
+        call_kwargs = mock_client.set.call_args.kwargs
+        assert call_kwargs["prompt"] == "What is Python?"
+        assert call_kwargs["response"] == "Python is a programming language."
+        assert call_kwargs["attributes"] == {"topic": "programming"}
+        # No per-entry TTL was provided, so ttl_millis should be None or absent.
+        assert call_kwargs.get("ttl_millis") is None
 
     @pytest.mark.asyncio
     async def test_astore(self, mock_langcache_client):
@@ -137,6 +140,66 @@ class TestLangCacheSemanticCache:
 
         assert entry_id == "entry-456"
         mock_client.set_async.assert_called_once()
+        call_kwargs = mock_client.set_async.call_args.kwargs
+        assert call_kwargs["prompt"] == "What is Redis?"
+        assert call_kwargs["response"] == "Redis is an in-memory database."
+        assert call_kwargs.get("ttl_millis") is None
+
+    def test_store_with_per_entry_ttl(self, mock_langcache_client):
+        """store() should pass per-entry TTL as ttl_millis to LangCache client."""
+        _, mock_client = mock_langcache_client
+
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        entry_id = cache.store(
+            prompt="p",
+            response="r",
+            metadata=None,
+            ttl=5,
+        )
+        assert entry_id == mock_client.set.return_value.entry_id
+
+        mock_client.set.assert_called_once()
+        call_kwargs = mock_client.set.call_args.kwargs
+        assert call_kwargs["prompt"] == "p"
+        assert call_kwargs["response"] == "r"
+        assert call_kwargs["ttl_millis"] == 5000
+
+    @pytest.mark.asyncio
+    async def test_astore_with_per_entry_ttl(self, mock_langcache_client):
+        """astore() should pass per-entry TTL as ttl_millis to LangCache client."""
+        _, mock_client = mock_langcache_client
+
+        # Ensure set_async is an AsyncMock so it can be awaited.
+        mock_response = MagicMock()
+        mock_response.entry_id = "entry-999"
+        mock_client.set_async = AsyncMock(return_value=mock_response)
+
+        cache = LangCacheSemanticCache(
+            name="test",
+            server_url="https://api.example.com",
+            cache_id="test-cache",
+            api_key="test-key",
+        )
+
+        entry_id = await cache.astore(
+            prompt="p",
+            response="r",
+            metadata=None,
+            ttl=5,
+        )
+        assert entry_id == mock_response.entry_id
+
+        mock_client.set_async.assert_awaited_once()
+        call_kwargs = mock_client.set_async.call_args.kwargs
+        assert call_kwargs["prompt"] == "p"
+        assert call_kwargs["response"] == "r"
+        assert call_kwargs["ttl_millis"] == 5000
 
     def test_check(self, mock_langcache_client):
         """Test checking the cache."""
@@ -257,6 +320,8 @@ class TestLangCacheSemanticCache:
 
         # Mock search results
         mock_entry = MagicMock()
+        # Attributes are percent-encoded on the wire; we expect the client to
+        # decode them back to their original values.
         mock_entry.model_dump.return_value = {
             "id": "entry-123",
             "prompt": "What is Python?",
@@ -264,11 +329,10 @@ class TestLangCacheSemanticCache:
             "similarity": 0.95,
             "created_at": 1234567890.0,
             "updated_at": 1234567890.0,
-            # Attributes come back from LangCache already encoded; the client
-            # should decode them before exposing them to callers.
             "attributes": {
                 "language": "python",
-                "topic": "programming，with∕encoding＼and？",
+                # URL-encoded form of "programming,with/encoding\\and?"
+                "topic": "programming%2Cwith%2Fencoding%5Cand%3F",
             },
         }
 
@@ -296,14 +360,14 @@ class TestLangCacheSemanticCache:
         assert len(results) == 1
         assert results[0]["entry_id"] == "entry-123"
 
-        # Verify attributes were passed to search (encoded by the client)
+        # Verify attributes were passed to search (percent-encoded by the client)
         mock_client.search.assert_called_once()
         call_kwargs = mock_client.search.call_args.kwargs
         assert call_kwargs["attributes"] == {
             "language": "python",
-            # The comma, slash, backslash, and question mark should be encoded
-            # for LangCache.
-            "topic": "programming，with∕encoding＼and？",
+            # The comma, slash, backslash, and question mark should be
+            # percent-encoded for LangCache.
+            "topic": "programming%2Cwith%2Fencoding%5Cand%3F",
         }
 
         # And the decoded, original values should appear in metadata
@@ -562,15 +626,25 @@ class TestLangCacheSemanticCache:
 
 
 def test_import_error_when_langcache_not_installed():
-    """Test that ImportError is raised when langcache is not installed."""
-    # If langcache is installed in this environment, this test is not applicable
-    if importlib.util.find_spec("langcache") is not None:
-        pytest.skip("langcache package is installed")
+    """Test that ImportError is raised when langcache is not installed.
 
-    with pytest.raises(ImportError, match="langcache package is required"):
-        LangCacheSemanticCache(
-            name="test",
-            server_url="https://api.example.com",
-            cache_id="test-cache",
-            api_key="test-key",
-        )
+    This test simulates the langcache package being missing even if it is
+    installed in the environment by patching ``__import__`` to raise
+    ImportError specifically for ``"langcache"``.
+    """
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "langcache" or name.startswith("langcache."):
+            raise ImportError("No module named 'langcache'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=fake_import):
+        with pytest.raises(ImportError, match="langcache package is required"):
+            LangCacheSemanticCache(
+                name="test",
+                server_url="https://api.example.com",
+                cache_id="test-cache",
+                api_key="test-key",
+            )

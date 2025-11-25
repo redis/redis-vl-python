@@ -91,6 +91,33 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         assert hits[0]["response"] == response
         assert hits[0]["prompt"] == prompt
 
+    def test_store_with_per_entry_ttl_expires(
+        self, langcache_with_attrs: LangCacheSemanticCache
+    ) -> None:
+        """Per-entry TTL should cause individual entries to expire."""
+
+        prompt = "Per-entry TTL test"
+        response = "This entry should expire quickly."
+
+        entry_id = langcache_with_attrs.store(
+            prompt=prompt,
+            response=response,
+            ttl=2,
+        )
+        assert entry_id
+
+        # Immediately after storing, the entry should be retrievable.
+        hits = langcache_with_attrs.check(prompt=prompt, num_results=5)
+        assert any(hit["response"] == response for hit in hits)
+
+        # Wait for TTL to elapse and confirm the entry is no longer returned.
+        import time
+
+        time.sleep(3)
+
+        hits_after_ttl = langcache_with_attrs.check(prompt=prompt, num_results=5)
+        assert not any(hit["response"] == response for hit in hits_after_ttl)
+
     @pytest.mark.asyncio
     async def test_store_and_check_async(
         self, langcache_with_attrs: LangCacheSemanticCache
@@ -105,6 +132,35 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         assert hits
         assert hits[0]["response"] == response
         assert hits[0]["prompt"] == prompt
+
+    @pytest.mark.asyncio
+    async def test_astore_with_per_entry_ttl_expires(
+        self, langcache_with_attrs: LangCacheSemanticCache
+    ) -> None:
+        """Async per-entry TTL should cause individual entries to expire."""
+
+        prompt = "Async per-entry TTL test"
+        response = "This async entry should expire quickly."
+
+        entry_id = await langcache_with_attrs.astore(
+            prompt=prompt,
+            response=response,
+            ttl=2,
+        )
+        assert entry_id
+
+        hits = await langcache_with_attrs.acheck(prompt=prompt, num_results=5)
+        assert any(hit["response"] == response for hit in hits)
+
+        import asyncio
+
+        await asyncio.sleep(3)
+
+        hits_after_ttl = await langcache_with_attrs.acheck(
+            prompt=prompt,
+            num_results=5,
+        )
+        assert not any(hit["response"] == response for hit in hits_after_ttl)
 
     def test_store_with_metadata_and_check_with_attributes(
         self, langcache_with_attrs: LangCacheSemanticCache
@@ -321,7 +377,7 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         """Backslash and question-mark values should round-trip via filters.
 
         These values previously failed attribute filtering on this LangCache
-        instance; with client-side encoding/decoding they should now be
+        instance; with URL-style percent encoding they should now be
         filterable and round-trip correctly.
         """
 

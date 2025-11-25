@@ -5,6 +5,7 @@ managed service via the langcache Python SDK.
 """
 
 from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import quote, unquote
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
 from redisvl.extensions.cache.llm.schema import CacheHit
@@ -13,37 +14,6 @@ from redisvl.utils.log import get_logger
 from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 
 logger = get_logger(__name__)
-
-
-_LANGCACHE_ATTR_ENCODE_TRANS = str.maketrans(
-    {
-        ",": "，",  # U+FF0C FULLWIDTH COMMA
-        "/": "∕",  # U+2215 DIVISION SLASH
-        "\\": "＼",  # U+FF3C FULLWIDTH REVERSE SOLIDUS (backslash)
-        "?": "？",  # U+FF1F FULLWIDTH QUESTION MARK
-    }
-)
-
-
-_LANGCACHE_ATTR_DECODE_TRANS = str.maketrans(
-    {v: k for k, v in _LANGCACHE_ATTR_ENCODE_TRANS.items()}
-)
-
-
-def _encode_attribute_value_for_langcache(value: str) -> str:
-    """Encode a string attribute value for use with the LangCache service.
-
-    LangCache applies validation and matching rules to attribute values. In
-    particular, the managed service can reject values containing commas (",")
-    and may not reliably match filters on values containing slashes ("/").
-
-    To keep attribute values round-trippable *and* usable for attribute
-    filtering, we replace these characters with visually similar Unicode
-    variants that the service accepts. A precomputed ``str.translate`` table is
-    used so values are scanned only once.
-    """
-
-    return value.translate(_LANGCACHE_ATTR_ENCODE_TRANS)
 
 
 def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, Any]:
@@ -61,23 +31,15 @@ def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, An
     safe_attributes: Dict[str, Any] = dict(attributes)
     for key, value in attributes.items():
         if isinstance(value, str):
-            encoded = _encode_attribute_value_for_langcache(value)
+            # Percent-encode all characters (no ``safe`` set) so punctuation and
+            # other special characters cannot interfere with LangCache's
+            # underlying query/tokenization rules.
+            encoded = quote(value, safe="")
             if encoded != value:
                 safe_attributes[key] = encoded
                 changed = True
 
     return safe_attributes if changed else attributes
-
-
-def _decode_attribute_value_from_langcache(value: str) -> str:
-    """Decode a string attribute value returned from the LangCache service.
-
-    This reverses :func:`_encode_attribute_value_for_langcache`, translating the
-    fullwidth comma and division slash characters back to their ASCII
-    counterparts so callers see the original values they stored.
-    """
-
-    return value.translate(_LANGCACHE_ATTR_DECODE_TRANS)
 
 
 def _decode_attributes_from_langcache(attributes: Dict[str, Any]) -> Dict[str, Any]:
@@ -95,7 +57,7 @@ def _decode_attributes_from_langcache(attributes: Dict[str, Any]) -> Dict[str, A
     decoded_attributes: Dict[str, Any] = dict(attributes)
     for key, value in attributes.items():
         if isinstance(value, str):
-            decoded = _decode_attribute_value_from_langcache(value)
+            decoded = unquote(value)
             if decoded != value:
                 decoded_attributes[key] = decoded
                 changed = True
@@ -472,7 +434,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             vector (Optional[List[float]]): Not supported by LangCache API.
             metadata (Optional[Dict[str, Any]]): Optional metadata (stored as attributes).
             filters (Optional[Dict[str, Any]]): Not supported.
-            ttl (Optional[int]): Optional TTL override (not supported by LangCache).
+            ttl (Optional[int]): Optional TTL override in seconds.
 
         Returns:
             str: The entry ID for the cached entry.
@@ -491,18 +453,22 @@ class LangCacheSemanticCache(BaseLLMCache):
         if filters is not None:
             logger.warning("LangCache does not support filters")
 
-        if ttl is not None:
-            logger.warning("LangCache does not support per-entry TTL")
-
-        # Store using the LangCache client; only send attributes if provided (non-empty)
         try:
+            ttl_millis = int(ttl * 1000) if ttl is not None else None
             if metadata:
                 safe_metadata = _encode_attributes_for_langcache(metadata)
                 result = self._client.set(
-                    prompt=prompt, response=response, attributes=safe_metadata
+                    prompt=prompt,
+                    response=response,
+                    attributes=safe_metadata,
+                    ttl_millis=ttl_millis,
                 )
             else:
-                result = self._client.set(prompt=prompt, response=response)
+                result = self._client.set(
+                    prompt=prompt,
+                    response=response,
+                    ttl_millis=ttl_millis,
+                )
         except Exception as e:  # narrow for known SDK error when possible
             try:
                 from langcache.errors import BadRequestErrorResponseContent
@@ -541,7 +507,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             vector (Optional[List[float]]): Not supported by LangCache API.
             metadata (Optional[Dict[str, Any]]): Optional metadata (stored as attributes).
             filters (Optional[Dict[str, Any]]): Not supported.
-            ttl (Optional[int]): Optional TTL override (not supported by LangCache).
+            ttl (Optional[int]): Optional TTL override in seconds.
 
         Returns:
             str: The entry ID for the cached entry.
@@ -560,18 +526,22 @@ class LangCacheSemanticCache(BaseLLMCache):
         if filters is not None:
             logger.warning("LangCache does not support filters")
 
-        if ttl is not None:
-            logger.warning("LangCache does not support per-entry TTL")
-
-        # Store using the LangCache client (async); only send attributes if provided (non-empty)
         try:
+            ttl_millis = int(ttl * 1000) if ttl is not None else None
             if metadata:
                 safe_metadata = _encode_attributes_for_langcache(metadata)
                 result = await self._client.set_async(
-                    prompt=prompt, response=response, attributes=safe_metadata
+                    prompt=prompt,
+                    response=response,
+                    attributes=safe_metadata,
+                    ttl_millis=ttl_millis,
                 )
             else:
-                result = await self._client.set_async(prompt=prompt, response=response)
+                result = await self._client.set_async(
+                    prompt=prompt,
+                    response=response,
+                    ttl_millis=ttl_millis,
+                )
         except Exception as e:
             try:
                 from langcache.errors import BadRequestErrorResponseContent
