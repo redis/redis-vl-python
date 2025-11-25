@@ -454,7 +454,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             logger.warning("LangCache does not support filters")
 
         try:
-            ttl_millis = int(ttl * 1000) if ttl is not None else None
+            ttl_millis = round(ttl * 1000) if ttl is not None else None
             if metadata:
                 safe_metadata = _encode_attributes_for_langcache(metadata)
                 result = self._client.set(
