@@ -1,5 +1,4 @@
 import logging
-import sys
 
 
 def get_logger(name, log_level="info", fmt=None):
@@ -10,13 +9,9 @@ def get_logger(name, log_level="info", fmt=None):
 
     logger = logging.getLogger(name)
 
-    # Only configure this specific logger, not the root logger
-    # Check if the logger already has handlers to respect existing configuration
+    # Add a NullHandler to loggers to avoid "no handler found" warnings
     if not logger.handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s %(name)s %(levelname)s   %(message)s",
-            datefmt="%H:%M:%S",
-            stream=sys.stdout,
+        logger.addHandler(
+            logging.NullHandler()
         )
     return logger
