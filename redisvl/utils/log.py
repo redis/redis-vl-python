@@ -11,7 +11,5 @@ def get_logger(name, log_level="info", fmt=None):
 
     # Add a NullHandler to loggers to avoid "no handler found" warnings
     if not logger.handlers:
-        logger.addHandler(
-            logging.NullHandler()
-        )
+        logger.addHandler(logging.NullHandler())
     return logger
