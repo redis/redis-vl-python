@@ -508,7 +508,7 @@ class SemanticCache(BaseLLMCache):
             num_results=num_results,
             return_score=True,
             filter_expression=filter_expression,
-            normalize_vector_distance=True,
+            dtype=self._vectorizer.dtype,
         )
 
         # Search the cache!

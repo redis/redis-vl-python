@@ -187,6 +187,29 @@ async def test_async_store_and_check(cache, vectorizer):
     assert "metadata" not in check_result[0]
 
 
+@pytest.mark.asyncio
+async def test_check_acheck_consistency(cache, vectorizer):
+    """Test that acheck and check return the same results."""
+    cache.store(
+        prompt="Who is the CEO?",
+        response="John Smith",
+    )
+
+    prompt = "Who is CEO?"
+    sync_result = cache.check(prompt=prompt)
+    async_result = await cache.acheck(prompt=prompt)
+    print(sync_result, async_result, flush=True)
+    assert sync_result  # Both should return a result
+    assert sync_result == async_result
+
+    prompt = "Who is CFO?"
+    sync_result = cache.check(prompt=prompt)
+    async_result = await cache.acheck(prompt=prompt)
+    print(sync_result, async_result, flush=True)
+    assert not sync_result  # Both should return no result
+    assert sync_result == async_result
+
+
 def test_return_fields(cache, vectorizer):
     prompt = "This is a test prompt."
     response = "This is a test response."
