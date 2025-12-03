@@ -9,13 +9,10 @@ handler.setFormatter(
     )
 )
 
-# Configure root logger
-root_logger = logging.getLogger()
-root_logger.handlers = [handler]
-root_logger.setLevel(logging.INFO)
-
 # Log before import
 app_logger = logging.getLogger("app")
+app_logger.setLevel(logging.INFO)
+app_logger.addHandler(handler)
 app_logger.info("PRE_IMPORT_FORMAT")
 
 # Import RedisVL

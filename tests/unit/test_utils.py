@@ -489,18 +489,22 @@ class TestDeprecatedFunction:
 
         # Extract the log lines
         output_lines = result.stdout.strip().split("\n")
-        pre_import_line = ""
-        post_import_line = ""
+        pre_import_lines = []
+        post_import_lines = []
 
         for line in output_lines:
             if "PRE_IMPORT_FORMAT" in line:
-                pre_import_line = line
+                pre_import_lines.append(line)
             elif "POST_IMPORT_FORMAT" in line:
-                post_import_line = line
+                post_import_lines.append(line)
 
         # Check if we found both lines
-        assert pre_import_line, "No pre-import log message found"
-        assert post_import_line, "No post-import log message found"
+        assert pre_import_lines, "No pre-import log message(s) found"
+        assert post_import_lines, "No post-import log message(s) found"
+        assert len(pre_import_lines) == 1, "Multiple pre-import log messages found"
+        assert len(post_import_lines) == 1, "Multiple post-import log messages found"
+        pre_import_line = pre_import_lines[0]
+        post_import_line = post_import_lines[0]
 
         # Print for debugging
         print(f"Pre-import format: {pre_import_line}")
