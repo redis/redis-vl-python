@@ -3,10 +3,7 @@ from contextlib import contextmanager
 
 import pytest
 from redis.commands.search.aggregation import AggregateRequest
-from redis.commands.search.query import Query
-from redis.commands.search.result import Result
 
-from redisvl.index.index import process_results
 from redisvl.query.aggregate import (
     AggregateHybridQuery,
     HybridQuery,
