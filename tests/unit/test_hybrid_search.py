@@ -77,32 +77,27 @@ def test_hybrid_query_basic_initialization():
         "BM25STD",
         "VSIM",
         "embedding",
-        [0.1, 0.2, 0.3, 0.4],
+        "[0.1, 0.2, 0.3, 0.4]",
     ]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
 def test_hybrid_query_with_all_parameters():
     """Test HybridQuery initialization with all optional parameters."""
-    text_field_name = "description"
-    vector_field_name = "embedding"
-    text_scorer = "TFIDF"
     filter_expression = Tag("genre") == "comedy"
-    vector_search_method = "KNN"
-    vector_search_method_params = {"K": 10}
-    stopwords = None
     text_weights = {"toon": 2.0, "squad": 1.5}
 
     hybrid_query = HybridQuery(
         text=sample_text,
-        text_field_name=text_field_name,
+        text_field_name="description",
         vector=sample_vector,
-        vector_field_name=vector_field_name,
-        text_scorer=text_scorer,
-        filter_expression=filter_expression,
-        vector_search_method=vector_search_method,
-        vector_search_method_params=vector_search_method_params,
-        stopwords=stopwords,
+        vector_field_name="embedding",
+        text_scorer="TFIDF",
+        text_filter_expression=filter_expression,
+        vector_search_method="KNN",
+        knn_k=10,
+        knn_ef_runtime=100,
+        stopwords=None,
         text_weights=text_weights,
     )
 
@@ -120,11 +115,13 @@ def test_hybrid_query_with_all_parameters():
         "TFIDF",
         "VSIM",
         "embedding",
-        [0.1, 0.2, 0.3, 0.4],
+        "[0.1, 0.2, 0.3, 0.4]",
         "KNN",
-        2,
+        4,
         "K",
         10,
+        "EF_RUNTIME",
+        100,
     ]
     assert args == expected
 
@@ -339,7 +336,7 @@ def test_hybrid_query_with_string_filter():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression=string_filter,
+        text_filter_expression=string_filter,
     )
 
     assert hybrid_query.get_args() == [
@@ -350,7 +347,7 @@ def test_hybrid_query_with_string_filter():
         "BM25STD",
         "VSIM",
         "embedding",
-        [0.1, 0.2, 0.3, 0.4],
+        "[0.1, 0.2, 0.3, 0.4]",
     ]
 
 
@@ -364,7 +361,7 @@ def test_hybrid_query_with_tag_filter():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression=tag_filter,
+        text_filter_expression=tag_filter,
     )
 
     assert hybrid_query.get_args() == [
@@ -375,7 +372,7 @@ def test_hybrid_query_with_tag_filter():
         "BM25STD",
         "VSIM",
         "embedding",
-        [0.1, 0.2, 0.3, 0.4],
+        "[0.1, 0.2, 0.3, 0.4]",
     ]
 
 
@@ -389,7 +386,7 @@ def test_hybrid_query_with_numeric_filter():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression=numeric_filter,
+        text_filter_expression=numeric_filter,
     )
 
     # Verify filter is included in serialized query
@@ -408,7 +405,7 @@ def test_hybrid_query_with_text_filter():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression=text_filter,
+        text_filter_expression=text_filter,
     )
 
     # Verify filter is included in serialized query
@@ -427,14 +424,14 @@ def test_hybrid_query_with_combined_filters():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression=combined_filter,
+        text_filter_expression=combined_filter,
     )
 
     # Verify both filters are included in serialized query
     args = hybrid_query.get_args()
     assert args[0] == "SEARCH"
     assert "@genre:{comedy}" in args[1]
-    assert "@rating:[(7/- +inf]" in args[1]
+    assert "@rating:[(7.0 +inf]" in args[1]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
@@ -445,7 +442,7 @@ def test_hybrid_query_with_wildcard_filter():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression="*",
+        text_filter_expression="*",
     )
 
     # Verify query structure - wildcard may or may not be included depending on implementation
@@ -463,7 +460,7 @@ def test_hybrid_query_without_filter():
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
-        filter_expression=None,
+        text_filter_expression=None,
     )
 
     # Verify no filter in serialized query (only text query)
@@ -479,17 +476,15 @@ def test_hybrid_query_without_filter():
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
 def test_hybrid_query_vector_search_method_knn():
     """Test HybridQuery with KNN vector search method."""
-    hybrid_query = HybridQuery(
-        text=sample_text,
-        text_field_name="description",
-        vector=sample_vector,
-        vector_field_name="embedding",
-        vector_search_method="KNN",
-    )
-
-    # Without KNN params, it should not be in the args
-    args = hybrid_query.get_args()
-    assert "KNN" not in args
+    with pytest.raises(ValueError):
+        # KNN requires K
+        HybridQuery(
+            text=sample_text,
+            text_field_name="description",
+            vector=sample_vector,
+            vector_field_name="embedding",
+            vector_search_method="KNN",
+        )
 
     hybrid_query = HybridQuery(
         text=sample_text,
@@ -497,28 +492,41 @@ def test_hybrid_query_vector_search_method_knn():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        vector_search_method_params={"K": 5},
+        knn_k=10,
     )
 
     # KNN with params should be in args
     args = hybrid_query.get_args()
-    assert args[-4:] == ["KNN", 2, "K", 5]
+    assert args[-4:] == ["KNN", 2, "K", 10]
+
+    # With optional EF_RUNTIME param
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_search_method="KNN",
+        knn_k=10,
+        knn_ef_runtime=100
+    )
+
+    # KNN with params should be in args
+    args = hybrid_query.get_args()
+    assert args[-6:] == ["KNN", 4, "K", 10, "EF_RUNTIME", 100]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
 def test_hybrid_query_vector_search_method_range():
     """Test HybridQuery with RANGE vector search method."""
-    hybrid_query = HybridQuery(
-        text=sample_text,
-        text_field_name="description",
-        vector=sample_vector,
-        vector_field_name="embedding",
-        vector_search_method="RANGE",
-    )
-
-    # Without RANGE params, it should not be in the args
-    args = hybrid_query.get_args()
-    assert "RANGE" not in args
+    with pytest.raises(ValueError):
+        # RANGE requires RADIUS
+        HybridQuery(
+            text=sample_text,
+            text_field_name="description",
+            vector=sample_vector,
+            vector_field_name="embedding",
+            vector_search_method="RANGE",
+        )
 
     hybrid_query = HybridQuery(
         text=sample_text,
@@ -526,12 +534,27 @@ def test_hybrid_query_vector_search_method_range():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="RANGE",
-        vector_search_method_params={"RADIUS": 10},
+        range_radius=10,
     )
 
     # RANGE with params should be in args
     args = hybrid_query.get_args()
     assert args[-4:] == ["RANGE", 2, "RADIUS", 10]
+
+    # With optional EPSILON param
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_search_method="RANGE",
+        range_radius=10,
+        range_epsilon=0.1,
+    )
+
+    # RANGE with params should be in args
+    args = hybrid_query.get_args()
+    assert args[-6:] == ["RANGE", 4, "RADIUS", 10, "EPSILON", 0.1]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
@@ -590,7 +613,7 @@ def test_hybrid_query_special_characters_in_text():
         "BM25STD",
         "VSIM",
         "embedding",
-        [0.1, 0.2, 0.3, 0.4],
+        "[0.1, 0.2, 0.3, 0.4]",
     ]
 
 
@@ -614,5 +637,168 @@ def test_hybrid_query_unicode_text():
         "BM25STD",
         "VSIM",
         "embedding",
-        [0.1, 0.2, 0.3, 0.4],
+        "[0.1, 0.2, 0.3, 0.4]",
+    ]
+
+
+# Vector filter expression tests
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_tag():
+    """Test HybridQuery with Tag FilterExpression on vector search."""
+    tag_filter = Tag("genre") == "comedy"
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_filter_expression=tag_filter,
+    )
+
+    # Verify filter is included in serialized query
+    args = hybrid_query.get_args()
+    assert args[-2:] == ["FILTER", "@genre:{comedy}"]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_string():
+    """Test HybridQuery with string filter expression on vector search."""
+    string_filter = "@category:{tech|science|engineering}"
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_filter_expression=string_filter,
+    )
+
+    # Verify filter is included in serialized query
+    args = hybrid_query.get_args()
+    assert args[-2:] == ["FILTER", "@category:{tech|science|engineering}"]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_numeric():
+    """Test HybridQuery with Numeric FilterExpression on vector search."""
+    numeric_filter = Num("rating") > 7.0
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_filter_expression=numeric_filter,
+    )
+
+    # Verify filter is included in serialized query
+    args = hybrid_query.get_args()
+    assert args[-2:] == ["FILTER", "@rating:[(7.0 +inf]"]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_text():
+    """Test HybridQuery with Text FilterExpression on vector search."""
+    text_filter = Text("job") == "engineer"
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_filter_expression=text_filter,
+    )
+
+    # Verify filter is included in serialized query
+    args = hybrid_query.get_args()
+    assert args[-2:] == ["FILTER", '@job:("engineer")']
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_combined():
+    """Test HybridQuery with combined FilterExpressions on vector search."""
+    combined_filter = (Tag("genre") == "comedy") & (Num("rating") > 7.0)
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_filter_expression=combined_filter,
+    )
+
+    # Verify both filters are included in serialized query
+    args = hybrid_query.get_args()
+    assert args[0] == "SEARCH"
+    assert args[-2] == "FILTER"
+    assert "@genre:{comedy}" in args[-1]
+    assert "@rating:[(7.0 +inf]" in args[-1]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_none():
+    """Test HybridQuery without vector filter expression."""
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_filter_expression=None,
+    )
+
+    # Verify no FILTER in serialized query
+    args = hybrid_query.get_args()
+    assert "FILTER" not in args
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_vector_filter_and_method():
+    """Test HybridQuery with vector filter and a search method."""
+    tag_filter = Tag("genre") == "comedy"
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        vector_search_method="KNN",
+        knn_k=10,
+        vector_filter_expression=tag_filter,
+    )
+
+    # Verify KNN params and filter are both in args
+    args = hybrid_query.get_args()
+    assert args[-6:] == ["KNN", 2, "K", 10, "FILTER", "@genre:{comedy}"]
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+def test_hybrid_query_with_both_text_and_vector_filters():
+    """Test HybridQuery with both text_filter_expression and vector_filter_expression."""
+    text_filter = Tag("category") == "movies"
+    vector_filter = Tag("genre") == "comedy"
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        text_filter_expression=text_filter,
+        vector_filter_expression=vector_filter,
+    )
+
+    # Verify both filters are in the query
+    args = hybrid_query.get_args()
+    assert args == [
+        "SEARCH",
+        "(~@description:(toon | squad | play | basketball | gang | aliens) AND "
+        "@category:{movies}",
+        "SCORER",
+        "BM25STD",
+        "VSIM",
+        "embedding",
+        "[0.1, 0.2, 0.3, 0.4]",
+        "FILTER",
+        "@genre:{comedy}",
     ]

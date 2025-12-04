@@ -124,7 +124,7 @@ class AggregateHybridQuery(AggregationQuery):
             num_results (int, optional): The number of results to return. Defaults to 10.
             return_fields (Optional[List[str]], optional): The fields to return. Defaults to None.
             stopwords (Optional[Union[str, Set[str]]], optional): The stopwords to remove from the
-                provided text prior to searchuse. If a string such as "english" "german" is
+                provided text prior to search-use. If a string such as "english" "german" is
                 provided then a default set of stopwords for that language will be used. if a list,
                 set, or tuple of strings is provided then those will be used as stopwords.
                 Defaults to "english". if set to "None" then no stopwords will be removed.
