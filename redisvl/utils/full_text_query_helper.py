@@ -1,4 +1,4 @@
-from typing import Optional, Union, Set, Dict, List, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from redisvl.query.filter import FilterExpression
 from redisvl.utils.token_escaper import TokenEscaper
@@ -8,9 +8,7 @@ nltk = lazy_import("nltk")
 nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 
-def _parse_text_weights(
-        weights: Optional[Dict[str, float]]
-) -> Dict[str, float]:
+def _parse_text_weights(weights: Optional[Dict[str, float]]) -> Dict[str, float]:
     parsed_weights: Dict[str, float] = {}
     if not weights:
         return parsed_weights
@@ -20,10 +18,7 @@ def _parse_text_weights(
             raise ValueError(
                 f"Only individual words may be weighted. Got {{ {word}:{weight} }}"
             )
-        if (
-                not (isinstance(weight, float) or isinstance(weight, int))
-                or weight < 0.0
-        ):
+        if not (isinstance(weight, float) or isinstance(weight, int)) or weight < 0.0:
             raise ValueError(
                 f"Weights must be positive number. Got {{ {word}:{weight} }}"
             )
@@ -32,8 +27,7 @@ def _parse_text_weights(
 
 
 class FullTextQueryHelper:
-    """Convert raw user queries into Redis full-text queries - tokenizes, escapes, and filters stopwords from the query.
-    """
+    """Convert raw user queries into Redis full-text queries - tokenizes, escapes, and filters stopwords from the query."""
 
     def __init__(
         self,
@@ -77,7 +71,9 @@ class FullTextQueryHelper:
 
         return query
 
-    def _get_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english") -> Set[str]:
+    def _get_stopwords(
+        self, stopwords: Optional[Union[str, Set[str]]] = "english"
+    ) -> Set[str]:
         """Get the stopwords to use in the query.
 
         Args:
@@ -106,7 +102,7 @@ class FullTextQueryHelper:
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
         elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
-                isinstance(word, str) for word in stopwords
+            isinstance(word, str) for word in stopwords
         ):
             return set(stopwords)
         else:
@@ -151,4 +147,3 @@ class FullTextQueryHelper:
         if not token_list:
             raise ValueError("text string cannot be empty after removing stopwords")
         return " | ".join(token_list)
-

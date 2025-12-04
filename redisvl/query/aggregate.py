@@ -223,7 +223,9 @@ class AggregateHybridQuery(AggregationQuery):
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
-        text = self._ft_helper.build_query_string(self._text, self._text_field, self._filter_expression)
+        text = self._ft_helper.build_query_string(
+            self._text, self._text_field, self._filter_expression
+        )
 
         # Build KNN query
         knn_query = (
