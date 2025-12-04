@@ -246,16 +246,16 @@ class HybridQuery(AggregateHybridQuery):
     """Backward compatibility wrapper for AggregateHybridQuery.
 
     .. deprecated::
-        HybridQuery is a backward compatibility wrapper around AggregateHybridQuery
-        and will eventually be replaced with a new hybrid query implementation.
-        To maintain current functionality please use AggregateHybridQuery directly.",
+        This class is deprecated and will be removed in a future version.
+        Please use the new HybridQuery from redisvl.query.hybrid instead.
+        For maintaining current AggregateHybridQuery functionality, use AggregateHybridQuery directly.
     """
 
     def __init__(self, *args, **kwargs):
         warnings.warn(
-            "HybridQuery is a backward compatibility wrapper around AggregateHybridQuery "
-            "and will eventually be replaced with a new hybrid query implementation. "
-            "To maintain current functionality please use AggregateHybridQuery directly.",
+            "This HybridQuery class is deprecated and will be removed in a future version. "
+            "Please use the new HybridQuery from redisvl.query.hybrid instead. "
+            "For maintaining current AggregateHybridQuery functionality, use AggregateHybridQuery directly.",
             DeprecationWarning,
             stacklevel=2,
         )
