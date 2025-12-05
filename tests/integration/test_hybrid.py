@@ -1,17 +1,20 @@
 import pytest
-from redis.commands.search.hybrid_result import HybridResult
 
-from redisvl.index import SearchIndex
-from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
+from redisvl.index import AsyncSearchIndex, SearchIndex
+from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 from redisvl.query.hybrid import HybridQuery
 from redisvl.redis.utils import array_to_buffer
-from tests.conftest import skip_if_redis_version_below
+from redisvl.schema import IndexSchema
+from tests.conftest import (
+    get_redis_version_async,
+    skip_if_redis_version_below,
+    skip_if_redis_version_below_async,
+)
 
 
 @pytest.fixture
-def index(multi_vector_data, redis_url, worker_id):
-
-    index = SearchIndex.from_dict(
+def index_schema(worker_id):
+    return IndexSchema.from_dict(
         {
             "index": {
                 "name": f"user_index_{worker_id}",
@@ -56,9 +59,13 @@ def index(multi_vector_data, redis_url, worker_id):
                     },
                 },
             ],
-        },
-        redis_url=redis_url,
+        }
     )
+
+
+@pytest.fixture
+def index(index_schema, multi_vector_data, redis_url):
+    index = SearchIndex(schema=index_schema, redis_url=redis_url)
 
     # create the index (no data yet)
     index.create(overwrite=True)
@@ -79,6 +86,24 @@ def index(multi_vector_data, redis_url, worker_id):
 
     # clean up
     index.delete(drop=True)
+
+
+@pytest.fixture
+async def async_index(index_schema, multi_vector_data, async_client):
+    index = AsyncSearchIndex(schema=index_schema, redis_client=async_client)
+    await index.create(overwrite=True)
+
+    def hash_preprocess(item: dict) -> dict:
+        return {
+            **item,
+            "user_embedding": array_to_buffer(item["user_embedding"], "float32"),
+            "image_embedding": array_to_buffer(item["image_embedding"], "float32"),
+            "audio_embedding": array_to_buffer(item["audio_embedding"], "float64"),
+        }
+
+    await index.load(multi_vector_data, preprocess=hash_preprocess)
+    yield index
+    await index.delete(drop=True)
 
 
 def test_hybrid_query(index):
@@ -371,3 +396,62 @@ def test_hybrid_query_word_weights(index, scorer):
 
     weighted_results = index.hybrid_search(weighted_query)
     assert weighted_results != unweighted_results
+
+
+@pytest.mark.asyncio
+async def test_hybrid_query_async(async_index):
+    await skip_if_redis_version_below_async(async_index.client, "8.4.0")
+
+    text = "a medical professional with expertise in lung cancer"
+    text_field = "description"
+    vector = [0.1, 0.1, 0.5]
+    vector_field = "user_embedding"
+    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
+
+    hybrid_query = HybridQuery(
+        text=text,
+        text_field_name=text_field,
+        yield_text_score_as="text_score",
+        vector=vector,
+        vector_field_name=vector_field,
+        yield_vsim_score_as="vsim_score",
+        combination_method="RRF",
+        yield_combined_score_as="hybrid_score",
+        return_fields=return_fields,
+    )
+
+    results = await async_index.hybrid_search(hybrid_query)
+    assert isinstance(results, list)
+    assert len(results) == 7
+    for doc in results:
+        assert doc["user"] in [
+            "john",
+            "derrick",
+            "nancy",
+            "tyler",
+            "tim",
+            "taimur",
+            "joe",
+            "mary",
+        ]
+        assert int(doc["age"]) in [18, 14, 94, 100, 12, 15, 35]
+        assert doc["job"] in ["engineer", "doctor", "dermatologist", "CEO", "dentist"]
+        assert doc["credit_score"] in ["high", "low", "medium"]
+
+    hybrid_query = HybridQuery(
+        text=text,
+        text_field_name=text_field,
+        vector=vector,
+        vector_field_name=vector_field,
+        num_results=3,
+        combination_method="RRF",
+        yield_combined_score_as="hybrid_score",
+    )
+
+    results = await async_index.hybrid_search(hybrid_query)
+    assert len(results) == 3
+    assert (
+        results[0]["hybrid_score"]
+        >= results[1]["hybrid_score"]
+        >= results[2]["hybrid_score"]
+    )

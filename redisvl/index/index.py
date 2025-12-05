@@ -56,8 +56,6 @@ try:
     REDIS_HYBRID_AVAILABLE = True
 except ImportError:
     REDIS_HYBRID_AVAILABLE = False
-    HybridResult = None  # type: ignore
-    HybridQuery = None  # type: ignore
 
 from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
@@ -1859,6 +1857,26 @@ class AsyncSearchIndex(BaseSearchIndex):
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
+
+    if REDIS_HYBRID_AVAILABLE:
+
+        async def hybrid_search(
+            self, query: HybridQuery, **kwargs
+        ) -> List[Dict[str, Any]]:
+            client = await self._get_client()
+            results: HybridResult = await client.ft(
+                self.schema.index.name
+            ).hybrid_search(
+                query=query.query,
+                combine_method=query.combination_method,
+                post_processing=(
+                    query.postprocessing_config
+                    if query.postprocessing_config.build_args()
+                    else None
+                ),
+                **kwargs,
+            )  # type: ignore
+            return process_hybrid_results(results)
 
     async def batch_query(
         self, queries: List[BaseQuery], batch_size: int = 10
