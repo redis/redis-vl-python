@@ -96,8 +96,8 @@ jobs:
       matrix:
         # 3.11 tests are run in the service-tests job
         python-version: ["3.9", "3.10", "3.12", "3.13"] 
-        redis-py-version: ["5.x", "6.x"]
-        redis-version: ["6.2.6-v9", "latest", "8.0.2"]
+        redis-py-version: ["5.x", "6.x", "7.x"]
+        redis-version: ["6.2.6-v9", "latest", "8.0.2", "8.4.0"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -130,13 +130,15 @@ jobs:
           # Install right redis version based on redis py
           if [[ "${{ matrix.redis-py-version }}" == "5.x" ]]; then
             uv pip install "redis>=5,<6"
-          else
+          elif [[ "${{ matrix.redis-py-version }}" == "6.x" ]]; then
             uv pip install "redis>=6,<7"
+          else
+            uv pip install "redis>=7,<8"
           fi
 
       - name: Set Redis image name
         run: |
-          if [[ "${{ matrix.redis-version }}" == "8.0.2" ]]; then
+          if [[ "${{ matrix.redis-version }}" == "8.0.2" || "${{ matrix.redis-version }}" == "8.4.0" ]]; then
             echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
           else
             echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
