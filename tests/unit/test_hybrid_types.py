@@ -19,7 +19,7 @@ try:
         VectorSearchMethods,
     )
 
-    from redisvl.query.hybrid import HybridQuery
+    from redisvl.query.hybrid import HybridQuery, build_combination_method
 
     REDIS_HYBRID_AVAILABLE = True
 except ImportError:
@@ -1024,7 +1024,7 @@ def test_hybrid_query_combination_method_none():
 def test_build_combination_method_invalid_method():
     """Test build_combination_method static method with invalid combination method."""
     with pytest.raises(ValueError, match="Unknown combination method"):
-        HybridQuery.build_combination_method(
+        build_combination_method(
             combination_method="INVALID",  # type: ignore
         )
 
@@ -1037,6 +1037,6 @@ def test_build_combination_method_no_parameters(method: Literal["RRF", "LINEAR"]
         ValueError,
         match="No parameters provided for combination method - must provide at least one parameter",
     ):
-        HybridQuery.build_combination_method(
+        build_combination_method(
             combination_method=method,
         )
