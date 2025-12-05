@@ -1023,6 +1023,33 @@ class SearchIndex(BaseSearchIndex):
     if REDIS_HYBRID_AVAILABLE:
 
         def hybrid_search(self, query: HybridQuery, **kwargs) -> List[Dict[str, Any]]:
+            """Perform a hybrid search against the index, combining text and vector search.
+
+            Args:
+                query: The text+vector search query to be performed, with configurable fusion methods and
+                    post-processing.
+                kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
+
+            Returns:
+                List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
+
+            Notes:
+                Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
+
+            .. code-block:: python
+
+                from redisvl.query.hybrid import HybridQuery
+
+                hybrid_query = HybridQuery(
+                    text="lorem ipsum dolor sit amet",
+                    text_field_name="description",
+                    vector=[0.1, 0.2, 0.3],
+                    vector_field_name="embedding"
+                )
+
+                results = index.hybrid_search(hybrid_query)
+
+            """
             results: HybridResult = self._redis_client.ft(
                 self.schema.index.name
             ).hybrid_search(
@@ -1863,6 +1890,33 @@ class AsyncSearchIndex(BaseSearchIndex):
         async def hybrid_search(
             self, query: HybridQuery, **kwargs
         ) -> List[Dict[str, Any]]:
+            """Perform a hybrid search against the index, combining text and vector search.
+
+            Args:
+                query: The text+vector search query to be performed, with configurable fusion methods and
+                    post-processing.
+                kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
+
+            Returns:
+                List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
+
+            Notes:
+                Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
+
+            .. code-block:: python
+
+                from redisvl.query.hybrid import HybridQuery
+
+                hybrid_query = HybridQuery(
+                    text="lorem ipsum dolor sit amet",
+                    text_field_name="description",
+                    vector=[0.1, 0.2, 0.3],
+                    vector_field_name="embedding"
+                )
+
+                results = index.hybrid_search(hybrid_query)
+
+            """
             client = await self._get_client()
             results: HybridResult = await client.ft(
                 self.schema.index.name
