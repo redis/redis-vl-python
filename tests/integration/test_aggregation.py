@@ -259,7 +259,7 @@ def test_hybrid_query_stopwords(index):
     query_string = hybrid_query._build_query_string()
 
     assert "medical" not in query_string
-    assert "expertize" not in query_string
+    assert "expertise" not in query_string
 
     results = index.query(hybrid_query)
     assert len(results) == 7

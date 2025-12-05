@@ -1,4 +1,5 @@
 import pytest
+from redis import __version__ as redis_version
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
@@ -6,6 +7,7 @@ from redisvl.index.index import process_results
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, TextQuery, VectorQuery
 from redisvl.query.filter import Tag
 from redisvl.query.query import VectorRangeQuery
+from redisvl.redis.connection import is_version_gte
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
@@ -402,6 +404,11 @@ def test_text_query_word_weights():
     ],
 )
 def test_query_modifiers(query):
+    if is_version_gte(redis_version, "7.0.0"):  # Format changed in Redis 7.0+
+        expected_fields = ["test"]
+    else:
+        expected_fields = ("test",)
+
     query.paging(3, 5)
     assert query._offset == 3
     assert query._num == 5
@@ -437,7 +444,7 @@ def test_query_modifiers(query):
     assert query._with_scores
 
     query.limit_fields("test")
-    assert query._fields == ("test",)
+    assert query._fields == expected_fields
 
     f = Tag("test") == "foo"
     query.set_filter(f)
@@ -456,7 +463,7 @@ def test_query_modifiers(query):
     assert query._no_content
     assert query._no_stopwords
     assert query._with_scores
-    assert query._fields == ("test",)
+    assert query._fields == expected_fields
 
 
 @pytest.mark.parametrize(
