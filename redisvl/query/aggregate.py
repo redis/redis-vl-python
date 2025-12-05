@@ -235,7 +235,7 @@ class AggregateHybridQuery(AggregationQuery):
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
 
-        return f"{text})=>[{knn_query}]"
+        return f"{text}=>[{knn_query}]"
 
     def __str__(self) -> str:
         """Return the string representation of the query."""

@@ -45,7 +45,19 @@ if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
     from redis.commands.search.document import Document
     from redis.commands.search.result import Result
+
     from redisvl.query.query import BaseQuery
+
+try:
+    from redis.commands.search.hybrid_result import HybridResult
+
+    from redisvl.query.hybrid import HybridQuery
+
+    REDIS_HYBRID_AVAILABLE = True
+except ImportError:
+    REDIS_HYBRID_AVAILABLE = False
+    HybridResult = None  # type: ignore
+    HybridQuery = None  # type: ignore
 
 from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
@@ -213,6 +225,13 @@ def process_aggregate_results(
         return result
 
     return [_process(r) for r in results.rows]
+
+
+if REDIS_HYBRID_AVAILABLE:
+
+    def process_hybrid_results(results: HybridResult) -> List[Dict[str, Any]]:
+        """Convert a hybrid result object into a list of document dictionaries."""
+        return [convert_bytes(r) for r in results.results]
 
 
 class BaseSearchIndex:
@@ -1002,6 +1021,23 @@ class SearchIndex(BaseSearchIndex):
             raise RedisSearchError(f"Error while searching: {str(e)}") from e
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
+
+    if REDIS_HYBRID_AVAILABLE:
+
+        def hybrid_search(self, query: HybridQuery, **kwargs) -> List[Dict[str, Any]]:
+            results: HybridResult = self._redis_client.ft(
+                self.schema.index.name
+            ).hybrid_search(
+                query=query.query,
+                combine_method=query.combination_method,
+                post_processing=(
+                    query.postprocessing_config
+                    if query.postprocessing_config.build_args()
+                    else None
+                ),
+                **kwargs,
+            )  # type: ignore
+            return process_hybrid_results(results)
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10

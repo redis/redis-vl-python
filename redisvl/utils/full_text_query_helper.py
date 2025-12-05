@@ -69,7 +69,7 @@ class FullTextQueryHelper:
         if filter_expression and filter_expression != "*":
             query += f" AND {filter_expression}"
 
-        return query
+        return query + ")"
 
     def _get_stopwords(
         self, stopwords: Optional[Union[str, Set[str]]] = "english"

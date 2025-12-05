@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 from redis.commands.search.query import Filter
 
+from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 
 try:
@@ -9,7 +10,9 @@ try:
         CombinationMethods,
         CombineResultsMethod,
         HybridPostProcessingConfig,
-        HybridQuery as RedisHybridQuery,
+    )
+    from redis.commands.search.hybrid_query import HybridQuery as RedisHybridQuery
+    from redis.commands.search.hybrid_query import (
         HybridSearchQuery,
         HybridVsimQuery,
         VectorSearchMethods,
@@ -41,14 +44,17 @@ class HybridQuery:
         range_epsilon: Optional[float] = None,
         yield_vsim_score_as: Optional[str] = None,
         vector_filter_expression: Optional[Union[str, FilterExpression]] = None,
-        stopwords: Optional[Union[str, Set[str]]] = "english",
-        text_weights: Optional[Dict[str, float]] = None,
         combination_method: Optional[Literal["RRF", "LINEAR"]] = None,
         rrf_window: Optional[int] = None,
         rrf_constant: Optional[float] = None,
         linear_alpha: Optional[float] = None,
         linear_beta: Optional[float] = None,
         yield_combined_score_as: Optional[str] = None,
+        dtype: str = "float32",
+        num_results: Optional[int] = None,
+        return_fields: Optional[List[str]] = None,
+        stopwords: Optional[Union[str, Set[str]]] = "english",
+        text_weights: Optional[Dict[str, float]] = None,
     ):
         """
         Instantiates a HybridQuery object.
@@ -56,7 +62,8 @@ class HybridQuery:
         Args:
             text: The text to search for.
             text_field_name: The text field name to search in.
-            vector: The vector to perform vector similarity search.
+            vector: The vector to perform vector similarity search, converted to bytes (e.g.
+                using `redisvl.redis.utils.array_to_buffer`).
             vector_field_name: The vector field name to search in.
             text_scorer: The text scorer to use. Options are {TFIDF, TFIDF.DOCNORM,
                 BM25STD, BM25STD.NORM, BM25STD.TANH, DISMAX, DOCSCORE, HAMMING}. Defaults to "BM25STD". For more
@@ -72,6 +79,17 @@ class HybridQuery:
                 accuracy of the search.
             yield_vsim_score_as: The name of the field to yield the vector similarity score as.
             vector_filter_expression: The filter expression to use for the vector similarity search. Defaults to None.
+            combination_method: The combination method to use. Options are {RRF, LINEAR}. Defaults to None.
+            rrf_window: The window size to use for the reciprocal rank fusion (RRF) combination method. Limits
+                fusion scope.
+            rrf_constant: The constant to use for the reciprocal rank fusion (RRF) combination method. Controls decay
+                of rank influence.
+            linear_alpha: The weight of the first query for the linear combination method (LINEAR).
+            linear_beta: The weight of the second query for the linear combination method (LINEAR).
+            yield_combined_score_as: The name of the field to yield the combined score as.
+            dtype: The data type of the vector. Defaults to "float32".
+            num_results: The number of results to return. If not specified, the server default will be used (10).
+            return_fields: The fields to return. Defaults to None.
             stopwords (Optional[Union[str, Set[str]]], optional): The stopwords to remove from the
                 provided text prior to search-use. If a string such as "english" "german" is
                 provided then a default set of stopwords for that language will be used. if a list,
@@ -84,14 +102,6 @@ class HybridQuery:
             text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
-            combination_method: The combination method to use. Options are {RRF, LINEAR}. Defaults to None.
-            rrf_window: The window size to use for the reciprocal rank fusion (RRF) combination method. Limits
-                fusion scope.
-            rrf_constant: The constant to use for the reciprocal rank fusion (RRF) combination method. Controls decay
-                of rank influence.
-            linear_alpha: The weight of the first query for the linear combination method (LINEAR).
-            linear_beta: The weight of the second query for the linear combination method (LINEAR).
-            yield_combined_score_as: The name of the field to yield the combined score as.
 
         Notes:
             If RRF combination method is used, then at least one of `rrf_window` or `rrf_constant` must be provided.
@@ -101,11 +111,16 @@ class HybridQuery:
             TypeError: If the stopwords are not a set, list, or tuple of strings.
             ValueError: If the text string is empty, or if the text string becomes empty after
                 stopwords are removed.
-            ValueError: If `vector_search_method` is not one of {KNN, RANGE} (or None).
+            ValueError: If `vector_search_method` is defined and isn't one of {KNN, RANGE}.
             ValueError: If `vector_search_method` is "KNN" and `knn_k` is not provided.
             ValueError: If `vector_search_method` is "RANGE" and `range_radius` is not provided.
         """
         self.postprocessing_config = HybridPostProcessingConfig()
+        if num_results:
+            self.postprocessing_config.limit(offset=0, num=num_results)
+        if return_fields:
+            self.postprocessing_config.load(*(f"@{f}" for f in return_fields))
+
         self._ft_helper = FullTextQueryHelper(
             stopwords=stopwords,
             text_weights=text_weights,
@@ -128,6 +143,7 @@ class HybridQuery:
             range_epsilon=range_epsilon,
             yield_vsim_score_as=yield_vsim_score_as,
             vector_filter_expression=vector_filter_expression,
+            dtype=dtype,
         )
 
         if combination_method:
@@ -147,7 +163,7 @@ class HybridQuery:
     @staticmethod
     def build_query(
         text_query: str,
-        vector: Union[bytes, List[float]],
+        vector: bytes | List[float],
         vector_field_name: str,
         text_scorer: str = "BM25STD",
         yield_text_score_as: Optional[str] = None,
@@ -158,6 +174,7 @@ class HybridQuery:
         range_epsilon: Optional[float] = None,
         yield_vsim_score_as: Optional[str] = None,
         vector_filter_expression: Optional[Union[str, FilterExpression]] = None,
+        dtype: str = "float32",
     ) -> RedisHybridQuery:
         """Build a Redis HybridQuery for the hybrid search."""
 
@@ -168,11 +185,10 @@ class HybridQuery:
             yield_score_as=yield_text_score_as,
         )
 
-        # If the vector isn't already bytes, it needs to be represented as a string
-        if not isinstance(vector, bytes):
-            vector_data: Union[str, bytes] = str(vector)
-        else:
+        if isinstance(vector, bytes):
             vector_data = vector
+        else:
+            vector_data = array_to_buffer(vector, dtype)
 
         # Serialize vector similarity search method and params, if specified
         vsim_search_method: Optional[VectorSearchMethods] = None
@@ -205,7 +221,7 @@ class HybridQuery:
 
         # Serialize the vector similarity query
         vsim_query = HybridVsimQuery(
-            vector_field_name=vector_field_name,
+            vector_field_name="@" + vector_field_name,
             vector_data=vector_data,
             vsim_search_method=vsim_search_method,
             vsim_search_method_params=vsim_search_method_params,
@@ -240,14 +256,26 @@ class HybridQuery:
             method = CombinationMethods.LINEAR
             if linear_alpha:
                 method_params["ALPHA"] = linear_alpha
+                if not linear_beta:
+                    method_params["BETA"] = 1 - linear_alpha
+
             if linear_beta:
+                if not linear_alpha:  # Defined first to preserve consistent ordering
+                    method_params["ALPHA"] = 1 - linear_beta
                 method_params["BETA"] = linear_beta
+
+            # TODO: Warn if alpha + beta != 1
 
         else:
             raise ValueError(f"Unknown combination method: {combination_method}")
 
         if yield_score_as:
             method_params["YIELD_SCORE_AS"] = yield_score_as
+
+        if not method_params:
+            raise ValueError(
+                "No parameters provided for combination method - must provide at least one parameter."
+            )
 
         return CombineResultsMethod(
             method=method,

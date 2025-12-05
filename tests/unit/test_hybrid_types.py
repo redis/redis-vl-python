@@ -5,9 +5,11 @@ combines full-text search with vector similarity search using Redis's hybrid
 query capabilities (requires redis>=7.1.0).
 """
 
-from typing import List
+from typing import List, Literal
 
 import pytest
+
+from redisvl.redis.utils import array_to_buffer
 
 try:
     from redis.commands.search.hybrid_query import HybridQuery as RedisHybridQuery
@@ -33,6 +35,7 @@ from redisvl.query.filter import Num, Tag, Text
 
 # Test data
 sample_vector = [0.1, 0.2, 0.3, 0.4]
+bytes_vector = array_to_buffer(sample_vector, "float32")
 sample_text = "the toon squad play basketball against a gang of aliens"
 
 
@@ -66,12 +69,12 @@ def test_hybrid_query_basic_initialization():
     # Verify get_args() returns empty list (HybridQuery uses params, not args)
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(toon | squad | play | basketball | gang | aliens)",
+        "(~@description:(toon | squad | play | basketball | gang | aliens))",
         "SCORER",
         "BM25STD",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
     ]
 
     # Verify that no combination method is set
@@ -111,14 +114,14 @@ def test_hybrid_query_with_all_parameters():
     # Verify that the expected query pieces have been defined
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(the | toon=>{$weight:2.0} | squad=>{$weight:1.5} | play | basketball | against | a | gang | of | aliens) AND @genre:{comedy}",
+        "(~@description:(the | toon=>{$weight:2.0} | squad=>{$weight:1.5} | play | basketball | against | a | gang | of | aliens) AND @genre:{comedy})",
         "SCORER",
         "TFIDF",
         "YIELD_SCORE_AS",
         "text_score",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
         "KNN",
         4,
         "K",
@@ -358,13 +361,12 @@ def test_hybrid_query_with_string_filter():
 
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(toon | squad | play | basketball | gang | aliens) AND "
-        "@category:{tech|science|engineering}",
+        "(~@description:(toon | squad | play | basketball | gang | aliens) AND @category:{tech|science|engineering})",
         "SCORER",
         "BM25STD",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
     ]
 
 
@@ -383,13 +385,12 @@ def test_hybrid_query_with_tag_filter():
 
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(toon | squad | play | basketball | gang | aliens) AND "
-        "@genre:{comedy}",
+        "(~@description:(toon | squad | play | basketball | gang | aliens) AND @genre:{comedy})",
         "SCORER",
         "BM25STD",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
     ]
 
 
@@ -408,7 +409,7 @@ def test_hybrid_query_with_numeric_filter():
 
     # Verify filter is included in serialized query
     args = get_query_pieces(hybrid_query)
-    assert "@age:[(30 +inf]" in args[1]
+    assert args[1].endswith("AND @age:[(30 +inf])")
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
@@ -426,7 +427,7 @@ def test_hybrid_query_with_text_filter():
 
     # Verify filter is included in serialized query
     args = get_query_pieces(hybrid_query)
-    assert '@job:("engineer")' in args[1]
+    assert args[1].endswith('AND @job:("engineer"))')
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
@@ -444,7 +445,7 @@ def test_hybrid_query_with_combined_filters():
 
     # Verify both filters are included in serialized query
     args = get_query_pieces(hybrid_query)
-    assert args[1].endswith("AND (@genre:{comedy} @rating:[(7.0 +inf])")
+    assert args[1].endswith("AND (@genre:{comedy} @rating:[(7.0 +inf]))")
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
@@ -461,7 +462,7 @@ def test_hybrid_query_with_wildcard_filter():
     # Verify query structure - wildcard may or may not be included depending on implementation
     args = get_query_pieces(hybrid_query)
     assert (
-        args[1] == "(~@description:(toon | squad | play | basketball | gang | aliens)"
+        args[1] == "(~@description:(toon | squad | play | basketball | gang | aliens))"
     )  # Query without filtering
 
 
@@ -479,7 +480,7 @@ def test_hybrid_query_without_filter():
     # Verify no filter in serialized query (only text query)
     args = get_query_pieces(hybrid_query)
     assert (
-        args[1] == "(~@description:(toon | squad | play | basketball | gang | aliens)"
+        args[1] == "(~@description:(toon | squad | play | basketball | gang | aliens))"
     )  # No filter in query
 
 
@@ -584,7 +585,7 @@ def test_hybrid_query_vector_search_method_none():
     # Verify basic VSIM structure without explicit method
     args = get_query_pieces(hybrid_query)
     assert "VSIM" in args
-    assert "embedding" in args
+    assert "@embedding" in args
     # When None, should not have KNN or RANGE explicitly
     assert "KNN" not in args
     assert "RANGE" not in args
@@ -621,12 +622,12 @@ def test_hybrid_query_special_characters_in_text():
 
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(search | \\@user | \\#hashtag | \\$price | 50\\% | off\\!)",
+        "(~@description:(search | \\@user | \\#hashtag | \\$price | 50\\% | off\\!))",
         "SCORER",
         "BM25STD",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
     ]
 
 
@@ -645,12 +646,12 @@ def test_hybrid_query_unicode_text():
 
     assert get_query_pieces(hybrid_query) == [
         "SEARCH",
-        "(~@description:(café | résumé | naïve | 日本語 | 中文)",
+        "(~@description:(café | résumé | naïve | 日本語 | 中文))",
         "SCORER",
         "BM25STD",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
     ]
 
 
@@ -802,13 +803,12 @@ def test_hybrid_query_with_both_text_and_vector_filters():
     args = get_query_pieces(hybrid_query)
     assert args == [
         "SEARCH",
-        "(~@description:(toon | squad | play | basketball | gang | aliens) AND "
-        "@category:{movies}",
+        "(~@description:(toon | squad | play | basketball | gang | aliens) AND @category:{movies})",
         "SCORER",
         "BM25STD",
         "VSIM",
-        "embedding",
-        "[0.1, 0.2, 0.3, 0.4]",
+        "@embedding",
+        bytes_vector,
         "FILTER",
         "@genre:{comedy}",
     ]
@@ -899,7 +899,8 @@ def test_hybrid_query_combination_method_rrf_with_both_params():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
-def test_hybrid_query_combination_method_linear_with_alpha():
+@pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
+def test_hybrid_query_combination_method_linear_with_alpha(alpha: float):
     """Test HybridQuery with LINEAR combination method."""
     hybrid_query = HybridQuery(
         text=sample_text,
@@ -907,7 +908,7 @@ def test_hybrid_query_combination_method_linear_with_alpha():
         vector=sample_vector,
         vector_field_name="embedding",
         combination_method="LINEAR",
-        linear_alpha=0.7,
+        linear_alpha=alpha,
     )
 
     # Verify LINEAR combination method is set
@@ -917,22 +918,20 @@ def test_hybrid_query_combination_method_linear_with_alpha():
     assert hybrid_query.combination_method.get_args() == [
         "COMBINE",
         "LINEAR",
-        2,
+        4,
         "ALPHA",
-        0.7,
+        alpha,
+        "BETA",
+        1 - alpha,
     ]
 
-
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
-def test_hybrid_query_combination_method_linear_with_beta():
-    """Test HybridQuery with LINEAR combination method and beta parameter."""
     hybrid_query = HybridQuery(
         text=sample_text,
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
         combination_method="LINEAR",
-        linear_beta=0.3,
+        linear_beta=alpha,
     )
 
     # Verify LINEAR combination method is set
@@ -942,9 +941,35 @@ def test_hybrid_query_combination_method_linear_with_beta():
     assert hybrid_query.combination_method.get_args() == [
         "COMBINE",
         "LINEAR",
-        2,
+        4,
+        "ALPHA",
+        1 - alpha,
         "BETA",
-        0.3,
+        alpha,
+    ]
+
+    hybrid_query = HybridQuery(
+        text=sample_text,
+        text_field_name="description",
+        vector=sample_vector,
+        vector_field_name="embedding",
+        combination_method="LINEAR",
+        linear_alpha=alpha,
+        linear_beta=2 * alpha,
+    )
+
+    # Verify LINEAR combination method is set
+    assert hybrid_query.combination_method is not None
+
+    # Verify that combination method args are correct
+    assert hybrid_query.combination_method.get_args() == [
+        "COMBINE",
+        "LINEAR",
+        4,
+        "ALPHA",
+        alpha,
+        "BETA",
+        2 * alpha,
     ]
 
 
@@ -958,7 +983,7 @@ def test_hybrid_query_combination_method_linear_with_yield_score():
         vector_field_name="embedding",
         combination_method="LINEAR",
         linear_alpha=0.3,
-        linear_beta=0.5,
+        linear_beta=0.7,
         yield_combined_score_as="linear_score",
     )
 
@@ -970,7 +995,7 @@ def test_hybrid_query_combination_method_linear_with_yield_score():
         "ALPHA",
         0.3,
         "BETA",
-        0.5,
+        0.7,
         "YIELD_SCORE_AS",
         "linear_score",
     ]
@@ -996,43 +1021,22 @@ def test_hybrid_query_combination_method_none():
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
-def test_hybrid_query_combination_method_rrf_without_params():
-    """Test HybridQuery with RRF combination method but no parameters."""
-    # RRF without any params should still work (server may have defaults)
-    hybrid_query = HybridQuery(
-        text=sample_text,
-        text_field_name="description",
-        vector=sample_vector,
-        vector_field_name="embedding",
-        combination_method="RRF",
-    )
-
-    assert hybrid_query.combination_method is not None
-    assert hybrid_query.combination_method.get_args() == ["COMBINE", "RRF"]
-
-
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
-def test_hybrid_query_combination_method_linear_without_params():
-    """Test HybridQuery with LINEAR combination method but no parameters."""
-    # LINEAR without any params should still work (server may have defaults)
-    hybrid_query = HybridQuery(
-        text=sample_text,
-        text_field_name="description",
-        vector=sample_vector,
-        vector_field_name="embedding",
-        combination_method="LINEAR",
-    )
-
-    assert hybrid_query.combination_method is not None
-    assert hybrid_query.combination_method.get_args() == ["COMBINE", "LINEAR"]
-
-
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
 def test_build_combination_method_invalid_method():
     """Test build_combination_method static method with invalid combination method."""
-    from redisvl.query.hybrid import HybridQuery
-
     with pytest.raises(ValueError, match="Unknown combination method"):
         HybridQuery.build_combination_method(
             combination_method="INVALID",  # type: ignore
+        )
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.parametrize("method", ["RRF", "LINEAR"])
+def test_build_combination_method_no_parameters(method: Literal["RRF", "LINEAR"]):
+    """Test build_combination_method static method raises ValueError when no parameters provided."""
+    with pytest.raises(
+        ValueError,
+        match="No parameters provided for combination method - must provide at least one parameter",
+    ):
+        HybridQuery.build_combination_method(
+            combination_method=method,
         )
