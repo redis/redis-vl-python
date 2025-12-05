@@ -162,7 +162,7 @@ class HybridQuery:
 
 def build_base_query(
     text_query: str,
-    vector: bytes | List[float],
+    vector: Union[bytes, List[float]],
     vector_field_name: str,
     text_scorer: str = "BM25STD",
     yield_text_score_as: Optional[str] = None,

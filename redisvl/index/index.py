@@ -1050,9 +1050,15 @@ class SearchIndex(BaseSearchIndex):
                 results = index.hybrid_search(hybrid_query)
 
             """
-            results: HybridResult = self._redis_client.ft(
-                self.schema.index.name
-            ).hybrid_search(
+            index = self._redis_client.ft(self.schema.index.name)
+            if not hasattr(index, "hybrid_search"):
+                # TODO: Clarify correct message - it seems to not be available in Python 3.9
+                raise NotImplementedError(
+                    "Hybrid search is not available in this version of redis-py. "
+                    "Please upgrade to redis-py >= 7.1.0."
+                )
+
+            results: HybridResult = index.hybrid_search(
                 query=query.query,
                 combine_method=query.combination_method,
                 post_processing=(
@@ -1918,9 +1924,15 @@ class AsyncSearchIndex(BaseSearchIndex):
 
             """
             client = await self._get_client()
-            results: HybridResult = await client.ft(
-                self.schema.index.name
-            ).hybrid_search(
+            index = client.ft(self.schema.index.name)
+            if not hasattr(index, "hybrid_search"):
+                # TODO: Clarify correct message - it seems to not be available in Python 3.9
+                raise NotImplementedError(
+                    "Hybrid search is not available in this version of redis-py. "
+                    "Please upgrade to redis-py >= 7.1.0."
+                )
+
+            results: HybridResult = await index.hybrid_search(
                 query=query.query,
                 combine_method=query.combination_method,
                 post_processing=(
