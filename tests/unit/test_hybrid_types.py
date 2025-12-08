@@ -22,6 +22,7 @@ try:
     from redisvl.query.hybrid import HybridQuery, build_combination_method
 
     REDIS_HYBRID_AVAILABLE = True
+    SKIP_REASON = ""
 except (ImportError, ModuleNotFoundError):
     REDIS_HYBRID_AVAILABLE = False
     SKIP_REASON = "Requires redis>=8.4.0 and redis-py>=7.1.0"

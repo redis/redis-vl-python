@@ -1,7 +1,6 @@
 from redisvl.query.aggregate import (
     AggregateHybridQuery,
     AggregationQuery,
-    HybridQuery,
     MultiVectorQuery,
     Vector,
 )
@@ -27,7 +26,6 @@ __all__ = [
     "TextQuery",
     "AggregationQuery",
     "AggregateHybridQuery",
-    "HybridQuery",
     "MultiVectorQuery",
     "Vector",
 ]

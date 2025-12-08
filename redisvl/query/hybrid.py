@@ -78,7 +78,9 @@ class HybridQuery:
                 accuracy of the search.
             yield_vsim_score_as: The name of the field to yield the vector similarity score as.
             vector_filter_expression: The filter expression to use for the vector similarity search. Defaults to None.
-            combination_method: The combination method to use. Options are {RRF, LINEAR}. Defaults to None.
+            combination_method: The combination method to use. Options are {RRF, LINEAR}. Defaults to None. If "RRF" is
+                specified, then at least one of `rrf_window` or `rrf_constant` must be provided. If "LINEAR" is
+                specified, then at least one of `linear_alpha` or `linear_beta` must be provided.
             rrf_window: The window size to use for the reciprocal rank fusion (RRF) combination method. Limits
                 fusion scope.
             rrf_constant: The constant to use for the reciprocal rank fusion (RRF) combination method. Controls decay
@@ -101,10 +103,6 @@ class HybridQuery:
             text_weights (Optional[Dict[str, float]]): The importance weighting of individual words
                 within the query text. Defaults to None, as no modifications will be made to the
                 text_scorer score.
-
-        Notes:
-            If RRF combination method is used, then at least one of `rrf_window` or `rrf_constant` must be provided.
-            If LINEAR combination method is used, then at least one of `linear_alpha` or `linear_beta` must be provided.
 
         Raises:
             TypeError: If the stopwords are not a set, list, or tuple of strings.
