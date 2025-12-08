@@ -116,6 +116,8 @@ async def async_index(index_schema, multi_vector_data, async_client):
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
