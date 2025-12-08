@@ -24,6 +24,7 @@ try:
     REDIS_HYBRID_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     REDIS_HYBRID_AVAILABLE = False
+    SKIP_REASON = "Requires redis>=8.4.0 and redis-py>=7.1.0"
     # Create dummy classes to avoid import errors
     RedisHybridQuery = None  # type: ignore
     HybridSearchQuery = None  # type: ignore
@@ -53,7 +54,7 @@ def get_query_pieces(query: HybridQuery) -> List[str]:
 # Basic init tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_basic_initialization():
     """Test basic HybridQuery initialization with required parameters."""
     text_field_name = "description"
@@ -81,7 +82,7 @@ def test_hybrid_query_basic_initialization():
     assert hybrid_query.combination_method is None
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_all_parameters():
     """Test HybridQuery initialization with all optional parameters."""
     filter_expression = Tag("genre") == "comedy"
@@ -149,7 +150,7 @@ def test_hybrid_query_with_all_parameters():
 # Stopwords tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_default():
     """Test that default stopwords (english) are applied."""
     hybrid_query = HybridQuery(
@@ -168,7 +169,7 @@ def test_hybrid_query_stopwords_default():
     assert "a" in stopwords
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_none():
     """Test that stopwords can be disabled with None."""
     hybrid_query = HybridQuery(
@@ -182,7 +183,7 @@ def test_hybrid_query_stopwords_none():
     assert hybrid_query._ft_helper.stopwords == set()
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_empty_set():
     """Test that stopwords can be set to empty set."""
     hybrid_query = HybridQuery(
@@ -196,7 +197,7 @@ def test_hybrid_query_stopwords_empty_set():
     assert hybrid_query._ft_helper.stopwords == set()
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_custom():
     """Test that custom stopwords are applied."""
     custom_stopwords = {"the", "a", "of", "and"}
@@ -212,7 +213,7 @@ def test_hybrid_query_stopwords_custom():
     assert hybrid_query._ft_helper.stopwords == set(custom_stopwords)
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_language():
     """Test that language-specific stopwords can be loaded."""
     hybrid_query = HybridQuery(
@@ -231,7 +232,7 @@ def test_hybrid_query_stopwords_language():
         assert word in stopwords
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_invalid_language():
     """Test that invalid language raises ValueError."""
     with pytest.raises(ValueError):
@@ -244,7 +245,7 @@ def test_hybrid_query_stopwords_invalid_language():
         )
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords_invalid_type():
     """Test that invalid stopwords type raises TypeError."""
     with pytest.raises(TypeError):
@@ -260,7 +261,7 @@ def test_hybrid_query_stopwords_invalid_type():
 # Text weight tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_text_weights_basic():
     """Test that text weights are properly applied."""
     text_weights = {"toon": 2.0, "squad": 1.5, "basketball": 3.0}
@@ -276,7 +277,7 @@ def test_hybrid_query_text_weights_basic():
     assert hybrid_query._ft_helper.text_weights == text_weights
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_text_weights_none():
     """Test that text_weights can be None."""
     hybrid_query = HybridQuery(
@@ -290,7 +291,7 @@ def test_hybrid_query_text_weights_none():
     assert hybrid_query._ft_helper.text_weights == {}
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_text_weights_empty():
     """Test that text_weights can be empty dict."""
     hybrid_query = HybridQuery(
@@ -304,7 +305,7 @@ def test_hybrid_query_text_weights_empty():
     assert hybrid_query._ft_helper.text_weights == {}
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_text_weights_negative_value():
     """Test that negative text weights raise ValueError."""
     with pytest.raises(ValueError):
@@ -317,7 +318,7 @@ def test_hybrid_query_text_weights_negative_value():
         )
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_text_weights_invalid_type():
     """Test that non-numeric text weights raise ValueError."""
     with pytest.raises(ValueError):
@@ -330,7 +331,7 @@ def test_hybrid_query_text_weights_invalid_type():
         )
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_text_weights_multi_word_key():
     """Test that multi-word keys in text_weights raise ValueError."""
     with pytest.raises(ValueError):
@@ -346,7 +347,7 @@ def test_hybrid_query_text_weights_multi_word_key():
 # Filter expression tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_string_filter():
     """Test HybridQuery with string filter expression."""
     string_filter = "@category:{tech|science|engineering}"
@@ -370,7 +371,7 @@ def test_hybrid_query_with_string_filter():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_tag_filter():
     """Test HybridQuery with Tag FilterExpression."""
     tag_filter = Tag("genre") == "comedy"
@@ -394,7 +395,7 @@ def test_hybrid_query_with_tag_filter():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_numeric_filter():
     """Test HybridQuery with Numeric FilterExpression."""
     numeric_filter = Num("age") > 30
@@ -412,7 +413,7 @@ def test_hybrid_query_with_numeric_filter():
     assert args[1].endswith("AND @age:[(30 +inf])")
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_text_filter():
     """Test HybridQuery with Text FilterExpression."""
     text_filter = Text("job") == "engineer"
@@ -430,7 +431,7 @@ def test_hybrid_query_with_text_filter():
     assert args[1].endswith('AND @job:("engineer"))')
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_combined_filters():
     """Test HybridQuery with combined FilterExpressions."""
     combined_filter = (Tag("genre") == "comedy") & (Num("rating") > 7.0)
@@ -448,7 +449,7 @@ def test_hybrid_query_with_combined_filters():
     assert args[1].endswith("AND (@genre:{comedy} @rating:[(7.0 +inf]))")
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_wildcard_filter():
     """Test HybridQuery with wildcard filter."""
     hybrid_query = HybridQuery(
@@ -466,7 +467,7 @@ def test_hybrid_query_with_wildcard_filter():
     )  # Query without filtering
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_without_filter():
     """Test HybridQuery without any filter expression."""
     hybrid_query = HybridQuery(
@@ -487,7 +488,7 @@ def test_hybrid_query_without_filter():
 # Vector search method tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_vector_search_method_knn():
     """Test HybridQuery with KNN vector search method."""
     with pytest.raises(ValueError):
@@ -529,7 +530,7 @@ def test_hybrid_query_vector_search_method_knn():
     assert args[-6:] == ["KNN", 4, "K", 10, "EF_RUNTIME", 100]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_vector_search_method_range():
     """Test HybridQuery with RANGE vector search method."""
     with pytest.raises(ValueError):
@@ -571,7 +572,7 @@ def test_hybrid_query_vector_search_method_range():
     assert args[-6:] == ["RANGE", 4, "RADIUS", 10, "EPSILON", 0.1]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_vector_search_method_none():
     """Test HybridQuery without specifying vector search method."""
     hybrid_query = HybridQuery(
@@ -594,7 +595,7 @@ def test_hybrid_query_vector_search_method_none():
 # Edge cases
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_empty_text_after_stopwords():
     """Test HybridQuery behavior when text becomes empty after stopword removal."""
     # All words are stopwords
@@ -608,7 +609,7 @@ def test_hybrid_query_empty_text_after_stopwords():
         )
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_special_characters_in_text():
     """Test HybridQuery with special characters in text."""
     special_text = "search for @user #hashtag $price 50% off!"
@@ -631,7 +632,7 @@ def test_hybrid_query_special_characters_in_text():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_unicode_text():
     """Test HybridQuery with Unicode characters in text."""
     unicode_text = "café résumé naïve 日本語 中文"
@@ -658,7 +659,7 @@ def test_hybrid_query_unicode_text():
 # Vector filter expression tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_tag():
     """Test HybridQuery with Tag FilterExpression on vector search."""
     tag_filter = Tag("genre") == "comedy"
@@ -676,7 +677,7 @@ def test_hybrid_query_with_vector_filter_tag():
     assert args[-2:] == ["FILTER", "@genre:{comedy}"]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_string():
     """Test HybridQuery with string filter expression on vector search."""
     string_filter = "@category:{tech|science|engineering}"
@@ -694,7 +695,7 @@ def test_hybrid_query_with_vector_filter_string():
     assert args[-2:] == ["FILTER", "@category:{tech|science|engineering}"]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_numeric():
     """Test HybridQuery with Numeric FilterExpression on vector search."""
     numeric_filter = Num("rating") > 7.0
@@ -712,7 +713,7 @@ def test_hybrid_query_with_vector_filter_numeric():
     assert args[-2:] == ["FILTER", "@rating:[(7.0 +inf]"]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_text():
     """Test HybridQuery with Text FilterExpression on vector search."""
     text_filter = Text("job") == "engineer"
@@ -730,7 +731,7 @@ def test_hybrid_query_with_vector_filter_text():
     assert args[-2:] == ["FILTER", '@job:("engineer")']
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_combined():
     """Test HybridQuery with combined FilterExpressions on vector search."""
     combined_filter = (Tag("genre") == "comedy") & (Num("rating") > 7.0)
@@ -748,7 +749,7 @@ def test_hybrid_query_with_vector_filter_combined():
     assert args[-2:] == ["FILTER", "(@genre:{comedy} @rating:[(7.0 +inf])"]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_none():
     """Test HybridQuery without vector filter expression."""
     hybrid_query = HybridQuery(
@@ -764,7 +765,7 @@ def test_hybrid_query_with_vector_filter_none():
     assert "FILTER" not in args
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_vector_filter_and_method():
     """Test HybridQuery with vector filter and a search method."""
     tag_filter = Tag("genre") == "comedy"
@@ -784,7 +785,7 @@ def test_hybrid_query_with_vector_filter_and_method():
     assert args[-6:] == ["KNN", 2, "K", 10, "FILTER", "@genre:{comedy}"]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_both_text_and_vector_filters():
     """Test HybridQuery with both text_filter_expression and vector_filter_expression."""
     text_filter = Tag("category") == "movies"
@@ -817,7 +818,7 @@ def test_hybrid_query_with_both_text_and_vector_filters():
 # Combination method tests
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_rrf_basic():
     """Test HybridQuery with RRF combination method."""
     hybrid_query = HybridQuery(
@@ -842,7 +843,7 @@ def test_hybrid_query_combination_method_rrf_basic():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_rrf_with_constant():
     """Test HybridQuery with RRF combination method and constant parameter."""
     hybrid_query = HybridQuery(
@@ -867,7 +868,7 @@ def test_hybrid_query_combination_method_rrf_with_constant():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_rrf_with_both_params():
     """Test HybridQuery with RRF combination method with both window and constant."""
     hybrid_query = HybridQuery(
@@ -898,7 +899,7 @@ def test_hybrid_query_combination_method_rrf_with_both_params():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
 def test_hybrid_query_combination_method_linear_with_alpha(alpha: float):
     """Test HybridQuery with LINEAR combination method."""
@@ -973,7 +974,7 @@ def test_hybrid_query_combination_method_linear_with_alpha(alpha: float):
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_linear_with_yield_score():
     """Test HybridQuery with LINEAR combination method and yield_combined_score_as."""
     hybrid_query = HybridQuery(
@@ -1001,7 +1002,7 @@ def test_hybrid_query_combination_method_linear_with_yield_score():
     ]
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_combination_method_none():
     """Test HybridQuery without combination method."""
     hybrid_query = HybridQuery(
@@ -1020,7 +1021,7 @@ def test_hybrid_query_combination_method_none():
     assert "COMBINE" not in args
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_build_combination_method_invalid_method():
     """Test build_combination_method static method with invalid combination method."""
     with pytest.raises(ValueError, match="Unknown combination method"):
@@ -1029,7 +1030,7 @@ def test_build_combination_method_invalid_method():
         )
 
 
-@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason="Requires redis>=7.1.0")
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.parametrize("method", ["RRF", "LINEAR"])
 def test_build_combination_method_no_parameters(method: Literal["RRF", "LINEAR"]):
     """Test build_combination_method static method raises ValueError when no parameters provided."""
