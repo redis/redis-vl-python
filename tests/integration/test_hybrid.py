@@ -2,14 +2,17 @@ import pytest
 
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
-from redisvl.query.hybrid import HybridQuery
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 from tests.conftest import (
-    get_redis_version_async,
     skip_if_redis_version_below,
     skip_if_redis_version_below_async,
 )
+
+try:
+    from redisvl.query.hybrid import HybridQuery
+except (ImportError, ModuleNotFoundError):
+    HybridQuery = None  # type: ignore
 
 
 @pytest.fixture
@@ -129,7 +132,7 @@ def test_hybrid_query(index):
 
     results = index.hybrid_search(hybrid_query)
     assert isinstance(results, list)
-    assert len(results) == 7
+    assert len(results) == 10  # Server-side default for hybrid search
     for doc in results:
         assert doc["user"] in [
             "john",
