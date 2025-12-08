@@ -242,26 +242,6 @@ class AggregateHybridQuery(AggregationQuery):
         return " ".join([str(x) for x in self.build_args()])
 
 
-class HybridQuery(AggregateHybridQuery):
-    """Backward compatibility wrapper for AggregateHybridQuery.
-
-    .. deprecated::
-        This class is deprecated and will be removed in a future version.
-        Please use the new HybridQuery from redisvl.query.hybrid instead.
-        For maintaining current AggregateHybridQuery functionality, use AggregateHybridQuery directly.
-    """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "This HybridQuery class is deprecated and will be removed in a future version. "
-            "Please use the new HybridQuery from redisvl.query.hybrid instead. "
-            "For maintaining current AggregateHybridQuery functionality, use AggregateHybridQuery directly.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        super().__init__(*args, **kwargs)
-
-
 class MultiVectorQuery(AggregationQuery):
     """
     MultiVectorQuery allows for search over multiple vector fields in a document simultaneously.

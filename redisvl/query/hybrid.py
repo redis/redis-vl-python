@@ -18,7 +18,9 @@ try:
         VectorSearchMethods,
     )
 except ImportError:
-    raise ImportError("Hybrid queries require redis>=7.1.0")
+    raise ImportError(
+        "Hybrid queries require Redis Open Source >= 8.4.0 and redis-py>=7.1.0"
+    )
 
 from redisvl.query.filter import FilterExpression
 

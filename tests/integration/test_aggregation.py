@@ -2,7 +2,6 @@ import pytest
 
 from redisvl.index import SearchIndex
 from redisvl.query import AggregateHybridQuery, MultiVectorQuery, Vector
-from redisvl.query.aggregate import HybridQuery
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
@@ -744,44 +743,3 @@ def test_multivector_query_mixed_index(index):
         assert (
             float(r["combined_score"]) - score <= 0.0001
         )  # allow for small floating point error
-
-
-def test_hybrid_query_backward_compatibility(index):
-    skip_if_redis_version_below(index.client, "7.2.0")
-
-    text = "a medical professional with expertise in lung cancer"
-    text_field = "description"
-    vector = [0.1, 0.1, 0.5]
-    vector_field = "user_embedding"
-    return_fields = ["user", "credit_score", "age", "job", "location", "description"]
-
-    hybrid_query = AggregateHybridQuery(
-        text=text,
-        text_field_name=text_field,
-        vector=vector,
-        vector_field_name=vector_field,
-        return_fields=return_fields,
-    )
-
-    results = index.query(hybrid_query)
-    assert len(results) == 7
-    for result in results:
-        assert result["user"] in [
-            "john",
-            "derrick",
-            "nancy",
-            "tyler",
-            "tim",
-            "taimur",
-            "joe",
-            "mary",
-        ]
-
-    with pytest.warns(DeprecationWarning):
-        _ = HybridQuery(
-            text=text,
-            text_field_name=text_field,
-            vector=vector,
-            vector_field_name=vector_field,
-            return_fields=return_fields,
-        )

@@ -4,12 +4,7 @@ from contextlib import contextmanager
 import pytest
 from redis.commands.search.aggregation import AggregateRequest
 
-from redisvl.query.aggregate import (
-    AggregateHybridQuery,
-    HybridQuery,
-    MultiVectorQuery,
-    Vector,
-)
+from redisvl.query.aggregate import AggregateHybridQuery, MultiVectorQuery, Vector
 from redisvl.query.filter import Tag
 from redisvl.redis.utils import array_to_buffer
 
@@ -432,35 +427,3 @@ def test_vector_object_handles_byte_conversion():
         byte_string = array_to_buffer(sample_vector, datatype)
         vec = Vector(vector=byte_string, field_name="field 1")
         assert vec.vector == byte_string
-
-
-def test_hybrid_query_backward_compatibility():
-    # test that HybridQuery is a backward compatibility wrapper for AggregateHybridQuery
-    with pytest.warns(DeprecationWarning):
-        hybrid_query = HybridQuery(
-            text="sample text query",
-            text_field_name="description",
-            vector=sample_vector,
-            vector_field_name="embedding",
-        )
-
-    # Verify HybridQuery is actually an instance of AggregateHybridQuery
-    assert isinstance(hybrid_query, AggregateHybridQuery)
-
-    # Verify AggregateHybridQuery does not emit warnings
-    with assert_no_warnings():
-        aggregate_query = AggregateHybridQuery(
-            text="sample text query",
-            text_field_name="description",
-            vector=sample_vector,
-            vector_field_name="embedding",
-        )
-
-    # Verify that creating another HybridQuery also warns
-    with pytest.warns(DeprecationWarning):
-        another_hybrid_query = HybridQuery(
-            text="sample text query",
-            text_field_name="description",
-            vector=sample_vector,
-            vector_field_name="embedding",
-        )
