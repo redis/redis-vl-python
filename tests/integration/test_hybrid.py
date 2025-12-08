@@ -173,6 +173,8 @@ def test_hybrid_query(index):
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_filter(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -199,6 +201,8 @@ def test_hybrid_query_with_filter(index):
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_geo_filter(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -225,6 +229,8 @@ def test_hybrid_query_with_geo_filter(index):
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
 def test_hybrid_query_alpha(index, alpha):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -255,6 +261,8 @@ def test_hybrid_query_alpha(index, alpha):
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -291,6 +299,8 @@ def test_hybrid_query_stopwords(index):
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_text_filter(index):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -340,6 +350,8 @@ def test_hybrid_query_with_text_filter(index):
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.parametrize("scorer", ["BM25STD", "TFIDF", "TFIDF.DOCNORM"])
 def test_hybrid_query_word_weights(index, scorer):
+    skip_if_redis_version_below(index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancers"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -402,6 +414,8 @@ def test_hybrid_query_word_weights(index, scorer):
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.asyncio
 async def test_hybrid_query_async(async_index):
+    await skip_if_redis_version_below_async(async_index.client, "8.4.0")
+
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
