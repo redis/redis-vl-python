@@ -26,6 +26,32 @@ from redisvl.query.filter import FilterExpression
 class HybridQuery:
     """
     A hybrid search query that combines text search and vector similarity, with configurable fusion methods.
+
+    .. code-block:: python
+
+        from redisvl.query import HybridQuery
+        from redisvl.index import SearchIndex
+
+        index = SearchIndex.from_yaml("path/to/index.yaml")
+
+        query = HybridQuery(
+            text="example text",
+            text_field_name="text_field",
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="vector_field",
+            text_scorer="BM25STD",
+            yield_text_score_as="text_score",
+            yield_vsim_score_as="vector_similarity",
+            combination_method="LINEAR",
+            linear_alpha=0.3,
+            yield_combined_score_as="hybrid_score",
+            num_results=10,
+            return_fields=["field1", "field2"],
+            stopwords="english",
+        )
+
+        results = index.hybrid_search(query)
+
     """
 
     def __init__(
