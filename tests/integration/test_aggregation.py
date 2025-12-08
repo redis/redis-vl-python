@@ -1,8 +1,9 @@
 import pytest
 
 from redisvl.index import SearchIndex
-from redisvl.query import AggregateHybridQuery, HybridQuery, MultiVectorQuery, Vector
-from redisvl.query.filter import FilterExpression, Geo, GeoRadius, Num, Tag, Text
+from redisvl.query import AggregateHybridQuery, MultiVectorQuery, Vector
+from redisvl.query.aggregate import HybridQuery
+from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
 

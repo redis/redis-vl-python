@@ -29,7 +29,7 @@ class HybridQuery:
 
     .. code-block:: python
 
-        from redisvl.query import HybridQuery
+        from redisvl.query.hybrid import HybridQuery
         from redisvl.index import SearchIndex
 
         index = SearchIndex.from_yaml("path/to/index.yaml")
