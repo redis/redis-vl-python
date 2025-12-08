@@ -22,7 +22,7 @@ try:
     from redisvl.query.hybrid import HybridQuery, build_combination_method
 
     REDIS_HYBRID_AVAILABLE = True
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     REDIS_HYBRID_AVAILABLE = False
     # Create dummy classes to avoid import errors
     RedisHybridQuery = None  # type: ignore
