@@ -11,7 +11,12 @@ from tests.conftest import (
 
 try:
     from redisvl.query.hybrid import HybridQuery
+
+    REDIS_HYBRID_AVAILABLE = True
+    SKIP_REASON = ""
 except (ImportError, ModuleNotFoundError):
+    REDIS_HYBRID_AVAILABLE = False
+    SKIP_REASON = "Requires redis>=8.4.0 and redis-py>=7.1.0"
     HybridQuery = None  # type: ignore
 
 
@@ -109,9 +114,8 @@ async def async_index(index_schema, multi_vector_data, async_client):
     await index.delete(drop=True)
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query(index):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -167,9 +171,8 @@ def test_hybrid_query(index):
     )
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_filter(index):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -194,9 +197,8 @@ def test_hybrid_query_with_filter(index):
         assert int(result["age"]) > 30
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_geo_filter(index):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -220,10 +222,9 @@ def test_hybrid_query_with_geo_filter(index):
         assert result["location"] is not None
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 0.9])
 def test_hybrid_query_alpha(index, alpha):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -252,9 +253,8 @@ def test_hybrid_query_alpha(index, alpha):
         )  # allow for small floating point error
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_stopwords(index):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -289,9 +289,8 @@ def test_hybrid_query_stopwords(index):
         )  # allow for small floating point error
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_with_text_filter(index):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -338,10 +337,9 @@ def test_hybrid_query_with_text_filter(index):
         assert "research" not in result[text_field].lower()
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.parametrize("scorer", ["BM25STD", "TFIDF", "TFIDF.DOCNORM"])
 def test_hybrid_query_word_weights(index, scorer):
-    skip_if_redis_version_below(index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancers"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
@@ -401,10 +399,9 @@ def test_hybrid_query_word_weights(index, scorer):
     assert weighted_results != unweighted_results
 
 
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 @pytest.mark.asyncio
 async def test_hybrid_query_async(async_index):
-    await skip_if_redis_version_below_async(async_index.client, "8.4.0")
-
     text = "a medical professional with expertise in lung cancer"
     text_field = "description"
     vector = [0.1, 0.1, 0.5]
