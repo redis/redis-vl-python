@@ -54,6 +54,9 @@ class HybridQuery:
 
         results = index.hybrid_search(query)
 
+    See Also:
+        - `FT.HYBRID command documentation <https://redis.io/docs/latest/commands/ft.hybrid>`_
+        - `redis-py hybrid_search documentation <https://redis.readthedocs.io/en/stable/redismodules.html#redis.commands.search.commands.SearchCommands.hybrid_search>`_
     """
 
     def __init__(

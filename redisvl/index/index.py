@@ -1037,6 +1037,10 @@ class SearchIndex(BaseSearchIndex):
         Notes:
             Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
 
+        See Also:
+            - `FT.HYBRID command documentation <https://redis.io/docs/latest/commands/ft.hybrid>`_
+            - `redis-py hybrid_search documentation <https://redis.readthedocs.io/en/stable/redismodules.html#redis.commands.search.commands.SearchCommands.hybrid_search>`_
+
         .. code-block:: python
 
             from redisvl.query.hybrid import HybridQuery
