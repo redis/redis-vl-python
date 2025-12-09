@@ -493,7 +493,7 @@ def test_hybrid_search_not_available_in_server(index):
         return_fields=["user", "credit_score", "age", "job", "location", "description"],
     )
 
-    with pytest.raises(ResponseError, match="unknown command 'FT.HYBRID'"):
+    with pytest.raises(ResponseError, match=r"unknown command .FT\.HYBRID"):
         index.hybrid_search(hybrid_query)
 
 
