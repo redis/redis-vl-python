@@ -124,6 +124,9 @@ AggregateHybridQuery
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
 
 .. note::
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``alpha`` to weight the text score and ``beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
+
+.. note::
    **Runtime Parameters for Hybrid Queries**
 
    **Important:** AggregateHybridQuery uses FT.AGGREGATE commands which do NOT support runtime parameters.
@@ -166,6 +169,9 @@ HybridQuery
    The ``stopwords`` parameter in :class:`HybridQuery` (and :class:`AggregateHybridQuery`) controls query-time stopword filtering (client-side).
    For index-level stopwords configuration (server-side), see :class:`redisvl.schema.IndexInfo.stopwords`.
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
+
+.. note::
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``alpha`` to weight the text score and ``beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
 
 TextQuery
 ================
