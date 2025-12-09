@@ -1,10 +1,13 @@
 import pytest
+from packaging.version import Version
+from redis import ResponseError
 
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 from tests.conftest import (
+    get_redis_version,
     skip_if_redis_version_below,
     skip_if_redis_version_below_async,
 )
@@ -471,3 +474,40 @@ async def test_hybrid_query_async(async_index):
         >= results[1]["hybrid_score"]
         >= results[2]["hybrid_score"]
     )
+
+
+@pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
+def test_hybrid_search_not_available_in_server(index):
+    if Version(get_redis_version(index.client)) >= Version("8.4.0"):
+        pytest.skip("Hybrid search is available in this version of Redis")
+
+    hybrid_query = HybridQuery(
+        text="a medical professional with expertise in lung cancer",
+        text_field_name="description",
+        yield_text_score_as="text_score",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        yield_vsim_score_as="vsim_score",
+        combination_method="RRF",
+        yield_combined_score_as="hybrid_score",
+        return_fields=["user", "credit_score", "age", "job", "location", "description"],
+    )
+
+    with pytest.raises(ResponseError, match="unknown command 'FT.HYBRID'"):
+        index.hybrid_search(hybrid_query)
+
+
+@pytest.mark.skipif(
+    REDIS_HYBRID_AVAILABLE, reason="Requires hybrid search to NOT be available"
+)
+def test_hybrid_query_not_available():
+    with pytest.raises(ImportError):
+        from redisvl.query.hybrid import HybridQuery  # noqa: F401
+
+
+@pytest.mark.skipif(
+    REDIS_HYBRID_AVAILABLE, reason="Requires hybrid search to NOT be available"
+)
+def test_hybrid_search_method_missing(index):
+    with pytest.raises(NotImplementedError):
+        index.hybrid_search(None)

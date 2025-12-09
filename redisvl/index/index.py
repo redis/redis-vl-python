@@ -39,7 +39,12 @@ from redisvl.redis.utils import (
     make_dict,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient
-from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
+from redisvl.utils.utils import (
+    deprecated_argument,
+    deprecated_function,
+    lazy_import,
+    sync_wrapper,
+)
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -47,15 +52,6 @@ if TYPE_CHECKING:
     from redis.commands.search.result import Result
 
     from redisvl.query.query import BaseQuery
-
-try:
-    from redis.commands.search.hybrid_result import HybridResult
-
-    from redisvl.query.hybrid import HybridQuery
-
-    REDIS_HYBRID_AVAILABLE = True
-except ImportError:
-    REDIS_HYBRID_AVAILABLE = False
 
 from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
@@ -110,6 +106,8 @@ from redisvl.schema.fields import (
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+_HYBRID_SEARCH_ERROR_MESSAGE = "Hybrid search is not available in this version of redis-py. Please upgrade to redis-py >= 7.1.0."
 
 
 REQUIRED_MODULES_FOR_INTROSPECTION = [
@@ -225,13 +223,6 @@ def process_aggregate_results(
     return [_process(r) for r in results.rows]
 
 
-if REDIS_HYBRID_AVAILABLE:
-
-    def process_hybrid_results(results: HybridResult) -> List[Dict[str, Any]]:
-        """Convert a hybrid result object into a list of document dictionaries."""
-        return [convert_bytes(r) for r in results.results]
-
-
 class BaseSearchIndex:
     """Base search engine class"""
 
@@ -294,6 +285,18 @@ class BaseSearchIndex:
                     UserWarning,
                     stacklevel=3,
                 )
+
+    def _validate_hybrid_query(self, query: Any) -> None:
+        """Validate that a hybrid query can be executed."""
+        try:
+            from redis.commands.search.hybrid_result import HybridResult
+
+            from redisvl.query.hybrid import HybridQuery
+        except (ImportError, ModuleNotFoundError):
+            raise NotImplementedError(_HYBRID_SEARCH_ERROR_MESSAGE)
+
+        if not isinstance(query, HybridQuery):
+            raise TypeError(f"query must be of type HybridQuery, got {type(query)}")
 
     @property
     def name(self) -> str:
@@ -1020,55 +1023,48 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
-    if REDIS_HYBRID_AVAILABLE:
+    def hybrid_search(self, query: Any, **kwargs) -> List[Dict[str, Any]]:
+        """Perform a hybrid search against the index, combining text and vector search.
 
-        def hybrid_search(self, query: HybridQuery, **kwargs) -> List[Dict[str, Any]]:
-            """Perform a hybrid search against the index, combining text and vector search.
+        Args:
+            query (HybridQuery): The text+vector search query to be performed, with configurable fusion methods and
+                post-processing.
+            kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
 
-            Args:
-                query: The text+vector search query to be performed, with configurable fusion methods and
-                    post-processing.
-                kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
+        Returns:
+            List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
 
-            Returns:
-                List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
+        Notes:
+            Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
 
-            Notes:
-                Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
+        .. code-block:: python
 
-            .. code-block:: python
+            from redisvl.query.hybrid import HybridQuery
 
-                from redisvl.query.hybrid import HybridQuery
+            hybrid_query = HybridQuery(
+                text="lorem ipsum dolor sit amet",
+                text_field_name="description",
+                vector=[0.1, 0.2, 0.3],
+                vector_field_name="embedding"
+            )
 
-                hybrid_query = HybridQuery(
-                    text="lorem ipsum dolor sit amet",
-                    text_field_name="description",
-                    vector=[0.1, 0.2, 0.3],
-                    vector_field_name="embedding"
-                )
+            results = index.hybrid_search(hybrid_query)
 
-                results = index.hybrid_search(hybrid_query)
+        """
+        index = self._redis_client.ft(self.schema.index.name)
+        self._validate_hybrid_query(query)
 
-            """
-            index = self._redis_client.ft(self.schema.index.name)
-            if not hasattr(index, "hybrid_search"):
-                # TODO: Clarify correct message - it seems to not be available in Python 3.9
-                raise NotImplementedError(
-                    "Hybrid search is not available in this version of redis-py. "
-                    "Please upgrade to redis-py >= 7.1.0."
-                )
-
-            results: HybridResult = index.hybrid_search(
-                query=query.query,
-                combine_method=query.combination_method,
-                post_processing=(
-                    query.postprocessing_config
-                    if query.postprocessing_config.build_args()
-                    else None
-                ),
-                **kwargs,
-            )  # type: ignore
-            return process_hybrid_results(results)
+        results = index.hybrid_search(
+            query=query.query,
+            combine_method=query.combination_method,
+            post_processing=(
+                query.postprocessing_config
+                if query.postprocessing_config.build_args()
+                else None
+            ),
+            **kwargs,
+        )  # type: ignore
+        return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
@@ -1891,58 +1887,49 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
-    if REDIS_HYBRID_AVAILABLE:
+    async def hybrid_search(self, query: Any, **kwargs) -> List[Dict[str, Any]]:
+        """Perform a hybrid search against the index, combining text and vector search.
 
-        async def hybrid_search(
-            self, query: HybridQuery, **kwargs
-        ) -> List[Dict[str, Any]]:
-            """Perform a hybrid search against the index, combining text and vector search.
+        Args:
+            query (HybridQuery): The text+vector search query to be performed, with configurable fusion methods and
+                post-processing.
+            kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
 
-            Args:
-                query: The text+vector search query to be performed, with configurable fusion methods and
-                    post-processing.
-                kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
+        Returns:
+            List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
 
-            Returns:
-                List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
+        Notes:
+            Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
 
-            Notes:
-                Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
+        .. code-block:: python
 
-            .. code-block:: python
+            from redisvl.query.hybrid import HybridQuery
 
-                from redisvl.query.hybrid import HybridQuery
+            hybrid_query = HybridQuery(
+                text="lorem ipsum dolor sit amet",
+                text_field_name="description",
+                vector=[0.1, 0.2, 0.3],
+                vector_field_name="embedding"
+            )
 
-                hybrid_query = HybridQuery(
-                    text="lorem ipsum dolor sit amet",
-                    text_field_name="description",
-                    vector=[0.1, 0.2, 0.3],
-                    vector_field_name="embedding"
-                )
+            results = await async_index.hybrid_search(hybrid_query)
 
-                results = index.hybrid_search(hybrid_query)
+        """
+        client = await self._get_client()
+        index = client.ft(self.schema.index.name)
+        self._validate_hybrid_query(query)
 
-            """
-            client = await self._get_client()
-            index = client.ft(self.schema.index.name)
-            if not hasattr(index, "hybrid_search"):
-                # TODO: Clarify correct message - it seems to not be available in Python 3.9
-                raise NotImplementedError(
-                    "Hybrid search is not available in this version of redis-py. "
-                    "Please upgrade to redis-py >= 7.1.0."
-                )
-
-            results: HybridResult = await index.hybrid_search(
-                query=query.query,
-                combine_method=query.combination_method,
-                post_processing=(
-                    query.postprocessing_config
-                    if query.postprocessing_config.build_args()
-                    else None
-                ),
-                **kwargs,
-            )  # type: ignore
-            return process_hybrid_results(results)
+        results = await index.hybrid_search(
+            query=query.query,
+            combine_method=query.combination_method,
+            post_processing=(
+                query.postprocessing_config
+                if query.postprocessing_config.build_args()
+                else None
+            ),
+            **kwargs,
+        )  # type: ignore
+        return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
 
     async def batch_query(
         self, queries: List[BaseQuery], batch_size: int = 10
