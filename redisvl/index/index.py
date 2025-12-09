@@ -1054,6 +1054,9 @@ class SearchIndex(BaseSearchIndex):
         index = self._redis_client.ft(self.schema.index.name)
         self._validate_hybrid_query(query)
 
+        if not hasattr(index, "hybrid_search"):
+            raise NotImplementedError(_HYBRID_SEARCH_ERROR_MESSAGE)
+
         results = index.hybrid_search(
             query=query.query,
             combine_method=query.combination_method,
@@ -1918,6 +1921,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         client = await self._get_client()
         index = client.ft(self.schema.index.name)
         self._validate_hybrid_query(query)
+
+        if not hasattr(index, "hybrid_search"):
+            raise NotImplementedError(_HYBRID_SEARCH_ERROR_MESSAGE)
 
         results = await index.hybrid_search(
             query=query.query,
