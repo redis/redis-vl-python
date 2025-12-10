@@ -124,7 +124,7 @@ AggregateHybridQuery
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
 
 .. note::
-   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``alpha`` to weight the text score and ``beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score and ``linear_beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
 
 .. note::
    **Runtime Parameters for Hybrid Queries**
@@ -171,7 +171,7 @@ HybridQuery
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
 
 .. note::
-   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``alpha`` to weight the text score and ``beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score and ``linear_beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
 
 TextQuery
 ================
