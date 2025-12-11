@@ -97,7 +97,7 @@ class HybridQuery:
             vector_field_name: The vector field name to search in.
             text_scorer: The text scorer to use. Options are {TFIDF, TFIDF.DOCNORM,
                 BM25STD, BM25STD.NORM, BM25STD.TANH, DISMAX, DOCSCORE, HAMMING}. Defaults to "BM25STD". For more
-                information about supported scroring algorithms,
+                information about supported scoring algorithms,
                 see https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/scoring/
             text_filter_expression: The filter expression to use for the text search. Defaults to None.
             yield_text_score_as: The name of the field to yield the text score as.
