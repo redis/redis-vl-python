@@ -42,7 +42,7 @@ def redis_container(worker_id):
     """
     # Set the Compose project name so containers do not clash across workers
     os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
-    os.environ.setdefault("REDIS_IMAGE", "redis/redis-stack-server:latest")
+    os.environ.setdefault("REDIS_IMAGE", "redis:latest")
 
     compose = DockerCompose(
         context="tests",

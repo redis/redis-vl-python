@@ -20,7 +20,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     REDIS_HYBRID_AVAILABLE = False
     SKIP_REASON = "Requires redis>=8.4.0 and redis-py>=7.1.0"
-    HybridQuery = None  # type: ignore
+    # HybridQuery = None  # type: ignore
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def test_hybrid_query(index):
         return_fields=return_fields,
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert isinstance(results, list)
     assert len(results) == 10  # Server-side default for hybrid search
     for doc in results:
@@ -167,7 +167,7 @@ def test_hybrid_query(index):
         yield_combined_score_as="hybrid_score",
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 3
     assert (
         results[0]["hybrid_score"]
@@ -192,12 +192,11 @@ def test_hybrid_query_with_filter(index):
         text_field_name=text_field,
         vector=vector,
         vector_field_name=vector_field,
-        text_filter_expression=filter_expression,
-        vector_filter_expression=filter_expression,
+        filter_expression=filter_expression,
         return_fields=return_fields,
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 2
     for result in results:
         assert result["credit_score"] == "high"
@@ -220,12 +219,11 @@ def test_hybrid_query_with_geo_filter(index):
         text_field_name=text_field,
         vector=vector,
         vector_field_name=vector_field,
-        text_filter_expression=filter_expression,
-        vector_filter_expression=filter_expression,
+        filter_expression=filter_expression,
         return_fields=return_fields,
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 3
     for result in results:
         assert result["location"] is not None
@@ -253,7 +251,7 @@ def test_hybrid_query_alpha(index, alpha):
         yield_combined_score_as="hybrid_score",
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 7
     for result in results:
         score = alpha * float(result["text_score"]) + (1 - alpha) * float(
@@ -291,7 +289,7 @@ def test_hybrid_query_stopwords(index):
     assert "medical" not in query_string
     assert "expertise" not in query_string
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 7
     for result in results:
         score = alpha * float(result["text_score"]) + (1 - alpha) * float(
@@ -318,14 +316,13 @@ def test_hybrid_query_with_text_filter(index):
         text_field_name=text_field,
         vector=vector,
         vector_field_name=vector_field,
-        text_filter_expression=filter_expression,
-        vector_filter_expression=filter_expression,
+        filter_expression=filter_expression,
         combination_method="LINEAR",
         yield_combined_score_as="hybrid_score",
         return_fields=[text_field],
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 2
     for result in results:
         assert "medical" in result[text_field].lower()
@@ -338,14 +335,13 @@ def test_hybrid_query_with_text_filter(index):
         text_field_name=text_field,
         vector=vector,
         vector_field_name=vector_field,
-        text_filter_expression=filter_expression,
-        vector_filter_expression=filter_expression,
+        filter_expression=filter_expression,
         combination_method="LINEAR",
         yield_combined_score_as="hybrid_score",
         return_fields=[text_field],
     )
 
-    results = index.hybrid_search(hybrid_query)
+    results = index.query(hybrid_query)
     assert len(results) == 2
     for result in results:
         assert "medical" in result[text_field].lower()
@@ -377,7 +373,7 @@ def test_hybrid_query_word_weights(index, scorer):
         yield_text_score_as="text_score",
     )
 
-    weighted_results = index.hybrid_search(weighted_query)
+    weighted_results = index.query(weighted_query)
     assert len(weighted_results) == 7
 
     # test that weights do change the scores on results
@@ -392,7 +388,7 @@ def test_hybrid_query_word_weights(index, scorer):
         yield_text_score_as="text_score",
     )
 
-    unweighted_results = index.hybrid_search(unweighted_query)
+    unweighted_results = index.query(unweighted_query)
 
     for weighted, unweighted in zip(weighted_results, unweighted_results):
         for word in weights:
@@ -412,7 +408,7 @@ def test_hybrid_query_word_weights(index, scorer):
         yield_text_score_as="text_score",
     )
 
-    weighted_results = index.hybrid_search(weighted_query)
+    weighted_results = index.query(weighted_query)
     assert weighted_results != unweighted_results
 
 
@@ -439,7 +435,7 @@ async def test_hybrid_query_async(async_index):
         return_fields=return_fields,
     )
 
-    results = await async_index.hybrid_search(hybrid_query)
+    results = await async_index.query(hybrid_query)
     assert isinstance(results, list)
     assert len(results) == 7
     for doc in results:
@@ -467,7 +463,7 @@ async def test_hybrid_query_async(async_index):
         yield_combined_score_as="hybrid_score",
     )
 
-    results = await async_index.hybrid_search(hybrid_query)
+    results = await async_index.query(hybrid_query)
     assert len(results) == 3
     assert (
         results[0]["hybrid_score"]
@@ -494,7 +490,7 @@ def test_hybrid_search_not_available_in_server(index):
     )
 
     with pytest.raises(ResponseError, match=r"unknown command .FT\.HYBRID"):
-        index.hybrid_search(hybrid_query)
+        index.query(hybrid_query)
 
 
 @pytest.mark.skipif(
@@ -510,4 +506,4 @@ def test_hybrid_query_not_available():
 )
 def test_hybrid_search_method_missing(index):
     with pytest.raises(NotImplementedError):
-        index.hybrid_search(None)
+        index.query(None)
