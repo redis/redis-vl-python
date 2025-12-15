@@ -1039,7 +1039,7 @@ class SearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            from redisvl.query.hybrid import HybridQuery
+            from redisvl.query import HybridQuery
 
             hybrid_query = HybridQuery(
                 text="lorem ipsum dolor sit amet",
@@ -1912,7 +1912,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         .. code-block:: python
 
-            from redisvl.query.hybrid import HybridQuery
+            from redisvl.query import HybridQuery
 
             hybrid_query = HybridQuery(
                 text="lorem ipsum dolor sit amet",
