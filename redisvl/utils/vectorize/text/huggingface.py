@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from pydantic.v1 import PrivateAttr
 
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -24,6 +23,11 @@ class HFTextVectorizer(BaseVectorizer):
     Hugging Face's vast collection of Sentence Transformers. These models are
     trained on a variety of datasets and tasks, ensuring versatility and
     robust performance across different embedding needs.
+
+    Note: Some multimodal models can make use of sentence-transformers by passing
+        Image objects in place of strings (e.g. CLIP). To enable those use cases, this
+        class follows the SentenceTransformer convention of hinting that it expects
+        string inputs, but never enforcing it.
 
     Requirements:
         - The `sentence-transformers` library must be installed with pip.
@@ -54,6 +58,13 @@ class HFTextVectorizer(BaseVectorizer):
             ["Hello, world!", "How are you?"],
             batch_size=2
         )
+
+        # Multimodal usage
+        from PIL import Image
+        vectorizer = HFTextVectorizer(model="sentence-transformers/clip-ViT-L-14")
+        embeddings1 = vectorizer.embed("Hello, world!")
+        embeddings2 = vectorizer.embed(Image.open("path/to/your/image.jpg"))
+
     """
 
     _client: Any = PrivateAttr()
@@ -121,13 +132,7 @@ class HFTextVectorizer(BaseVectorizer):
 
         Returns:
             List[float]: Vector embedding as a list of floats
-
-        Raises:
-            TypeError: If the input is not a string
         """
-        if not isinstance(content, str):
-            raise TypeError("Must pass in a str value to embed.")
-
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
@@ -147,14 +152,9 @@ class HFTextVectorizer(BaseVectorizer):
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
-
-        Raises:
-            TypeError: If the input is not a list of strings
         """
         if not isinstance(contents, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if len(contents) > 0 and not isinstance(contents[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
+            raise TypeError("Must pass in a list of values to embed.")
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
