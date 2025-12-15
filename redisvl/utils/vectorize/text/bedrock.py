@@ -172,12 +172,12 @@ class BedrockTextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, text: str, **kwargs) -> List[float]:
+    def _embed(self, content: str, **kwargs) -> List[float]:
         """
         Generate a vector embedding for a single text using the AWS Bedrock API.
 
         Args:
-            text: Text to embed
+            content: Text to embed
             **kwargs: Additional parameters to pass to the AWS Bedrock API
 
         Returns:
@@ -187,12 +187,12 @@ class BedrockTextVectorizer(BaseVectorizer):
             TypeError: If text is not a string
             ValueError: If embedding fails
         """
-        if not isinstance(text, str):
+        if not isinstance(content, str):
             raise TypeError("Text must be a string")
 
         try:
             response = self._client.invoke_model(
-                modelId=self.model, body=json.dumps({"inputText": text}), **kwargs
+                modelId=self.model, body=json.dumps({"inputText": content}), **kwargs
             )
             response_body = json.loads(response["body"].read())
             return response_body["embedding"]
@@ -205,13 +205,13 @@ class BedrockTextVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[str], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
         """
         Generate vector embeddings for a batch of texts using the AWS Bedrock API.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the AWS Bedrock API
 
@@ -219,25 +219,25 @@ class BedrockTextVectorizer(BaseVectorizer):
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If texts is not a list of strings
+            TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
-        if not isinstance(texts, list):
+        if not isinstance(contents, list):
             raise TypeError("Texts must be a list of strings")
-        if texts and not isinstance(texts[0], str):
+        if contents and not isinstance(contents[0], str):
             raise TypeError("Texts must be a list of strings")
 
         try:
             embeddings: List[List[float]] = []
 
-            for batch in self.batchify(texts, batch_size):
+            for batch in self.batchify(contents, batch_size):
                 # Process each text in the batch individually since Bedrock
                 # doesn't support batch embedding
                 batch_embeddings = []
-                for text in batch:
+                for content in batch:
                     response = self._client.invoke_model(
                         modelId=self.model,
-                        body=json.dumps({"inputText": text}),
+                        body=json.dumps({"inputText": content}),
                         **kwargs,
                     )
                     response_body = json.loads(response["body"].read())

@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing_extensions import Annotated
@@ -25,7 +25,7 @@ class Vectorizers(Enum):
 class BaseVectorizer(BaseModel):
     """Base RedisVL vectorizer interface.
 
-    This class defines the interface for text vectorization with an optional
+    This class defines the interface for vectorization with an optional
     caching layer to improve performance by avoiding redundant API calls.
 
     Attributes:
@@ -60,17 +60,17 @@ class BaseVectorizer(BaseModel):
 
     def embed(
         self,
-        text: str,
+        content: Any,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
     ) -> Union[List[float], bytes]:
-        """Generate a vector embedding for a text string.
+        """Generate a vector embedding for content.
 
         Args:
-            text: The text to convert to a vector embedding
-            preprocess: Function to apply to the text before embedding
+            content: The content to convert to a vector embedding
+            preprocess: Function to apply to the content before embedding
             as_buffer: Return the embedding as a binary buffer instead of a list
             skip_cache: Bypass the cache for this request
             **kwargs: Additional model-specific parameters
@@ -79,18 +79,22 @@ class BaseVectorizer(BaseModel):
             The vector embedding as either a list of floats or binary buffer
 
         Examples:
-            >>> embedding = vectorizer.embed("Hello world")
+            >>> embedding = text_vectorizer.embed("Hello world")
+            >>> im = Image.open("test.png")
+            >>> embedding = image_vectorizer.embed(im)
         """
         # Apply preprocessing if provided
         if preprocess is not None:
-            text = preprocess(text)
+            content = preprocess(content)
 
         # Check cache if available and not skipped
         if self.cache is not None and not skip_cache:
             try:
-                cache_result = self.cache.get(text=text, model_name=self.model)
+                cache_result = self.cache.get(
+                    content=self._to_cacheable(content), model_name=self.model
+                )
                 if cache_result:
-                    logger.debug(f"Cache hit for text with model {self.model}")
+                    logger.debug(f"Cache hit for content with model {self.model}")
                     return self._process_embedding(
                         cache_result["embedding"], as_buffer, self.dtype
                     )
@@ -99,13 +103,13 @@ class BaseVectorizer(BaseModel):
 
         # Generate embedding using provider-specific implementation
         cache_metadata = kwargs.pop("metadata", {})
-        embedding = self._embed(text, **kwargs)
+        embedding = self._embed(content, **kwargs)
 
         # Store in cache if available and not skipped
         if self.cache is not None and not skip_cache:
             try:
                 self.cache.set(
-                    text=text,
+                    content=self._to_cacheable(content),
                     model_name=self.model,
                     embedding=embedding,
                     metadata=cache_metadata,
@@ -118,48 +122,48 @@ class BaseVectorizer(BaseModel):
 
     def embed_many(
         self,
-        texts: List[str],
+        contents: List[Any],
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
     ) -> Union[List[List[float]], List[bytes]]:
-        """Generate vector embeddings for multiple texts efficiently.
+        """Generate vector embeddings for multiple items efficiently.
 
         Args:
-            texts: List of texts to convert to vector embeddings
-            preprocess: Function to apply to each text before embedding
-            batch_size: Number of texts to process in each API call
+            contents: List of content to convert to vector embeddings
+            preprocess: Function to apply to each item before embedding
+            batch_size: Number of items to process in each API call
             as_buffer: Return embeddings as binary buffers instead of lists
             skip_cache: Bypass the cache for this request
             **kwargs: Additional model-specific parameters
 
         Returns:
-            List of vector embeddings in the same order as the input texts
+            List of vector embeddings in the same order as the inputs
 
         Examples:
             >>> embeddings = vectorizer.embed_many(["Hello", "World"], batch_size=2)
         """
-        if not texts:
+        if not contents:
             return []
 
         # Apply preprocessing if provided
         if preprocess is not None:
-            processed_texts = [preprocess(text) for text in texts]
+            processed_contents = [preprocess(item) for item in contents]
         else:
-            processed_texts = texts
+            processed_contents = contents
 
         # Get cached embeddings and identify misses
         results, cache_misses, cache_miss_indices = self._get_from_cache_batch(
-            processed_texts, skip_cache
+            processed_contents, skip_cache
         )
 
         # Generate embeddings for cache misses
         if cache_misses:
             cache_metadata = kwargs.pop("metadata", {})
             new_embeddings = self._embed_many(
-                texts=cache_misses, batch_size=batch_size, **kwargs
+                contents=cache_misses, batch_size=batch_size, **kwargs
             )
 
             # Store new embeddings in cache
@@ -176,17 +180,17 @@ class BaseVectorizer(BaseModel):
 
     async def aembed(
         self,
-        text: str,
+        content: Any,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
     ) -> Union[List[float], bytes]:
-        """Asynchronously generate a vector embedding for a text string.
+        """Asynchronously generate a vector embedding for an item of content.
 
         Args:
-            text: The text to convert to a vector embedding
-            preprocess: Function to apply to the text before embedding
+            content: The content to convert to a vector embedding
+            preprocess: Function to apply to the content before embedding
             as_buffer: Return the embedding as a binary buffer instead of a list
             skip_cache: Bypass the cache for this request
             **kwargs: Additional model-specific parameters
@@ -199,14 +203,16 @@ class BaseVectorizer(BaseModel):
         """
         # Apply preprocessing if provided
         if preprocess is not None:
-            text = preprocess(text)
+            content = preprocess(content)
 
         # Check cache if available and not skipped
         if self.cache is not None and not skip_cache:
             try:
-                cache_result = await self.cache.aget(text=text, model_name=self.model)
+                cache_result = await self.cache.aget(
+                    content=self._to_cacheable(content), model_name=self.model
+                )
                 if cache_result:
-                    logger.debug(f"Async cache hit for text with model {self.model}")
+                    logger.debug(f"Async cache hit for content with model {self.model}")
                     return self._process_embedding(
                         cache_result["embedding"], as_buffer, self.dtype
                     )
@@ -217,13 +223,13 @@ class BaseVectorizer(BaseModel):
 
         # Generate embedding using provider-specific implementation
         cache_metadata = kwargs.pop("metadata", {})
-        embedding = await self._aembed(text, **kwargs)
+        embedding = await self._aembed(content, **kwargs)
 
         # Store in cache if available and not skipped
         if self.cache is not None and not skip_cache:
             try:
                 await self.cache.aset(
-                    text=text,
+                    content=self._to_cacheable(content),
                     model_name=self.model,
                     embedding=embedding,
                     metadata=cache_metadata,
@@ -238,48 +244,48 @@ class BaseVectorizer(BaseModel):
 
     async def aembed_many(
         self,
-        texts: List[str],
+        contents: List[Any],
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
     ) -> Union[List[List[float]], List[bytes]]:
-        """Asynchronously generate vector embeddings for multiple texts efficiently.
+        """Asynchronously generate vector embeddings for multiple items efficiently.
 
         Args:
-            texts: List of texts to convert to vector embeddings
-            preprocess: Function to apply to each text before embedding
+            contents: List of content to convert to vector embeddings
+            preprocess: Function to apply to each item before embedding
             batch_size: Number of texts to process in each API call
             as_buffer: Return embeddings as binary buffers instead of lists
             skip_cache: Bypass the cache for this request
             **kwargs: Additional model-specific parameters
 
         Returns:
-            List of vector embeddings in the same order as the input texts
+            List of vector embeddings in the same order as the inputs
 
         Examples:
             >>> embeddings = await vectorizer.aembed_many(["Hello", "World"], batch_size=2)
         """
-        if not texts:
+        if not contents:
             return []
 
         # Apply preprocessing if provided
         if preprocess is not None:
-            processed_texts = [preprocess(text) for text in texts]
+            processed_contents = [preprocess(item) for item in contents]
         else:
-            processed_texts = texts
+            processed_contents = contents
 
         # Get cached embeddings and identify misses
         results, cache_misses, cache_miss_indices = await self._aget_from_cache_batch(
-            processed_texts, skip_cache
+            processed_contents, skip_cache
         )
 
         # Generate embeddings for cache misses
         if cache_misses:
             cache_metadata = kwargs.pop("metadata", {})
             new_embeddings = await self._aembed_many(
-                texts=cache_misses, batch_size=batch_size, **kwargs
+                contents=cache_misses, batch_size=batch_size, **kwargs
             )
 
             # Store new embeddings in cache
@@ -294,123 +300,141 @@ class BaseVectorizer(BaseModel):
         # Process and return results
         return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
 
-    def _embed(self, text: str, **kwargs) -> List[float]:
-        """Generate a vector embedding for a single text."""
+    @overload
+    def _to_cacheable(self, content: str) -> str: ...
+
+    @overload
+    def _to_cacheable(self, content: bytes) -> bytes: ...
+
+    def _to_cacheable(self, content: Any) -> Any:
+        """Convert content to a cacheable format."""
+        if isinstance(content, (str, bytes)):
+            return content
+        raise NotImplementedError
+
+    def _embed(self, content: Any, **kwargs) -> List[float]:
+        """Generate a vector embedding for a single item."""
         raise NotImplementedError
 
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[Any], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
-        """Generate vector embeddings for a batch of texts."""
+        """Generate vector embeddings for a batch of items."""
         raise NotImplementedError
 
-    async def _aembed(self, text: str, **kwargs) -> List[float]:
-        """Asynchronously generate a vector embedding for a single text."""
+    async def _aembed(self, content: Any, **kwargs) -> List[float]:
+        """Asynchronously generate a vector embedding for a single item."""
         logger.warning(
             "This vectorizer has no async embed method. Falling back to sync."
         )
-        return self._embed(text, **kwargs)
+        return self._embed(content, **kwargs)
 
     async def _aembed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[Any], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
-        """Asynchronously generate vector embeddings for a batch of texts."""
+        """Asynchronously generate vector embeddings for a batch of items."""
         logger.warning(
             "This vectorizer has no async embed_many method. Falling back to sync."
         )
-        return self._embed_many(texts, batch_size, **kwargs)
+        return self._embed_many(contents, batch_size, **kwargs)
 
     def _get_from_cache_batch(
-        self, texts: List[str], skip_cache: bool
+        self, contents: List[Any], skip_cache: bool
     ) -> tuple[List[Optional[List[float]]], List[str], List[int]]:
         """Get vector embeddings from cache and track cache misses.
 
         Args:
-            texts: List of texts to get from cache
+            contents: List of content to get from cache
             skip_cache: Whether to skip cache lookup
 
         Returns:
             Tuple of (results, cache_misses, cache_miss_indices)
         """
-        results = [None] * len(texts)
+        results = [None] * len(contents)
         cache_misses = []
         cache_miss_indices = []
 
         # Skip cache if requested or no cache available
         if skip_cache or self.cache is None:
-            return results, texts, list(range(len(texts)))  # type: ignore
+            return results, contents, list(range(len(contents)))  # type: ignore
 
         try:
             # Efficient batch cache lookup
-            cache_results = self.cache.mget(texts=texts, model_name=self.model)
+            cache_results = self.cache.mget(
+                contents=(self._to_cacheable(c) for c in contents),
+                model_name=self.model,
+            )
 
             # Process cache hits and collect misses
-            for i, (text, cache_result) in enumerate(zip(texts, cache_results)):
+            for i, (content, cache_result) in enumerate(zip(contents, cache_results)):
                 if cache_result:
                     results[i] = cache_result["embedding"]
                 else:
-                    cache_misses.append(text)
+                    cache_misses.append(content)
                     cache_miss_indices.append(i)
 
             logger.debug(
-                f"Cache hits: {len(texts) - len(cache_misses)}, misses: {len(cache_misses)}"
+                f"Cache hits: {len(contents) - len(cache_misses)}, misses: {len(cache_misses)}"
             )
         except Exception as e:
             logger.warning(f"Error accessing embedding cache in batch: {str(e)}")
-            # On cache error, process all texts
-            cache_misses = texts
-            cache_miss_indices = list(range(len(texts)))
+            # On cache error, process all data
+            cache_misses = contents
+            cache_miss_indices = list(range(len(contents)))
 
         return results, cache_misses, cache_miss_indices  # type: ignore
 
     async def _aget_from_cache_batch(
-        self, texts: List[str], skip_cache: bool
+        self, contents: List[Any], skip_cache: bool
     ) -> tuple[List[Optional[List[float]]], List[str], List[int]]:
         """Asynchronously get vector embeddings from cache and track cache misses.
 
         Args:
-            texts: List of texts to get from cache
+            contents: List of content to get from cache
             skip_cache: Whether to skip cache lookup
 
         Returns:
             Tuple of (results, cache_misses, cache_miss_indices)
         """
-        results = [None] * len(texts)
+        results = [None] * len(contents)
         cache_misses = []
         cache_miss_indices = []
 
         # Skip cache if requested or no cache available
         if skip_cache or self.cache is None:
-            return results, texts, list(range(len(texts)))  # type: ignore
+            return results, contents, list(range(len(contents)))  # type: ignore
 
         try:
             # Efficient batch cache lookup
-            cache_results = await self.cache.amget(texts=texts, model_name=self.model)
+            cache_results = await self.cache.amget(
+                contents=(self._to_cacheable(c) for c in contents),
+                model_name=self.model,
+            )
 
             # Process cache hits and collect misses
-            for i, (text, cache_result) in enumerate(zip(texts, cache_results)):
+            for i, (content, cache_result) in enumerate(zip(contents, cache_results)):
                 if cache_result:
                     results[i] = cache_result["embedding"]
                 else:
-                    cache_misses.append(text)
+                    cache_misses.append(content)
                     cache_miss_indices.append(i)
 
             logger.debug(
-                f"Async cache hits: {len(texts) - len(cache_misses)}, misses: {len(cache_misses)}"
+                f"Async cache hits: {len(contents) - len(cache_misses)}, misses: {len(cache_misses)}"
             )
         except Exception as e:
             logger.warning(
                 f"Error accessing embedding cache in batch asynchronously: {str(e)}"
             )
-            # On cache error, process all texts
-            cache_misses = texts
-            cache_miss_indices = list(range(len(texts)))
+            # On cache error, process all data
+            cache_misses = contents
+            cache_miss_indices = list(range(len(contents)))
 
         return results, cache_misses, cache_miss_indices  # type: ignore
 
     def _store_in_cache_batch(
         self,
-        texts: List[str],
+        contents: List[Any],
         embeddings: List[List[float]],
         metadata: Dict,
         skip_cache: bool,
@@ -418,7 +442,7 @@ class BaseVectorizer(BaseModel):
         """Store a batch of vector embeddings in the cache.
 
         Args:
-            texts: List of texts that were embedded
+            contents: List of content that was embedded
             embeddings: List of vector embeddings
             metadata: Metadata to store with the embeddings
             skip_cache: Whether to skip cache storage
@@ -430,12 +454,12 @@ class BaseVectorizer(BaseModel):
             # Prepare batch cache storage items
             cache_items = [
                 {
-                    "text": text,
+                    "content": self._to_cacheable(content),
                     "model_name": self.model,
                     "embedding": emb,
                     "metadata": metadata,
                 }
-                for text, emb in zip(texts, embeddings)
+                for content, emb in zip(contents, embeddings)
             ]
             self.cache.mset(items=cache_items)
         except Exception as e:
@@ -443,7 +467,7 @@ class BaseVectorizer(BaseModel):
 
     async def _astore_in_cache_batch(
         self,
-        texts: List[str],
+        contents: List[Any],
         embeddings: List[List[float]],
         metadata: Dict,
         skip_cache: bool,
@@ -451,7 +475,7 @@ class BaseVectorizer(BaseModel):
         """Asynchronously store a batch of vector embeddings in the cache.
 
         Args:
-            texts: List of texts that were embedded
+            contents: List of content that was embedded
             embeddings: List of vector embeddings
             metadata: Metadata to store with the embeddings
             skip_cache: Whether to skip cache storage
@@ -463,12 +487,12 @@ class BaseVectorizer(BaseModel):
             # Prepare batch cache storage items
             cache_items = [
                 {
-                    "text": text,
+                    "content": self._to_cacheable(content),
                     "model_name": self.model,
                     "embedding": emb,
                     "metadata": metadata,
                 }
-                for text, emb in zip(texts, embeddings)
+                for content, emb in zip(contents, embeddings)
             ]
             await self.cache.amset(items=cache_items)
         except Exception as e:

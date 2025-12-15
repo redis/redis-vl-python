@@ -48,6 +48,9 @@ bedrock = [
     "boto3>=1.36.0,<2",
     "urllib3<2.2.0",
 ]
+pillow = [
+    "pillow>=11.3.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/redis/redis-vl-python"

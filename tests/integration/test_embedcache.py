@@ -52,19 +52,19 @@ def sample_embedding_data():
     """Sample data for embedding cache tests."""
     return [
         {
-            "text": "What is machine learning?",
+            "content": "What is machine learning?",
             "model_name": "text-embedding-ada-002",
             "embedding": [0.1, 0.2, 0.3, 0.4, 0.5],
             "metadata": {"source": "user_query", "category": "ai"},
         },
         {
-            "text": "How do neural networks work?",
+            "content": "How do neural networks work?",
             "model_name": "text-embedding-ada-002",
             "embedding": [0.2, 0.3, 0.4, 0.5, 0.6],
             "metadata": {"source": "documentation", "category": "ai"},
         },
         {
-            "text": "What's the weather like today?",
+            "content": "What's the weather like today?",
             "model_name": "text-embedding-ada-002",
             "embedding": [0.5, 0.6, 0.7, 0.8, 0.9],
             "metadata": {"source": "user_query", "category": "weather"},
@@ -94,12 +94,12 @@ def test_cache_initialization(redis_url):
 def test_make_entry_id():
     """Test that entry IDs are generated consistently."""
     cache = EmbeddingsCache()
-    text = "Hello world"
+    content = "Hello world"
     model_name = "text-embedding-ada-002"
 
     # Test deterministic ID generation
-    entry_id1 = cache._make_entry_id(text, model_name)
-    entry_id2 = cache._make_entry_id(text, model_name)
+    entry_id1 = cache._make_entry_id(content, model_name)
+    entry_id2 = cache._make_entry_id(content, model_name)
     assert entry_id1 == entry_id2
 
     # Test different inputs produce different IDs
@@ -108,7 +108,7 @@ def test_make_entry_id():
 
     # Test ID format
     assert isinstance(entry_id1, str)
-    expected_id = hashify(f"{text}:{model_name}")
+    expected_id = hashify(f"{content}:{model_name}")
     assert entry_id1 == expected_id
 
 
@@ -140,18 +140,18 @@ def test_set_and_get(cache, sample_embedding_data):
 
     # Set the entry
     key = cache.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
         metadata=sample["metadata"],
     )
 
     # Get the entry
-    result = cache.get(sample["text"], sample["model_name"])
+    result = cache.get(sample["content"], sample["model_name"])
 
     # Verify the result
     assert result is not None
-    assert result["text"] == sample["text"]
+    assert result["content"] == sample["content"]
     assert result["model_name"] == sample["model_name"]
     assert "embedding" in result
     assert result["metadata"] == sample["metadata"]
@@ -159,7 +159,7 @@ def test_set_and_get(cache, sample_embedding_data):
     # Test get_by_key
     key_result = cache.get_by_key(key)
     assert key_result is not None
-    assert key_result["text"] == sample["text"]
+    assert key_result["content"] == sample["content"]
 
     # Test non-existent entry
     missing = cache.get("NonexistentText", sample["model_name"])
@@ -175,17 +175,17 @@ def test_exists(cache, sample_embedding_data):
     sample = sample_embedding_data[0]
 
     # Entry shouldn't exist yet
-    assert not cache.exists(sample["text"], sample["model_name"])
+    assert not cache.exists(sample["content"], sample["model_name"])
 
     # Add the entry
     key = cache.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
 
     # Now it should exist
-    assert cache.exists(sample["text"], sample["model_name"])
+    assert cache.exists(sample["content"], sample["model_name"])
 
     # Test exists_by_key
     assert cache.exists_by_key(key)
@@ -201,7 +201,7 @@ def test_drop(cache, sample_embedding_data):
 
     # Add the entry
     key = cache.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -210,14 +210,14 @@ def test_drop(cache, sample_embedding_data):
     assert cache.exists_by_key(key)
 
     # Remove it
-    cache.drop(sample["text"], sample["model_name"])
+    cache.drop(sample["content"], sample["model_name"])
 
     # Verify it's gone
     assert not cache.exists_by_key(key)
 
     # Test drop_by_key
     key = cache.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -231,7 +231,7 @@ def test_ttl_expiration(cache_with_ttl, sample_embedding_data):
 
     # Add the entry
     key = cache_with_ttl.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -252,7 +252,7 @@ def test_custom_ttl(cache, sample_embedding_data):
 
     # Add the entry with a 1 second TTL
     key = cache.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
         ttl=1,
@@ -274,7 +274,7 @@ def test_multiple_entries(cache, sample_embedding_data):
     keys = []
     for sample in sample_embedding_data:
         key = cache.set(
-            text=sample["text"],
+            content=sample["content"],
             model_name=sample["model_name"],
             embedding=sample["embedding"],
             metadata=sample.get("metadata"),
@@ -285,7 +285,7 @@ def test_multiple_entries(cache, sample_embedding_data):
     for i, key in enumerate(keys):
         assert cache.exists_by_key(key)
         result = cache.get_by_key(key)
-        assert result["text"] == sample_embedding_data[i]["text"]
+        assert result["content"] == sample_embedding_data[i]["content"]
 
     # Drop one entry
     cache.drop_by_key(keys[0])
@@ -300,18 +300,18 @@ async def test_async_set_and_get(cache, sample_embedding_data):
 
     # Set the entry
     key = await cache.aset(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
         metadata=sample["metadata"],
     )
 
     # Get the entry
-    result = await cache.aget(sample["text"], sample["model_name"])
+    result = await cache.aget(sample["content"], sample["model_name"])
 
     # Verify the result
     assert result is not None
-    assert result["text"] == sample["text"]
+    assert result["content"] == sample["content"]
     assert result["model_name"] == sample["model_name"]
     assert "embedding" in result
     assert result["metadata"] == sample["metadata"]
@@ -319,7 +319,7 @@ async def test_async_set_and_get(cache, sample_embedding_data):
     # Test aget_by_key
     key_result = await cache.aget_by_key(key)
     assert key_result is not None
-    assert key_result["text"] == sample["text"]
+    assert key_result["content"] == sample["content"]
 
 
 @pytest.mark.asyncio
@@ -328,17 +328,17 @@ async def test_async_exists(cache, sample_embedding_data):
     sample = sample_embedding_data[0]
 
     # Entry shouldn't exist yet
-    assert not await cache.aexists(sample["text"], sample["model_name"])
+    assert not await cache.aexists(sample["content"], sample["model_name"])
 
     # Add the entry
     key = await cache.aset(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
 
     # Now it should exist
-    assert await cache.aexists(sample["text"], sample["model_name"])
+    assert await cache.aexists(sample["content"], sample["model_name"])
 
     # Test aexists_by_key
     assert await cache.aexists_by_key(key)
@@ -351,7 +351,7 @@ async def test_async_drop(cache, sample_embedding_data):
 
     # Add the entry
     key = await cache.aset(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -360,14 +360,14 @@ async def test_async_drop(cache, sample_embedding_data):
     assert await cache.aexists_by_key(key)
 
     # Remove it
-    await cache.adrop(sample["text"], sample["model_name"])
+    await cache.adrop(sample["content"], sample["model_name"])
 
     # Verify it's gone
     assert not await cache.aexists_by_key(key)
 
     # Test adrop_by_key
     key = await cache.aset(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -382,7 +382,7 @@ async def test_async_ttl_expiration(cache_with_ttl, sample_embedding_data):
 
     # Add the entry
     key = await cache_with_ttl.aset(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -402,11 +402,11 @@ def test_entry_id_consistency(cache, sample_embedding_data):
     sample = sample_embedding_data[0]
 
     # Generate an entry ID directly
-    expected_id = cache._make_entry_id(sample["text"], sample["model_name"])
+    expected_id = cache._make_entry_id(sample["content"], sample["model_name"])
 
     # Set an entry and extract its ID from the key
     key = cache.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
@@ -429,14 +429,14 @@ def test_redis_client_reuse(cache_with_redis_client, sample_embedding_data):
 
     # Set and get an entry
     key = cache_with_redis_client.set(
-        text=sample["text"],
+        content=sample["content"],
         model_name=sample["model_name"],
         embedding=sample["embedding"],
     )
 
     result = cache_with_redis_client.get_by_key(key)
     assert result is not None
-    assert result["text"] == sample["text"]
+    assert result["content"] == sample["content"]
 
 
 def test_mset_and_mget(cache, sample_embedding_data):
@@ -446,7 +446,7 @@ def test_mset_and_mget(cache, sample_embedding_data):
     for sample in sample_embedding_data:
         batch_items.append(
             {
-                "text": sample["text"],
+                "content": sample["content"],
                 "model_name": sample["model_name"],
                 "embedding": sample["embedding"],
                 "metadata": sample.get("metadata"),
@@ -457,18 +457,18 @@ def test_mset_and_mget(cache, sample_embedding_data):
     keys = cache.mset(batch_items)
     assert len(keys) == len(batch_items)
 
-    # Get texts and model name for mget
-    texts = [item["text"] for item in batch_items]
+    # Get contents and model name for mget
+    contents = [item["content"] for item in batch_items]
     model_name = batch_items[0]["model_name"]  # Assuming same model
 
     # Test mget
-    results = cache.mget(texts, model_name)
-    assert len(results) == len(texts)
+    results = cache.mget(contents, model_name)
+    assert len(results) == len(contents)
 
     # Verify all results are returned and in correct order
     for i, result in enumerate(results):
         assert result is not None
-        assert result["text"] == texts[i]
+        assert result["content"] == contents[i]
         assert result["model_name"] == model_name
 
 
@@ -478,7 +478,7 @@ def test_mget_by_keys(cache, sample_embedding_data):
     keys = []
     for sample in sample_embedding_data:
         key = cache.set(
-            text=sample["text"],
+            content=sample["content"],
             model_name=sample["model_name"],
             embedding=sample["embedding"],
             metadata=sample.get("metadata"),
@@ -492,7 +492,7 @@ def test_mget_by_keys(cache, sample_embedding_data):
     # Verify all results match the original samples
     for i, result in enumerate(results):
         assert result is not None
-        assert result["text"] == sample_embedding_data[i]["text"]
+        assert result["content"] == sample_embedding_data[i]["content"]
         assert result["model_name"] == sample_embedding_data[i]["model_name"]
 
     # Test with mix of existing and non-existing keys
@@ -510,31 +510,31 @@ def test_mexists_and_mexists_by_keys(cache, sample_embedding_data):
     """Test batch existence checks for embeddings."""
     # Set embeddings individually and collect data
     keys = []
-    texts = []
+    contents = []
     for sample in sample_embedding_data:
         key = cache.set(
-            text=sample["text"],
+            content=sample["content"],
             model_name=sample["model_name"],
             embedding=sample["embedding"],
         )
         keys.append(key)
-        texts.append(sample["text"])
+        contents.append(sample["content"])
 
     model_name = sample_embedding_data[0]["model_name"]  # Assuming same model
 
     # Test mexists
-    exist_results = cache.mexists(texts, model_name)
-    assert len(exist_results) == len(texts)
+    exist_results = cache.mexists(contents, model_name)
+    assert len(exist_results) == len(contents)
     assert all(exist_results)  # All should exist
 
-    # Test with mix of existing and non-existing texts
-    non_existent_text = "This text does not exist"
-    mixed_texts = texts[:1] + [non_existent_text] + texts[1:]
-    mixed_results = cache.mexists(mixed_texts, model_name)
+    # Test with mix of existing and non-existing contents
+    non_existent_content = "This content does not exist"
+    mixed_contents = contents[:1] + [non_existent_content] + contents[1:]
+    mixed_results = cache.mexists(mixed_contents, model_name)
 
-    assert len(mixed_results) == len(mixed_texts)
+    assert len(mixed_results) == len(mixed_contents)
     assert mixed_results[0] is True
-    assert mixed_results[1] is False  # Non-existent text should return False
+    assert mixed_results[1] is False  # Non-existent content should return False
     assert mixed_results[2] is True
 
     # Test mexists_by_keys
@@ -557,15 +557,15 @@ def test_mdrop_and_mdrop_by_keys(cache, sample_embedding_data):
     """Test batch deletion of embeddings."""
     # Set embeddings and collect data
     keys = []
-    texts = []
+    contents = []
     for sample in sample_embedding_data:
         key = cache.set(
-            text=sample["text"],
+            content=sample["content"],
             model_name=sample["model_name"],
             embedding=sample["embedding"],
         )
         keys.append(key)
-        texts.append(sample["text"])
+        contents.append(sample["content"])
 
     model_name = sample_embedding_data[0]["model_name"]  # Assuming same model
 
@@ -583,26 +583,26 @@ def test_mdrop_and_mdrop_by_keys(cache, sample_embedding_data):
     # Reset for mdrop test
     cache.clear()
     keys = []
-    texts = []
+    contents = []
     for sample in sample_embedding_data:
         key = cache.set(
-            text=sample["text"],
+            content=sample["content"],
             model_name=sample["model_name"],
             embedding=sample["embedding"],
         )
         keys.append(key)
-        texts.append(sample["text"])
+        contents.append(sample["content"])
 
-    # Test mdrop with subset of texts
-    subset_texts = texts[:2]
-    cache.mdrop(subset_texts, model_name)
+    # Test mdrop with subset of contents
+    subset_contents = contents[:2]
+    cache.mdrop(subset_contents, model_name)
 
-    # Verify only selected texts were dropped
-    for i, text in enumerate(texts):
+    # Verify only selected contents were dropped
+    for i, content in enumerate(contents):
         if i < 2:
-            assert not cache.exists(text, model_name)  # Should be dropped
+            assert not cache.exists(content, model_name)  # Should be dropped
         else:
-            assert cache.exists(text, model_name)  # Should still exist
+            assert cache.exists(content, model_name)  # Should still exist
 
 
 @pytest.mark.asyncio
@@ -613,7 +613,7 @@ async def test_async_batch_operations(cache, sample_embedding_data):
     for sample in sample_embedding_data:
         batch_items.append(
             {
-                "text": sample["text"],
+                "content": sample["content"],
                 "model_name": sample["model_name"],
                 "embedding": sample["embedding"],
                 "metadata": sample.get("metadata"),
@@ -624,16 +624,16 @@ async def test_async_batch_operations(cache, sample_embedding_data):
     keys = await cache.amset(batch_items)
     assert len(keys) == len(batch_items)
 
-    # Get texts and model name for amget
-    texts = [item["text"] for item in batch_items]
+    # Get contents and model name for amget
+    contents = [item["content"] for item in batch_items]
     model_name = batch_items[0]["model_name"]  # Assuming same model
 
     # Test amget
-    results = await cache.amget(texts, model_name)
-    assert len(results) == len(texts)
+    results = await cache.amget(contents, model_name)
+    assert len(results) == len(contents)
     for i, result in enumerate(results):
         assert result is not None
-        assert result["text"] == texts[i]
+        assert result["content"] == contents[i]
 
     # Test amget_by_keys
     key_results = await cache.amget_by_keys(keys)
@@ -642,8 +642,8 @@ async def test_async_batch_operations(cache, sample_embedding_data):
         assert result is not None
 
     # Test amexists
-    exist_results = await cache.amexists(texts, model_name)
-    assert len(exist_results) == len(texts)
+    exist_results = await cache.amexists(contents, model_name)
+    assert len(exist_results) == len(contents)
     assert all(exist_results)  # All should exist
 
     # Test amexists_by_keys
@@ -651,9 +651,9 @@ async def test_async_batch_operations(cache, sample_embedding_data):
     assert len(key_exist_results) == len(keys)
     assert all(key_exist_results)  # All should exist
 
-    # Test amdrop with first text
-    await cache.amdrop([texts[0]], model_name)
-    updated_exists = await cache.aexists(texts[0], model_name)
+    # Test amdrop with first content
+    await cache.amdrop([contents[0]], model_name)
+    updated_exists = await cache.aexists(contents[0], model_name)
     assert not updated_exists  # Should be dropped
 
     # Test amdrop_by_keys with second key
@@ -697,7 +697,7 @@ def test_batch_with_ttl(cache_with_ttl, sample_embedding_data):
     for sample in sample_embedding_data:
         batch_items.append(
             {
-                "text": sample["text"],
+                "content": sample["content"],
                 "model_name": sample["model_name"],
                 "embedding": sample["embedding"],
                 "metadata": sample.get("metadata"),
@@ -736,7 +736,7 @@ def test_large_batch_operations(cache):
     for i in range(100):
         large_batch.append(
             {
-                "text": f"Sample text {i}",
+                "content": f"Sample text {i}",
                 "model_name": "test-model",
                 "embedding": [float(i) / 100] * 5,
                 "metadata": {"index": i},
@@ -752,11 +752,11 @@ def test_large_batch_operations(cache):
     assert len(results) == 100
     assert all(result is not None for result in results)
 
-    # Get texts for batch retrieval
-    texts = [item["text"] for item in large_batch]
+    # Get contents for batch retrieval
+    contents = [item["content"] for item in large_batch]
 
-    # Test retrieving by texts
-    results = cache.mget(texts, "test-model")
+    # Test retrieving by contents
+    results = cache.mget(contents, "test-model")
     assert len(results) == 100
     assert all(result is not None for result in results)
 

@@ -112,11 +112,11 @@ class HFTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
-    def _embed(self, text: str, **kwargs) -> List[float]:
+    def _embed(self, content: str, **kwargs) -> List[float]:
         """Generate a vector embedding for a single text using the Hugging Face model.
 
         Args:
-            text: Text to embed
+            content: Text to embed
             **kwargs: Additional model-specific parameters
 
         Returns:
@@ -125,23 +125,23 @@ class HFTextVectorizer(BaseVectorizer):
         Raises:
             TypeError: If the input is not a string
         """
-        if not isinstance(text, str):
+        if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
 
-        embedding = self._client.encode([text], **kwargs)[0]
+        embedding = self._client.encode([content], **kwargs)[0]
         return embedding.tolist()
 
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[str], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
         """Generate vector embeddings for a batch of texts using the Hugging Face model.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
             batch_size: Number of texts to process in each batch
             **kwargs: Additional model-specific parameters
 
@@ -151,16 +151,16 @@ class HFTextVectorizer(BaseVectorizer):
         Raises:
             TypeError: If the input is not a list of strings
         """
-        if not isinstance(texts, list):
+        if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
+        if len(contents) > 0 and not isinstance(contents[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
 
         embeddings: List = []
-        for batch in self.batchify(texts, batch_size, None):
+        for batch in self.batchify(contents, batch_size, None):
             batch_embeddings = self._client.encode(batch, **kwargs)
             embeddings.extend([embedding.tolist() for embedding in batch_embeddings])
         return embeddings

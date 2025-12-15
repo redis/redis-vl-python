@@ -185,26 +185,26 @@ class VertexAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, text: str, **kwargs) -> List[float]:
+    def _embed(self, content: str, **kwargs) -> List[float]:
         """
         Generate a vector embedding for a single text using the VertexAI API.
 
         Args:
-            text: Text to embed
+            content: Text to embed
             **kwargs: Additional parameters to pass to the VertexAI API
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If text is not a string
+            TypeError: If content is not a string
             ValueError: If embedding fails
         """
-        if not isinstance(text, str):
+        if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
         try:
-            result = self._client.get_embeddings([text], **kwargs)
+            result = self._client.get_embeddings([content], **kwargs)
             return result[0].values
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
@@ -215,13 +215,13 @@ class VertexAITextVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[str], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
         """
         Generate vector embeddings for a batch of texts using the VertexAI API.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the VertexAI API
 
@@ -229,17 +229,17 @@ class VertexAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If texts is not a list of strings
+            TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
-        if not isinstance(texts, list):
+        if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if texts and not isinstance(texts[0], str):
+        if contents and not isinstance(contents[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
             embeddings: List = []
-            for batch in self.batchify(texts, batch_size):
+            for batch in self.batchify(contents, batch_size):
                 response = self._client.get_embeddings(batch, **kwargs)
                 embeddings.extend([r.values for r in response])
             return embeddings

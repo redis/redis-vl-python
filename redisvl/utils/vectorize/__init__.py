@@ -11,7 +11,7 @@ from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
-from redisvl.utils.vectorize.text.voyageai import VoyageAITextVectorizer
+from redisvl.utils.vectorize.voyageai import VoyageAIVectorizer
 
 __all__ = [
     "BaseVectorizer",
@@ -23,7 +23,7 @@ __all__ = [
     "MistralAITextVectorizer",
     "CustomTextVectorizer",
     "BedrockTextVectorizer",
-    "VoyageAITextVectorizer",
+    "VoyageAIVectorizer",
 ]
 
 
@@ -53,6 +53,6 @@ def vectorizer_from_dict(
     elif vectorizer_type == Vectorizers.vertexai:
         return VertexAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
-        return VoyageAITextVectorizer(**args)
+        return VoyageAIVectorizer(**args)
     else:
         raise ValueError(f"Unsupported vectorizer type: {vectorizer_type}")

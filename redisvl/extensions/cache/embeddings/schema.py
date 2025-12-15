@@ -4,7 +4,7 @@ This module defines the Pydantic models used for embedding cache entries and
 related data structures.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,8 +19,8 @@ class CacheEntry(BaseModel):
 
     entry_id: str
     """Cache entry identifier"""
-    text: str
-    """The text input that was embedded"""
+    content: Union[bytes, str]
+    """The input that was embedded"""
     model_name: str
     """The name of the embedding model used"""
     embedding: List[float]

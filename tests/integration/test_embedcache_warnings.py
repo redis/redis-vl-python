@@ -47,7 +47,7 @@ async def test_sync_methods_warn_with_async_only_client(async_client, caplog):
             caplog.clear()
 
             # Second sync method call should NOT warn (flag prevents spam)
-            _ = cache.set(text="test", model_name="model", embedding=[0.1, 0.2])
+            _ = cache.set(content="test", model_name="model", embedding=[0.1, 0.2])
 
             # Should not have logged another warning
             assert len(caplog.records) == 0
@@ -65,7 +65,7 @@ def test_no_warning_with_sync_client(redis_url):
         with patch("redisvl.utils.log.get_logger") as mock_logger:
             # Sync methods should not warn
             _ = cache.get_by_key("test_key")
-            _ = cache.set(text="test", model_name="model", embedding=[0.1, 0.2])
+            _ = cache.set(content="test", model_name="model", embedding=[0.1, 0.2])
 
             # No warnings should have been logged
             mock_logger.return_value.warning.assert_not_called()
@@ -82,7 +82,7 @@ async def test_async_methods_no_warning(async_client):
     with patch("redisvl.utils.log.get_logger") as mock_logger:
         # Async methods should not warn
         _ = await cache.aget_by_key("test_key")
-        _ = await cache.aset(text="test", model_name="model", embedding=[0.1, 0.2])
+        _ = await cache.aset(content="test", model_name="model", embedding=[0.1, 0.2])
 
         # No warnings should have been logged
         mock_logger.return_value.warning.assert_not_called()
