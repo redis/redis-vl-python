@@ -98,7 +98,7 @@ def test_hybrid_query_with_all_parameters():
         text_filter_expression=filter_expression,
         yield_text_score_as="text_score",
         vector_search_method="KNN",
-        knn_k=10,
+        knn_num_results=10,
         knn_ef_runtime=100,
         yield_vsim_score_as="vsim_score",
         stopwords=None,
@@ -508,7 +508,7 @@ def test_hybrid_query_vector_search_method_knn():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        knn_k=10,
+        knn_num_results=10,
     )
 
     # KNN with params should be in args
@@ -522,7 +522,7 @@ def test_hybrid_query_vector_search_method_knn():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        knn_k=10,
+        knn_num_results=10,
         knn_ef_runtime=100,
     )
 
@@ -777,7 +777,7 @@ def test_hybrid_query_with_vector_filter_and_method():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        knn_k=10,
+        knn_num_results=10,
         vector_filter_expression=tag_filter,
     )
 

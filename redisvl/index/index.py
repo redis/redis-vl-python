@@ -28,6 +28,7 @@ from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
 
+from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import VectorQuery
 from redisvl.redis.utils import (
     _keys_share_hash_tag,
@@ -39,12 +40,7 @@ from redisvl.redis.utils import (
     make_dict,
 )
 from redisvl.types import AsyncRedisClient, SyncRedisClient
-from redisvl.utils.utils import (
-    deprecated_argument,
-    deprecated_function,
-    lazy_import,
-    sync_wrapper,
-)
+from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
@@ -1023,7 +1019,7 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
-    def hybrid_search(self, query: Any, **kwargs) -> List[Dict[str, Any]]:
+    def _hybrid_search(self, query: HybridQuery, **kwargs) -> List[Dict[str, Any]]:
         """Perform a hybrid search against the index, combining text and vector search.
 
         Args:
@@ -1052,7 +1048,7 @@ class SearchIndex(BaseSearchIndex):
                 vector_field_name="embedding"
             )
 
-            results = index.hybrid_search(hybrid_query)
+            results = index.query(hybrid_query)
 
         """
         index = self._redis_client.ft(self.schema.index.name)
@@ -1098,14 +1094,16 @@ class SearchIndex(BaseSearchIndex):
         results = self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    def query(self, query: Union[BaseQuery, AggregationQuery]) -> List[Dict[str, Any]]:
+    def query(
+        self, query: Union[BaseQuery, AggregationQuery, HybridQuery]
+    ) -> List[Dict[str, Any]]:
         """Execute a query on the index.
 
-        This method takes a BaseQuery or AggregationQuery object directly, and
+        This method takes a BaseQuery, AggregationQuery, or HybridQuery object directly, and
         handles post-processing of the search.
 
         Args:
-            query (Union[BaseQuery, AggregateQuery]): The query to run.
+            query (Union[BaseQuery, AggregateQuery, HybridQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1125,6 +1123,8 @@ class SearchIndex(BaseSearchIndex):
         """
         if isinstance(query, AggregationQuery):
             return self._aggregate(query)
+        elif isinstance(query, HybridQuery):
+            return self._hybrid_search(query)
         else:
             return self._query(query)
 
@@ -1894,7 +1894,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
-    async def hybrid_search(self, query: Any, **kwargs) -> List[Dict[str, Any]]:
+    async def _hybrid_search(
+        self, query: HybridQuery, **kwargs
+    ) -> List[Dict[str, Any]]:
         """Perform a hybrid search against the index, combining text and vector search.
 
         Args:
@@ -1919,7 +1921,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 vector_field_name="embedding"
             )
 
-            results = await async_index.hybrid_search(hybrid_query)
+            results = await async_index.query(hybrid_query)
 
         """
         client = await self._get_client()
@@ -1972,15 +1974,15 @@ class AsyncSearchIndex(BaseSearchIndex):
         return process_results(results, query=query, schema=self.schema)
 
     async def query(
-        self, query: Union[BaseQuery, AggregationQuery]
+        self, query: Union[BaseQuery, AggregationQuery, HybridQuery]
     ) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
-        This method takes a BaseQuery or AggregationQuery object directly, runs
+        This method takes a BaseQuery, AggregationQuery, or HybridQuery object directly, runs
         the search, and handles post-processing of the search.
 
         Args:
-            query (Union[BaseQuery, AggregateQuery]): The query to run.
+            query (Union[BaseQuery, AggregateQuery, HybridQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1999,6 +2001,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         if isinstance(query, AggregationQuery):
             return await self._aggregate(query)
+        elif isinstance(query, HybridQuery):
+            return await self._hybrid_search(query)
         else:
             return await self._query(query)
 
