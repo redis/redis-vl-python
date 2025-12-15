@@ -492,25 +492,10 @@ def test_hybrid_search_not_available_in_server(index):
     REDIS_HYBRID_AVAILABLE, reason="Requires hybrid search to NOT be available"
 )
 def test_hybrid_query_not_available(index):
-    hybrid_query = HybridQuery(
-        text="a medical professional with expertise in lung cancer",
-        text_field_name="description",
-        yield_text_score_as="text_score",
-        vector=[0.1, 0.1, 0.5],
-        vector_field_name="user_embedding",
-        yield_vsim_score_as="vsim_score",
-        combination_method="RRF",
-        yield_combined_score_as="hybrid_score",
-        return_fields=["user", "credit_score", "age", "job", "location", "description"],
-    )
-
     with pytest.raises(ImportError):
-        index.query(hybrid_query)
-
-
-@pytest.mark.skipif(
-    REDIS_HYBRID_AVAILABLE, reason="Requires hybrid search to NOT be available"
-)
-def test_hybrid_search_method_missing(index):
-    with pytest.raises(ImportError):
-        index.query(None)
+        HybridQuery(
+            text="a medical professional with expertise in lung cancer",
+            text_field_name="description",
+            vector=[0.1, 0.1, 0.5],
+            vector_field_name="user_embedding",
+        )
