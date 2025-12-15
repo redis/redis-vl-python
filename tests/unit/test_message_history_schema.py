@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from redisvl.extensions.message_history.schema import ChatMessage
 from redisvl.redis.utils import array_to_buffer
-from redisvl.utils.utils import create_ulid, current_timestamp, deserialize, serialize
+from redisvl.utils.utils import create_ulid, current_timestamp, serialize
 
 
 def test_chat_message_creation():
@@ -41,7 +41,13 @@ def test_chat_message_default_id_generation():
         timestamp=timestamp,
     )
 
-    assert chat_message.entry_id == f"{session_tag}:{timestamp}"
+    # ID should start with session:timestamp and have a UUID suffix for uniqueness
+    assert chat_message.entry_id.startswith(f"{session_tag}:{timestamp}:")
+    # Verify the UUID suffix is 8 hex characters
+    parts = chat_message.entry_id.split(":")
+    assert len(parts) == 3
+    assert len(parts[2]) == 8
+    assert all(c in "0123456789abcdef" for c in parts[2])
 
 
 def test_chat_message_with_tool_call_id():
@@ -164,3 +170,29 @@ def test_chat_message_invalid_role():
             session_tag=session_tag,
             timestamp=timestamp,
         )
+
+
+def test_chat_message_unique_ids_for_rapid_creation():
+    """Test that rapidly created messages get unique IDs even with same timestamp."""
+    session_tag = create_ulid()
+    timestamp = current_timestamp()
+
+    # Create multiple messages with the same session and timestamp
+    messages = []
+    for i in range(10):
+        msg = ChatMessage(
+            role="user",
+            content=f"Message {i}",
+            session_tag=session_tag,
+            timestamp=timestamp,
+        )
+        messages.append(msg)
+
+    # All IDs should be unique
+    ids = [msg.entry_id for msg in messages]
+    assert len(ids) == len(set(ids)), "All message IDs should be unique"
+
+    # All IDs should start with the same session:timestamp prefix
+    expected_prefix = f"{session_tag}:{timestamp}:"
+    for msg_id in ids:
+        assert msg_id.startswith(expected_prefix)
