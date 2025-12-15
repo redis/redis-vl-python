@@ -52,19 +52,18 @@ class HybridQuery:
         text_scorer: str = "BM25STD",
         yield_text_score_as: Optional[str] = None,
         vector_search_method: Optional[Literal["KNN", "RANGE"]] = None,
-        knn_num_results: Optional[int] = None,
-        knn_ef_runtime: Optional[int] = None,
-        range_radius: Optional[int] = None,
-        range_epsilon: Optional[float] = None,
+        knn_ef_runtime: int = 10,
+        range_radius: Optional[float] = None,
+        range_epsilon: float = 0.01,
         yield_vsim_score_as: Optional[str] = None,
         filter_expression: Optional[Union[str, FilterExpression]] = None,
         combination_method: Optional[Literal["RRF", "LINEAR"]] = None,
-        rrf_window: Optional[int] = None,
-        rrf_constant: Optional[float] = None,
-        linear_alpha: Optional[float] = None,
+        rrf_window: int = 20,
+        rrf_constant: int = 60,
+        linear_alpha: float = 0.3,
         yield_combined_score_as: Optional[str] = None,
         dtype: str = "float32",
-        num_results: Optional[int] = None,
+        num_results: Optional[int] = 10,
         return_fields: Optional[List[str]] = None,
         stopwords: Optional[Union[str, Set[str]]] = "english",
         text_weights: Optional[Dict[str, float]] = None,
@@ -83,7 +82,6 @@ class HybridQuery:
                 see https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/scoring/
             yield_text_score_as: The name of the field to yield the text score as.
             vector_search_method: The vector search method to use. Options are {KNN, RANGE}. Defaults to None.
-            knn_num_results: The number of nearest neighbors to return, required if `vector_search_method` is "KNN".
             knn_ef_runtime: The exploration factor parameter for HNSW, optional if `vector_search_method` is "KNN".
             range_radius: The search radius to use, required if `vector_search_method` is "RANGE".
             range_epsilon: The epsilon value to use, optional if `vector_search_method` is "RANGE"; defines the
@@ -98,10 +96,10 @@ class HybridQuery:
                 fusion scope.
             rrf_constant: The constant to use for the reciprocal rank fusion (RRF) combination method. Controls decay
                 of rank influence.
-            linear_alpha: The weight of the first query for the linear combination method (LINEAR).
+            linear_alpha: The weight of the text query for the linear combination method (LINEAR).
             yield_combined_score_as: The name of the field to yield the combined score as.
             dtype: The data type of the vector. Defaults to "float32".
-            num_results: The number of results to return. If not specified, the server default will be used (10).
+            num_results: The number of results to return.
             return_fields: The fields to return. Defaults to None.
             stopwords (Optional[Union[str, Set[str]]], optional): The stopwords to remove from the
                 provided text prior to search-use. If a string such as "english" "german" is
@@ -155,7 +153,7 @@ class HybridQuery:
             text_scorer=text_scorer,
             yield_text_score_as=yield_text_score_as,
             vector_search_method=vector_search_method,
-            knn_num_results=knn_num_results,
+            num_results=num_results,
             knn_ef_runtime=knn_ef_runtime,
             range_radius=range_radius,
             range_epsilon=range_epsilon,
@@ -185,9 +183,9 @@ def build_base_query(
     text_scorer: str = "BM25STD",
     yield_text_score_as: Optional[str] = None,
     vector_search_method: Optional[Literal["KNN", "RANGE"]] = None,
-    knn_num_results: Optional[int] = None,
+    num_results: Optional[int] = None,
     knn_ef_runtime: Optional[int] = None,
-    range_radius: Optional[int] = None,
+    range_radius: Optional[float] = None,
     range_epsilon: Optional[float] = None,
     yield_vsim_score_as: Optional[str] = None,
     filter_expression: Optional[Union[str, FilterExpression]] = None,
@@ -205,7 +203,7 @@ def build_base_query(
             see https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/scoring/
         yield_text_score_as: The name of the field to yield the text score as.
         vector_search_method: The vector search method to use. Options are {KNN, RANGE}. Defaults to None.
-        knn_num_results: The number of nearest neighbors to return, required if `vector_search_method` is "KNN".
+        num_results: The number of nearest neighbors to return, required if `vector_search_method` is "KNN".
         knn_ef_runtime: The exploration factor parameter for HNSW, optional if `vector_search_method` is "KNN".
         range_radius: The search radius to use, required if `vector_search_method` is "RANGE".
         range_epsilon: The epsilon value to use, optional if `vector_search_method` is "RANGE"; defines the
@@ -254,12 +252,12 @@ def build_base_query(
     vsim_search_method_params: Dict[str, Any] = {}
     if vector_search_method == "KNN":
         vsim_search_method = VectorSearchMethods.KNN
-        if not knn_num_results:
+        if not num_results:
             raise ValueError(
-                "Must provide `knn_num_results` if vector_search_method is KNN"
+                "Must provide `num_results` if vector_search_method is KNN"
             )
 
-        vsim_search_method_params["K"] = knn_num_results
+        vsim_search_method_params["K"] = num_results
         if knn_ef_runtime:
             vsim_search_method_params["EF_RUNTIME"] = knn_ef_runtime
 

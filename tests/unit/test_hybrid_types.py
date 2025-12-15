@@ -77,6 +77,9 @@ def test_hybrid_query_basic_initialization():
         "VSIM",
         "@embedding",
         bytes_vector,
+        "LIMIT",
+        "0",
+        "10",
     ]
 
     # Verify that no combination method is set
@@ -97,7 +100,6 @@ def test_hybrid_query_with_all_parameters():
         text_scorer="TFIDF",
         yield_text_score_as="text_score",
         vector_search_method="KNN",
-        knn_num_results=10,
         knn_ef_runtime=100,
         yield_vsim_score_as="vsim_score",
         filter_expression=filter_expression,
@@ -105,8 +107,9 @@ def test_hybrid_query_with_all_parameters():
         text_weights=text_weights,
         combination_method="RRF",
         rrf_window=10,
-        rrf_constant=0.5,
+        rrf_constant=50,
         yield_combined_score_as="hybrid_score",
+        num_results=10,
     )
 
     assert hybrid_query._ft_helper is not None
@@ -140,9 +143,12 @@ def test_hybrid_query_with_all_parameters():
         "WINDOW",
         10,
         "CONSTANT",
-        0.5,
+        50,
         "YIELD_SCORE_AS",
         "hybrid_score",
+        "LIMIT",
+        "0",
+        "10",
     ]
 
     # Add post-processing and verify that it is reflected in the query
@@ -373,6 +379,9 @@ def test_hybrid_query_with_string_filter():
         bytes_vector,
         "FILTER",
         "@category:{tech|science|engineering}",
+        "LIMIT",
+        "0",
+        "10",
     ]
 
 
@@ -399,6 +408,9 @@ def test_hybrid_query_with_tag_filter():
         bytes_vector,
         "FILTER",
         "@genre:{comedy}",
+        "LIMIT",
+        "0",
+        "10",
     ]
 
 
@@ -506,28 +518,18 @@ def test_hybrid_query_without_filter():
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
 def test_hybrid_query_vector_search_method_knn():
     """Test HybridQuery with KNN vector search method."""
-    with pytest.raises(ValueError):
-        # KNN requires K
-        HybridQuery(
-            text=sample_text,
-            text_field_name="description",
-            vector=sample_vector,
-            vector_field_name="embedding",
-            vector_search_method="KNN",
-        )
-
     hybrid_query = HybridQuery(
         text=sample_text,
         text_field_name="description",
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        knn_num_results=10,
+        num_results=10,
     )
 
     # KNN with params should be in args
     args = get_query_pieces(hybrid_query)
-    assert args[-4:] == ["KNN", 2, "K", 10]
+    assert args[7:13] == ["KNN", 4, "K", 10, "EF_RUNTIME", 10]
 
     # With optional EF_RUNTIME param
     hybrid_query = HybridQuery(
@@ -536,13 +538,13 @@ def test_hybrid_query_vector_search_method_knn():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        knn_num_results=10,
         knn_ef_runtime=100,
+        num_results=10,
     )
 
     # KNN with params should be in args
     args = get_query_pieces(hybrid_query)
-    assert args[-6:] == ["KNN", 4, "K", 10, "EF_RUNTIME", 100]
+    assert args[7:13] == ["KNN", 4, "K", 10, "EF_RUNTIME", 100]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
@@ -569,7 +571,7 @@ def test_hybrid_query_vector_search_method_range():
 
     # RANGE with params should be in args
     args = get_query_pieces(hybrid_query)
-    assert args[-4:] == ["RANGE", 2, "RADIUS", 10]
+    assert args[7:13] == ["RANGE", 4, "RADIUS", 10, "EPSILON", 0.01]
 
     # With optional EPSILON param
     hybrid_query = HybridQuery(
@@ -584,7 +586,7 @@ def test_hybrid_query_vector_search_method_range():
 
     # RANGE with params should be in args
     args = get_query_pieces(hybrid_query)
-    assert args[-6:] == ["RANGE", 4, "RADIUS", 10, "EPSILON", 0.1]
+    assert args[7:13] == ["RANGE", 4, "RADIUS", 10, "EPSILON", 0.1]
 
 
 @pytest.mark.skipif(not REDIS_HYBRID_AVAILABLE, reason=SKIP_REASON)
@@ -644,6 +646,9 @@ def test_hybrid_query_special_characters_in_text():
         "VSIM",
         "@embedding",
         bytes_vector,
+        "LIMIT",
+        "0",
+        "10",
     ]
 
 
@@ -668,6 +673,9 @@ def test_hybrid_query_unicode_text():
         "VSIM",
         "@embedding",
         bytes_vector,
+        "LIMIT",
+        "0",
+        "10",
     ]
 
 
@@ -682,13 +690,22 @@ def test_hybrid_query_with_vector_filter_and_method():
         vector=sample_vector,
         vector_field_name="embedding",
         vector_search_method="KNN",
-        knn_num_results=10,
         filter_expression=tag_filter,
+        num_results=10,
     )
 
     # Verify KNN params and filter are both in args
     args = get_query_pieces(hybrid_query)
-    assert args[-6:] == ["KNN", 2, "K", 10, "FILTER", "@genre:{comedy}"]
+    assert args[7:15] == [
+        "KNN",
+        4,
+        "K",
+        10,
+        "EF_RUNTIME",
+        10,
+        "FILTER",
+        "@genre:{comedy}",
+    ]
 
 
 # Combination method tests
@@ -713,9 +730,11 @@ def test_hybrid_query_combination_method_rrf_basic():
     assert hybrid_query.combination_method.get_args() == [
         "COMBINE",
         "RRF",
-        2,
+        4,
         "WINDOW",
         10,
+        "CONSTANT",
+        60,
     ]
 
 
@@ -728,7 +747,7 @@ def test_hybrid_query_combination_method_rrf_with_constant():
         vector=sample_vector,
         vector_field_name="embedding",
         combination_method="RRF",
-        rrf_constant=0.5,
+        rrf_constant=50,
     )
 
     # Verify RRF combination method is set
@@ -738,9 +757,11 @@ def test_hybrid_query_combination_method_rrf_with_constant():
     assert hybrid_query.combination_method.get_args() == [
         "COMBINE",
         "RRF",
-        2,
+        4,
+        "WINDOW",
+        20,
         "CONSTANT",
-        0.5,
+        50,
     ]
 
 
@@ -754,7 +775,7 @@ def test_hybrid_query_combination_method_rrf_with_both_params():
         vector_field_name="embedding",
         combination_method="RRF",
         rrf_window=20,
-        rrf_constant=1.0,
+        rrf_constant=50,
         yield_combined_score_as="rrf_score",
     )
 
@@ -769,7 +790,7 @@ def test_hybrid_query_combination_method_rrf_with_both_params():
         "WINDOW",
         20,
         "CONSTANT",
-        1.0,
+        50,
         "YIELD_SCORE_AS",
         "rrf_score",
     ]

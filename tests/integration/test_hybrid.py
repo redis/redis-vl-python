@@ -136,7 +136,7 @@ def test_hybrid_query(index):
 
     results = index.query(hybrid_query)
     assert isinstance(results, list)
-    assert len(results) == 10  # Server-side default for hybrid search
+    assert len(results) == 10  # default for hybrid search
     for doc in results:
         assert doc["user"] in [
             "john",
