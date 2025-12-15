@@ -1,9 +1,11 @@
 import pytest
 from packaging.version import Version
 from redis import ResponseError
+from redis import __version__ as redis_version
 
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Geo, GeoRadius, Num, Tag, Text
+from redisvl.query.hybrid import HybridQuery
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 from tests.conftest import (
@@ -12,15 +14,8 @@ from tests.conftest import (
     skip_if_redis_version_below_async,
 )
 
-try:
-    from redisvl.query.hybrid import HybridQuery
-
-    REDIS_HYBRID_AVAILABLE = True
-    SKIP_REASON = ""
-except (ImportError, ModuleNotFoundError):
-    REDIS_HYBRID_AVAILABLE = False
-    SKIP_REASON = "Requires redis>=8.4.0 and redis-py>=7.1.0"
-    # HybridQuery = None  # type: ignore
+REDIS_HYBRID_AVAILABLE = Version(redis_version) >= Version("7.1.0")
+SKIP_REASON = "Requires Redis >= 8.4.0 and redis-py>=7.1.0"
 
 
 @pytest.fixture
@@ -496,9 +491,21 @@ def test_hybrid_search_not_available_in_server(index):
 @pytest.mark.skipif(
     REDIS_HYBRID_AVAILABLE, reason="Requires hybrid search to NOT be available"
 )
-def test_hybrid_query_not_available():
+def test_hybrid_query_not_available(index):
+    hybrid_query = HybridQuery(
+        text="a medical professional with expertise in lung cancer",
+        text_field_name="description",
+        yield_text_score_as="text_score",
+        vector=[0.1, 0.1, 0.5],
+        vector_field_name="user_embedding",
+        yield_vsim_score_as="vsim_score",
+        combination_method="RRF",
+        yield_combined_score_as="hybrid_score",
+        return_fields=["user", "credit_score", "age", "job", "location", "description"],
+    )
+
     with pytest.raises(ImportError):
-        from redisvl.query.hybrid import HybridQuery  # noqa: F401
+        index.query(hybrid_query)
 
 
 @pytest.mark.skipif(
