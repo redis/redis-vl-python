@@ -130,6 +130,8 @@ def test_hybrid_query_with_all_parameters():
         10,
         "EF_RUNTIME",
         100,
+        "FILTER",
+        "@genre:{comedy}",
         "YIELD_SCORE_AS",
         "vsim_score",
         "COMBINE",
@@ -369,6 +371,8 @@ def test_hybrid_query_with_string_filter():
         "VSIM",
         "@embedding",
         bytes_vector,
+        "FILTER",
+        "@category:{tech|science|engineering}",
     ]
 
 
@@ -393,6 +397,8 @@ def test_hybrid_query_with_tag_filter():
         "VSIM",
         "@embedding",
         bytes_vector,
+        "FILTER",
+        "@genre:{comedy}",
     ]
 
 
@@ -412,7 +418,7 @@ def test_hybrid_query_with_numeric_filter():
     # Verify filter is included in serialized query
     args = get_query_pieces(hybrid_query)
     expected = "@age:[(30 +inf]"
-    assert args[1].endswith("AND " + expected)  # Check text filter
+    assert args[1].endswith(f"AND {expected})")  # Check text filter
     assert args[8] == expected  # Check vector filter
 
 

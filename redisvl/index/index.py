@@ -46,7 +46,6 @@ if TYPE_CHECKING:
     from redis.commands.search.aggregation import AggregateResult
     from redis.commands.search.document import Document
     from redis.commands.search.result import Result
-
     from redisvl.query.query import BaseQuery
 
 from redis import __version__ as redis_version
