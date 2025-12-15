@@ -1,4 +1,5 @@
 import os
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from pydantic import ConfigDict
@@ -117,12 +118,17 @@ class VertexAIVectorizer(BaseVectorizer):
         """Whether a multimodal model has been configured."""
         return "multimodal" in self.model
 
-    @property
+    @cached_property
     def _client(self):
         """Get the appropriate client based on the model type."""
         if self.is_multimodal:
-            return self._multimodal_client
-        return self._text_client
+            from vertexai.vision_models import MultiModalEmbeddingModel
+
+            return MultiModalEmbeddingModel.from_pretrained(self.model)
+
+        from vertexai.language_models import TextEmbeddingModel
+
+        return TextEmbeddingModel.from_pretrained(self.model)
 
     def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
         """Embed an image (from its path on disk) using a VertexAI multimodal model."""
@@ -194,19 +200,6 @@ class VertexAIVectorizer(BaseVectorizer):
                 project=project_id, location=location, credentials=credentials
             )
 
-            if self.is_multimodal:
-                from vertexai.vision_models import MultiModalEmbeddingModel
-
-                self._text_client = None
-                self._multimodal_client = MultiModalEmbeddingModel.from_pretrained(
-                    self.model
-                )
-            else:
-                from vertexai.language_models import TextEmbeddingModel
-
-                self._text_client = TextEmbeddingModel.from_pretrained(self.model)  # type: ignore[assignment]
-                self._multimodal_client = None  # type: ignore[assignment]
-
         except ImportError:
             raise ImportError(
                 "VertexAI vectorizer requires the google-cloud-aiplatform library. "
@@ -254,13 +247,10 @@ class VertexAIVectorizer(BaseVectorizer):
         """
         try:
             if self.is_multimodal:
-                if self._multimodal_client is None:
-                    raise ValueError("Multimodal client not initialized.")
-
                 from vertexai.vision_models import Image, Video
 
                 if isinstance(content, str):
-                    result = self._multimodal_client.get_embeddings(
+                    result = self._client.get_embeddings(
                         contextual_text=content,
                         **kwargs,
                     )
@@ -268,7 +258,7 @@ class VertexAIVectorizer(BaseVectorizer):
                         raise ValueError("No text embedding returned from VertexAI.")
                     return result.text_embedding
                 elif isinstance(content, Image):
-                    result = self._multimodal_client.get_embeddings(
+                    result = self._client.get_embeddings(
                         image=content,
                         **kwargs,
                     )
@@ -276,7 +266,7 @@ class VertexAIVectorizer(BaseVectorizer):
                         raise ValueError("No image embedding returned from VertexAI.")
                     return result.image_embedding
                 elif isinstance(content, Video):
-                    result = self._multimodal_client.get_embeddings(
+                    result = self._client.get_embeddings(
                         video=content,
                         **kwargs,
                     )
@@ -290,9 +280,7 @@ class VertexAIVectorizer(BaseVectorizer):
                     )
 
             else:
-                if self._text_client is None:
-                    raise ValueError("Text client not initialized.")
-                return self._text_client.get_embeddings([content], **kwargs)[0].values
+                return self._client.get_embeddings([content], **kwargs)[0].values
 
         except Exception as e:
             raise ValueError(f"Embedding input failed: {e}")
@@ -324,9 +312,6 @@ class VertexAIVectorizer(BaseVectorizer):
             raise NotImplementedError(
                 "Batch embedding is not supported for multimodal models with VertexAI."
             )
-        if not self._text_client:
-            raise ValueError("Text client not initialized.")
-
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if contents and not isinstance(contents[0], str):
@@ -335,7 +320,7 @@ class VertexAIVectorizer(BaseVectorizer):
         try:
             embeddings: List = []
             for batch in self.batchify(contents, batch_size):
-                response = self._text_client.get_embeddings(batch, **kwargs)
+                response = self._client.get_embeddings(batch, **kwargs)
                 embeddings.extend([r.values for r in response])
             return embeddings
         except Exception as e:
