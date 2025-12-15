@@ -512,5 +512,5 @@ def test_hybrid_query_not_available(index):
     REDIS_HYBRID_AVAILABLE, reason="Requires hybrid search to NOT be available"
 )
 def test_hybrid_search_method_missing(index):
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ImportError):
         index.query(None)

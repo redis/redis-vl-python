@@ -288,7 +288,7 @@ class BaseSearchIndex:
 
             from redisvl.query.hybrid import HybridQuery
         except (ImportError, ModuleNotFoundError):
-            raise NotImplementedError(_HYBRID_SEARCH_ERROR_MESSAGE)
+            raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
 
         if not isinstance(query, HybridQuery):
             raise TypeError(f"query must be of type HybridQuery, got {type(query)}")
@@ -1054,7 +1054,7 @@ class SearchIndex(BaseSearchIndex):
         self._validate_hybrid_query(query)
 
         if not hasattr(index, "hybrid_search"):
-            raise NotImplementedError(_HYBRID_SEARCH_ERROR_MESSAGE)
+            raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
 
         results = index.hybrid_search(
             query=query.query,
@@ -1928,7 +1928,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._validate_hybrid_query(query)
 
         if not hasattr(index, "hybrid_search"):
-            raise NotImplementedError(_HYBRID_SEARCH_ERROR_MESSAGE)
+            raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
 
         results = await index.hybrid_search(
             query=query.query,
