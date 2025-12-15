@@ -25,9 +25,9 @@ class HFTextVectorizer(BaseVectorizer):
     robust performance across different embedding needs.
 
     Note: Some multimodal models can make use of sentence-transformers by passing
-        Image objects in place of strings (e.g. CLIP). To enable those use cases, this
-        class follows the SentenceTransformer convention of hinting that it expects
-        string inputs, but never enforcing it.
+        PIL Image objects in place of strings (e.g. CLIP). To enable those use
+        cases, this class follows the SentenceTransformer convention of hinting
+        that it expects string inputs, but never enforcing it.
 
     Requirements:
         - The `sentence-transformers` library must be installed with pip.

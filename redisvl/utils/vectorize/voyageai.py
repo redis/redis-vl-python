@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -51,21 +51,19 @@ class VoyageAIVectorizer(BaseVectorizer):
             input_type="document"
         )
 
-        # Multimodal usage
-        from PIL import Image
-        from voyageai.video_utils import Video
+        # Multimodal usage - requires Pillow and voyageai>=0.3.6
 
         vectorizer = VoyageAIVectorizer(
-            model="voyage-multimodal-3",
+            model="voyage-multimodal-3.5",
             api_config={"api_key": "your-voyageai-api-key"} # OR set VOYAGE_API_KEY in your env
         )
-        image_embedding = vectorizer.embed(
-            content=Image.open("path/to/your/image.jpg"),
-            input_type=None
+        image_embedding = vectorizer.embed_image(
+            "path/to/your/image.jpg",
+            input_type="query"
         )
-        video_embedding = vectorizer.embed(
-            content=Video("path/to/your/video.mp4"),
-            input_type=None
+        video_embedding = vectorizer.embed_video(
+            "path/to/your/video.mp4",
+            input_type="document"
         )
 
         # With caching enabled
@@ -129,6 +127,39 @@ class VoyageAIVectorizer(BaseVectorizer):
     def is_multimodal(self) -> bool:
         """Whether a multimodal model has been configured."""
         return "multimodal" in self.model
+
+    def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
+        """Embed an image (from its path on disk) using VoyageAI's multimodal API."""
+        if not self.is_multimodal:
+            raise ValueError("Cannot embed image with a non-multimodal model.")
+
+        try:
+            from PIL import Image
+        except ImportError:
+            raise ImportError(
+                "Pillow library is required for image embedding. "
+                "Please install with `pip install pillow`"
+            )
+        return self.embed(Image.open(image_path), **kwargs)
+
+    def embed_video(self, video_path: str, **kwargs) -> Union[List[float], bytes]:
+        """Embed a video (from its path on disk) using VoyageAI's multimodal API."""
+        if not self.is_multimodal:
+            raise ValueError("Cannot embed video with a non-multimodal model.")
+
+        try:
+            from voyageai.video_utils import Video
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "voyageai>=0.3.6 is required for video embedding. "
+                "Please install with `pip install voyageai>=0.3.6`"
+            )
+
+        video = Video.from_path(
+            video_path,
+            model=self.model,
+        )
+        return self.embed(video, **kwargs)
 
     def _setup(self, api_config: Optional[Dict], **kwargs):
         """Set up the VoyageAI client and determine the embedding dimensions."""
