@@ -117,6 +117,7 @@ class HybridQuery:
                 text_scorer score.
 
         Raises:
+            ImportError: If redis-py>=7.1.0 is not installed.
             TypeError: If the stopwords are not a set, list, or tuple of strings.
             ValueError: If the text string is empty, or if the text string becomes empty after
                 stopwords are removed.
@@ -129,7 +130,7 @@ class HybridQuery:
                 CombineResultsMethod,
                 HybridPostProcessingConfig,
             )
-        except ImportError:
+        except (ImportError, ModuleNotFoundError):
             raise ImportError(_IMPORT_ERROR_MESSAGE)
 
         self.postprocessing_config = HybridPostProcessingConfig()
@@ -218,6 +219,7 @@ def build_base_query(
         If LINEAR combination method is used, then at least one of `linear_alpha` or `linear_beta` must be provided.
 
     Raises:
+        ImportError: If redis-py>=7.1.0 is not installed.
         ValueError: If `vector_search_method` is defined and isn't one of {KNN, RANGE}.
         ValueError: If `vector_search_method` is "KNN" and `knn_k` is not provided.
         ValueError: If `vector_search_method` is "RANGE" and `range_radius` is not provided.
@@ -232,7 +234,7 @@ def build_base_query(
             HybridVsimQuery,
             VectorSearchMethods,
         )
-    except ImportError:
+    except (ImportError, ModuleNotFoundError):
         raise ImportError(_IMPORT_ERROR_MESSAGE)
 
     # Serialize the full-text search query
@@ -316,6 +318,7 @@ def build_combination_method(
         yield_score_as: The name of the field to yield the combined score as.
 
     Raises:
+        ImportError: If redis-py>=7.1.0 is not installed.
         ValueError: If `combination_method` is defined and isn't one of {RRF, LINEAR}.
         ValueError: If `combination_method` is "RRF" and neither `rrf_window` nor `rrf_constant` is provided.
         ValueError: If `combination_method` is "LINEAR" and neither `linear_alpha` nor `linear_beta` is provided.
@@ -328,7 +331,7 @@ def build_combination_method(
             CombinationMethods,
             CombineResultsMethod,
         )
-    except ImportError:
+    except (ImportError, ModuleNotFoundError):
         raise ImportError(_IMPORT_ERROR_MESSAGE)
 
     method_params: Dict[str, Any] = {}
