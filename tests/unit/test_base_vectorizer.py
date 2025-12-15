@@ -15,17 +15,17 @@ def test_base_vectorizer_defaults():
         model: str = "simple"
         dims: int = 10
 
-        def embed(self, text: str, **kwargs) -> List[float]:
+        def embed(self, content: str, **kwargs) -> List[float]:
             return [0.0] * self.dims
 
-        async def aembed(self, text: str, **kwargs) -> List[float]:
+        async def aembed(self, content: str, **kwargs) -> List[float]:
             return [0.0] * self.dims
 
-        async def aembed_many(self, texts: List[str], **kwargs) -> List[List[float]]:
-            return [[0.0] * self.dims] * len(texts)
+        async def aembed_many(self, contents: List[str], **kwargs) -> List[List[float]]:
+            return [[0.0] * self.dims] * len(contents)
 
-        def embed_many(self, texts: List[str], **kwargs) -> List[List[float]]:
-            return [[0.0] * self.dims] * len(texts)
+        def embed_many(self, contents: List[str], **kwargs) -> List[List[float]]:
+            return [[0.0] * self.dims] * len(contents)
 
     vectorizer = SimpleVectorizer()
     assert vectorizer.model == "simple"

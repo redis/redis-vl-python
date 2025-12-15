@@ -14,7 +14,7 @@ from redisvl.utils.vectorize import (
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAITextVectorizer,
-    VoyageAITextVectorizer,
+    VoyageAIVectorizer,
 )
 
 # Constants for testing
@@ -47,7 +47,7 @@ def embeddings_cache(client):
         BedrockTextVectorizer,
         MistralAITextVectorizer,
         CustomTextVectorizer,
-        VoyageAITextVectorizer,
+        VoyageAIVectorizer,
     ]
 )
 def vectorizer(request):
@@ -61,7 +61,7 @@ def vectorizer(request):
         return request.param()
     elif request.param == MistralAITextVectorizer:
         return request.param()
-    elif request.param == VoyageAITextVectorizer:
+    elif request.param == VoyageAIVectorizer:
         return request.param(model="voyage-large-2")
     elif request.param == AzureOpenAITextVectorizer:
         return request.param(
@@ -73,17 +73,17 @@ def vectorizer(request):
         )
     elif request.param == CustomTextVectorizer:
 
-        def embed(text):
+        def embed(content):
             return TEST_VECTOR
 
-        def embed_many(texts):
-            return [TEST_VECTOR] * len(texts)
+        def embed_many(contents):
+            return [TEST_VECTOR] * len(contents)
 
-        async def aembed_func(text):
+        async def aembed_func(content):
             return TEST_VECTOR
 
-        async def aembed_many_func(texts):
-            return [TEST_VECTOR] * len(texts)
+        async def aembed_many_func(contents):
+            return [TEST_VECTOR] * len(contents)
 
         return request.param(embed=embed, embed_many=embed_many)
 
@@ -92,17 +92,17 @@ def vectorizer(request):
 def cached_vectorizer(embeddings_cache):
     """Create a simple custom vectorizer for testing."""
 
-    def embed(text):
+    def embed(content):
         return TEST_VECTOR
 
-    def embed_many(texts):
-        return [TEST_VECTOR] * len(texts)
+    def embed_many(contents):
+        return [TEST_VECTOR] * len(contents)
 
-    async def aembed(text):
+    async def aembed(content):
         return TEST_VECTOR
 
-    async def aembed_many(texts):
-        return [TEST_VECTOR] * len(texts)
+    async def aembed_many(contents):
+        return [TEST_VECTOR] * len(contents)
 
     return CustomTextVectorizer(
         embed=embed,
@@ -115,7 +115,7 @@ def cached_vectorizer(embeddings_cache):
 
 @pytest.fixture
 def custom_embed_func():
-    def embed(text: str):
+    def embed(content: str):
         return TEST_VECTOR
 
     return embed
@@ -124,16 +124,16 @@ def custom_embed_func():
 @pytest.fixture
 def custom_embed_class():
     class MyEmbedder:
-        def embed(self, text: str):
+        def embed(self, content: str):
             return TEST_VECTOR
 
-        def embed_with_args(self, text: str, max_len=None):
+        def embed_with_args(self, content: str, max_len=None):
             return TEST_VECTOR[0:max_len]
 
-        def embed_many(self, text_list):
+        def embed_many(self, contents):
             return [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-        def embed_many_with_args(self, texts, param=True):
+        def embed_many_with_args(self, contents, param=True):
             if param:
                 return [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
             else:
@@ -147,7 +147,7 @@ def test_vectorizer_embed(vectorizer):
     text = TEST_TEXT
     if isinstance(vectorizer, CohereTextVectorizer):
         embedding = vectorizer.embed(text, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embedding = vectorizer.embed(text, input_type="document")
     else:
         embedding = vectorizer.embed(text)
@@ -161,7 +161,7 @@ def test_vectorizer_embed_many(vectorizer):
     texts = TEST_TEXTS
     if isinstance(vectorizer, CohereTextVectorizer):
         embeddings = vectorizer.embed_many(texts, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embeddings = vectorizer.embed_many(texts, input_type="document")
     else:
         embeddings = vectorizer.embed_many(texts)
@@ -197,7 +197,7 @@ def test_vectorizer_with_cache(cached_vectorizer):
 
     # Verify it's actually using the cache by checking the cached value exists
     cached_entry = cached_vectorizer.cache.get(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry is not None
     assert cached_entry["embedding"] == TEST_VECTOR
@@ -209,11 +209,11 @@ def test_vectorizer_with_cache_skip(cached_vectorizer):
     cached_vectorizer.embed(TEST_TEXT)
 
     # Call embed with skip_cache=True - should bypass cache
-    cached_vectorizer.cache.drop(text=TEST_TEXT, model_name=cached_vectorizer.model)
+    cached_vectorizer.cache.drop(content=TEST_TEXT, model_name=cached_vectorizer.model)
 
     # Store a deliberately different value in the cache
     cached_vectorizer.cache.set(
-        text=TEST_TEXT,
+        content=TEST_TEXT,
         model_name=cached_vectorizer.model,
         embedding=[9.9, 8.8, 7.7, 6.6],
     )
@@ -226,7 +226,7 @@ def test_vectorizer_with_cache_skip(cached_vectorizer):
 
     # Cache should still have the original value
     cached_entry = cached_vectorizer.cache.get(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry["embedding"] == [9.9, 8.8, 7.7, 6.6]
 
@@ -235,7 +235,7 @@ def test_vectorizer_with_cache_many(cached_vectorizer):
     """Test embedding many texts with partial cache hits/misses."""
     # Store an embedding for the first text only
     cached_vectorizer.cache.set(
-        text=TEST_TEXTS[0],
+        content=TEST_TEXTS[0],
         model_name=cached_vectorizer.model,
         embedding=[0.1, 0.2, 0.3, 0.4],
     )
@@ -250,7 +250,7 @@ def test_vectorizer_with_cache_many(cached_vectorizer):
     # Both should now be in cache
     for text in TEST_TEXTS:
         assert cached_vectorizer.cache.exists(
-            text=text, model_name=cached_vectorizer.model
+            content=text, model_name=cached_vectorizer.model
         )
 
 
@@ -262,7 +262,7 @@ def test_vectorizer_with_cached_metadata(cached_vectorizer):
 
     # Verify metadata was stored in cache
     cached_entry = cached_vectorizer.cache.get(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry["metadata"] == test_metadata
 
@@ -280,7 +280,7 @@ async def test_vectorizer_with_cache_async(cached_vectorizer):
 
     # Verify it's actually using the cache
     cached_entry = await cached_vectorizer.cache.aget(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry is not None
     assert cached_entry["embedding"] == TEST_VECTOR
@@ -291,7 +291,7 @@ async def test_vectorizer_with_cache_async_many(cached_vectorizer):
     """Test async embedding many texts with partial cache hits/misses."""
     # Store an embedding for the first text only
     await cached_vectorizer.cache.aset(
-        text=TEST_TEXTS[0],
+        content=TEST_TEXTS[0],
         model_name=cached_vectorizer.model,
         embedding=[0.1, 0.2, 0.3, 0.4],
     )
@@ -306,7 +306,7 @@ async def test_vectorizer_with_cache_async_many(cached_vectorizer):
     # Both should now be in cache
     for text in TEST_TEXTS:
         assert await cached_vectorizer.cache.aexists(
-            text=text, model_name=cached_vectorizer.model
+            content=text, model_name=cached_vectorizer.model
         )
 
 
@@ -426,7 +426,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         MistralAITextVectorizer,
         OpenAITextVectorizer,
         VertexAITextVectorizer,
-        VoyageAITextVectorizer,
+        VoyageAIVectorizer,
     ],
 )
 def test_default_dtype(vectorizer_):
@@ -455,7 +455,7 @@ def test_default_dtype(vectorizer_):
         MistralAITextVectorizer,
         OpenAITextVectorizer,
         VertexAITextVectorizer,
-        VoyageAITextVectorizer,
+        VoyageAIVectorizer,
     ],
 )
 def test_vectorizer_dtype_assignment(vectorizer_):
@@ -487,7 +487,7 @@ def test_vectorizer_dtype_assignment(vectorizer_):
         MistralAITextVectorizer,
         OpenAITextVectorizer,
         VertexAITextVectorizer,
-        VoyageAITextVectorizer,
+        VoyageAIVectorizer,
     ],
 )
 def test_non_supported_dtypes(vectorizer_):
@@ -507,7 +507,7 @@ async def test_vectorizer_aembed(vectorizer):
     text = TEST_TEXT
     if isinstance(vectorizer, CohereTextVectorizer):
         embedding = await vectorizer.aembed(text, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embedding = await vectorizer.aembed(text, input_type="document")
     else:
         embedding = await vectorizer.aembed(text)
@@ -521,7 +521,7 @@ async def test_vectorizer_aembed_many(vectorizer):
     texts = TEST_TEXTS
     if isinstance(vectorizer, CohereTextVectorizer):
         embeddings = await vectorizer.aembed_many(texts, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embeddings = await vectorizer.aembed_many(texts, input_type="document")
     else:
         embeddings = await vectorizer.aembed_many(texts)
