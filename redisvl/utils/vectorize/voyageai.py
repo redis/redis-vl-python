@@ -16,7 +16,7 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 
 
 class VoyageAIVectorizer(BaseVectorizer):
-    """The VoyageAITextVectorizer class utilizes VoyageAI's API to generate
+    """The VoyageAIVectorizer class utilizes VoyageAI's API to generate
     embeddings for text and multimodal (text / image / video) data.
 
     This vectorizer is designed to interact with VoyageAI's /embed and /multimodal_embed APIs,

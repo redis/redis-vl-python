@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -8,13 +8,12 @@ from tenacity.retry import retry_if_not_exception_type
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
-class VertexAITextVectorizer(BaseVectorizer):
-    """The VertexAITextVectorizer uses Google's VertexAI Palm 2 embedding model
-    API to create text embeddings.
+class VertexAIVectorizer(BaseVectorizer):
+    """The VertexAIVectorizer uses Google's VertexAI embedding model
+    API to create embeddings.
 
     This vectorizer is tailored for use in
     environments where integration with Google Cloud Platform (GCP) services is
@@ -27,12 +26,12 @@ class VertexAITextVectorizer(BaseVectorizer):
     installed with `pip install google-cloud-aiplatform>=1.26`.
 
     You can optionally enable caching to improve performance when generating
-    embeddings for repeated text inputs.
+    embeddings for repeated inputs.
 
     .. code-block:: python
 
         # Basic usage
-        vectorizer = VertexAITextVectorizer(
+        vectorizer = VertexAIVectorizer(
             model="textembedding-gecko",
             api_config={
                 "project_id": "your_gcp_project_id", # OR set GCP_PROJECT_ID
@@ -44,7 +43,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         from redisvl.extensions.cache.embeddings import EmbeddingsCache
         cache = EmbeddingsCache(name="vertexai_embeddings_cache")
 
-        vectorizer = VertexAITextVectorizer(
+        vectorizer = VertexAIVectorizer(
             model="textembedding-gecko",
             api_config={
                 "project_id": "your_gcp_project_id",
@@ -64,6 +63,20 @@ class VertexAITextVectorizer(BaseVectorizer):
             ["Hello, world!", "Goodbye, world!"],
             batch_size=2
         )
+
+        # Multimodal usage
+        from vertexai.vision_models import Image, Video
+
+        vectorizer = VertexAIVectorizer(
+            model="multimodalembedding@001",
+            api_config={
+                "project_id": "your_gcp_project_id", # OR set GCP_PROJECT_ID
+                "location": "your_gcp_location",     # OR set GCP_LOCATION
+            }
+        )
+        text_embedding = vectorizer.embed("Hello, world!")
+        image_embedding = vectorizer.embed(Image.load_from_file("path/to/your/image.jpg"))
+        video_embedding = vectorizer.embed(Video.load_from_file("path/to/your/video.mp4"))
 
     """
 
@@ -98,6 +111,36 @@ class VertexAITextVectorizer(BaseVectorizer):
         super().__init__(model=model, dtype=dtype, cache=cache)
         # Initialize client and set up the model
         self._setup(api_config, **kwargs)
+
+    @property
+    def is_multimodal(self) -> bool:
+        """Whether a multimodal model has been configured."""
+        return "multimodal" in self.model
+
+    @property
+    def _client(self):
+        """Get the appropriate client based on the model type."""
+        if self.is_multimodal:
+            return self._multimodal_client
+        return self._text_client
+
+    def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
+        """Embed an image (from its path on disk) using a VertexAI multimodal model."""
+        if not self.is_multimodal:
+            raise ValueError("Cannot embed image with a non-multimodal model.")
+
+        from vertexai.vision_models import Image
+
+        return self.embed(Image.load_from_file(image_path), **kwargs)
+
+    def embed_video(self, video_path: str, **kwargs) -> Union[List[float], bytes]:
+        """Embed a video (from its path on disk) using a VertexAI multimodal model."""
+        if not self.is_multimodal:
+            raise ValueError("Cannot embed video with a non-multimodal model.")
+
+        from vertexai.vision_models import Video
+
+        return self.embed(Video.load_from_file(video_path), **kwargs)
 
     def _setup(self, api_config: Optional[Dict], **kwargs):
         """Set up the VertexAI client and determine the embedding dimensions."""
@@ -146,19 +189,29 @@ class VertexAITextVectorizer(BaseVectorizer):
 
         try:
             import vertexai
-            from vertexai.language_models import TextEmbeddingModel
 
             vertexai.init(
                 project=project_id, location=location, credentials=credentials
             )
+
+            if self.is_multimodal:
+                from vertexai.vision_models import MultiModalEmbeddingModel
+
+                self._text_client = None
+                self._multimodal_client = MultiModalEmbeddingModel.from_pretrained(
+                    self.model
+                )
+            else:
+                from vertexai.language_models import TextEmbeddingModel
+
+                self._text_client = TextEmbeddingModel.from_pretrained(self.model)  # type: ignore[assignment]
+                self._multimodal_client = None  # type: ignore[assignment]
+
         except ImportError:
             raise ImportError(
                 "VertexAI vectorizer requires the google-cloud-aiplatform library. "
                 "Please install with `pip install google-cloud-aiplatform>=1.26`"
             )
-
-        # Store client as a regular attribute instead of PrivateAttr
-        self._client = TextEmbeddingModel.from_pretrained(self.model)
 
     def _set_model_dims(self) -> int:
         """
@@ -185,29 +238,64 @@ class VertexAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, content: str, **kwargs) -> List[float]:
+    def _embed(self, content: Any, **kwargs) -> List[float]:
         """
-        Generate a vector embedding for a single text using the VertexAI API.
+        Generate a vector embedding for a single input using the VertexAI API.
 
         Args:
-            content: Text to embed
+            content: Input to embed
             **kwargs: Additional parameters to pass to the VertexAI API
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If content is not a string
             ValueError: If embedding fails
         """
-        if not isinstance(content, str):
-            raise TypeError("Must pass in a str value to embed.")
-
         try:
-            result = self._client.get_embeddings([content], **kwargs)
-            return result[0].values
+            if self.is_multimodal:
+                if self._multimodal_client is None:
+                    raise ValueError("Multimodal client not initialized.")
+
+                from vertexai.vision_models import Image, Video
+
+                if isinstance(content, str):
+                    result = self._multimodal_client.get_embeddings(
+                        contextual_text=content,
+                        **kwargs,
+                    )
+                    if result.text_embedding is None:
+                        raise ValueError("No text embedding returned from VertexAI.")
+                    return result.text_embedding
+                elif isinstance(content, Image):
+                    result = self._multimodal_client.get_embeddings(
+                        image=content,
+                        **kwargs,
+                    )
+                    if result.image_embedding is None:
+                        raise ValueError("No image embedding returned from VertexAI.")
+                    return result.image_embedding
+                elif isinstance(content, Video):
+                    result = self._multimodal_client.get_embeddings(
+                        video=content,
+                        **kwargs,
+                    )
+                    if result.video_embeddings is None:
+                        raise ValueError("No video embedding returned from VertexAI.")
+                    return result.video_embeddings[0].embedding
+                else:
+                    raise TypeError(
+                        "Invalid input type for multimodal embedding. "
+                        "Must be str, Image, or Video."
+                    )
+
+            else:
+                if self._text_client is None:
+                    raise ValueError("Text client not initialized.")
+                return self._text_client.get_embeddings([content], **kwargs)[0].values
+
         except Exception as e:
-            raise ValueError(f"Embedding text failed: {e}")
+            raise ValueError(f"Embedding input failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -232,6 +320,13 @@ class VertexAITextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
+        if self.is_multimodal:
+            raise NotImplementedError(
+                "Batch embedding is not supported for multimodal models with VertexAI."
+            )
+        if not self._text_client:
+            raise ValueError("Text client not initialized.")
+
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if contents and not isinstance(contents[0], str):
@@ -240,7 +335,7 @@ class VertexAITextVectorizer(BaseVectorizer):
         try:
             embeddings: List = []
             for batch in self.batchify(contents, batch_size):
-                response = self._client.get_embeddings(batch, **kwargs)
+                response = self._text_client.get_embeddings(batch, **kwargs)
                 embeddings.extend([r.values for r in response])
             return embeddings
         except Exception as e:

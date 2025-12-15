@@ -80,8 +80,7 @@ class BaseVectorizer(BaseModel):
 
         Examples:
             >>> embedding = text_vectorizer.embed("Hello world")
-            >>> im = Image.open("test.png")
-            >>> embedding = image_vectorizer.embed(im)
+            >>> embedding = image_vectorizer.embed(Image.open("test.png"))
         """
         # Apply preprocessing if provided
         if preprocess is not None:

@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
@@ -10,7 +9,7 @@ from redisvl.utils.vectorize.text.custom import CustomTextVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
-from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
+from redisvl.utils.vectorize.vertexai import VertexAIVectorizer
 from redisvl.utils.vectorize.voyageai import VoyageAIVectorizer
 
 __all__ = [
@@ -18,7 +17,7 @@ __all__ = [
     "CohereTextVectorizer",
     "HFTextVectorizer",
     "OpenAITextVectorizer",
-    "VertexAITextVectorizer",
+    "VertexAIVectorizer",
     "AzureOpenAITextVectorizer",
     "MistralAITextVectorizer",
     "CustomTextVectorizer",
@@ -51,7 +50,7 @@ def vectorizer_from_dict(
     elif vectorizer_type == Vectorizers.mistral:
         return MistralAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
-        return VertexAITextVectorizer(**args)
+        return VertexAIVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
         return VoyageAIVectorizer(**args)
     else:

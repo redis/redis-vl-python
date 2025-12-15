@@ -13,7 +13,7 @@ from redisvl.utils.vectorize import (
     HFTextVectorizer,
     MistralAITextVectorizer,
     OpenAITextVectorizer,
-    VertexAITextVectorizer,
+    VertexAIVectorizer,
     VoyageAIVectorizer,
 )
 
@@ -41,7 +41,7 @@ def embeddings_cache(client):
     params=[
         HFTextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
+        VertexAIVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
         BedrockTextVectorizer,
@@ -55,7 +55,7 @@ def vectorizer(request):
         return request.param()
     elif request.param == OpenAITextVectorizer:
         return request.param()
-    elif request.param == VertexAITextVectorizer:
+    elif request.param == VertexAIVectorizer:
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
@@ -425,7 +425,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
+        VertexAIVectorizer,
         VoyageAIVectorizer,
     ],
 )
@@ -454,7 +454,7 @@ def test_default_dtype(vectorizer_):
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
+        VertexAIVectorizer,
         VoyageAIVectorizer,
     ],
 )
@@ -486,7 +486,7 @@ def test_vectorizer_dtype_assignment(vectorizer_):
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
+        VertexAIVectorizer,
         VoyageAIVectorizer,
     ],
 )
