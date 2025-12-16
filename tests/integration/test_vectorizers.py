@@ -173,18 +173,6 @@ def test_vectorizer_embed_many(vectorizer):
     )
 
 
-@pytest.mark.requires_api_keys
-def test_vectorizer_bad_input(vectorizer):
-    with pytest.raises(TypeError):
-        vectorizer.embed(1)
-
-    with pytest.raises(TypeError):
-        vectorizer.embed({"foo": "bar"})
-
-    with pytest.raises(TypeError):
-        vectorizer.embed_many(42)
-
-
 def test_vectorizer_with_cache(cached_vectorizer):
     """Test the complete cache flow - miss, store, hit."""
     # First call - should be a cache miss

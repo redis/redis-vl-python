@@ -65,7 +65,7 @@ def test_cache_entry_deserialization():
     """Test that a CacheEntry properly deserializes data from Redis format."""
     serialized_data = {
         "entry_id": "test_id",
-        "text": "What is AI?",
+        "content": "What is AI?",
         "model_name": "text-embedding-ada-002",
         "embedding": json.dumps([0.1, 0.2, 0.3]),  # Serialized embedding
         "metadata": json.dumps({"source": "user_query"}),  # Serialized metadata
@@ -74,7 +74,7 @@ def test_cache_entry_deserialization():
 
     entry = CacheEntry(**serialized_data)
     assert entry.entry_id == "test_id"
-    assert entry.text == "What is AI?"
+    assert entry.content == "What is AI?"
     assert entry.model_name == "text-embedding-ada-002"
     assert entry.embedding == [0.1, 0.2, 0.3]  # Should be deserialized
     assert entry.metadata == {"source": "user_query"}  # Should be deserialized
