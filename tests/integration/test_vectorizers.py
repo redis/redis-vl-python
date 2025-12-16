@@ -9,7 +9,7 @@ from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
     BedrockVectorizer,
     CohereTextVectorizer,
-    CustomTextVectorizer,
+    CustomVectorizer,
     HFTextVectorizer,
     MistralAITextVectorizer,
     OpenAITextVectorizer,
@@ -46,7 +46,7 @@ def embeddings_cache(client):
         AzureOpenAITextVectorizer,
         BedrockVectorizer,
         MistralAITextVectorizer,
-        CustomTextVectorizer,
+        CustomVectorizer,
         VoyageAIVectorizer,
     ]
 )
@@ -71,7 +71,7 @@ def vectorizer(request):
         return request.param(
             model=os.getenv("BEDROCK_MODEL_ID", "amazon.titan-embed-text-v2:0")
         )
-    elif request.param == CustomTextVectorizer:
+    elif request.param == CustomVectorizer:
 
         def embed(content):
             return TEST_VECTOR
@@ -104,7 +104,7 @@ def cached_vectorizer(embeddings_cache):
     async def aembed_many(contents):
         return [TEST_VECTOR] * len(contents)
 
-    return CustomTextVectorizer(
+    return CustomVectorizer(
         embed=embed,
         embed_many=embed_many,
         aembed=aembed,
@@ -329,56 +329,56 @@ def test_bedrock_invalid_model():
 
 
 def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
-    custom_wrapper = CustomTextVectorizer(embed=custom_embed_func)
+    custom_wrapper = CustomVectorizer(embed=custom_embed_func)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == TEST_VECTOR
 
-    custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed)
+    custom_wrapper = CustomVectorizer(embed=custom_embed_class().embed)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == TEST_VECTOR
 
-    custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed_with_args)
+    custom_wrapper = CustomVectorizer(embed=custom_embed_class().embed_with_args)
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=4)
     assert embedding == TEST_VECTOR
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=2)
     assert embedding == [1.1, 2.2]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed="hello")
+        invalid_vectorizer = CustomVectorizer(embed="hello")
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed=42)
+        invalid_vectorizer = CustomVectorizer(embed=42)
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed={"foo": "bar"})
+        invalid_vectorizer = CustomVectorizer(embed={"foo": "bar"})
 
     def bad_arg_type(value: int):
         return [value]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed=bad_arg_type)
+        invalid_vectorizer = CustomVectorizer(embed=bad_arg_type)
 
     def bad_return_type(text: str) -> str:
         return text
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed=bad_return_type)
+        invalid_vectorizer = CustomVectorizer(embed=bad_return_type)
 
 
 def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
-    custom_wrapper = CustomTextVectorizer(
+    custom_wrapper = CustomVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-    custom_wrapper = CustomTextVectorizer(
+    custom_wrapper = CustomVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-    custom_wrapper = CustomTextVectorizer(
+    custom_wrapper = CustomVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many_with_args
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"], param=True)
@@ -387,13 +387,13 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     assert embeddings == [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(custom_embed_func, embed_many="hello")
+        invalid_vectorizer = CustomVectorizer(custom_embed_func, embed_many="hello")
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(custom_embed_func, embed_many=42)
+        invalid_vectorizer = CustomVectorizer(custom_embed_func, embed_many=42)
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(
+        invalid_vectorizer = CustomVectorizer(
             custom_embed_func, embed_many={"foo": "bar"}
         )
 
@@ -401,7 +401,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         return [value]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(
+        invalid_vectorizer = CustomVectorizer(
             custom_embed_func, embed_many=bad_arg_type
         )
 
@@ -409,7 +409,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         return text
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(
+        invalid_vectorizer = CustomVectorizer(
             custom_embed_func, embed_many=bad_return_type
         )
 
@@ -421,7 +421,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         AzureOpenAITextVectorizer,
         BedrockVectorizer,
         CohereTextVectorizer,
-        CustomTextVectorizer,
+        CustomVectorizer,
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
@@ -431,7 +431,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
 )
 def test_default_dtype(vectorizer_):
     # test dtype defaults to float32
-    if issubclass(vectorizer_, CustomTextVectorizer):
+    if issubclass(vectorizer_, CustomVectorizer):
         vectorizer = vectorizer_(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
     elif issubclass(vectorizer_, AzureOpenAITextVectorizer):
         vectorizer = vectorizer_(
@@ -450,7 +450,7 @@ def test_default_dtype(vectorizer_):
         AzureOpenAITextVectorizer,
         BedrockVectorizer,
         CohereTextVectorizer,
-        CustomTextVectorizer,
+        CustomVectorizer,
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
@@ -461,7 +461,7 @@ def test_default_dtype(vectorizer_):
 def test_vectorizer_dtype_assignment(vectorizer_):
     # test initializing dtype in constructor
     for dtype in ["float16", "float32", "float64", "bfloat16", "int8", "uint8"]:
-        if issubclass(vectorizer_, CustomTextVectorizer):
+        if issubclass(vectorizer_, CustomVectorizer):
             vectorizer = vectorizer_(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
         elif issubclass(vectorizer_, AzureOpenAITextVectorizer):
             vectorizer = vectorizer_(

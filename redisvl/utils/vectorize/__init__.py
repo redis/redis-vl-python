@@ -3,9 +3,9 @@ import os
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
 from redisvl.utils.vectorize.bedrock import BedrockVectorizer
+from redisvl.utils.vectorize.custom import CustomVectorizer
 from redisvl.utils.vectorize.text.azureopenai import AzureOpenAITextVectorizer
 from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
-from redisvl.utils.vectorize.text.custom import CustomTextVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
@@ -20,7 +20,7 @@ __all__ = [
     "VertexAIVectorizer",
     "AzureOpenAITextVectorizer",
     "MistralAITextVectorizer",
-    "CustomTextVectorizer",
+    "CustomVectorizer",
     "BedrockVectorizer",
     "VoyageAIVectorizer",
 ]

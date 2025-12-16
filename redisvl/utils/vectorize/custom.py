@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from pydantic import ConfigDict
 
@@ -34,23 +34,23 @@ def _check_vector(result: list, method_name: str) -> None:
             raise ValueError(f"{method_name} must return a list of floats.")
 
 
-class CustomTextVectorizer(BaseVectorizer):
-    """The CustomTextVectorizer class wraps user-defined embedding methods to create
-    embeddings for text data.
+class CustomVectorizer(BaseVectorizer):
+    """The CustomVectorizer class wraps user-defined embedding methods to create
+    embeddings for data.
 
-    This vectorizer is designed to accept a provided callable text vectorizer and
+    This vectorizer is designed to accept a provided callable vectorizer and
     provides a class definition to allow for compatibility with RedisVL.
     The vectorizer may support both synchronous and asynchronous operations which
-    allows for batch processing of texts, but at a minimum only synchronous embedding
+    allows for batch processing of inputs, but at a minimum only synchronous embedding
     is required to satisfy the 'embed()' method.
 
     You can optionally enable caching to improve performance when generating
-    embeddings for repeated text inputs.
+    embeddings for repeated inputs.
 
     .. code-block:: python
 
         # Basic usage with a custom embedding function
-        vectorizer = CustomTextVectorizer(
+        vectorizer = CustomVectorizer(
             embed = my_vectorizer.generate_embedding
         )
         embedding = vectorizer.embed("Hello, world!")
@@ -59,7 +59,7 @@ class CustomTextVectorizer(BaseVectorizer):
         from redisvl.extensions.cache.embeddings import EmbeddingsCache
         cache = EmbeddingsCache(name="my_embeddings_cache")
 
-        vectorizer = CustomTextVectorizer(
+        vectorizer = CustomVectorizer(
             embed=my_vectorizer.generate_embedding,
             cache=cache
         )
@@ -92,15 +92,15 @@ class CustomTextVectorizer(BaseVectorizer):
         """Initialize the Custom vectorizer.
 
         Args:
-            embed (Callable): a Callable function that accepts a string object and returns a list of floats.
-            embed_many (Optional[Callable]): a Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
-            aembed (Optional[Callable]): an asynchronous Callable function that accepts a string object and returns a lists of floats. Defaults to None.
-            aembed_many (Optional[Callable]): an asynchronous Callable function that accepts a list of string objects and returns a list containing lists of floats. Defaults to None.
-            dtype (str): the default datatype to use when embedding text as byte arrays.
+            embed (Callable): a Callable function that accepts an object and returns a list of floats.
+            embed_many (Optional[Callable]): a Callable function that accepts a list of objects and returns a list containing lists of floats. Defaults to None.
+            aembed (Optional[Callable]): an asynchronous Callable function that accepts a object and returns a lists of floats. Defaults to None.
+            aembed_many (Optional[Callable]): an asynchronous Callable function that accepts a list of objects and returns a list containing lists of floats. Defaults to None.
+            dtype (str): the default datatype to use when embedding inputs as byte arrays.
                 Used when setting `as_buffer=True` in calls to embed() and embed_many().
                 Defaults to 'float32'.
             cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
-                better performance with repeated texts. Defaults to None.
+                better performance with repeated inputs. Defaults to None.
 
         Raises:
             ValueError: if embedding validation fails.
@@ -152,50 +152,44 @@ class CustomTextVectorizer(BaseVectorizer):
             except Exception as e:
                 raise ValueError(f"Invalid embed_many function: {e}")
 
-    def _embed(self, content: str, **kwargs) -> List[float]:
-        """Generate a vector embedding for a single text using the provided user function.
+    def _embed(self, content: Any, **kwargs) -> List[float]:
+        """Generate a vector embedding for a single input using the provided user function.
 
         Args:
-            content: Text to embed
+            content: Input to embed
             **kwargs: Additional parameters to pass to the user function
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If content is not a string
             ValueError: If embedding fails
         """
-        if not isinstance(content, str):
-            raise TypeError("Must pass in a str value to embed.")
-
         try:
             result = self._embed_func(content, **kwargs)
             return result
         except Exception as e:
-            raise ValueError(f"Embedding text failed: {e}")
+            raise ValueError(f"Embedding input failed: {e}")
 
     def _embed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[Any], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
-        """Generate vector embeddings for a batch of texts using the provided user function.
+        """Generate vector embeddings for a batch of inputs using the provided user function.
 
         Args:
-            contents: List of texts to embed
-            batch_size: Number of texts to process in each batch
+            contents: List of inputs to embed
+            batch_size: Number of inputs to process in each batch
             **kwargs: Additional parameters to pass to the user function
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If contents is not a list of strings
+            TypeError: If contents is not a list
             ValueError: If embedding fails
         """
         if not isinstance(contents, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if contents and not isinstance(contents[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
+            raise TypeError("Must pass in a list of values to embed.")
 
         if not self._embed_func_many:
             # Fallback: Use _embed for each text if no batch function provided
@@ -205,26 +199,22 @@ class CustomTextVectorizer(BaseVectorizer):
             results = self._embed_func_many(contents, **kwargs)
             return results
         except Exception as e:
-            raise ValueError(f"Embedding texts failed: {e}")
+            raise ValueError(f"Embedding inputs failed: {e}")
 
-    async def _aembed(self, content: str, **kwargs) -> List[float]:
-        """Asynchronously generate a vector embedding for a single text.
+    async def _aembed(self, content: Any, **kwargs) -> List[float]:
+        """Asynchronously generate a vector embedding for a single input.
 
         Args:
-            content: Text to embed
+            content: Input to embed
             **kwargs: Additional parameters to pass to the user async function
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If content is not a string
             NotImplementedError: If no aembed function was provided
             ValueError: If embedding fails
         """
-        if not isinstance(content, str):
-            raise TypeError("Must pass in a str value to embed.")
-
         if not self._aembed_func:
             return self._embed(content, **kwargs)
 
@@ -238,30 +228,28 @@ class CustomTextVectorizer(BaseVectorizer):
 
             return result
         except Exception as e:
-            raise ValueError(f"Embedding text failed: {e}")
+            raise ValueError(f"Embedding input failed: {e}")
 
     async def _aembed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[Any], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
-        """Asynchronously generate vector embeddings for a batch of texts.
+        """Asynchronously generate vector embeddings for a batch of inputs.
 
         Args:
-            contents: List of texts to embed
-            batch_size: Number of texts to process in each batch
+            contents: List of inputs to embed
+            batch_size: Number of inputs to process in each batch
             **kwargs: Additional parameters to pass to the user async function
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If contents is not a list of strings
+            TypeError: If contents is not a list
             NotImplementedError: If no aembed_many function was provided
             ValueError: If embedding fails
         """
         if not isinstance(contents, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if contents and not isinstance(contents[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
+            raise TypeError("Must pass in a list of values to embed.")
 
         if not self._aembed_func_many:
             return self._embed_many(contents, batch_size, **kwargs)
@@ -276,4 +264,4 @@ class CustomTextVectorizer(BaseVectorizer):
 
             return results
         except Exception as e:
-            raise ValueError(f"Embedding texts failed: {e}")
+            raise ValueError(f"Embedding inputs failed: {e}")
