@@ -4,6 +4,7 @@ from redisvl.query.aggregate import (
     MultiVectorQuery,
     Vector,
 )
+from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import (
     BaseQuery,
     BaseVectorQuery,

@@ -1,4 +1,5 @@
 from typing import Dict, List, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -14,7 +15,7 @@ from redisvl.extensions.constants import (
 )
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
-from redisvl.utils.utils import current_timestamp, deserialize
+from redisvl.utils.utils import current_timestamp
 
 
 class ChatMessage(BaseModel):
@@ -44,8 +45,11 @@ class ChatMessage(BaseModel):
         if TIMESTAMP_FIELD_NAME not in values:
             values[TIMESTAMP_FIELD_NAME] = current_timestamp()
         if ID_FIELD_NAME not in values:
+            # Add UUID suffix to prevent timestamp collisions when creating
+            # multiple messages rapidly (e.g., in add_messages or store)
+            unique_suffix = uuid4().hex[:8]
             values[ID_FIELD_NAME] = (
-                f"{values[SESSION_FIELD_NAME]}:{values[TIMESTAMP_FIELD_NAME]}"
+                f"{values[SESSION_FIELD_NAME]}:{values[TIMESTAMP_FIELD_NAME]}:{unique_suffix}"
             )
         return values
 

@@ -124,7 +124,7 @@ AggregateHybridQuery
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
 
 .. note::
-   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score and ``linear_beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score, while :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score. When switching between the two classes, take care to revise your ``alpha`` setting.
 
 .. note::
    **Runtime Parameters for Hybrid Queries**
@@ -139,7 +139,7 @@ AggregateHybridQuery
 
    .. code-block:: python
 
-      from redisvl.query.hybrid import HybridQuery
+      from redisvl.query import HybridQuery
 
       query = HybridQuery(
           text="query string",
@@ -147,7 +147,6 @@ AggregateHybridQuery
           vector=[0.1, 0.2, 0.3],
           vector_field_name="embedding",
           vector_search_method="KNN",
-          knn_k=10,
           knn_ef_runtime=150,  # Runtime parameters work with HybridQuery
           return_fields=["description"],
           num_results=10,
@@ -171,7 +170,7 @@ HybridQuery
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
 
 .. note::
-   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score and ``linear_beta`` to weight the vector score. :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score and ``beta`` to weight the text score.
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score, while :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score. When switching between the two classes, take care to revise your ``alpha`` setting.
 
 TextQuery
 ================
