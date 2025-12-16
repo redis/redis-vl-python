@@ -3,7 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 from botocore.exceptions import ValidationError
 from pydantic import ConfigDict
@@ -24,7 +24,7 @@ else:
 
 
 class BedrockVectorizer(BaseVectorizer):
-    """The AmazonBedrockVectorizer class utilizes Amazon Bedrock's API to generate
+    """The BedrockVectorizer class utilizes Amazon Bedrock's API to generate
     embeddings for text or image data.
 
     This vectorizer is designed to interact with Amazon Bedrock API,
@@ -43,7 +43,7 @@ class BedrockVectorizer(BaseVectorizer):
     .. code-block:: python
 
         # Basic usage with explicit credentials
-        vectorizer = AmazonBedrockVectorizer(
+        vectorizer = BedrockVectorizer(
             model="amazon.titan-embed-text-v2:0",
             api_config={
                 "aws_access_key_id": "your_access_key",
@@ -56,7 +56,7 @@ class BedrockVectorizer(BaseVectorizer):
         from redisvl.extensions.cache.embeddings import EmbeddingsCache
         cache = EmbeddingsCache(name="bedrock_embeddings_cache")
 
-        vectorizer = AmazonBedrockVectorizer(
+        vectorizer = BedrockVectorizer(
             model="amazon.titan-embed-text-v2:0",
             cache=cache
         )
@@ -72,7 +72,7 @@ class BedrockVectorizer(BaseVectorizer):
 
         # Multimodal usage
         from pathlib import Path
-        vectorizer = AmazonBedrockVectorizer(
+        vectorizer = BedrockVectorizer(
             model="amazon.titan-embed-image-v1:0",
             api_config={
                 "aws_access_key_id": "your_access_key",
@@ -121,6 +121,10 @@ class BedrockVectorizer(BaseVectorizer):
         super().__init__(model=model, dtype=dtype, cache=cache)
         # Initialize client and set up the model
         self._setup(api_config, **kwargs)
+
+    def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
+        """Embed an image (from its path on disk) using a Bedrock multimodal model."""
+        return self.embed(Path(image_path), **kwargs)
 
     def _setup(self, api_config: Optional[Dict], **kwargs):
         """Set up the Bedrock client and determine the embedding dimensions."""
