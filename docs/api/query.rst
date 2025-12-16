@@ -147,7 +147,6 @@ AggregateHybridQuery
           vector=[0.1, 0.2, 0.3],
           vector_field_name="embedding",
           vector_search_method="KNN",
-          knn_num_results=10,
           knn_ef_runtime=150,  # Runtime parameters work with HybridQuery
           return_fields=["description"],
           num_results=10,
