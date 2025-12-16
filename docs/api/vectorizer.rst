@@ -38,14 +38,14 @@ AzureOpenAITextVectorizer
    :members:
 
 
-VertexAITextVectorizer
+VertexAIVectorizer
 ======================
 
-.. _vertexaitextvectorizer_api:
+.. _vertexaivectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.vertexai
+.. currentmodule:: redisvl.utils.vectorize.vertexai
 
-.. autoclass:: VertexAITextVectorizer
+.. autoclass:: VertexAIVectorizer
    :show-inheritance:
    :members:
 
@@ -62,37 +62,37 @@ CohereTextVectorizer
    :members:
 
 
-BedrockTextVectorizer
+BedrockVectorizer
 =====================
 
-.. _bedrocktextvectorizer_api:
+.. _bedrockvectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.bedrock
+.. currentmodule:: redisvl.utils.vectorize.bedrock
 
-.. autoclass:: BedrockTextVectorizer
+.. autoclass:: BedrockVectorizer
    :show-inheritance:
    :members:
 
 
-CustomTextVectorizer
+CustomVectorizer
 ====================
 
-.. _customtextvectorizer_api:
+.. _customvectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.custom
+.. currentmodule:: redisvl.utils.vectorize.custom
 
-.. autoclass:: CustomTextVectorizer
+.. autoclass:: CustomVectorizer
    :show-inheritance:
    :members:
 
 
-VoyageAITextVectorizer
+VoyageAIVectorizer
 ======================
 
-.. _voyageaitextvectorizer_api:
+.. _voyageaivectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.voyageai
+.. currentmodule:: redisvl.utils.vectorize.voyageai
 
-.. autoclass:: VoyageAITextVectorizer
+.. autoclass:: VoyageAIVectorizer
    :show-inheritance:
    :members:
