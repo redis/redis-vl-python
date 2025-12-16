@@ -1,17 +1,6 @@
 """Embeddings cache implementation for RedisVL."""
 
-from typing import (
-    Any,
-    Awaitable,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from redisvl.extensions.cache.base import BaseCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
@@ -75,8 +64,9 @@ class EmbeddingsCache(BaseCache):
         Returns:
             str: A deterministic entry ID based on the content and model name.
         """
-        # TODO: Is this the best way to handle bytes?
-        return hashify(f"{str(content)}:{model_name}")
+        if isinstance(content, bytes):
+            content = content.hex()
+        return hashify(f"{content}:{model_name}")
 
     def _make_cache_key(self, content: Union[bytes, str], model_name: str) -> str:
         """Generate a full Redis key for the given content and model name.
