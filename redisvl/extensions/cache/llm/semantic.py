@@ -61,8 +61,9 @@ class SemanticCache(BaseLLMCache):
         Args:
             name (str, optional): The name of the semantic cache search index.
                 Defaults to "llmcache".
-            distance_threshold (float, optional): Semantic threshold for the
-                cache. Defaults to 0.1.
+            distance_threshold (float, optional): Semantic distance threshold for the
+                cache in Redis COSINE units [0-2], where lower values indicate stricter
+                matching. Defaults to 0.1.
             ttl (Optional[int], optional): The time-to-live for records cached
                 in Redis. Defaults to None.
             vectorizer (Optional[BaseVectorizer], optional): The vectorizer for the cache.
@@ -80,7 +81,7 @@ class SemanticCache(BaseLLMCache):
         Raises:
             TypeError: If an invalid vectorizer is provided.
             TypeError: If the TTL value is not an int.
-            ValueError: If the threshold is not between 0 and 1.
+            ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
             ValueError: If existing schema does not match new schema and overwrite is False.
         """
         # Call parent class with all shared parameters
@@ -243,7 +244,7 @@ class SemanticCache(BaseLLMCache):
                 the cache.
 
         Raises:
-            ValueError: If the threshold is not between 0 and 1.
+            ValueError: If the threshold is not between 0 and 2 (Redis COSINE distance).
         """
         if not 0 <= float(distance_threshold) <= 2:
             raise ValueError(

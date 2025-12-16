@@ -276,7 +276,7 @@ llmcache = SemanticCache(
     name="llmcache",
     ttl=360,
     redis_url="redis://localhost:6379",
-    distance_threshold=0.1
+    distance_threshold=0.1  # Redis COSINE distance [0-2], lower is stricter
 )
 
 # store user queries and LLM responses in the semantic cache
