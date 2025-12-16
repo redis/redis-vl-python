@@ -1,5 +1,7 @@
+import io
 import logging
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -8,6 +10,13 @@ from typing_extensions import Annotated
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
+
+try:
+    from PIL.Image import Image
+except ImportError:
+    _PILLOW_INSTALLED = False
+else:
+    _PILLOW_INSTALLED = True
 
 logger = logging.getLogger(__name__)
 
@@ -299,17 +308,22 @@ class BaseVectorizer(BaseModel):
         # Process and return results
         return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
 
-    @overload
-    def _to_cacheable(self, content: str) -> str: ...
-
-    @overload
-    def _to_cacheable(self, content: bytes) -> bytes: ...
-
-    def _to_cacheable(self, content: Any) -> Any:
+    def _to_cacheable(self, content: Any) -> str:
         """Convert content to a cacheable format."""
-        if isinstance(content, (str, bytes)):
+        if isinstance(content, str):
             return content
-        raise NotImplementedError
+        elif isinstance(content, bytes):
+            return content.hex()
+        elif isinstance(content, Path):
+            return content.read_bytes().hex()
+        elif _PILLOW_INSTALLED and isinstance(content, Image):
+            buffer = io.BytesIO()
+            content.save(buffer, format="PNG")
+            return buffer.getvalue().hex()
+
+        raise NotImplementedError(
+            f"Content type {type(content)} is not supported for caching."
+        )
 
     def _embed(self, content: Any, **kwargs) -> List[float]:
         """Generate a vector embedding for a single item."""
