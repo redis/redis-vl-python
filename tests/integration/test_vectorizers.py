@@ -7,7 +7,7 @@ from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 from redisvl.utils.utils import create_ulid
 from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
-    BedrockTextVectorizer,
+    BedrockVectorizer,
     CohereTextVectorizer,
     CustomTextVectorizer,
     HFTextVectorizer,
@@ -44,7 +44,7 @@ def embeddings_cache(client):
         VertexAIVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         MistralAITextVectorizer,
         CustomTextVectorizer,
         VoyageAIVectorizer,
@@ -67,7 +67,7 @@ def vectorizer(request):
         return request.param(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
         )
-    elif request.param == BedrockTextVectorizer:
+    elif request.param == BedrockVectorizer:
         return request.param(
             model=os.getenv("BEDROCK_MODEL_ID", "amazon.titan-embed-text-v2:0")
         )
@@ -313,7 +313,7 @@ async def test_vectorizer_with_cache_async_many(cached_vectorizer):
 @pytest.mark.requires_api_keys
 def test_bedrock_bad_credentials():
     with pytest.raises(ValueError):
-        BedrockTextVectorizer(
+        BedrockVectorizer(
             api_config={
                 "aws_access_key_id": "invalid",
                 "aws_secret_access_key": "invalid",
@@ -324,7 +324,7 @@ def test_bedrock_bad_credentials():
 @pytest.mark.requires_api_keys
 def test_bedrock_invalid_model():
     with pytest.raises(ValueError):
-        bedrock = BedrockTextVectorizer(model="invalid-model")
+        bedrock = BedrockVectorizer(model="invalid-model")
         bedrock.embed("test")
 
 
@@ -419,7 +419,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     "vectorizer_",
     [
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
@@ -448,7 +448,7 @@ def test_default_dtype(vectorizer_):
     "vectorizer_",
     [
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         CohereTextVectorizer,
         CustomTextVectorizer,
         HFTextVectorizer,
@@ -481,7 +481,7 @@ def test_vectorizer_dtype_assignment(vectorizer_):
     "vectorizer_",
     [
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         CohereTextVectorizer,
         HFTextVectorizer,
         MistralAITextVectorizer,

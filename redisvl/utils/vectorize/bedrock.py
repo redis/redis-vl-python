@@ -1,7 +1,11 @@
+import base64
+import io
 import json
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
+from botocore.exceptions import ValidationError
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
@@ -9,13 +13,19 @@ from tenacity.retry import retry_if_not_exception_type
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
+try:
+    from PIL import Image
+except ImportError:
+    _PILLOW_INSTALLED = False
+else:
+    _PILLOW_INSTALLED = True
 
-class BedrockTextVectorizer(BaseVectorizer):
-    """The AmazonBedrockTextVectorizer class utilizes Amazon Bedrock's API to generate
-    embeddings for text data.
+
+class BedrockVectorizer(BaseVectorizer):
+    """The AmazonBedrockVectorizer class utilizes Amazon Bedrock's API to generate
+    embeddings for text or image data.
 
     This vectorizer is designed to interact with Amazon Bedrock API,
     requiring AWS credentials for authentication. The credentials can be provided
@@ -28,12 +38,12 @@ class BedrockTextVectorizer(BaseVectorizer):
     preprocessing capabilities.
 
     You can optionally enable caching to improve performance when generating
-    embeddings for repeated text inputs.
+    embeddings for repeated inputs.
 
     .. code-block:: python
 
         # Basic usage with explicit credentials
-        vectorizer = AmazonBedrockTextVectorizer(
+        vectorizer = AmazonBedrockVectorizer(
             model="amazon.titan-embed-text-v2:0",
             api_config={
                 "aws_access_key_id": "your_access_key",
@@ -46,7 +56,7 @@ class BedrockTextVectorizer(BaseVectorizer):
         from redisvl.extensions.cache.embeddings import EmbeddingsCache
         cache = EmbeddingsCache(name="bedrock_embeddings_cache")
 
-        vectorizer = AmazonBedrockTextVectorizer(
+        vectorizer = AmazonBedrockVectorizer(
             model="amazon.titan-embed-text-v2:0",
             cache=cache
         )
@@ -59,6 +69,25 @@ class BedrockTextVectorizer(BaseVectorizer):
 
         # Generate batch embeddings
         embeddings = vectorizer.embed_many(["Hello", "World"], batch_size=2)
+
+        # Multimodal usage
+        from pathlib import Path
+        vectorizer = AmazonBedrockVectorizer(
+            model="amazon.titan-embed-image-v1:0",
+            api_config={
+                "aws_access_key_id": "your_access_key",
+                "aws_secret_access_key": "your_secret_key",
+                "aws_region": "us-east-1"
+            }
+        )
+        image_embedding = vectorizer.embed(Path("path/to/your/image.jpg"))
+
+        # Embedding a list of mixed modalities
+        embeddings = vectorizer.embed_many(
+            ["Hello", "world!", Path("path/to/your/image.jpg")],
+            batch_size=2
+        )
+
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -172,30 +201,34 @@ class BedrockTextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, content: str, **kwargs) -> List[float]:
+    def _embed(self, content: Any, **kwargs) -> List[float]:
         """
-        Generate a vector embedding for a single text using the AWS Bedrock API.
+        Generate a vector embedding for a single input using the AWS Bedrock API.
 
         Args:
-            content: Text to embed
+            content: Text or PIL.Image.Image or Path to image-file to embed
             **kwargs: Additional parameters to pass to the AWS Bedrock API
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If text is not a string
+            TypeError: If content is not a string, Path, or PIL.Image.Image
+            ValueError: If attempting to embed an image with a text model
             ValueError: If embedding fails
         """
-        if not isinstance(content, str):
-            raise TypeError("Text must be a string")
+        body = self._serialize_request_body(content)
 
         try:
             response = self._client.invoke_model(
-                modelId=self.model, body=json.dumps({"inputText": content}), **kwargs
+                modelId=self.model, body=json.dumps(body), **kwargs
             )
             response_body = json.loads(response["body"].read())
             return response_body["embedding"]
+        except ValidationError as e:
+            if "Malformed input request" in str(e) and "inputImage" in body:
+                raise ValueError("Attempted to embed image with text model.") from e
+            raise ValueError(f"Embedding text failed: {e}")
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
@@ -205,27 +238,27 @@ class BedrockTextVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
+        self, contents: List[Any], batch_size: int = 10, **kwargs
     ) -> List[List[float]]:
         """
-        Generate vector embeddings for a batch of texts using the AWS Bedrock API.
+        Generate vector embeddings for a batch of inputs using the AWS Bedrock API.
 
         Args:
-            contents: List of texts to embed
-            batch_size: Number of texts to process in each API call
+            contents: List of text/images to embed. Images must be Paths to image-file or PIL.Image.Image
+            batch_size: Number of inputs to process in each API call
             **kwargs: Additional parameters to pass to the AWS Bedrock API
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If contents is not a list of strings
+            TypeError: If `contents` is not a list
+            TypeError: If each item in `contents` is not a string, Path, or PIL.Image.Image
+            ValueError: If attempting to embed an image with a text model
             ValueError: If embedding fails
         """
         if not isinstance(contents, list):
-            raise TypeError("Texts must be a list of strings")
-        if contents and not isinstance(contents[0], str):
-            raise TypeError("Texts must be a list of strings")
+            raise TypeError("`contents` must be a list")
 
         try:
             embeddings: List[List[float]] = []
@@ -235,11 +268,21 @@ class BedrockTextVectorizer(BaseVectorizer):
                 # doesn't support batch embedding
                 batch_embeddings = []
                 for content in batch:
-                    response = self._client.invoke_model(
-                        modelId=self.model,
-                        body=json.dumps({"inputText": content}),
-                        **kwargs,
-                    )
+                    body = self._serialize_request_body(content)
+
+                    try:
+                        response = self._client.invoke_model(
+                            modelId=self.model,
+                            body=json.dumps(body),
+                            **kwargs,
+                        )
+                    except ValidationError as e:
+                        if "Malformed input request" in str(e) and "inputImage" in body:
+                            raise ValueError(
+                                "Attempted to embed image with text model."
+                            ) from e
+                        raise e
+
                     response_body = json.loads(response["body"].read())
                     batch_embeddings.append(response_body["embedding"])
 
@@ -248,6 +291,27 @@ class BedrockTextVectorizer(BaseVectorizer):
             return embeddings
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
+
+    def _serialize_request_body(
+        self, content: Any
+    ) -> dict[Literal["inputText", "inputImage"], str]:
+        """Serialize the request body for the Bedrock API."""
+        if isinstance(content, str):
+            return {"inputText": content}
+        elif isinstance(content, Path):
+            return {"inputImage": self._b64encode_image(content.read_bytes())}
+        elif _PILLOW_INSTALLED and isinstance(content, Image.Image):
+            bytes_data = io.BytesIO()
+            content.save(bytes_data, format="PNG")
+            return {"inputImage": self._b64encode_image(bytes_data.getvalue())}
+        raise TypeError(
+            "Content must be a string, Path to image-file, or PIL.Image.Image"
+        )
+
+    @staticmethod
+    def _b64encode_image(bytes_data: bytes) -> str:
+        """Encode an image as a base64 string."""
+        return base64.b64encode(bytes_data).decode("utf-8")
 
     @property
     def type(self) -> str:
