@@ -28,6 +28,7 @@ from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
 
+from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import VectorQuery
 from redisvl.redis.utils import (
     _keys_share_hash_tag,
@@ -100,6 +101,8 @@ from redisvl.schema.fields import (
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+_HYBRID_SEARCH_ERROR_MESSAGE = "Hybrid search is not available in this version of redis-py. Please upgrade to redis-py >= 7.1.0."
 
 
 REQUIRED_MODULES_FOR_INTROSPECTION = [
@@ -277,6 +280,18 @@ class BaseSearchIndex:
                     UserWarning,
                     stacklevel=3,
                 )
+
+    def _validate_hybrid_query(self, query: Any) -> None:
+        """Validate that a hybrid query can be executed."""
+        try:
+            from redis.commands.search.hybrid_result import HybridResult
+
+            from redisvl.query.hybrid import HybridQuery
+        except (ImportError, ModuleNotFoundError):
+            raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
+
+        if not isinstance(query, HybridQuery):
+            raise TypeError(f"query must be of type HybridQuery, got {type(query)}")
 
     @property
     def name(self) -> str:
@@ -1003,6 +1018,56 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
+    def _hybrid_search(self, query: HybridQuery, **kwargs) -> List[Dict[str, Any]]:
+        """Perform a hybrid search against the index, combining text and vector search.
+
+        Args:
+            query (HybridQuery): The text+vector search query to be performed, with configurable fusion methods and
+                post-processing.
+            kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
+
+        Returns:
+            List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
+
+        Notes:
+            Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
+
+        See Also:
+            - `FT.HYBRID command documentation <https://redis.io/docs/latest/commands/ft.hybrid>`_
+            - `redis-py hybrid_search documentation <https://redis.readthedocs.io/en/stable/redismodules.html#redis.commands.search.commands.SearchCommands.hybrid_search>`_
+
+        .. code-block:: python
+
+            from redisvl.query import HybridQuery
+
+            hybrid_query = HybridQuery(
+                text="lorem ipsum dolor sit amet",
+                text_field_name="description",
+                vector=[0.1, 0.2, 0.3],
+                vector_field_name="embedding"
+            )
+
+            results = index.query(hybrid_query)
+
+        """
+        index = self._redis_client.ft(self.schema.index.name)
+        self._validate_hybrid_query(query)
+
+        if not hasattr(index, "hybrid_search"):
+            raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
+
+        results = index.hybrid_search(
+            query=query.query,
+            combine_method=query.combination_method,
+            post_processing=(
+                query.postprocessing_config
+                if query.postprocessing_config.build_args()
+                else None
+            ),
+            **kwargs,
+        )  # type: ignore
+        return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
+
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
     ) -> List[List[Dict[str, Any]]]:
@@ -1028,14 +1093,16 @@ class SearchIndex(BaseSearchIndex):
         results = self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    def query(self, query: Union[BaseQuery, AggregationQuery]) -> List[Dict[str, Any]]:
+    def query(
+        self, query: Union[BaseQuery, AggregationQuery, HybridQuery]
+    ) -> List[Dict[str, Any]]:
         """Execute a query on the index.
 
-        This method takes a BaseQuery or AggregationQuery object directly, and
+        This method takes a BaseQuery, AggregationQuery, or HybridQuery object directly, and
         handles post-processing of the search.
 
         Args:
-            query (Union[BaseQuery, AggregateQuery]): The query to run.
+            query (Union[BaseQuery, AggregateQuery, HybridQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1055,6 +1122,8 @@ class SearchIndex(BaseSearchIndex):
         """
         if isinstance(query, AggregationQuery):
             return self._aggregate(query)
+        elif isinstance(query, HybridQuery):
+            return self._hybrid_search(query)
         else:
             return self._query(query)
 
@@ -1824,6 +1893,55 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
+    async def _hybrid_search(
+        self, query: HybridQuery, **kwargs
+    ) -> List[Dict[str, Any]]:
+        """Perform a hybrid search against the index, combining text and vector search.
+
+        Args:
+            query (HybridQuery): The text+vector search query to be performed, with configurable fusion methods and
+                post-processing.
+            kwargs: Additional arguments to pass to the redis-py hybrid_search method (e.g. timeout).
+
+        Returns:
+            List[Dict[str, Any]]: The search results ordered by combined score unless otherwise specified.
+
+        Notes:
+            Hybrid search is only available in Redis 8.4.0+, and requires redis-py >= 7.1.0.
+
+        .. code-block:: python
+
+            from redisvl.query import HybridQuery
+
+            hybrid_query = HybridQuery(
+                text="lorem ipsum dolor sit amet",
+                text_field_name="description",
+                vector=[0.1, 0.2, 0.3],
+                vector_field_name="embedding"
+            )
+
+            results = await async_index.query(hybrid_query)
+
+        """
+        client = await self._get_client()
+        index = client.ft(self.schema.index.name)
+        self._validate_hybrid_query(query)
+
+        if not hasattr(index, "hybrid_search"):
+            raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
+
+        results = await index.hybrid_search(
+            query=query.query,
+            combine_method=query.combination_method,
+            post_processing=(
+                query.postprocessing_config
+                if query.postprocessing_config.build_args()
+                else None
+            ),
+            **kwargs,
+        )  # type: ignore
+        return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
+
     async def batch_query(
         self, queries: List[BaseQuery], batch_size: int = 10
     ) -> List[List[Dict[str, Any]]]:
@@ -1855,15 +1973,15 @@ class AsyncSearchIndex(BaseSearchIndex):
         return process_results(results, query=query, schema=self.schema)
 
     async def query(
-        self, query: Union[BaseQuery, AggregationQuery]
+        self, query: Union[BaseQuery, AggregationQuery, HybridQuery]
     ) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
-        This method takes a BaseQuery or AggregationQuery object directly, runs
+        This method takes a BaseQuery, AggregationQuery, or HybridQuery object directly, runs
         the search, and handles post-processing of the search.
 
         Args:
-            query (Union[BaseQuery, AggregateQuery]): The query to run.
+            query (Union[BaseQuery, AggregateQuery, HybridQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -1882,6 +2000,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         if isinstance(query, AggregationQuery):
             return await self._aggregate(query)
+        elif isinstance(query, HybridQuery):
+            return await self._hybrid_search(query)
         else:
             return await self._query(query)
 

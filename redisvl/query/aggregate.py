@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from pydantic import BaseModel, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
@@ -8,7 +8,7 @@ from typing_extensions import Self
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
-from redisvl.utils.token_escaper import TokenEscaper
+from redisvl.utils.full_text_query_helper import FullTextQueryHelper
 from redisvl.utils.utils import lazy_import
 
 nltk = lazy_import("nltk")
@@ -124,7 +124,7 @@ class AggregateHybridQuery(AggregationQuery):
             num_results (int, optional): The number of results to return. Defaults to 10.
             return_fields (Optional[List[str]], optional): The fields to return. Defaults to None.
             stopwords (Optional[Union[str, Set[str]]], optional): The stopwords to remove from the
-                provided text prior to searchuse. If a string such as "english" "german" is
+                provided text prior to search-use. If a string such as "english" "german" is
                 provided then a default set of stopwords for that language will be used. if a list,
                 set, or tuple of strings is provided then those will be used as stopwords.
                 Defaults to "english". if set to "None" then no stopwords will be removed.
@@ -159,8 +159,11 @@ class AggregateHybridQuery(AggregationQuery):
         self._alpha = alpha
         self._dtype = dtype
         self._num_results = num_results
-        self._set_stopwords(stopwords)
-        self._text_weights = self._parse_text_weights(text_weights)
+
+        self._ft_helper = FullTextQueryHelper(
+            stopwords=stopwords,
+            text_weights=text_weights,
+        )
 
         query_string = self._build_query_string()
         super().__init__(query_string)
@@ -198,100 +201,7 @@ class AggregateHybridQuery(AggregationQuery):
         Returns:
             Set[str]: The stopwords used in the query.
         """
-        return self._stopwords.copy() if self._stopwords else set()
-
-    def _set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
-        """Set the stopwords to use in the query.
-        Args:
-            stopwords (Optional[Union[str, Set[str]]]): The stopwords to use. If a string
-                such as "english" "german" is provided then a default set of stopwords for that
-                language will be used. if a list, set, or tuple of strings is provided then those
-                will be used as stopwords. Defaults to "english". if set to "None" then no stopwords
-                will be removed.
-
-        Raises:
-            TypeError: If the stopwords are not a set, list, or tuple of strings.
-        """
-        if not stopwords:
-            self._stopwords = set()
-        elif isinstance(stopwords, str):
-            try:
-                nltk.download("stopwords", quiet=True)
-                self._stopwords = set(nltk_stopwords.words(stopwords))
-            except ImportError:
-                raise ValueError(
-                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
-                )
-            except Exception as e:
-                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
-        elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
-            isinstance(word, str) for word in stopwords
-        ):
-            self._stopwords = set(stopwords)
-        else:
-            raise TypeError("stopwords must be a set, list, or tuple of strings")
-
-    def _tokenize_and_escape_query(self, user_query: str) -> str:
-        """Convert a raw user query to a redis full text query joined by ORs
-        Args:
-            user_query (str): The user query to tokenize and escape.
-
-        Returns:
-            str: The tokenized and escaped query string.
-
-        Raises:
-            ValueError: If the text string becomes empty after stopwords are removed.
-        """
-        escaper = TokenEscaper()
-
-        tokens = [
-            escaper.escape(
-                token.strip().strip(",").replace("“", "").replace("”", "").lower()
-            )
-            for token in user_query.split()
-        ]
-
-        token_list = [
-            token for token in tokens if token and token not in self._stopwords
-        ]
-        for i, token in enumerate(token_list):
-            if token in self._text_weights:
-                token_list[i] = f"{token}=>{{$weight:{self._text_weights[token]}}}"
-
-        if not token_list:
-            raise ValueError("text string cannot be empty after removing stopwords")
-        return " | ".join(token_list)
-
-    def _parse_text_weights(
-        self, weights: Optional[Dict[str, float]]
-    ) -> Dict[str, float]:
-        parsed_weights: Dict[str, float] = {}
-        if not weights:
-            return parsed_weights
-        for word, weight in weights.items():
-            word = word.strip().lower()
-            if not word or " " in word:
-                raise ValueError(
-                    f"Only individual words may be weighted. Got {{ {word}:{weight} }}"
-                )
-            if (
-                not (isinstance(weight, float) or isinstance(weight, int))
-                or weight < 0.0
-            ):
-                raise ValueError(
-                    f"Weights must be positive number. Got {{ {word}:{weight} }}"
-                )
-            parsed_weights[word] = weight
-        return parsed_weights
-
-    def set_text_weights(self, weights: Dict[str, float]):
-        """Set or update the text weights for the query.
-
-        Args:
-            text_weights: Dictionary of word:weight mappings
-        """
-        self._text_weights = self._parse_text_weights(weights)
-        self._query = self._build_query_string()
+        return self._ft_helper.stopwords
 
     @property
     def text_weights(self) -> Dict[str, float]:
@@ -300,13 +210,22 @@ class AggregateHybridQuery(AggregationQuery):
         Returns:
             Dictionary of word:weight mappings.
         """
-        return self._text_weights
+        return self._ft_helper.text_weights
+
+    def set_text_weights(self, weights: Dict[str, float]):
+        """Set or update the text weights for the query.
+
+        Args:
+            weights: Dictionary of word:weight mappings
+        """
+        self._ft_helper.set_text_weights(weights)
+        self._query = self._build_query_string()
 
     def _build_query_string(self) -> str:
         """Build the full query string for text search with optional filtering."""
-        filter_expression = self._filter_expression
-        if isinstance(self._filter_expression, FilterExpression):
-            filter_expression = str(self._filter_expression)
+        text = self._ft_helper.build_query_string(
+            self._text, self._text_field, self._filter_expression
+        )
 
         # Build KNN query
         knn_query = (
@@ -316,36 +235,11 @@ class AggregateHybridQuery(AggregationQuery):
         # Add distance field alias
         knn_query += f" AS {self.DISTANCE_ID}"
 
-        text = f"(~@{self._text_field}:({self._tokenize_and_escape_query(self._text)})"
-
-        if filter_expression and filter_expression != "*":
-            text += f" AND {filter_expression}"
-
-        return f"{text})=>[{knn_query}]"
+        return f"{text}=>[{knn_query}]"
 
     def __str__(self) -> str:
         """Return the string representation of the query."""
         return " ".join([str(x) for x in self.build_args()])
-
-
-class HybridQuery(AggregateHybridQuery):
-    """Backward compatibility wrapper for AggregateHybridQuery.
-
-    .. deprecated::
-        HybridQuery is a backward compatibility wrapper around AggregateHybridQuery
-        and will eventually be replaced with a new hybrid query implementation.
-        To maintain current functionality please use AggregateHybridQuery directly.",
-    """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "HybridQuery is a backward compatibility wrapper around AggregateHybridQuery "
-            "and will eventually be replaced with a new hybrid query implementation. "
-            "To maintain current functionality please use AggregateHybridQuery directly.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        super().__init__(*args, **kwargs)
 
 
 class MultiVectorQuery(AggregationQuery):

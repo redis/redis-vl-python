@@ -105,23 +105,26 @@ VectorRangeQuery
           use_search_history='AUTO'  # SVS-VAMANA only
       )
 
-HybridQuery
+AggregateHybridQuery
 ================
 
 
 .. currentmodule:: redisvl.query
 
 
-.. autoclass:: HybridQuery
+.. autoclass:: AggregateHybridQuery
    :members:
    :inherited-members:
    :show-inheritance:
    :exclude-members: add_filter,get_args,highlight,return_field,summarize
 
 .. note::
-   The ``stopwords`` parameter in :class:`HybridQuery` (and :class:`AggregateHybridQuery`) controls query-time stopword filtering (client-side).
+   The ``stopwords`` parameter in :class:`AggregateHybridQuery` (and :class:`HybridQuery`) controls query-time stopword filtering (client-side).
    For index-level stopwords configuration (server-side), see :class:`redisvl.schema.IndexInfo.stopwords`.
    Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
+
+.. note::
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score, while :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score. When switching between the two classes, take care to revise your ``alpha`` setting.
 
 .. note::
    **Runtime Parameters for Hybrid Queries**
@@ -130,22 +133,44 @@ HybridQuery
    Runtime parameters (``ef_runtime``, ``search_window_size``, ``use_search_history``, ``search_buffer_capacity``)
    are only supported with FT.SEARCH commands.
 
-   For runtime parameter support, use :class:`VectorQuery` or :class:`VectorRangeQuery` instead of AggregateHybridQuery.
+   For runtime parameter support, use :class:`HybridQuery`, :class:`VectorQuery`, or :class:`VectorRangeQuery` instead of AggregateHybridQuery.
 
-   Example with VectorQuery (supports runtime parameters):
+   Example with HybridQuery (supports runtime parameters):
 
    .. code-block:: python
 
-      from redisvl.query import VectorQuery
+      from redisvl.query import HybridQuery
 
-      query = VectorQuery(
+      query = HybridQuery(
+          text="query string",
+          text_field_name="description",
           vector=[0.1, 0.2, 0.3],
           vector_field_name="embedding",
+          vector_search_method="KNN",
+          knn_ef_runtime=150,  # Runtime parameters work with HybridQuery
           return_fields=["description"],
           num_results=10,
-          ef_runtime=150  # Runtime parameters work with VectorQuery
       )
 
+HybridQuery
+================
+
+
+.. currentmodule:: redisvl.query.hybrid
+
+
+.. autoclass:: HybridQuery
+   :members:
+   :inherited-members:
+   :show-inheritance:
+
+.. note::
+   The ``stopwords`` parameter in :class:`HybridQuery` (and :class:`AggregateHybridQuery`) controls query-time stopword filtering (client-side).
+   For index-level stopwords configuration (server-side), see :class:`redisvl.schema.IndexInfo.stopwords`.
+   Using query-time stopwords with index-level ``STOPWORDS 0`` is counterproductive.
+
+.. note::
+   :class:`HybridQuery` and :class:`AggregateHybridQuery` apply linear combination inconsistently. :class:`HybridQuery` uses ``linear_alpha`` to weight the text score, while :class:`AggregateHybridQuery` uses ``alpha`` to weight the vector score. When switching between the two classes, take care to revise your ``alpha`` setting.
 
 TextQuery
 ================
