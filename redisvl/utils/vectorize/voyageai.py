@@ -8,7 +8,6 @@ from tenacity.retry import retry_if_not_exception_type
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that voyageai isn't imported
@@ -415,6 +414,20 @@ class VoyageAIVectorizer(BaseVectorizer):
             return embeddings
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
+
+    def _serialize_for_cache(self, content: Any) -> Union[bytes, str]:
+        """Convert content to a cacheable format."""
+        try:
+            from voyageai.video_utils import Video
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError(
+                "voyageai>=0.3.6 is required for video embedding. "
+                "Please install with `pip install voyageai>=0.3.6`"
+            )
+
+        if isinstance(content, Video):
+            return content.to_bytes()
+        return super()._serialize_for_cache(content)
 
     @property
     def type(self) -> str:

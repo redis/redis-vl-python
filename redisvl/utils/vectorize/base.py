@@ -99,7 +99,7 @@ class BaseVectorizer(BaseModel):
         if self.cache is not None and not skip_cache:
             try:
                 cache_result = self.cache.get(
-                    content=_serialize_for_cache(content), model_name=self.model
+                    content=self._serialize_for_cache(content), model_name=self.model
                 )
                 if cache_result:
                     logger.debug(f"Cache hit for content with model {self.model}")
@@ -117,7 +117,7 @@ class BaseVectorizer(BaseModel):
         if self.cache is not None and not skip_cache:
             try:
                 self.cache.set(
-                    content=_serialize_for_cache(content),
+                    content=self._serialize_for_cache(content),
                     model_name=self.model,
                     embedding=embedding,
                     metadata=cache_metadata,
@@ -217,7 +217,7 @@ class BaseVectorizer(BaseModel):
         if self.cache is not None and not skip_cache:
             try:
                 cache_result = await self.cache.aget(
-                    content=_serialize_for_cache(content), model_name=self.model
+                    content=self._serialize_for_cache(content), model_name=self.model
                 )
                 if cache_result:
                     logger.debug(f"Async cache hit for content with model {self.model}")
@@ -237,7 +237,7 @@ class BaseVectorizer(BaseModel):
         if self.cache is not None and not skip_cache:
             try:
                 await self.cache.aset(
-                    content=_serialize_for_cache(content),
+                    content=self._serialize_for_cache(content),
                     model_name=self.model,
                     embedding=embedding,
                     metadata=cache_metadata,
@@ -357,7 +357,7 @@ class BaseVectorizer(BaseModel):
         try:
             # Efficient batch cache lookup
             cache_results = self.cache.mget(
-                contents=(_serialize_for_cache(c) for c in contents),
+                contents=(self._serialize_for_cache(c) for c in contents),
                 model_name=self.model,
             )
 
@@ -403,7 +403,7 @@ class BaseVectorizer(BaseModel):
         try:
             # Efficient batch cache lookup
             cache_results = await self.cache.amget(
-                contents=(_serialize_for_cache(c) for c in contents),
+                contents=(self._serialize_for_cache(c) for c in contents),
                 model_name=self.model,
             )
 
@@ -450,7 +450,7 @@ class BaseVectorizer(BaseModel):
             # Prepare batch cache storage items
             cache_items = [
                 {
-                    "content": _serialize_for_cache(content),
+                    "content": self._serialize_for_cache(content),
                     "model_name": self.model,
                     "embedding": emb,
                     "metadata": metadata,
@@ -483,7 +483,7 @@ class BaseVectorizer(BaseModel):
             # Prepare batch cache storage items
             cache_items = [
                 {
-                    "content": _serialize_for_cache(content),
+                    "content": self._serialize_for_cache(content),
                     "model_name": self.model,
                     "embedding": emb,
                     "metadata": metadata,
@@ -522,20 +522,19 @@ class BaseVectorizer(BaseModel):
                 return array_to_buffer(embedding, dtype)
         return embedding
 
+    def _serialize_for_cache(self, content: Any) -> Union[bytes, str]:
+        """Convert content to a cacheable format."""
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, bytes):
+            return content
+        elif isinstance(content, Path):
+            return content.read_bytes()
+        elif _PILLOW_INSTALLED and isinstance(content, Image):
+            buffer = io.BytesIO()
+            content.save(buffer, format="PNG")
+            return buffer.getvalue()
 
-def _serialize_for_cache(content: Any) -> Union[bytes, str]:
-    """Convert content to a cacheable format."""
-    if isinstance(content, str):
-        return content
-    elif isinstance(content, bytes):
-        return content
-    elif isinstance(content, Path):
-        return content.read_bytes()
-    elif _PILLOW_INSTALLED and isinstance(content, Image):
-        buffer = io.BytesIO()
-        content.save(buffer, format="PNG")
-        return buffer.getvalue()
-
-    raise NotImplementedError(
-        f"Content type {type(content)} is not supported for caching."
-    )
+        raise NotImplementedError(
+            f"Content type {type(content)} is not supported for caching."
+        )

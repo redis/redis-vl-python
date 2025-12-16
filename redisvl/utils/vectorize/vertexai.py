@@ -326,6 +326,16 @@ class VertexAIVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
+    def _serialize_for_cache(self, content: Any) -> Union[bytes, str]:
+        """Convert content to a cacheable format."""
+        from vertexai.vision_models import Image, Video
+
+        if isinstance(content, Image):
+            return content._image_bytes
+        elif isinstance(content, Video):
+            return content._video_bytes
+        return super()._serialize_for_cache(content)
+
     @property
     def type(self) -> str:
         return "vertexai"
