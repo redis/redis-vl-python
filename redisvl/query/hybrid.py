@@ -49,6 +49,7 @@ class HybridQuery:
         text_field_name: str,
         vector: Union[bytes, List[float]],
         vector_field_name: str,
+        vector_param_name: str = "vector",
         text_scorer: str = "BM25STD",
         yield_text_score_as: Optional[str] = None,
         vector_search_method: Optional[Literal["KNN", "RANGE"]] = None,
@@ -76,6 +77,7 @@ class HybridQuery:
             text_field_name: The text field name to search in.
             vector: The vector to perform vector similarity search.
             vector_field_name: The vector field name to search in.
+            vector_param_name: The name of the parameter substitution containing the vector blob.
             text_scorer: The text scorer to use. Options are {TFIDF, TFIDF.DOCNORM,
                 BM25STD, BM25STD.NORM, BM25STD.TANH, DISMAX, DOCSCORE, HAMMING}. Defaults to "BM25STD". For more
                 information about supported scoring algorithms,
@@ -146,9 +148,18 @@ class HybridQuery:
             text, text_field_name, filter_expression
         )
 
+        if isinstance(vector, bytes):
+            vector_data = vector
+        else:
+            vector_data = array_to_buffer(vector, dtype)
+
+        self.params = {
+            vector_param_name: vector_data,
+        }
+
         self.query = build_base_query(
             text_query=query_string,
-            vector=vector,
+            vector_param_name=vector_param_name,
             vector_field_name=vector_field_name,
             text_scorer=text_scorer,
             yield_text_score_as=yield_text_score_as,
@@ -159,7 +170,6 @@ class HybridQuery:
             range_epsilon=range_epsilon,
             yield_vsim_score_as=yield_vsim_score_as,
             filter_expression=filter_expression,
-            dtype=dtype,
         )
 
         if combination_method:
@@ -178,7 +188,7 @@ class HybridQuery:
 
 def build_base_query(
     text_query: str,
-    vector: Union[bytes, List[float]],
+    vector_param_name: str,
     vector_field_name: str,
     text_scorer: str = "BM25STD",
     yield_text_score_as: Optional[str] = None,
@@ -189,13 +199,12 @@ def build_base_query(
     range_epsilon: Optional[float] = None,
     yield_vsim_score_as: Optional[str] = None,
     filter_expression: Optional[Union[str, FilterExpression]] = None,
-    dtype: str = "float32",
 ):
     """Build a Redis HybridQuery for performing hybrid search.
 
     Args:
         text_query: The query for the text search.
-        vector: The vector to perform vector similarity search.
+        vector_param_name: The name of the parameter substitution containing the vector blob.
         vector_field_name: The vector field name to search in.
         text_scorer: The text scorer to use. Options are {TFIDF, TFIDF.DOCNORM,
             BM25STD, BM25STD.NORM, BM25STD.TANH, DISMAX, DOCSCORE, HAMMING}. Defaults to "BM25STD". For more
@@ -210,7 +219,6 @@ def build_base_query(
             accuracy of the search.
         yield_vsim_score_as: The name of the field to yield the vector similarity score as.
         filter_expression: The filter expression to use for the vector similarity search. Defaults to None.
-        dtype: The data type of the vector. Defaults to "float32".
 
     Notes:
         If RRF combination method is used, then at least one of `rrf_window` or `rrf_constant` must be provided.
@@ -241,11 +249,6 @@ def build_base_query(
         scorer=text_scorer,
         yield_score_as=yield_text_score_as,
     )
-
-    if isinstance(vector, bytes):
-        vector_data = vector
-    else:
-        vector_data = array_to_buffer(vector, dtype)
 
     # Serialize vector similarity search method and params, if specified
     vsim_search_method: Optional[VectorSearchMethods] = None
@@ -284,7 +287,7 @@ def build_base_query(
     # Serialize the vector similarity query
     vsim_query = HybridVsimQuery(
         vector_field_name="@" + vector_field_name,
-        vector_data=vector_data,
+        vector_data="$" + vector_param_name,
         vsim_search_method=vsim_search_method,
         vsim_search_method_params=vsim_search_method_params,
         filter=vsim_filter,
