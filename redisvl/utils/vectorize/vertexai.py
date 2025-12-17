@@ -2,15 +2,18 @@ import os
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from google.api_core.exceptions import InvalidArgument
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
+
+from redisvl.utils.utils import lazy_import
 
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
 from redisvl.utils.vectorize.base import BaseVectorizer
+
+InvalidArgument = lazy_import("google.api_core.exceptions.InvalidArgument")
 
 
 class VertexAIVectorizer(BaseVectorizer):
