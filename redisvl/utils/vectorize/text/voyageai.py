@@ -1,10 +1,6 @@
 from typing import Any, List, Optional
 
-from redisvl.utils.utils import (
-    deprecated_argument,
-    deprecated_class,
-    deprecated_function,
-)
+from redisvl.utils.utils import deprecated_argument, deprecated_class
 from redisvl.utils.vectorize.voyageai import VoyageAIVectorizer
 
 

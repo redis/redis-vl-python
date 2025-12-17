@@ -1,11 +1,6 @@
-import warnings
 from typing import Any, List, Optional, Union
 
-from redisvl.utils.utils import (
-    deprecated_argument,
-    deprecated_class,
-    deprecated_function,
-)
+from redisvl.utils.utils import deprecated_argument, deprecated_class
 from redisvl.utils.vectorize.bedrock import BedrockVectorizer
 
 
