@@ -10,6 +10,7 @@ from typing_extensions import Annotated
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
+from redisvl.utils.utils import deprecated_argument
 
 try:
     from PIL.Image import Image
@@ -67,9 +68,11 @@ class BaseVectorizer(BaseModel):
             )
         return dtype
 
+    @deprecated_argument("text", "content")
     def embed(
         self,
-        content: Any,
+        content: Any = None,
+        text: Any = None,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         skip_cache: bool = False,
@@ -79,6 +82,7 @@ class BaseVectorizer(BaseModel):
 
         Args:
             content: The content to convert to a vector embedding
+            text: The text to convert to a vector embedding (deprecated - use `content` instead)
             preprocess: Function to apply to the content before embedding
             as_buffer: Return the embedding as a binary buffer instead of a list
             skip_cache: Bypass the cache for this request
@@ -91,6 +95,10 @@ class BaseVectorizer(BaseModel):
             >>> embedding = text_vectorizer.embed("Hello world")
             >>> embedding = image_vectorizer.embed(Image.open("test.png"))
         """
+        content = content or text
+        if not content:
+            raise ValueError("No content provided to embed.")
+
         # Apply preprocessing if provided
         if preprocess is not None:
             content = preprocess(content)
@@ -128,9 +136,11 @@ class BaseVectorizer(BaseModel):
         # Process and return result
         return self._process_embedding(embedding, as_buffer, self.dtype)
 
+    @deprecated_argument("texts", "contents")
     def embed_many(
         self,
-        contents: List[Any],
+        contents: Optional[List[Any]] = None,
+        texts: Optional[List[Any]] = None,
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
@@ -141,6 +151,7 @@ class BaseVectorizer(BaseModel):
 
         Args:
             contents: List of content to convert to vector embeddings
+            texts: List of texts to convert to vector embeddings (deprecated - use `contents` instead)
             preprocess: Function to apply to each item before embedding
             batch_size: Number of items to process in each API call
             as_buffer: Return embeddings as binary buffers instead of lists
@@ -153,6 +164,7 @@ class BaseVectorizer(BaseModel):
         Examples:
             >>> embeddings = vectorizer.embed_many(["Hello", "World"], batch_size=2)
         """
+        contents = contents or texts
         if not contents:
             return []
 
@@ -186,9 +198,11 @@ class BaseVectorizer(BaseModel):
         # Process and return results
         return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
 
+    @deprecated_argument("text", "content")
     async def aembed(
         self,
-        content: Any,
+        content: Any = None,
+        text: Any = None,
         preprocess: Optional[Callable] = None,
         as_buffer: bool = False,
         skip_cache: bool = False,
@@ -198,6 +212,7 @@ class BaseVectorizer(BaseModel):
 
         Args:
             content: The content to convert to a vector embedding
+            text: The text to convert to a vector embedding (deprecated - use `content` instead)
             preprocess: Function to apply to the content before embedding
             as_buffer: Return the embedding as a binary buffer instead of a list
             skip_cache: Bypass the cache for this request
@@ -209,6 +224,10 @@ class BaseVectorizer(BaseModel):
         Examples:
             >>> embedding = await vectorizer.aembed("Hello world")
         """
+        content = content or text
+        if not content:
+            raise ValueError("No content provided to embed.")
+
         # Apply preprocessing if provided
         if preprocess is not None:
             content = preprocess(content)
@@ -250,9 +269,11 @@ class BaseVectorizer(BaseModel):
         # Process and return result
         return self._process_embedding(embedding, as_buffer, self.dtype)
 
+    @deprecated_argument("texts", "contents")
     async def aembed_many(
         self,
-        contents: List[Any],
+        contents: Optional[List[Any]] = None,
+        texts: Optional[List[Any]] = None,
         preprocess: Optional[Callable] = None,
         batch_size: int = 10,
         as_buffer: bool = False,
@@ -263,6 +284,7 @@ class BaseVectorizer(BaseModel):
 
         Args:
             contents: List of content to convert to vector embeddings
+            texts: List of texts to convert to vector embeddings (deprecated - use `contents` instead)
             preprocess: Function to apply to each item before embedding
             batch_size: Number of texts to process in each API call
             as_buffer: Return embeddings as binary buffers instead of lists
@@ -275,6 +297,7 @@ class BaseVectorizer(BaseModel):
         Examples:
             >>> embeddings = await vectorizer.aembed_many(["Hello", "World"], batch_size=2)
         """
+        contents = contents or texts
         if not contents:
             return []
 
@@ -308,31 +331,45 @@ class BaseVectorizer(BaseModel):
         # Process and return results
         return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
 
-    def _embed(self, content: Any, **kwargs) -> List[float]:
+    @deprecated_argument("text", "content")
+    def _embed(self, text: Any = "", content: Any = "", **kwargs) -> List[float]:
         """Generate a vector embedding for a single item."""
         raise NotImplementedError
 
+    @deprecated_argument("texts", "contents")
     def _embed_many(
-        self, contents: List[Any], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[Any]] = None,
+        texts: Optional[List[Any]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """Generate vector embeddings for a batch of items."""
         raise NotImplementedError
 
-    async def _aembed(self, content: Any, **kwargs) -> List[float]:
+    @deprecated_argument("text", "content")
+    async def _aembed(self, content: Any = "", text: Any = "", **kwargs) -> List[float]:
         """Asynchronously generate a vector embedding for a single item."""
         logger.warning(
             "This vectorizer has no async embed method. Falling back to sync."
         )
-        return self._embed(content, **kwargs)
+        return self._embed(content=content or text, **kwargs)
 
+    @deprecated_argument("texts", "contents")
     async def _aembed_many(
-        self, contents: List[Any], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[Any]] = None,
+        texts: Optional[List[Any]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """Asynchronously generate vector embeddings for a batch of items."""
         logger.warning(
             "This vectorizer has no async embed_many method. Falling back to sync."
         )
-        return self._embed_many(contents, batch_size, **kwargs)
+        return self._embed_many(
+            contents=contents or texts, batch_size=batch_size, **kwargs
+        )
 
     def _get_from_cache_batch(
         self, contents: List[Any], skip_cache: bool

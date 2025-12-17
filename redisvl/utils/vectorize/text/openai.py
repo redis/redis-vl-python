@@ -162,16 +162,18 @@ class OpenAITextVectorizer(BaseVectorizer):
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
 
+    @deprecated_argument("text", "content")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, content: str, **kwargs) -> List[float]:
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
         """Generate a vector embedding for a single text using the OpenAI API.
 
         Args:
             content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the OpenAI API
 
         Returns:
@@ -181,6 +183,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             TypeError: If text is not a string
             ValueError: If embedding fails
         """
+        content = content or text
         if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
@@ -192,18 +195,24 @@ class OpenAITextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
+    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """Generate vector embeddings for a batch of texts using the OpenAI API.
 
         Args:
             contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the OpenAI API
 
@@ -214,6 +223,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
+        contents = contents or texts
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if contents and not isinstance(contents[0], str):
@@ -230,16 +240,18 @@ class OpenAITextVectorizer(BaseVectorizer):
                 raise ValueError(f"Embedding texts failed: {e}")
         return embeddings
 
+    @deprecated_argument("text", "content")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    async def _aembed(self, content: str, **kwargs) -> List[float]:
+    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
         """Asynchronously generate a vector embedding for a single text using the OpenAI API.
 
         Args:
             content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the OpenAI API
 
         Returns:
@@ -249,6 +261,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             TypeError: If content is not a string
             ValueError: If embedding fails
         """
+        content = content or text
         if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
@@ -260,18 +273,24 @@ class OpenAITextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
+    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
     async def _aembed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """Asynchronously generate vector embeddings for a batch of texts using the OpenAI API.
 
         Args:
             contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the OpenAI API
 
@@ -282,6 +301,7 @@ class OpenAITextVectorizer(BaseVectorizer):
             TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
+        contents = contents or texts
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
         if contents and not isinstance(contents[0], str):

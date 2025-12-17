@@ -5,6 +5,7 @@ from pydantic.v1 import PrivateAttr
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 
@@ -123,16 +124,19 @@ class HFTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
-    def _embed(self, content: str, **kwargs) -> List[float]:
+    @deprecated_argument("text", "content")
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
         """Generate a vector embedding for a single text using the Hugging Face model.
 
         Args:
             content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional model-specific parameters
 
         Returns:
             List[float]: Vector embedding as a list of floats
         """
+        content = content or text
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
@@ -140,19 +144,26 @@ class HFTextVectorizer(BaseVectorizer):
         embedding = self._client.encode([content], **kwargs)[0]
         return embedding.tolist()
 
+    @deprecated_argument("texts", "contents")
     def _embed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """Generate vector embeddings for a batch of texts using the Hugging Face model.
 
         Args:
             contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each batch
             **kwargs: Additional model-specific parameters
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
         """
+        contents = contents or texts
         if not isinstance(contents, list):
             raise TypeError("Must pass in a list of values to embed.")
         if "show_progress_bar" not in kwargs:

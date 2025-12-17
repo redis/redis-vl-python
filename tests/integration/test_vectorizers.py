@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 import pytest
@@ -611,3 +612,20 @@ def test_cohere_embedding_types_warning():
         )
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)
+
+
+def test_deprecated_text_parameter_warning():
+    """Test that using deprecated 'text' and 'texts' parameters emits deprecation warnings."""
+    vectorizer = HFTextVectorizer(model="sentence-transformers/all-MiniLM-L6-v2")
+
+    # Test single embed with deprecated 'text' parameter emits warning
+    with pytest.warns(DeprecationWarning, match="Argument text is deprecated"):
+        embedding = vectorizer.embed(text=TEST_TEXT)
+    assert isinstance(embedding, list)
+    assert len(embedding) == vectorizer.dims
+
+    # Test embed_many with deprecated 'texts' parameter emits warning
+    with pytest.warns(DeprecationWarning, match="Argument texts is deprecated"):
+        embeddings = vectorizer.embed_many(texts=TEST_TEXTS)
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(TEST_TEXTS)
