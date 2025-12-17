@@ -180,24 +180,28 @@ class Tag(FilterField):
         return FilterExpression(str(self))
 
     def __mod__(self, other: Union[List[str], str]) -> "FilterExpression":
-        """Create a Tag wildcard filter expression for prefix matching.
+        """Create a Tag wildcard filter expression for pattern matching.
 
         This enables wildcard pattern matching on tag fields using the ``*``
         character. Unlike the equality operator, wildcards are not escaped,
-        allowing prefix searches like ``"tech*"`` to match "technology",
-        "technical", etc.
+        allowing patterns with wildcards in any position, such as prefix
+        (``"tech*"``), suffix (``"*tech"``), or middle (``"*tech*"``)
+        matches.
 
         Args:
             other (Union[List[str], str]): The tag pattern(s) to filter on.
-                Use ``*`` for prefix matching (e.g., ``"tech*"``).
+                Use ``*`` for wildcard matching (e.g., ``"tech*"``, ``"*tech"``,
+                or ``"*tech*"``).
 
         .. code-block:: python
 
             from redisvl.query.filter import Tag
 
-            f = Tag("category") % "tech*"           # Prefix match
-            f = Tag("category") % "elec*|soft*"     # Multiple prefix patterns
-            f = Tag("category") % ["tech*", "sci*"] # List of patterns
+            f = Tag("category") % "tech*"               # Prefix match
+            f = Tag("category") % "*tech"               # Suffix match
+            f = Tag("category") % "*tech*"              # Contains match
+            f = Tag("category") % "elec*|*soft"         # Multiple wildcard patterns
+            f = Tag("category") % ["tech*", "*science"] # List of patterns
 
         """
         self._set_tag_value(other, FilterOperator.LIKE)
