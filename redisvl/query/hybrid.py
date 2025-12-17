@@ -125,7 +125,6 @@ class HybridQuery:
             ValueError: If `vector_search_method` is "KNN" and `knn_k` is not provided.
             ValueError: If `vector_search_method` is "RANGE" and `range_radius` is not provided.
         """
-
         try:
             from redis.commands.search.hybrid_query import (
                 CombineResultsMethod,
