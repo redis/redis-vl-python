@@ -117,6 +117,10 @@ class VoyageAIVectorizer(BaseVectorizer):
             ImportError: If the voyageai library is not installed.
             ValueError: If the API key is not provided.
 
+        Notes:
+            - Multimodal models require voyageai>=0.3.6 to be installed for video embeddings, as well as
+                ffmpeg installed on the system. Image embeddings require pillow to be installed.
+
         """
         super().__init__(model=model, dtype=dtype, cache=cache)
         # Initialize client and set up the model
@@ -128,7 +132,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         return "multimodal" in self.model
 
     def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
-        """Embed an image (from its path on disk) using VoyageAI's multimodal API."""
+        """Embed an image (from its path on disk) using VoyageAI's multimodal API. Requires pillow to be installed."""
         if not self.is_multimodal:
             raise ValueError("Cannot embed image with a non-multimodal model.")
 
@@ -142,7 +146,10 @@ class VoyageAIVectorizer(BaseVectorizer):
         return self.embed(Image.open(image_path), **kwargs)
 
     def embed_video(self, video_path: str, **kwargs) -> Union[List[float], bytes]:
-        """Embed a video (from its path on disk) using VoyageAI's multimodal API."""
+        """Embed a video (from its path on disk) using VoyageAI's multimodal API.
+
+        Requires voyageai>=0.3.6 to be installed, as well as ffmpeg to be installed on the system.
+        """
         if not self.is_multimodal:
             raise ValueError("Cannot embed video with a non-multimodal model.")
 
@@ -321,8 +328,10 @@ class VoyageAIVectorizer(BaseVectorizer):
             TypeError: If `contents` is not a list, or parameters are invalid
             ValueError: If embedding fails
         """
+        from voyageai.error import InvalidRequestError
+
         input_type = kwargs.pop("input_type", None)
-        truncation = kwargs.pop("truncation", None)
+        truncation = kwargs.pop("truncation", True)
 
         # Validate inputs
         self._validate_input(contents, input_type, truncation)
@@ -335,7 +344,9 @@ class VoyageAIVectorizer(BaseVectorizer):
             embeddings: List = []
             for batch in self.batchify(contents, batch_size):
                 response = self._embed_fn(
-                    batch,
+                    (
+                        [batch] if self.is_multimodal else batch
+                    ),  # Multimodal requires a list of lists/dicts
                     model=self.model,
                     input_type=input_type,
                     truncation=truncation,
@@ -343,6 +354,8 @@ class VoyageAIVectorizer(BaseVectorizer):
                 )
                 embeddings.extend(response.embeddings)
             return embeddings
+        except InvalidRequestError as e:
+            raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
@@ -390,8 +403,10 @@ class VoyageAIVectorizer(BaseVectorizer):
             TypeError: If `contents` is not a list, or parameters are invalid
             ValueError: If embedding fails
         """
+        from voyageai.error import InvalidRequestError
+
         input_type = kwargs.pop("input_type", None)
-        truncation = kwargs.pop("truncation", None)
+        truncation = kwargs.pop("truncation", True)
 
         # Validate inputs
         self._validate_input(contents, input_type, truncation)
@@ -404,7 +419,9 @@ class VoyageAIVectorizer(BaseVectorizer):
             embeddings: List = []
             for batch in self.batchify(contents, batch_size):
                 response = await self._aembed_fn(
-                    batch,
+                    (
+                        [batch] if self.is_multimodal else batch
+                    ),  # Multimodal requires a list of lists/dicts
                     model=self.model,
                     input_type=input_type,
                     truncation=truncation,
@@ -412,6 +429,8 @@ class VoyageAIVectorizer(BaseVectorizer):
                 )
                 embeddings.extend(response.embeddings)
             return embeddings
+        except InvalidRequestError as e:
+            raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
