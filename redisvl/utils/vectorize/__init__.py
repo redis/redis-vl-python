@@ -5,10 +5,14 @@ from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
 from redisvl.utils.vectorize.bedrock import BedrockVectorizer
 from redisvl.utils.vectorize.custom import CustomVectorizer
 from redisvl.utils.vectorize.text.azureopenai import AzureOpenAITextVectorizer
+from redisvl.utils.vectorize.text.bedrock import BedrockTextVectorizer
 from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
+from redisvl.utils.vectorize.text.custom import CustomTextVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
+from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
+from redisvl.utils.vectorize.text.voyageai import VoyageAITextVectorizer
 from redisvl.utils.vectorize.vertexai import VertexAIVectorizer
 from redisvl.utils.vectorize.voyageai import VoyageAIVectorizer
 
@@ -18,11 +22,15 @@ __all__ = [
     "HFTextVectorizer",
     "OpenAITextVectorizer",
     "VertexAIVectorizer",
+    "VertexAITextVectorizer",
     "AzureOpenAITextVectorizer",
     "MistralAITextVectorizer",
     "CustomVectorizer",
+    "CustomTextVectorizer",
     "BedrockVectorizer",
+    "BedrockTextVectorizer",
     "VoyageAIVectorizer",
+    "VoyageAITextVectorizer",
 ]
 
 
