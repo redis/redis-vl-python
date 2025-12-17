@@ -2,6 +2,7 @@ import os
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from google.api_core.exceptions import InvalidArgument
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
@@ -282,6 +283,8 @@ class VertexAIVectorizer(BaseVectorizer):
             else:
                 return self._client.get_embeddings([content], **kwargs)[0].values
 
+        except InvalidArgument as e:
+            raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding input failed: {e}")
 
@@ -323,6 +326,8 @@ class VertexAIVectorizer(BaseVectorizer):
                 response = self._client.get_embeddings(batch, **kwargs)
                 embeddings.extend([r.values for r in response])
             return embeddings
+        except InvalidArgument as e:
+            raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
