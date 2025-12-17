@@ -49,6 +49,12 @@ def get_query_pieces(query: HybridQuery) -> List[str]:
         pieces.extend(query.combination_method.get_args())
     if query.postprocessing_config.build_args():
         pieces.extend(query.postprocessing_config.build_args())
+    if query.params:
+        params = [
+            "PARAMS",
+            len(query.params) * 2,
+        ] + [item for pair in query.params.items() for item in pair]
+        pieces.extend(params)
     return pieces
 
 
@@ -76,10 +82,14 @@ def test_hybrid_query_basic_initialization():
         "BM25STD",
         "VSIM",
         "@embedding",
-        bytes_vector,
+        "$vector",
         "LIMIT",
         "0",
         "10",
+        "PARAMS",
+        2,
+        "vector",
+        bytes_vector,
     ]
 
     # Verify that no combination method is set
@@ -126,7 +136,7 @@ def test_hybrid_query_with_all_parameters():
         "text_score",
         "VSIM",
         "@embedding",
-        bytes_vector,
+        "$vector",
         "KNN",
         4,
         "K",
@@ -149,11 +159,15 @@ def test_hybrid_query_with_all_parameters():
         "LIMIT",
         "0",
         "10",
+        "PARAMS",
+        2,
+        "vector",
+        bytes_vector,
     ]
 
     # Add post-processing and verify that it is reflected in the query
     hybrid_query.postprocessing_config.limit(offset=10, num=20)
-    assert get_query_pieces(hybrid_query)[-3:] == ["LIMIT", "10", "20"]
+    assert hybrid_query.postprocessing_config.build_args() == ["LIMIT", "10", "20"]
 
 
 # Stopwords tests
@@ -376,12 +390,16 @@ def test_hybrid_query_with_string_filter():
         "BM25STD",
         "VSIM",
         "@embedding",
-        bytes_vector,
+        "$vector",
         "FILTER",
         "@category:{tech|science|engineering}",
         "LIMIT",
         "0",
         "10",
+        "PARAMS",
+        2,
+        "vector",
+        bytes_vector,
     ]
 
 
@@ -405,12 +423,16 @@ def test_hybrid_query_with_tag_filter():
         "BM25STD",
         "VSIM",
         "@embedding",
-        bytes_vector,
+        "$vector",
         "FILTER",
         "@genre:{comedy}",
         "LIMIT",
         "0",
         "10",
+        "PARAMS",
+        2,
+        "vector",
+        bytes_vector,
     ]
 
 
@@ -645,10 +667,14 @@ def test_hybrid_query_special_characters_in_text():
         "BM25STD",
         "VSIM",
         "@embedding",
-        bytes_vector,
+        "$vector",
         "LIMIT",
         "0",
         "10",
+        "PARAMS",
+        2,
+        "vector",
+        bytes_vector,
     ]
 
 
@@ -672,10 +698,14 @@ def test_hybrid_query_unicode_text():
         "BM25STD",
         "VSIM",
         "@embedding",
-        bytes_vector,
+        "$vector",
         "LIMIT",
         "0",
         "10",
+        "PARAMS",
+        2,
+        "vector",
+        bytes_vector,
     ]
 
 

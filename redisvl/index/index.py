@@ -1064,6 +1064,7 @@ class SearchIndex(BaseSearchIndex):
                 if query.postprocessing_config.build_args()
                 else None
             ),
+            params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
         return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
@@ -1938,6 +1939,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 if query.postprocessing_config.build_args()
                 else None
             ),
+            params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
         return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
