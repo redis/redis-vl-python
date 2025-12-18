@@ -25,7 +25,8 @@ class HFTextVectorizer(BaseVectorizer):
     trained on a variety of datasets and tasks, ensuring versatility and
     robust performance across different embedding needs.
 
-    Note: Some multimodal models can make use of sentence-transformers by passing
+    Note:
+        Some multimodal models can make use of sentence-transformers by passing
         PIL Image objects in place of strings (e.g. CLIP). To enable those use
         cases, this class follows the SentenceTransformer convention of hinting
         that it expects string inputs, but never enforcing it.
