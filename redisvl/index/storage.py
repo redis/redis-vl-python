@@ -175,6 +175,20 @@ class BaseStorage(BaseModel):
         """Asynchronously get data from Redis using the provided client or pipeline."""
         raise NotImplementedError
 
+    @staticmethod
+    async def _aexpire(client: AsyncRedisClientOrPipeline, key: str, ttl: int) -> None:
+        """Asynchronously set TTL on a key using the provided client or pipeline
+
+        Args:
+            client (AsyncRedisClientOrPipeline): The async Redis client or pipeline instance.
+            key (str): The key for which to set the TTL.
+            ttl (int): Time-to-live in seconds for each key.
+        """
+        if isinstance(client, (AsyncPipeline, AsyncClusterPipeline)):
+            client.expire(key, ttl)
+        else:
+            await client.expire(key, ttl)
+
     def _validate(self, obj: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate an object against the schema using Pydantic-based validation.
@@ -490,7 +504,7 @@ class BaseStorage(BaseModel):
 
                 # Set TTL if provided
                 if ttl:
-                    await pipe.expire(key, ttl)
+                    await self._aexpire(pipe, key, ttl)
 
                 added_keys.append(key)
 
@@ -615,7 +629,7 @@ class HashStorage(BaseStorage):
         """Asynchronously set a hash value in Redis for the given key.
 
         Args:
-            client (AsyncClientOrPipeline): The async Redis client or pipeline instance.
+            client (AsyncRedisClientOrPipeline): The async Redis client or pipeline instance.
             key (str): The key under which to store the hash.
             obj (Dict[str, Any]): The hash to store in Redis.
         """
@@ -644,7 +658,7 @@ class HashStorage(BaseStorage):
         """Asynchronously retrieve a hash value from Redis for the given key.
 
         Args:
-            client (AsyncRedisClient): The async Redis client or pipeline instance.
+            client (AsyncRedisClientOrPipeline): The async Redis client or pipeline instance.
             key (str): The key for which to retrieve the hash.
 
         Returns:

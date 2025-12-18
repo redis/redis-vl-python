@@ -697,3 +697,24 @@ def test_search_index_validates_query_with_hnsw_algorithm(hnsw_index, sample_dat
     )
     # Should not raise
     hnsw_index.query(query)
+
+
+@pytest.mark.parametrize("ttl", [None, 30])
+def test_search_index_load_with_ttl(index, ttl):
+    """Test that TTL is correctly set on keys when using load() with ttl parameter."""
+    index.create(overwrite=True, drop=True)
+
+    # Load test data with TTL parameter
+    data = [{"id": "1", "test": "foo"}]
+    keys = index.load(data, id_field="id", ttl=ttl)
+
+    # Check TTL on the loaded key
+    key_ttl = index.client.ttl(keys[0])
+
+    if ttl is None:
+        # No TTL set, should return -1
+        assert key_ttl == -1
+    else:
+        # TTL should be set and close to the expected value
+        assert key_ttl > 0
+        assert abs(key_ttl - ttl) <= 5
