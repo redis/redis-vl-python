@@ -96,3 +96,15 @@ VoyageAIVectorizer
 .. autoclass:: VoyageAIVectorizer
    :show-inheritance:
    :members:
+
+
+MistralAITextVectorizer
+========================
+
+.. _mistralaitextvectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.text.mistral
+
+.. autoclass:: MistralAITextVectorizer
+   :show-inheritance:
+   :members:
