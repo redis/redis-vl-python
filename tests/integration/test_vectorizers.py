@@ -696,3 +696,113 @@ def test_voyageai_context_model_detection():
     for model_name, expected in test_cases:
         # The _is_context_model method simply checks: "context" in self.model
         assert ("context" in model_name) == expected, f"Failed for {model_name}"
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_multimodal_text_only():
+    """Test VoyageAI multimodal vectorizer with text-only input."""
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3")
+
+    # Test single text embedding via embed()
+    embedding = vectorizer.embed("A red apple on a wooden table")
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
+    # Test another text embedding to verify consistency
+    embedding2 = vectorizer.embed("A cat sleeping on a couch")
+    assert isinstance(embedding2, list)
+    assert len(embedding2) == len(embedding)
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_multimodal_image():
+    """Test VoyageAI multimodal vectorizer with image input."""
+    import os
+    import tempfile
+
+    from PIL import Image
+
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3")
+
+    # Create a simple test image
+    img = Image.new("RGB", (100, 100), color="red")
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        img.save(f, format="PNG")
+        temp_path = f.name
+
+    try:
+        # Test embed_image
+        embedding = vectorizer.embed_image(temp_path)
+        assert isinstance(embedding, list)
+        assert len(embedding) > 0
+        assert all(isinstance(x, float) for x in embedding)
+    finally:
+        os.unlink(temp_path)
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_multimodal_video():
+    """Test VoyageAI multimodal vectorizer with video input."""
+    import os
+    import subprocess
+    import tempfile
+
+    from PIL import Image
+
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3.5")
+
+    # Create a minimal test video using ffmpeg
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create 3 frames
+        for i in range(3):
+            img = Image.new("RGB", (64, 64), color=(i * 80, 100, 150))
+            img.save(os.path.join(tmpdir, f"frame_{i:03d}.png"))
+
+        video_path = os.path.join(tmpdir, "test_video.mp4")
+
+        # Create video from frames
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                "1",
+                "-i",
+                os.path.join(tmpdir, "frame_%03d.png"),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-t",
+                "3",
+                video_path,
+            ],
+            capture_output=True,
+        )
+
+        if result.returncode != 0:
+            pytest.skip("ffmpeg not available or failed to create test video")
+
+        # Test embed_video
+        embedding = vectorizer.embed_video(video_path)
+        assert isinstance(embedding, list)
+        assert len(embedding) > 0
+        assert all(isinstance(x, float) for x in embedding)
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.asyncio
+async def test_voyageai_multimodal_async():
+    """Test VoyageAI multimodal vectorizer async methods."""
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3")
+
+    # Test async text embedding
+    embedding = await vectorizer.aembed("A beautiful sunset over mountains")
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+
+    # Test async batch
+    texts = ["Ocean waves", "Forest trees"]
+    embeddings = await vectorizer.aembed_many(texts)
+    assert len(embeddings) == 2
