@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from pydantic.v1 import PrivateAttr
 
@@ -24,6 +24,12 @@ class HFTextVectorizer(BaseVectorizer):
     Hugging Face's vast collection of Sentence Transformers. These models are
     trained on a variety of datasets and tasks, ensuring versatility and
     robust performance across different embedding needs.
+
+    Note:
+        Some multimodal models can make use of sentence-transformers by passing
+        PIL Image objects in place of strings (e.g. CLIP). To enable those use
+        cases, this class follows the SentenceTransformer convention of hinting
+        that it expects string inputs, but never enforcing it.
 
     Requirements:
         - The `sentence-transformers` library must be installed with pip.
@@ -54,6 +60,13 @@ class HFTextVectorizer(BaseVectorizer):
             ["Hello, world!", "How are you?"],
             batch_size=2
         )
+
+        # Multimodal usage
+        from PIL import Image
+        vectorizer = HFTextVectorizer(model="sentence-transformers/clip-ViT-L-14")
+        embeddings1 = vectorizer.embed("Hello, world!")
+        embeddings2 = vectorizer.embed(Image.open("path/to/your/image.jpg"))
+
     """
 
     _client: Any = PrivateAttr()
@@ -112,55 +125,54 @@ class HFTextVectorizer(BaseVectorizer):
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
         return len(embedding)
 
-    def _embed(self, text: str, **kwargs) -> List[float]:
+    @deprecated_argument("text", "content")
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
         """Generate a vector embedding for a single text using the Hugging Face model.
 
         Args:
-            text: Text to embed
+            content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional model-specific parameters
 
         Returns:
             List[float]: Vector embedding as a list of floats
-
-        Raises:
-            TypeError: If the input is not a string
         """
-        if not isinstance(text, str):
-            raise TypeError("Must pass in a str value to embed.")
-
+        content = content or text
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
 
-        embedding = self._client.encode([text], **kwargs)[0]
+        embedding = self._client.encode([content], **kwargs)[0]
         return embedding.tolist()
 
+    @deprecated_argument("texts", "contents")
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """Generate vector embeddings for a batch of texts using the Hugging Face model.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each batch
             **kwargs: Additional model-specific parameters
 
         Returns:
             List[List[float]]: List of vector embeddings as lists of floats
-
-        Raises:
-            TypeError: If the input is not a list of strings
         """
-        if not isinstance(texts, list):
-            raise TypeError("Must pass in a list of str values to embed.")
-        if len(texts) > 0 and not isinstance(texts[0], str):
-            raise TypeError("Must pass in a list of str values to embed.")
+        contents = contents or texts
+        if not isinstance(contents, list):
+            raise TypeError("Must pass in a list of values to embed.")
         if "show_progress_bar" not in kwargs:
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
 
         embeddings: List = []
-        for batch in self.batchify(texts, batch_size, None):
+        for batch in self.batchify(contents, batch_size, None):
             batch_embeddings = self._client.encode(batch, **kwargs)
             embeddings.extend([embedding.tolist() for embedding in batch_embeddings])
         return embeddings

@@ -4255,7 +4255,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.12.1"
+version = "0.13.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonpath-ng" },
@@ -4291,6 +4291,10 @@ nltk = [
 ]
 openai = [
     { name = "openai" },
+]
+pillow = [
+    { name = "pillow", version = "11.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "pillow", version = "12.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
 sentence-transformers = [
     { name = "sentence-transformers" },
@@ -4344,6 +4348,7 @@ requires-dist = [
     { name = "nltk", marker = "extra == 'nltk'", specifier = ">=3.8.1,<4" },
     { name = "numpy", specifier = ">=1.26.0,<3" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.1.0" },
+    { name = "pillow", marker = "extra == 'pillow'", specifier = ">=11.3.0" },
     { name = "protobuf", marker = "extra == 'vertexai'", specifier = ">=5.28.0,<6.0.0" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "python-ulid", specifier = ">=3.0.0" },
@@ -4354,7 +4359,7 @@ requires-dist = [
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
 ]
-provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock"]
+provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow"]
 
 [package.metadata.requires-dev]
 dev = [

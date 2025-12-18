@@ -16,6 +16,7 @@ from redisvl.utils.utils import (
     assert_no_warnings,
     denorm_cosine_distance,
     deprecated_argument,
+    deprecated_class,
     deprecated_function,
     lazy_import,
     norm_cosine_distance,
@@ -532,6 +533,94 @@ class TestDeprecatedFunction:
         assert (
             has_date_pre == has_date_post
         ), f"Date format changed: was present before: {has_date_pre}, present after: {has_date_post}"
+
+
+class TestDeprecatedClass:
+    def test_deprecated_class_warning_with_replacement(self):
+        @deprecated_class(replacement="Use NewClass instead.")
+        class OldClass:
+            def __init__(self, value):
+                self.value = value
+
+        with pytest.warns(DeprecationWarning) as record:
+            obj = OldClass(42)
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Class OldClass is deprecated and will be removed in the next major release. "
+            "Use NewClass instead."
+        )
+        assert obj.value == 42
+
+    def test_deprecated_class_warning_without_replacement(self):
+        @deprecated_class()
+        class OldClass:
+            def __init__(self, value):
+                self.value = value
+
+        with pytest.warns(DeprecationWarning) as record:
+            obj = OldClass(42)
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Class OldClass is deprecated and will be removed in the next major release. "
+        )
+        assert obj.value == 42
+
+    def test_deprecated_class_with_custom_name(self):
+        @deprecated_class(name="CustomOldClass", replacement="Use NewClass instead.")
+        class OldClass:
+            pass
+
+        with pytest.warns(DeprecationWarning) as record:
+            OldClass()
+
+        assert len(record) == 1
+        assert str(record[0].message) == (
+            "Class CustomOldClass is deprecated and will be removed in the next major release. "
+            "Use NewClass instead."
+        )
+
+    def test_deprecated_class_preserves_functionality(self):
+        @deprecated_class(replacement="Use NewClass instead.")
+        class OldClass:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+
+            def add(self):
+                return self.x + self.y
+
+        with pytest.warns(DeprecationWarning):
+            obj = OldClass(10, 20)
+
+        assert obj.x == 10
+        assert obj.y == 20
+        assert obj.add() == 30
+
+    def test_deprecated_class_with_inheritance(self):
+        @deprecated_class(replacement="Use NewBase instead.")
+        class OldBase:
+            def __init__(self, value):
+                self.value = value
+
+        class Derived(OldBase):
+            def __init__(self, value, extra):
+                super().__init__(value)
+                self.extra = extra
+
+        # Creating an instance of the deprecated base class should warn
+        with pytest.warns(DeprecationWarning):
+            base_obj = OldBase(42)
+
+        # Creating an instance of the derived class should also warn
+        # because it calls the deprecated __init__
+        with pytest.warns(DeprecationWarning):
+            derived_obj = Derived(42, "extra")
+
+        assert base_obj.value == 42
+        assert derived_obj.value == 42
+        assert derived_obj.extra == "extra"
 
 
 class TestLazyImport:

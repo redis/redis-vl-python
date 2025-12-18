@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import numpy as np
 import pytest
@@ -7,14 +8,14 @@ from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 from redisvl.utils.utils import create_ulid
 from redisvl.utils.vectorize import (
     AzureOpenAITextVectorizer,
-    BedrockTextVectorizer,
+    BedrockVectorizer,
     CohereTextVectorizer,
-    CustomTextVectorizer,
+    CustomVectorizer,
     HFTextVectorizer,
     MistralAITextVectorizer,
     OpenAITextVectorizer,
-    VertexAITextVectorizer,
-    VoyageAITextVectorizer,
+    VertexAIVectorizer,
+    VoyageAIVectorizer,
 )
 
 # Constants for testing
@@ -41,13 +42,13 @@ def embeddings_cache(client):
     params=[
         HFTextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
+        VertexAIVectorizer,
         CohereTextVectorizer,
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         MistralAITextVectorizer,
-        CustomTextVectorizer,
-        VoyageAITextVectorizer,
+        CustomVectorizer,
+        VoyageAIVectorizer,
     ]
 )
 def vectorizer(request):
@@ -55,35 +56,35 @@ def vectorizer(request):
         return request.param()
     elif request.param == OpenAITextVectorizer:
         return request.param()
-    elif request.param == VertexAITextVectorizer:
+    elif request.param == VertexAIVectorizer:
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
     elif request.param == MistralAITextVectorizer:
         return request.param()
-    elif request.param == VoyageAITextVectorizer:
+    elif request.param == VoyageAIVectorizer:
         return request.param(model="voyage-large-2")
     elif request.param == AzureOpenAITextVectorizer:
         return request.param(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002")
         )
-    elif request.param == BedrockTextVectorizer:
+    elif request.param == BedrockVectorizer:
         return request.param(
             model=os.getenv("BEDROCK_MODEL_ID", "amazon.titan-embed-text-v2:0")
         )
-    elif request.param == CustomTextVectorizer:
+    elif request.param == CustomVectorizer:
 
-        def embed(text):
+        def embed(content):
             return TEST_VECTOR
 
-        def embed_many(texts):
-            return [TEST_VECTOR] * len(texts)
+        def embed_many(contents):
+            return [TEST_VECTOR] * len(contents)
 
-        async def aembed_func(text):
+        async def aembed_func(content):
             return TEST_VECTOR
 
-        async def aembed_many_func(texts):
-            return [TEST_VECTOR] * len(texts)
+        async def aembed_many_func(contents):
+            return [TEST_VECTOR] * len(contents)
 
         return request.param(embed=embed, embed_many=embed_many)
 
@@ -92,19 +93,19 @@ def vectorizer(request):
 def cached_vectorizer(embeddings_cache):
     """Create a simple custom vectorizer for testing."""
 
-    def embed(text):
+    def embed(content):
         return TEST_VECTOR
 
-    def embed_many(texts):
-        return [TEST_VECTOR] * len(texts)
+    def embed_many(contents):
+        return [TEST_VECTOR] * len(contents)
 
-    async def aembed(text):
+    async def aembed(content):
         return TEST_VECTOR
 
-    async def aembed_many(texts):
-        return [TEST_VECTOR] * len(texts)
+    async def aembed_many(contents):
+        return [TEST_VECTOR] * len(contents)
 
-    return CustomTextVectorizer(
+    return CustomVectorizer(
         embed=embed,
         embed_many=embed_many,
         aembed=aembed,
@@ -115,7 +116,7 @@ def cached_vectorizer(embeddings_cache):
 
 @pytest.fixture
 def custom_embed_func():
-    def embed(text: str):
+    def embed(content: str):
         return TEST_VECTOR
 
     return embed
@@ -124,16 +125,16 @@ def custom_embed_func():
 @pytest.fixture
 def custom_embed_class():
     class MyEmbedder:
-        def embed(self, text: str):
+        def embed(self, content: str):
             return TEST_VECTOR
 
-        def embed_with_args(self, text: str, max_len=None):
+        def embed_with_args(self, content: str, max_len=None):
             return TEST_VECTOR[0:max_len]
 
-        def embed_many(self, text_list):
+        def embed_many(self, contents):
             return [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-        def embed_many_with_args(self, texts, param=True):
+        def embed_many_with_args(self, contents, param=True):
             if param:
                 return [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
             else:
@@ -147,7 +148,7 @@ def test_vectorizer_embed(vectorizer):
     text = TEST_TEXT
     if isinstance(vectorizer, CohereTextVectorizer):
         embedding = vectorizer.embed(text, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embedding = vectorizer.embed(text, input_type="document")
     else:
         embedding = vectorizer.embed(text)
@@ -161,7 +162,7 @@ def test_vectorizer_embed_many(vectorizer):
     texts = TEST_TEXTS
     if isinstance(vectorizer, CohereTextVectorizer):
         embeddings = vectorizer.embed_many(texts, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embeddings = vectorizer.embed_many(texts, input_type="document")
     else:
         embeddings = vectorizer.embed_many(texts)
@@ -171,18 +172,6 @@ def test_vectorizer_embed_many(vectorizer):
     assert all(
         isinstance(emb, list) and len(emb) == vectorizer.dims for emb in embeddings
     )
-
-
-@pytest.mark.requires_api_keys
-def test_vectorizer_bad_input(vectorizer):
-    with pytest.raises(TypeError):
-        vectorizer.embed(1)
-
-    with pytest.raises(TypeError):
-        vectorizer.embed({"foo": "bar"})
-
-    with pytest.raises(TypeError):
-        vectorizer.embed_many(42)
 
 
 def test_vectorizer_with_cache(cached_vectorizer):
@@ -197,7 +186,7 @@ def test_vectorizer_with_cache(cached_vectorizer):
 
     # Verify it's actually using the cache by checking the cached value exists
     cached_entry = cached_vectorizer.cache.get(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry is not None
     assert cached_entry["embedding"] == TEST_VECTOR
@@ -209,11 +198,11 @@ def test_vectorizer_with_cache_skip(cached_vectorizer):
     cached_vectorizer.embed(TEST_TEXT)
 
     # Call embed with skip_cache=True - should bypass cache
-    cached_vectorizer.cache.drop(text=TEST_TEXT, model_name=cached_vectorizer.model)
+    cached_vectorizer.cache.drop(content=TEST_TEXT, model_name=cached_vectorizer.model)
 
     # Store a deliberately different value in the cache
     cached_vectorizer.cache.set(
-        text=TEST_TEXT,
+        content=TEST_TEXT,
         model_name=cached_vectorizer.model,
         embedding=[9.9, 8.8, 7.7, 6.6],
     )
@@ -226,7 +215,7 @@ def test_vectorizer_with_cache_skip(cached_vectorizer):
 
     # Cache should still have the original value
     cached_entry = cached_vectorizer.cache.get(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry["embedding"] == [9.9, 8.8, 7.7, 6.6]
 
@@ -235,7 +224,7 @@ def test_vectorizer_with_cache_many(cached_vectorizer):
     """Test embedding many texts with partial cache hits/misses."""
     # Store an embedding for the first text only
     cached_vectorizer.cache.set(
-        text=TEST_TEXTS[0],
+        content=TEST_TEXTS[0],
         model_name=cached_vectorizer.model,
         embedding=[0.1, 0.2, 0.3, 0.4],
     )
@@ -250,7 +239,7 @@ def test_vectorizer_with_cache_many(cached_vectorizer):
     # Both should now be in cache
     for text in TEST_TEXTS:
         assert cached_vectorizer.cache.exists(
-            text=text, model_name=cached_vectorizer.model
+            content=text, model_name=cached_vectorizer.model
         )
 
 
@@ -262,7 +251,7 @@ def test_vectorizer_with_cached_metadata(cached_vectorizer):
 
     # Verify metadata was stored in cache
     cached_entry = cached_vectorizer.cache.get(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry["metadata"] == test_metadata
 
@@ -280,7 +269,7 @@ async def test_vectorizer_with_cache_async(cached_vectorizer):
 
     # Verify it's actually using the cache
     cached_entry = await cached_vectorizer.cache.aget(
-        text=TEST_TEXT, model_name=cached_vectorizer.model
+        content=TEST_TEXT, model_name=cached_vectorizer.model
     )
     assert cached_entry is not None
     assert cached_entry["embedding"] == TEST_VECTOR
@@ -291,7 +280,7 @@ async def test_vectorizer_with_cache_async_many(cached_vectorizer):
     """Test async embedding many texts with partial cache hits/misses."""
     # Store an embedding for the first text only
     await cached_vectorizer.cache.aset(
-        text=TEST_TEXTS[0],
+        content=TEST_TEXTS[0],
         model_name=cached_vectorizer.model,
         embedding=[0.1, 0.2, 0.3, 0.4],
     )
@@ -306,14 +295,14 @@ async def test_vectorizer_with_cache_async_many(cached_vectorizer):
     # Both should now be in cache
     for text in TEST_TEXTS:
         assert await cached_vectorizer.cache.aexists(
-            text=text, model_name=cached_vectorizer.model
+            content=text, model_name=cached_vectorizer.model
         )
 
 
 @pytest.mark.requires_api_keys
 def test_bedrock_bad_credentials():
     with pytest.raises(ValueError):
-        BedrockTextVectorizer(
+        BedrockVectorizer(
             api_config={
                 "aws_access_key_id": "invalid",
                 "aws_secret_access_key": "invalid",
@@ -324,61 +313,61 @@ def test_bedrock_bad_credentials():
 @pytest.mark.requires_api_keys
 def test_bedrock_invalid_model():
     with pytest.raises(ValueError):
-        bedrock = BedrockTextVectorizer(model="invalid-model")
+        bedrock = BedrockVectorizer(model="invalid-model")
         bedrock.embed("test")
 
 
 def test_custom_vectorizer_embed(custom_embed_class, custom_embed_func):
-    custom_wrapper = CustomTextVectorizer(embed=custom_embed_func)
+    custom_wrapper = CustomVectorizer(embed=custom_embed_func)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == TEST_VECTOR
 
-    custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed)
+    custom_wrapper = CustomVectorizer(embed=custom_embed_class().embed)
     embedding = custom_wrapper.embed("This is a test sentence.")
     assert embedding == TEST_VECTOR
 
-    custom_wrapper = CustomTextVectorizer(embed=custom_embed_class().embed_with_args)
+    custom_wrapper = CustomVectorizer(embed=custom_embed_class().embed_with_args)
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=4)
     assert embedding == TEST_VECTOR
     embedding = custom_wrapper.embed("This is a test sentence.", max_len=2)
     assert embedding == [1.1, 2.2]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed="hello")
+        invalid_vectorizer = CustomVectorizer(embed="hello")
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed=42)
+        invalid_vectorizer = CustomVectorizer(embed=42)
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed={"foo": "bar"})
+        invalid_vectorizer = CustomVectorizer(embed={"foo": "bar"})
 
     def bad_arg_type(value: int):
         return [value]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed=bad_arg_type)
+        invalid_vectorizer = CustomVectorizer(embed=bad_arg_type)
 
     def bad_return_type(text: str) -> str:
         return text
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(embed=bad_return_type)
+        invalid_vectorizer = CustomVectorizer(embed=bad_return_type)
 
 
 def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
-    custom_wrapper = CustomTextVectorizer(
+    custom_wrapper = CustomVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-    custom_wrapper = CustomTextVectorizer(
+    custom_wrapper = CustomVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"])
     assert embeddings == [[1.1, 2.2, 3.3], [4.4, 5.5, 6.6]]
 
-    custom_wrapper = CustomTextVectorizer(
+    custom_wrapper = CustomVectorizer(
         custom_embed_func, embed_many=custom_embed_class().embed_many_with_args
     )
     embeddings = custom_wrapper.embed_many(["test one.", "test two"], param=True)
@@ -387,13 +376,13 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     assert embeddings == [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(custom_embed_func, embed_many="hello")
+        invalid_vectorizer = CustomVectorizer(custom_embed_func, embed_many="hello")
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(custom_embed_func, embed_many=42)
+        invalid_vectorizer = CustomVectorizer(custom_embed_func, embed_many=42)
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(
+        invalid_vectorizer = CustomVectorizer(
             custom_embed_func, embed_many={"foo": "bar"}
         )
 
@@ -401,7 +390,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         return [value]
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(
+        invalid_vectorizer = CustomVectorizer(
             custom_embed_func, embed_many=bad_arg_type
         )
 
@@ -409,7 +398,7 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         return text
 
     with pytest.raises(ValueError):
-        invalid_vectorizer = CustomTextVectorizer(
+        invalid_vectorizer = CustomVectorizer(
             custom_embed_func, embed_many=bad_return_type
         )
 
@@ -419,19 +408,19 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
     "vectorizer_",
     [
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         CohereTextVectorizer,
-        CustomTextVectorizer,
+        CustomVectorizer,
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
-        VoyageAITextVectorizer,
+        VertexAIVectorizer,
+        VoyageAIVectorizer,
     ],
 )
 def test_default_dtype(vectorizer_):
     # test dtype defaults to float32
-    if issubclass(vectorizer_, CustomTextVectorizer):
+    if issubclass(vectorizer_, CustomVectorizer):
         vectorizer = vectorizer_(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
     elif issubclass(vectorizer_, AzureOpenAITextVectorizer):
         vectorizer = vectorizer_(
@@ -448,20 +437,20 @@ def test_default_dtype(vectorizer_):
     "vectorizer_",
     [
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         CohereTextVectorizer,
-        CustomTextVectorizer,
+        CustomVectorizer,
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
-        VoyageAITextVectorizer,
+        VertexAIVectorizer,
+        VoyageAIVectorizer,
     ],
 )
 def test_vectorizer_dtype_assignment(vectorizer_):
     # test initializing dtype in constructor
     for dtype in ["float16", "float32", "float64", "bfloat16", "int8", "uint8"]:
-        if issubclass(vectorizer_, CustomTextVectorizer):
+        if issubclass(vectorizer_, CustomVectorizer):
             vectorizer = vectorizer_(embed=lambda x: [1.0, 2.0, 3.0], dtype=dtype)
         elif issubclass(vectorizer_, AzureOpenAITextVectorizer):
             vectorizer = vectorizer_(
@@ -481,13 +470,13 @@ def test_vectorizer_dtype_assignment(vectorizer_):
     "vectorizer_",
     [
         AzureOpenAITextVectorizer,
-        BedrockTextVectorizer,
+        BedrockVectorizer,
         CohereTextVectorizer,
         HFTextVectorizer,
         MistralAITextVectorizer,
         OpenAITextVectorizer,
-        VertexAITextVectorizer,
-        VoyageAITextVectorizer,
+        VertexAIVectorizer,
+        VoyageAIVectorizer,
     ],
 )
 def test_non_supported_dtypes(vectorizer_):
@@ -507,7 +496,7 @@ async def test_vectorizer_aembed(vectorizer):
     text = TEST_TEXT
     if isinstance(vectorizer, CohereTextVectorizer):
         embedding = await vectorizer.aembed(text, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embedding = await vectorizer.aembed(text, input_type="document")
     else:
         embedding = await vectorizer.aembed(text)
@@ -521,7 +510,7 @@ async def test_vectorizer_aembed_many(vectorizer):
     texts = TEST_TEXTS
     if isinstance(vectorizer, CohereTextVectorizer):
         embeddings = await vectorizer.aembed_many(texts, input_type="search_document")
-    elif isinstance(vectorizer, VoyageAITextVectorizer):
+    elif isinstance(vectorizer, VoyageAIVectorizer):
         embeddings = await vectorizer.aembed_many(texts, input_type="document")
     else:
         embeddings = await vectorizer.aembed_many(texts)
@@ -623,3 +612,20 @@ def test_cohere_embedding_types_warning():
         )
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(texts)
+
+
+def test_deprecated_text_parameter_warning():
+    """Test that using deprecated 'text' and 'texts' parameters emits deprecation warnings."""
+    vectorizer = HFTextVectorizer(model="sentence-transformers/all-MiniLM-L6-v2")
+
+    # Test single embed with deprecated 'text' parameter emits warning
+    with pytest.warns(DeprecationWarning, match="Argument text is deprecated"):
+        embedding = vectorizer.embed(text=TEST_TEXT)
+    assert isinstance(embedding, list)
+    assert len(embedding) == vectorizer.dims
+
+    # Test embed_many with deprecated 'texts' parameter emits warning
+    with pytest.warns(DeprecationWarning, match="Argument texts is deprecated"):
+        embeddings = vectorizer.embed_many(texts=TEST_TEXTS)
+    assert isinstance(embeddings, list)
+    assert len(embeddings) == len(TEST_TEXTS)

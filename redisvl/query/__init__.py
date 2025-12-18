@@ -27,7 +27,6 @@ __all__ = [
     "TextQuery",
     "AggregationQuery",
     "AggregateHybridQuery",
-    "HybridQuery",
     "MultiVectorQuery",
     "Vector",
 ]

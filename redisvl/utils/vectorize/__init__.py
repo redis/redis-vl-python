@@ -1,8 +1,9 @@
 import os
-from typing import Optional
 
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
+from redisvl.utils.vectorize.bedrock import BedrockVectorizer
+from redisvl.utils.vectorize.custom import CustomVectorizer
 from redisvl.utils.vectorize.text.azureopenai import AzureOpenAITextVectorizer
 from redisvl.utils.vectorize.text.bedrock import BedrockTextVectorizer
 from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
@@ -12,17 +13,23 @@ from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
 from redisvl.utils.vectorize.text.voyageai import VoyageAITextVectorizer
+from redisvl.utils.vectorize.vertexai import VertexAIVectorizer
+from redisvl.utils.vectorize.voyageai import VoyageAIVectorizer
 
 __all__ = [
     "BaseVectorizer",
     "CohereTextVectorizer",
     "HFTextVectorizer",
     "OpenAITextVectorizer",
+    "VertexAIVectorizer",
     "VertexAITextVectorizer",
     "AzureOpenAITextVectorizer",
     "MistralAITextVectorizer",
+    "CustomVectorizer",
     "CustomTextVectorizer",
+    "BedrockVectorizer",
     "BedrockTextVectorizer",
+    "VoyageAIVectorizer",
     "VoyageAITextVectorizer",
 ]
 
@@ -51,8 +58,8 @@ def vectorizer_from_dict(
     elif vectorizer_type == Vectorizers.mistral:
         return MistralAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
-        return VertexAITextVectorizer(**args)
+        return VertexAIVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
-        return VoyageAITextVectorizer(**args)
+        return VoyageAIVectorizer(**args)
     else:
         raise ValueError(f"Unsupported vectorizer type: {vectorizer_type}")

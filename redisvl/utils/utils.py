@@ -173,6 +173,46 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
     return decorator
 
 
+def deprecated_class(name: Optional[str] = None, replacement: Optional[str] = None):
+    """
+    Decorator to mark a class as deprecated.
+
+    When the decorated class is instantiated, the decorator will emit a
+    deprecation warning.
+
+    Args:
+        name: Optional custom name for the class in the warning message.
+              If not provided, uses the class's __name__.
+        replacement: Optional message describing what to use instead.
+
+    Example:
+        @deprecated_class(replacement="Use NewClass instead.")
+        class OldClass:
+            pass
+    """
+
+    def decorator(cls):
+        class_name = name or cls.__name__
+        warning_message = (
+            f"Class {class_name} is deprecated and will be "
+            "removed in the next major release. "
+        )
+        if replacement:
+            warning_message += replacement
+
+        original_init = cls.__init__
+
+        @wraps(original_init)
+        def new_init(self, *args, **kwargs):
+            warn(warning_message, category=DeprecationWarning, stacklevel=2)
+            original_init(self, *args, **kwargs)
+
+        cls.__init__ = new_init
+        return cls
+
+    return decorator
+
+
 def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], None]:
     def wrapper():
         # Check if the interpreter is shutting down

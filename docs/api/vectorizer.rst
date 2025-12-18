@@ -2,6 +2,19 @@
 Vectorizers
 ***********
 
+.. note::
+   **Backwards Compatibility:** Several vectorizers have deprecated aliases
+   available in the ``redisvl.utils.vectorize.text`` module for backwards
+   compatibility:
+
+   - ``VoyageAITextVectorizer`` → Use ``VoyageAIVectorizer`` instead
+   - ``VertexAITextVectorizer`` → Use ``VertexAIVectorizer`` instead
+   - ``BedrockTextVectorizer`` → Use ``BedrockVectorizer`` instead
+   - ``CustomTextVectorizer`` → Use ``CustomVectorizer`` instead
+
+   These aliases are deprecated as of version 0.13.0 and will be removed
+   in a future major release.
+
 HFTextVectorizer
 ================
 
@@ -38,14 +51,19 @@ AzureOpenAITextVectorizer
    :members:
 
 
-VertexAITextVectorizer
+VertexAIVectorizer
 ======================
 
-.. _vertexaitextvectorizer_api:
+.. _vertexaivectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.vertexai
+.. currentmodule:: redisvl.utils.vectorize.vertexai
 
-.. autoclass:: VertexAITextVectorizer
+.. note::
+    For backwards compatibility, an alias ``VertexAITextVectorizer`` is available
+    in the ``redisvl.utils.vectorize.text`` module. This alias is deprecated
+    as of version 0.13.0 and will be removed in a future major release.
+
+.. autoclass:: VertexAIVectorizer
    :show-inheritance:
    :members:
 
@@ -62,37 +80,64 @@ CohereTextVectorizer
    :members:
 
 
-BedrockTextVectorizer
+BedrockVectorizer
 =====================
 
-.. _bedrocktextvectorizer_api:
+.. _bedrockvectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.bedrock
+.. currentmodule:: redisvl.utils.vectorize.bedrock
 
-.. autoclass:: BedrockTextVectorizer
+.. note::
+    For backwards compatibility, an alias ``BedrockTextVectorizer`` is available
+    in the ``redisvl.utils.vectorize.text`` module. This alias is deprecated
+    as of version 0.13.0 and will be removed in a future major release.
+
+.. autoclass:: BedrockVectorizer
    :show-inheritance:
    :members:
 
 
-CustomTextVectorizer
+CustomVectorizer
 ====================
 
-.. _customtextvectorizer_api:
+.. _customvectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.custom
+.. currentmodule:: redisvl.utils.vectorize.custom
 
-.. autoclass:: CustomTextVectorizer
+.. note::
+    For backwards compatibility, an alias ``CustomTextVectorizer`` is available
+    in the ``redisvl.utils.vectorize.text`` module. This alias is deprecated
+    as of version 0.13.0 and will be removed in a future major release.
+
+.. autoclass:: CustomVectorizer
    :show-inheritance:
    :members:
 
 
-VoyageAITextVectorizer
+VoyageAIVectorizer
 ======================
 
-.. _voyageaitextvectorizer_api:
+.. _voyageaivectorizer_api:
 
-.. currentmodule:: redisvl.utils.vectorize.text.voyageai
+.. currentmodule:: redisvl.utils.vectorize.voyageai
 
-.. autoclass:: VoyageAITextVectorizer
+.. note::
+    For backwards compatibility, an alias ``VoyageAITextVectorizer`` is available
+    in the ``redisvl.utils.vectorize.text`` module. This alias is deprecated
+    as of version 0.13.0 and will be removed in a future major release.
+
+.. autoclass:: VoyageAIVectorizer
+   :show-inheritance:
+   :members:
+
+
+MistralAITextVectorizer
+========================
+
+.. _mistralaitextvectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.text.mistral
+
+.. autoclass:: MistralAITextVectorizer
    :show-inheritance:
    :members:

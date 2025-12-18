@@ -205,12 +205,16 @@ class CohereTextVectorizer(BaseVectorizer):
                 "See https://docs.cohere.com/reference/embed."
             )
 
-    def _embed(self, text: str, **kwargs) -> List[Union[float, int]]:
+    @deprecated_argument("text", "content")
+    def _embed(
+        self, content: str = "", text: str = "", **kwargs
+    ) -> List[Union[float, int]]:
         """
         Generate a vector embedding for a single text using the Cohere API.
 
         Args:
-            text: Text to embed
+            content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the Cohere API,
                       must include 'input_type'
 
@@ -225,7 +229,8 @@ class CohereTextVectorizer(BaseVectorizer):
             TypeError: If text is not a string or input_type is not provided
             ValueError: If embedding fails
         """
-        if not isinstance(text, str):
+        content = content or text
+        if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
         input_type = kwargs.pop("input_type", None)
@@ -246,7 +251,7 @@ class CohereTextVectorizer(BaseVectorizer):
 
         try:
             response = self._client.embed(
-                texts=[text],
+                texts=[content],
                 model=self.model,
                 input_type=input_type,
                 embedding_types=embedding_types,
@@ -264,19 +269,25 @@ class CohereTextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
+    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[Union[float, int]]]:
         """
         Generate vector embeddings for a batch of texts using the Cohere API.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the Cohere API,
                       must include 'input_type'
@@ -285,12 +296,13 @@ class CohereTextVectorizer(BaseVectorizer):
             List[List[Union[float, int]]]: List of vector embeddings
 
         Raises:
-            TypeError: If texts is not a list of strings or input_type is not provided
+            TypeError: If contents is not a list of strings or input_type is not provided
             ValueError: If embedding fails
         """
-        if not isinstance(texts, list):
+        contents = contents or texts
+        if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if texts and not isinstance(texts[0], str):
+        if contents and not isinstance(contents[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
         input_type = kwargs.pop("input_type", None)
@@ -310,7 +322,7 @@ class CohereTextVectorizer(BaseVectorizer):
         embedding_types = self._get_cohere_embedding_type(self.dtype)
 
         embeddings: List = []
-        for batch in self.batchify(texts, batch_size):
+        for batch in self.batchify(contents, batch_size):
             try:
                 response = self._client.embed(
                     texts=batch,

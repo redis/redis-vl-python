@@ -163,50 +163,59 @@ class MistralAITextVectorizer(BaseVectorizer):
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
 
+    @deprecated_argument("text", "content")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, text: str, **kwargs) -> List[float]:
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
         """
         Generate a vector embedding for a single text using the MistralAI API.
 
         Args:
-            text: Text to embed
+            content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the MistralAI API
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If text is not a string
+            TypeError: If content is not a string
             ValueError: If embedding fails
         """
-        if not isinstance(text, str):
+        content = content or text
+        if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
         try:
             result = self._client.embeddings.create(
-                model=self.model, inputs=[text], **kwargs
+                model=self.model, inputs=[content], **kwargs
             )
             return result.data[0].embedding  # type: ignore
         except Exception as e:
             raise ValueError(f"Embedding text failed: {e}")
 
+    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """
         Generate vector embeddings for a batch of texts using the MistralAI API.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the MistralAI API
 
@@ -214,17 +223,18 @@ class MistralAITextVectorizer(BaseVectorizer):
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If texts is not a list of strings
+            TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
-        if not isinstance(texts, list):
+        contents = contents or texts
+        if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if texts and not isinstance(texts[0], str):
+        if contents and not isinstance(contents[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
             embeddings: List = []
-            for batch in self.batchify(texts, batch_size):
+            for batch in self.batchify(contents, batch_size):
                 response = self._client.embeddings.create(
                     model=self.model, inputs=batch, **kwargs
                 )
@@ -233,50 +243,59 @@ class MistralAITextVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
+    @deprecated_argument("text", "content")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    async def _aembed(self, text: str, **kwargs) -> List[float]:
+    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
         """
         Asynchronously generate a vector embedding for a single text using the MistralAI API.
 
         Args:
-            text: Text to embed
+            content: Text to embed
+            text: Text to embed (deprecated - use `content` instead)
             **kwargs: Additional parameters to pass to the MistralAI API
 
         Returns:
             List[float]: Vector embedding as a list of floats
 
         Raises:
-            TypeError: If text is not a string
+            TypeError: If `content` is not a string
             ValueError: If embedding fails
         """
-        if not isinstance(text, str):
+        content = content or text
+        if not isinstance(content, str):
             raise TypeError("Must pass in a str value to embed.")
 
         try:
             result = await self._client.embeddings.create_async(
-                model=self.model, inputs=[text], **kwargs
+                model=self.model, inputs=[content], **kwargs
             )
             return result.data[0].embedding  # type: ignore
         except Exception as e:
-            raise ValueError(f"Embedding text failed: {e}")
+            raise ValueError(f"Embedding content failed: {e}")
 
+    @deprecated_argument("texts", "contents")
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
     async def _aembed_many(
-        self, texts: List[str], batch_size: int = 10, **kwargs
+        self,
+        contents: Optional[List[str]] = None,
+        texts: Optional[List[str]] = None,
+        batch_size: int = 10,
+        **kwargs,
     ) -> List[List[float]]:
         """
         Asynchronously generate vector embeddings for a batch of texts using the MistralAI API.
 
         Args:
-            texts: List of texts to embed
+            contents: List of texts to embed
+            texts: List of texts to embed (deprecated - use `contents` instead)
             batch_size: Number of texts to process in each API call
             **kwargs: Additional parameters to pass to the MistralAI API
 
@@ -287,21 +306,22 @@ class MistralAITextVectorizer(BaseVectorizer):
             TypeError: If texts is not a list of strings
             ValueError: If embedding fails
         """
-        if not isinstance(texts, list):
+        contents = contents or texts
+        if not isinstance(contents, list):
             raise TypeError("Must pass in a list of str values to embed.")
-        if texts and not isinstance(texts[0], str):
+        if contents and not isinstance(contents[0], str):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
             embeddings: List = []
-            for batch in self.batchify(texts, batch_size):
+            for batch in self.batchify(contents, batch_size):
                 response = await self._client.embeddings.create_async(
                     model=self.model, inputs=batch, **kwargs
                 )
                 embeddings.extend([r.embedding for r in response.data])
             return embeddings
         except Exception as e:
-            raise ValueError(f"Embedding texts failed: {e}")
+            raise ValueError(f"Embedding contents failed: {e}")
 
     @property
     def type(self) -> str:
