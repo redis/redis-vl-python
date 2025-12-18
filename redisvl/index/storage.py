@@ -176,7 +176,7 @@ class BaseStorage(BaseModel):
         raise NotImplementedError
 
     @staticmethod
-    async def _aexpire(client: AsyncRedisClientOrPipeline, key: str, ttl: int):
+    async def _aexpire(client: AsyncRedisClientOrPipeline, key: str, ttl: int) -> None:
         """Asynchronously set TTL on a key using the provided client or pipeline
 
         Args:
