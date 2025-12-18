@@ -120,11 +120,13 @@ class Tag(FilterField):
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.IN: "==",
+        FilterOperator.LIKE: "%",
     }
     OPERATOR_MAP: Dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:{%s}",
         FilterOperator.NE: "(-@%s:{%s})",
         FilterOperator.IN: "@%s:{%s}",
+        FilterOperator.LIKE: "@%s:{%s}",
     }
     SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
 
@@ -177,9 +179,41 @@ class Tag(FilterField):
         self._set_tag_value(other, FilterOperator.NE)
         return FilterExpression(str(self))
 
+    def __mod__(self, other: Union[List[str], str]) -> "FilterExpression":
+        """Create a Tag wildcard filter expression for pattern matching.
+
+        This enables wildcard pattern matching on tag fields using the ``*``
+        character. Unlike the equality operator, wildcards are not escaped,
+        allowing patterns with wildcards in any position, such as prefix
+        (``"tech*"``), suffix (``"*tech"``), or middle (``"*tech*"``)
+        matches.
+
+        Args:
+            other (Union[List[str], str]): The tag pattern(s) to filter on.
+                Use ``*`` for wildcard matching (e.g., ``"tech*"``, ``"*tech"``,
+                or ``"*tech*"``).
+
+        .. code-block:: python
+
+            from redisvl.query.filter import Tag
+
+            f = Tag("category") % "tech*"               # Prefix match
+            f = Tag("category") % "*tech"               # Suffix match
+            f = Tag("category") % "*tech*"              # Contains match
+            f = Tag("category") % "elec*|*soft"         # Multiple wildcard patterns
+            f = Tag("category") % ["tech*", "*science"] # List of patterns
+
+        """
+        self._set_tag_value(other, FilterOperator.LIKE)
+        return FilterExpression(str(self))
+
     @property
     def _formatted_tag_value(self) -> str:
-        return "|".join([self.escaper.escape(tag) for tag in self._value])
+        # For LIKE operator, preserve wildcards (*) in the pattern
+        preserve_wildcards = self._operator == FilterOperator.LIKE
+        return "|".join(
+            [self.escaper.escape(tag, preserve_wildcards) for tag in self._value]
+        )
 
     def __str__(self) -> str:
         """Return the Redis Query string for the Tag filter"""

@@ -55,6 +55,81 @@ def test_tag_filter_varied(operation, tags, expected):
     assert str(tf) == expected
 
 
+@pytest.mark.parametrize(
+    "pattern,expected",
+    [
+        # Basic prefix wildcard
+        ("tech*", "@tag_field:{tech*}"),
+        # Multiple patterns via list
+        (["tech*", "soft*"], "@tag_field:{tech*|soft*}"),
+        # Wildcard with special chars that still get escaped
+        ("tech*-pro", "@tag_field:{tech*\\-pro}"),
+        # Prefix with space (space escaped, wildcard preserved)
+        ("hello w*", "@tag_field:{hello\\ w*}"),
+        # Multiple wildcards in same pattern
+        ("*test*", "@tag_field:{*test*}"),
+        # Empty pattern returns wildcard match-all
+        ("", "*"),
+        ([], "*"),
+        (None, "*"),
+        # Pattern with special characters
+        ("cat$*", "@tag_field:{cat\\$*}"),
+    ],
+    ids=[
+        "prefix_wildcard",
+        "multiple_patterns",
+        "wildcard_with_special_char",
+        "prefix_with_space",
+        "multiple_wildcards",
+        "empty_string",
+        "empty_list",
+        "none",
+        "special_char_with_wildcard",
+    ],
+)
+def test_tag_wildcard_filter(pattern, expected):
+    """Test Tag % operator for wildcard/prefix matching."""
+    tf = Tag("tag_field") % pattern
+    assert str(tf) == expected
+
+
+def test_tag_wildcard_preserves_asterisk():
+    """Verify that * is not escaped when using % operator."""
+    # With == operator, * should be escaped
+    tf_eq = Tag("tag_field") == "tech*"
+    assert str(tf_eq) == "@tag_field:{tech\\*}"
+
+    # With % operator, * should NOT be escaped
+    tf_like = Tag("tag_field") % "tech*"
+    assert str(tf_like) == "@tag_field:{tech*}"
+
+
+def test_tag_wildcard_combined_with_exact_match():
+    """Test combining wildcard and exact match Tag filters in the same query."""
+    # Create filters with different operators
+    exact_match = Tag("brand") == "nike"
+    wildcard_match = Tag("category") % "tech*"
+
+    # Verify individual filters work correctly
+    assert str(exact_match) == "@brand:{nike}"
+    assert str(wildcard_match) == "@category:{tech*}"
+
+    # Combine with AND - wildcard should be preserved, exact match should not have *
+    combined_and = exact_match & wildcard_match
+    assert str(combined_and) == "(@brand:{nike} @category:{tech*})"
+
+    # Combine with OR
+    combined_or = exact_match | wildcard_match
+    assert str(combined_or) == "(@brand:{nike} | @category:{tech*})"
+
+    # More complex: mix of exact, wildcard, and exact with * in value
+    exact_with_asterisk = Tag("status") == "active*"  # * should be escaped
+    complex_filter = exact_match & wildcard_match & exact_with_asterisk
+    assert "@brand:{nike}" in str(complex_filter)
+    assert "@category:{tech*}" in str(complex_filter)  # wildcard preserved
+    assert "@status:{active\\*}" in str(complex_filter)  # asterisk escaped
+
+
 def test_nullable():
     tag = Tag("tag_field") == None
     assert str(tag) == "*"
