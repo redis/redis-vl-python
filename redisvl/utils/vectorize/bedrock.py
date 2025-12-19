@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
-from botocore.exceptions import ValidationError
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
@@ -221,6 +220,8 @@ class BedrockVectorizer(BaseVectorizer):
             ValueError: If attempting to embed an image with a text model
             ValueError: If embedding fails
         """
+        from botocore.exceptions import ValidationError
+
         body = self._serialize_request_body(content)
 
         try:
@@ -261,6 +262,8 @@ class BedrockVectorizer(BaseVectorizer):
             ValueError: If attempting to embed an image with a text model
             ValueError: If embedding fails
         """
+        from botocore.exceptions import ValidationError
+
         if not isinstance(contents, list):
             raise TypeError("`contents` must be a list")
 
