@@ -4255,7 +4255,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.13.0"
+version = "0.13.2"
 source = { editable = "." }
 dependencies = [
     { name = "jsonpath-ng" },
