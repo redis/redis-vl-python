@@ -1,6 +1,6 @@
 [project]
 name = "redisvl"
-version = "0.13.1"
+version = "0.13.2"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
 requires-python = ">=3.9.2,<3.14"
