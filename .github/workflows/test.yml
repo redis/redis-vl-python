@@ -52,7 +52,15 @@ jobs:
             pyproject.toml
             uv.lock
 
-      - name: Install dependencies
+      - name: Install required dependencies
+        run: |
+          uv sync
+
+      - name: Test module imports
+        run: |
+          uv run python -m tests.test_imports redisvl
+
+      - name: Install all dependencies
         run: |
           uv sync --all-extras
 
