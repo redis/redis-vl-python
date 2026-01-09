@@ -58,8 +58,8 @@ def vectorizer_from_dict(
     elif vectorizer_type == Vectorizers.mistral:
         return MistralAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
-        return VertexAITextVectorizer(**args)
+        return VertexAIVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
-        return VoyageAITextVectorizer(**args)
+        return VoyageAIVectorizer(**args)
     else:
         raise ValueError(f"Unsupported vectorizer type: {vectorizer_type}")
