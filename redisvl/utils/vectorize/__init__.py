@@ -37,12 +37,12 @@ __all__ = [
 def vectorizer_from_dict(
     vectorizer: dict,
     cache: dict = {},
-    cache_folder=os.getenv("SENTENCE_TRANSFORMERS_HOME"),
 ) -> BaseVectorizer:
     vectorizer_type = Vectorizers(vectorizer["type"])
     model = vectorizer["model"]
+    dtype = vectorizer.get("dtype", "float32")
 
-    args = {"model": model}
+    args = {"model": model, "dtype": dtype}
     if cache:
         emb_cache = EmbeddingsCache(**cache)
         args["cache"] = emb_cache
@@ -58,8 +58,8 @@ def vectorizer_from_dict(
     elif vectorizer_type == Vectorizers.mistral:
         return MistralAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
-        return VertexAIVectorizer(**args)
+        return VertexAITextVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:
-        return VoyageAIVectorizer(**args)
+        return VoyageAITextVectorizer(**args)
     else:
         raise ValueError(f"Unsupported vectorizer type: {vectorizer_type}")
