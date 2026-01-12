@@ -94,7 +94,7 @@ jobs:
           make test-all
 
   test:
-    name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-version }}]
+    name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
     needs: service-tests
     env:
@@ -105,7 +105,7 @@ jobs:
         # 3.11 tests are run in the service-tests job
         python-version: ["3.9", "3.10", "3.12", "3.13"] 
         redis-py-version: ["5.x", "6.x", "7.x"]
-        redis-version: ["6.2.6-v9", "latest", "8.4.0"]
+        redis-image: ["redis/redis-stack-server:latest", "redis:latest"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -146,11 +146,7 @@ jobs:
 
       - name: Set Redis image name
         run: |
-          if [[ "${{ matrix.redis-version }}" == "8.4.0" ]]; then
-            echo "REDIS_IMAGE=redis:${{ matrix.redis-version }}" >> $GITHUB_ENV
-          else
-            echo "REDIS_IMAGE=redis/redis-stack-server:${{ matrix.redis-version }}" >> $GITHUB_ENV
-          fi
+          echo "REDIS_IMAGE=${{ matrix.redis-image }}" >> $GITHUB_ENV
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
@@ -165,7 +161,7 @@ jobs:
           make test
 
       - name: Run notebooks
-        if: matrix.redis-py-version == '6.x' && matrix.redis-version == 'latest'
+        if: matrix.redis-py-version == '7.x' && matrix.redis-image == 'redis/redis-stack-server:latest'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
