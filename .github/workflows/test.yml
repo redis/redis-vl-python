@@ -24,10 +24,10 @@ jobs:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Cache HuggingFace Models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: hf_cache
           key: ${{ runner.os }}-hf-cache
@@ -38,7 +38,7 @@ jobs:
           echo '{"token":"${{ secrets.HF_TOKEN }}"}' > ~/.huggingface/token
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -108,7 +108,7 @@ jobs:
         redis-version: ["6.2.6-v9", "latest", "8.4.0"]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Cache HuggingFace Models
         uses: actions/cache@v4
@@ -188,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Python
         uses: actions/setup-python@v5
