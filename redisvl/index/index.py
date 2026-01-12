@@ -39,7 +39,7 @@ from redisvl.redis.utils import (
     convert_bytes,
     make_dict,
 )
-from redisvl.types import AsyncRedisClient, SyncRedisClient
+from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
 from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
@@ -1200,7 +1200,13 @@ class SearchIndex(BaseSearchIndex):
     def _info(name: str, redis_client: SyncRedisClient) -> Dict[str, Any]:
         """Run FT.INFO to fetch information about the index."""
         try:
-            return convert_bytes(redis_client.ft(name).info())  # type: ignore
+            if isinstance(redis_client, SyncRedisCluster):
+                node = redis_client.get_random_node()
+                values = redis_client.execute_command("FT.INFO", name, target_nodes=node)
+                info = make_dict(values)
+            else:
+                info = redis_client.ft(name).info()
+            return convert_bytes(info)
         except Exception as e:
             raise RedisSearchError(
                 f"Error while fetching {name} index info: {str(e)}"
@@ -1428,7 +1434,13 @@ class AsyncSearchIndex(BaseSearchIndex):
     @staticmethod
     async def _info(name: str, redis_client: AsyncRedisClient) -> Dict[str, Any]:
         try:
-            return convert_bytes(await redis_client.ft(name).info())
+            if isinstance(redis_client, AsyncRedisCluster):
+                node = redis_client.get_random_node()
+                values = await redis_client.execute_command("FT.INFO", name, target_nodes=node)
+                info = make_dict(values)
+            else:
+                info = await redis_client.ft(name).info()
+            return convert_bytes(info)
         except Exception as e:
             raise RedisSearchError(
                 f"Error while fetching {name} index info: {str(e)}"

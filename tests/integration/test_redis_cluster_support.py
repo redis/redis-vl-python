@@ -71,6 +71,46 @@ def test_search_index_cluster_client(redis_cluster_url):
 
 
 @pytest.mark.requires_cluster
+def test_search_index_cluster_info(redis_cluster_url):
+    """Test .info() method on SearchIndex with RedisCluster client."""
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "test_cluster_info", "prefix": "test_info"},
+            "fields": [{"name": "name", "type": "text"}],
+        }
+    )
+    client = RedisCluster.from_url(redis_cluster_url)
+    index = SearchIndex(schema=schema, redis_client=client)
+    try:
+        index.create(overwrite=True)
+        info = index.info()
+        assert isinstance(info, dict)
+        assert info.get("index_name", None) == "test_cluster_info"
+    finally:
+        index.delete(drop=True)
+
+@pytest.mark.requires_cluster
+@pytest.mark.asyncio
+async def test_async_search_index_cluster_info(redis_cluster_url):
+    """Test .info() method on AsyncSearchIndex with AsyncRedisCluster client."""
+    schema = IndexSchema.from_dict(
+        {
+            "index": {"name": "async_cluster_info", "prefix": "async_info"},
+            "fields": [{"name": "name", "type": "text"}],
+        }
+    )
+    client = AsyncRedisCluster.from_url(redis_cluster_url)
+    index = AsyncSearchIndex(schema=schema, redis_client=client)
+    try:
+        await index.create(overwrite=True)
+        info = await index.info()
+        assert isinstance(info, dict)
+        assert info.get("index_name", None) == "async_cluster_info"
+    finally:
+        await index.delete(drop=True)
+        await client.aclose()
+
+@pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_async_search_index_client(redis_cluster_url):
     """Test that AsyncSearchIndex correctly handles AsyncRedis clients."""
