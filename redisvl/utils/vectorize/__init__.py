@@ -37,12 +37,12 @@ __all__ = [
 def vectorizer_from_dict(
     vectorizer: dict,
     cache: dict = {},
-    cache_folder=os.getenv("SENTENCE_TRANSFORMERS_HOME"),
 ) -> BaseVectorizer:
     vectorizer_type = Vectorizers(vectorizer["type"])
     model = vectorizer["model"]
+    dtype = vectorizer.get("dtype", "float32")
 
-    args = {"model": model}
+    args = {"model": model, "dtype": dtype}
     if cache:
         emb_cache = EmbeddingsCache(**cache)
         args["cache"] = emb_cache
