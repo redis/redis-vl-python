@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+from math import ceil
 import time
 import warnings
 import weakref
@@ -717,7 +718,7 @@ class SearchIndex(BaseSearchIndex):
             batch_keys (List[str]): List of Redis keys to delete.
 
         Returns:
-            int: Count of records deleted from Redis.
+            int: Count of recordrecords deleted from Redis.
         """
         client = cast(SyncRedisClient, self._redis_client)
         is_cluster = isinstance(client, RedisCluster)
@@ -745,14 +746,21 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        total_records_deleted: int = 0
+        batch_size = 500
+        max_ratio = 1.01
 
-        for batch in self.paginate(
-            FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
-        ):
-            batch_keys = [record["id"] for record in batch]
-            if batch_keys:
+        info = self.info()
+        max_records_deleted = ceil(info["num_records"]*max_ratio)  # Allow to remove some additional concurrent inserts
+        total_records_deleted: int = 0
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(0, batch_size)
+
+        while True:
+            batch = self._query(query)
+            if batch and total_records_deleted <= max_records_deleted:
+                batch_keys = [record["id"] for record in batch]
                 total_records_deleted += self._delete_batch(batch_keys)
+            else:
+                break
 
         return total_records_deleted
 
@@ -1615,14 +1623,21 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        total_records_deleted: int = 0
+        batch_size = 500
+        max_ratio = 1.01
 
-        async for batch in self.paginate(
-            FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
-        ):
-            batch_keys = [record["id"] for record in batch]
-            if batch_keys:
+        info = await self.info()
+        max_records_deleted = ceil(info["num_records"]*max_ratio)  # Allow to remove some additional concurrent inserts
+        total_records_deleted: int = 0
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(0, batch_size)
+
+        while True:
+            batch = await self._query(query)
+            if batch and total_records_deleted <= max_records_deleted:
+                batch_keys = [record["id"] for record in batch]
                 total_records_deleted += await self._delete_batch(batch_keys)
+            else:
+                break
 
         return total_records_deleted
 
