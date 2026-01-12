@@ -1160,6 +1160,9 @@ class SearchIndex(BaseSearchIndex):
             batch contains. Adjust this value based on performance
             considerations and the expected volume of search results.
 
+        Note:
+            For stable pagination, the query must have a `sort_by` clause.
+
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be an integer")
@@ -2038,6 +2041,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             The page_size parameter controls the number of items each result
             batch contains. Adjust this value based on performance
             considerations and the expected volume of search results.
+
+        Note:
+            For stable pagination, the query must have a `sort_by` clause.
 
         """
         if not isinstance(page_size, int):
