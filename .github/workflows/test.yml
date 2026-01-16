@@ -20,6 +20,7 @@ jobs:
   service-tests:
     name: Service Tests
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
@@ -148,11 +149,6 @@ jobs:
         run: |
           echo "REDIS_IMAGE=${{ matrix.redis-image }}" >> $GITHUB_ENV
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
-
       - name: Run tests
         env:
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
@@ -160,8 +156,24 @@ jobs:
         run: |
           make test
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        if: (
+            matrix.redis-py-version == '7.x' &&
+            matrix.redis-image == 'redis/redis-stack-server:latest' &&
+            matrix.python-version == '3.11' &&
+            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+          )
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
       - name: Run notebooks
-        if: matrix.redis-py-version == '7.x' && matrix.redis-image == 'redis/redis-stack-server:latest'
+        if: (
+            matrix.redis-py-version == '7.x' &&
+            matrix.redis-image == 'redis/redis-stack-server:latest' &&
+            matrix.python-version == '3.11' &&
+            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+          )
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
