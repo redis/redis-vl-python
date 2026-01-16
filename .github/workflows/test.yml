@@ -54,7 +54,7 @@ jobs:
           LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
 
   test:
-    name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-image }}]
+    name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
     needs: service-tests
     env:
