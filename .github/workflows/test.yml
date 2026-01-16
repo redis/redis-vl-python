@@ -21,58 +21,19 @@ jobs:
     name: Service Tests
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    env:
-      HF_HOME: ${{ github.workspace }}/hf_cache
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Cache HuggingFace Models
-        uses: actions/cache@v5
-        with:
-          path: hf_cache
-          key: ${{ runner.os }}-hf-cache
-
-      - name: Set HuggingFace token
-        run: |
-          mkdir -p ~/.huggingface
-          echo '{"token":"${{ secrets.HF_TOKEN }}"}' > ~/.huggingface/token
-
-      - name: Install Python
-        uses: actions/setup-python@v6
+      - name: Run service tests
+        uses: ./.github/actions/run-service-tests
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-
-      - name: Install required dependencies
-        run: |
-          uv sync
-
-      - name: Test module imports
-        run: |
-          uv run python -m tests.test_imports redisvl
-
-      - name: Install all dependencies
-        run: |
-          uv sync --all-extras
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
-
-      - name: Run full test suite and prime the HF cache
+          uv-version: ${{ env.UV_VERSION }}
         env:
+          HF_HOME: ${{ github.workspace }}/hf_cache
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -91,8 +52,6 @@ jobs:
           LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
           LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
           LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
-        run: |
-          make test-all
 
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [redis ${{ matrix.redis-image }}]
@@ -103,8 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 tests are run in the service-tests job
-        python-version: ["3.9", "3.10", "3.12", "3.13"] 
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         redis-py-version: ["5.x", "6.x", "7.x"]
         redis-image: ["redis/redis-stack-server:latest", "redis:latest"]
     steps:
