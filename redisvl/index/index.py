@@ -718,7 +718,7 @@ class SearchIndex(BaseSearchIndex):
             batch_keys (List[str]): List of Redis keys to delete.
 
         Returns:
-            int: Count of recordrecords deleted from Redis.
+            int: Count of records deleted from Redis.
         """
         client = cast(SyncRedisClient, self._redis_client)
         is_cluster = isinstance(client, RedisCluster)
