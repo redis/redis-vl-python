@@ -726,9 +726,7 @@ class SearchIndex(BaseSearchIndex):
             records_deleted_in_batch = 0
             for key_to_delete in batch_keys:
                 try:
-                    records_deleted_in_batch += cast(
-                        int, client.delete(key_to_delete)
-                    )
+                    records_deleted_in_batch += cast(int, client.delete(key_to_delete))
                 except redis.exceptions.RedisError as e:
                     logger.warning(f"Failed to delete key {key_to_delete}: {e}")
         else:
@@ -750,9 +748,13 @@ class SearchIndex(BaseSearchIndex):
         max_ratio = 1.01
 
         info = self.info()
-        max_records_deleted = ceil(info["num_records"]*max_ratio)  # Allow to remove some additional concurrent inserts
+        max_records_deleted = ceil(
+            info["num_records"] * max_ratio
+        )  # Allow to remove some additional concurrent inserts
         total_records_deleted: int = 0
-        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(0, batch_size)
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(
+            0, batch_size
+        )
 
         while True:
             batch = self._query(query)
@@ -1224,7 +1226,9 @@ class SearchIndex(BaseSearchIndex):
         try:
             if isinstance(redis_client, SyncRedisCluster):
                 node = redis_client.get_random_node()
-                values = redis_client.execute_command("FT.INFO", name, target_nodes=node)
+                values = redis_client.execute_command(
+                    "FT.INFO", name, target_nodes=node
+                )
                 info = make_dict(values)
             else:
                 info = redis_client.ft(name).info()
@@ -1458,7 +1462,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         try:
             if isinstance(redis_client, AsyncRedisCluster):
                 node = redis_client.get_random_node()
-                values = await redis_client.execute_command("FT.INFO", name, target_nodes=node)
+                values = await redis_client.execute_command(
+                    "FT.INFO", name, target_nodes=node
+                )
                 info = make_dict(values)
             else:
                 info = await redis_client.ft(name).info()
@@ -1605,7 +1611,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             records_deleted_in_batch = 0
             for key_to_delete in batch_keys:
                 try:
-                    records_deleted_in_batch += cast(int, await client.delete(key_to_delete))
+                    records_deleted_in_batch += cast(
+                        int, await client.delete(key_to_delete)
+                    )
                 except redis.exceptions.RedisError as e:
                     logger.warning(f"Failed to delete key {key_to_delete}: {e}")
         else:
@@ -1627,9 +1635,13 @@ class AsyncSearchIndex(BaseSearchIndex):
         max_ratio = 1.01
 
         info = await self.info()
-        max_records_deleted = ceil(info["num_records"]*max_ratio)  # Allow to remove some additional concurrent inserts
+        max_records_deleted = ceil(
+            info["num_records"] * max_ratio
+        )  # Allow to remove some additional concurrent inserts
         total_records_deleted: int = 0
-        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(0, batch_size)
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(
+            0, batch_size
+        )
 
         while True:
             batch = await self._query(query)
