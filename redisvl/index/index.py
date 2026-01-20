@@ -752,9 +752,8 @@ class SearchIndex(BaseSearchIndex):
             info["num_records"] * max_ratio
         )  # Allow to remove some additional concurrent inserts
         total_records_deleted: int = 0
-        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(
-            0, batch_size
-        )
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+        query.paging(0, batch_size)
 
         while True:
             batch = self._query(query)
@@ -1639,9 +1638,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             info["num_records"] * max_ratio
         )  # Allow to remove some additional concurrent inserts
         total_records_deleted: int = 0
-        query = FilterQuery(FilterExpression("*"), return_fields=["id"]).paging(
-            0, batch_size
-        )
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+        query.paging(0, batch_size)
 
         while True:
             batch = await self._query(query)
