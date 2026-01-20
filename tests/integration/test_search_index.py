@@ -1,4 +1,5 @@
 import warnings
+from random import choice
 from unittest import mock
 
 import pytest
@@ -303,15 +304,20 @@ def test_search_index_delete(index):
     assert not index.exists()
     assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
 
-
-def test_search_index_clear(index):
+@pytest.mark.parametrize("num_docs", [0, 1, 5, 10, 2042])
+def test_search_index_clear(index, num_docs):
     index.create(overwrite=True, drop=True)
-    data = [{"id": "1", "test": "foo"}]
+    tags = ["foo", "bar", "baz"]
+    data = [{"id": str(i), "test": choice(tags)} for i in range(num_docs)]
     index.load(data, id_field="id")
+    info = index.info()
+    assert info["num_records"] == num_docs
 
     count = index.clear()
     assert count == len(data)
     assert index.exists()
+    info = index.info()
+    assert info["num_records"] == 0
 
 
 def test_search_index_drop_key(index):
