@@ -253,13 +253,13 @@ async def test_search_index_clear(async_index, num_docs):
     data = [{"id": str(i), "test": choice(tags)} for i in range(num_docs)]
     await async_index.load(data, id_field="id")
     info = await async_index.info()
-    assert info["num_records"] == num_docs
+    assert info["num_docs"] == num_docs
 
     count = await async_index.clear()
     assert count == num_docs
     assert await async_index.exists()
     info = await async_index.info()
-    assert info["num_records"] == 0
+    assert info["num_docs"] == 0
 
 
 @pytest.mark.asyncio

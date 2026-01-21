@@ -311,13 +311,13 @@ def test_search_index_clear(index, num_docs):
     data = [{"id": str(i), "test": choice(tags)} for i in range(num_docs)]
     index.load(data, id_field="id")
     info = index.info()
-    assert info["num_records"] == num_docs
+    assert info["num_docs"] == num_docs
 
     count = index.clear()
     assert count == len(data)
     assert index.exists()
     info = index.info()
-    assert info["num_records"] == 0
+    assert info["num_docs"] == 0
 
 
 def test_search_index_drop_key(index):
