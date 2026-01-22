@@ -454,10 +454,15 @@ class TestClusterOperationsErrorHandling:
             1,  # Third succeeds
         ]
 
-        # Mock the paginate method to return test data
-        with patch.object(SearchIndex, "paginate") as mock_paginate:
-            mock_paginate.return_value = [
-                [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}]
+        # Mock the .info() and ._query() methods to return test data
+        with (
+            patch.object(SearchIndex, "info") as mock_info,
+            patch.object(SearchIndex, "_query") as mock_query,
+        ):
+            mock_info.return_value = {"num_docs": 3}
+            mock_query.side_effect = [
+                [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}],
+                [],
             ]
 
             # Create index with mocked client
@@ -502,11 +507,21 @@ class TestClusterOperationsErrorHandling:
             ]
         )
 
-        # Mock the paginate method to return test data
-        async def mock_paginate_generator(*args, **kwargs):
-            yield [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}]
+        # Mock the .info() and ._query() methods to return test data
+        async def mock_info(*args, **kwargs):
+            return {"num_docs": 3}
 
-        with patch.object(AsyncSearchIndex, "paginate", mock_paginate_generator):
+        mock_query = AsyncMock(
+            side_effect=[
+                [{"id": "test:key1"}, {"id": "test:key2"}, {"id": "test:key3"}],
+                [],
+            ]
+        )
+
+        with (
+            patch.object(AsyncSearchIndex, "info", mock_info),
+            patch.object(AsyncSearchIndex, "_query", mock_query),
+        ):
             # Create index with mocked client
             index = AsyncSearchIndex(schema)
             index._redis_client = mock_cluster_client
