@@ -749,7 +749,7 @@ class SearchIndex(BaseSearchIndex):
 
         info = self.info()
         max_records_deleted = ceil(
-            info["num_records"] * max_ratio
+            info["num_docs"] * max_ratio
         )  # Allow to remove some additional concurrent inserts
         total_records_deleted: int = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
@@ -1635,7 +1635,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         info = await self.info()
         max_records_deleted = ceil(
-            info["num_records"] * max_ratio
+            info["num_docs"] * max_ratio
         )  # Allow to remove some additional concurrent inserts
         total_records_deleted: int = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
