@@ -118,7 +118,12 @@ jobs:
               check_run_id: ${{ steps.check.outputs.check_id }},
               status: 'completed',
               conclusion: 'success',
-              completed_at: new Date().toISOString()
+              completed_at: new Date().toISOString(),
+              details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              output: {
+                title: 'Service Tests Passed',
+                summary: `All service tests passed for PR #${{ inputs.pr_number }}.`
+              }
             });
 
       - name: Update check run (failure)
@@ -132,5 +137,11 @@ jobs:
               check_run_id: ${{ steps.check.outputs.check_id }},
               status: 'completed',
               conclusion: 'failure',
-              completed_at: new Date().toISOString()
+              completed_at: new Date().toISOString(),
+              details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              output: {
+                title: 'Service Tests Failed',
+                summary: `The service tests failed for PR #${{ inputs.pr_number }}. Click "Details" to view the full test output and logs.`,
+                text: `**Workflow Run:** [View Details](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\n**PR:** #${{ inputs.pr_number }}\n**Commit:** ${{ needs.setup.outputs.head_sha }}`
+              }
             });
