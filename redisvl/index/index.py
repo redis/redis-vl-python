@@ -4,6 +4,7 @@ import threading
 import time
 import warnings
 import weakref
+from math import ceil
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,7 +40,7 @@ from redisvl.redis.utils import (
     convert_bytes,
     make_dict,
 )
-from redisvl.types import AsyncRedisClient, SyncRedisClient
+from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
 from redisvl.utils.utils import deprecated_argument, deprecated_function, sync_wrapper
 
 if TYPE_CHECKING:
@@ -706,6 +707,32 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
+    def _delete_batch(self, batch_keys: List[str]) -> int:
+        """Delete a batch of keys from Redis.
+
+        For Redis Cluster, keys are deleted individually due to potential
+        cross-slot limitations. For standalone Redis, keys are deleted in
+        a single operation for better performance.
+
+        Args:
+            batch_keys (List[str]): List of Redis keys to delete.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        client = cast(SyncRedisClient, self._redis_client)
+        is_cluster = isinstance(client, RedisCluster)
+        if is_cluster:
+            records_deleted_in_batch = 0
+            for key_to_delete in batch_keys:
+                try:
+                    records_deleted_in_batch += cast(int, client.delete(key_to_delete))
+                except redis.exceptions.RedisError as e:
+                    logger.warning(f"Failed to delete key {key_to_delete}: {e}")
+        else:
+            records_deleted_in_batch = cast(int, client.delete(*batch_keys))
+        return records_deleted_in_batch
+
     def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
         available and in-place for future insertions or updates.
@@ -717,28 +744,24 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        client = cast(SyncRedisClient, self._redis_client)
-        total_records_deleted: int = 0
+        batch_size = 500
+        max_ratio = 1.01
 
-        for batch in self.paginate(
-            FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
-        ):
-            batch_keys = [record["id"] for record in batch]
-            if batch_keys:
-                is_cluster = isinstance(client, RedisCluster)
-                if is_cluster:
-                    records_deleted_in_batch = 0
-                    for key_to_delete in batch_keys:
-                        try:
-                            records_deleted_in_batch += cast(
-                                int, client.delete(key_to_delete)
-                            )
-                        except redis.exceptions.RedisError as e:
-                            logger.warning(f"Failed to delete key {key_to_delete}: {e}")
-                    total_records_deleted += records_deleted_in_batch
-                else:
-                    record_deleted = cast(int, client.delete(*batch_keys))
-                    total_records_deleted += record_deleted
+        info = self.info()
+        max_records_deleted = ceil(
+            info["num_docs"] * max_ratio
+        )  # Allow to remove some additional concurrent inserts
+        total_records_deleted: int = 0
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+        query.paging(0, batch_size)
+
+        while True:
+            batch = self._query(query)
+            if batch and total_records_deleted <= max_records_deleted:
+                batch_keys = [record["id"] for record in batch]
+                total_records_deleted += self._delete_batch(batch_keys)
+            else:
+                break
 
         return total_records_deleted
 
@@ -1160,6 +1183,9 @@ class SearchIndex(BaseSearchIndex):
             batch contains. Adjust this value based on performance
             considerations and the expected volume of search results.
 
+        Note:
+            For stable pagination, the query must have a `sort_by` clause.
+
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be an integer")
@@ -1197,7 +1223,15 @@ class SearchIndex(BaseSearchIndex):
     def _info(name: str, redis_client: SyncRedisClient) -> Dict[str, Any]:
         """Run FT.INFO to fetch information about the index."""
         try:
-            return convert_bytes(redis_client.ft(name).info())  # type: ignore
+            if isinstance(redis_client, SyncRedisCluster):
+                node = redis_client.get_random_node()
+                values = redis_client.execute_command(
+                    "FT.INFO", name, target_nodes=node
+                )
+                info = make_dict(values)
+            else:
+                info = redis_client.ft(name).info()
+            return convert_bytes(info)
         except Exception as e:
             raise RedisSearchError(
                 f"Error while fetching {name} index info: {str(e)}"
@@ -1425,7 +1459,15 @@ class AsyncSearchIndex(BaseSearchIndex):
     @staticmethod
     async def _info(name: str, redis_client: AsyncRedisClient) -> Dict[str, Any]:
         try:
-            return convert_bytes(await redis_client.ft(name).info())
+            if isinstance(redis_client, AsyncRedisCluster):
+                node = redis_client.get_random_node()
+                values = await redis_client.execute_command(
+                    "FT.INFO", name, target_nodes=node
+                )
+                info = make_dict(values)
+            else:
+                info = await redis_client.ft(name).info()
+            return convert_bytes(info)
         except Exception as e:
             raise RedisSearchError(
                 f"Error while fetching {name} index info: {str(e)}"
@@ -1549,6 +1591,34 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
+    async def _delete_batch(self, batch_keys: List[str]) -> int:
+        """Delete a batch of keys from Redis.
+
+        For Redis Cluster, keys are deleted individually due to potential
+        cross-slot limitations. For standalone Redis, keys are deleted in
+        a single operation for better performance.
+
+        Args:
+            batch_keys (List[str]): List of Redis keys to delete.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        client = await self._get_client()
+        is_cluster = isinstance(client, AsyncRedisCluster)
+        if is_cluster:
+            records_deleted_in_batch = 0
+            for key_to_delete in batch_keys:
+                try:
+                    records_deleted_in_batch += cast(
+                        int, await client.delete(key_to_delete)
+                    )
+                except redis.exceptions.RedisError as e:
+                    logger.warning(f"Failed to delete key {key_to_delete}: {e}")
+        else:
+            records_deleted_in_batch = await client.delete(*batch_keys)
+        return records_deleted_in_batch
+
     async def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
         available and in-place for future insertions or updates.
@@ -1560,28 +1630,24 @@ class AsyncSearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        client = await self._get_client()
-        total_records_deleted: int = 0
+        batch_size = 500
+        max_ratio = 1.01
 
-        async for batch in self.paginate(
-            FilterQuery(FilterExpression("*"), return_fields=["id"]), page_size=500
-        ):
-            batch_keys = [record["id"] for record in batch]
-            if batch_keys:
-                is_cluster = isinstance(client, AsyncRedisCluster)
-                if is_cluster:
-                    records_deleted_in_batch = 0
-                    for key_to_delete in batch_keys:
-                        try:
-                            records_deleted_in_batch += cast(
-                                int, await client.delete(key_to_delete)
-                            )
-                        except redis.exceptions.RedisError as e:
-                            logger.warning(f"Failed to delete key {key_to_delete}: {e}")
-                    total_records_deleted += records_deleted_in_batch
-                else:
-                    records_deleted = await client.delete(*batch_keys)
-                    total_records_deleted += records_deleted
+        info = await self.info()
+        max_records_deleted = ceil(
+            info["num_docs"] * max_ratio
+        )  # Allow to remove some additional concurrent inserts
+        total_records_deleted: int = 0
+        query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+        query.paging(0, batch_size)
+
+        while True:
+            batch = await self._query(query)
+            if batch and total_records_deleted <= max_records_deleted:
+                batch_keys = [record["id"] for record in batch]
+                total_records_deleted += await self._delete_batch(batch_keys)
+            else:
+                break
 
         return total_records_deleted
 
@@ -2038,6 +2104,9 @@ class AsyncSearchIndex(BaseSearchIndex):
             The page_size parameter controls the number of items each result
             batch contains. Adjust this value based on performance
             considerations and the expected volume of search results.
+
+        Note:
+            For stable pagination, the query must have a `sort_by` clause.
 
         """
         if not isinstance(page_size, int):
