@@ -51,6 +51,9 @@ bedrock = [
 pillow = [
     "pillow>=11.3.0",
 ]
+sql = [
+    "sql-redis @ file:///Users/robert.shelton/Documents/sql-redis/dist/sql_redis-0.1.0-py3-none-any.whl",
+]
 
 [project.urls]
 Homepage = "https://github.com/redis/redis-vl-python"
@@ -63,6 +66,9 @@ rvl = "redisvl.cli.runner:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [dependency-groups]
 dev = [

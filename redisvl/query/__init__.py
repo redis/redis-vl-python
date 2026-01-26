@@ -15,6 +15,7 @@ from redisvl.query.query import (
     VectorQuery,
     VectorRangeQuery,
 )
+from redisvl.query.sql import SQLQuery
 
 __all__ = [
     "BaseQuery",
@@ -29,4 +30,5 @@ __all__ = [
     "AggregateHybridQuery",
     "MultiVectorQuery",
     "Vector",
+    "SQLQuery",
 ]
