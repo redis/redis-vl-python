@@ -66,7 +66,7 @@ jobs:
             const check = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'Service Tests',
+              name: 'Fork PR - Service Tests',
               head_sha: '${{ needs.setup.outputs.head_sha }}',
               status: 'in_progress',
               started_at: new Date().toISOString()
