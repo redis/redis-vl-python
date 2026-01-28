@@ -189,6 +189,59 @@ class TestSQLQueryBasic:
         assert "title" in results[0]
         assert "price" in results[0]
 
+    def test_redis_query_string_with_client(self, sql_index):
+        """Test redis_query_string() with redis_client returns the Redis command string."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE category = 'electronics'
+        """
+        )
+
+        # Get the Redis command string using redis_client
+        redis_cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        # Verify it's a valid FT.SEARCH command
+        assert redis_cmd.startswith("FT.SEARCH")
+        assert sql_index.name in redis_cmd
+        assert "electronics" in redis_cmd
+
+    def test_redis_query_string_with_url(self, sql_index, redis_url):
+        """Test redis_query_string() with redis_url returns the Redis command string."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE category = 'electronics'
+        """
+        )
+
+        # Get the Redis command string using redis_url
+        redis_cmd = sql_query.redis_query_string(redis_url=redis_url)
+
+        # Verify it's a valid FT.SEARCH command
+        assert redis_cmd.startswith("FT.SEARCH")
+        assert sql_index.name in redis_cmd
+        assert "electronics" in redis_cmd
+
+    def test_redis_query_string_aggregate(self, sql_index):
+        """Test redis_query_string() returns FT.AGGREGATE for aggregation queries."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, COUNT(*) as count
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+
+        redis_cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        # Verify it's a valid FT.AGGREGATE command
+        assert redis_cmd.startswith("FT.AGGREGATE")
+        assert sql_index.name in redis_cmd
+        assert "GROUPBY" in redis_cmd
+
 
 class TestSQLQueryWhere:
     """Tests for SQL WHERE clause filtering."""
@@ -252,6 +305,173 @@ class TestSQLQueryWhere:
         for result in results:
             price = float(result["price"])
             assert 25 <= price <= 50
+
+
+class TestSQLQueryTagOperators:
+    """Tests for SQL tag field operators."""
+
+    def test_tag_not_equals(self, sql_index):
+        """Test tag != operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, category
+            FROM {sql_index.name}
+            WHERE category != 'electronics'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert result["category"] != "electronics"
+
+    def test_tag_in(self, sql_index):
+        """Test tag IN operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, category
+            FROM {sql_index.name}
+            WHERE category IN ('books', 'accessories')
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert result["category"] in ("books", "accessories")
+
+
+class TestSQLQueryNumericOperators:
+    """Tests for SQL numeric field operators."""
+
+    def test_numeric_greater_than(self, sql_index):
+        """Test numeric > operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE price > 100
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert float(result["price"]) > 100
+
+    def test_numeric_equals(self, sql_index):
+        """Test numeric = operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE price = 45
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            assert float(result["price"]) == 45
+
+    def test_numeric_not_equals(self, sql_index):
+        """Test numeric != operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE price != 45
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert float(result["price"]) != 45
+
+    @pytest.mark.xfail(reason="Numeric IN operator not yet supported in sql-redis")
+    def test_numeric_in(self, sql_index):
+        """Test numeric IN operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE price IN (45, 55, 65)
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            assert float(result["price"]) in (45, 55, 65)
+
+    def test_numeric_between(self, sql_index):
+        """Test numeric BETWEEN operator."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, price
+            FROM {sql_index.name}
+            WHERE price BETWEEN 40 AND 60
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            price = float(result["price"])
+            assert 40 <= price <= 60
+
+
+class TestSQLQueryTextOperators:
+    """Tests for SQL text field operators."""
+
+    def test_text_equals(self, sql_index):
+        """Test text = operator (full-text search)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title = 'laptop'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            assert "laptop" in result["title"].lower()
+
+    def test_text_not_equals(self, sql_index):
+        """Test text != operator (negated full-text search)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title != 'laptop'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            # Results should not contain 'laptop' as a primary match
+            assert "laptop" not in result["title"].lower()
+
+    @pytest.mark.xfail(reason="Text IN operator not yet supported in sql-redis")
+    def test_text_in(self, sql_index):
+        """Test text IN operator (multiple term search)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title IN ('Python', 'Redis')
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            title_lower = result["title"].lower()
+            assert "python" in title_lower or "redis" in title_lower
 
 
 class TestSQLQueryOrderBy:
@@ -379,6 +599,197 @@ class TestSQLQueryAggregation:
             assert "category" in result
             assert "avg_price" in result
 
+    def test_group_by_with_sum(self, sql_index):
+        """Test GROUP BY with SUM reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, SUM(price) as total_price
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert "category" in result
+            assert "total_price" in result
+            assert float(result["total_price"]) > 0
+
+    def test_group_by_with_min(self, sql_index):
+        """Test GROUP BY with MIN reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, MIN(price) as min_price
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert "category" in result
+            assert "min_price" in result
+            assert float(result["min_price"]) > 0
+
+    def test_group_by_with_max(self, sql_index):
+        """Test GROUP BY with MAX reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, MAX(price) as max_price
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert "category" in result
+            assert "max_price" in result
+            assert float(result["max_price"]) > 0
+
+    def test_global_sum(self, sql_index):
+        """Test global SUM aggregation (no GROUP BY)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT SUM(price) as total
+            FROM {sql_index.name}
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert "total" in results[0]
+        assert float(results[0]["total"]) > 0
+
+    def test_global_min(self, sql_index):
+        """Test global MIN aggregation (no GROUP BY)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT MIN(price) as min_price
+            FROM {sql_index.name}
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert "min_price" in results[0]
+        assert float(results[0]["min_price"]) > 0
+
+    def test_global_max(self, sql_index):
+        """Test global MAX aggregation (no GROUP BY)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT MAX(price) as max_price
+            FROM {sql_index.name}
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert "max_price" in results[0]
+        assert float(results[0]["max_price"]) > 0
+
+    def test_multiple_reducers(self, sql_index):
+        """Test multiple reducers in a single query."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, COUNT(*) as count, SUM(price) as total, AVG(price) as avg_price, MIN(price) as min_price, MAX(price) as max_price
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert "category" in result
+            assert "count" in result
+            assert "total" in result
+            assert "avg_price" in result
+            assert "min_price" in result
+            assert "max_price" in result
+
+    @pytest.mark.xfail(
+        reason="COUNT(DISTINCT) parsed but not correctly translated to COUNT_DISTINCTISH"
+    )
+    def test_count_distinct(self, sql_index):
+        """Test COUNT_DISTINCT reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT COUNT(DISTINCT category) as unique_categories
+            FROM {sql_index.name}
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert "unique_categories" in results[0]
+        # Should have 4 unique categories: electronics, books, accessories, stationery
+        assert int(results[0]["unique_categories"]) == 4
+
+    @pytest.mark.xfail(reason="STDDEV not yet supported in sql-redis parser")
+    def test_stddev(self, sql_index):
+        """Test STDDEV reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT STDDEV(price) as price_stddev
+            FROM {sql_index.name}
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert "price_stddev" in results[0]
+
+    @pytest.mark.xfail(reason="QUANTILE not yet supported in sql-redis parser")
+    def test_quantile(self, sql_index):
+        """Test QUANTILE reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT QUANTILE(price, 0.5) as median_price
+            FROM {sql_index.name}
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert "median_price" in results[0]
+
+    @pytest.mark.xfail(reason="TOLIST not yet supported in sql-redis parser")
+    def test_tolist(self, sql_index):
+        """Test TOLIST reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, TOLIST(title) as titles
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert "titles" in result
+
+    @pytest.mark.xfail(reason="FIRST_VALUE not yet supported in sql-redis parser")
+    def test_first_value(self, sql_index):
+        """Test FIRST_VALUE reducer."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT category, FIRST_VALUE(title) as first_title
+            FROM {sql_index.name}
+            GROUP BY category
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for result in results:
+            assert "first_title" in result
+
 
 class TestSQLQueryIntegration:
     """End-to-end integration tests matching proposal examples."""
@@ -482,7 +893,33 @@ def vector_index(redis_url, worker_id):
 
 
 class TestSQLQueryVectorSearch:
-    """Tests for SQL vector similarity search using cosine_distance()."""
+    """Tests for SQL vector similarity search using cosine_distance() and vector_distance()."""
+
+    def test_vector_distance_function(self, vector_index):
+        """Test vector search with vector_distance() function."""
+        import numpy as np
+
+        query_vector = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32).tobytes()
+
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, vector_distance(embedding, :vec) AS score
+            FROM {vector_index.name}
+            LIMIT 3
+            """,
+            params={"vec": query_vector},
+        )
+
+        results = vector_index.query(sql_query)
+
+        assert len(results) > 0
+        assert len(results) <= 3
+        for result in results:
+            assert "title" in result
+            assert "score" in result
+            # Score should be a valid non-negative distance value
+            score = float(result["score"])
+            assert score >= 0
 
     def test_vector_cosine_similarity(self, vector_index):
         """Test vector search with cosine_distance() function - pgvector style."""
@@ -515,3 +952,61 @@ class TestSQLQueryVectorSearch:
         for result in results:
             assert result["genre"] == "Science Fiction"
             assert float(result["price"]) <= 20
+            # Verify vector_distance is returned (like VectorQuery with return_score=True)
+            assert "vector_distance" in result
+            # Distance should be a valid non-negative value
+            distance = float(result["vector_distance"])
+            assert distance >= 0
+
+    def test_vector_redis_query_string(self, vector_index, redis_url):
+        """Test redis_query_string() returns correct KNN query for vector search."""
+        import numpy as np
+
+        # Query vector
+        query_vector = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32).tobytes()
+
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, cosine_distance(embedding, :vec) AS vector_distance
+            FROM {vector_index.name}
+            LIMIT 3
+            """,
+            params={"vec": query_vector},
+        )
+
+        # Get the Redis command string
+        redis_cmd = sql_query.redis_query_string(redis_url=redis_url)
+
+        # Verify it's a valid FT.SEARCH with KNN syntax
+        assert redis_cmd.startswith("FT.SEARCH")
+        assert vector_index.name in redis_cmd
+        assert "KNN 3" in redis_cmd
+        assert "@embedding" in redis_cmd
+        assert "$vector" in redis_cmd
+        assert "vector_distance" in redis_cmd
+
+    def test_vector_search_with_prefilter_redis_query_string(
+        self, vector_index, redis_url
+    ):
+        """Test redis_query_string() returns correct prefiltered KNN query."""
+        import numpy as np
+
+        query_vector = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32).tobytes()
+
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, genre, cosine_distance(embedding, :vec) AS vector_distance
+            FROM {vector_index.name}
+            WHERE genre = 'Science Fiction'
+            LIMIT 3
+            """,
+            params={"vec": query_vector},
+        )
+
+        redis_cmd = sql_query.redis_query_string(redis_url=redis_url)
+
+        # Verify prefilter syntax: (filter)=>[KNN ...]
+        assert redis_cmd.startswith("FT.SEARCH")
+        assert "Science Fiction" in redis_cmd or "Science\\ Fiction" in redis_cmd
+        assert "=>[KNN" in redis_cmd
+        assert "KNN 3" in redis_cmd
