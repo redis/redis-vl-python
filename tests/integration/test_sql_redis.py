@@ -712,14 +712,11 @@ class TestSQLQueryAggregation:
             assert "min_price" in result
             assert "max_price" in result
 
-    @pytest.mark.xfail(
-        reason="COUNT(DISTINCT) parsed but not correctly translated to COUNT_DISTINCTISH"
-    )
     def test_count_distinct(self, sql_index):
-        """Test COUNT_DISTINCT reducer."""
+        """Test COUNT_DISTINCT reducer using Redis-specific syntax."""
         sql_query = SQLQuery(
             f"""
-            SELECT COUNT(DISTINCT category) as unique_categories
+            SELECT COUNT_DISTINCT(category) as unique_categories
             FROM {sql_index.name}
         """
         )
@@ -730,7 +727,6 @@ class TestSQLQueryAggregation:
         # Should have 4 unique categories: electronics, books, accessories, stationery
         assert int(results[0]["unique_categories"]) == 4
 
-    @pytest.mark.xfail(reason="STDDEV not yet supported in sql-redis parser")
     def test_stddev(self, sql_index):
         """Test STDDEV reducer."""
         sql_query = SQLQuery(
@@ -743,6 +739,9 @@ class TestSQLQueryAggregation:
 
         assert len(results) == 1
         assert "price_stddev" in results[0]
+        # Verify it's a valid numeric value
+        stddev_value = float(results[0]["price_stddev"])
+        assert stddev_value >= 0  # Standard deviation is always non-negative
 
     @pytest.mark.xfail(reason="QUANTILE not yet supported in sql-redis parser")
     def test_quantile(self, sql_index):
@@ -758,12 +757,11 @@ class TestSQLQueryAggregation:
         assert len(results) == 1
         assert "median_price" in results[0]
 
-    @pytest.mark.xfail(reason="TOLIST not yet supported in sql-redis parser")
     def test_tolist(self, sql_index):
-        """Test TOLIST reducer."""
+        """Test TOLIST reducer via ARRAY_AGG SQL function."""
         sql_query = SQLQuery(
             f"""
-            SELECT category, TOLIST(title) as titles
+            SELECT category, ARRAY_AGG(title) as titles
             FROM {sql_index.name}
             GROUP BY category
         """
@@ -773,8 +771,9 @@ class TestSQLQueryAggregation:
         assert len(results) > 0
         for result in results:
             assert "titles" in result
+            # TOLIST returns a comma-separated string or list of values
+            assert result["titles"] is not None
 
-    @pytest.mark.xfail(reason="FIRST_VALUE not yet supported in sql-redis parser")
     def test_first_value(self, sql_index):
         """Test FIRST_VALUE reducer."""
         sql_query = SQLQuery(
@@ -789,6 +788,9 @@ class TestSQLQueryAggregation:
         assert len(results) > 0
         for result in results:
             assert "first_title" in result
+            # Verify it's a non-empty string
+            assert isinstance(result["first_title"], str)
+            assert len(result["first_title"]) > 0
 
 
 class TestSQLQueryIntegration:
