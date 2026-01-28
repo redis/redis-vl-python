@@ -743,7 +743,6 @@ class TestSQLQueryAggregation:
         stddev_value = float(results[0]["price_stddev"])
         assert stddev_value >= 0  # Standard deviation is always non-negative
 
-    @pytest.mark.xfail(reason="QUANTILE not yet supported in sql-redis parser")
     def test_quantile(self, sql_index):
         """Test QUANTILE reducer."""
         sql_query = SQLQuery(
@@ -756,6 +755,9 @@ class TestSQLQueryAggregation:
 
         assert len(results) == 1
         assert "median_price" in results[0]
+        # Verify it's a valid numeric value
+        median_value = float(results[0]["median_price"])
+        assert median_value >= 0
 
     def test_tolist(self, sql_index):
         """Test TOLIST reducer via ARRAY_AGG SQL function."""
