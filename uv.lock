@@ -5277,18 +5277,14 @@ dependencies = [
     { name = "sqlglot" },
 ]
 wheels = [
-    { filename = "sql_redis-0.1.0-py3-none-any.whl", hash = "sha256:a0a22c98a0fc72918c2647bf33a8a88d6067208be66a35366226e4e1e175d0eb" },
+    { filename = "sql_redis-0.1.0-py3-none-any.whl", hash = "sha256:9e5be7a8d90c3e52f1cfe5abc8c7be8e9a42eee9b20a3ca53874bc1026c8c2b2" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "sqlglot", specifier = ">=26.0.0" },
-    { name = "testcontainers", extras = ["redis"], marker = "extra == 'dev'", specifier = ">=4.0.0" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "sqlalchemy"
