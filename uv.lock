@@ -4357,7 +4357,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
     { name = "tenacity", specifier = ">=8.2.2" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
-    { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
+    { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.3.6" },
 ]
 provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow"]
 

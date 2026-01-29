@@ -37,7 +37,7 @@ mistralai = ["mistralai>=1.0.0"]
 openai = ["openai>=1.1.0"]
 nltk = ["nltk>=3.8.1,<4"]
 cohere = ["cohere>=4.44"]
-voyageai = ["voyageai>=0.2.2"]
+voyageai = ["voyageai>=0.3.6"]
 sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
 langcache = ["langcache>=0.11.0"]
 vertexai = [
