@@ -1,4 +1,5 @@
 import warnings
+from random import choice
 from unittest import mock
 
 import pytest
@@ -245,14 +246,20 @@ async def test_search_index_delete(async_index):
 
 
 @pytest.mark.asyncio
-async def test_search_index_clear(async_index):
+@pytest.mark.parametrize("num_docs", [0, 1, 5, 10, 2042])
+async def test_search_index_clear(async_index, num_docs):
     await async_index.create(overwrite=True, drop=True)
-    data = [{"id": "1", "test": "foo"}]
+    tags = ["foo", "bar", "baz"]
+    data = [{"id": str(i), "test": choice(tags)} for i in range(num_docs)]
     await async_index.load(data, id_field="id")
+    info = await async_index.info()
+    assert info["num_docs"] == num_docs
 
     count = await async_index.clear()
-    assert count == len(data)
+    assert count == num_docs
     assert await async_index.exists()
+    info = await async_index.info()
+    assert info["num_docs"] == 0
 
 
 @pytest.mark.asyncio
