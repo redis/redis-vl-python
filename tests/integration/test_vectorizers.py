@@ -430,6 +430,7 @@ _dtype_params = [
 ]
 
 
+@pytest.mark.requires_api_keys
 @pytest.mark.parametrize("vectorizer_", _dtype_params)
 def test_default_dtype(vectorizer_):
     # Handle HFTextVectorizer as a string param when skipped
