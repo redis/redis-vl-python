@@ -456,6 +456,94 @@ class TestSQLQueryTextOperators:
             # Results should not contain 'laptop' as a primary match
             assert "laptop" not in result["title"].lower()
 
+    def test_text_prefix(self, sql_index):
+        """Test text prefix search with wildcard (term*)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title = 'lap*'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            # Should match titles starting with "lap" (e.g., "laptop")
+            assert "lap" in result["title"].lower()
+
+    def test_text_suffix(self, sql_index):
+        """Test text suffix search with wildcard (*term)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE name = '*book'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            # Should match names ending with "book" (e.g., "Python Book")
+            assert "book" in result["name"].lower()
+
+    def test_text_fuzzy(self, sql_index):
+        """Test text fuzzy search with Levenshtein distance (%term%)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title = '%laptap%'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            # Should fuzzy match "laptop" even with typo "laptap"
+            assert "laptop" in result["title"].lower()
+
+    def test_text_phrase(self, sql_index):
+        """Test text phrase search (multi-word exact phrase)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title = 'gaming laptop'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            # Should match exact phrase "gaming laptop"
+            title_lower = result["title"].lower()
+            assert "gaming" in title_lower and "laptop" in title_lower
+
+    @pytest.mark.skip(
+        reason="Phrase search with stop words is a Redis limitation - "
+        "stop words like 'and' are stripped during query parsing"
+    )
+    def test_text_phrase_with_stopword(self, sql_index):
+        """Test text phrase search containing stop words.
+
+        This test is skipped because Redis strips stop words (like 'and', 'the', 'is')
+        during query parsing, which causes phrase searches containing them to fail.
+        See: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/stopwords/
+        """
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE title = 'laptop and keyboard'
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        # This would fail due to Redis stop word handling
+        assert len(results) >= 0
+
     @pytest.mark.xfail(reason="Text IN operator not yet supported in sql-redis")
     def test_text_in(self, sql_index):
         """Test text IN operator (multiple term search)."""
