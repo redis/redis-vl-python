@@ -2,10 +2,14 @@ import os
 
 import pytest
 
-from redisvl.utils.rerank import (
-    CohereReranker,
-    HFCrossEncoderReranker,
-    VoyageAIReranker,
+from redisvl.utils.rerank import CohereReranker, VoyageAIReranker
+from tests.conftest import SKIP_HF
+
+if not SKIP_HF:
+    from redisvl.utils.rerank import HFCrossEncoderReranker
+
+requires_hf = pytest.mark.skipif(
+    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
 )
 
 
@@ -25,11 +29,15 @@ def reranker(request):
 
 @pytest.fixture
 def hfCrossEncoderReranker():
+    if SKIP_HF:
+        pytest.skip("HFCrossEncoderReranker not supported on Python 3.14+")
     return HFCrossEncoderReranker()
 
 
 @pytest.fixture
 def hfCrossEncoderRerankerWithCustomModel():
+    if SKIP_HF:
+        pytest.skip("HFCrossEncoderReranker not supported on Python 3.14+")
     return HFCrossEncoderReranker("cross-encoder/stsb-distilroberta-base")
 
 
@@ -76,6 +84,7 @@ def test_bad_input(reranker):
             )  # Invalid rank_by field
 
 
+@requires_hf
 def test_rank_documents_cross_encoder(hfCrossEncoderReranker):
     query = "I love you"
     texts = ["I love you", "I like you", "I don't like you", "I hate you"]
@@ -85,6 +94,7 @@ def test_rank_documents_cross_encoder(hfCrossEncoderReranker):
         assert scores[i] > scores[i + 1]
 
 
+@requires_hf
 def test_rank_documents_cross_encoder_custom_model(
     hfCrossEncoderRerankerWithCustomModel,
 ):
@@ -96,6 +106,7 @@ def test_rank_documents_cross_encoder_custom_model(
         assert scores[i] > scores[i + 1]
 
 
+@requires_hf
 @pytest.mark.asyncio
 async def test_async_rank_cross_encoder(hfCrossEncoderReranker):
     docs = ["document one", "document two", "document three"]
