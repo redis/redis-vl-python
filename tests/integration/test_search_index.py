@@ -304,6 +304,7 @@ def test_search_index_delete(index):
     assert not index.exists()
     assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
 
+
 @pytest.mark.parametrize("num_docs", [0, 1, 5, 10, 2042])
 def test_search_index_clear(index, num_docs):
     index.create(overwrite=True, drop=True)

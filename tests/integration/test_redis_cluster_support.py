@@ -89,6 +89,7 @@ def test_search_index_cluster_info(redis_cluster_url):
     finally:
         index.delete(drop=True)
 
+
 @pytest.mark.requires_cluster
 @pytest.mark.asyncio
 async def test_async_search_index_cluster_info(redis_cluster_url):
@@ -109,6 +110,7 @@ async def test_async_search_index_cluster_info(redis_cluster_url):
     finally:
         await index.delete(drop=True)
         await client.aclose()
+
 
 @pytest.mark.requires_cluster
 @pytest.mark.asyncio
