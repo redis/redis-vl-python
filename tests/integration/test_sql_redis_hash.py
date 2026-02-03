@@ -150,6 +150,15 @@ def sql_index(redis_url, worker_id):
             "category": "stationery",
             "tags": "bestseller",
         },
+        {
+            "title": "Laptop and Keyboard Bundle",
+            "name": "Bundle Pack",
+            "price": 999,
+            "stock": 15,
+            "rating": 4.7,
+            "category": "electronics",
+            "tags": "featured,sale",
+        },
     ]
 
     index.load(products)
@@ -521,28 +530,49 @@ class TestSQLQueryTextOperators:
             title_lower = result["title"].lower()
             assert "gaming" in title_lower and "laptop" in title_lower
 
-    @pytest.mark.skip(
-        reason="Phrase search with stop words is a Redis limitation - "
-        "stop words like 'and' are stripped during query parsing"
-    )
     def test_text_phrase_with_stopword(self, sql_index):
         """Test text phrase search containing stop words.
 
-        This test is skipped because Redis strips stop words (like 'and', 'the', 'is')
-        during query parsing, which causes phrase searches containing them to fail.
+        Redis does not index stop words (like 'and', 'the', 'is') by default.
+        The sql-redis library works around this by automatically stripping
+        stop words from phrase searches and emitting a warning.
         See: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/stopwords/
         """
-        sql_query = SQLQuery(
-            f"""
-            SELECT title, name
-            FROM {sql_index.name}
-            WHERE title = 'laptop and keyboard'
-        """
-        )
-        results = sql_index.query(sql_query)
+        import warnings
 
-        # This would fail due to Redis stop word handling
-        assert len(results) >= 0
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            sql_query = SQLQuery(
+                f"""
+                SELECT title, name
+                FROM {sql_index.name}
+                WHERE title = 'laptop and keyboard'
+            """
+            )
+            results = sql_index.query(sql_query)
+
+            # Should find the "Laptop and Keyboard Bundle" product
+            assert len(results) >= 1
+            # Verify at least one result contains both "laptop" and "keyboard"
+            found_match = False
+            for result in results:
+                title_lower = result["title"].lower()
+                if "laptop" in title_lower and "keyboard" in title_lower:
+                    found_match = True
+                    break
+            assert found_match, "Expected to find a result with 'laptop' and 'keyboard'"
+
+            # Verify a warning was emitted about stopword removal
+            stopword_warnings = [
+                warning
+                for warning in w
+                if "Stopwords" in str(warning.message)
+                and "and" in str(warning.message).lower()
+            ]
+            assert (
+                len(stopword_warnings) >= 1
+            ), "Expected a warning about stopword removal"
 
     @pytest.mark.xfail(reason="Text IN operator not yet supported in sql-redis")
     def test_text_in(self, sql_index):

@@ -4255,7 +4255,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.13.2"
+version = "0.14.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonpath-ng" },
@@ -4299,7 +4299,7 @@ pillow = [
 sentence-transformers = [
     { name = "sentence-transformers" },
 ]
-sql = [
+sql-redis = [
     { name = "sql-redis" },
 ]
 vertexai = [
@@ -4358,12 +4358,12 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=5.4,<7.0" },
     { name = "redis", specifier = ">=5.0,<7.2" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
-    { name = "sql-redis", marker = "extra == 'sql'", path = "../sql-redis/dist/sql_redis-0.1.0-py3-none-any.whl" },
+    { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.1.1" },
     { name = "tenacity", specifier = ">=8.2.2" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
 ]
-provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql"]
+provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5269,21 +5269,16 @@ wheels = [
 
 [[package]]
 name = "sql-redis"
-version = "0.1.0"
-source = { path = "../sql-redis/dist/sql_redis-0.1.0-py3-none-any.whl" }
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "redis", version = "7.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "redis", version = "7.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "sqlglot" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/ed/ef/9ef69125be3b8a9906010f4bfd84d3b12fce86d9ecc9ed18443ff5fa9af6/sql_redis-0.1.1.tar.gz", hash = "sha256:1b763bd33e8963811a8c3d191506d5572f6584bfa5bbfa9c8af09a51f07baf02", size = 103713, upload-time = "2026-02-03T19:29:47.878Z" }
 wheels = [
-    { filename = "sql_redis-0.1.0-py3-none-any.whl", hash = "sha256:9e5be7a8d90c3e52f1cfe5abc8c7be8e9a42eee9b20a3ca53874bc1026c8c2b2" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "redis", specifier = ">=5.0.0" },
-    { name = "sqlglot", specifier = ">=26.0.0" },
+    { url = "https://files.pythonhosted.org/packages/04/cf/c9e13d253acb3c08dc9113dc3e75962ebb69584d6286b931f364dfb9225d/sql_redis-0.1.1-py3-none-any.whl", hash = "sha256:8369e8c61990b0f9aa5ad1a9d4b03060f770af5a7b856b84e88e819efcacb1ed", size = 18716, upload-time = "2026-02-03T19:29:46.899Z" },
 ]
 
 [[package]]

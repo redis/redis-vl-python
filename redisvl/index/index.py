@@ -936,7 +936,7 @@ class SearchIndex(BaseSearchIndex):
         except ImportError:
             raise ImportError(
                 "sql-redis is required for SQL query support. "
-                "Install it with: pip install redisvl[sql]"
+                "Install it with: pip install redisvl[sql-redis]"
             )
 
         registry = SchemaRegistry(self._redis_client)
