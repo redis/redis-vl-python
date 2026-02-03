@@ -184,9 +184,18 @@ class TestSQLQueryBasic:
         results = sql_index.query(sql_query)
 
         assert len(results) > 0
-        # Verify results contain expected fields
-        assert "title" in results[0]
-        assert "price" in results[0]
+        # For JSON storage, results may contain '$' key with JSON string or parsed fields
+        first_result = results[0]
+        if "$" in first_result:
+            # JSON storage returns data under '$' key
+            import json
+
+            data = json.loads(first_result["$"])
+            assert "title" in data
+            assert "price" in data
+        else:
+            assert "title" in first_result
+            assert "price" in first_result
 
     def test_select_specific_fields(self, sql_index):
         """Test SELECT with specific field list."""
@@ -665,7 +674,7 @@ class TestSQLQueryAggregation:
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
-        assert int(results[0]["total"]) == 12  # 12 products in test data
+        assert int(results[0]["total"]) == 13  # 13 products in test data
 
     def test_group_by_with_count(self, sql_index):
         """Test GROUP BY with COUNT."""

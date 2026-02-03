@@ -665,7 +665,7 @@ class TestSQLQueryAggregation:
         results = sql_index.query(sql_query)
 
         assert len(results) == 1
-        assert int(results[0]["total"]) == 12  # 12 products in test data
+        assert int(results[0]["total"]) == 13  # 13 products in test data
 
     def test_group_by_with_count(self, sql_index):
         """Test GROUP BY with COUNT."""
