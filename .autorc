@@ -1,0 +1,9 @@
+{
+  "plugins": [
+    "git-tag",
+    "released"
+  ],
+  "owner": "redis",
+  "repo": "redis-vl-python",
+  "onlyPublishWithReleaseLabel": true
+}
