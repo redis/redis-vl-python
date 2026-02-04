@@ -1,5 +1,6 @@
 {
   "plugins": [
+    "conventional-commits",
     "git-tag",
     "released"
   ],
