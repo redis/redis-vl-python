@@ -6,14 +6,10 @@ from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
-from redisvl.utils.utils import lazy_import
-
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
 
 from redisvl.utils.vectorize.base import BaseVectorizer
-
-InvalidArgument = lazy_import("google.api_core.exceptions.InvalidArgument")
 
 
 class VertexAIVectorizer(BaseVectorizer):
@@ -233,7 +229,7 @@ class VertexAIVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
+        retry=retry_if_not_exception_type((TypeError, ValueError)),
     )
     def _embed(self, content: Any, **kwargs) -> List[float]:
         """
@@ -286,15 +282,13 @@ class VertexAIVectorizer(BaseVectorizer):
             else:
                 return self._client.get_embeddings([content], **kwargs)[0].values
 
-        except InvalidArgument as e:
-            raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding input failed: {e}")
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type(TypeError),
+        retry=retry_if_not_exception_type((TypeError, ValueError)),
     )
     def _embed_many(
         self, contents: List[str], batch_size: int = 10, **kwargs
@@ -311,7 +305,6 @@ class VertexAIVectorizer(BaseVectorizer):
             List[List[float]]: List of vector embeddings as lists of floats
 
         Raises:
-            TypeError: If contents is not a list of strings
             ValueError: If embedding fails
         """
         if self.is_multimodal:
@@ -329,8 +322,6 @@ class VertexAIVectorizer(BaseVectorizer):
                 response = self._client.get_embeddings(batch, **kwargs)
                 embeddings.extend([r.values for r in response])
             return embeddings
-        except InvalidArgument as e:
-            raise TypeError(f"Invalid input for embedding: {str(e)}") from e
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
