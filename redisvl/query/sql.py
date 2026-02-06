@@ -1,5 +1,6 @@
 """SQL Query class for executing SQL-like queries against Redis."""
 
+import re
 from typing import Any, Dict, Optional
 
 
@@ -39,6 +40,55 @@ class SQLQuery:
         """
         self.sql = sql
         self.params = params or {}
+
+    def _substitute_params(self, sql: str, params: Dict[str, Any]) -> str:
+        """Substitute parameter placeholders in SQL with actual values.
+
+        Uses token-based approach: splits SQL on :param patterns, then rebuilds
+        with substituted values. This prevents partial matching (e.g., :id
+        won't match inside :product_id) and is faster than regex at scale.
+
+        Args:
+            sql: The SQL string with :param placeholders.
+            params: Dictionary mapping parameter names to values.
+
+        Returns:
+            SQL string with parameters substituted.
+
+        Note:
+            - String values are wrapped in single quotes with proper escaping
+            - Numeric values are converted to strings
+            - Bytes values (e.g., vectors) are NOT substituted here
+        """
+        if not params:
+            return sql
+
+        # Split SQL on :param patterns, keeping the delimiters
+        # Pattern matches : followed by valid identifier (letter/underscore, then alphanumeric/underscore)
+        tokens = re.split(r"(:[a-zA-Z_][a-zA-Z0-9_]*)", sql)
+
+        result = []
+        for token in tokens:
+            if token.startswith(":"):
+                key = token[1:]  # Remove leading :
+                if key in params:
+                    value = params[key]
+                    if isinstance(value, (int, float)):
+                        result.append(str(value))
+                    elif isinstance(value, str):
+                        # Escape single quotes using SQL standard: ' -> ''
+                        escaped = value.replace("'", "''")
+                        result.append(f"'{escaped}'")
+                    else:
+                        # Keep placeholder for bytes (vectors handled by Executor)
+                        result.append(token)
+                else:
+                    # Keep unmatched placeholders as-is
+                    result.append(token)
+            else:
+                result.append(token)
+
+        return "".join(result)
 
     def redis_query_string(
         self,
@@ -103,14 +153,7 @@ class SQLQuery:
         translator = Translator(registry)
 
         # Substitute non-bytes params in SQL before translation
-        sql = self.sql
-        for key, value in self.params.items():
-            placeholder = f":{key}"
-            if isinstance(value, (int, float)):
-                sql = sql.replace(placeholder, str(value))
-            elif isinstance(value, str):
-                sql = sql.replace(placeholder, f"'{value}'")
-            # bytes (vectors) are handled separately
+        sql = self._substitute_params(self.sql, self.params)
 
         translated = translator.translate(sql)
         return translated.to_command_string()
