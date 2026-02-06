@@ -12,7 +12,11 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
 )
 from redisvl.redis.connection import is_version_gte
-from tests.conftest import skip_if_no_redisearch, skip_if_redis_version_below
+from tests.conftest import SKIP_HF, skip_if_no_redisearch, skip_if_redis_version_below
+
+pytestmark = pytest.mark.skipif(
+    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
+)
 
 
 def get_base_path():
