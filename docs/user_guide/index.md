@@ -23,4 +23,5 @@ User guides provide helpful resources for using RedisVL and its different compon
 09_svs_vamana
 10_embeddings_cache
 11_advanced_queries
+12_sql_to_redis_queries
 ```

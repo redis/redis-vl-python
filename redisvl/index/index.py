@@ -31,6 +31,7 @@ from redis.cluster import RedisCluster
 
 from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import VectorQuery
+from redisvl.query.sql import SQLQuery
 from redisvl.redis.utils import (
     _keys_share_hash_tag,
     async_cluster_create_index,
@@ -917,6 +918,49 @@ class SearchIndex(BaseSearchIndex):
             storage_type=self.schema.index.storage_type,
         )
 
+    def _sql_query(self, sql_query: SQLQuery) -> List[Dict[str, Any]]:
+        """Execute a SQL query and return results.
+
+        Args:
+            sql_query: The SQLQuery object containing the SQL statement.
+
+        Returns:
+            List of dictionaries containing the query results.
+
+        Raises:
+            ImportError: If sql-redis package is not installed.
+        """
+        try:
+            from sql_redis.executor import Executor
+            from sql_redis.schema import SchemaRegistry
+        except ImportError:
+            raise ImportError(
+                "sql-redis is required for SQL query support. "
+                "Install it with: pip install redisvl[sql-redis]"
+            )
+
+        registry = SchemaRegistry(self._redis_client)
+        registry.load_all()  # Loads index schemas from Redis
+
+        executor = Executor(self._redis_client, registry)
+
+        # Execute the query with any params
+        result = executor.execute(sql_query.sql, params=sql_query.params)
+
+        # Decode bytes to strings in the results (Redis may return bytes)
+        decoded_rows = []
+        for row in result.rows:
+            decoded_row = {}
+            for key, value in row.items():
+                # Decode key if bytes
+                str_key = key.decode("utf-8") if isinstance(key, bytes) else key
+                # Decode value if bytes
+                str_value = value.decode("utf-8") if isinstance(value, bytes) else value
+                decoded_row[str_key] = str_value
+            decoded_rows.append(decoded_row)
+
+        return decoded_rows
+
     def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
 
@@ -1118,7 +1162,7 @@ class SearchIndex(BaseSearchIndex):
         return process_results(results, query=query, schema=self.schema)
 
     def query(
-        self, query: Union[BaseQuery, AggregationQuery, HybridQuery]
+        self, query: Union[BaseQuery, AggregationQuery, HybridQuery, SQLQuery]
     ) -> List[Dict[str, Any]]:
         """Execute a query on the index.
 
@@ -1146,6 +1190,8 @@ class SearchIndex(BaseSearchIndex):
         """
         if isinstance(query, AggregationQuery):
             return self._aggregate(query)
+        elif isinstance(query, SQLQuery):
+            return self._sql_query(query)
         elif isinstance(query, HybridQuery):
             return self._hybrid_search(query)
         else:
