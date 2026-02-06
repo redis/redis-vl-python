@@ -675,6 +675,44 @@ def test_multivector_query_datatypes(index):
         )  # allow for small floating point error
 
 
+######
+@pytest.mark.paramatrize(distances_and_results, [[( , ) 5],[( , ) 5], [( , ) 5], [( , ) 5]])
+@pytest.mark.paramatrize(distances, [   ] )
+def test_multivector_query_max_distances(index):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2]]
+    vector_fields = ["user_embedding", "image_embedding"]
+    distances = [1.0947, 0.19]
+    distances = [2.0, 1.0019]
+    return_fields = [
+        "distance_0",
+        "distance_1",
+        "score_0",
+        "score_1",
+        "user_embedding",
+        "image_embedding",
+    ]
+
+    vectors = []
+    for vector, field, distance in zip(vector_vals, vector_fields, distances):
+        vectors.append(Vector(vector=vector, field_name=field, max_distance=distance))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+    )
+    print(multi_query)  ####
+    results = index.query(multi_query)
+
+    # verify we're filtering vectors based on max_distances
+    for i in range(len(results)):
+        print(results[i])
+        assert float(results[i][f"distance_0"]) <= distances[0]
+        assert float(results[i][f"distance_1"]) <= distances[1]
+    assert False
+
+######
 def test_multivector_query_mixed_index(index):
     # test that we can do multi vector queries on indices with both a 'flat' and 'hnsw' index
     skip_if_redis_version_below(index.client, "7.2.0")

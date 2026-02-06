@@ -315,6 +315,7 @@ def test_multi_vector_query():
     assert multivector_query._vectors[0].field_name == "field_1"
     assert multivector_query._vectors[0].weight == 1.0
     assert multivector_query._vectors[0].dtype == "float32"
+    assert multivector_query._vectors[0].max_distance == 2.0
     assert multivector_query._filter_expression == None
     assert multivector_query._num_results == 10
     assert multivector_query._loadfields == []
@@ -325,10 +326,21 @@ def test_multi_vector_query():
     vector_field_names = ["field_1", "field_2", "field_3", "field_4"]
     weights = [0.2, 0.5, 0.6, 0.1]
     dtypes = ["float32", "float32", "float32", "float32"]
+    distances = [2.0, 1.5, 0.4, 0.01]
 
     args = []
-    for vec, field, weight, dtype in zip(vectors, vector_field_names, weights, dtypes):
-        args.append(Vector(vector=vec, field_name=field, weight=weight, dtype=dtype))
+    for vec, field, weight, dtype, distance in zip(
+        vectors, vector_field_names, weights, dtypes, distances
+    ):
+        args.append(
+            Vector(
+                vector=vec,
+                field_name=field,
+                weight=weight,
+                dtype=dtype,
+                max_distance=distance,
+            )
+        )
 
     multivector_query = MultiVectorQuery(vectors=args)
 
@@ -358,16 +370,28 @@ def test_multi_vector_query_string():
     field_2 = "image embedding"
     weight_1 = 0.2
     weight_2 = 0.7
+    max_distance_1 = 0.7
+    max_distance_2 = 1.8
     multi_vector_query = MultiVectorQuery(
         vectors=[
-            Vector(vector=sample_vector_2, field_name=field_1, weight=weight_1),
-            Vector(vector=sample_vector_3, field_name=field_2, weight=weight_2),
+            Vector(
+                vector=sample_vector_2,
+                field_name=field_1,
+                weight=weight_1,
+                max_distance=max_distance_1,
+            ),
+            Vector(
+                vector=sample_vector_3,
+                field_name=field_2,
+                weight=weight_2,
+                max_distance=max_distance_2,
+            ),
         ]
     )
 
     assert (
         str(multi_vector_query)
-        == f"@{field_1}:[VECTOR_RANGE 2.0 $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE 2.0 $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
+        == f"@{field_1}:[VECTOR_RANGE {max_distance_1} $vector_0]=>{{$YIELD_DISTANCE_AS: distance_0}} | @{field_2}:[VECTOR_RANGE {max_distance_2} $vector_1]=>{{$YIELD_DISTANCE_AS: distance_1}} SCORER TFIDF DIALECT 2 APPLY (2 - @distance_0)/2 AS score_0 APPLY (2 - @distance_1)/2 AS score_1 APPLY @score_0 * {weight_1} + @score_1 * {weight_2} AS combined_score SORTBY 2 @combined_score DESC MAX 10"
     )
 
 
@@ -410,6 +434,13 @@ def test_vector_object_validation():
     for dtype in ["bfloat16", "float16", "float32", "float64", "int8", "uint8"]:
         vec = Vector(vector=sample_vector, field_name="text embedding", dtype=dtype)
         assert isinstance(vec, Vector)
+
+    # max_distance is bounded to [0, 2.0]
+    for distance in [-0.1, 2.001, 35, -float("inf"), +float("inf")]:
+        with pytest.raises(ValueError):
+            vec = Vector(
+                vector=sample_vector, field_name="text embedding", max_distance=distance
+            )
 
 
 def test_vector_object_handles_byte_conversion():

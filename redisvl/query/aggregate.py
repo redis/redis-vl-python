@@ -24,6 +24,7 @@ class Vector(BaseModel):
     field_name: str
     dtype: str = "float32"
     weight: float = 1.0
+    max_distance: float = 2.0
 
     @field_validator("dtype")
     @classmethod
@@ -35,6 +36,15 @@ class Vector(BaseModel):
                 f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
             )
         return dtype
+
+    @field_validator("max_distance")
+    @classmethod
+    def validate_max_distance(cls, max_distance: float) -> float:
+        if not isinstance(max_distance, float) or isinstance(max_distance, int):
+            raise ValueError("max_distance must be a value between 0.0 and 2.0")
+        if max_distance < 0.0 or max_distance > 2.0:
+            raise ValueError("max_distance must be a value between 0.0 and 2.0")
+        return max_distance
 
     @model_validator(mode="after")
     def validate_vector(self) -> Self:
@@ -361,21 +371,23 @@ class MultiVectorQuery(AggregationQuery):
 
         # base KNN query
         range_queries = []
-        for i, (vector, field) in enumerate(
-            [(v.vector, v.field_name) for v in self._vectors]
+        for i, (vector, field, max_dist) in enumerate(
+            [(v.vector, v.field_name, v.max_distance) for v in self._vectors]
         ):
             range_queries.append(
-                f"@{field}:[VECTOR_RANGE 2.0 $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
+                f"@{field}:[VECTOR_RANGE {max_dist} $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
             )
 
-        range_query = " | ".join(range_queries)
+        range_query = " AND ".join(range_queries)
 
         filter_expression = self._filter_expression
         if isinstance(self._filter_expression, FilterExpression):
             filter_expression = str(self._filter_expression)
 
         if filter_expression:
-            return f"({range_query}) AND ({filter_expression})"
+            return (
+                f"({range_query}) AND ({filter_expression})"
+            )
         else:
             return f"{range_query}"
 
