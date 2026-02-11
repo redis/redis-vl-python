@@ -31,14 +31,14 @@ Redis Vector Library (RedisVL) is the production-ready Python client for AI appl
 |:---:|:---:|:---:|
 | **[Index Management](#index-management)**<br/>*Schema design, data loading, CRUD ops* | **[Semantic Caching](#semantic-caching)**<br/>*Reduce LLM costs & boost throughput* | **[CLI](#command-line-interface)**<br/>*Index management from terminal* |
 | **[Vector Search](#retrieval)**<br/>*Similarity search with metadata filters* | **[LLM Memory](#llm-memory)**<br/>*Agentic AI context management* | **Async Support**<br/>*Async indexing and search for improved performance* |
-| **[Hybrid Queries](#retrieval)**<br/>*Vector + text + metadata combined* | **[Semantic Routing](#semantic-routing)**<br/>*Intelligent query classification* | **[Vectorizers](#vectorizers)**<br/>*8+ embedding provider integrations* |
+| **[Complex Filtering](#retrieval)**<br/>*Combine multiple filter types* | **[Semantic Routing](#semantic-routing)**<br/>*Intelligent query classification* | **[Vectorizers](#vectorizers)**<br/>*8+ embedding provider integrations* |
 | **[Multi-Query Types](#retrieval)**<br/>*Vector, Range, Filter, Count queries* | **[Embedding Caching](#embedding-caching)**<br/>*Cache embeddings for efficiency* | **[Rerankers](#rerankers)**<br/>*Improve search result relevancy* |
 
 </div>
 
 ### **Built for Modern AI Workloads**
 
-- **RAG Pipelines** → Real-time retrieval with hybrid search capabilities
+- **RAG Pipelines** → Real-time retrieval with vector search and complex filtering
 - **AI Agents** → Short term & long term memory and semantic routing for intent-based decisions
 - **Recommendation Systems** → Fast retrieval and reranking
 
@@ -218,7 +218,7 @@ Define queries and perform advanced searches over your indices, including the co
 - [CountQuery](https://docs.redisvl.com/en/stable/api/query.html#countquery) - Count the number of indexed records given attributes
 - [TextQuery](https://docs.redisvl.com/en/stable/api/query.html#textquery) - Full-text search with support for field weighting and BM25 scoring
 
-> Read more about building [advanced Redis queries](https://docs.redisvl.com/en/stable/user_guide/02_hybrid_queries.html).
+> Read more about building [complex filtering queries](https://docs.redisvl.com/en/stable/user_guide/02_complex_filtering.html).
 
 ## Dev Utilities
 
