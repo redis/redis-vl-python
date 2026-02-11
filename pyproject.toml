@@ -52,7 +52,7 @@ pillow = [
     "pillow>=11.3.0",
 ]
 sql-redis = [
-    "sql-redis>=0.1.1",
+    "sql-redis>=0.1.2",
 ]
 
 [project.urls]

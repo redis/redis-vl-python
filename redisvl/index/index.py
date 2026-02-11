@@ -645,8 +645,11 @@ class SearchIndex(BaseSearchIndex):
             self.delete(drop=drop)
 
         try:
+            # Handle prefix as either a single string or a list of strings
+            prefix = self.schema.index.prefix
+            prefix_list = prefix if isinstance(prefix, list) else [prefix]
             definition = IndexDefinition(
-                prefix=[self.schema.index.prefix], index_type=self._storage.type
+                prefix=prefix_list, index_type=self._storage.type
             )
             # Extract stopwords from schema
             stopwords = self.schema.index.stopwords
@@ -1574,8 +1577,11 @@ class AsyncSearchIndex(BaseSearchIndex):
             await self.delete(drop)
 
         try:
+            # Handle prefix as either a single string or a list of strings
+            prefix = self.schema.index.prefix
+            prefix_list = prefix if isinstance(prefix, list) else [prefix]
             definition = IndexDefinition(
-                prefix=[self.schema.index.prefix], index_type=self._storage.type
+                prefix=prefix_list, index_type=self._storage.type
             )
             # Extract stopwords from schema
             stopwords = self.schema.index.stopwords

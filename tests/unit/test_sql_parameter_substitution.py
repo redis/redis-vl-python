@@ -220,5 +220,6 @@ class TestParameterSubstitutionEdgeCases:
             )
             substituted = sql_query._substitute_params(sql_query.sql, sql_query.params)
             # Should contain the value wrapped in quotes (with any necessary escaping)
-            assert ":field" not in substituted, f"Failed to substitute for value: {value}"
-
+            assert (
+                ":field" not in substituted
+            ), f"Failed to substitute for value: {value}"
