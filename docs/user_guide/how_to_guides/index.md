@@ -1,51 +1,81 @@
 # How-To Guides
 
-How-to guides are task-oriented recipes that help you accomplish specific goals. Unlike tutorials, they assume you have basic knowledge and focus on solving particular problems.
+How-to guides are **task-oriented** recipes that help you accomplish specific goals. Unlike tutorials, they assume you have basic knowledge and focus on solving particular problems.
 
-## Guide Categories
+::::{grid} 2
+:gutter: 3
 
-### 🔍 Querying
-Learn different ways to query your vector data:
-- [Complex Filtering](querying/index.md): Combine multiple filter types
-- [Advanced Queries](querying/index.md): Use specialized query types
-- [SQL Translation](querying/index.md): Convert SQL to Redis queries
+:::{grid-item-card} 🔍 Querying
+:link: querying/index
+:link-type: doc
 
-### 🧮 Embeddings
-Work with vector embeddings effectively:
-- [Choosing Vectorizers](embeddings/index.md): Select the right embedding model
-- [Caching Embeddings](embeddings/index.md): Improve performance with caching
+Learn different ways to query your vector data effectively.
 
-### ⚡ Optimization
-Optimize your RedisVL applications:
-- [Reranking Results](optimization/index.md): Improve search relevance
-- [SVS-VAMANA Index](optimization/index.md): Use advanced indexing algorithms
+- Complex filtering with multiple criteria
+- Advanced queries (hybrid, multi-vector, range)
+- SQL to Redis query translation
+:::
 
-### 💾 Storage
-Configure data storage options:
-- [Hash vs JSON](storage/index.md): Choose the right storage format
+:::{grid-item-card} 🧮 Embeddings
+:link: embeddings/index
+:link-type: doc
+
+Work with vector embeddings effectively.
+
+- Choosing the right vectorizer
+- Caching embeddings for performance
+- Comparing embedding models
+:::
+
+:::{grid-item-card} ⚡ Optimization
+:link: optimization/index
+:link-type: doc
+
+Optimize your RedisVL applications for production.
+
+- Reranking for better relevance
+- SVS-VAMANA indexing algorithm
+- Performance tuning strategies
+:::
+
+:::{grid-item-card} 💾 Storage
+:link: storage/index
+:link-type: doc
+
+Configure data storage options for your use case.
+
+- Hash vs JSON storage formats
+- Memory optimization
+- Data migration strategies
+:::
+
+::::
+
+## Quick Reference
+
+| I want to... | Go to |
+|--------------|-------|
+| Filter results by multiple criteria | [Complex Filtering](../02_complex_filtering.ipynb) |
+| Use hybrid or multi-vector queries | [Advanced Queries](../11_advanced_queries.ipynb) |
+| Translate SQL to Redis | [SQL Translation](../12_sql_to_redis_queries.ipynb) |
+| Choose an embedding model | [Choosing Vectorizers](../04_vectorizers.ipynb) |
+| Speed up embedding generation | [Caching Embeddings](../10_embeddings_cache.ipynb) |
+| Improve search accuracy | [Reranking Results](../06_rerankers.ipynb) |
+| Optimize index performance | [SVS-VAMANA Index](../09_svs_vamana.ipynb) |
+| Decide on storage format | [Hash vs JSON](../05_hash_vs_json.ipynb) |
 
 ## How to Use These Guides
 
 Each how-to guide:
-- **Focuses on one task**: Solves a specific problem
-- **Provides working code**: Ready to adapt to your needs
-- **Explains key decisions**: Helps you understand trade-offs
-- **Links to related guides**: Points you to additional resources
 
-## Finding the Right Guide
-
-**If you want to...**
-
-- Filter results by multiple criteria → [Complex Filtering](querying/index.md)
-- Use hybrid or multi-vector queries → [Advanced Queries](querying/index.md)
-- Translate SQL to Redis → [SQL Translation](querying/index.md)
-- Choose an embedding model → [Choosing Vectorizers](embeddings/index.md)
-- Speed up embedding generation → [Caching Embeddings](embeddings/index.md)
-- Improve search accuracy → [Reranking Results](optimization/index.md)
-- Optimize index performance → [SVS-VAMANA Index](optimization/index.md)
-- Decide on storage format → [Hash vs JSON](storage/index.md)
+| Aspect | What You Get |
+|--------|--------------|
+| **Focus** | Solves one specific problem |
+| **Code** | Working examples ready to adapt |
+| **Context** | Explains key decisions and trade-offs |
+| **Links** | Points to related guides and resources |
 
 ## Contributing
 
-Have a how-to guide you'd like to see? Open an issue or submit a PR!
+Have a how-to guide you'd like to see? [Open an issue](https://github.com/redis/redis-vl-python/issues) or submit a PR!
 

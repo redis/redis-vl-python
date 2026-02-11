@@ -9,6 +9,72 @@ myst:
 
 Welcome to the RedisVL user guides! Whether you're just getting started or building advanced AI applications, these guides will help you make the most of Redis as your vector database.
 
+::::{grid} 2
+:gutter: 3
+
+:::{grid-item-card} 🚀 Getting Started
+:link: getting_started/index
+:link-type: doc
+
+**New to RedisVL?** Start here to learn the basics and build your first vector search application in minutes.
+
++++
+Installation → Schema → Index → Query
+:::
+
+:::{grid-item-card} 📚 Tutorials
+:link: tutorials/index
+:link-type: doc
+
+**Learn by doing.** Step-by-step guides that teach you key features through hands-on examples.
+
++++
+Semantic Caching • Chatbots • Query Routing
+:::
+
+:::{grid-item-card} 🛠️ How-To Guides
+:link: how_to_guides/index
+:link-type: doc
+
+**Solve specific problems.** Task-oriented recipes for querying, embeddings, optimization, and storage.
+
++++
+Filtering • Advanced Queries • Reranking
+:::
+
+:::{grid-item-card} 💡 Use Cases
+:link: use_cases/index
+:link-type: doc
+
+**Build real applications.** Complete end-to-end examples showing production-ready architectures.
+
++++
+Semantic Search • RAG • Chatbots
+:::
+
+::::
+
+## Quick Navigation
+
+### By Experience Level
+
+| Level | Recommended Path |
+|-------|------------------|
+| **Beginner** | [Getting Started](getting_started/index) → [Semantic Caching Tutorial](03_llmcache) → [Vectorizers Guide](04_vectorizers) |
+| **Intermediate** | [Hybrid Queries](02_hybrid_queries) → [Message History](07_message_history) → [Rerankers](06_rerankers) |
+| **Advanced** | [Advanced Queries](11_advanced_queries) → [SVS-VAMANA](09_svs_vamana) → [Use Cases](use_cases/index) |
+
+### By Use Case
+
+| I want to... | Start here |
+|--------------|------------|
+| Build semantic search | [Getting Started](01_getting_started) → [Hybrid Queries](02_hybrid_queries) |
+| Cache LLM responses | [Semantic Caching Tutorial](03_llmcache) → [Embeddings Cache](10_embeddings_cache) |
+| Build a chatbot | [Message History Tutorial](07_message_history) |
+| Route queries by intent | [Semantic Router Tutorial](08_semantic_router) |
+| Improve search quality | [Rerankers Guide](06_rerankers) → [Advanced Queries](11_advanced_queries) |
+| Optimize performance | [SVS-VAMANA](09_svs_vamana) → [Hash vs JSON](05_hash_vs_json) |
+
 ## 🚀 Getting Started
 
 New to RedisVL? Start here to learn the basics and build your first application.
@@ -61,9 +127,9 @@ Complete examples showing how to build real-world applications with RedisVL.
 use_cases/index
 ```
 
-## 📖 All Guides (Legacy)
+## 📖 All Guides
 
-Complete list of all user guides in the original order.
+Complete reference list of all user guides.
 
 ```{toctree}
 :caption: All Guides

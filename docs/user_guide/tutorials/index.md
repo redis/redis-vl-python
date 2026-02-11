@@ -1,55 +1,75 @@
 # Tutorials
 
-Tutorials are learning-oriented guides that take you through a series of steps to complete a project or learn a specific feature. Each tutorial is designed to be completed in order and builds your understanding progressively.
+Tutorials are **learning-oriented** guides that take you through a series of steps to complete a project or learn a specific feature. Each tutorial is designed to be completed in order and builds your understanding progressively.
+
+::::{grid} 3
+:gutter: 2
+
+:::{grid-item-card} 🕐 20-30 minutes each
+:::
+
+:::{grid-item-card} 📝 Hands-on examples
+:::
+
+:::{grid-item-card} 🎯 Build real features
+:::
+
+::::
 
 ## Available Tutorials
 
-### 🎯 Core Features
+::::{grid} 1
+:gutter: 3
 
-#### [Semantic Caching with LLMs](../03_llmcache.ipynb)
+:::{grid-item-card} 💾 Semantic Caching with LLMs
+:link: ../03_llmcache
+:link-type: doc
+
 **Time**: 20 minutes | **Level**: Beginner
 
 Learn how to cache LLM responses using semantic similarity to reduce costs and improve response times.
 
-**What you'll learn:**
 - Setting up a semantic cache
 - Caching and retrieving LLM responses
 - Configuring similarity thresholds
 - Measuring cache hit rates
 
 **Prerequisites**: Basic understanding of LLMs
+:::
 
----
+:::{grid-item-card} 💬 Building a Chatbot with Message History
+:link: ../07_message_history
+:link-type: doc
 
-#### [Building a Chatbot with Message History](../07_message_history.ipynb)
 **Time**: 25 minutes | **Level**: Beginner
 
 Build a conversational AI application with persistent message history stored in Redis.
 
-**What you'll learn:**
 - Managing conversation history
 - Storing and retrieving messages
 - Building context-aware responses
 - Implementing conversation memory
 
 **Prerequisites**: Completed Getting Started guide
+:::
 
----
+:::{grid-item-card} 🔀 Semantic Query Routing
+:link: ../08_semantic_router
+:link-type: doc
 
-#### [Semantic Query Routing](../08_semantic_router.ipynb)
 **Time**: 30 minutes | **Level**: Intermediate
 
 Learn how to route user queries to different handlers based on semantic similarity.
 
-**What you'll learn:**
 - Creating semantic routes
 - Classifying user intents
 - Building multi-handler systems
 - Optimizing routing performance
 
 **Prerequisites**: Understanding of vector embeddings
+:::
 
----
+::::
 
 ## Tutorial Structure
 
