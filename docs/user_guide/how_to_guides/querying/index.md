@@ -88,7 +88,7 @@ Translate familiar SQL queries to Redis query syntax.
 
 - [Getting Started](../../getting_started/index.md): Learn basic querying
 - [Optimization Guides](../optimization/index.md): Improve query performance
-- [API Reference](https://redisvl.com): Detailed API documentation
+- [API Reference](https://docs.redisvl.com/en/stable/api/index.html): Detailed API documentation
 
 ## Troubleshooting
 
