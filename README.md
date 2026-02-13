@@ -32,13 +32,13 @@ Redis Vector Library (RedisVL) is the production-ready Python client for AI appl
 | **[Index Management](#index-management)**<br/>*Schema design, data loading, CRUD ops* | **[Semantic Caching](#semantic-caching)**<br/>*Reduce LLM costs & boost throughput* | **[CLI](#command-line-interface)**<br/>*Index management from terminal* |
 | **[Vector Search](#retrieval)**<br/>*Similarity search with metadata filters* | **[LLM Memory](#llm-memory)**<br/>*Agentic AI context management* | **Async Support**<br/>*Async indexing and search for improved performance* |
 | **[Complex Filtering](#retrieval)**<br/>*Combine multiple filter types* | **[Semantic Routing](#semantic-routing)**<br/>*Intelligent query classification* | **[Vectorizers](#vectorizers)**<br/>*8+ embedding provider integrations* |
-| **[Multi-Query Types](#retrieval)**<br/>*Vector, Range, Filter, Count queries* | **[Embedding Caching](#embedding-caching)**<br/>*Cache embeddings for efficiency* | **[Rerankers](#rerankers)**<br/>*Improve search result relevancy* |
+| **[Hybrid Search](#retrieval)**<br/>*Combine semantic & full-text signals* | **[Embedding Caching](#embedding-caching)**<br/>*Cache embeddings for efficiency* | **[Rerankers](#rerankers)**<br/>*Improve search result relevancy* |
 
 </div>
 
 ### **Built for Modern AI Workloads**
 
-- **RAG Pipelines** → Real-time retrieval with vector search and complex filtering
+- **RAG Pipelines** → Real-time retrieval with vector search, complex filtering, and hybrid search
 - **AI Agents** → Short term & long term memory and semantic routing for intent-based decisions
 - **Recommendation Systems** → Fast retrieval and reranking
 
@@ -180,7 +180,9 @@ and [fetch](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.htm
 
 ## Retrieval
 
-Define queries and perform advanced searches over your indices, including the combination of vectors, metadata filters, and more.
+Define queries and perform advanced searches over your indices, including vector search, complex filtering, and hybrid search combining semantic and full-text signals.
+
+### Vector Search
 
 - [VectorQuery](https://docs.redisvl.com/en/stable/api/query.html#vectorquery) - Flexible vector queries with customizable filters enabling semantic search:
 
@@ -198,27 +200,59 @@ Define queries and perform advanced searches over your indices, including the co
     results = index.query(query)
     ```
 
-    Incorporate complex metadata filters on your queries:
+- [RangeQuery](https://docs.redisvl.com/en/stable/api/query.html#rangequery) - Vector search within a defined range paired with customizable filters
+
+### Complex Filtering
+
+Build complex filtering queries by combining multiple filter types (tags, numerics, text, geo, timestamps) using logical operators:
 
     ```python
-    from redisvl.query.filter import Tag
+    from redisvl.query import VectorQuery
+    from redisvl.query.filter import Tag, Num
 
-    # define a tag match filter
+    # Combine multiple filter types
     tag_filter = Tag("user") == "john"
+    price_filter = Num("price") >= 100
 
-    # update query definition
-    query.set_filter(tag_filter)
-
-    # execute query
+    # Create complex filtering query with combined filters
+    query = VectorQuery(
+        vector=[0.16, -0.34, 0.98, 0.23],
+        vector_field_name="embedding",
+        filter_expression=tag_filter & price_filter,
+        num_results=10
+    )
     results = index.query(query)
     ```
 
-- [RangeQuery](https://docs.redisvl.com/en/stable/api/query.html#rangequery) - Vector search within a defined range paired with customizable filters
-- [FilterQuery](https://docs.redisvl.com/en/stable/api/query.html#filterquery) - Standard search using filters and the full-text search
+- [FilterQuery](https://docs.redisvl.com/en/stable/api/query.html#filterquery) - Standard search using filters and full-text search
 - [CountQuery](https://docs.redisvl.com/en/stable/api/query.html#countquery) - Count the number of indexed records given attributes
 - [TextQuery](https://docs.redisvl.com/en/stable/api/query.html#textquery) - Full-text search with support for field weighting and BM25 scoring
 
-> Read more about building [complex filtering queries](https://docs.redisvl.com/en/stable/user_guide/02_complex_filtering.html).
+> Learn more about building [complex filtering queries](https://docs.redisvl.com/en/stable/user_guide/02_complex_filtering.html).
+
+### Hybrid Search
+
+Combine semantic (vector) search with full-text (BM25) search signals for improved search quality:
+
+- [HybridQuery](https://docs.redisvl.com/en/stable/api/query.html#hybridquery) - Native hybrid search combining text and vector similarity (Redis 8.4.0+):
+
+    ```python
+    from redisvl.query import HybridQuery
+
+    hybrid_query = HybridQuery(
+        text="running shoes",
+        text_field_name="description",
+        vector=[0.1, 0.2, 0.3],
+        vector_field_name="embedding",
+        combination_method="LINEAR",  # or "RRF"
+        num_results=10
+    )
+    results = index.query(hybrid_query)
+    ```
+
+- [AggregateHybridQuery](https://docs.redisvl.com/en/stable/api/query.html#aggregatehybridquery) - Hybrid search using aggregation (compatible with earlier Redis versions)
+
+> Learn more about [hybrid search](https://docs.redisvl.com/en/stable/user_guide/11_advanced_queries.html#hybrid-queries-combining-text-and-vector-search).
 
 ## Dev Utilities
 
