@@ -143,7 +143,7 @@ Solve specific problems quickly
 :::{grid-item-card} 📖 API Reference
 Detailed API documentation
 
-[View API Docs](https://redisvl.com)
+[View API Docs](https://docs.redisvl.com/en/stable/api/index.html)
 :::
 
 ::::
