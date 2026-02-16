@@ -159,12 +159,12 @@ class LLMRouter(BaseModel):
         Returns:
             LLMRouter instance connected to existing index.
         """
-        if redis_url:
+        if redis_client:
+            RedisConnectionFactory.validate_sync_redis(redis_client)
+        elif redis_url:
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url, **kwargs
             )
-        elif redis_client:
-            RedisConnectionFactory.validate_sync_redis(redis_client)
 
         if redis_client is None:
             raise ValueError("Could not establish Redis connection.")
@@ -683,13 +683,13 @@ class LLMRouter(BaseModel):
         if not vectorizer:
             raise ValueError(f"Could not load vectorizer: {config.vectorizer}")
 
-        # Set up connection
-        if redis_url:
+        # Set up connection — prefer provided client over URL
+        if redis_client:
+            RedisConnectionFactory.validate_sync_redis(redis_client)
+        elif redis_url:
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url, **kwargs
             )
-        elif redis_client:
-            RedisConnectionFactory.validate_sync_redis(redis_client)
 
         if redis_client is None:
             raise ValueError("Could not establish Redis connection")
@@ -898,12 +898,12 @@ class AsyncLLMRouter(BaseModel):
         Returns:
             AsyncLLMRouter instance connected to existing index.
         """
-        if redis_url:
+        if redis_client:
+            await RedisConnectionFactory.validate_async_redis(redis_client)
+        elif redis_url:
             redis_client = await RedisConnectionFactory._get_aredis_connection(
                 redis_url=redis_url, **kwargs
             )
-        elif redis_client:
-            await RedisConnectionFactory.validate_async_redis(redis_client)
 
         if redis_client is None:
             raise ValueError("Could not establish Redis connection.")
@@ -1407,12 +1407,13 @@ class AsyncLLMRouter(BaseModel):
         if not vectorizer:
             raise ValueError(f"Could not load vectorizer: {config.vectorizer}")
 
-        if redis_url:
+        # Prefer provided client over URL
+        if redis_client:
+            await RedisConnectionFactory.validate_async_redis(redis_client)
+        elif redis_url:
             redis_client = await RedisConnectionFactory._get_aredis_connection(
                 redis_url=redis_url, **kwargs
             )
-        elif redis_client:
-            await RedisConnectionFactory.validate_async_redis(redis_client)
 
         if redis_client is None:
             raise ValueError("Could not establish Redis connection")
