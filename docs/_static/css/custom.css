@@ -1,3 +1,8 @@
 .logo__image {
     transform: scale(.7);
 }
+
+/* Show the primary sidebar on the landing page (override hide-on-wide) */
+.bd-sidebar-primary.hide-on-wide {
+    display: flex !important;
+}

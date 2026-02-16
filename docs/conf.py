@@ -47,7 +47,6 @@ extensions = [
     "sphinx_design",
     "sphinx_copybutton",
     "_extension.gallery_directive",
-    'nbsphinx',
     "myst_nb",
     "sphinx_favicon"
 ]
@@ -72,7 +71,7 @@ html_theme = "pydata_sphinx_theme"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files=["css/custom.css"]
+html_css_files=["css/custom.css", "css/sidebar.css"]
 html_title = "RedisVL"
 html_context = {
    "default_mode": "dark"
@@ -86,7 +85,10 @@ html_context = {
     "doc_path": "docs",
 }
 html_sidebars = {
-    'examples': []
+    "index": ["sidebar-nav-custom"],
+    "examples/**": [],
+    "examples/index": [],
+    "**": ["sidebar-nav-bs"],
 }
 
 
@@ -123,8 +125,7 @@ html_theme_options = {
 autoclass_content = 'both'
 add_module_names = False
 
-nbsphinx_execute = 'never'
-jupyter_execute_notebooks = "off"
+nb_execution_mode = "off"
 
 # -- Options for autosummary/autodoc output ------------------------------------
 autosummary_generate = True

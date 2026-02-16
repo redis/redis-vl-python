@@ -106,7 +106,7 @@ VectorRangeQuery
       )
 
 AggregateHybridQuery
-================
+====================
 
 
 .. currentmodule:: redisvl.query
@@ -221,7 +221,7 @@ CountQuery
 
 
 MultiVectorQuery
-==========
+================
 
 .. currentmodule:: redisvl.query
 

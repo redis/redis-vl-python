@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#888"/>
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="400" fill="#1a1a2e"/>
+  
+  <!-- Application Box -->
+  <rect x="30" y="140" width="140" height="120" rx="8" fill="#2d2d44" stroke="#4a4a6a" stroke-width="2"/>
+  <text x="100" y="170" text-anchor="middle" fill="#e0e0e0" font-family="system-ui" font-size="14" font-weight="bold">Application</text>
+  <text x="100" y="200" text-anchor="middle" fill="#a0a0a0" font-family="system-ui" font-size="11">Documents</text>
+  <text x="100" y="220" text-anchor="middle" fill="#a0a0a0" font-family="system-ui" font-size="11">+ Metadata</text>
+  
+  <!-- RedisVL Box -->
+  <rect x="230" y="60" width="200" height="280" rx="8" fill="#2d3748" stroke="#4a5568" stroke-width="2"/>
+  <text x="330" y="90" text-anchor="middle" fill="#e0e0e0" font-family="system-ui" font-size="14" font-weight="bold">RedisVL</text>
+  
+  <!-- Schema -->
+  <rect x="260" y="110" width="140" height="40" rx="6" fill="#4c51bf" stroke="#667eea" stroke-width="1"/>
+  <text x="330" y="135" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="12">Schema</text>
+  
+  <!-- Vectorizer -->
+  <rect x="260" y="170" width="140" height="40" rx="6" fill="#38a169" stroke="#68d391" stroke-width="1"/>
+  <text x="330" y="195" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="12">Vectorizer</text>
+  
+  <!-- Query Builder -->
+  <rect x="260" y="230" width="140" height="40" rx="6" fill="#d69e2e" stroke="#ecc94b" stroke-width="1"/>
+  <text x="330" y="255" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="12">Query Builder</text>
+  
+  <!-- Extensions label -->
+  <text x="330" y="300" text-anchor="middle" fill="#a0a0a0" font-family="system-ui" font-size="10">Extensions wrap these primitives</text>
+  
+  <!-- Redis Box -->
+  <rect x="490" y="100" width="280" height="200" rx="8" fill="#2d2d44" stroke="#dc382d" stroke-width="2"/>
+  <text x="630" y="130" text-anchor="middle" fill="#dc382d" font-family="system-ui" font-size="14" font-weight="bold">Redis</text>
+  
+  <!-- Search Index -->
+  <rect x="520" y="150" width="100" height="50" rx="6" fill="#dc382d" stroke="#ff6b6b" stroke-width="1"/>
+  <text x="570" y="175" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="11">Search</text>
+  <text x="570" y="190" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="11">Index</text>
+  
+  <!-- Storage -->
+  <rect x="640" y="150" width="100" height="50" rx="6" fill="#805ad5" stroke="#b794f4" stroke-width="1"/>
+  <text x="690" y="175" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="11">Storage</text>
+  <text x="690" y="190" text-anchor="middle" fill="#fff" font-family="system-ui" font-size="10">(Hash/JSON)</text>
+  
+  <!-- FT.CREATE label -->
+  <text x="630" y="230" text-anchor="middle" fill="#a0a0a0" font-family="system-ui" font-size="10">FT.CREATE / FT.SEARCH</text>
+  
+  <!-- Arrows -->
+  <!-- App to Schema -->
+  <line x1="170" y1="160" x2="255" y2="130" stroke="#888" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="210" y="135" fill="#666" font-family="system-ui" font-size="9">define</text>
+  
+  <!-- App to Vectorizer (query) -->
+  <line x1="170" y1="200" x2="255" y2="190" stroke="#888" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="210" y="185" fill="#666" font-family="system-ui" font-size="9">text</text>
+  
+  <!-- Vectorizer to Query -->
+  <line x1="330" y1="210" x2="330" y2="225" stroke="#888" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  
+  <!-- Schema to Index -->
+  <line x1="400" y1="130" x2="515" y2="165" stroke="#888" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="455" y="138" fill="#666" font-family="system-ui" font-size="9">creates</text>
+  
+  <!-- Query to Index -->
+  <line x1="400" y1="250" x2="515" y2="185" stroke="#888" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="455" y="230" fill="#666" font-family="system-ui" font-size="9">search</text>
+  
+  <!-- Index to Storage -->
+  <line x1="620" y1="175" x2="635" y2="175" stroke="#888" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  
+  <!-- Results back to App -->
+  <path d="M 520 200 Q 400 350 170 250" fill="none" stroke="#68d391" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowhead)"/>
+  <text x="350" y="320" fill="#68d391" font-family="system-ui" font-size="9">results</text>
+</svg>
+
