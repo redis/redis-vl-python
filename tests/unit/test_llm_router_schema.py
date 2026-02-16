@@ -21,12 +21,12 @@ class TestModelTier:
         """Should create valid tier."""
         tier = ModelTier(
             name="simple",
-            model="anthropic/claude-haiku-4-5",
+            model="openai/gpt-4.1-nano",
             references=["hello", "hi"],
             distance_threshold=0.5,
         )
         assert tier.name == "simple"
-        assert tier.model == "anthropic/claude-haiku-4-5"
+        assert tier.model == "openai/gpt-4.1-nano"
         assert tier.references == ["hello", "hi"]
         assert tier.distance_threshold == 0.5
 
@@ -37,11 +37,11 @@ class TestModelTier:
             model="test/model",
             references=["hello"],
             metadata={
-                "cost_per_1k_input": 0.00025,
+                "cost_per_1k_input": 0.0001,
                 "capabilities": ["chat"],
             },
         )
-        assert tier.metadata["cost_per_1k_input"] == 0.00025
+        assert tier.metadata["cost_per_1k_input"] == 0.0001
         assert "chat" in tier.metadata["capabilities"]
 
     def test_empty_name_fails(self):
@@ -136,9 +136,9 @@ class TestLLMRouteMatch:
         match = LLMRouteMatch(
             tier="simple",
             model="test/model",
-            metadata={"cost_per_1k_input": 0.00025},
+            metadata={"cost_per_1k_input": 0.0001},
         )
-        assert match.metadata["cost_per_1k_input"] == 0.00025
+        assert match.metadata["cost_per_1k_input"] == 0.0001
 
 
 class TestRoutingConfig:
