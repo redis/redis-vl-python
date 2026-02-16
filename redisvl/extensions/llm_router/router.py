@@ -645,6 +645,7 @@ class LLMRouter(BaseModel):
             LLMRouter loaded without re-embedding.
         """
         from redisvl.utils.vectorize import vectorizer_from_dict
+        import numpy as np
 
         fp = Path(file_path).resolve()
         if not fp.exists():
@@ -698,7 +699,6 @@ class LLMRouter(BaseModel):
             tiers.append(tier)
 
             # Use pre-computed vectors (convert to buffer)
-            import numpy as np
             for ref in pt.references:
                 vector_buffer = np.array(ref.vector, dtype=np.float32).tobytes()
                 reference_hash = hashify(ref.text)
@@ -720,15 +720,17 @@ class LLMRouter(BaseModel):
 
         index.load(all_references, keys=all_keys)
 
-        # Create router instance (don't re-add tiers)
+        # Create router instance using Pydantic's model_construct to bypass __init__
         routing_config = RoutingConfig(**config.routing_config)
-
-        router = object.__new__(cls)
-        router.name = config.name
-        router.tiers = tiers
-        router.vectorizer = vectorizer
-        router.routing_config = routing_config
-        router._index = index
+        
+        router = cls.model_construct(
+            name=config.name,
+            tiers=tiers,
+            vectorizer=vectorizer,
+            routing_config=routing_config,
+        )
+        # Set private attribute directly
+        object.__setattr__(router, '_index', index)
 
         # Store config
         redis_client.json().set(f"{config.name}:router_config", ".", router.to_dict())
