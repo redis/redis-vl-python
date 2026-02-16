@@ -4771,7 +4771,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.13.2"
+version = "0.14.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonpath-ng" },
@@ -4814,6 +4814,9 @@ pillow = [
 ]
 sentence-transformers = [
     { name = "sentence-transformers" },
+]
+sql-redis = [
+    { name = "sql-redis" },
 ]
 vertexai = [
     { name = "google-cloud-aiplatform" },
@@ -4871,11 +4874,12 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=5.4,<7.0" },
     { name = "redis", specifier = ">=5.0,<7.2" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
+    { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.1.1" },
     { name = "tenacity", specifier = ">=8.2.2" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
 ]
-provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow"]
+provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5882,6 +5886,20 @@ wheels = [
 ]
 
 [[package]]
+name = "sql-redis"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "redis", version = "7.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "redis", version = "7.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "sqlglot" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/d0/d16fccfa2c526f86fa14de2b24b000ff6f9e9d3eb50585326e8a12a74895/sql_redis-0.1.2.tar.gz", hash = "sha256:abdef256af90e4f2815c8983ec23563104cee7b8469234012fc1688df00bb499", size = 107321, upload-time = "2026-02-06T15:30:15.488Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/55/4fbdfa4fdceab9ba97a08e61c2294d41a3203cb90bcfc657fc83c7342d0b/sql_redis-0.1.2-py3-none-any.whl", hash = "sha256:2efae4b1e25cbc9e27d1e2f3e4dbc3bce277a534475167c6c821a2e037a7e516", size = 19905, upload-time = "2026-02-06T15:30:13.973Z" },
+]
+
+[[package]]
 name = "sqlalchemy"
 version = "2.0.44"
 source = { registry = "https://pypi.org/simple" }
@@ -5932,6 +5950,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/43/71a22aa66a1ef974f4e34982ce55d5f38d4770d2f0091eb210374e860b8e/sqlalchemy-2.0.44-cp39-cp39-win32.whl", hash = "sha256:9e9018544ab07614d591a26c1bd4293ddf40752cc435caf69196740516af7100", size = 2106888, upload-time = "2025-10-10T15:45:58.079Z" },
     { url = "https://files.pythonhosted.org/packages/08/fb/cc98eb1ab3c5ad92b51c0db17ee86d1c33379a7490da376567b902222dcf/sqlalchemy-2.0.44-cp39-cp39-win_amd64.whl", hash = "sha256:8e0e4e66fd80f277a8c3de016a81a554e76ccf6b8d881ee0b53200305a8433f6", size = 2130728, upload-time = "2025-10-10T15:45:59.7Z" },
     { url = "https://files.pythonhosted.org/packages/9c/5e/6a29fa884d9fb7ddadf6b69490a9d45fded3b38541713010dad16b77d015/sqlalchemy-2.0.44-py3-none-any.whl", hash = "sha256:19de7ca1246fbef9f9d1bff8f1ab25641569df226364a0e40457dc5457c54b05", size = 1928718, upload-time = "2025-10-10T15:29:45.32Z" },
+]
+
+[[package]]
+name = "sqlglot"
+version = "28.10.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/66/b2b300f325227044aa6f511ea7c9f3109a1dc74b13a0897931c1754b504e/sqlglot-28.10.1.tar.gz", hash = "sha256:66e0dae43b4bce23314b80e9aef41b8c88fea0e17ada62de095b45262084a8c5", size = 5739510, upload-time = "2026-02-09T23:36:23.671Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/ff/5a768b34202e1ee485737bfa167bd84592585aa40383f883a8e346d767cc/sqlglot-28.10.1-py3-none-any.whl", hash = "sha256:214aef51fd4ce16407022f81cfc80c173409dab6d0f6ae18c52b43f43b31d4dd", size = 597053, upload-time = "2026-02-09T23:36:21.385Z" },
 ]
 
 [[package]]
