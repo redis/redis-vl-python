@@ -6,33 +6,33 @@ to reference phrases.
 
 Example:
     >>> from redisvl.extensions.llm_router import LLMRouter, ModelTier
-    >>> 
+    >>>
     >>> tiers = [
     ...     ModelTier(
     ...         name="simple",
-    ...         model="anthropic/claude-haiku-4-5",
+    ...         model="openai/gpt-4.1-nano",
     ...         references=["hello", "hi", "thanks"],
     ...         distance_threshold=0.5,
     ...     ),
     ...     ModelTier(
-    ...         name="reasoning", 
+    ...         name="reasoning",
     ...         model="anthropic/claude-sonnet-4-5",
     ...         references=["analyze this", "explain how"],
     ...         distance_threshold=0.6,
     ...     ),
     ... ]
-    >>> 
+    >>>
     >>> router = LLMRouter(
     ...     name="my-router",
     ...     tiers=tiers,
     ...     redis_url="redis://localhost:6379",
     ... )
-    >>> 
+    >>>
     >>> match = router.route("hello, how are you?")
     >>> print(f"Use {match.model} for this query")
 """
 
-from redisvl.extensions.llm_router.router import LLMRouter
+from redisvl.extensions.llm_router.router import AsyncLLMRouter, LLMRouter
 from redisvl.extensions.llm_router.schema import (
     DistanceAggregationMethod,
     LLMRouteMatch,
@@ -44,6 +44,7 @@ from redisvl.extensions.llm_router.schema import (
 )
 
 __all__ = [
+    "AsyncLLMRouter",
     "LLMRouter",
     "ModelTier",
     "LLMRouteMatch",
