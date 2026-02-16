@@ -14,10 +14,12 @@ import pytest
 def _docker_available():
     """Check if Docker is available."""
     import shutil
+
     return shutil.which("docker") is not None
 
 
 if not _docker_available():
+
     @pytest.fixture(scope="session", autouse=True)
     def redis_container():
         """

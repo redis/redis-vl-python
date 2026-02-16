@@ -5,12 +5,12 @@ Tests are written first, then implementation follows.
 """
 
 import pathlib
+
 import pytest
 from ulid import ULID
 
-from redisvl.extensions.llm_router import LLMRouter, ModelTier, LLMRouteMatch
+from redisvl.extensions.llm_router import LLMRouteMatch, LLMRouter, ModelTier
 from redisvl.extensions.llm_router.schema import RoutingConfig
-
 from tests.conftest import SKIP_HF, skip_if_no_redisearch, skip_if_redis_version_below
 
 pytestmark = pytest.mark.skipif(
@@ -28,18 +28,18 @@ def model_tiers():
     return [
         ModelTier(
             name="simple",
-            model="anthropic/claude-haiku-4-5",
+            model="openai/gpt-4.1-nano",
             references=[
                 "hello",
-                "hi there", 
+                "hi there",
                 "what time is it?",
                 "thanks",
                 "goodbye",
             ],
             metadata={
-                "provider": "anthropic",
-                "cost_per_1k_input": 0.00025,
-                "cost_per_1k_output": 0.00125,
+                "provider": "openai",
+                "cost_per_1k_input": 0.0001,
+                "cost_per_1k_output": 0.0004,
             },
             distance_threshold=0.5,
         ),
@@ -72,8 +72,8 @@ def model_tiers():
             ],
             metadata={
                 "provider": "anthropic",
-                "cost_per_1k_input": 0.015,
-                "cost_per_1k_output": 0.075,
+                "cost_per_1k_input": 0.005,
+                "cost_per_1k_output": 0.025,
             },
             distance_threshold=0.7,
         ),
@@ -122,7 +122,7 @@ class TestLLMRouterInitialization:
         tier = llm_router.get_tier("simple")
         assert tier is not None
         assert tier.name == "simple"
-        assert tier.model == "anthropic/claude-haiku-4-5"
+        assert tier.model == "openai/gpt-4.1-nano"
 
     def test_get_nonexistent_tier(self, llm_router):
         """Should return None for nonexistent tier."""
@@ -140,7 +140,7 @@ class TestLLMRouterRouting:
         match = llm_router.route("hello, how are you?")
         assert isinstance(match, LLMRouteMatch)
         assert match.tier == "simple"
-        assert match.model == "anthropic/claude-haiku-4-5"
+        assert match.model == "openai/gpt-4.1-nano"
         assert match.distance is not None
         assert match.distance <= 0.5
 
@@ -188,7 +188,9 @@ class TestLLMRouterRouting:
 class TestLLMRouterCostOptimization:
     """Test cost-aware routing behavior."""
 
-    def test_cost_optimization_prefers_cheaper(self, client, model_tiers, hf_vectorizer):
+    def test_cost_optimization_prefers_cheaper(
+        self, client, model_tiers, hf_vectorizer
+    ):
         """With cost optimization, should prefer cheaper tiers when close."""
         skip_if_no_redisearch(client)
         skip_if_redis_version_below(client, "7.0.0")
@@ -263,13 +265,14 @@ class TestLLMRouterWithEmbeddings:
         """Should export router with pre-computed embeddings."""
         json_file = tmp_path / "router_with_embeddings.json"
         llm_router.export_with_embeddings(str(json_file))
-        
+
         assert json_file.exists()
-        
+
         import json
+
         with open(json_file) as f:
             data = json.load(f)
-        
+
         # Verify embeddings are included
         assert "tiers" in data
         for tier in data["tiers"]:
@@ -299,7 +302,7 @@ class TestLLMRouterWithEmbeddings:
             redis_client=client,
             overwrite=True,
         )
-        
+
         json_file = tmp_path / "export_test.json"
         router1.export_with_embeddings(str(json_file))
         router1.delete()
@@ -309,11 +312,11 @@ class TestLLMRouterWithEmbeddings:
             str(json_file),
             redis_client=client,
         )
-        
+
         try:
             assert len(router2.tiers) == 1
             assert router2.tiers[0].name == "test"
-            
+
             # Verify routing works
             match = router2.route("hello there")
             assert match.tier == "test"
@@ -336,14 +339,14 @@ class TestLLMRouterTierManagement:
             distance_threshold=0.3,
         )
         llm_router.add_tier(new_tier)
-        
+
         assert llm_router.get_tier("local") is not None
         assert "local" in llm_router.tier_names
 
     def test_remove_tier(self, llm_router):
         """Should remove tier."""
         llm_router.remove_tier("simple")
-        
+
         assert llm_router.get_tier("simple") is None
         assert "simple" not in llm_router.tier_names
 
@@ -354,13 +357,12 @@ class TestLLMRouterTierManagement:
         # First verify existing references still route correctly
         match_before = llm_router.route("hi there")
         assert match_before.tier == "simple"
-        
+
         # Add new references
         llm_router.add_tier_references(
-            tier_name="simple",
-            references=["howdy", "greetings friend"]
+            tier_name="simple", references=["howdy", "greetings friend"]
         )
-        
+
         # Verify references were added to the tier object
         tier = llm_router.get_tier("simple")
         assert "howdy" in tier.references
@@ -369,7 +371,7 @@ class TestLLMRouterTierManagement:
     def test_update_tier_threshold(self, llm_router):
         """Should update tier threshold."""
         llm_router.update_tier_threshold("simple", 0.3)
-        
+
         assert llm_router.tier_thresholds["simple"] == 0.3
 
 
@@ -382,7 +384,7 @@ class TestLLMRouterFromExisting:
         skip_if_redis_version_below(client, "7.0.0")
 
         router_name = f"persist-test-{str(ULID())}"
-        
+
         # Create router
         router1 = LLMRouter(
             name=router_name,
@@ -391,20 +393,92 @@ class TestLLMRouterFromExisting:
             redis_url=redis_url,
             overwrite=True,
         )
-        
+
         # Reconnect
         router2 = LLMRouter.from_existing(
             name=router_name,
             redis_url=redis_url,
         )
-        
+
         try:
             assert router2.name == router1.name
             assert len(router2.tiers) == len(router1.tiers)
             assert router2.tier_names == router1.tier_names
-            
+
             # Verify routing works
             match = router2.route("hello")
             assert match.tier is not None
         finally:
             router1.delete()
+
+
+class TestLLMRouterPretrained:
+    """Test LLMRouter with pretrained configurations."""
+
+    def test_from_pretrained_default(self, client):
+        """Should load the built-in default pretrained config."""
+        skip_if_no_redisearch(client)
+
+        router = LLMRouter.from_pretrained("default", redis_client=client)
+        try:
+            assert len(router.tiers) == 3
+            assert set(router.tier_names) == {"simple", "standard", "expert"}
+        finally:
+            router.delete()
+
+    def test_pretrained_routes_simple(self, client):
+        """Simple greetings should route to simple tier."""
+        skip_if_no_redisearch(client)
+        skip_if_redis_version_below(client, "7.0.0")
+
+        router = LLMRouter.from_pretrained("default", redis_client=client)
+        try:
+            match = router.route("hi, how are you doing?")
+            assert match.tier == "simple"
+            assert match.model == "openai/gpt-4.1-nano"
+        finally:
+            router.delete()
+
+    def test_pretrained_routes_standard(self, client):
+        """Moderate analysis should route to standard tier."""
+        skip_if_no_redisearch(client)
+        skip_if_redis_version_below(client, "7.0.0")
+
+        router = LLMRouter.from_pretrained("default", redis_client=client)
+        try:
+            match = router.route("explain how garbage collection works")
+            assert match.tier == "standard"
+            assert match.model == "anthropic/claude-sonnet-4-5"
+        finally:
+            router.delete()
+
+    def test_pretrained_routes_expert(self, client):
+        """Complex research queries should route to expert tier."""
+        skip_if_no_redisearch(client)
+        skip_if_redis_version_below(client, "7.0.0")
+
+        router = LLMRouter.from_pretrained("default", redis_client=client)
+        try:
+            match = router.route("architect a fault-tolerant distributed system")
+            assert match.tier == "expert"
+            assert match.model == "anthropic/claude-opus-4-5"
+        finally:
+            router.delete()
+
+    def test_pretrained_route_many(self, client):
+        """Should return multiple matches from pretrained config."""
+        skip_if_no_redisearch(client)
+        skip_if_redis_version_below(client, "7.0.0")
+
+        router = LLMRouter.from_pretrained("default", redis_client=client)
+        try:
+            matches = router.route_many("explain machine learning concepts", max_k=3)
+            assert len(matches) > 0
+            assert all(isinstance(m, LLMRouteMatch) for m in matches)
+        finally:
+            router.delete()
+
+    def test_pretrained_invalid_name(self, client):
+        """Should raise error for unknown pretrained config name."""
+        with pytest.raises(ValueError, match="not found"):
+            LLMRouter.from_pretrained("nonexistent_config", redis_client=client)
