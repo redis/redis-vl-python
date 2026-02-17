@@ -347,6 +347,8 @@ class LLMRouter(BaseModel):
         tier = self.get_tier(tier_name)
         if tier is None:
             raise ValueError(f"Tier {tier_name} not found")
+        if not (0 < threshold <= 2):
+            raise ValueError("Threshold must be in range (0, 2]")
         tier.distance_threshold = threshold
         self._update_router_config()
 
@@ -390,6 +392,8 @@ class LLMRouter(BaseModel):
         max_k: int = 1,
     ) -> List[LLMRouteMatch]:
         """Get matching tiers for a vector."""
+        if not self.tiers:
+            return []
         distance_threshold = max(t.distance_threshold for t in self.tiers)
 
         query = VectorRangeQuery(
@@ -1086,6 +1090,8 @@ class AsyncLLMRouter(BaseModel):
         tier = self.get_tier(tier_name)
         if tier is None:
             raise ValueError(f"Tier {tier_name} not found")
+        if not (0 < threshold <= 2):
+            raise ValueError("Threshold must be in range (0, 2]")
         tier.distance_threshold = threshold
         await self._update_router_config()
 
@@ -1129,6 +1135,8 @@ class AsyncLLMRouter(BaseModel):
         max_k: int = 1,
     ) -> List[LLMRouteMatch]:
         """Get matching tiers for a vector (async)."""
+        if not self.tiers:
+            return []
         distance_threshold = max(t.distance_threshold for t in self.tiers)
 
         query = VectorRangeQuery(
