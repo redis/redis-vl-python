@@ -231,3 +231,23 @@ MultiVectorQuery
    :inherited-members:
    :show-inheritance:
    :exclude-members: add_filter,get_args,highlight,return_field,summarize
+
+
+SQLQuery
+========
+
+.. currentmodule:: redisvl.query
+
+
+.. autoclass:: SQLQuery
+   :members:
+   :show-inheritance:
+
+.. note::
+   SQLQuery requires the optional ``sql-redis`` package. Install with:
+   ``pip install redisvl[sql-redis]``
+
+.. note::
+   SQLQuery translates SQL SELECT statements into Redis FT.SEARCH or FT.AGGREGATE commands.
+   The SQL syntax supports WHERE clauses, field selection, ordering, and parameterized queries
+   for vector similarity searches.

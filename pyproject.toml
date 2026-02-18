@@ -1,9 +1,9 @@
 [project]
 name = "redisvl"
-version = "0.13.2"
+version = "0.14.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
-requires-python = ">=3.9.2,<3.14"
+requires-python = ">=3.9.2,<3.15"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
@@ -51,6 +52,9 @@ bedrock = [
 pillow = [
     "pillow>=11.3.0",
 ]
+sql-redis = [
+    "sql-redis>=0.1.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/redis/redis-vl-python"
@@ -63,6 +67,9 @@ rvl = "redisvl.cli.runner:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [dependency-groups]
 dev = [

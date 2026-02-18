@@ -5,7 +5,11 @@ from redis.exceptions import ConnectionError
 
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
-from tests.conftest import skip_if_no_redisearch
+from tests.conftest import SKIP_HF, skip_if_no_redisearch
+
+requires_hf = pytest.mark.skipif(
+    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
+)
 
 
 @pytest.fixture
@@ -327,6 +331,7 @@ def test_standard_clear(standard_history):
 
 
 # test semantic message history
+@requires_hf
 def test_semantic_specify_client(client, hf_vectorizer):
     skip_if_no_redisearch(client)
     history = SemanticMessageHistory(
@@ -339,6 +344,7 @@ def test_semantic_specify_client(client, hf_vectorizer):
     assert isinstance(history._index.client, type(client))
 
 
+@requires_hf
 def test_semantic_bad_connection_info(hf_vectorizer):
     with pytest.raises(ConnectionError):
         SemanticMessageHistory(
@@ -349,6 +355,7 @@ def test_semantic_bad_connection_info(hf_vectorizer):
         )
 
 
+@requires_hf
 def test_semantic_scope(semantic_history):
     # store entries under default session tag
     semantic_history.store("some prompt", "some response")
@@ -376,6 +383,7 @@ def test_semantic_scope(semantic_history):
     assert no_context == []
 
 
+@requires_hf
 def test_semantic_store_and_get_recent(semantic_history):
     context = semantic_history.get_recent()
     assert len(context) == 0
@@ -461,6 +469,7 @@ def test_semantic_store_and_get_recent(semantic_history):
         bad_context = semantic_history.get_recent(top_k="3")
 
 
+@requires_hf
 def test_semantic_messages_property(semantic_history):
     semantic_history.add_messages(
         [
@@ -505,6 +514,7 @@ def test_semantic_messages_property(semantic_history):
     ]
 
 
+@requires_hf
 def test_semantic_add_and_get_relevant(semantic_history):
     semantic_history.add_message(
         {"role": "system", "content": "discussing common fruits and vegetables"}
@@ -580,6 +590,7 @@ def test_semantic_add_and_get_relevant(semantic_history):
         bad_context = semantic_history.get_relevant("test prompt", top_k="3")
 
 
+@requires_hf
 def test_semantic_get_raw(semantic_history):
     semantic_history.store("first prompt", "first response")
     semantic_history.store("second prompt", "second response")
@@ -591,6 +602,7 @@ def test_semantic_get_raw(semantic_history):
     assert raw[1]["content"] == "first response"
 
 
+@requires_hf
 def test_semantic_drop(semantic_history):
     semantic_history.store("first prompt", "first response")
     semantic_history.store("second prompt", "second response")
@@ -679,6 +691,7 @@ def test_bad_dtype_connecting_to_exiting_history(client, redis_url):
         )
 
 
+@requires_hf
 def test_vectorizer_dtype_mismatch(client, redis_url, hf_vectorizer_float16):
     skip_if_no_redisearch(client)
     with pytest.raises(ValueError):

@@ -13,7 +13,7 @@ User guides provide helpful resources for using RedisVL and its different compon
 :maxdepth: 2
 
 01_getting_started
-02_hybrid_queries
+02_complex_filtering
 03_llmcache
 04_vectorizers
 05_hash_vs_json
@@ -23,4 +23,5 @@ User guides provide helpful resources for using RedisVL and its different compon
 09_svs_vamana
 10_embeddings_cache
 11_advanced_queries
+12_sql_to_redis_queries
 ```
