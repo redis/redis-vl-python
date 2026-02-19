@@ -18,6 +18,13 @@ nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 class Vector(BaseModel):
     """
     Simple object containing the necessary arguments to perform a multi vector query.
+
+    Args:
+    vector: The vector values as a list of floats or bytes
+    field_name: The name of the vector field to search
+    dtype: The data type of the vector (default: "float32")
+    weight: The weight for this vector in the combined score (default: 1.0)
+    max_distance: The maximum distance for vector range search (default: 2.0, range: [0.0, 2.0])
     """
 
     vector: Union[List[float], bytes]
