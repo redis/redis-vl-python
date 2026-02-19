@@ -63,6 +63,19 @@ html[data-theme="dark"] {
     --pst-color-table-row-hover-bg: #e8e8e8 !important;
     --pst-color-secondary: #666 !important;
     --pst-color-secondary-bg: #f0f0f0 !important;
+    --pst-color-surface: #fcfcfc !important;
+}
+
+/* Code block border radius */
+div.literal-block-wrapper,
+div.highlight,
+div[class*=highlight-] {
+    border-radius: 8px !important;
+}
+
+div.literal-block-wrapper div[class*=highlight-] pre,
+pre {
+    border-radius: 8px !important;
 }
 
 /* Direct table styling override */
