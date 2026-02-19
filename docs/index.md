@@ -6,13 +6,14 @@ myst:
 html_theme.sidebar_secondary.remove: false
 ---
 
-# RedisVL
+```{image} _static/Redis_Logo_Red_RGB.svg
+:alt: Redis
+:width: 240px
+:align: center
+```
 
-**The AI-native Python client for Redis.**
-
-RedisVL is the production-ready Python client for AI applications built on Redis. Lightning-fast vector search meets enterprise-grade reliability.
-
-Build **RAG pipelines** with real-time retrieval, **AI agents** with memory and semantic routing, and **recommendation systems** with personalized search and reranking.
+<h1 style="text-align: center; margin-top: 0.5rem; margin-bottom: 0;">Redis Vector Library</h1>
+<p style="text-align: center; font-size: 1.25rem; color: #8b949e; margin-top: 0.5rem; margin-bottom: 2rem;">The AI-native Redis Python client</p>
 
 ---
 
