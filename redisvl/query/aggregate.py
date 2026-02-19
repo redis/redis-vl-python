@@ -385,9 +385,7 @@ class MultiVectorQuery(AggregationQuery):
             filter_expression = str(self._filter_expression)
 
         if filter_expression:
-            return (
-                f"({range_query}) AND ({filter_expression})"
-            )
+            return f"({range_query}) AND ({filter_expression})"
         else:
             return f"{range_query}"
 
