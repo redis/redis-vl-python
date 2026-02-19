@@ -63,62 +63,49 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', "**.ipynb_checkpoints"]
 
 # -- Options for HTML output -------------------------------------------------
 
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-html_theme = "pydata_sphinx_theme"
+# The theme to use for HTML and HTML Help pages.
+html_theme = "sphinx_book_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files=["css/custom.css", "css/sidebar.css"]
+html_css_files = ["css/custom.css"]
 html_title = "RedisVL"
-html_context = {
-   "default_mode": "dark"
-}
 html_logo = "_static/Redis_Favicon_32x32_Red.png"
 html_favicon = "_static/Redis_Favicon_32x32_Red.png"
+
 html_context = {
     "github_user": "redis",
     "github_repo": "redis-vl-python",
     "github_version": "main",
     "doc_path": "docs",
+    "default_mode": "auto",
 }
-html_sidebars = {
-    "index": ["sidebar-nav-custom"],
-    "examples/**": [],
-    "examples/index": [],
-    "**": ["sidebar-nav-bs"],
-}
-
 
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 3
 
+# Sphinx Book Theme options
 html_theme_options = {
+    "repository_url": "https://github.com/redis/redis-vl-python",
+    "use_repository_button": True,
+    "use_edit_page_button": True,
+    "use_source_button": True,
+    "use_issues_button": True,
+    "use_download_button": True,
+    "use_fullscreen_button": True,
+    "repository_branch": "main",
+    "path_to_docs": "docs",
+    "show_navbar_depth": 2,
+    "show_toc_level": 3,
+    "home_page_in_toc": True,
     "logo": {
         "text": "RedisVL",
+        "image_light": "_static/Redis_Favicon_32x32_Red.png",
         "image_dark": "_static/Redis_Logo_Red_RGB.svg",
-        "alt_text": "RedisVL",
     },
-    "use_edit_page_button": True,
-    "show_toc_level": 4,
-    "show_nav_level": 2,
-    "navigation_depth": 5,
-    "navbar_align": "content",  # [left, content, right] For testing that the navbar items align properly
-    "secondary_sidebar_items": {
-        "examples": [],
-    },
-    "navbar_start": ["navbar-logo"],
-    "icon_links": [
-        {
-            "name": "GitHub",
-            "url": "https://github.com/redis/redis-vl-python",
-            "icon": "fa-brands fa-square-github",
-            "type": "fontawesome",
-        }
-    ]
 }
 
 
