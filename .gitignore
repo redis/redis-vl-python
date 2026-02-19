@@ -231,3 +231,6 @@ tests/data
 .junie
 .undodir
 .claude/settings.local.json
+
+# Local working directory (personal scripts, docs, tools)
+local/

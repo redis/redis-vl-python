@@ -104,7 +104,7 @@ html_theme_options = {
     "logo": {
         "text": "RedisVL",
         "image_light": "_static/Redis_Favicon_32x32_Red.png",
-        "image_dark": "_static/Redis_Logo_Red_RGB.svg",
+        "image_dark": "_static/Redis_Favicon_32x32_Red.png",
     },
 }
 
