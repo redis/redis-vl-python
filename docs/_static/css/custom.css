@@ -7,22 +7,43 @@
     display: flex !important;
 }
 
-/* Sidebar navigation hover styles - gray background only */
-.bd-sidebar-primary .toctree-l1 > a:hover,
-.bd-sidebar-primary .toctree-l2 > a:hover,
-.bd-sidebar-primary .toctree-l3 > a:hover,
-.bd-sidebar-primary nav.bd-links a:hover {
+/* Sidebar navigation hover styles - gray background only (light mode) */
+html[data-theme="light"] .bd-sidebar-primary .toctree-l1 > a:hover,
+html[data-theme="light"] .bd-sidebar-primary .toctree-l2 > a:hover,
+html[data-theme="light"] .bd-sidebar-primary .toctree-l3 > a:hover,
+html[data-theme="light"] .bd-sidebar-primary nav.bd-links a:hover {
     background-color: rgba(0, 0, 0, 0.04) !important;
     border-radius: 8px !important;
     color: inherit !important;
     text-decoration: none !important;
 }
 
-/* Active/current page styling */
-.bd-sidebar-primary .toctree-l1.current.active > a,
-.bd-sidebar-primary .toctree-l2.current > a,
-.bd-sidebar-primary li.current.active > a.reference.internal {
+/* Sidebar navigation hover styles (dark mode) */
+html[data-theme="dark"] .bd-sidebar-primary .toctree-l1 > a:hover,
+html[data-theme="dark"] .bd-sidebar-primary .toctree-l2 > a:hover,
+html[data-theme="dark"] .bd-sidebar-primary .toctree-l3 > a:hover,
+html[data-theme="dark"] .bd-sidebar-primary nav.bd-links a:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border-radius: 8px !important;
+    color: inherit !important;
+    text-decoration: none !important;
+}
+
+/* Active/current page styling (light mode) */
+html[data-theme="light"] .bd-sidebar-primary .toctree-l1.current.active > a,
+html[data-theme="light"] .bd-sidebar-primary .toctree-l2.current > a,
+html[data-theme="light"] .bd-sidebar-primary li.current.active > a.reference.internal {
     background-color: rgba(0, 0, 0, 0.06) !important;
+    border-radius: 8px !important;
+    border-left: none !important;
+    color: inherit !important;
+}
+
+/* Active/current page styling (dark mode) */
+html[data-theme="dark"] .bd-sidebar-primary .toctree-l1.current.active > a,
+html[data-theme="dark"] .bd-sidebar-primary .toctree-l2.current > a,
+html[data-theme="dark"] .bd-sidebar-primary li.current.active > a.reference.internal {
+    background-color: rgba(255, 255, 255, 0.1) !important;
     border-radius: 8px !important;
     border-left: none !important;
     color: inherit !important;
@@ -52,11 +73,10 @@ nav.bd-links .current > a:focus-visible {
     font-weight: inherit !important;
 }
 
-/* Override table row colors to use gray instead of purple */
+/* Light mode color overrides */
 :root,
 html:not([data-theme]),
-html[data-theme="light"],
-html[data-theme="dark"] {
+html[data-theme="light"] {
     --pst-color-table-row-zebra-high-bg: #fff !important;
     --pst-color-table-row-zebra-low-bg: #f5f5f5 !important;
     --pst-color-table-heading-bg: #f0f0f0 !important;
@@ -64,17 +84,32 @@ html[data-theme="dark"] {
     --pst-color-secondary: #666 !important;
     --pst-color-secondary-bg: #f0f0f0 !important;
     --pst-color-surface: #fcfcfc !important;
-    /* Muted text - medium gray */
     --pst-color-text-muted: #6e6e80 !important;
-    /* Inline code - muted red, darkened for WCAG AA (5.1:1 contrast) */
     --pst-color-inline-code: #9a4a4a !important;
-    /* Blockquote notch - gray */
     --pst-color-blockquote-notch: #6e6e80 !important;
 }
 
-/* Class/function names in API docs - blue */
-.sig-name {
+/* Dark mode color overrides */
+html[data-theme="dark"] {
+    --pst-color-table-row-zebra-high-bg: #1e1e1e !important;
+    --pst-color-table-row-zebra-low-bg: #2a2a2a !important;
+    --pst-color-table-heading-bg: #333 !important;
+    --pst-color-table-row-hover-bg: #3a3a3a !important;
+    --pst-color-secondary: #aaa !important;
+    --pst-color-secondary-bg: #333 !important;
+    --pst-color-surface: #1e1e1e !important;
+    --pst-color-text-muted: #9ca4af !important;
+    --pst-color-inline-code: #e8a0a0 !important;
+    --pst-color-blockquote-notch: #9ca4af !important;
+}
+
+/* Class/function names in API docs */
+html[data-theme="light"] .sig-name {
     color: #005B82 !important;
+}
+
+html[data-theme="dark"] .sig-name {
+    color: #6db3d0 !important;
 }
 
 /* Syntax highlighting - literals/numbers use blue-brown for color blindness accessibility */
@@ -104,22 +139,40 @@ pre {
     border-radius: 8px !important;
 }
 
-/* Direct table styling override */
-.table tbody tr:nth-child(odd) {
+/* Direct table styling override (light mode) */
+html[data-theme="light"] .table tbody tr:nth-child(odd) {
     background-color: #f5f5f5 !important;
 }
 
-.table tbody tr:nth-child(2n) {
+html[data-theme="light"] .table tbody tr:nth-child(2n) {
     background-color: #fff !important;
 }
 
-.table thead tr {
+html[data-theme="light"] .table thead tr {
     background-color: #f0f0f0 !important;
     border-bottom: 2px solid #ccc !important;
 }
 
-.table tbody tr:hover {
+html[data-theme="light"] .table tbody tr:hover {
     background-color: #e8e8e8 !important;
+}
+
+/* Direct table styling override (dark mode) */
+html[data-theme="dark"] .table tbody tr:nth-child(odd) {
+    background-color: #2a2a2a !important;
+}
+
+html[data-theme="dark"] .table tbody tr:nth-child(2n) {
+    background-color: #1e1e1e !important;
+}
+
+html[data-theme="dark"] .table thead tr {
+    background-color: #333 !important;
+    border-bottom: 2px solid #555 !important;
+}
+
+html[data-theme="dark"] .table tbody tr:hover {
+    background-color: #3a3a3a !important;
 }
 
 /* Right sidebar TOC active item - Redis red */
