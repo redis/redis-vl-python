@@ -51,3 +51,34 @@ nav.bd-links .current > a:focus-visible {
     color: inherit !important;
     font-weight: inherit !important;
 }
+
+/* Override table row colors to use gray instead of purple */
+:root,
+html:not([data-theme]),
+html[data-theme="light"],
+html[data-theme="dark"] {
+    --pst-color-table-row-zebra-high-bg: #fff !important;
+    --pst-color-table-row-zebra-low-bg: #f5f5f5 !important;
+    --pst-color-table-heading-bg: #f0f0f0 !important;
+    --pst-color-table-row-hover-bg: #e8e8e8 !important;
+    --pst-color-secondary: #666 !important;
+    --pst-color-secondary-bg: #f0f0f0 !important;
+}
+
+/* Direct table styling override */
+.table tbody tr:nth-child(odd) {
+    background-color: #f5f5f5 !important;
+}
+
+.table tbody tr:nth-child(2n) {
+    background-color: #fff !important;
+}
+
+.table thead tr {
+    background-color: #f0f0f0 !important;
+    border-bottom: 2px solid #ccc !important;
+}
+
+.table tbody tr:hover {
+    background-color: #e8e8e8 !important;
+}
