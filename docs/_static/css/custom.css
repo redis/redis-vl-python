@@ -95,3 +95,17 @@ pre {
 .table tbody tr:hover {
     background-color: #e8e8e8 !important;
 }
+
+/* Right sidebar TOC active item - Redis red */
+.toc-entry a.nav-link.active {
+    box-shadow: inset 1px 0 0 #DC382D !important;
+    color: #DC382D !important;
+    font-weight: normal !important;
+}
+
+/* Right sidebar TOC hover - no underline, subtle color change */
+.toc-entry a.nav-link:hover,
+.toc-entry a.nav-link.active:hover {
+    text-decoration: none !important;
+    color: #DC382D !important;
+}
