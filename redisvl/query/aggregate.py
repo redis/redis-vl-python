@@ -40,7 +40,7 @@ class Vector(BaseModel):
     @field_validator("max_distance")
     @classmethod
     def validate_max_distance(cls, max_distance: float) -> float:
-        if not isinstance(max_distance, float) or isinstance(max_distance, int):
+        if not isinstance(max_distance, (float, int)):
             raise ValueError("max_distance must be a value between 0.0 and 2.0")
         if max_distance < 0.0 or max_distance > 2.0:
             raise ValueError("max_distance must be a value between 0.0 and 2.0")
