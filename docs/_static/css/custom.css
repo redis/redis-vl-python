@@ -64,6 +64,32 @@ html[data-theme="dark"] {
     --pst-color-secondary: #666 !important;
     --pst-color-secondary-bg: #f0f0f0 !important;
     --pst-color-surface: #fcfcfc !important;
+    /* Muted text - medium gray */
+    --pst-color-text-muted: #6e6e80 !important;
+    /* Inline code - muted red, darkened for WCAG AA (5.1:1 contrast) */
+    --pst-color-inline-code: #9a4a4a !important;
+    /* Blockquote notch - gray */
+    --pst-color-blockquote-notch: #6e6e80 !important;
+}
+
+/* Class/function names in API docs - blue */
+.sig-name {
+    color: #005B82 !important;
+}
+
+/* Syntax highlighting - literals/numbers use blue-brown for color blindness accessibility */
+/* Prevents green/brown confusion for protanopia/deuteranopia */
+html[data-theme="light"] .highlight .l,
+html[data-theme="light"] .highlight .m,
+html[data-theme="light"] .highlight .mb,
+html[data-theme="light"] .highlight .mf,
+html[data-theme="light"] .highlight .mh,
+html[data-theme="light"] .highlight .mi,
+html[data-theme="light"] .highlight .mo,
+html[data-theme="light"] .highlight .il,
+html[data-theme="light"] .highlight .ld,
+html[data-theme="light"] .highlight .kt {
+    color: #6B5B3D !important;
 }
 
 /* Code block border radius */
