@@ -102,7 +102,7 @@ html_theme_options = {
     "show_toc_level": 3,
     "home_page_in_toc": True,
     "logo": {
-        "text": "RedisVL",
+        "text": "Redis Vector Library",
         "image_light": "_static/Redis_Favicon_32x32_Red.png",
         "image_dark": "_static/Redis_Favicon_32x32_Red.png",
     },

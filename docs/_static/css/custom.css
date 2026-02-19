@@ -6,3 +6,48 @@
 .bd-sidebar-primary.hide-on-wide {
     display: flex !important;
 }
+
+/* Sidebar navigation hover styles - gray background only */
+.bd-sidebar-primary .toctree-l1 > a:hover,
+.bd-sidebar-primary .toctree-l2 > a:hover,
+.bd-sidebar-primary .toctree-l3 > a:hover,
+.bd-sidebar-primary nav.bd-links a:hover {
+    background-color: rgba(0, 0, 0, 0.04) !important;
+    border-radius: 8px !important;
+    color: inherit !important;
+    text-decoration: none !important;
+}
+
+/* Active/current page styling */
+.bd-sidebar-primary .toctree-l1.current.active > a,
+.bd-sidebar-primary .toctree-l2.current > a,
+.bd-sidebar-primary li.current.active > a.reference.internal {
+    background-color: rgba(0, 0, 0, 0.06) !important;
+    border-radius: 8px !important;
+    border-left: none !important;
+    color: inherit !important;
+}
+
+/* Override default link colors in sidebar */
+.bd-sidebar-primary nav.bd-links a,
+.bd-sidebar-primary nav.bd-links a:visited,
+.bd-sidebar-primary nav.bd-links a:active,
+.bd-sidebar-primary nav.bd-links a:focus {
+    color: var(--pst-color-text-base) !important;
+    text-decoration: none !important;
+    border-left: none !important;
+}
+
+.bd-sidebar-primary nav.bd-links a:hover {
+    color: var(--pst-color-text-base) !important;
+    text-decoration: none !important;
+}
+
+/* Remove blue left border (box-shadow) from expanded/active sections */
+nav.bd-links .current > a,
+nav.bd-links .current > a:focus-visible {
+    box-shadow: none !important;
+    border-left: none !important;
+    color: inherit !important;
+    font-weight: inherit !important;
+}
