@@ -329,7 +329,11 @@ class MultiVectorQuery(AggregationQuery):
 
         # calculate the respective vector similarities
         for i in range(len(self._vectors)):
-            self.apply(**{f"score_{i}": f"(2 - @distance_{i})/2"})
+            self.apply(
+                **{
+                    f"score_{i}": f"case(exists(@distance_{i}), (2 - @distance_{i})/2, 0)"
+                }
+            )
 
         # construct the scoring string based on the vector similarity scores and weights
         combined_scores = []
