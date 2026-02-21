@@ -1,7 +1,7 @@
 import warnings
 from typing import Any, Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 from typing_extensions import Self
 
@@ -18,12 +18,20 @@ nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 class Vector(BaseModel):
     """
     Simple object containing the necessary arguments to perform a multi vector query.
+
+    Args:
+    vector: The vector values as a list of floats or bytes
+    field_name: The name of the vector field to search
+    dtype: The data type of the vector (default: "float32")
+    weight: The weight for this vector in the combined score (default: 1.0)
+    max_distance: The maximum distance for vector range search (default: 2.0, range: [0.0, 2.0])
     """
 
     vector: Union[List[float], bytes]
     field_name: str
     dtype: str = "float32"
     weight: float = 1.0
+    max_distance: float = Field(default=2.0, ge=0.0, le=2.0)
 
     @field_validator("dtype")
     @classmethod
@@ -35,6 +43,15 @@ class Vector(BaseModel):
                 f"Invalid data type: {dtype}. Supported types are: {[t.lower() for t in VectorDataType]}"
             )
         return dtype
+
+    @field_validator("max_distance")
+    @classmethod
+    def validate_max_distance(cls, max_distance: float) -> float:
+        if not isinstance(max_distance, (float, int)):
+            raise ValueError("max_distance must be a value between 0.0 and 2.0")
+        if max_distance < 0.0 or max_distance > 2.0:
+            raise ValueError("max_distance must be a value between 0.0 and 2.0")
+        return max_distance
 
     @model_validator(mode="after")
     def validate_vector(self) -> Self:
@@ -361,14 +378,14 @@ class MultiVectorQuery(AggregationQuery):
 
         # base KNN query
         range_queries = []
-        for i, (vector, field) in enumerate(
-            [(v.vector, v.field_name) for v in self._vectors]
+        for i, (vector, field, max_dist) in enumerate(
+            [(v.vector, v.field_name, v.max_distance) for v in self._vectors]
         ):
             range_queries.append(
-                f"@{field}:[VECTOR_RANGE 2.0 $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
+                f"@{field}:[VECTOR_RANGE {max_dist} $vector_{i}]=>{{$YIELD_DISTANCE_AS: distance_{i}}}"
             )
 
-        range_query = " | ".join(range_queries)
+        range_query = " AND ".join(range_queries)
 
         filter_expression = self._filter_expression
         if isinstance(self._filter_expression, FilterExpression):

@@ -675,6 +675,63 @@ def test_multivector_query_datatypes(index):
         )  # allow for small floating point error
 
 
+# paramatrized format is ((max_distance_1, max_distance_2), expected_num_results)
+@pytest.mark.parametrize(
+    "distances_and_results",
+    [
+        [(0.2, 0.2), 0],
+        [(0.9, 0.2), 0],
+        [(0.35, 0.5), 1],
+        [(0.2, 0.9), 2],
+        [(0.3, 1.0), 3],
+        [(1.3, 1.9), 6],
+    ],
+)
+def test_multivector_query_max_distances(index, distances_and_results):
+    skip_if_redis_version_below(index.client, "7.2.0")
+
+    vector_vals = [[0.1, 0.2, 0.5], [1.2, 0.3, -0.4, 0.7, 0.2]]
+    vector_fields = ["user_embedding", "image_embedding"]
+    distances, num_results = distances_and_results
+    return_fields = [
+        "distance_0",
+        "distance_1",
+        "score_0",
+        "score_1",
+        "user_embedding",
+        "image_embedding",
+    ]
+
+    vectors = []
+    for vector, field, distance in zip(vector_vals, vector_fields, distances):
+        vectors.append(Vector(vector=vector, field_name=field, max_distance=distance))
+
+    multi_query = MultiVectorQuery(
+        vectors=vectors,
+        return_fields=return_fields,
+        num_results=10,
+    )
+    results = index.query(multi_query)
+
+    # verify we get the right number of total results
+    assert len(results) == num_results
+
+    # verify we're filtering vectors based on max_distances
+    for i in range(len(results)):
+        assert float(results[i]["distance_0"]) <= distances[0]
+        assert float(results[i]["distance_1"]) <= distances[1]
+
+    # check we're indeed filtering on both distances and not just the lesser of the two
+    if results:
+        first_distances = [float(result["distance_0"]) for result in results]
+        second_distances = [float(result["distance_1"]) for result in results]
+
+        # this test only applies for our specific test case values
+        assert (max(first_distances) > distances[1]) or (
+            max(second_distances) > distances[0]
+        )
+
+
 def test_multivector_query_mixed_index(index):
     # test that we can do multi vector queries on indices with both a 'flat' and 'hnsw' index
     skip_if_redis_version_below(index.client, "7.2.0")
