@@ -31,7 +31,7 @@ class Vector(BaseModel):
     field_name: str
     dtype: str = "float32"
     weight: float = 1.0
-    max_distance: float = 2.0
+    max_distance: float = Field(default=2.0, ge=0.0, le=2.0)
 
     @field_validator("dtype")
     @classmethod
