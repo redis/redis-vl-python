@@ -1,7 +1,7 @@
 import warnings
 from typing import Any, Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
 from typing_extensions import Self
 
