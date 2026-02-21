@@ -8,14 +8,14 @@ install: ## Install the project and all dependencies
 	@echo "🚀 Installing project dependencies with uv"
 	uv sync --all-extras
 
-redis-start: ## Start Redis Stack in Docker
-	@echo "🐳 Starting Redis Stack"
-	docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+redis-start: ## Start Redis in Docker
+	@echo "🐳 Starting Redis"
+	docker run -d --name redis -p 6379:6379 redis:latest
 
-redis-stop: ## Stop Redis Stack Docker container
-	@echo "🛑 Stopping Redis Stack"
-	docker stop redis-stack || true
-	docker rm redis-stack || true
+redis-stop: ## Stop Redis Docker container
+	@echo "🛑 Stopping Redis"
+	docker stop redis || true
+	docker rm redis || true
 
 format: ## Format code with isort and black
 	@echo "🎨 Formatting code"

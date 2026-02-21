@@ -64,15 +64,15 @@ Choose from multiple Redis deployment options:
 </details>
 
 <details>
-<summary><b>Redis Stack</b> - Docker image for development</summary>
+<summary><b>Docker</b> - Local development</summary>
 
-Run Redis Stack locally using Docker:
+Run Redis locally using Docker:
 
 ```bash
-docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+docker run -d --name redis -p 6379:6379 redis:latest
 ```
 
-This includes Redis with vector search capabilities and Redis Insight GUI.
+This runs Redis 8+ with built-in vector search capabilities.
 
 </details>
 
