@@ -15,6 +15,32 @@ SemanticCache
    :inherited-members:
 
 
+Cache Schema Classes
+====================
+
+CacheEntry
+----------
+
+.. _cache_entry_api:
+
+.. currentmodule:: redisvl.extensions.cache.llm.schema
+
+.. autoclass:: CacheEntry
+   :members:
+   :show-inheritance:
+
+CacheHit
+--------
+
+.. _cache_hit_api:
+
+.. currentmodule:: redisvl.extensions.cache.llm.schema
+
+.. autoclass:: CacheHit
+   :members:
+   :show-inheritance:
+
+
 ****************
 Embeddings Cache
 ****************
