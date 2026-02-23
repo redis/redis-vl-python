@@ -54,20 +54,20 @@ Understand how RedisVL works. Architecture, search fundamentals, and extension p
 Step-by-step tutorials. Installation, getting started, and deep dives on every feature.
 :::
 
-:::{grid-item-card} 📚 API Reference
-:link: api/index
-:link-type: doc
-:class-card: sd-shadow-sm
-
-Complete API documentation. Classes, methods, parameters, and examples.
-:::
-
 :::{grid-item-card} 💡 Examples
 :link: examples/index
 :link-type: doc
 :class-card: sd-shadow-sm
 
 Real-world applications. RAG pipelines, chatbots, recommendation systems, and more.
+:::
+
+:::{grid-item-card} 📚 API Reference
+:link: api/index
+:link-type: doc
+:class-card: sd-shadow-sm
+
+Complete API documentation. Classes, methods, parameters, and examples.
 :::
 
 ::::
@@ -78,7 +78,7 @@ Real-world applications. RAG pipelines, chatbots, recommendation systems, and mo
 
 Concepts <concepts/index>
 User Guides <user_guide/index>
-API <api/index>
 Examples <examples/index>
+API <api/index>
 Changelog <https://github.com/redis/redis-vl-python/releases>
 ```
