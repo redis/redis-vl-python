@@ -1,12 +1,37 @@
-- title: Arxiv Paper Search
-  website: https://github.com/redis-developer/redis-arxiv-search
-- title: eCommerce Search
-  website: https://github.com/redis-developer/redis-product-search
-- title: Real-Time Embeddings with Redis and Bytewax
-  website: https://github.com/awmatheson/real-time-embeddings
+# RAG & Search Demos
 - title: Redis RAG Workbench
   website: https://github.com/redis-developer/redis-rag-workbench
-- title: LLM Recommender for Hotels
-  website: https://github.com/redis-developer/LLM-Recommender
+- title: Arxiv Paper Search
+  website: https://github.com/redis-developer/redis-arxiv-search
+- title: ArxivChatGuru
+  website: https://github.com/redis-developer/ArxivChatGuru
+- title: eCommerce Search
+  website: https://github.com/redis-developer/redis-product-search
+- title: Redis Movies Searcher (Java)
+  website: https://github.com/redis-developer/redis-movies-searcher
+
+# Agent Demos
 - title: Agentic RAG
   website: https://github.com/redis-developer/agentic-rag
+- title: Shopping AI Agent
+  website: https://github.com/redis-developer/shopping-ai-agent-langgraph-js-demo
+- title: Restaurant Discovery AI Agent
+  website: https://github.com/redis-developer/restaurant-discovery-ai-agent-demo
+- title: Podcast Chatbot with Agent Memory
+  website: https://github.com/redis-developer/podcast-chatbot-with-agent-memory-azure-demo
+- title: Car Dealership Assistant
+  website: https://github.com/redis-developer/dealership-chatbot-agent-memory-demo
+- title: Multi-Agent Text Adventure Game
+  website: https://github.com/redis-developer/multi-agent-ai-text-adventure-game-with-agent-memory-langgraph-js-azure
+- title: Memory-Aware Alexa Assistant
+  website: https://github.com/redis-developer/my-jarvis-alexa-skill
+
+# Specialized Demos
+- title: Virtual Banking Assistant
+  website: https://github.com/redis-developer/banking-agent-semantic-routing-demo
+- title: LLM Recommender for Hotels
+  website: https://github.com/redis-developer/LLM-Recommender
+- title: Real-Time Embeddings with Bytewax
+  website: https://github.com/awmatheson/real-time-embeddings
+- title: Redis VSS Streamlit Demo
+  website: https://github.com/antonum/Redis-VSS-Streamlit
