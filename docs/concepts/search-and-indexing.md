@@ -65,6 +65,39 @@ Redis offers two storage formats for documents.
 
 The choice affects how you structure data and how you reference fields in schemas. Hash is simpler; JSON is more flexible.
 
+## Index Lifecycle
+
+Indexes have a straightforward lifecycle: create, use, and eventually delete.
+
+**Creating an index** registers the schema with Redis. The `create()` method sends the schema definition to Redis, which builds the necessary data structures. If an index with the same name exists, you can choose to overwrite it (optionally dropping existing data) or raise an error.
+
+**Checking existence** with `exists()` tells you whether an index is registered in Redis. This is useful before creating (to avoid errors) or before querying (to ensure the index is ready).
+
+**Connecting to existing indexes** is possible with `from_existing()`. If an index was created elsewhere—by another application, a previous deployment, or the CLI—you can connect to it by name. RedisVL fetches the index metadata from Redis and reconstructs the schema automatically.
+
+```python
+# Connect to an index that already exists in Redis
+index = SearchIndex.from_existing("my-index", redis_url="redis://localhost:6379")
+```
+
+**Deleting an index** with `delete()` removes the index definition from Redis. By default, this also deletes all documents associated with the index. Pass `drop=False` to keep the documents while removing only the index structure.
+
+**Clearing data** with `clear()` removes all documents from the index without deleting the index itself. The schema remains intact, ready for new data.
+
+## Data Validation
+
+RedisVL can validate data against your schema before loading it to Redis. This catches type mismatches, missing required fields, and invalid values early—before they cause problems in production.
+
+Enable validation by setting `validate_on_load=True` when creating the index:
+
+```python
+index = SearchIndex.from_dict(schema, redis_url="redis://localhost:6379", validate_on_load=True)
+```
+
+When validation is enabled, each object is checked against the schema during `load()`. If validation fails, a `SchemaValidationError` is raised with details about which field failed and why.
+
+Validation adds overhead, so it's typically enabled during development and testing, then disabled in production once you're confident in your data pipeline.
+
 ## Schema Evolution
 
 Redis doesn't support modifying an existing index schema. Once an index is created, its field definitions are fixed.
