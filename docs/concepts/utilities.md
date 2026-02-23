@@ -35,7 +35,7 @@ Vectorizers handle batching internally, breaking large batches into provider-app
 
 ### Supported Providers
 
-RedisVL includes vectorizers for OpenAI, Azure OpenAI, Cohere, HuggingFace (local), Mistral, Google Vertex AI, AWS Bedrock, and VoyageAI. You can also create custom vectorizers that wrap any embedding function.
+RedisVL includes vectorizers for OpenAI, Azure OpenAI, Cohere, HuggingFace (local), Mistral, Google Vertex AI, AWS Bedrock, VoyageAI, and others. See the {doc}`/api/vectorizer` for the complete list. You can also create custom vectorizers that wrap any embedding function.
 
 ## Rerankers
 
