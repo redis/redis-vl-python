@@ -67,5 +67,7 @@ Each extension manages its own Redis index internally. You interact with a clean
 
 ---
 
+**Related concepts:** {doc}`search-and-indexing` covers schemas and field types in detail. {doc}`queries` explains the different query types available.
+
 **Learn more:** {doc}`/user_guide/01_getting_started` covers the core workflow. {doc}`extensions` explains each extension pattern in detail.
 

@@ -75,5 +75,7 @@ Planning your schema carefully upfront reduces the need for migrations, but the 
 
 ---
 
+**Related concepts:** {doc}`field-attributes` explains how to configure field options like `sortable` and `index_missing`. {doc}`queries` covers the different query types available.
+
 **Learn more:** {doc}`/user_guide/01_getting_started` walks through building your first index. {doc}`/user_guide/05_hash_vs_json` compares storage options in depth. {doc}`/user_guide/02_complex_filtering` covers query composition.
 

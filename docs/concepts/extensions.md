@@ -51,6 +51,10 @@ The embeddings cache can wrap any {doc}`vectorizer </concepts/utilities>`, addin
 
 LLMs are stateless. To have a conversation, you must include previous messages in each prompt. Message history manages this context, storing conversation turns and retrieving them when building prompts.
 
+```{note}
+`SessionManager` and `SemanticSessionManager` have been renamed to `MessageHistory` and `SemanticMessageHistory`. The old names are deprecated and will be removed in a future release.
+```
+
 ### Storage Model
 
 Each message includes a role (user, assistant, system, or tool), the message content, a timestamp, and a session identifier. The session tag groups messages into conversations—you might have one session per user, per chat thread, or per agent instance.
@@ -88,3 +92,7 @@ If no route matches (all distances exceed their thresholds), the router returns 
 Semantic routing is useful for intent classification (determining what a user wants), topic detection (categorizing content), guardrails (detecting and blocking certain query types), and agent dispatch (sending queries to specialized sub-agents).
 
 **Learn more:** {doc}`/user_guide/08_semantic_router` walks through routing setup in detail.
+
+---
+
+**Related concepts:** {doc}`queries` explains the query types used internally by extensions. {doc}`utilities` covers vectorizers used for embedding.

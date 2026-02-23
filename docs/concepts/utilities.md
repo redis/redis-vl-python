@@ -69,5 +69,7 @@ This pattern separates recall (finding everything potentially relevant) from pre
 
 ---
 
+**Related concepts:** {doc}`queries` explains how to use embeddings in vector search queries. {doc}`search-and-indexing` covers schema configuration for vector fields.
+
 **Learn more:** {doc}`/user_guide/04_vectorizers` covers embedding providers. {doc}`/user_guide/06_rerankers` explains reranking in practice.
 
