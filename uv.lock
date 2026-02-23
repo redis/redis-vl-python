@@ -4788,6 +4788,23 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "boto3" },
+    { name = "cohere" },
+    { name = "google-cloud-aiplatform" },
+    { name = "langcache" },
+    { name = "mistralai" },
+    { name = "nltk" },
+    { name = "openai" },
+    { name = "pillow", version = "11.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "pillow", version = "12.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "protobuf" },
+    { name = "sentence-transformers" },
+    { name = "sql-redis" },
+    { name = "urllib3", version = "1.26.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "urllib3", version = "2.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "voyageai" },
+]
 bedrock = [
     { name = "boto3" },
     { name = "urllib3", version = "1.26.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -4857,29 +4874,42 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", marker = "extra == 'all'", specifier = ">=1.36.0,<2" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.36.0,<2" },
+    { name = "cohere", marker = "extra == 'all'", specifier = ">=4.44" },
     { name = "cohere", marker = "extra == 'cohere'", specifier = ">=4.44" },
+    { name = "google-cloud-aiplatform", marker = "extra == 'all'", specifier = ">=1.26,<2.0.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertexai'", specifier = ">=1.26,<2.0.0" },
     { name = "jsonpath-ng", specifier = ">=1.5.0" },
+    { name = "langcache", marker = "extra == 'all'", specifier = ">=0.11.0" },
     { name = "langcache", marker = "extra == 'langcache'", specifier = ">=0.11.0" },
+    { name = "mistralai", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "mistralai", marker = "extra == 'mistralai'", specifier = ">=1.0.0" },
     { name = "ml-dtypes", specifier = ">=0.4.0,<1.0.0" },
+    { name = "nltk", marker = "extra == 'all'", specifier = ">=3.8.1,<4" },
     { name = "nltk", marker = "extra == 'nltk'", specifier = ">=3.8.1,<4" },
     { name = "numpy", specifier = ">=1.26.0,<3" },
+    { name = "openai", marker = "extra == 'all'", specifier = ">=1.1.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.1.0" },
+    { name = "pillow", marker = "extra == 'all'", specifier = ">=11.3.0" },
     { name = "pillow", marker = "extra == 'pillow'", specifier = ">=11.3.0" },
+    { name = "protobuf", marker = "extra == 'all'", specifier = ">=5.28.0,<6.0.0" },
     { name = "protobuf", marker = "extra == 'vertexai'", specifier = ">=5.28.0,<6.0.0" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "python-ulid", specifier = ">=3.0.0" },
     { name = "pyyaml", specifier = ">=5.4,<7.0" },
     { name = "redis", specifier = ">=5.0,<7.2" },
+    { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3.4.0,<4" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
+    { name = "sql-redis", marker = "extra == 'all'", specifier = ">=0.1.1" },
     { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.1.1" },
     { name = "tenacity", specifier = ">=8.2.2" },
+    { name = "urllib3", marker = "extra == 'all'", specifier = "<2.2.0" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
+    { name = "voyageai", marker = "extra == 'all'", specifier = ">=0.2.2" },
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
 ]
-provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis"]
+provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis", "all"]
 
 [package.metadata.requires-dev]
 dev = [

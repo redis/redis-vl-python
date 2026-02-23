@@ -17,24 +17,40 @@ Install `redisvl` into your Python (>=3.9) environment using `pip`:
 $ pip install -U redisvl
 ```
 
-RedisVL comes with a few dependencies that are automatically installed, however, a few dependencies
-are optional and can be installed separately if needed:
+RedisVL comes with a few dependencies that are automatically installed, however, several optional
+dependencies can be installed separately based on your needs:
 
 ```bash
-$ pip install redisvl[all]  # install vectorizer dependencies
-$ pip install redisvl[dev]  # install dev dependencies
+# Vectorizer providers
+$ pip install redisvl[openai]              # OpenAI embeddings
+$ pip install redisvl[cohere]              # Cohere embeddings and reranking
+$ pip install redisvl[mistralai]           # Mistral AI embeddings
+$ pip install redisvl[voyageai]            # Voyage AI embeddings and reranking
+$ pip install redisvl[sentence-transformers]  # HuggingFace local embeddings
+$ pip install redisvl[vertexai]            # Google Vertex AI embeddings
+$ pip install redisvl[bedrock]             # AWS Bedrock embeddings
+
+# Other optional features
+$ pip install redisvl[langcache]           # LangCache managed service integration
+$ pip install redisvl[sql-redis]           # SQL query support
 ```
 
 If you use ZSH, remember to escape the brackets:
 
 ```bash
-$ pip install redisvl\[all\]
+$ pip install redisvl\[openai\]
 ```
 
-This library supports the use of hiredis, so you can also install by running:
+You can install multiple optional dependencies at once:
 
 ```bash
-pip install redisvl[hiredis]
+$ pip install redisvl[openai,cohere,sentence-transformers]
+```
+
+To install **all** optional dependencies at once:
+
+```bash
+$ pip install redisvl[all]
 ```
 
 ## Install RedisVL from Source
@@ -42,11 +58,64 @@ pip install redisvl[hiredis]
 To install RedisVL from source, clone the repository and install the package using `pip`:
 
 ```bash
-$ git clone https://github.com/redis/redis-vl-python.git && cd redisvl
+$ git clone https://github.com/redis/redis-vl-python.git && cd redis-vl-python
 $ pip install .
 
 # or for an editable installation (for developers of RedisVL)
 $ pip install -e .
+```
+
+## Development Installation
+
+For contributors who want to develop RedisVL, we recommend using [uv](https://docs.astral.sh/uv/) for dependency management:
+
+```bash
+# Clone the repository
+$ git clone https://github.com/redis/redis-vl-python.git && cd redis-vl-python
+
+# Install uv if you don't have it
+$ pip install uv
+
+# Install all dependencies (including dev and docs)
+$ uv sync
+
+# Or use make
+$ make install
+```
+
+This installs the package in editable mode along with all development dependencies (testing, linting, type checking) and documentation dependencies.
+
+### Running Tests and Linting
+
+```bash
+# Run tests (no external APIs required)
+$ make test
+
+# Run all tests (includes API-dependent tests)
+$ make test-all
+
+# Format code
+$ make format
+
+# Run type checking
+$ make check-types
+
+# Run full check (lint + test)
+$ make check
+```
+
+### Pre-commit Hooks
+
+We use pre-commit hooks to ensure code quality. Install them with:
+
+```bash
+$ pre-commit install
+```
+
+Run hooks manually on all files:
+
+```bash
+$ pre-commit run --all-files
 ```
 
 ## Installing Redis
