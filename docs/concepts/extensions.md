@@ -31,6 +31,8 @@ Too strict, and you miss valid cache hits. Too loose, and you return wrong answe
 
 In applications serving multiple users or contexts, you often want separate cache spaces. Filters let you scope cache lookups—for example, caching per-user or per-conversation so one user's cached answers don't leak to another.
 
+**Learn more:** {doc}`/user_guide/03_llmcache` covers semantic caching in detail.
+
 ## Embeddings Cache
 
 Embedding APIs have per-token costs, and computing the same embedding repeatedly wastes money. The embeddings cache stores computed embeddings and returns them on subsequent requests for the same content.
@@ -43,7 +45,7 @@ This is useful when the same content is embedded multiple times—common in appl
 
 ### Wrapping Vectorizers
 
-The embeddings cache can wrap any vectorizer, adding transparent caching. Calling the wrapped vectorizer checks the cache first. This requires no changes to your embedding code—just wrap the vectorizer and caching happens automatically.
+The embeddings cache can wrap any {doc}`vectorizer </concepts/utilities>`, adding transparent caching. Calling the wrapped vectorizer checks the cache first. This requires no changes to your embedding code—just wrap the vectorizer and caching happens automatically.
 
 ## Message History
 
@@ -62,6 +64,8 @@ Semantic message history adds vector search. Messages are embedded, and you can 
 ### Session Isolation
 
 Session tags are critical for multi-user applications. Each user's conversation should be isolated, so retrieving context for User A doesn't include messages from User B. The session tag provides this isolation, and you can structure sessions however makes sense—per-user, per-thread, per-agent, or any other grouping.
+
+**Learn more:** {doc}`/user_guide/07_message_history` explains conversation management in detail.
 
 ## Semantic Router
 
@@ -83,7 +87,4 @@ If no route matches (all distances exceed their thresholds), the router returns 
 
 Semantic routing is useful for intent classification (determining what a user wants), topic detection (categorizing content), guardrails (detecting and blocking certain query types), and agent dispatch (sending queries to specialized sub-agents).
 
----
-
-**Learn more:** {doc}`/user_guide/03_llmcache` covers semantic caching. {doc}`/user_guide/07_message_history` explains conversation management. {doc}`/user_guide/08_semantic_router` walks through routing setup.
-
+**Learn more:** {doc}`/user_guide/08_semantic_router` walks through routing setup in detail.
