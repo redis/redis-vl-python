@@ -103,6 +103,7 @@ html_theme_options = {
     "repository_branch": "main",
     "path_to_docs": "docs",
     "show_navbar_depth": 2,
+    "navigation_depth": 4,
     "show_toc_level": 3,
     "home_page_in_toc": True,
     "logo": {
