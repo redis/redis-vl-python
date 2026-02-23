@@ -53,7 +53,7 @@ $ pip install -e .
 
 RedisVL requires a distribution of Redis that supports the [Search and Query](https://redis.com/modules/redis-search/) capability. There are several options:
 
-1. [Redis Cloud](https://redis.io/cloud), a fully managed cloud offering
+1. [Redis Cloud](https://redis.io/cloud), a fully managed cloud offering with a free tier
 2. [Redis 8+ (Docker)](https://redis.io/downloads/), for local development and testing
 3. [Redis Enterprise](https://redis.com/redis-enterprise/), a commercial self-hosted option
 
