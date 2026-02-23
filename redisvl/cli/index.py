@@ -56,10 +56,11 @@ class Index:
             rvl index create -i <index_name> | -s <schema_path>
         """
         if not args.schema:
-            logger.error("Schema must be provided to create an index")
+            print("Schema must be provided to create an index")
+            exit(1)
         index = SearchIndex.from_yaml(args.schema, redis_url=create_redis_url(args))
         index.create()
-        logger.info("Index created successfully")
+        print("Index created successfully")
 
     def info(self, args: Namespace):
         """Obtain information about an index.
@@ -79,9 +80,9 @@ class Index:
         redis_url = create_redis_url(args)
         conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
-        logger.info("Indices:")
+        print("Indices:")
         for i, index in enumerate(indices):
-            logger.info(str(i + 1) + ". " + index)
+            print(str(i + 1) + ". " + index)
 
     def delete(self, args: Namespace, drop=False):
         """Delete an index.
@@ -91,7 +92,7 @@ class Index:
         """
         index = self._connect_to_index(args)
         index.delete(drop=drop)
-        logger.info("Index deleted successfully")
+        print("Index deleted successfully")
 
     def destroy(self, args: Namespace):
         """Delete an index and the documents within it.
@@ -107,10 +108,8 @@ class Index:
             redis_url = create_redis_url(args)
             conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         except ValueError:
-            logger.error(
-                "Must set REDIS_URL environment variable or provide host and port"
-            )
-            exit(0)
+            print("Must set REDIS_URL environment variable or provide host and port")
+            exit(1)
 
         if args.index:
             schema = IndexSchema.from_dict({"index": {"name": args.index}})
@@ -118,8 +117,8 @@ class Index:
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema, redis_client=conn)
         else:
-            logger.error("Index name or schema must be provided")
-            exit(0)
+            print("Index name or schema must be provided")
+            exit(1)
 
         return index
 

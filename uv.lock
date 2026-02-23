@@ -4788,6 +4788,23 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "boto3" },
+    { name = "cohere" },
+    { name = "google-cloud-aiplatform" },
+    { name = "langcache" },
+    { name = "mistralai" },
+    { name = "nltk" },
+    { name = "openai" },
+    { name = "pillow", version = "11.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "pillow", version = "12.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "protobuf" },
+    { name = "sentence-transformers" },
+    { name = "sql-redis" },
+    { name = "urllib3", version = "1.26.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "urllib3", version = "2.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "voyageai" },
+]
 bedrock = [
     { name = "boto3" },
     { name = "urllib3", version = "1.26.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -4848,8 +4865,8 @@ docs = [
     { name = "jinja2" },
     { name = "myst-nb" },
     { name = "nbsphinx" },
-    { name = "pydata-sphinx-theme" },
     { name = "sphinx" },
+    { name = "sphinx-book-theme" },
     { name = "sphinx-copybutton" },
     { name = "sphinx-design" },
     { name = "sphinx-favicon" },
@@ -4857,29 +4874,42 @@ docs = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", marker = "extra == 'all'", specifier = ">=1.36.0,<2" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.36.0,<2" },
+    { name = "cohere", marker = "extra == 'all'", specifier = ">=4.44" },
     { name = "cohere", marker = "extra == 'cohere'", specifier = ">=4.44" },
+    { name = "google-cloud-aiplatform", marker = "extra == 'all'", specifier = ">=1.26,<2.0.0" },
     { name = "google-cloud-aiplatform", marker = "extra == 'vertexai'", specifier = ">=1.26,<2.0.0" },
     { name = "jsonpath-ng", specifier = ">=1.5.0" },
+    { name = "langcache", marker = "extra == 'all'", specifier = ">=0.11.0" },
     { name = "langcache", marker = "extra == 'langcache'", specifier = ">=0.11.0" },
+    { name = "mistralai", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "mistralai", marker = "extra == 'mistralai'", specifier = ">=1.0.0" },
     { name = "ml-dtypes", specifier = ">=0.4.0,<1.0.0" },
+    { name = "nltk", marker = "extra == 'all'", specifier = ">=3.8.1,<4" },
     { name = "nltk", marker = "extra == 'nltk'", specifier = ">=3.8.1,<4" },
     { name = "numpy", specifier = ">=1.26.0,<3" },
+    { name = "openai", marker = "extra == 'all'", specifier = ">=1.1.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.1.0" },
+    { name = "pillow", marker = "extra == 'all'", specifier = ">=11.3.0" },
     { name = "pillow", marker = "extra == 'pillow'", specifier = ">=11.3.0" },
+    { name = "protobuf", marker = "extra == 'all'", specifier = ">=5.28.0,<6.0.0" },
     { name = "protobuf", marker = "extra == 'vertexai'", specifier = ">=5.28.0,<6.0.0" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "python-ulid", specifier = ">=3.0.0" },
     { name = "pyyaml", specifier = ">=5.4,<7.0" },
     { name = "redis", specifier = ">=5.0,<7.2" },
+    { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3.4.0,<4" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
+    { name = "sql-redis", marker = "extra == 'all'", specifier = ">=0.1.1" },
     { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.1.1" },
     { name = "tenacity", specifier = ">=8.2.2" },
+    { name = "urllib3", marker = "extra == 'all'", specifier = "<2.2.0" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
+    { name = "voyageai", marker = "extra == 'all'", specifier = ">=0.2.2" },
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
 ]
-provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis"]
+provides-extras = ["mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -4903,8 +4933,8 @@ docs = [
     { name = "jinja2", specifier = ">=3.1.3,<4" },
     { name = "myst-nb", specifier = ">=1.1.0,<2" },
     { name = "nbsphinx", specifier = ">=0.9.3,<0.10" },
-    { name = "pydata-sphinx-theme", specifier = ">=0.15.2,<0.16" },
     { name = "sphinx", specifier = ">=4.4.0" },
+    { name = "sphinx-book-theme", specifier = ">=1.0.0" },
     { name = "sphinx-copybutton", specifier = ">=0.5.2,<0.6" },
     { name = "sphinx-design", specifier = ">=0.5.0,<0.6" },
     { name = "sphinx-favicon", specifier = ">=1.0.1,<2" },
@@ -5796,6 +5826,19 @@ wheels = [
 ]
 
 [[package]]
+name = "sphinx-book-theme"
+version = "1.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydata-sphinx-theme" },
+    { name = "sphinx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/45/19/d002ed96bdc7738c15847c730e1e88282d738263deac705d5713b4d8fa94/sphinx_book_theme-1.1.4.tar.gz", hash = "sha256:73efe28af871d0a89bd05856d300e61edce0d5b2fbb7984e84454be0fedfe9ed", size = 439188, upload-time = "2025-02-20T16:32:32.581Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/9e/c41d68be04eef5b6202b468e0f90faf0c469f3a03353f2a218fd78279710/sphinx_book_theme-1.1.4-py3-none-any.whl", hash = "sha256:843b3f5c8684640f4a2d01abd298beb66452d1b2394cd9ef5be5ebd5640ea0e1", size = 433952, upload-time = "2025-02-20T16:32:31.009Z" },
+]
+
+[[package]]
 name = "sphinx-copybutton"
 version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
@@ -5887,16 +5930,16 @@ wheels = [
 
 [[package]]
 name = "sql-redis"
-version = "0.1.2"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "redis", version = "7.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "redis", version = "7.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "sqlglot" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/d0/d16fccfa2c526f86fa14de2b24b000ff6f9e9d3eb50585326e8a12a74895/sql_redis-0.1.2.tar.gz", hash = "sha256:abdef256af90e4f2815c8983ec23563104cee7b8469234012fc1688df00bb499", size = 107321, upload-time = "2026-02-06T15:30:15.488Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/ef/9ef69125be3b8a9906010f4bfd84d3b12fce86d9ecc9ed18443ff5fa9af6/sql_redis-0.1.1.tar.gz", hash = "sha256:1b763bd33e8963811a8c3d191506d5572f6584bfa5bbfa9c8af09a51f07baf02", size = 103713, upload-time = "2026-02-03T19:29:47.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/55/4fbdfa4fdceab9ba97a08e61c2294d41a3203cb90bcfc657fc83c7342d0b/sql_redis-0.1.2-py3-none-any.whl", hash = "sha256:2efae4b1e25cbc9e27d1e2f3e4dbc3bce277a534475167c6c821a2e037a7e516", size = 19905, upload-time = "2026-02-06T15:30:13.973Z" },
+    { url = "https://files.pythonhosted.org/packages/04/cf/c9e13d253acb3c08dc9113dc3e75962ebb69584d6286b931f364dfb9225d/sql_redis-0.1.1-py3-none-any.whl", hash = "sha256:8369e8c61990b0f9aa5ad1a9d4b03060f770af5a7b856b84e88e819efcacb1ed", size = 18716, upload-time = "2026-02-03T19:29:46.899Z" },
 ]
 
 [[package]]
@@ -5954,11 +5997,11 @@ wheels = [
 
 [[package]]
 name = "sqlglot"
-version = "28.10.1"
+version = "28.6.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1c/66/b2b300f325227044aa6f511ea7c9f3109a1dc74b13a0897931c1754b504e/sqlglot-28.10.1.tar.gz", hash = "sha256:66e0dae43b4bce23314b80e9aef41b8c88fea0e17ada62de095b45262084a8c5", size = 5739510, upload-time = "2026-02-09T23:36:23.671Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/b6/f188b9616bef49943353f3622d726af30fdb08acbd081deef28ba43ceb48/sqlglot-28.6.0.tar.gz", hash = "sha256:8c0a432a6745c6c7965bbe99a17667c5a3ca1d524a54b31997cf5422b1727f6a", size = 5676522, upload-time = "2026-01-13T17:39:24.389Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/ff/5a768b34202e1ee485737bfa167bd84592585aa40383f883a8e346d767cc/sqlglot-28.10.1-py3-none-any.whl", hash = "sha256:214aef51fd4ce16407022f81cfc80c173409dab6d0f6ae18c52b43f43b31d4dd", size = 597053, upload-time = "2026-02-09T23:36:21.385Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/a6/21b1e19994296ba4a34bc7abaf4fcb40d7e7787477bdfde58cd843594459/sqlglot-28.6.0-py3-none-any.whl", hash = "sha256:8af76e825dc8456a49f8ce049d69bbfcd116655dda3e53051754789e2edf8eba", size = 575186, upload-time = "2026-01-13T17:39:22.327Z" },
 ]
 
 [[package]]

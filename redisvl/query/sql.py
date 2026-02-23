@@ -27,7 +27,7 @@ class SQLQuery:
 
     Note:
         Requires the optional `sql-redis` package. Install with:
-        ``pip install redisvl[sql]``
+        ``pip install redisvl[sql-redis]``
     """
 
     def __init__(self, sql: str, params: Optional[Dict[str, Any]] = None):
@@ -136,7 +136,7 @@ class SQLQuery:
         except ImportError:
             raise ImportError(
                 "sql-redis is required for SQL query support. "
-                "Install it with: pip install redisvl[sql]"
+                "Install it with: pip install redisvl[sql-redis]"
             )
 
         # Get or create Redis client
