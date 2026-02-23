@@ -11,6 +11,8 @@ install: ## Install the project and all dependencies
 redis-start: ## Start Redis in Docker
 	@echo "🐳 Starting Redis"
 	docker run -d --name redis -p 6379:6379 redis:latest
+	@sleep 1
+	@docker exec redis redis-cli INFO server | grep redis_version
 
 redis-stop: ## Stop Redis Docker container
 	@echo "🛑 Stopping Redis"
