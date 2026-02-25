@@ -77,7 +77,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          auto create-labels
           auto shipit -v --dry-run
 
   publish:
