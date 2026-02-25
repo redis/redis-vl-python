@@ -1,16 +1,26 @@
 name: Publish Release
 
 on:
-  release:
-    types: [published]
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
+  AUTO_VERSION: "11.3.6"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
 
     steps:
       - name: Check out repository
@@ -44,9 +54,35 @@ jobs:
           name: dist
           path: dist/
 
-  publish:
+  release:
     needs: build
     runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download and install auto
+        run: |
+          curl -L https://github.com/intuit/auto/releases/download/v${{ env.AUTO_VERSION }}/auto-linux.gz -o auto-linux.gz
+          gunzip auto-linux.gz
+          chmod +x auto-linux
+          sudo mv auto-linux /usr/local/bin/auto
+          auto --version
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          auto shipit -v --dry-run
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
 
     steps:
       - name: Check out repository
