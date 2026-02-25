@@ -83,9 +83,6 @@ rvl = "redisvl.cli.runner:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [dependency-groups]
 dev = [
     "black>=25.1.0,<26",
