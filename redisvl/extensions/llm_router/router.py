@@ -11,12 +11,11 @@ from typing import Any, Dict, List, Optional, Union
 import redis.commands.search.reducers as reducers
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
+from redis.commands.search.aggregation import AggregateRequest
 from redis.exceptions import ResponseError
 
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.extensions.llm_router.schema import (
-    DistanceAggregationMethod,
     LLMRouteMatch,
     ModelTier,
     PretrainedReference,
@@ -24,7 +23,10 @@ from redisvl.extensions.llm_router.schema import (
     PretrainedTier,
     RoutingConfig,
 )
-from redisvl.extensions.router.schema import Route, SemanticRouterIndexSchema
+from redisvl.extensions.router.schema import (
+    DistanceAggregationMethod,
+    SemanticRouterIndexSchema,
+)
 from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query import VectorRangeQuery
 from redisvl.redis.connection import RedisConnectionFactory
@@ -33,7 +35,6 @@ from redisvl.types import AsyncRedisClient, SyncRedisClient
 from redisvl.utils.log import get_logger
 from redisvl.utils.utils import model_to_dict, scan_by_pattern
 from redisvl.utils.vectorize.base import BaseVectorizer
-from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 logger = get_logger(__name__)
 
@@ -79,7 +80,7 @@ class LLMRouter(BaseModel):
     tiers: List[ModelTier]
     """List of model tiers for routing."""
 
-    vectorizer: BaseVectorizer = Field(default_factory=HFTextVectorizer)
+    vectorizer: BaseVectorizer
     """Vectorizer for embedding queries and references."""
 
     routing_config: RoutingConfig = Field(default_factory=RoutingConfig)
@@ -99,15 +100,15 @@ class LLMRouter(BaseModel):
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         cost_optimization: bool = False,
-        connection_kwargs: Dict[str, Any] = {},
-        **kwargs,
+        connection_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the LLMRouter.
 
         Args:
             name: Router name (used as Redis index prefix).
             tiers: List of ModelTier objects defining routing targets.
-            vectorizer: Vectorizer for embeddings. Defaults to HFTextVectorizer.
+            vectorizer: Vectorizer for embeddings. If not provided, falls back
+                to HFTextVectorizer (requires sentence-transformers).
             routing_config: Configuration for routing behavior.
             redis_client: Existing Redis client. Defaults to None.
             redis_url: Redis connection URL. Defaults to "redis://localhost:6379".
@@ -115,8 +116,13 @@ class LLMRouter(BaseModel):
             cost_optimization: Enable cost-aware routing. Defaults to False.
             connection_kwargs: Additional Redis connection arguments.
         """
-        # Set up vectorizer
+        if connection_kwargs is None:
+            connection_kwargs = {}
+
+        # Set up vectorizer — lazy-import HF only when no vectorizer provided
         if vectorizer is None:
+            from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
+
             vectorizer = HFTextVectorizer(
                 model="sentence-transformers/all-mpnet-base-v2"
             )
@@ -136,7 +142,9 @@ class LLMRouter(BaseModel):
             routing_config=routing_config,
         )
 
-        self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
+        self._initialize_index(
+            redis_client, redis_url, overwrite, **(connection_kwargs or {})
+        )
 
         # Store router config in Redis
         self._index.client.json().set(f"{self.name}:router_config", ".", self.to_dict())  # type: ignore
@@ -651,6 +659,7 @@ class LLMRouter(BaseModel):
         config_name_or_path: str,
         redis_client: Optional[SyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
+        overwrite: bool = True,
         **kwargs,
     ) -> "LLMRouter":
         """Load router from pretrained config with embeddings.
@@ -663,6 +672,8 @@ class LLMRouter(BaseModel):
                 built-in config (e.g., "default").
             redis_client: Redis client.
             redis_url: Redis URL.
+            overwrite: Whether to overwrite an existing index with the same
+                name. Defaults to True.
 
         Returns:
             LLMRouter loaded without re-embedding.
@@ -707,7 +718,7 @@ class LLMRouter(BaseModel):
             schema=schema,
             redis_client=redis_client,
         )
-        index.create(overwrite=True, drop=False)
+        index.create(overwrite=overwrite, drop=False)
 
         # Load pre-computed embeddings directly
         tiers = []
@@ -817,7 +828,7 @@ class AsyncLLMRouter(BaseModel):
     tiers: List[ModelTier]
     """List of model tiers for routing."""
 
-    vectorizer: BaseVectorizer = Field(default_factory=HFTextVectorizer)
+    vectorizer: BaseVectorizer
     """Vectorizer for embedding queries and references."""
 
     routing_config: RoutingConfig = Field(default_factory=RoutingConfig)
@@ -838,15 +849,15 @@ class AsyncLLMRouter(BaseModel):
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         cost_optimization: bool = False,
-        connection_kwargs: Dict[str, Any] = {},
-        **kwargs,
+        connection_kwargs: Optional[Dict[str, Any]] = None,
     ) -> "AsyncLLMRouter":
         """Create an AsyncLLMRouter instance (async factory).
 
         Args:
             name: Router name (used as Redis index prefix).
             tiers: List of ModelTier objects defining routing targets.
-            vectorizer: Vectorizer for embeddings. Defaults to HFTextVectorizer.
+            vectorizer: Vectorizer for embeddings. If not provided, falls back
+                to HFTextVectorizer (requires sentence-transformers).
             routing_config: Configuration for routing behavior.
             redis_client: Existing async Redis client.
             redis_url: Redis connection URL.
@@ -857,7 +868,13 @@ class AsyncLLMRouter(BaseModel):
         Returns:
             AsyncLLMRouter instance.
         """
+        if connection_kwargs is None:
+            connection_kwargs = {}
+
+        # Lazy-import HF only when no vectorizer provided
         if vectorizer is None:
+            from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
+
             vectorizer = HFTextVectorizer(
                 model="sentence-transformers/all-mpnet-base-v2"
             )
@@ -877,7 +894,7 @@ class AsyncLLMRouter(BaseModel):
         )
 
         await router._initialize_index(
-            redis_client, redis_url, overwrite, **connection_kwargs
+            redis_client, redis_url, overwrite, **(connection_kwargs or {})
         )
 
         client = router._index.client
@@ -1381,6 +1398,7 @@ class AsyncLLMRouter(BaseModel):
         config_name_or_path: str,
         redis_client: Optional[AsyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
+        overwrite: bool = True,
         **kwargs,
     ) -> "AsyncLLMRouter":
         """Load router from pretrained config with embeddings (async).
@@ -1392,6 +1410,8 @@ class AsyncLLMRouter(BaseModel):
                 built-in config (e.g., "default").
             redis_client: Async Redis client.
             redis_url: Redis URL.
+            overwrite: Whether to overwrite an existing index with the same
+                name. Defaults to True.
 
         Returns:
             AsyncLLMRouter loaded without re-embedding.
@@ -1434,7 +1454,7 @@ class AsyncLLMRouter(BaseModel):
             schema=schema,
             redis_client=redis_client,
         )
-        await index.create(overwrite=True, drop=False)
+        await index.create(overwrite=overwrite, drop=False)
 
         tiers = []
         all_references = []

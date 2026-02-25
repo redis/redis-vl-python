@@ -317,29 +317,6 @@ await router.delete()
 
 ## Testing
 
-### Unit Tests (`tests/unit/test_llm_router_schema.py`)
-- Schema validation
-- Pydantic model behavior
-- Threshold bounds
-- Empty/invalid inputs
-
-### Integration Tests (`tests/integration/test_llm_router.py`)
-- Router initialization
-- Routing accuracy
-- Cost optimization behavior
-- Serialization (dict, YAML, JSON)
-- Pretrained import/export
-- Pretrained config loading (`from_pretrained("default")`)
-- Tier management (add, remove, update)
-- Persistence (from_existing)
-
-### Async Integration Tests (`tests/integration/test_async_llm_router.py`)
-- Mirrors all sync tests with `AsyncLLMRouter`
-- Uses `async_client` fixture and async skip helpers
-- Tests `create()` factory, async routing, serialization, tier management
-- Pretrained config loading
-
-Run tests:
 ```bash
 uv run pytest tests/unit/test_llm_router_schema.py -v
 uv run pytest tests/integration/test_llm_router.py -v

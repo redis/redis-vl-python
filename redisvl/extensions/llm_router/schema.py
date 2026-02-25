@@ -4,11 +4,12 @@ This module defines the Pydantic models for model tiers, routing configuration,
 and route match results.
 """
 
-from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing_extensions import Annotated
+
+from redisvl.extensions.router.schema import DistanceAggregationMethod
 
 
 class ModelTier(BaseModel):
@@ -113,19 +114,6 @@ class LLMRouteMatch(BaseModel):
         return self.tier is not None
 
 
-class DistanceAggregationMethod(Enum):
-    """Method for aggregating distances across multiple references."""
-
-    avg = "avg"
-    """Average of distances to all matching references."""
-
-    min = "min"
-    """Minimum distance (closest reference)."""
-
-    sum = "sum"
-    """Sum of distances."""
-
-
 class RoutingConfig(BaseModel):
     """Configuration for LLM routing behavior.
 
@@ -191,7 +179,7 @@ class PretrainedTier(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     """Tier metadata."""
 
-    distance_threshold: float = 0.5
+    distance_threshold: Annotated[float, Field(strict=True, gt=0, le=2)] = 0.5
     """Distance threshold."""
 
 
