@@ -195,7 +195,7 @@ def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
         index_info (Dict[str, Any]): Output of the Redis FT.INFO command.
 
     Returns:
-        Dict[str, Any]: Schema dictionary.
+        Dict[str, Any]: Schema dictionary suitable for ``IndexSchema.from_dict()``.
     """
     index_name = index_info["index_name"]
     prefixes = index_info["index_definition"][3]

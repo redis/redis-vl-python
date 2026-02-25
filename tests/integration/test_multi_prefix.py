@@ -378,6 +378,12 @@ class TestMultiPrefixIndexCreation:
             count = index.query(query)
             assert count == 2, f"Expected 2 docs, got {count}"
 
+            # Test the prefixes property returns all configured prefixes
+            assert index.prefixes == [f"pfx_a_{unique_id}", f"pfx_b_{unique_id}"]
+
+            # Test the prefix property returns the first prefix (for backward compat)
+            assert index.prefix == f"pfx_a_{unique_id}"
+
         finally:
             try:
                 index.delete(drop=True)

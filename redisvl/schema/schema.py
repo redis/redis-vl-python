@@ -39,7 +39,7 @@ class IndexInfo(BaseModel):
         index:
             name: user-index
             prefix: user
-            key_separtor: ':'
+            key_separator: ':'
             storage_type: json
             stopwords: []  # Disable stopwords (STOPWORDS 0)
 
@@ -60,7 +60,11 @@ class IndexInfo(BaseModel):
     name: str
     """The unique name of the index."""
     prefix: Union[str, List[str]] = "rvl"
-    """The prefix(es) used for Redis keys associated with this index. Can be a single string or a list of strings."""
+    """The prefix used for Redis keys associated with this index.
+
+    A list of prefixes is supported for querying across multiple key namespaces,
+    but not recommended as it can cause inconsistencies when loading data.
+    """
     key_separator: str = ":"
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
