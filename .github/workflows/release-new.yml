@@ -16,8 +16,8 @@ env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
   AUTO_VERSION: "11.3.6"
-  GH_ACTIONS_BOT_NAME: "github-actions[bot]"
-  GH_ACTIONS_BOT_EMAIL: "github-actions[bot]@users.noreply.github.com"
+  RELEASE_BOT_NAME: "applied-ai-releases[bot]"
+  RELEASE_BOT_EMAIL: "applied-ai-releases[bot]@users.noreply.github.com"
 
 jobs:
   canary-build:
