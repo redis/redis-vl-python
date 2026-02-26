@@ -66,6 +66,14 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Download and install auto
+        run: |
+          curl -L https://github.com/intuit/auto/releases/download/v${{ env.AUTO_VERSION }}/auto-linux.gz -o auto-linux.gz
+          gunzip auto-linux.gz
+          chmod +x auto-linux
+          sudo mv auto-linux /usr/local/bin/auto
+          auto --version
+
       - name: Resolve release version
         id: latest_release
         env:
