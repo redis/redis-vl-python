@@ -20,7 +20,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
     steps:
       - name: Check out repository
@@ -57,7 +57,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
     steps:
       - name: Checkout code
@@ -83,7 +83,7 @@ jobs:
   publish:
     needs: release
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
     steps:
       - name: Check out repository
