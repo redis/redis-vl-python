@@ -59,12 +59,20 @@ jobs:
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
     steps:
+      - name: Generate GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: applied-ai-release-bot
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
           fetch-tags: true
+          token: ${{ steps.app_token.outputs.token }}
 
       - name: Download and install auto
         run: |
@@ -77,7 +85,7 @@ jobs:
       - name: Resolve release version
         id: latest_release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           RAW_VERSION="$(auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}" --dry-run --quiet | tail -n1 | tr -d '\r')"
           VERSION="${RAW_VERSION#v}"
@@ -108,7 +116,7 @@ jobs:
 
       - name: Create Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           auto create-labels
           auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}"
@@ -124,7 +132,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          fetch-tags: true
 
       - name: Install Python
         uses: actions/setup-python@v6
