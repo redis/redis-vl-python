@@ -9,7 +9,7 @@ class TokenEscaper:
     """
 
     # Characters that RediSearch requires us to escape during queries.
-    # Source: https://redis.io/docs/stack/search/reference/escaping/#the-rules-of-text-field-tokenization
+    # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/#tokenization-rules-for-text-fields
     DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ ?|]"
 
     # Same as above but excludes * to allow wildcard patterns
