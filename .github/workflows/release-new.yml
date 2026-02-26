@@ -119,7 +119,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           auto create-labels
-          auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}"
+          auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}" --no-changelog
 
   build-and-publish:
     needs: release
