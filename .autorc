@@ -86,6 +86,14 @@
       "releaseType": "patch",
       "color": "#f4b2d8",
       "overwrite": true
+    },
+    {
+      "name": "auto:ci",
+      "changelogTitle": "CI/CD Changes",
+      "description": "Updates to CI/CD workflows and processes",
+      "releaseType": "none",
+      "color": "#E5A3DD",
+      "overwrite": true
     }
   ]
 }
