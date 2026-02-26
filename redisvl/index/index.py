@@ -302,11 +302,18 @@ class BaseSearchIndex:
 
     @property
     def prefix(self) -> str:
-        """The optional key prefix that comes before a unique key value in
-        forming a Redis key. If multiple prefixes are configured, returns the
-        first one."""
+        """The key prefix used in forming Redis keys.
+
+        For multi-prefix indexes, returns the first prefix.
+        """
         prefix = self.schema.index.prefix
         return prefix[0] if isinstance(prefix, list) else prefix
+
+    @property
+    def prefixes(self) -> List[str]:
+        """All key prefixes configured for this index."""
+        prefix = self.schema.index.prefix
+        return prefix if isinstance(prefix, list) else [prefix]
 
     @property
     def key_separator(self) -> str:
@@ -645,8 +652,11 @@ class SearchIndex(BaseSearchIndex):
             self.delete(drop=drop)
 
         try:
+            # Prefix can be a string or list of strings
+            prefix = self.schema.index.prefix
+            prefix_list = prefix if isinstance(prefix, list) else [prefix]
             definition = IndexDefinition(
-                prefix=[self.schema.index.prefix], index_type=self._storage.type
+                prefix=prefix_list, index_type=self._storage.type
             )
             # Extract stopwords from schema
             stopwords = self.schema.index.stopwords
@@ -1574,8 +1584,11 @@ class AsyncSearchIndex(BaseSearchIndex):
             await self.delete(drop)
 
         try:
+            # Prefix can be a string or list of strings
+            prefix = self.schema.index.prefix
+            prefix_list = prefix if isinstance(prefix, list) else [prefix]
             definition = IndexDefinition(
-                prefix=[self.schema.index.prefix], index_type=self._storage.type
+                prefix=prefix_list, index_type=self._storage.type
             )
             # Extract stopwords from schema
             stopwords = self.schema.index.stopwords
