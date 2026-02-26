@@ -63,8 +63,9 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: applied-ai-release-bot
+          app-id: 2959093
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
 
       - name: Checkout code
         uses: actions/checkout@v6
