@@ -16,6 +16,8 @@ env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
   AUTO_VERSION: "11.3.6"
+  GH_ACTIONS_BOT_NAME: "github-actions[bot]"
+  GH_ACTIONS_BOT_EMAIL: "github-actions[bot]@users.noreply.github.com"
 
 jobs:
   canary-build:
@@ -69,7 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RAW_VERSION="$(auto latest --name "github-actions[bot]" --email "41898282+github-actions[bot]@users.noreply.github.com" --dry-run --quiet | tail -n1 | tr -d '\r')"
+          RAW_VERSION="$(auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}" --dry-run --quiet | tail -n1 | tr -d '\r')"
           VERSION="${RAW_VERSION#v}"
           if [ -z "$VERSION" ]; then
             echo "Could not resolve release version"
@@ -90,8 +92,8 @@ jobs:
             echo "No pyproject version change to commit."
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "${GH_ACTIONS_BOT_NAME}"
+          git config user.email "${GH_ACTIONS_BOT_EMAIL}"
           git add pyproject.toml
           git commit -m "chore(release): set pyproject version to ${{ steps.latest_release.outputs.version }}"
 #          git push origin HEAD:main
@@ -101,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           auto create-labels
-          auto latest --name "github-actions[bot]" --email "41898282+github-actions[bot]@users.noreply.github.com" --dry-run
+          auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}" --dry-run
 
   build-and-publish:
     needs: release
