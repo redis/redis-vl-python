@@ -1460,8 +1460,14 @@ class TextQuery(BaseQuery):
             self._stopwords = set()
         elif isinstance(stopwords, str):
             try:
-                nltk.download("stopwords", quiet=True)
-                self._stopwords = set(nltk_stopwords.words(stopwords))
+                # Try loading first; only download if not already present.
+                # This avoids race conditions when parallel workers (e.g.
+                # pytest-xdist) call nltk.download() concurrently.
+                try:
+                    self._stopwords = set(nltk_stopwords.words(stopwords))
+                except LookupError:
+                    nltk.download("stopwords", quiet=True)
+                    self._stopwords = set(nltk_stopwords.words(stopwords))
             except ImportError:
                 raise ValueError(
                     f"Loading stopwords for {stopwords} failed: nltk is not installed."
