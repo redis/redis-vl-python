@@ -8,7 +8,6 @@
   "owner": "redis",
   "repo": "redis-vl-python",
   "onlyPublishWithReleaseLabel": true,
-  "noChangelog": true,
   "labels": [
     {
       "name": "auto:major",
