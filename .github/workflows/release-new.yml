@@ -18,7 +18,7 @@ env:
   AUTO_VERSION: "11.3.6"
 
 jobs:
-  build:
+  canary-build:
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
@@ -45,17 +45,11 @@ jobs:
         run: |
           uv sync --frozen
 
-      - name: Build package
+      - name: Check that package can be built
         run: uv build
 
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
   release:
-    needs: build
+    needs: canary-build
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
@@ -80,7 +74,7 @@ jobs:
           auto create-labels
           auto shipit -v --dry-run
 
-  publish:
+  build-and-publish:
     needs: release
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
@@ -108,13 +102,29 @@ jobs:
         run: |
           uv sync --frozen
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      - name: Get latest release version
+        id: latest_release
+        uses: actions/github-script@v8
         with:
-          name: dist
-          path: dist/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const release = await github.rest.repos.getLatestRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const version = release.data.tag_name.replace(/^v/, "");
+            core.setOutput("version", version);
+
+      - name: Apply release version to pyproject.toml
+        run: |
+          VERSION="${{ steps.latest_release.outputs.version }}"
+          sed -i "s/^version = \".*\"$/version = \"${VERSION}\"/" pyproject.toml
+          grep '^version = ' pyproject.toml
+
+      - name: Build package
+        run: uv build
 
       - name: Publish to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI }}
-        run: uv publish
+        run: echo "uv publish"  # TODO: call uv publish when ready
