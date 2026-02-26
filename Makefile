@@ -1,4 +1,4 @@
-.PHONY: install format lint test test-all test-notebooks clean redis-start redis-stop check-types docs-build docs-serve check help
+.PHONY: install format lint test test-all test-notebooks clean redis-start redis-stop check-types docs-build docs-serve check help breaking-changes
 .DEFAULT_GOAL := help
 
 # Allow passing arguments to make targets (e.g., make test ARGS="--run-api-tests")
@@ -96,6 +96,27 @@ clean: ## Clean up build artifacts and caches
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
 	find . -type d -name "_build" -exec rm -rf {} +
 	find . -type f -name "*.log" -exec rm -rf {} +
+
+breaking-changes: ## Detect breaking changes between two versions (OLD_TAG=v0.12.0 NEW_TAG=v0.13.0)
+	@if [ -z "$(OLD_TAG)" ] || [ -z "$(NEW_TAG)" ]; then \
+		echo "Usage: make breaking-changes OLD_TAG=<old_version> NEW_TAG=<new_version>"; \
+		echo "Example: make breaking-changes OLD_TAG=v0.12.0 NEW_TAG=v0.13.0"; \
+		echo ""; \
+		echo "Options:"; \
+		echo "  OUTPUT=<file>     Save report to file (default: stdout)"; \
+		echo "  MODEL=<model>     OpenAI model to use (default: gpt-4o)"; \
+		echo "  NO_PATCH=1        Disable automatic patching attempts"; \
+		exit 1; \
+	fi
+	@echo "Detecting breaking changes: $(OLD_TAG) -> $(NEW_TAG)"
+	@if [ -z "$$OPENAI_API_KEY" ]; then \
+		echo "Error: OPENAI_API_KEY environment variable is required"; \
+		exit 1; \
+	fi
+	uv run python scripts/breaking_changes_detector.py $(OLD_TAG) $(NEW_TAG) \
+		$(if $(OUTPUT),-o $(OUTPUT)) \
+		$(if $(MODEL),-m $(MODEL)) \
+		$(if $(NO_PATCH),--no-auto-patch)
 
 help: ## Show this help message
 	@echo "Available commands:"
