@@ -25,6 +25,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -57,22 +60,48 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
+          ref: main
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Download and install auto
+      - name: Resolve release version
+        id: latest_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -L https://github.com/intuit/auto/releases/download/v${{ env.AUTO_VERSION }}/auto-linux.gz -o auto-linux.gz
-          gunzip auto-linux.gz
-          chmod +x auto-linux
-          sudo mv auto-linux /usr/local/bin/auto
-          auto --version
+          RAW_VERSION="$(auto latest --name "github-actions[bot]" --email "41898282+github-actions[bot]@users.noreply.github.com" --dry-run --quiet | tail -n1 | tr -d '\r')"
+          VERSION="${RAW_VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Could not resolve release version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Apply release version to pyproject.toml
+        run: |
+          VERSION="${{ steps.latest_release.outputs.version }}"
+          sed -i "s/^version = \".*\"$/version = \"${VERSION}\"/" pyproject.toml
+          grep '^version = ' pyproject.toml
+
+      - name: Commit and push pyproject version update
+        run: |
+          if git diff --quiet -- pyproject.toml; then
+            echo "No pyproject version change to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore(release): set pyproject version to ${{ steps.latest_release.outputs.version }}"
+#          git push origin HEAD:main
 
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           auto create-labels
-          auto shipit -v --dry-run
+          auto latest --name "github-actions[bot]" --email "41898282+github-actions[bot]@users.noreply.github.com" --dry-run
 
   build-and-publish:
     needs: release
@@ -82,6 +111,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -101,25 +134,6 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --frozen
-
-      - name: Get latest release version
-        id: latest_release
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const release = await github.rest.repos.getLatestRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-            });
-            const version = release.data.tag_name.replace(/^v/, "");
-            core.setOutput("version", version);
-
-      - name: Apply release version to pyproject.toml
-        run: |
-          VERSION="${{ steps.latest_release.outputs.version }}"
-          sed -i "s/^version = \".*\"$/version = \"${VERSION}\"/" pyproject.toml
-          grep '^version = ' pyproject.toml
 
       - name: Build package
         run: uv build
