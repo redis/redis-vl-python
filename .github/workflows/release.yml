@@ -1,20 +1,135 @@
 name: Publish Release
 
 on:
-  release:
-    types: [published]
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
+  AUTO_VERSION: "11.3.6"
+  GH_ACTIONS_BOT_NAME: "github-actions[bot]"
+  GH_ACTIONS_BOT_EMAIL: "github-actions[bot]@users.noreply.github.com"
 
 jobs:
-  build:
+  canary-build:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Check that package can be built
+        run: uv build
+
+  release:
+    needs: canary-build
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download and install auto
+        run: |
+          curl -L https://github.com/intuit/auto/releases/download/v${{ env.AUTO_VERSION }}/auto-linux.gz -o auto-linux.gz
+          gunzip auto-linux.gz
+          chmod +x auto-linux
+          sudo mv auto-linux /usr/local/bin/auto
+          auto --version
+
+      # NOTE: auto needs to run its process to decide on the new version, but we want to first put the new version
+      #        into pyproject.toml so that the build has the correct version. This step does a dry-run of the release
+      #        to identify the new version. The following step updates pyproject.toml, before we commit and push that
+      #        change. The release is then cut with the new commit, and the package gets built with the new version.
+      - name: Resolve release version
+        id: latest_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # `auto latest --dry-run --quiet` outputs just the new version, e.g. "v1.2.3" -- we then strip the "v"
+        run: |
+          RAW_VERSION="$(auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}" --dry-run --quiet | tail -n1 | tr -d '\r')"
+          VERSION="${RAW_VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Could not resolve release version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Apply release version to pyproject.toml
+        run: |
+          VERSION="${{ steps.latest_release.outputs.version }}"
+          sed -i "s/^version = \".*\"$/version = \"${VERSION}\"/" pyproject.toml
+          grep '^version = ' pyproject.toml
+
+      - name: Commit and push pyproject version update
+        run: |
+          if git diff --quiet -- pyproject.toml; then
+            echo "No pyproject version change to commit."
+            exit 0
+          fi
+          git config user.name "${GH_ACTIONS_BOT_NAME}"
+          git config user.email "${GH_ACTIONS_BOT_EMAIL}"
+          git add pyproject.toml
+          git commit -m "chore(release): set pyproject version to ${{ steps.latest_release.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          auto create-labels
+          auto latest --name "${GH_ACTIONS_BOT_NAME}" --email "${GH_ACTIONS_BOT_EMAIL}"
+
+  build-and-publish:
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -37,45 +152,6 @@ jobs:
 
       - name: Build package
         run: uv build
-
-      - name: Upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-
-      - name: Install dependencies
-        run: |
-          uv sync --frozen
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
 
       - name: Publish to PyPI
         env:
