@@ -1,0 +1,91 @@
+{
+  "plugins": [
+    "git-tag",
+    "all-contributors",
+    "conventional-commits",
+    "released"
+  ],
+  "owner": "redis",
+  "repo": "redis-vl-python",
+  "onlyPublishWithReleaseLabel": true,
+  "labels": [
+    {
+      "name": "auto:major",
+      "changelogTitle": "💥 Breaking Change",
+      "description": "Increment the major version when merged",
+      "releaseType": "major",
+      "color": "#C5000B",
+      "overwrite": true
+    },
+    {
+      "name": "auto:minor",
+      "changelogTitle": "🚀 Enhancement",
+      "description": "Increment the minor version when merged",
+      "releaseType": "minor",
+      "color": "#F1A60E",
+      "overwrite": true
+    },
+    {
+      "name": "auto:patch",
+      "changelogTitle": "🐛 Bug Fix",
+      "description": "Increment the patch version when merged",
+      "releaseType": "patch",
+      "color": "#870048",
+      "overwrite": true
+    },
+    {
+      "name": "auto:skip-release",
+      "description": "Preserve the current version when merged",
+      "releaseType": "skip",
+      "color": "#bf5416",
+      "overwrite": true
+    },
+    {
+      "name": "auto:release",
+      "description": "Create a release when this pr is merged",
+      "releaseType": "release",
+      "color": "#007f70",
+      "overwrite": true
+    },
+    {
+      "name": "auto:internal",
+      "changelogTitle": "🏠 Internal",
+      "description": "Changes only affect the internal API",
+      "releaseType": "none",
+      "color": "#696969",
+      "overwrite": true
+    },
+    {
+      "name": "auto:documentation",
+      "changelogTitle": "📝 Documentation",
+      "description": "Changes only affect the documentation",
+      "releaseType": "none",
+      "color": "#cfd3d7",
+      "overwrite": true
+    },
+    {
+      "name": "auto:tests",
+      "changelogTitle": "🧪 Tests",
+      "description": "Add or improve existing tests",
+      "releaseType": "none",
+      "color": "#ffd3cc",
+      "overwrite": true
+    },
+    {
+      "name": "auto:dependencies",
+      "changelogTitle": "🔩 Dependency Updates",
+      "description": "Update one or more dependencies version",
+      "releaseType": "none",
+      "color": "#8732bc",
+      "overwrite": true
+    },
+    {
+      "name": "auto:performance",
+      "changelogTitle": "🏎 Performance",
+      "description": "Improve performance of an existing feature",
+      "releaseType": "patch",
+      "color": "#f4b2d8",
+      "overwrite": true
+    }
+  ]
+}
