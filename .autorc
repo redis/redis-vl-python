@@ -42,7 +42,7 @@
     },
     {
       "name": "auto:release",
-      "description": "Create a release when this pr is merged",
+      "description": "Create a release when this PR is merged",
       "releaseType": "release",
       "color": "#007f70",
       "overwrite": true
