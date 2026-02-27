@@ -49,6 +49,15 @@ class BaseMessageHistory:
         """
         raise NotImplementedError
 
+    def count(self, session_tag: Optional[str] = None) -> int:
+        """Count the number of messages in the conversation history.
+
+        Args:
+            session_tag (Optional[str]): The session tag to filter messages by.
+                If None, counts all messages in the history.
+        """
+        raise NotImplementedError
+
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:
         """Returns the full chat history."""

@@ -18,7 +18,7 @@ from redisvl.extensions.message_history.schema import (
     SemanticMessageHistorySchema,
 )
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery, RangeQuery
+from redisvl.query import CountQuery, FilterQuery, RangeQuery
 from redisvl.query.filter import Tag
 from redisvl.utils.utils import deprecated_argument, serialize, validate_vector_dims
 from redisvl.utils.vectorize import BaseVectorizer, HFTextVectorizer
@@ -139,6 +139,16 @@ class SemanticMessageHistory(BaseMessageHistory):
             id = self.get_recent(top_k=1, raw=True)[0][ID_FIELD_NAME]  # type: ignore
 
         self._index.client.delete(self._index.key(id))  # type: ignore
+
+    def count(self, session_tag=None):
+        query = CountQuery(
+            filter_expression=(
+                Tag(SESSION_FIELD_NAME) == session_tag
+                if session_tag
+                else self._default_session_filter
+            )
+        )
+        return self._index.query(query)
 
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:
