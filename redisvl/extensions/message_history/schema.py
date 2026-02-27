@@ -1,5 +1,6 @@
+import warnings
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -33,7 +34,7 @@ class ChatMessage(BaseModel):
 
     entry_id: Optional[str] = Field(default=None)
     """A unique identifier for the message."""
-    role: ChatRole
+    role: Union[ChatRole, str]  # str allows deprecated values with warning
     """The role of the message sender (e.g. 'user' or 'assistant')."""
     content: str
     """The content of the message."""
@@ -65,13 +66,15 @@ class ChatMessage(BaseModel):
 
     @field_validator("role", mode="before")
     @classmethod
-    def coerce_role(cls, v):
+    def coerce_role(cls, v: Any) -> Union[ChatRole, str]:
         if isinstance(v, str):
             try:
                 return ChatRole(v)
             except ValueError:
-                raise ValueError(
-                    f"Invalid role '{v}'. Valid roles: {[r.value for r in ChatRole]}"
+                warnings.warn(
+                    f"Role '{v}' is a deprecated value. Update to valid roles: {[r.value for r in ChatRole]}.",
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
         return v
 

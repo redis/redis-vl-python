@@ -158,21 +158,25 @@ def test_chat_message_missing_fields():
 
 
 @pytest.mark.parametrize(
-    "invalid_role", ["potato", "llm", "admin", "", "User", "SYSTEM", 123, [1, 2, 3]]
+    "deprecated_role", ["potato", "llm", "admin", "", "User", "SYSTEM"]
 )
-def test_chat_message_invalid_role(invalid_role):
+def test_chat_message_deprecated_role(deprecated_role):
+    """Deprecated string roles raise a DeprecationWarning but are stored as-is."""
     session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
+    message = None
 
-    with pytest.raises(ValidationError):
-        ChatMessage(
+    with pytest.warns(DeprecationWarning, match="deprecated value"):
+        message = ChatMessage(
             entry_id=f"{session_tag}:{timestamp}",
-            role=invalid_role,
+            role=deprecated_role,
             content=content,
             session_tag=session_tag,
             timestamp=timestamp,
         )
+    assert message is not None
+    assert message.role == deprecated_role
 
 
 @pytest.mark.parametrize(
@@ -192,6 +196,14 @@ def test_chat_message_role_coercion(role_input, expected):
     message = ChatMessage(role=role_input, content=content, session_tag=session_tag)
     assert message.role == expected
     assert isinstance(message.role, ChatRole)
+
+
+@pytest.mark.parametrize("invalid_role", [123, [1, 2, 3]])
+def test_chat_message_invalid_role(invalid_role):
+    session_tag = create_ulid()
+    content = "Hello, world!"
+    with pytest.raises(ValidationError):
+        ChatMessage(role=invalid_role, content=content, session_tag=session_tag)
 
 
 def test_chat_message_role_serializes_to_string():

@@ -12,11 +12,7 @@ from redisvl.extensions.constants import (
     TOOL_FIELD_NAME,
 )
 from redisvl.extensions.message_history import BaseMessageHistory
-from redisvl.extensions.message_history.schema import (
-    ChatMessage,
-    ChatRole,
-    MessageHistorySchema,
-)
+from redisvl.extensions.message_history.schema import ChatMessage, MessageHistorySchema
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery
 from redisvl.query.filter import Tag
@@ -234,7 +230,7 @@ class MessageHistory(BaseMessageHistory):
         for message in messages:
 
             chat_message = ChatMessage(
-                role=ChatRole(message[ROLE_FIELD_NAME]),
+                role=message[ROLE_FIELD_NAME],
                 content=message[CONTENT_FIELD_NAME],
                 session_tag=session_tag,
             )

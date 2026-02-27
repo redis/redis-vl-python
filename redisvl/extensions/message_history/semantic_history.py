@@ -15,7 +15,6 @@ from redisvl.extensions.constants import (
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import (
     ChatMessage,
-    ChatRole,
     SemanticMessageHistorySchema,
 )
 from redisvl.index import SearchIndex
@@ -396,7 +395,7 @@ class SemanticMessageHistory(BaseMessageHistory):
             )
 
             chat_message = ChatMessage(
-                role=ChatRole(message[ROLE_FIELD_NAME]),
+                role=message[ROLE_FIELD_NAME],
                 content=message[CONTENT_FIELD_NAME],
                 session_tag=session_tag,
                 vector_field=content_vector,  # type: ignore
