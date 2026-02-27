@@ -63,7 +63,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: 2959093
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 

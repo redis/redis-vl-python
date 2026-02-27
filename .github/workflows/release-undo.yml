@@ -1,0 +1,119 @@
+name: Undo Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version to undo (example: 0.14.0)"
+        required: true
+        type: string
+      confirm:
+        description: 'Type "UNDO RELEASE" to continue'
+        required: true
+        type: string
+      delete_github_release:
+        description: "Delete the GitHub release for tag v<version>"
+        required: true
+        type: boolean
+        default: true
+      delete_git_tag:
+        description: "Delete tag v<version> from origin"
+        required: true
+        type: boolean
+        default: true
+      yank_pypi:
+        description: "Yank redisvl==<version> on PyPI"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_NAME: redisvl
+
+jobs:
+  undo-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "${CONFIRM}" != "UNDO RELEASE" ]; then
+            echo "Confirmation text mismatch."
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9\.\-]+)?$ ]]; then
+            echo "Version must look like 1.2.3 (optionally with a suffix)."
+            exit 1
+          fi
+          echo "TAG=v${VERSION}" >> "$GITHUB_ENV"
+          echo "SPEC=${PACKAGE_NAME}==${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Generate GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout repository
+        if: ${{ inputs.delete_git_tag }}
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Delete GitHub release
+        if: ${{ inputs.delete_github_release }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release delete "${TAG}" --yes
+            echo "Deleted GitHub release ${TAG}."
+          else
+            echo "No GitHub release found for ${TAG}; skipping."
+          fi
+
+      - name: Delete git tag from origin
+        if: ${{ inputs.delete_git_tag }}
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            git tag -d "${TAG}" || true
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            git push origin ":refs/tags/${TAG}"
+            echo "Deleted remote tag ${TAG}."
+          else
+            echo "Remote tag ${TAG} not found; skipping."
+          fi
+
+      - name: Install Python
+        if: ${{ inputs.yank_pypi }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Yank package on PyPI
+        if: ${{ inputs.yank_pypi }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip twine
+          twine yank "${SPEC}"
+          echo "Yanked ${SPEC} on PyPI."
