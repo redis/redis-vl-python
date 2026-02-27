@@ -172,7 +172,7 @@ jobs:
             git config user.email "${RELEASE_BOT_EMAIL}"
             git add pyproject.toml
             # Include [skip ci] to avoid running the workflow again on this bot commit.
-            git commit -m "chore(release): set pyproject version to ${{ steps.resolved.outputs.version }} [skip ci]"
+            git commit -m "chore(release): set pyproject version to ${{ steps.latest_release.outputs.version }} [skip ci]"
             git push origin HEAD:main
           fi
 
