@@ -21,6 +21,7 @@ from redisvl.utils.utils import current_timestamp
 
 class ChatRole(str, Enum):
     """Enumeration of valid roles for a chat message."""
+
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
