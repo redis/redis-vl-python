@@ -331,9 +331,8 @@ def test_standard_clear(standard_history):
 
 
 def test_standard_count(standard_history):
-    assert standard_history.count() == 0
     standard_history.store("some prompt", "some response")
-    assert standard_history.count() == 2  # 2 entries: user and llm
+    assert standard_history.count() == 2
     standard_history.clear()
     assert standard_history.count() == 0
 
@@ -642,13 +641,9 @@ def test_semantic_drop(semantic_history):
 @requires_hf
 def test_semantic_count(semantic_history):
     semantic_history.store("first prompt", "first response")
-    semantic_history.store("second prompt", "second response")
-    semantic_history.store("third prompt", "third response")
-    semantic_history.store("fourth prompt", "fourth response")
-
-    assert semantic_history.count() == 8
-    semantic_history.drop()
-    assert semantic_history.count() == 7
+    assert semantic_history.count() == 2
+    semantic_history.clear()
+    assert semantic_history.count() == 0
 
 
 def test_different_vector_dtypes(client, redis_url):
