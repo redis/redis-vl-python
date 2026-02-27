@@ -1,16 +1,17 @@
 name: Publish Release
 
 on:
-  pull_request:
-    types:
-      - closed
-    branches:
-      - main
+  push:
+    branches: [main]
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
+
+concurrency:
+  group: publish-release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   PYTHON_VERSION: "3.11"
@@ -20,9 +21,56 @@ env:
   RELEASE_BOT_EMAIL: "applied-ai-releases[bot]@users.noreply.github.com"
 
 jobs:
+  gate:
+    name: Gate on merged PR label
+    runs-on: ubuntu-latest
+
+    # Prevent infinite loops from the bot's "chore(release)" commit.
+    if: github.actor != 'applied-ai-releases[bot]'
+
+    outputs:
+      should_release: ${{ steps.find_pr.outputs.should_release }}
+      pr_number: ${{ steps.find_pr.outputs.pr_number }}
+
+    steps:
+      - name: Find merged PR for this commit and check labels
+        id: find_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const sha   = context.sha;
+
+            // For workflow_dispatch there may not be an associated PR;
+            // allow manual runs by setting should_release=true only if you want that behavior.
+            // Here we keep it strict: only release if we can find a PR with auto:release.
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner, repo, commit_sha: sha
+            });
+
+            if (!pulls.data.length) {
+              core.setOutput("should_release", "false");
+              core.setOutput("pr_number", "");
+              core.notice(`No PR associated with commit ${sha}. Not releasing.`);
+              return;
+            }
+
+            // Pick the merged PR targeting main (most common).
+            const pr = pulls.data.find(p => p.merged_at && p.base?.ref === "main") ?? pulls.data[0];
+            const labels = (pr.labels || []).map(l => l.name);
+
+            core.setOutput("pr_number", String(pr.number));
+            const should = labels.includes("auto:release");
+            core.setOutput("should_release", should ? "true" : "false");
+
+            core.notice(`PR #${pr.number} labels: ${labels.join(", ")}`);
+            core.notice(`should_release=${should}`);
+
   canary-build:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
 
     steps:
       - name: Check out repository
@@ -41,22 +89,21 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          python-version: ${{ env.PYTHON_VERSION }}
           cache-dependency-glob: |
             pyproject.toml
             uv.lock
 
       - name: Install dependencies
-        run: |
-          uv sync --frozen
+        run: uv sync --frozen
 
       - name: Check that package can be built
         run: uv build
 
   release:
-    needs: canary-build
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
+    needs: [gate, canary-build]
+    if: needs.gate.outputs.should_release == 'true'
 
     steps:
       - name: Generate GitHub App token
@@ -87,14 +134,16 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
-          auto latest --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --dry-run -v
+          set -euo pipefail
+          auto shipit --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --dry-run -v
 
       - name: Resolve release version
         id: latest_release
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
-          RAW_VERSION="$(auto latest --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --dry-run --quiet | tail -n1 | tr -d '\r')"
+          set -euo pipefail
+          RAW_VERSION="$(auto shipit --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --dry-run --quiet | tail -n1 | tr -d '\r')"
           VERSION="${RAW_VERSION#v}"
           if [ -z "$VERSION" ]; then
             echo "Could not resolve release version"
@@ -105,33 +154,41 @@ jobs:
 
       - name: Apply release version to pyproject.toml
         run: |
+          set -euo pipefail
           VERSION="${{ steps.latest_release.outputs.version }}"
           sed -i "s/^version = \".*\"$/version = \"${VERSION}\"/" pyproject.toml
           grep '^version = ' pyproject.toml
 
-      - name: Commit and push pyproject version update
-        run: |
-          if git diff --quiet -- pyproject.toml; then
-            echo "No pyproject version change to commit."
-            exit 0
-          fi
-          git config user.name "${RELEASE_BOT_NAME}"
-          git config user.email "${RELEASE_BOT_EMAIL}"
-          git add pyproject.toml
-          git commit -m "chore(release): set pyproject version to ${{ steps.latest_release.outputs.version }}"
-          git push origin HEAD:main
-
-      - name: Create Release
+      - name: Commit and push version bump
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
-          auto create-labels
-          auto latest --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --no-changelog
+          set -euo pipefail
+          if git diff --quiet -- pyproject.toml; then
+            echo "No pyproject version change to commit."
+          else
+            git config user.name "${RELEASE_BOT_NAME}"
+            git config user.email "${RELEASE_BOT_EMAIL}"
+            git add pyproject.toml
+            # Include [skip ci] to avoid running the workflow again on this bot commit.
+            git commit -m "chore(release): set pyproject version to ${{ steps.resolved.outputs.version }} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Create labels
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: auto create-labels
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: auto shipit --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --no-changelog
 
   build-and-publish:
-    needs: release
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto:release')
+    needs: [gate, release]
+    if: needs.gate.outputs.should_release == 'true'
 
     steps:
       - name: Check out repository
@@ -150,14 +207,13 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-          python-version: ${{ env.PYTHON_VERSION }}   # sets UV_PYTHON
+          python-version: ${{ env.PYTHON_VERSION }}
           cache-dependency-glob: |
             pyproject.toml
             uv.lock
 
       - name: Install dependencies
-        run: |
-          uv sync --frozen
+        run: uv sync --frozen
 
       - name: Build package
         run: uv build
