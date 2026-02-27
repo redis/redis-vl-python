@@ -50,7 +50,7 @@ Install `redisvl` into your Python (>=3.9) environment using `pip`:
 pip install redisvl
 ```
 
-> For more detailed instructions, visit the [installation guide](https://docs.redisvl.com/en/stable/overview/installation.html).
+> For more detailed instructions, visit the [installation guide](https://docs.redisvl.com/en/latest/user_guide/installation.html).
 
 ## Redis
 
