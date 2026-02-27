@@ -131,7 +131,7 @@ class BaseMessageHistory:
                     continue
                 elif r in deprecated_roles:
                     warnings.warn(
-                        f"Role '{r}' is a deprecated value and will be removed in the next major release. Valid roles: {valid_roles}.",
+                        f"Role '{r}' is a deprecated value. Update to valid roles: {valid_roles}.",
                         DeprecationWarning,
                         stacklevel=2,
                     )
