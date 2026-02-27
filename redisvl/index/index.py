@@ -404,7 +404,7 @@ class BaseSearchIndex:
         return (
             f"{type(self).__name__}("
             f"name={self.name!r}, "
-            f"prefix={self.prefix!r}, "
+            f"prefixes={self.prefixes}, "
             f"storage_type={self.storage_type.value!r}"
             f")"
         )
