@@ -400,6 +400,15 @@ class BaseSearchIndex:
             key_separator=self.schema.index.key_separator,
         )
 
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}("
+            f"name={self.name!r}, "
+            f"prefix={self.prefix!r}, "
+            f"storage_type={self.storage_type.value!r}"
+            f")"
+        )
+
 
 class SearchIndex(BaseSearchIndex):
     """A search index class for interacting with Redis as a vector database.
