@@ -6,7 +6,7 @@ from redisvl.extensions.constants import (
     ROLE_FIELD_NAME,
     TOOL_FIELD_NAME,
 )
-from redisvl.extensions.message_history.schema import ChatMessage
+from redisvl.extensions.message_history.schema import ChatMessage, ChatRole
 from redisvl.utils.utils import create_ulid, deserialize
 
 
@@ -104,7 +104,7 @@ class BaseMessageHistory:
         if role is None:
             return None
 
-        valid_roles = {"system", "user", "llm", "tool"}
+        valid_roles = {r.value for r in ChatRole}
 
         # Handle single role string
         if isinstance(role, str):
