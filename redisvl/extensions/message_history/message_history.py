@@ -14,7 +14,7 @@ from redisvl.extensions.constants import (
 from redisvl.extensions.message_history import BaseMessageHistory
 from redisvl.extensions.message_history.schema import ChatMessage, MessageHistorySchema
 from redisvl.index import SearchIndex
-from redisvl.query import FilterQuery
+from redisvl.query import CountQuery, FilterQuery
 from redisvl.query.filter import Tag
 from redisvl.utils.utils import serialize
 
@@ -87,6 +87,16 @@ class MessageHistory(BaseMessageHistory):
             id = self.get_recent(top_k=1, raw=True)[0][ID_FIELD_NAME]  # type: ignore
 
         self._index.client.delete(self._index.key(id))  # type: ignore
+
+    def count(self, session_tag=None):
+        query = CountQuery(
+            filter_expression=(
+                Tag(SESSION_FIELD_NAME) == session_tag
+                if session_tag
+                else self._default_session_filter
+            )
+        )
+        return self._index.query(query)
 
     @property
     def messages(self) -> Union[List[str], List[Dict[str, str]]]:

@@ -330,6 +330,14 @@ def test_standard_clear(standard_history):
     assert empty_context == []
 
 
+def test_standard_count(standard_history):
+    assert standard_history.count() == 0
+    standard_history.store("some prompt", "some response")
+    assert standard_history.count() == 2  # 2 entries: user and llm
+    standard_history.clear()
+    assert standard_history.count() == 0
+
+
 # test semantic message history
 @requires_hf
 def test_semantic_specify_client(client, hf_vectorizer):
@@ -629,6 +637,18 @@ def test_semantic_drop(semantic_history):
         {"role": "llm", "content": "third response"},
         {"role": "user", "content": "fourth prompt"},
     ]
+
+
+@requires_hf
+def test_semantic_count(semantic_history):
+    semantic_history.store("first prompt", "first response")
+    semantic_history.store("second prompt", "second response")
+    semantic_history.store("third prompt", "third response")
+    semantic_history.store("fourth prompt", "fourth response")
+
+    assert semantic_history.count() == 8
+    semantic_history.drop()
+    assert semantic_history.count() == 7
 
 
 def test_different_vector_dtypes(client, redis_url):
