@@ -266,6 +266,24 @@ Before suggesting a new feature:
 - After feedback, we expect a response within two weeks
 - PRs may be closed if they show no activity after this period
 
+### PR Labels
+
+This project uses an automated release process powered by [Auto](https://intuit.github.io/auto/). PRs must be labeled to indicate the type of change:
+
+| Label | Description |
+|-------|-------------|
+| `auto:major` | Breaking changes (bumps major version) |
+| `auto:minor` | New features/enhancements (bumps minor version) |
+| `auto:patch` | Bug fixes (bumps patch version) |
+| `auto:performance` | Performance improvements (bumps patch version) |
+| `auto:documentation` | Documentation-only changes (no version bump) |
+| `auto:tests` | Test additions/improvements (no version bump) |
+| `auto:dependencies` | Dependency updates (no version bump) |
+| `auto:internal` | Internal changes (no version bump) |
+| `auto:ci` | CI/CD workflow changes (no version bump) |
+
+If you are unsure about which label to use, ask in the PR and a maintainer will help you. 
+
 ### PR Checklist
 
 Before submitting your PR, ensure:
@@ -275,6 +293,7 @@ Before submitting your PR, ensure:
 - [ ] Documentation is updated if needed
 - [ ] Commit messages are clear and descriptive
 - [ ] PR description explains what changes were made and why
+- [ ] Appropriate `auto:*` label is applied to indicate the change type
 
 ## Getting Help
 
