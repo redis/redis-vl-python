@@ -35,14 +35,16 @@ def test_search_index_repr_hash():
     index = SearchIndex(schema=schema)
     assert (
         repr(index)
-        == "SearchIndex(name='test-index', prefix='rvl', storage_type='hash')"
+        == "SearchIndex(name='test-index', prefixes=['rvl'], storage_type='hash')"
     )
 
 
 def test_search_index_repr_json():
     schema = _make_schema(name="docs", prefix="doc", storage_type="json")
     index = SearchIndex(schema=schema)
-    assert repr(index) == "SearchIndex(name='docs', prefix='doc', storage_type='json')"
+    assert (
+        repr(index) == "SearchIndex(name='docs', prefixes=['doc'], storage_type='json')"
+    )
 
 
 def test_async_search_index_repr():
@@ -50,7 +52,7 @@ def test_async_search_index_repr():
     index = AsyncSearchIndex(schema=schema)
     assert (
         repr(index)
-        == "AsyncSearchIndex(name='async-idx', prefix='data', storage_type='json')"
+        == "AsyncSearchIndex(name='async-idx', prefixes=['data'], storage_type='json')"
     )
 
 
