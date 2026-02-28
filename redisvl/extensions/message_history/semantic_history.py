@@ -120,6 +120,15 @@ class SemanticMessageHistory(BaseMessageHistory):
 
         self._default_session_filter = Tag(SESSION_FIELD_NAME) == self._session_tag
 
+    def __repr__(self) -> str:
+        return (
+            f"SemanticMessageHistory("
+            f"name={self._name!r}, "
+            f"session_tag={self._session_tag!r}, "
+            f"distance_threshold={self._distance_threshold}"
+            f")"
+        )
+
     def clear(self) -> None:
         """Clears the message history."""
         self._index.clear()

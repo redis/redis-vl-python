@@ -68,6 +68,14 @@ class MessageHistory(BaseMessageHistory):
 
         self._default_session_filter = Tag(SESSION_FIELD_NAME) == self._session_tag
 
+    def __repr__(self) -> str:
+        return (
+            f"MessageHistory("
+            f"name={self._name!r}, "
+            f"session_tag={self._session_tag!r}"
+            f")"
+        )
+
     def clear(self) -> None:
         """Clears the conversation message history."""
         self._index.clear()
