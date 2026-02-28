@@ -401,10 +401,20 @@ class BaseSearchIndex:
         )
 
     def __repr__(self) -> str:
+        # Prefer showing a single public `prefix` when available,
+        # and fall back to `prefixes` only when multiple are configured.
+        prefix_label = "prefix"
+        prefix_value = self.prefix
+
+        prefixes = getattr(self, "prefixes", None)
+        if isinstance(prefixes, (list, tuple)) and len(prefixes) != 1:
+            prefix_label = "prefixes"
+            prefix_value = prefixes
+
         return (
             f"{type(self).__name__}("
             f"name={self.name!r}, "
-            f"prefixes={self.prefixes}, "
+            f"{prefix_label}={prefix_value!r}, "
             f"storage_type={self.storage_type.value!r}"
             f")"
         )
