@@ -103,12 +103,14 @@ class LLMRouter(_SemanticRouter):
             routes = []
 
         # Map cost_optimization to routing_config
-        if cost_optimization and routing_config:
-            routing_config.cost_optimization = True
-        elif cost_optimization:
-            from redisvl.extensions.router.schema import RoutingConfig
+        if cost_optimization:
+            if routing_config:
+                # Create a new instance with cost_optimization enabled
+                routing_config = routing_config.model_copy(update={"cost_optimization": True})
+            else:
+                from redisvl.extensions.router.schema import RoutingConfig
 
-            routing_config = RoutingConfig(cost_optimization=True)
+                routing_config = RoutingConfig(cost_optimization=True)
 
         # Handle mutable default
         if connection_kwargs is None:
@@ -301,12 +303,14 @@ class AsyncLLMRouter(_AsyncSemanticRouter):
             routes = []
 
         # Map cost_optimization to routing_config
-        if cost_optimization and routing_config:
-            routing_config.cost_optimization = True
-        elif cost_optimization:
-            from redisvl.extensions.router.schema import RoutingConfig
+        if cost_optimization:
+            if routing_config:
+                # Create a new instance with cost_optimization enabled
+                routing_config = routing_config.model_copy(update={"cost_optimization": True})
+            else:
+                from redisvl.extensions.router.schema import RoutingConfig
 
-            routing_config = RoutingConfig(cost_optimization=True)
+                routing_config = RoutingConfig(cost_optimization=True)
 
         # Create the async semantic router
         router = await _AsyncSemanticRouter.create(
