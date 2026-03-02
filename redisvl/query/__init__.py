@@ -26,6 +26,7 @@ __all__ = [
     "VectorRangeQuery",
     "CountQuery",
     "TextQuery",
+    "HybridQuery",
     "AggregationQuery",
     "AggregateHybridQuery",
     "MultiVectorQuery",
