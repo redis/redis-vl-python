@@ -1461,17 +1461,35 @@ class TextQuery(BaseQuery):
         elif isinstance(stopwords, str):
             try:
                 # Try loading first; only download if not already present.
-                # This avoids race conditions when parallel workers (e.g.
-                # pytest-xdist) call nltk.download() concurrently.
-                try:
-                    self._stopwords = set(nltk_stopwords.words(stopwords))
-                except LookupError:
-                    nltk.download("stopwords", quiet=True)
-                    self._stopwords = set(nltk_stopwords.words(stopwords))
+                # Retry with backoff to handle race conditions when parallel workers
+                # (e.g. pytest-xdist) call nltk.download() concurrently.
+                import time
+
+                last_error = None
+                for attempt in range(3):
+                    try:
+                        self._stopwords = set(nltk_stopwords.words(stopwords))
+                        break
+                    except LookupError as e:
+                        last_error = e
+                        if attempt == 0:
+                            # First attempt - try downloading
+                            try:
+                                nltk.download("stopwords", quiet=True)
+                            except Exception:
+                                pass  # Download failed, will retry
+                        else:
+                            # Retry after short delay (another worker may be downloading)
+                            time.sleep(0.1 * attempt)
+                else:
+                    # If loop completes without break, all attempts failed
+                    raise ValueError(f"Failed to load stopwords '{stopwords}' after 3 attempts: {last_error}")
             except ImportError:
                 raise ValueError(
                     f"Loading stopwords for {stopwords} failed: nltk is not installed."
                 )
+            except ValueError:
+                raise  # Re-raise our own ValueError from above
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
         elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
