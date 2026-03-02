@@ -575,8 +575,10 @@ class SemanticRouter(BaseModel):
             self.routes = [route for route in self.routes if route.name != route_name]
 
     def delete(self) -> None:
-        """Delete the semantic router index."""
+        """Delete the semantic router index and associated config."""
         self._index.delete(drop=True)
+        # Clean up router config key
+        self._index.client.delete(f"{self.name}:route_config")
 
     def clear(self) -> None:
         """Flush all routes from the semantic router index."""
@@ -1631,8 +1633,10 @@ class AsyncSemanticRouter(BaseModel):
             self.routes = [route for route in self.routes if route.name != route_name]
 
     async def delete(self) -> None:
-        """Delete the semantic router index (async)."""
+        """Delete the semantic router index and associated config (async)."""
         await self._index.delete(drop=True)
+        # Clean up router config key
+        await self._index.client.delete(f"{self.name}:route_config")
 
     async def clear(self) -> None:
         """Flush all routes from the semantic router index (async)."""
