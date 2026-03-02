@@ -69,17 +69,15 @@ def patched_semantic_cache():
     mock_idx = MagicMock()
     mock_idx.exists.return_value = False
 
-    with (
-        patch(
-            "redisvl.extensions.cache.llm.semantic.HFTextVectorizer",
-            return_value=mock_vec,
-        ),
-        patch(
+    with patch(
+        "redisvl.extensions.cache.llm.semantic.HFTextVectorizer",
+        return_value=mock_vec,
+    ):
+        with patch(
             "redisvl.extensions.cache.llm.semantic.SearchIndex",
             return_value=mock_idx,
-        ),
-    ):
-        yield
+        ):
+            yield
 
 
 def test_semantic_cache_repr_defaults(patched_semantic_cache):
@@ -167,17 +165,15 @@ def patched_semantic_message_history():
     mock_idx = MagicMock()
     mock_idx.exists.return_value = False
 
-    with (
-        patch(
-            "redisvl.extensions.message_history.semantic_history.HFTextVectorizer",
-            return_value=mock_vec,
-        ),
-        patch(
+    with patch(
+        "redisvl.extensions.message_history.semantic_history.HFTextVectorizer",
+        return_value=mock_vec,
+    ):
+        with patch(
             "redisvl.extensions.message_history.semantic_history.SearchIndex",
             return_value=mock_idx,
-        ),
-    ):
-        yield
+        ):
+            yield
 
 
 def test_semantic_message_history_repr(patched_semantic_message_history):

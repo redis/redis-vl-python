@@ -179,9 +179,7 @@ class SemanticRouter(BaseModel):
             self._add_routes(self.routes)
 
     def __repr__(self) -> str:
-        return (
-            f"SemanticRouter(" f"name={self.name!r}, " f"routes={len(self.routes)}" f")"
-        )
+        return f"SemanticRouter(name={self.name!r}, routes={len(self.routes)})"
 
     @property
     def route_names(self) -> List[str]:

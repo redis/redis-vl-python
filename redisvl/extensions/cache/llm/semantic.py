@@ -176,11 +176,8 @@ class SemanticCache(BaseLLMCache):
 
     def __repr__(self) -> str:
         return (
-            f"SemanticCache("
-            f"name={self.name!r}, "
-            f"distance_threshold={self._distance_threshold}, "
-            f"ttl={self._ttl}"
-            f")"
+            f"SemanticCache(name={self.name!r}, "
+            f"distance_threshold={self._distance_threshold}, ttl={self._ttl})"
         )
 
     def _modify_schema(

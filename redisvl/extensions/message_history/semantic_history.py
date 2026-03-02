@@ -122,11 +122,8 @@ class SemanticMessageHistory(BaseMessageHistory):
 
     def __repr__(self) -> str:
         return (
-            f"SemanticMessageHistory("
-            f"name={self._name!r}, "
-            f"session_tag={self._session_tag!r}, "
-            f"distance_threshold={self._distance_threshold}"
-            f")"
+            f"SemanticMessageHistory(name={self._name!r}, "
+            f"session_tag={self._session_tag!r}, distance_threshold={self._distance_threshold})"
         )
 
     def clear(self) -> None:

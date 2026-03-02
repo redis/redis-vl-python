@@ -402,11 +402,8 @@ class BaseSearchIndex:
 
     def __repr__(self) -> str:
         return (
-            f"{type(self).__name__}("
-            f"name={self.name!r}, "
-            f"prefixes={self.prefixes!r}, "
-            f"storage_type={self.storage_type.value!r}"
-            f")"
+            f"{type(self).__name__}(name={self.name!r}, prefixes={self.prefixes!r}, "
+            f"storage_type={self.storage_type.value!r})"
         )
 
 
