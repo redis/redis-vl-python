@@ -1,4 +1,6 @@
-from typing import Dict, List, Optional
+import warnings
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -18,13 +20,22 @@ from redisvl.schema import IndexSchema
 from redisvl.utils.utils import current_timestamp
 
 
+class ChatRole(str, Enum):
+    """Enumeration of valid roles for a chat message."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    TOOL = "tool"
+
+
 class ChatMessage(BaseModel):
     """A single chat message exchanged between a user and an LLM."""
 
     entry_id: Optional[str] = Field(default=None)
     """A unique identifier for the message."""
-    role: str  # TODO -- do we enumify this?
-    """The role of the message sender (e.g., 'user' or 'llm')."""
+    role: Union[ChatRole, str]  # str allows deprecated values with warning
+    """The role of the message sender (e.g. 'user' or 'assistant')."""
     content: str
     """The content of the message."""
     session_tag: str
@@ -52,6 +63,20 @@ class ChatMessage(BaseModel):
                 f"{values[SESSION_FIELD_NAME]}:{values[TIMESTAMP_FIELD_NAME]}:{unique_suffix}"
             )
         return values
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def coerce_role(cls, v: Any) -> Union[ChatRole, str]:
+        if isinstance(v, str):
+            try:
+                return ChatRole(v)
+            except ValueError:
+                warnings.warn(
+                    f"Role '{v}' is a deprecated value. Update to valid roles: {[r.value for r in ChatRole]}.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+        return v
 
     def to_dict(self, dtype: Optional[str] = None) -> Dict:
         data = self.model_dump(exclude_none=True)

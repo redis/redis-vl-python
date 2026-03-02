@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from redisvl.extensions.message_history.schema import ChatMessage
+from redisvl.extensions.message_history.schema import ChatMessage, ChatRole
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.utils import create_ulid, current_timestamp, serialize
 
@@ -157,19 +157,63 @@ def test_chat_message_missing_fields():
         )
 
 
-def test_chat_message_invalid_role():
+@pytest.mark.parametrize(
+    "deprecated_role", ["potato", "llm", "admin", "", "User", "SYSTEM"]
+)
+def test_chat_message_deprecated_role(deprecated_role):
+    """Deprecated string roles raise a DeprecationWarning but are stored as-is."""
     session_tag = create_ulid()
     timestamp = current_timestamp()
     content = "Hello, world!"
+    message = None
 
-    with pytest.raises(ValidationError):
-        ChatMessage(
+    with pytest.warns(DeprecationWarning, match="deprecated value"):
+        message = ChatMessage(
             entry_id=f"{session_tag}:{timestamp}",
-            role=[1, 2, 3],  # Invalid role type
+            role=deprecated_role,
             content=content,
             session_tag=session_tag,
             timestamp=timestamp,
         )
+    assert message is not None
+    assert message.role == deprecated_role
+
+
+@pytest.mark.parametrize(
+    "role_input, expected",
+    [
+        ("user", ChatRole.USER),
+        ("assistant", ChatRole.ASSISTANT),
+        ("system", ChatRole.SYSTEM),
+        ("tool", ChatRole.TOOL),
+        (ChatRole.USER, ChatRole.USER),  # enum value passed directly
+        (ChatRole.ASSISTANT, ChatRole.ASSISTANT),
+    ],
+)
+def test_chat_message_role_coercion(role_input, expected):
+    session_tag = create_ulid()
+    content = "Hello, world!"
+    message = ChatMessage(role=role_input, content=content, session_tag=session_tag)
+    assert message.role == expected
+    assert isinstance(message.role, ChatRole)
+
+
+@pytest.mark.parametrize("invalid_role", [123, [1, 2, 3]])
+def test_chat_message_invalid_role(invalid_role):
+    session_tag = create_ulid()
+    content = "Hello, world!"
+    with pytest.raises(ValidationError):
+        ChatMessage(role=invalid_role, content=content, session_tag=session_tag)
+
+
+def test_chat_message_role_serializes_to_string():
+    session_tag = create_ulid()
+    role = "user"
+    content = "Hello, world!"
+    message = ChatMessage(role=role, content=content, session_tag=session_tag)
+    data = message.to_dict()
+    assert data["role"] == "user"
+    assert isinstance(data["role"], str)
 
 
 def test_chat_message_unique_ids_for_rapid_creation():
