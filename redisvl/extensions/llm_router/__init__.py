@@ -106,7 +106,9 @@ class LLMRouter(_SemanticRouter):
         if cost_optimization:
             if routing_config:
                 # Create a new instance with cost_optimization enabled
-                routing_config = routing_config.model_copy(update={"cost_optimization": True})
+                routing_config = routing_config.model_copy(
+                    update={"cost_optimization": True}
+                )
             else:
                 from redisvl.extensions.router.schema import RoutingConfig
 
@@ -306,7 +308,9 @@ class AsyncLLMRouter(_AsyncSemanticRouter):
         if cost_optimization:
             if routing_config:
                 # Create a new instance with cost_optimization enabled
-                routing_config = routing_config.model_copy(update={"cost_optimization": True})
+                routing_config = routing_config.model_copy(
+                    update={"cost_optimization": True}
+                )
             else:
                 from redisvl.extensions.router.schema import RoutingConfig
 

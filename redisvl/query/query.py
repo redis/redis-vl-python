@@ -1483,7 +1483,9 @@ class TextQuery(BaseQuery):
                             time.sleep(0.1 * attempt)
                 else:
                     # If loop completes without break, all attempts failed
-                    raise ValueError(f"Failed to load stopwords '{stopwords}' after 3 attempts: {last_error}")
+                    raise ValueError(
+                        f"Failed to load stopwords '{stopwords}' after 3 attempts: {last_error}"
+                    )
             except ImportError:
                 raise ValueError(
                     f"Loading stopwords for {stopwords} failed: nltk is not installed."
