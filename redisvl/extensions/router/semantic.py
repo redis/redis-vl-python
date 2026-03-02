@@ -56,7 +56,7 @@ class SemanticRouter(BaseModel):
         redis_client: Optional[SyncRedisClient] = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         """Initialize the SemanticRouter.
@@ -95,6 +95,9 @@ class SemanticRouter(BaseModel):
 
         if routing_config is None:
             routing_config = RoutingConfig()
+
+        if connection_kwargs is None:
+            connection_kwargs = {}
 
         super().__init__(
             name=name,
@@ -386,6 +389,8 @@ class SemanticRouter(BaseModel):
         max_k: int = 1,
     ) -> List[RouteMatch]:
         """Get route response from vector db"""
+        if not self.routes:
+            return []
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
         # therefore you might take the max_threshold and further refine from there.
@@ -1438,6 +1443,8 @@ class AsyncSemanticRouter(BaseModel):
         max_k: int = 1,
     ) -> List[RouteMatch]:
         """Get route response from vector db (async)"""
+        if not self.routes:
+            return []
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
         # therefore you might take the max_threshold and further refine from there.

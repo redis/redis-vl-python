@@ -79,7 +79,7 @@ class LLMRouter(_SemanticRouter):
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         cost_optimization: bool = False,
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         """Initialize LLMRouter (deprecated, use SemanticRouter).
@@ -109,6 +109,10 @@ class LLMRouter(_SemanticRouter):
             from redisvl.extensions.router.schema import RoutingConfig
 
             routing_config = RoutingConfig(cost_optimization=True)
+
+        # Handle mutable default
+        if connection_kwargs is None:
+            connection_kwargs = {}
 
         # Call parent __init__
         super().__init__(
