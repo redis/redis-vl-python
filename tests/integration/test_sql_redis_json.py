@@ -1141,3 +1141,72 @@ class TestSQLQueryVectorSearch:
         assert "Science Fiction" in redis_cmd or "Science\\ Fiction" in redis_cmd
         assert "=>[KNN" in redis_cmd
         assert "KNN 3" in redis_cmd
+
+
+# =============================================================================
+# Async SQLQuery Tests
+# =============================================================================
+
+from redisvl.index import AsyncSearchIndex
+
+
+@pytest.fixture
+async def async_sql_index(redis_url, worker_id):
+    """Create an async products index for SQL query testing."""
+    unique_id = str(uuid.uuid4())[:8]
+    index_name = f"async_sql_products_{worker_id}_{unique_id}"
+
+    index = AsyncSearchIndex.from_dict(
+        {
+            "index": {
+                "name": index_name,
+                "prefix": f"async_product_{worker_id}_{unique_id}",
+                "storage_type": "json",
+            },
+            "fields": [
+                {"name": "title", "type": "text", "attrs": {"sortable": True}},
+                {"name": "price", "type": "numeric", "attrs": {"sortable": True}},
+                {"name": "category", "type": "tag", "attrs": {"sortable": True}},
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    await index.create(overwrite=True)
+
+    # Load test data
+    products = [
+        {"title": "Gaming Laptop", "price": 899, "category": "electronics"},
+        {"title": "Budget Laptop", "price": 499, "category": "electronics"},
+        {"title": "Python Book", "price": 45, "category": "books"},
+    ]
+
+    await index.load(products)
+
+    yield index
+
+    # Cleanup
+    await index.delete(drop=True)
+
+
+class TestAsyncSQLQuery:
+    """Tests for async SQLQuery support in AsyncSearchIndex."""
+
+    @pytest.mark.asyncio
+    async def test_async_sql_select(self, async_sql_index):
+        """Test async SELECT query (FT.SEARCH code path)."""
+        sql_query = SQLQuery(f"SELECT title, price FROM {async_sql_index.name}")
+        results = await async_sql_index.query(sql_query)
+
+        assert len(results) == 3
+        assert "title" in results[0]
+        assert "price" in results[0]
+
+    @pytest.mark.asyncio
+    async def test_async_sql_aggregate(self, async_sql_index):
+        """Test async COUNT(*) aggregation (FT.AGGREGATE code path)."""
+        sql_query = SQLQuery(f"SELECT COUNT(*) as total FROM {async_sql_index.name}")
+        results = await async_sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert int(results[0]["total"]) == 3

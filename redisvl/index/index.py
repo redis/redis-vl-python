@@ -957,19 +957,7 @@ class SearchIndex(BaseSearchIndex):
         # Execute the query with any params
         result = executor.execute(sql_query.sql, params=sql_query.params)
 
-        # Decode bytes to strings in the results (Redis may return bytes)
-        decoded_rows = []
-        for row in result.rows:
-            decoded_row = {}
-            for key, value in row.items():
-                # Decode key if bytes
-                str_key = key.decode("utf-8") if isinstance(key, bytes) else key
-                # Decode value if bytes
-                str_value = value.decode("utf-8") if isinstance(value, bytes) else value
-                decoded_row[str_key] = str_value
-            decoded_rows.append(decoded_row)
-
-        return decoded_rows
+        return [convert_bytes(row) for row in result.rows]
 
     def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
@@ -1180,7 +1168,7 @@ class SearchIndex(BaseSearchIndex):
         handles post-processing of the search.
 
         Args:
-            query (Union[BaseQuery, AggregateQuery, HybridQuery]): The query to run.
+            query (Union[BaseQuery, AggregationQuery, HybridQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -2099,16 +2087,47 @@ class AsyncSearchIndex(BaseSearchIndex):
         results = await self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
+    async def _sql_query(self, sql_query: SQLQuery) -> List[Dict[str, Any]]:
+        """Asynchronously execute a SQL query and return results.
+
+        Args:
+            sql_query: The SQLQuery object containing the SQL statement.
+
+        Returns:
+            List of dictionaries containing the query results.
+
+        Raises:
+            ImportError: If sql-redis package is not installed.
+        """
+        try:
+            from sql_redis import AsyncExecutor, AsyncSchemaRegistry
+        except ImportError:
+            raise ImportError(
+                "sql-redis is required for SQL query support. "
+                "Install it with: pip install redisvl[sql-redis]"
+            )
+
+        client = await self._get_client()
+        registry = AsyncSchemaRegistry(client)
+        await registry.load_all()  # Loads index schemas from Redis asynchronously
+
+        executor = AsyncExecutor(client, registry)
+
+        # Execute the query with any params asynchronously
+        result = await executor.execute(sql_query.sql, params=sql_query.params)
+
+        return [convert_bytes(row) for row in result.rows]
+
     async def query(
-        self, query: Union[BaseQuery, AggregationQuery, HybridQuery]
+        self, query: Union[BaseQuery, AggregationQuery, HybridQuery, SQLQuery]
     ) -> List[Dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
-        This method takes a BaseQuery, AggregationQuery, or HybridQuery object directly, runs
-        the search, and handles post-processing of the search.
+        This method takes a BaseQuery, AggregationQuery, HybridQuery, or SQLQuery object
+        directly, runs the search, and handles post-processing of the search.
 
         Args:
-            query (Union[BaseQuery, AggregateQuery, HybridQuery]): The query to run.
+            query (Union[BaseQuery, AggregationQuery, HybridQuery, SQLQuery]): The query to run.
 
         Returns:
             List[Result]: A list of search results.
@@ -2127,6 +2146,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         if isinstance(query, AggregationQuery):
             return await self._aggregate(query)
+        elif isinstance(query, SQLQuery):
+            return await self._sql_query(query)
         elif isinstance(query, HybridQuery):
             return await self._hybrid_search(query)
         else:
