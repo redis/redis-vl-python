@@ -1332,7 +1332,7 @@ class TextQuery(BaseQuery):
         from redisvl.query import TextQuery
         from redisvl.index import SearchIndex
 
-        index = SearchIndex.from_yaml(index.yaml)
+        index = SearchIndex.from_yaml("index.yaml")
 
         query = TextQuery(
             text="example text",

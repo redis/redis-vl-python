@@ -343,7 +343,7 @@ class IndexSchema(BaseModel):
         .. code-block:: python
 
             # Add a tag field
-            schema.add_field({"name": "user", "type": "tag})
+            schema.add_field({"name": "user", "type": "tag"})
 
             # Add a vector field
             schema.add_field({

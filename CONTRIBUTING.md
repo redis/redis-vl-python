@@ -31,7 +31,7 @@ Here's how to get started with your code contribution:
 
 ### Prerequisites
 
-- **Python**: RedisVL supports Python 3.8 and above
+- **Python**: RedisVL supports Python 3.9 and above
 - **Docker**: Required for running Redis Stack and integration tests
 - **UV**: Modern Python package manager for fast dependency management
 
@@ -135,8 +135,8 @@ make lint
 
 You can also run these commands directly with UV:
 ```bash
-uv run ruff format
-uv run ruff check --fix
+uv run isort ./redisvl ./tests/ --profile black
+uv run black ./redisvl ./tests/
 uv run mypy redisvl
 ```
 
