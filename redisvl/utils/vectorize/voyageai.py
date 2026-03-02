@@ -13,6 +13,26 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"
 
+# Token limits for VoyageAI models (used for token-aware batching)
+VOYAGE_TOTAL_TOKEN_LIMITS = {
+    "voyage-context-3": 32_000,
+    "voyage-3.5-lite": 1_000_000,
+    "voyage-3.5": 320_000,
+    "voyage-2": 320_000,
+    "voyage-3-large": 120_000,
+    "voyage-code-3": 120_000,
+    "voyage-large-2-instruct": 120_000,
+    "voyage-finance-2": 120_000,
+    "voyage-multilingual-2": 120_000,
+    "voyage-law-2": 120_000,
+    "voyage-large-2": 120_000,
+    "voyage-3": 120_000,
+    "voyage-3-lite": 120_000,
+    "voyage-code-2": 120_000,
+    "voyage-multimodal-3": 32_000,
+    "voyage-multimodal-3.5": 32_000,
+}
+
 
 class VoyageAIVectorizer(BaseVectorizer):
     """The VoyageAIVectorizer class utilizes VoyageAI's API to generate
@@ -86,6 +106,21 @@ class VoyageAIVectorizer(BaseVectorizer):
             content="your input query text here",
             input_type="query"
         )
+
+        # Using contextualized embeddings (voyage-context-3)
+        context_vectorizer = VoyageAIVectorizer(
+            model="voyage-context-3",
+            api_config={"api_key": "your-voyageai-api-key"}
+        )
+        # Context models automatically use contextualized_embed API
+        context_embeddings = context_vectorizer.embed_many(
+            contents=["chunk 1", "chunk 2", "chunk 3"],
+            input_type="document"
+        )
+
+        # Token counting for API usage management
+        token_counts = vectorizer.count_tokens(["text one", "text two"])
+        print(f"Token counts: {token_counts}")
 
     """
 
@@ -447,6 +482,80 @@ class VoyageAIVectorizer(BaseVectorizer):
         if isinstance(content, Video):
             return content.to_bytes()
         return super()._serialize_for_cache(content)
+
+    def _is_context_model(self) -> bool:
+        """
+        Check if the current model is a contextualized embedding model.
+
+        Contextualized models (like voyage-context-3) use a different API
+        endpoint and expect inputs formatted differently.
+
+        Returns:
+            bool: True if the model is a context model, False otherwise.
+        """
+        return "context" in self.model
+
+    def count_tokens(self, texts: List[str]) -> List[int]:
+        """
+        Count tokens for the given texts using VoyageAI's tokenization API.
+
+        This is useful for managing API usage and optimizing batching strategies.
+
+        Args:
+            texts: List of texts to count tokens for.
+
+        Returns:
+            List[int]: List of token counts for each text.
+
+        Raises:
+            ValueError: If tokenization fails.
+
+        Example:
+            >>> vectorizer = VoyageAIVectorizer(model="voyage-3.5")
+            >>> token_counts = vectorizer.count_tokens(["Hello world", "Another text"])
+            >>> print(token_counts)  # [2, 2]
+        """
+        if not texts:
+            return []
+
+        try:
+            token_lists = self._client.tokenize(texts, model=self.model)
+            return [len(token_list) for token_list in token_lists]
+        except Exception as e:
+            raise ValueError(f"Token counting failed: {e}")
+
+    async def acount_tokens(self, texts: List[str]) -> List[int]:
+        """
+        Asynchronously count tokens for the given texts using VoyageAI's tokenization API.
+
+        This is useful for managing API usage and optimizing batching strategies.
+
+        Note: The underlying VoyageAI tokenize API is synchronous, so this method
+        provides async compatibility but doesn't offer true async performance benefits.
+
+        Args:
+            texts: List of texts to count tokens for.
+
+        Returns:
+            List[int]: List of token counts for each text.
+
+        Raises:
+            ValueError: If tokenization fails.
+
+        Example:
+            >>> vectorizer = VoyageAIVectorizer(model="voyage-3.5")
+            >>> token_counts = await vectorizer.acount_tokens(["Hello world", "Another text"])
+            >>> print(token_counts)  # [2, 2]
+        """
+        if not texts:
+            return []
+
+        try:
+            # Note: VoyageAI's tokenize is synchronous even on AsyncClient
+            token_lists = self._aclient.tokenize(texts, model=self.model)
+            return [len(token_list) for token_list in token_lists]
+        except Exception as e:
+            raise ValueError(f"Token counting failed: {e}")
 
     @property
     def type(self) -> str:
