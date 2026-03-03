@@ -441,6 +441,59 @@ async def main():
         )
 ```
 
+### Google ADK (Python)
+
+```python
+from google.adk.agents import LlmAgent
+from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
+from mcp import StdioServerParameters
+
+root_agent = LlmAgent(
+    model="gemini-2.0-flash",
+    name="redis_search_agent",
+    instruction="Search and maintain Redis-backed knowledge using vector search.",
+    tools=[
+        McpToolset(
+            connection_params=StdioConnectionParams(
+                server_params=StdioServerParameters(
+                    command="uvx",
+                    args=["--from", "redisvl[mcp]", "rvl", "mcp", "--config", "/path/to/mcp_config.yaml"],
+                    env={
+                        "OPENAI_API_KEY": "sk-..."  # Or other vectorizer API key
+                    }
+                ),
+            ),
+            # Optional: filter to specific tools
+            # tool_filter=["redisvl-search"]
+        )
+    ],
+)
+```
+
+### n8n
+
+n8n supports MCP servers via the MCP Server Trigger node. Configure the RedisVL MCP server as an external MCP tool source:
+
+1. **Using SSE transport** (if supported in future versions):
+   ```json
+   {
+     "mcpServers": {
+       "redisvl": {
+         "url": "http://localhost:9000/sse"
+       }
+     }
+   }
+   ```
+
+2. **Using stdio transport** (via n8n's Execute Command node as a workaround):
+   Configure a workflow that spawns the MCP server process:
+   ```bash
+   uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml
+   ```
+
+Note: Full n8n MCP client support depends on n8n's MCP implementation. Refer to [n8n MCP documentation](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-langchain.mcptrigger/) for current capabilities.
+
 ---
 
 ## Observability and Security
@@ -577,3 +630,13 @@ DoD:
    - Mitigation: explicit raw-string pass-through semantics and deterministic DSL parser errors.
 4. Hidden partial writes during failures.
    - Mitigation: conservative `partial_write_possible` signaling.
+5. Security and deployment limitations (v1 scope).
+   - This implementation is designed for local/development usage via stdio transport. It does not include:
+     - Authentication/authorization mechanisms (unlike Redis Agent Memory Server which supports OAuth2/JWT).
+     - Remote transports (SSE/HTTP) that would enable multi-tenant or networked deployments.
+     - Rate limiting or request validation beyond basic input constraints.
+   - Mitigation: Document clearly that v1 is intended for local, single-user scenarios. Users requiring production-grade security should consider the official Redis MCP server or wait for future RedisVL MCP versions that may add remote transport and auth support.
+   - For production deployments requiring authentication, users can:
+     - Deploy behind an authenticating proxy.
+     - Use environment-based secrets for Redis and vectorizer credentials.
+     - Restrict network access to the MCP server process.
