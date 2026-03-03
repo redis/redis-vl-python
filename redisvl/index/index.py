@@ -1294,6 +1294,49 @@ class SearchIndex(BaseSearchIndex):
         index_name = name or self.schema.index.name
         return self._info(index_name, self._redis_client)
 
+    def to_dict(self, include_connection: bool = False) -> Dict[str, Any]:
+        """Serialize the index configuration to a dictionary.
+
+        Args:
+            include_connection (bool, optional): Whether to include connection
+                parameters. Defaults to False for security (passwords/URLs
+                are excluded by default).
+
+        Returns:
+            Dict[str, Any]: Dictionary representation of the index configuration.
+
+        Example:
+            >>> config = index.to_dict()
+            >>> new_index = SearchIndex.from_dict(config)
+        """
+        config = self.schema.to_dict()
+        if include_connection:
+            config["_redis_url"] = self._redis_url
+            # Note: connection_kwargs may contain sensitive info
+            # Only include non-sensitive keys
+            safe_keys = {"decode_responses", "ssl", "socket_timeout", "socket_connect_timeout"}
+            config["_connection_kwargs"] = {
+                k: v for k, v in self._connection_kwargs.items()
+                if k in safe_keys
+            }
+        return config
+
+    def to_yaml(self, path: str, include_connection: bool = False) -> None:
+        """Serialize the index configuration to a YAML file.
+
+        Args:
+            path (str): Path to write the YAML file.
+            include_connection (bool, optional): Whether to include connection
+                parameters. Defaults to False for security.
+
+        Example:
+            >>> index.to_yaml("schemas/my_index.yaml")
+        """
+        import yaml
+        config = self.to_dict(include_connection=include_connection)
+        with open(path, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
     def __enter__(self):
         return self
 
@@ -2250,6 +2293,49 @@ class AsyncSearchIndex(BaseSearchIndex):
         if self._redis_client is None or self._owns_redis_client is False:
             return
         sync_wrapper(self.disconnect)()
+
+    def to_dict(self, include_connection: bool = False) -> Dict[str, Any]:
+        """Serialize the index configuration to a dictionary.
+
+        Args:
+            include_connection (bool, optional): Whether to include connection
+                parameters. Defaults to False for security (passwords/URLs
+                are excluded by default).
+
+        Returns:
+            Dict[str, Any]: Dictionary representation of the index configuration.
+
+        Example:
+            >>> config = index.to_dict()
+            >>> new_index = AsyncSearchIndex.from_dict(config)
+        """
+        config = self.schema.to_dict()
+        if include_connection:
+            config["_redis_url"] = self._redis_url
+            # Note: connection_kwargs may contain sensitive info
+            # Only include non-sensitive keys
+            safe_keys = {"decode_responses", "ssl", "socket_timeout", "socket_connect_timeout"}
+            config["_connection_kwargs"] = {
+                k: v for k, v in self._connection_kwargs.items()
+                if k in safe_keys
+            }
+        return config
+
+    def to_yaml(self, path: str, include_connection: bool = False) -> None:
+        """Serialize the index configuration to a YAML file.
+
+        Args:
+            path (str): Path to write the YAML file.
+            include_connection (bool, optional): Whether to include connection
+                parameters. Defaults to False for security.
+
+        Example:
+            >>> await index.to_yaml("schemas/my_index.yaml")
+        """
+        import yaml
+        config = self.to_dict(include_connection=include_connection)
+        with open(path, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
     async def __aenter__(self):
         return self
