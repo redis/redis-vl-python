@@ -60,7 +60,7 @@ redisvl/
 │   ├── settings.py           # MCPSettings
 │   ├── config.py             # Config models + loader + validation
 │   ├── errors.py             # MCP error mapping helpers
-│   ├── filters.py            # Filter DSL -> FilterExpression parser
+│   ├── filters.py            # Filter parser (DSL + raw string handling)
 │   └── tools/
 │       ├── __init__.py
 │       ├── search.py         # redisvl-search
@@ -138,8 +138,8 @@ vectorizer:
 
 runtime:
   # index lifecycle mode:
-  # validate_only (default) | create_if_missing
-  index_mode: validate_only
+  # validate_only | create_if_missing (default)
+  index_mode: create_if_missing
 
   # required explicit field mapping for tool behavior
   text_field_name: content
@@ -149,6 +149,10 @@ runtime:
   # request constraints
   default_limit: 10
   max_limit: 100
+  max_upsert_records: 64
+
+  # default overwrite behavior for existing vectors
+  skip_embedding_if_present: true
 
   # timeouts
   startup_timeout_seconds: 30
@@ -175,6 +179,7 @@ Server startup must fail fast if:
 4. `runtime.vector_field_name` not in schema or not vector type.
 5. `runtime.default_embed_field` not in schema.
 6. `default_limit <= 0` or `max_limit < default_limit`.
+7. `max_upsert_records <= 0`.
 
 ---
 
@@ -205,9 +210,11 @@ Tool executions are bounded by an async semaphore (`runtime.max_concurrency`). R
 
 ---
 
-## Filter DSL (Normative)
+## Filter Contract (Normative)
 
-`redisvl-search.filter` accepts JSON in this DSL.
+`redisvl-search.filter` follows RedisVL convention and accepts either:
+- `string`: raw RedisVL/RediSearch filter string (passed through to query filter).
+- `object`: JSON DSL described below.
 
 ### Operators
 
@@ -243,7 +250,8 @@ Tool executions are bounded by an async semaphore (`runtime.max_concurrency`). R
 2. Unknown `field` fails with `invalid_filter`.
 3. Type mismatches fail with `invalid_filter`.
 4. Empty logical arrays fail with `invalid_filter`.
-5. Parser translates DSL to `redisvl.query.filter.FilterExpression`.
+5. Object DSL parser translates to `redisvl.query.filter.FilterExpression`.
+6. String filter is treated as raw filter expression and passed through.
 
 ---
 
@@ -261,7 +269,7 @@ Search records using vector, full-text, or hybrid query.
 | `search_type` | enum | no | `vector` | `vector` \| `fulltext` \| `hybrid` |
 | `limit` | int | no | `runtime.default_limit` | `1..runtime.max_limit` |
 | `offset` | int | no | `0` | `>=0` |
-| `filter` | object | no | `null` | Must satisfy filter DSL |
+| `filter` | string \\| object | no | `null` | Raw RedisVL filter string or DSL object |
 | `return_fields` | list[str] | no | all non-vector fields | Unknown fields rejected |
 
 ### Response Contract
@@ -315,10 +323,10 @@ Not registered when read-only mode is enabled.
 
 | Parameter | Type | Required | Default | Constraints |
 |----------|------|----------|---------|-------------|
-| `records` | list[object] | yes | - | non-empty |
+| `records` | list[object] | yes | - | non-empty and `len(records) <= runtime.max_upsert_records` |
 | `id_field` | str | no | `null` | if set, must exist in every record |
 | `embed_field` | str | no | `runtime.default_embed_field` | must exist in every record |
-| `skip_embedding_if_present` | bool | no | `true` | if false, always re-embed |
+| `skip_embedding_if_present` | bool | no | `runtime.skip_embedding_if_present` | if false, always re-embed |
 
 ### Response Contract
 
@@ -334,7 +342,7 @@ Not registered when read-only mode is enabled.
 
 1. Validate input records before writing.
 2. Resolve `embed_field`.
-3. Generate embeddings for required records (`aembed_many`).
+3. Respect `skip_embedding_if_present` (default true): only generate embeddings for records missing configured vector field.
 4. Populate configured vector field.
 5. Call `AsyncSearchIndex.load`.
 
@@ -514,7 +522,7 @@ DoD:
 
 Deliverables:
 1. `redisvl-search` request/response contract.
-2. Filter DSL parser.
+2. Filter parser (JSON DSL + raw string pass-through).
 3. Capability checks for hybrid support.
 
 DoD:
@@ -565,16 +573,6 @@ DoD:
 2. Dependency drift across provider vectorizers.
    - Mitigation: dependency matrix and startup validation.
 3. Ambiguous filter behavior causing agent retries.
-   - Mitigation: strict DSL and deterministic parser errors.
+   - Mitigation: explicit raw-string pass-through semantics and deterministic DSL parser errors.
 4. Hidden partial writes during failures.
    - Mitigation: conservative `partial_write_possible` signaling.
-
----
-
-## Open Design Questions
-
-1. Should `upsert` preserve user-provided vectors by default when the vector field already exists (`skip_embedding_if_present=true`), or always re-embed?
-2. Do we want `index_mode=create_if_missing` as the default instead of `validate_only`?
-3. Should v1 support string-based raw Redis filter expressions in addition to the JSON filter DSL, or keep JSON-only?
-4. Is there a hard maximum payload size for `records` in one upsert request (count/bytes) for guardrails?
-
