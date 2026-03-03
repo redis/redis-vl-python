@@ -10,6 +10,7 @@ from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.connection import AbstractConnection as AsyncAbstractConnection
 from redis.asyncio.connection import Connection as AsyncConnection
 from redis.asyncio.connection import SSLConnection as AsyncSSLConnection
+from redis.asyncio.sentinel import Sentinel as AsyncSentinel
 from redis.connection import SSLConnection
 from redis.exceptions import ResponseError
 from redis.sentinel import Sentinel
@@ -744,11 +745,33 @@ class RedisConnectionFactory:
     def _redis_sentinel_client(
         redis_url: str, redis_class: Union[type[Redis], type[AsyncRedis]], **kwargs: Any
     ) -> Union[Redis, AsyncRedis]:
+        """Create a Redis client connected via Sentinel for high availability.
+
+        Parses a Sentinel URL and creates a Redis client connected to the
+        master instance discovered by Sentinel. Supports both sync and async
+        clients by using the appropriate Sentinel class.
+
+        Args:
+            redis_url: Sentinel URL in the format:
+                ``redis+sentinel://[user:pass@]host1:port1[,host2:port2,...][/service][/db]``
+                Service name defaults to "mymaster" if not specified.
+            redis_class: The Redis client class to use (Redis or AsyncRedis).
+            **kwargs: Additional arguments passed to Sentinel and master_for().
+
+        Returns:
+            A Redis client (sync or async) connected to the Sentinel-managed master.
+
+        Example:
+            >>> client = RedisConnectionFactory._redis_sentinel_client(
+            ...     "redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster",
+            ...     Redis
+            ... )
+        """
         sentinel_list, service_name, db, username, password = (
             RedisConnectionFactory._parse_sentinel_url(redis_url)
         )
 
-        sentinel_kwargs = {}
+        sentinel_kwargs: Dict[str, Any] = {}
         if username:
             sentinel_kwargs["username"] = username
             kwargs["username"] = username
@@ -758,11 +781,46 @@ class RedisConnectionFactory:
         if db:
             kwargs["db"] = db
 
-        sentinel = Sentinel(sentinel_list, sentinel_kwargs=sentinel_kwargs, **kwargs)
-        return sentinel.master_for(service_name, redis_class=redis_class, **kwargs)
+        # Use AsyncSentinel for async clients, Sentinel for sync clients
+        if redis_class == AsyncRedis:
+            async_sentinel = AsyncSentinel(
+                sentinel_list, sentinel_kwargs=sentinel_kwargs, **kwargs
+            )
+            return async_sentinel.master_for(
+                service_name, redis_class=redis_class, **kwargs  # type: ignore[arg-type]
+            )
+        else:
+            sync_sentinel = Sentinel(
+                sentinel_list, sentinel_kwargs=sentinel_kwargs, **kwargs
+            )
+            return sync_sentinel.master_for(
+                service_name, redis_class=redis_class, **kwargs
+            )
 
     @staticmethod
-    def _parse_sentinel_url(url: str) -> tuple:
+    def _parse_sentinel_url(
+        url: str,
+    ) -> Tuple[List[Tuple[str, int]], str, Optional[str], Optional[str], Optional[str]]:
+        """Parse a Redis Sentinel URL into its components.
+
+        Args:
+            url: Sentinel URL in the format:
+                ``redis+sentinel://[user:pass@]host1:port1[,host2:port2,...]/service[/db]``
+
+        Returns:
+            A tuple containing:
+                - sentinel_list: List of (host, port) tuples for Sentinel nodes
+                - service_name: The Sentinel service name (defaults to "mymaster")
+                - db: The database number (or None if not specified)
+                - username: The username for authentication (or None)
+                - password: The password for authentication (or None)
+
+        Example:
+            >>> RedisConnectionFactory._parse_sentinel_url(
+            ...     "redis+sentinel://user:pass@host1:26379,host2:26380/mymaster/0"
+            ... )
+            ([('host1', 26379), ('host2', 26380)], 'mymaster', '0', 'user', 'pass')
+        """
         parsed_url = urlparse(url)
         hosts_part = parsed_url.netloc.split("@")[-1]
         sentinel_hosts = hosts_part.split(",")

@@ -149,19 +149,25 @@ If you are considering a self-hosted Redis Enterprise deployment on Kubernetes, 
 
 ### Redis Sentinel
 
-For high availability deployments, RedisVL supports connecting to Redis through Sentinel. Use the `redis+sentinel://` URL scheme to connect:
+For high availability deployments, RedisVL supports connecting to Redis through Sentinel. Use the `redis+sentinel://` URL scheme to connect. Both sync and async connections are fully supported.
 
 ```python
-from redisvl.index import SearchIndex
+from redisvl.index import SearchIndex, AsyncSearchIndex
 
-# Connect via Sentinel
+# Sync connection via Sentinel
 # Format: redis+sentinel://[username:password@]host1:port1,host2:port2/service_name[/db]
 index = SearchIndex.from_yaml(
     "schema.yaml",
     redis_url="redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster"
 )
 
-# With authentication
+# Async connection via Sentinel
+async_index = AsyncSearchIndex.from_yaml(
+    "schema.yaml",
+    redis_url="redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster"
+)
+
+# With authentication and database selection
 index = SearchIndex.from_yaml(
     "schema.yaml",
     redis_url="redis+sentinel://user:pass@sentinel1:26379,sentinel2:26379/mymaster/0"
@@ -172,5 +178,6 @@ The Sentinel URL format supports:
 
 - Multiple sentinel hosts (comma-separated)
 - Optional authentication (username:password)
-- Service name (required - the name of the Redis master)
+- Service name (defaults to `mymaster` if not specified)
 - Optional database number (defaults to 0)
+- Both sync (`SearchIndex`) and async (`AsyncSearchIndex`) connections
