@@ -333,7 +333,9 @@ class SemanticRouter(BaseModel):
         # Update alternatives with original matches
         for i, (match, _) in enumerate(ranked):
             match.alternatives = [
-                (m.name, m.distance) for j, (m, _) in enumerate(ranked) if j != i
+                (m.name, m.distance)
+                for j, (m, _) in enumerate(ranked)
+                if j != i and m.name is not None and m.distance is not None
             ]
 
         return [m for m, _ in ranked]
@@ -1389,7 +1391,9 @@ class AsyncSemanticRouter(BaseModel):
         # Update alternatives with original matches
         for i, (match, _) in enumerate(ranked):
             match.alternatives = [
-                (m.name, m.distance) for j, (m, _) in enumerate(ranked) if j != i
+                (m.name, m.distance)
+                for j, (m, _) in enumerate(ranked)
+                if j != i and m.name is not None and m.distance is not None
             ]
 
         return [m for m, _ in ranked]
