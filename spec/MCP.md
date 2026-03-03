@@ -1,22 +1,50 @@
 # RedisVL MCP Server Specification
 
+## Document Status
+
+- Status: Draft for implementation
+- Audience: RedisVL maintainers and coding agents implementing MCP support
+- Primary objective: Define a deterministic, testable MCP server contract so agents can implement safely without relying on implicit behavior
+
+---
+
 ## Overview
 
-This specification defines the implementation of a Model Context Protocol (MCP) server for RedisVL. The MCP server enables AI agents and LLM applications to interact with Redis as a vector database through a standardized protocol.
+This specification defines a Model Context Protocol (MCP) server for RedisVL that allows MCP clients to search and upsert data in a Redis index.
+
+The server is designed for stdio transport first and must be runnable via:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml
+```
 
 ### Goals
 
-1. Expose RedisVL's vector search capabilities to MCP-compatible clients (Claude Desktop, Claude Agents SDK, etc.)
-2. Provide tools for semantic search, full-text search, hybrid search, and data upsert
-3. Integrate seamlessly with the existing RedisVL architecture
-4. Support the `uvx --from redisvl rvl mcp` pattern for easy deployment
+1. Expose RedisVL search capabilities (`vector`, `fulltext`, `hybrid`) through stable MCP tools.
+2. Support controlled write access via an upsert tool.
+3. Provide deterministic contracts for tool inputs, outputs, and errors.
+4. Align implementation with existing RedisVL architecture and CLI patterns.
 
-### References
+### Non-Goals (v1)
 
-- [Model Context Protocol Specification](https://modelcontextprotocol.io/)
-- [FastMCP Library](https://github.com/jlowin/fastmcp)
-- [Qdrant MCP Server](https://github.com/qdrant/mcp-server-qdrant) - Similar scope reference
-- [Redis Agent Memory Server](https://github.com/redis-developer/agent-memory-server) - Implementation patterns
+1. Multi-index routing in a single server process.
+2. Remote transports (SSE/HTTP).
+3. Delete/count/info tools (future scope).
+
+---
+
+## Compatibility Matrix
+
+These are hard compatibility expectations for v1.
+
+| Component | Requirement | Notes |
+|----------|-------------|-------|
+| Python | `>=3.9.2,<3.15` | Match project constraints |
+| RedisVL | current repo version | Server lives inside this package |
+| redis-py | `>=5.0,<7.2` | Already required by project |
+| MCP SDK | `mcp>=1.9.0` | Provides FastMCP |
+| Redis server | Redis Stack / Redis with Search module | Required for all search modes |
+| Hybrid search | Redis `>=8.4.0` and redis-py `>=7.1.0` runtime capability | If unavailable, `hybrid` returns structured error |
 
 ---
 
@@ -24,74 +52,68 @@ This specification defines the implementation of a Model Context Protocol (MCP) 
 
 ### Module Structure
 
-```
+```text
 redisvl/
 ├── mcp/
-│   ├── __init__.py           # Public exports
-│   ├── server.py             # RedisVLMCPServer class (extends FastMCP)
-│   ├── settings.py           # MCPSettings (pydantic-settings)
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── search.py         # Search tool implementation
-│   │   └── upsert.py         # Upsert tool implementation
-│   └── utils.py              # Helper functions
-├── cli/
-│   └── ... (existing)        # Add `mcp` subcommand
+│   ├── __init__.py
+│   ├── server.py             # RedisVLMCPServer
+│   ├── settings.py           # MCPSettings
+│   ├── config.py             # Config models + loader + validation
+│   ├── errors.py             # MCP error mapping helpers
+│   ├── filters.py            # Filter DSL -> FilterExpression parser
+│   └── tools/
+│       ├── __init__.py
+│       ├── search.py         # redisvl-search
+│       └── upsert.py         # redisvl-upsert
+└── cli/
+    ├── main.py               # Add `mcp` command dispatch
+    └── mcp.py                # MCP command handler class
 ```
 
-### Dependencies
+### Dependency Groups
 
-The MCP functionality is an **optional dependency group**:
+Add optional extras for explicit install intent.
 
 ```toml
-# pyproject.toml
 [project.optional-dependencies]
 mcp = [
-    "mcp>=1.9.0",              # MCP SDK with FastMCP
+  "mcp>=1.9.0",
+  "pydantic-settings>=2.0",
 ]
 ```
 
-Installation: `pip install redisvl[mcp]`
-
-### Core Components
-
-1. **RedisVLMCPServer**: Main server class extending `FastMCP`
-2. **MCPSettings**: Configuration via environment variables (pydantic-settings)
-3. **Tool implementations**: Search and upsert operations
-4. **CLI integration**: `rvl mcp` subcommand
+Notes:
+- `fulltext`/`hybrid` use `TextQuery`/`HybridQuery`, which rely on NLTK stopwords when defaults are used. If `nltk` is not installed and stopwords are enabled, server must return a structured dependency error.
+- Provider vectorizer dependencies remain provider-specific (`openai`, `cohere`, `vertexai`, etc.).
 
 ---
 
-## Configuration (MCPSettings)
+## Configuration
 
-Settings are configured via environment variables, following the pattern established by Qdrant MCP and Agent Memory Server.
+Configuration is composed from environment + YAML:
+
+1. `MCPSettings` from env/CLI.
+2. YAML file referenced by `config` setting.
+3. Env substitution inside YAML with strict validation.
 
 ### Environment Variables
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `REDISVL_MCP_CONFIG` | str | (required) | Path to MCP configuration YAML file |
-| `REDISVL_MCP_READ_ONLY` | bool | `false` | Disable upsert tool when true |
-| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | str | (see below) | Custom search tool description |
-| `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | str | (see below) | Custom upsert tool description |
+| `REDISVL_MCP_CONFIG` | str | required | Path to MCP YAML config |
+| `REDISVL_MCP_READ_ONLY` | bool | `false` | If true, do not register upsert tool |
+| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | str | default text | MCP tool description override |
+| `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | str | default text | MCP tool description override |
 
-### MCP Configuration File
-
-All MCP server configuration is consolidated into a **single YAML file** that includes Redis connection, index schema, and vectorizer settings. This simplifies deployment and keeps related configuration together.
-
-#### Configuration File Format
+### YAML Schema (Normative)
 
 ```yaml
-# mcp_config.yaml
-
-# Redis connection
 redis_url: redis://localhost:6379
 
-# Index schema (inline, same format as existing RedisVL schemas)
 index:
   name: my_index
   prefix: doc
-  storage_type: hash    # or "json"
+  storage_type: hash
 
 fields:
   - name: content
@@ -106,323 +128,199 @@ fields:
       distance_metric: cosine
       datatype: float32
 
-# Vectorizer configuration
-# Use the exact class name from redisvl.utils.vectorize
-vectorizer:
-  class: OpenAITextVectorizer      # Required: vectorizer class name
-  model: text-embedding-3-small    # Required: model name
-
-  # Additional kwargs passed directly to the vectorizer constructor
-  # Most providers use environment variables by default for API keys
-```
-
-#### Provider-Specific Vectorizer Examples
-
-```yaml
-# OpenAI (simplest - uses OPENAI_API_KEY env var automatically)
 vectorizer:
   class: OpenAITextVectorizer
   model: text-embedding-3-small
+  # kwargs passed to vectorizer constructor
+  # for providers using api_config, pass as nested object:
+  # api_config:
+  #   api_key: ${OPENAI_API_KEY}
 
-# Azure OpenAI
-vectorizer:
-  class: AzureOpenAITextVectorizer
-  model: text-embedding-ada-002
-  api_key: ${AZURE_OPENAI_API_KEY}
-  api_version: "2024-02-01"
-  azure_endpoint: ${AZURE_OPENAI_ENDPOINT}
+runtime:
+  # index lifecycle mode:
+  # validate_only (default) | create_if_missing
+  index_mode: validate_only
 
-# AWS Bedrock
-vectorizer:
-  class: BedrockTextVectorizer
-  model: amazon.titan-embed-text-v1
-  region_name: us-east-1
-  # Uses AWS credentials from environment/IAM role by default
+  # required explicit field mapping for tool behavior
+  text_field_name: content
+  vector_field_name: embedding
+  default_embed_field: content
 
-# Google VertexAI
-vectorizer:
-  class: VertexAITextVectorizer
-  model: textembedding-gecko@003
-  project_id: ${GCP_PROJECT_ID}
-  location: us-central1
+  # request constraints
+  default_limit: 10
+  max_limit: 100
 
-# HuggingFace (local embeddings)
-vectorizer:
-  class: HFTextVectorizer
-  model: sentence-transformers/all-MiniLM-L6-v2
+  # timeouts
+  startup_timeout_seconds: 30
+  request_timeout_seconds: 60
 
-# Cohere
-vectorizer:
-  class: CohereTextVectorizer
-  model: embed-english-v3.0
-  # Uses COHERE_API_KEY env var automatically
-
-# Mistral
-vectorizer:
-  class: MistralAITextVectorizer
-  model: mistral-embed
-  # Uses MISTRAL_API_KEY env var automatically
-
-# VoyageAI
-vectorizer:
-  class: VoyageAITextVectorizer
-  model: voyage-2
-  # Uses VOYAGE_API_KEY env var automatically
+  # server-side concurrency guard
+  max_concurrency: 16
 ```
 
-### Configuration Loader
+### Env Substitution Rules
 
-```python
-# redisvl/mcp/config.py
-from typing import Any, Dict, Optional
-import os
-import re
-import yaml
+Supported patterns in YAML values:
+- `${VAR}`: required variable. Fail startup if unset.
+- `${VAR:-default}`: optional variable with fallback.
 
-from redisvl.schema import IndexSchema
+Unresolved required vars must fail startup with config error.
 
-def load_mcp_config(config_path: str) -> Dict[str, Any]:
-    """Load MCP config with environment variable substitution."""
-    with open(config_path) as f:
-        content = f.read()
+### Config Validation Rules
 
-    # Substitute ${VAR} patterns with environment variables
-    def replace_env(match):
-        var_name = match.group(1)
-        return os.environ.get(var_name, "")
+Server startup must fail fast if:
+1. Config file missing/unreadable.
+2. YAML invalid.
+3. `runtime.text_field_name` not in schema.
+4. `runtime.vector_field_name` not in schema or not vector type.
+5. `runtime.default_embed_field` not in schema.
+6. `default_limit <= 0` or `max_limit < default_limit`.
 
-    content = re.sub(r'\$\{(\w+)\}', replace_env, content)
-    return yaml.safe_load(content)
+---
 
-def create_index_schema(config: Dict[str, Any]) -> IndexSchema:
-    """Create IndexSchema from the index/fields portion of config."""
-    schema_dict = {
-        "index": config["index"],
-        "fields": config["fields"],
+## Lifecycle and Resource Management
+
+### Startup Sequence (Normative)
+
+On server startup:
+
+1. Load settings and config.
+2. Build `IndexSchema`.
+3. Create `AsyncSearchIndex` with `redis_url`.
+4. Validate Redis connectivity by performing a lightweight call (`info` or equivalent search operation).
+5. Handle index lifecycle:
+   - `validate_only`: verify index exists; fail if missing.
+   - `create_if_missing`: create index when absent; do not overwrite existing index.
+6. Instantiate vectorizer.
+7. Validate vectorizer dimensions match configured vector field dims when available.
+8. Register tools (omit upsert in read-only mode).
+
+### Shutdown Sequence
+
+On shutdown, disconnect Redis client owned by `AsyncSearchIndex` and release vectorizer resources if applicable.
+
+### Concurrency Guard
+
+Tool executions are bounded by an async semaphore (`runtime.max_concurrency`). Requests exceeding capacity wait, then may timeout according to `request_timeout_seconds`.
+
+---
+
+## Filter DSL (Normative)
+
+`redisvl-search.filter` accepts JSON in this DSL.
+
+### Operators
+
+- Logical: `and`, `or`, `not`
+- Comparison: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `like`
+- Utility: `exists`
+
+### Atomic Expression Shape
+
+```json
+{ "field": "category", "op": "eq", "value": "science" }
+```
+
+### Composite Shape
+
+```json
+{
+  "and": [
+    { "field": "category", "op": "eq", "value": "science" },
+    {
+      "or": [
+        { "field": "rating", "op": "gte", "value": 4.5 },
+        { "field": "is_pinned", "op": "eq", "value": true }
+      ]
     }
-    return IndexSchema.from_dict(schema_dict)
-
-def create_vectorizer(config: Dict[str, Any]):
-    """Create vectorizer instance from config using class name.
-
-    The vectorizer config should have:
-    - class: The exact class name (e.g., "OpenAITextVectorizer")
-    - model: The model name
-    - Any additional kwargs are passed to the constructor
-    """
-    vec_config = config.get("vectorizer", {}).copy()
-
-    class_name = vec_config.pop("class", None)
-    if not class_name:
-        raise ValueError("Vectorizer 'class' is required in configuration")
-
-    # Import the vectorizer class dynamically
-    import redisvl.utils.vectorize as vectorize_module
-
-    if not hasattr(vectorize_module, class_name):
-        raise ValueError(
-            f"Unknown vectorizer class: {class_name}. "
-            f"Must be a class from redisvl.utils.vectorize"
-        )
-
-    vectorizer_class = getattr(vectorize_module, class_name)
-
-    # All remaining config keys are passed as kwargs to the constructor
-    return vectorizer_class(**vec_config)
+  ]
+}
 ```
 
-### Settings Class
+### Parsing Rules
 
-```python
-# redisvl/mcp/settings.py
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
-
-class MCPSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="REDISVL_MCP_",
-        env_file=".env",
-        extra="ignore",
-    )
-
-    # Path to unified MCP configuration file
-    config: str  # Required: path to mcp_config.yaml
-
-    # Server mode (can also be set in config file, env var takes precedence)
-    read_only: bool = False
-
-    # Tool descriptions (customizable for agent context)
-    tool_search_description: str = (
-        "Search for records in the Redis vector database. "
-        "Supports semantic search, full-text search, and hybrid search."
-    )
-    tool_upsert_description: str = (
-        "Upsert records into the Redis vector database. "
-        "Records are automatically embedded and indexed."
-    )
-```
+1. Unknown `op` fails with `invalid_filter`.
+2. Unknown `field` fails with `invalid_filter`.
+3. Type mismatches fail with `invalid_filter`.
+4. Empty logical arrays fail with `invalid_filter`.
+5. Parser translates DSL to `redisvl.query.filter.FilterExpression`.
 
 ---
 
 ## Tools
 
-### Tool: `redisvl-search`
+## Tool: `redisvl-search`
 
-Search for records using vector similarity, full-text, or hybrid search.
+Search records using vector, full-text, or hybrid query.
 
-#### Parameters
+### Request Contract
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `query` | str | Yes | The search query text |
-| `search_type` | str | No | One of: `vector`, `fulltext`, `hybrid`. Default: `vector` |
-| `limit` | int | No | Maximum results to return. Default: 10 |
-| `offset` | int | No | Pagination offset. Default: 0 |
-| `filter` | dict | No | Filter expression (field conditions) |
-| `return_fields` | list[str] | No | Fields to return. Default: all fields |
+| Parameter | Type | Required | Default | Constraints |
+|----------|------|----------|---------|-------------|
+| `query` | str | yes | - | non-empty |
+| `search_type` | enum | no | `vector` | `vector` \| `fulltext` \| `hybrid` |
+| `limit` | int | no | `runtime.default_limit` | `1..runtime.max_limit` |
+| `offset` | int | no | `0` | `>=0` |
+| `filter` | object | no | `null` | Must satisfy filter DSL |
+| `return_fields` | list[str] | no | all non-vector fields | Unknown fields rejected |
 
-#### Implementation
-
-```python
-# redisvl/mcp/tools/search.py
-from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import Context
-
-async def search(
-    ctx: Context,
-    query: str,
-    search_type: str = "vector",
-    limit: int = 10,
-    offset: int = 0,
-    filter: Optional[Dict[str, Any]] = None,
-    return_fields: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
-    """Search for records in the Redis vector database."""
-    server = ctx.server  # RedisVLMCPServer instance
-    index = server.index
-    vectorizer = server.vectorizer
-
-    if search_type == "vector":
-        # Generate embedding for query (as_buffer=True for efficient query integration)
-        embedding = await vectorizer.aembed(query, as_buffer=True)
-
-        # Build VectorQuery
-        from redisvl.query import VectorQuery
-        q = VectorQuery(
-            vector=embedding,
-            vector_field_name=server.vector_field_name,
-            num_results=limit,
-            return_fields=return_fields,
-        )
-        if filter:
-            q.set_filter(build_filter_expression(filter))
-
-    elif search_type == "fulltext":
-        from redisvl.query import TextQuery
-        q = TextQuery(
-            text=query,
-            text_field_name=server.text_field_name,
-            num_results=limit,
-            return_fields=return_fields,
-        )
-        if filter:
-            q.set_filter(build_filter_expression(filter))
-
-    elif search_type == "hybrid":
-        # Generate embedding for query (as_buffer=True for efficient query integration)
-        embedding = await vectorizer.aembed(query, as_buffer=True)
-        from redisvl.query import HybridQuery
-        q = HybridQuery(
-            text=query,
-            text_field_name=server.text_field_name,
-            vector=embedding,
-            vector_field_name=server.vector_field_name,
-            num_results=limit,
-        )
-    else:
-        raise ValueError(f"Invalid search_type: {search_type}")
-
-    # Execute query with pagination
-    q.paging(offset, limit)
-    results = await index.query(q)
-
-    return results
-```
-
-#### Response Format
-
-Returns a list of matching records:
+### Response Contract
 
 ```json
-[
-  {
-    "id": "doc:123",
-    "score": 0.95,
-    "content": "The document text...",
-    "metadata_field": "value"
-  }
-]
+{
+  "search_type": "vector",
+  "offset": 0,
+  "limit": 10,
+  "results": [
+    {
+      "id": "doc:123",
+      "score": 0.93,
+      "score_type": "vector_distance_normalized",
+      "record": {
+        "content": "The document text...",
+        "category": "science"
+      }
+    }
+  ]
+}
 ```
+
+### Search Semantics
+
+- `vector`: embeds `query` with configured vectorizer, builds `VectorQuery`.
+- `fulltext`: builds `TextQuery`.
+- `hybrid`: embeds `query`, builds `HybridQuery`.
+- `hybrid` must fail with structured capability error if runtime support is unavailable.
+
+### Errors
+
+| Code | Meaning | Retryable |
+|------|---------|-----------|
+| `invalid_request` | bad query params | no |
+| `invalid_filter` | filter parse/type failure | no |
+| `dependency_missing` | missing optional lib/provider SDK | no |
+| `capability_unavailable` | hybrid unsupported in runtime | no |
+| `backend_unavailable` | Redis unavailable/timeout | yes |
+| `internal_error` | unexpected failure | maybe |
 
 ---
 
-### Tool: `redisvl-upsert`
+## Tool: `redisvl-upsert`
 
-Upsert records into the index. This tool is **excluded when `read_only=true`**.
+Upsert records with automatic embedding.
 
-#### Parameters
+Not registered when read-only mode is enabled.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `records` | list[dict] | Yes | Records to upsert |
-| `id_field` | str | No | Field to use as document ID |
-| `embed_field` | str | No | Field containing text to embed. Default: auto-detect |
+### Request Contract
 
-#### Implementation
+| Parameter | Type | Required | Default | Constraints |
+|----------|------|----------|---------|-------------|
+| `records` | list[object] | yes | - | non-empty |
+| `id_field` | str | no | `null` | if set, must exist in every record |
+| `embed_field` | str | no | `runtime.default_embed_field` | must exist in every record |
+| `skip_embedding_if_present` | bool | no | `true` | if false, always re-embed |
 
-```python
-# redisvl/mcp/tools/upsert.py
-from typing import Any, Dict, List, Optional
-from mcp.server.fastmcp import Context
-
-async def upsert(
-    ctx: Context,
-    records: List[Dict[str, Any]],
-    id_field: Optional[str] = None,
-    embed_field: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Upsert records into the Redis vector database."""
-    server = ctx.server
-    index = server.index
-    vectorizer = server.vectorizer
-
-    # Determine which field to embed
-    if embed_field is None:
-        embed_field = server.default_embed_field
-
-    # Generate embeddings for all records (as_buffer=True for storage efficiency)
-    texts_to_embed = [record.get(embed_field, "") for record in records]
-    embeddings = await vectorizer.aembed_many(texts_to_embed, as_buffer=True)
-
-    # Add embeddings to records (already in buffer format for Redis storage)
-    vector_field = server.vector_field_name
-    for record, embedding in zip(records, embeddings):
-        record[vector_field] = embedding
-
-    # Load records into index
-    keys = await index.load(
-        data=records,
-        id_field=id_field,
-    )
-
-    return {
-        "status": "success",
-        "keys_upserted": len(keys),
-        "keys": keys,
-    }
-```
-
-#### Response Format
+### Response Contract
 
 ```json
 {
@@ -432,159 +330,69 @@ async def upsert(
 }
 ```
 
+### Upsert Semantics
+
+1. Validate input records before writing.
+2. Resolve `embed_field`.
+3. Generate embeddings for required records (`aembed_many`).
+4. Populate configured vector field.
+5. Call `AsyncSearchIndex.load`.
+
+### Error Semantics
+
+- Validation failures return `invalid_request`.
+- Provider errors return `dependency_missing` or `internal_error` with actionable message.
+- Redis write failures return `backend_unavailable`.
+- On write failure, response must include `partial_write_possible: true` (conservative signal).
+
 ---
 
 ## Server Implementation
 
-### RedisVLMCPServer Class
+### Core Class Contract
 
 ```python
-# redisvl/mcp/server.py
-from mcp.server.fastmcp import FastMCP
-from redisvl.index import AsyncSearchIndex
-from redisvl.mcp.settings import MCPSettings
-from redisvl.mcp.config import load_mcp_config, create_index_schema, create_vectorizer
-
 class RedisVLMCPServer(FastMCP):
-    """MCP Server for RedisVL vector database operations."""
+    settings: MCPSettings
+    config: MCPConfig
 
-    def __init__(self, settings: MCPSettings | None = None):
-        self.settings = settings or MCPSettings()
-        super().__init__(name="redisvl")
+    async def startup(self) -> None: ...
+    async def shutdown(self) -> None: ...
 
-        # Load unified configuration
-        self._config = load_mcp_config(self.settings.config)
-
-        # Initialize index and vectorizer lazily
-        self._index: AsyncSearchIndex | None = None
-        self._vectorizer = None
-
-        # Register tools
-        self._setup_tools()
-
-    async def _get_index(self) -> AsyncSearchIndex:
-        """Lazy initialization of the search index."""
-        if self._index is None:
-            schema = create_index_schema(self._config)
-            redis_url = self._config.get("redis_url", "redis://localhost:6379")
-            self._index = AsyncSearchIndex(
-                schema=schema,
-                redis_url=redis_url,
-            )
-        return self._index
-
-    async def _get_vectorizer(self):
-        """Lazy initialization of the vectorizer."""
-        if self._vectorizer is None:
-            self._vectorizer = create_vectorizer(self._config)
-        return self._vectorizer
-
-    def _setup_tools(self):
-        """Register MCP tools."""
-        from redisvl.mcp.tools.search import search
-
-        # Always register search tool
-        self.tool(
-            search,
-            name="redisvl-search",
-            description=self.settings.tool_search_description,
-        )
-
-        # Conditionally register upsert tool
-        if not self.settings.read_only:
-            from redisvl.mcp.tools.upsert import upsert
-            self.tool(
-                upsert,
-                name="redisvl-upsert",
-                description=self.settings.tool_upsert_description,
-            )
-
-    @property
-    def index(self) -> AsyncSearchIndex:
-        """Access the search index (for tool implementations)."""
-        # Note: Tools should use await self._get_index() for lazy init
-        return self._index
-
-    @property
-    def vectorizer(self):
-        """Access the vectorizer (for tool implementations)."""
-        return self._vectorizer
+    async def get_index(self) -> AsyncSearchIndex: ...
+    async def get_vectorizer(self): ...
 ```
+
+Tool implementations must always call `await server.get_index()` and `await server.get_vectorizer()`; never read uninitialized attributes directly.
+
+### Field Mapping Requirements
+
+Server owns these validated values:
+- `text_field_name`
+- `vector_field_name`
+- `default_embed_field`
+
+No implicit auto-detection is allowed in v1.
 
 ---
 
 ## CLI Integration
 
-### Command Structure
+Current RedisVL CLI is command-dispatch based (not argparse subparsers), so MCP integration must follow existing pattern.
+
+### User Commands
 
 ```bash
-# Start MCP server (stdio transport) - requires config file
 rvl mcp --config path/to/mcp_config.yaml
-
-# Read-only mode (overrides config file setting)
 rvl mcp --config path/to/mcp_config.yaml --read-only
 ```
 
-### Implementation
+### Required CLI Changes
 
-```python
-# redisvl/cli/mcp.py
-import argparse
-import sys
-
-def add_mcp_parser(subparsers):
-    """Add MCP subcommand to CLI."""
-    parser = subparsers.add_parser(
-        "mcp",
-        help="Start the RedisVL MCP server",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to MCP configuration YAML file (overrides REDISVL_MCP_CONFIG)",
-    )
-    parser.add_argument(
-        "--read-only",
-        action="store_true",
-        help="Run in read-only mode (no upsert tool)",
-    )
-    parser.set_defaults(func=run_mcp_server)
-
-def run_mcp_server(args):
-    """Run the MCP server."""
-    try:
-        from redisvl.mcp import RedisVLMCPServer, MCPSettings
-    except ImportError:
-        print(
-            "MCP dependencies not installed. "
-            "Install with: pip install redisvl[mcp]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Build settings from args + environment
-    settings_kwargs = {}
-    if args.config:
-        settings_kwargs["config"] = args.config
-    if args.read_only:
-        settings_kwargs["read_only"] = True
-
-    settings = MCPSettings(**settings_kwargs)
-    server = RedisVLMCPServer(settings=settings)
-
-    # Run with stdio transport
-    server.run(transport="stdio")
-```
-
-### Integration with Existing CLI
-
-Modify `redisvl/cli/main.py` to add the MCP subcommand:
-
-```python
-# In create_parser() or equivalent
-from redisvl.cli.mcp import add_mcp_parser
-add_mcp_parser(subparsers)
-```
+1. Add `mcp` command to usage/help in `redisvl/cli/main.py`.
+2. Add `RedisVlCLI.mcp()` method that dispatches to new `MCP` handler class.
+3. Implement `redisvl/cli/mcp.py` similar to existing command modules.
+4. Gracefully report missing optional deps (`pip install redisvl[mcp]`).
 
 ---
 
@@ -606,27 +414,9 @@ add_mcp_parser(subparsers)
 }
 ```
 
-Alternatively, use the environment variable for the config path:
-
-```json
-{
-  "mcpServers": {
-    "redisvl": {
-      "command": "uvx",
-      "args": ["--from", "redisvl[mcp]", "rvl", "mcp"],
-      "env": {
-        "REDISVL_MCP_CONFIG": "/path/to/mcp_config.yaml",
-        "OPENAI_API_KEY": "sk-..."
-      }
-    }
-  }
-}
-```
-
 ### Claude Agents SDK (Python)
 
 ```python
-import os
 from agents import Agent
 from agents.mcp import MCPServerStdio
 
@@ -634,143 +424,157 @@ async def main():
     async with MCPServerStdio(
         command="uvx",
         args=["--from", "redisvl[mcp]", "rvl", "mcp", "--config", "mcp_config.yaml"],
-        env={
-            "OPENAI_API_KEY": os.environ["OPENAI_API_KEY"],
-        },
     ) as server:
         agent = Agent(
             name="search-agent",
-            instructions="You help users search the knowledge base.",
+            instructions="Search and maintain Redis-backed knowledge.",
             mcp_servers=[server],
         )
-        # Use agent...
 ```
 
 ---
 
-## Deliverables Mapping
+## Observability and Security
 
-This specification maps to the project deliverables as follows:
+### Logging
 
-| Deliverable | Specification Section | LOE |
-|-------------|----------------------|-----|
-| MCP Server Framework in RedisVL | Server Implementation, Architecture | M |
-| Tool: Search records | Tools > redisvl-search | S |
-| Tool: Upsert records | Tools > redisvl-upsert | S |
-| MCP runnable from CLI | CLI Integration | S |
-| Integration: Claude Agents SDK | Client Configuration Examples | S |
+- Use structured logs with operation name, latency, and error code.
+- Never log secrets (API keys, auth headers, full DSNs with credentials).
+- Log config path but not raw config values for sensitive keys.
 
----
+### Timeouts
 
-## Implementation Phases
+- Startup timeout: `runtime.startup_timeout_seconds`
+- Tool request timeout: `runtime.request_timeout_seconds`
 
-### Phase 1: Core Framework (M)
+### Secret Handling
 
-1. Create `redisvl/mcp/` module structure
-2. Implement `MCPSettings` with pydantic-settings
-3. Implement `RedisVLMCPServer` extending FastMCP
-4. Add `mcp` optional dependency group to pyproject.toml
-5. Add basic tests for server initialization
-
-### Phase 2: Search Tool (S)
-
-1. Implement `redisvl-search` tool with vector search
-2. Add full-text search support
-3. Add hybrid search support
-4. Add filter expression parsing
-5. Add pagination support
-6. Add tests for search functionality
-
-### Phase 3: Upsert Tool (S)
-
-1. Implement `redisvl-upsert` tool
-2. Add automatic embedding generation
-3. Add read-only mode exclusion logic
-4. Add tests for upsert functionality
-
-### Phase 4: CLI Integration (S)
-
-1. Add `mcp` subcommand to CLI
-2. Handle optional dependency import gracefully
-3. Add CLI argument parsing
-4. Test `uvx --from redisvl[mcp] rvl mcp` pattern
-
-### Phase 5: Integration Examples (S)
-
-1. Create Claude Agents SDK example
-2. Document Claude Desktop configuration
-3. (Bonus) Create ADK example
-4. (Bonus) Create n8n workflow example
+- Support env-injected secrets via `${VAR}` substitution.
+- Fail fast for required missing vars.
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests
+## Unit Tests (`tests/unit/test_mcp/`)
 
-Location: `tests/unit/test_mcp/`
+- `test_settings.py`
+  - env parsing and overrides
+  - read-only behavior
+- `test_config.py`
+  - YAML validation
+  - env substitution success/failure
+  - field mapping validation
+- `test_filters.py`
+  - DSL parsing, invalid operators, type mismatches
+- `test_errors.py`
+  - internal exception -> MCP error code mapping
 
-- **Settings** (`test_settings.py`)
-  - Loading settings from environment variables
-  - Default values for optional settings
-  - Read-only mode flag handling
+## Integration Tests (`tests/integration/test_mcp/`)
 
-- **Configuration** (`test_config.py`)
-  - YAML loading and parsing
-  - Environment variable substitution (`${VAR}` syntax)
-  - IndexSchema creation from config
-  - Vectorizer instantiation from class name
-  - Error handling for missing/invalid config
+- `test_server_startup.py`
+  - startup success path
+  - missing index in `validate_only`
+  - create in `create_if_missing`
+- `test_search_tool.py`
+  - vector/fulltext/hybrid success paths
+  - hybrid capability failure path
+  - pagination and field projection
+  - filter behavior
+- `test_upsert_tool.py`
+  - insert/update success
+  - id_field/embed_field validation failures
+  - read-only mode excludes tool
 
-### Integration Tests
+### Deterministic Verification Commands
 
-Location: `tests/integration/test_mcp/`
-
-Requires: Redis instance (use testcontainers)
-
-- **Server initialization** (`test_server.py`)
-  - Server starts with valid config
-  - Index connection established
-  - Tools registered correctly
-  - Read-only mode excludes upsert tool
-
-- **Search tool** (`test_search.py`)
-  - Vector search returns relevant results
-  - Full-text search works correctly
-  - Hybrid search combines both methods
-  - Pagination (offset/limit) works
-  - Filter expressions applied correctly
-
-- **Upsert tool** (`test_upsert.py`)
-  - Records inserted into Redis
-  - Embeddings generated and stored
-  - ID field used for key generation
-  - Records retrievable after upsert
+```bash
+uv run python -m pytest tests/unit/test_mcp -q
+uv run python -m pytest tests/integration/test_mcp -q
+```
 
 ---
 
-## Future Considerations
+## Implementation Plan and DoD
 
-### Additional Transport Protocols
+### Phase 1: Framework
 
-The current implementation supports only `stdio`. Future iterations may add:
+Deliverables:
+1. `redisvl/mcp/` scaffolding.
+2. Config/settings models with strict validation.
+3. Startup/shutdown lifecycle.
+4. Error mapping helpers.
 
-- **SSE (Server-Sent Events)**: For remote client connections
-- **Streamable HTTP**: For web-based integrations
+DoD:
+1. Server boots successfully with valid config.
+2. Server fails fast with actionable config errors.
+3. Unit tests for config/settings pass.
 
-### Additional Tools
+### Phase 2: Search Tool
 
-Future tools to consider:
+Deliverables:
+1. `redisvl-search` request/response contract.
+2. Filter DSL parser.
+3. Capability checks for hybrid support.
 
-- `redisvl-delete`: Delete records by ID or filter
-- `redisvl-count`: Count records matching a filter
-- `redisvl-info`: Get index information and statistics
-- `redisvl-aggregate`: Run aggregation queries
+DoD:
+1. All search modes tested.
+2. Invalid filter returns `invalid_filter`.
+3. Capability failures are deterministic and non-ambiguous.
 
-### Multi-Index Support
+### Phase 3: Upsert Tool
 
-The current design supports a single index. Future iterations may support:
+Deliverables:
+1. `redisvl-upsert` implementation.
+2. Record pre-validation.
+3. Read-only exclusion.
 
-- Multiple indexes via configuration
-- Dynamic index selection in tool parameters
+DoD:
+1. Upsert works end-to-end.
+2. Invalid records fail before writes.
+3. Read-only mode verified.
+
+### Phase 4: CLI and Packaging
+
+Deliverables:
+1. `rvl mcp` command via current CLI pattern.
+2. Optional dependency group updates.
+3. User-facing error messages for missing extras.
+
+DoD:
+1. `uvx --from redisvl[mcp] rvl mcp --config ...` runs successfully.
+2. CLI help includes `mcp` command.
+
+### Phase 5: Documentation
+
+Deliverables:
+1. Config reference and examples.
+2. Client setup examples.
+3. Troubleshooting guide with common errors and fixes.
+
+DoD:
+1. Docs reflect normative contracts in this spec.
+2. Examples are executable and tested.
+
+---
+
+## Risks and Mitigations
+
+1. Runtime mismatch for hybrid search.
+   - Mitigation: explicit capability check + clear error code.
+2. Dependency drift across provider vectorizers.
+   - Mitigation: dependency matrix and startup validation.
+3. Ambiguous filter behavior causing agent retries.
+   - Mitigation: strict DSL and deterministic parser errors.
+4. Hidden partial writes during failures.
+   - Mitigation: conservative `partial_write_possible` signaling.
+
+---
+
+## Open Design Questions
+
+1. Should `upsert` preserve user-provided vectors by default when the vector field already exists (`skip_embedding_if_present=true`), or always re-embed?
+2. Do we want `index_mode=create_if_missing` as the default instead of `validate_only`?
+3. Should v1 support string-based raw Redis filter expressions in addition to the JSON filter DSL, or keep JSON-only?
+4. Is there a hard maximum payload size for `records` in one upsert request (count/bytes) for guardrails?
 
