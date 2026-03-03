@@ -109,6 +109,10 @@ class FullTextQueryHelper:
                             time.sleep(0.1 * (attempt + 1))  # Wait and retry
                     else:
                         time.sleep(0.1)
+                except ImportError:
+                    raise ValueError(
+                        f"Loading stopwords for {stopwords} failed: nltk is not installed."
+                    )
                 except Exception as e:
                     # Corrupted file or other loading error - retry with delay
                     last_error = e
@@ -119,10 +123,6 @@ class FullTextQueryHelper:
                         raise ValueError(
                             f"Failed to load stopwords '{stopwords}' after 3 attempts: {e}"
                         )
-                except ImportError:
-                    raise ValueError(
-                        f"Loading stopwords for {stopwords} failed: nltk is not installed."
-                    )
 
             # If loop completes, all attempts failed
             raise ValueError(

@@ -1866,7 +1866,7 @@ class AsyncSemanticRouter(BaseModel):
 
         return router
 
-    def export_with_embeddings(self, file_path: str):
+    async def export_with_embeddings(self, file_path: str):
         """Export router with pre-computed embeddings.
 
         This allows loading the router without re-embedding references.
@@ -1887,7 +1887,7 @@ class AsyncSemanticRouter(BaseModel):
         pretrained_routes = []
         for route in self.routes:
             # Get embeddings for all references
-            vectors = self.vectorizer.embed_many(route.references)
+            vectors = await self.vectorizer.aembed_many(route.references)
 
             references = [
                 PretrainedReference(text=ref, vector=vec)
@@ -2076,7 +2076,7 @@ class AsyncSemanticRouter(BaseModel):
         to_be_deleted = []
         client = self._index.client
         for key in keys:
-            route_name = key.split(":")[-2]
+            route_name = key.split(self._index.key_separator)[-2]
             hgetall_result = await client.hgetall(key)  # type: ignore
             to_be_deleted.append((route_name, convert_bytes(hgetall_result)))
 

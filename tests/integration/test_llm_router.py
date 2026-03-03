@@ -10,7 +10,6 @@ import pytest
 from ulid import ULID
 
 from redisvl.extensions.llm_router import LLMRouteMatch, LLMRouter, ModelTier
-from redisvl.extensions.llm_router.schema import RoutingConfig
 from tests.conftest import SKIP_HF, skip_if_no_redisearch, skip_if_redis_version_below
 
 pytestmark = pytest.mark.skipif(

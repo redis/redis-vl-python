@@ -1,6 +1,6 @@
 import warnings
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Annotated
@@ -16,7 +16,7 @@ class Route(BaseModel):
     """The name of the route."""
     references: List[str]
     """List of reference phrases for the route."""
-    metadata: Dict[str, Any] = Field(default={})
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     """Metadata associated with the route."""
     distance_threshold: Annotated[float, Field(strict=True, gt=0, le=2)] = 0.5
     """Distance threshold for matching the route."""
@@ -51,7 +51,7 @@ class RouteMatch(BaseModel):
     """The LiteLLM model identifier (populated when route has a model field)."""
     confidence: Optional[float] = None
     """Routing confidence score (1 - distance/2), range 0-1."""
-    alternatives: List[tuple] = Field(default_factory=list)
+    alternatives: List[Tuple[str, float]] = Field(default_factory=list)
     """Alternative route matches as (route_name, distance) tuples."""
     metadata: Dict[str, Any] = Field(default_factory=dict)
     """Route metadata (costs, capabilities, etc.)."""

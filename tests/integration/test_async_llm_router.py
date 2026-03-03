@@ -9,7 +9,6 @@ import pytest
 from ulid import ULID
 
 from redisvl.extensions.llm_router import AsyncLLMRouter, LLMRouteMatch, ModelTier
-from redisvl.extensions.llm_router.schema import RoutingConfig
 from tests.conftest import (
     SKIP_HF,
     skip_if_no_redisearch_async,
