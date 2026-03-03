@@ -1,12 +1,13 @@
-# RedisVL MCP Server Specification
-
-## Document Status
-
-- Status: Draft for implementation
-- Audience: RedisVL maintainers and coding agents implementing MCP support
-- Primary objective: Define a deterministic, testable MCP server contract so agents can implement safely without relying on implicit behavior
-
 ---
+name: redisvl-mcp-server-spec
+description: Implementation specification for a RedisVL MCP server with deterministic, agent-friendly contracts for development and testing.
+metadata:
+  status: draft
+  audience: RedisVL maintainers and coding agents
+  objective: Define a deterministic, testable MCP server contract so agents can implement safely without relying on implicit behavior.
+---
+
+# RedisVL MCP Server Specification
 
 ## Overview
 
