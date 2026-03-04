@@ -1,9 +1,13 @@
 import asyncio
 import json
+import os
 import threading
 import time
 import warnings
 import weakref
+from urllib.parse import urlparse, urlunparse
+
+import yaml
 from math import ceil
 from typing import (
     TYPE_CHECKING,
@@ -1294,6 +1298,19 @@ class SearchIndex(BaseSearchIndex):
         index_name = name or self.schema.index.name
         return self._info(index_name, self._redis_client)
 
+    def _sanitize_redis_url(self, url: Optional[str]) -> Optional[str]:
+        """Remove password from Redis URL for safe serialization."""
+        if url is None:
+            return None
+        parsed = urlparse(url)
+        # Replace password with ****
+        netloc = parsed.hostname or ""
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        if parsed.username:
+            netloc = f"{parsed.username}:****@{netloc}"
+        return urlunparse((parsed.scheme, netloc, parsed.path, "", "", ""))
+
     def to_dict(self, include_connection: bool = False) -> Dict[str, Any]:
         """Serialize the index configuration to a dictionary.
 
@@ -1311,28 +1328,35 @@ class SearchIndex(BaseSearchIndex):
         """
         config = self.schema.to_dict()
         if include_connection:
-            config["_redis_url"] = self._redis_url
-            # Note: connection_kwargs may contain sensitive info
-            # Only include non-sensitive keys
+            # Sanitize URL to remove password
+            sanitized_url = self._sanitize_redis_url(self._redis_url)
+            if sanitized_url is not None:
+                config["_redis_url"] = sanitized_url
+            # Only include non-sensitive connection kwargs
             safe_keys = {"decode_responses", "ssl", "socket_timeout", "socket_connect_timeout"}
-            config["_connection_kwargs"] = {
+            safe_kwargs = {
                 k: v for k, v in self._connection_kwargs.items()
                 if k in safe_keys
             }
+            if safe_kwargs:
+                config["_connection_kwargs"] = safe_kwargs
         return config
 
-    def to_yaml(self, path: str, include_connection: bool = False) -> None:
+    def to_yaml(self, path: str, include_connection: bool = False, overwrite: bool = True) -> None:
         """Serialize the index configuration to a YAML file.
 
         Args:
             path (str): Path to write the YAML file.
             include_connection (bool, optional): Whether to include connection
                 parameters. Defaults to False for security.
+            overwrite (bool, optional): Whether to overwrite existing file.
+                Defaults to True. If False and file exists, raises FileExistsError.
 
         Example:
             >>> index.to_yaml("schemas/my_index.yaml")
         """
-        import yaml
+        if not overwrite and os.path.exists(path):
+            raise FileExistsError(f"File already exists: {path}")
         config = self.to_dict(include_connection=include_connection)
         with open(path, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
@@ -2311,28 +2335,35 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         config = self.schema.to_dict()
         if include_connection:
-            config["_redis_url"] = self._redis_url
-            # Note: connection_kwargs may contain sensitive info
-            # Only include non-sensitive keys
+            # Sanitize URL to remove password
+            sanitized_url = self._sanitize_redis_url(self._redis_url)
+            if sanitized_url is not None:
+                config["_redis_url"] = sanitized_url
+            # Only include non-sensitive connection kwargs
             safe_keys = {"decode_responses", "ssl", "socket_timeout", "socket_connect_timeout"}
-            config["_connection_kwargs"] = {
+            safe_kwargs = {
                 k: v for k, v in self._connection_kwargs.items()
                 if k in safe_keys
             }
+            if safe_kwargs:
+                config["_connection_kwargs"] = safe_kwargs
         return config
 
-    def to_yaml(self, path: str, include_connection: bool = False) -> None:
+    def to_yaml(self, path: str, include_connection: bool = False, overwrite: bool = True) -> None:
         """Serialize the index configuration to a YAML file.
 
         Args:
             path (str): Path to write the YAML file.
             include_connection (bool, optional): Whether to include connection
                 parameters. Defaults to False for security.
+            overwrite (bool, optional): Whether to overwrite existing file.
+                Defaults to True. If False and file exists, raises FileExistsError.
 
         Example:
-            >>> await index.to_yaml("schemas/my_index.yaml")
+            >>> index.to_yaml("schemas/my_index.yaml")
         """
-        import yaml
+        if not overwrite and os.path.exists(path):
+            raise FileExistsError(f"File already exists: {path}")
         config = self.to_dict(include_connection=include_connection)
         with open(path, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
