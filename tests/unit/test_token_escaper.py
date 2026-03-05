@@ -19,8 +19,8 @@ def escaper():
         ),
         (
             r"& symbols, like * and ?",
-            r"\&\ symbols\,\ like\ \*\ and\ ?",
-        ),  # TODO: question marks are not caught?
+            r"\&\ symbols\,\ like\ \*\ and\ \?",
+        ),
         # underscores are ignored
         (r"-dashes_and_underscores-", r"\-dashes_and_underscores\-"),
     ],
@@ -52,12 +52,12 @@ def test_escape_text_chars(escaper, test_input, expected):
         # Tags with less common, but legal characters
         ("_underscore_", r"_underscore_"),
         ("dot.tag", r"dot\.tag"),
-        # ("pipe|tag", r"pipe\|tag"), #TODO - pipes are not caught?
+        ("pipe|tag", r"pipe\|tag"),
         # More edge cases with special characters
         ("(parentheses)", r"\(parentheses\)"),
         ("[brackets]", r"\[brackets\]"),
         ("{braces}", r"\{braces\}"),
-        # ("question?mark", r"question\?mark"),  #TODO - question marks are not caught?
+        ("question?mark", r"question\?mark"),
         # Unicode characters in tags
         ("你好", r"你好"),  # Assuming non-Latin characters don't need escaping
         ("emoji:😊", r"emoji\:😊"),
@@ -78,9 +78,11 @@ def test_escape_text_chars(escaper, test_input, expected):
         "hyphen",
         "underscore",
         "dot",
+        "pipe",
         "parentheses",
         "brackets",
         "braces",
+        "question",
         "non-latin",
         "emoji",
     ],
@@ -120,3 +122,20 @@ def test_escape_long_string(escaper):
     # Use pytest's benchmark fixture to check performance
     escaped = escaper.escape(long_str)
     assert escaped == expected
+
+
+@pytest.mark.parametrize(
+    ("test_input,expected"),
+    [
+        ("wild*card", r"wild*card"),
+        ("single?char", r"single?char"),
+        ("combo*test?", r"combo*test?"),
+        ("mixed*and|pipe", r"mixed*and\|pipe"),
+        ("question?and|pipe", r"question\?and\|pipe"),  # ? escaped when not preserving
+    ],
+    ids=["star", "question", "both", "star-only", "question-escaped"],
+)
+def test_escape_preserve_wildcards(escaper, test_input, expected):
+    """Test that * and ? are preserved when preserve_wildcards=True."""
+    result = escaper.escape(test_input, preserve_wildcards=True)
+    assert result == expected

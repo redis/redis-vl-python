@@ -9,11 +9,11 @@ class TokenEscaper:
     """
 
     # Characters that RediSearch requires us to escape during queries.
-    # Source: https://redis.io/docs/stack/search/reference/escaping/#the-rules-of-text-field-tokenization
-    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ ]"
+    # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/#tokenization-rules-for-text-fields
+    DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ ?|]"
 
-    # Same as above but excludes * to allow wildcard patterns
-    ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
+    # Same as above but excludes * and ? to allow wildcard patterns
+    ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ |]"
 
     def __init__(self, escape_chars_re: Optional[Pattern] = None):
         if escape_chars_re:
@@ -27,8 +27,8 @@ class TokenEscaper:
 
         Args:
             value: The string value to escape.
-            preserve_wildcards: If True, preserves * characters for wildcard
-                matching. Defaults to False.
+            preserve_wildcards: If True, preserves * and ? characters for
+                wildcard matching. Defaults to False.
 
         Returns:
             The escaped string.
