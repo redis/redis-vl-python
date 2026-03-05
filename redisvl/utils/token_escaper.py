@@ -27,8 +27,8 @@ class TokenEscaper:
 
         Args:
             value: The string value to escape.
-            preserve_wildcards: If True, preserves * characters for wildcard
-                matching. Defaults to False.
+            preserve_wildcards: If True, preserves * and ? characters for
+                wildcard matching. Defaults to False.
 
         Returns:
             The escaped string.

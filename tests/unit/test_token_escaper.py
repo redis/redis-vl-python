@@ -127,21 +127,15 @@ def test_escape_long_string(escaper):
 @pytest.mark.parametrize(
     ("test_input,expected"),
     [
-        ("wild*card", "wild*card"),
-        ("single?char", "single?char"),
-        ("combo*test?", "combo*test?"),
-        ("mixed*and|pipe", "mixed*and\|pipe"),
-        ("question?and|pipe", "question\?and\|pipe"),  # ? escaped when not preserving
+        ("wild*card", r"wild*card"),
+        ("single?char", r"single?char"),
+        ("combo*test?", r"combo*test?"),
+        ("mixed*and|pipe", r"mixed*and\|pipe"),
+        ("question?and|pipe", r"question\?and\|pipe"),  # ? escaped when not preserving
     ],
     ids=["star", "question", "both", "star-only", "question-escaped"],
 )
 def test_escape_preserve_wildcards(escaper, test_input, expected):
     """Test that * and ? are preserved when preserve_wildcards=True."""
-    # These tests verify wildcard preservation behavior
-    if "*" in test_input and "?" in test_input:
-        result = escaper.escape(test_input, preserve_wildcards=True)
-        assert "*" in result and "?" in result
-    elif "*" in test_input:
-        assert "*" in escaper.escape(test_input, preserve_wildcards=True)
-    elif "?" in test_input:
-        assert "?" in escaper.escape(test_input, preserve_wildcards=True)
+    result = escaper.escape(test_input, preserve_wildcards=True)
+    assert result == expected
