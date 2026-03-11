@@ -485,7 +485,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
 
             return_score (bool, optional): Whether to return the vector
                 distance. Defaults to True.
-            dialect (int, optional): The RediSearch query dialect.
+            dialect (int, optional): The Redis Search query dialect.
                 Defaults to 2.
             sort_by (Optional[SortSpec]): The field(s) to order the results by. Can be:
                 - str: single field name
@@ -949,7 +949,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
                 Defaults to 10.
             return_score (bool, optional): Whether to return the vector
                 distance. Defaults to True.
-            dialect (int, optional): The RediSearch query dialect.
+            dialect (int, optional): The Redis Search query dialect.
                 Defaults to 2.
             sort_by (Optional[SortSpec]): The field(s) to order the results by. Can be:
                 - str: single field name
@@ -1381,7 +1381,7 @@ class TextQuery(BaseQuery):
                 search. Defaults to 10.
             return_score (bool, optional): Whether to return the text score.
                 Defaults to True.
-            dialect (int, optional): The RediSearch query dialect.
+            dialect (int, optional): The Redis Search query dialect.
                 Defaults to 2.
             sort_by (Optional[SortSpec]): The field(s) to order the results by. Can be:
                 - str: single field name

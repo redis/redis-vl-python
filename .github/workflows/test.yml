@@ -64,7 +64,7 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         redis-py-version: ["5.x", "6.x", "7.x"]
-        redis-image: ["redis/redis-stack-server:latest", "redis:latest"]
+        redis-image: ["redis:8.4", "redis:latest"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -118,7 +118,7 @@ jobs:
         uses: google-github-actions/auth@v1
         if: (
             matrix.redis-py-version == '7.x' &&
-            matrix.redis-image == 'redis/redis-stack-server:latest' &&
+            matrix.redis-image == 'redis:8.4' &&
             matrix.python-version == '3.11' &&
             (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
           )
@@ -128,7 +128,7 @@ jobs:
       - name: Run notebooks
         if: (
             matrix.redis-py-version == '7.x' &&
-            matrix.redis-image == 'redis/redis-stack-server:latest' &&
+            matrix.redis-image == 'redis:8.4' &&
             matrix.python-version == '3.11' &&
             (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
           )
@@ -147,7 +147,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
+          docker run -d --name redis -p 6379:6379 redis:8.4
           make test-notebooks
 
   docs:

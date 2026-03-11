@@ -12,7 +12,7 @@ from tests.conftest import skip_if_redis_version_below
 
 @pytest.fixture
 def weighted_index(client, redis_url, worker_id):
-    # BM25 scorer requires Redis Stack 7.2.0 or higher
+    # BM25 scorer requires Redis 7.2.0 or higher
     skip_if_redis_version_below(client, "7.2.0", "BM25 scorer not available")
     """Create an index with multiple text fields for testing weights."""
     unique_id = str(uuid.uuid4())[:8]

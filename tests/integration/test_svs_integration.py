@@ -3,18 +3,18 @@ Integration tests for SVS-VAMANA vector indexing.
 
 These tests require:
 - Redis >= 8.2.0
-- RediSearch >= 2.8.10
+- Redis Search >= 2.8.10
 - Environment variable: REDISVL_TEST_SVS=1
 
 Run with:
     REDISVL_TEST_SVS=1 pytest tests/integration/test_svs_integration.py
 
 To run with Redis 8.2+ in Docker:
-    docker run -d -p 6379:6379 redis/redis-stack-server:8.2.2-v0
+    docker run -d --name redis -p 6379:6379 redis:8.4
     REDISVL_TEST_SVS=1 pytest tests/integration/test_svs_integration.py
 
 Or set the Redis image for the test suite:
-    REDIS_IMAGE=redis/redis-stack-server:8.2.2-v0 REDISVL_TEST_SVS=1 pytest tests/integration/test_svs_integration.py
+    REDIS_IMAGE=redis:8.4 REDISVL_TEST_SVS=1 pytest tests/integration/test_svs_integration.py
 """
 
 import os
@@ -138,10 +138,10 @@ class TestSVSCapabilityDetection:
 
     def test_check_svs_capabilities(self, client):
         """Test that SVS-VAMANA is supported on the test Redis instance."""
-        # These tests require Redis 8.2+ with RediSearch 2.8.10+
+        # These tests require Redis 8.2+ with Redis Search 2.8.10+
         assert supports_svs(client) is True, (
             "SVS-VAMANA not supported. "
-            "Requires Redis >= 8.2.0 with RediSearch >= 2.8.10"
+            "Requires Redis >= 8.2.0 with Redis Search >= 2.8.10"
         )
 
 

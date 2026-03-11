@@ -166,7 +166,7 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         self, langcache_with_attrs: LangCacheSemanticCache
     ) -> None:
         prompt = "Explain Redis search."
-        response = "Redis provides full-text search via RediSearch."
+        response = "Redis provides full-text search via Redis Search."
         # Use attribute names that are actually configured on this cache.
         metadata = {"user_id": "tenant_a"}
 
@@ -330,7 +330,7 @@ class TestLangCacheSemanticCacheIntegrationWithAttributes:
         """All tokenizer separator characters should round-trip via filters.
 
         This exercises the set of punctuation described in the underlying
-        RediSearch text-field tokenization docs to ensure that our
+        Redis Search text-field tokenization docs to ensure that our
         client-side encoding/decoding and LangCache's attribute handling
         together can store and filter on values containing these characters.
         """

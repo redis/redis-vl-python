@@ -12,7 +12,7 @@ from redisvl.extensions.router.schema import (
     RoutingConfig,
 )
 from redisvl.redis.connection import is_version_gte
-from tests.conftest import SKIP_HF, skip_if_no_redisearch, skip_if_redis_version_below
+from tests.conftest import SKIP_HF, skip_if_no_redis_search, skip_if_redis_version_below
 
 pytestmark = pytest.mark.skipif(
     SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
@@ -43,7 +43,7 @@ def routes():
 
 @pytest.fixture
 def semantic_router(client, routes, hf_vectorizer):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     router = SemanticRouter(
         name=f"test-router-{str(ULID())}",
         routes=routes,
@@ -258,7 +258,7 @@ def test_bad_connection_info(routes):
 
 
 def test_different_vector_dtypes(client, redis_url, routes):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     try:
         bfloat_router = SemanticRouter(
             name="bfloat_router",
@@ -295,7 +295,7 @@ def test_different_vector_dtypes(client, redis_url, routes):
 
 
 def test_bad_dtype_connecting_to_exiting_router(client, redis_url, routes):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
     if redis_version.startswith("6.2"):
@@ -327,7 +327,7 @@ def test_bad_dtype_connecting_to_exiting_router(client, redis_url, routes):
 
 
 def test_vectorizer_dtype_mismatch(client, routes, redis_url, hf_vectorizer_float16):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.raises(ValueError):
         SemanticRouter(
             name="test_dtype_mismatch",
@@ -340,7 +340,7 @@ def test_vectorizer_dtype_mismatch(client, routes, redis_url, hf_vectorizer_floa
 
 
 def test_invalid_vectorizer(client, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.raises(TypeError):
         SemanticRouter(
             name="test_invalid_vectorizer",
@@ -351,7 +351,7 @@ def test_invalid_vectorizer(client, redis_url):
 
 
 def test_passes_through_dtype_to_default_vectorizer(client, routes, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     # The default is float32, so we should see float64 if we pass it in.
     router = SemanticRouter(
         name="test_pass_through_dtype",
@@ -364,7 +364,7 @@ def test_passes_through_dtype_to_default_vectorizer(client, routes, redis_url):
 
 
 def test_deprecated_dtype_argument(client, routes, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.warns(DeprecationWarning):
         SemanticRouter(
             name="test_deprecated_dtype",
@@ -379,7 +379,7 @@ def test_deprecated_distance_threshold_argument(
     semantic_router, client, routes, redis_url
 ):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
 
     router = SemanticRouter(
         name="test_pass_through_dtype",
@@ -395,7 +395,7 @@ def test_routes_different_distance_thresholds_get_two(
     semantic_router, client, routes, redis_url
 ):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     routes[0].distance_threshold = 0.5
     routes[1].distance_threshold = 0.7
 
@@ -416,7 +416,7 @@ def test_routes_different_distance_thresholds_get_one(
     semantic_router, client, routes, redis_url
 ):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
 
     routes[0].distance_threshold = 0.5
 
@@ -478,7 +478,7 @@ def test_add_delete_route_references(semantic_router):
 
 
 def test_from_existing(client, redis_url, routes):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     skip_if_redis_version_below(client, "7.0.0")
 
     # connect separately

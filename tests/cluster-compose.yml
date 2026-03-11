@@ -1,6 +1,6 @@
 services:
   redis-node-1:
-    image: "redis:8.0"
+    image: "redis:8.4"
     command:
       - redis-server
       - --port 7001
@@ -19,7 +19,7 @@ services:
       - ./data/7001:/data
 
   redis-node-2:
-    image: "redis:8.0"
+    image: "redis:8.4"
     command:
       - redis-server
       - --port 7002
@@ -38,7 +38,7 @@ services:
       - ./data/7002:/data
 
   redis-node-3:
-    image: "redis:8.0"
+    image: "redis:8.4"
     command:
       - redis-server
       - --port 7003
@@ -57,7 +57,7 @@ services:
       - ./data/7003:/data
 
   redis-node-4:
-    image: "redis:8.0"
+    image: "redis:8.4"
     command:
       - redis-server
       - --port 7004
@@ -76,7 +76,7 @@ services:
       - ./data/7004:/data
 
   redis-node-5:
-    image: "redis:8.0"
+    image: "redis:8.4"
     command:
       - redis-server
       - --port 7005
@@ -95,7 +95,7 @@ services:
       - ./data/7005:/data
 
   redis-node-6:
-    image: "redis:8.0"
+    image: "redis:8.4"
     command:
       - redis-server
       - --port 7006
@@ -114,7 +114,7 @@ services:
       - ./data/7006:/data
 
   redis-cluster-setup:
-    image: "redis:8.0"
+    image: "redis:8.4"
     depends_on:
       - redis-node-1
       - redis-node-2
