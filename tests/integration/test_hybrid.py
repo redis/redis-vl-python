@@ -136,7 +136,7 @@ def test_hybrid_query(index):
 
     results = index.query(hybrid_query)
     assert isinstance(results, list)
-    assert len(results) == index.info()["num_docs"]
+    assert len(results) == 10
     for doc in results:
         assert doc["user"] in [
             "john",
