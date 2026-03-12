@@ -53,23 +53,26 @@ class RedisVLMCPServer(FastMCP):
             schema=self.config.to_index_schema(),
             redis_url=self.config.redis_url,
         )
+        try:
+            timeout = self.config.runtime.startup_timeout_seconds
+            index_exists = await asyncio.wait_for(self._index.exists(), timeout=timeout)
+            if not index_exists:
+                if self.config.runtime.index_mode == "validate_only":
+                    raise ValueError(
+                        f"Index '{self.config.index.name}' does not exist for validate_only mode"
+                    )
+                await asyncio.wait_for(self._index.create(), timeout=timeout)
 
-        timeout = self.config.runtime.startup_timeout_seconds
-        index_exists = await asyncio.wait_for(self._index.exists(), timeout=timeout)
-        if not index_exists:
-            if self.config.runtime.index_mode == "validate_only":
-                raise ValueError(
-                    f"Index '{self.config.index.name}' does not exist for validate_only mode"
-                )
-            await asyncio.wait_for(self._index.create(), timeout=timeout)
-
-        # Vectorizer construction may perform provider-specific setup, so keep it
-        # off the event loop and bound it with the same startup timeout.
-        self._vectorizer = await asyncio.wait_for(
-            asyncio.to_thread(self._build_vectorizer),
-            timeout=timeout,
-        )
-        self._validate_vectorizer_dims()
+            # Vectorizer construction may perform provider-specific setup, so keep it
+            # off the event loop and bound it with the same startup timeout.
+            self._vectorizer = await asyncio.wait_for(
+                asyncio.to_thread(self._build_vectorizer),
+                timeout=timeout,
+            )
+            self._validate_vectorizer_dims()
+        except Exception:
+            await self.shutdown()
+            raise
 
     async def shutdown(self) -> None:
         """Release owned vectorizer and Redis resources."""
