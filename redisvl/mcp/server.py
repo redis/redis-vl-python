@@ -73,17 +73,18 @@ class RedisVLMCPServer(FastMCP):
 
     async def shutdown(self) -> None:
         """Release owned vectorizer and Redis resources."""
-        if self._vectorizer is not None:
-            aclose = getattr(self._vectorizer, "aclose", None)
-            close = getattr(self._vectorizer, "close", None)
-            if callable(aclose):
-                await aclose()
-            elif callable(close):
-                close()
-            self._vectorizer = None
-
-        if self._index is not None:
-            await self._index.disconnect()
+        try:
+            if self._vectorizer is not None:
+                aclose = getattr(self._vectorizer, "aclose", None)
+                close = getattr(self._vectorizer, "close", None)
+                if callable(aclose):
+                    await aclose()
+                elif callable(close):
+                    close()
+                self._vectorizer = None
+        finally:
+            if self._index is not None:
+                await self._index.disconnect()
 
     async def get_index(self) -> AsyncSearchIndex:
         """Return the initialized async index or fail if startup has not run."""

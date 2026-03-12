@@ -13,6 +13,11 @@ class FakeVectorizer:
         self.kwargs = kwargs
 
 
+class FailingAsyncCloseVectorizer(FakeVectorizer):
+    async def aclose(self):
+        raise RuntimeError("vectorizer close failed")
+
+
 @pytest.fixture
 def mcp_config_path(tmp_path: Path, redis_url: str, worker_id: str):
     def factory(
@@ -155,5 +160,27 @@ async def test_server_shutdown_disconnects_owned_client(
     assert index.client is not None
 
     await server.shutdown()
+
+    assert index.client is None
+
+
+@pytest.mark.asyncio
+async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
+    monkeypatch, mcp_config_path, worker_id
+):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FailingAsyncCloseVectorizer,
+    )
+    settings = MCPSettings(
+        config=mcp_config_path(index_name=f"mcp-shutdown-failure-{worker_id}")
+    )
+    server = RedisVLMCPServer(settings)
+
+    await server.startup()
+    index = await server.get_index()
+
+    with pytest.raises(RuntimeError, match="vectorizer close failed"):
+        await server.shutdown()
 
     assert index.client is None
