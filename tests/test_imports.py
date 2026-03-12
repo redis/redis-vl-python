@@ -16,6 +16,10 @@ import sys
 import traceback
 from typing import Iterable
 
+# The MCP package requires optional extras such as pydantic-settings, so
+# import-sanity runs without extras should skip it rather than fail noisily.
+EXCLUDED_MODULE_PREFIXES = ("redisvl.mcp",)
+
 
 def iter_modules(package_name: str) -> Iterable[str]:
     """Iterate over all modules in a package, including subpackages."""
@@ -34,6 +38,9 @@ def sanity_check_imports(package_name: str) -> int:
     failures = []
 
     for fullname in iter_modules(package_name):
+        if fullname.startswith(EXCLUDED_MODULE_PREFIXES):
+            print(f"[SKIP] {fullname}")
+            continue
         try:
             importlib.import_module(fullname)
             print(f"[ OK ] {fullname}")
