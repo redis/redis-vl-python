@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
 
@@ -139,6 +140,40 @@ async def test_server_fails_fast_on_vector_dimension_mismatch(
 
     with pytest.raises(ValueError, match="Vectorizer dims"):
         await server.startup()
+
+
+@pytest.mark.asyncio
+async def test_server_startup_failure_disconnects_index(
+    monkeypatch, mcp_config_path, worker_id
+):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    original_disconnect = AsyncSearchIndex.disconnect
+    disconnect_called = False
+
+    async def tracked_disconnect(self):
+        nonlocal disconnect_called
+        disconnect_called = True
+        await original_disconnect(self)
+
+    monkeypatch.setattr(
+        "redisvl.mcp.server.AsyncSearchIndex.disconnect",
+        tracked_disconnect,
+    )
+    settings = MCPSettings(
+        config=mcp_config_path(
+            index_name=f"mcp-startup-failure-{worker_id}",
+            vector_dims=8,
+        )
+    )
+    server = RedisVLMCPServer(settings)
+
+    with pytest.raises(ValueError, match="Vectorizer dims"):
+        await server.startup()
+
+    assert disconnect_called is True
 
 
 @pytest.mark.asyncio
