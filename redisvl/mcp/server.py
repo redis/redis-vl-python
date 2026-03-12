@@ -87,7 +87,9 @@ class RedisVLMCPServer(FastMCP):
                 self._vectorizer = None
         finally:
             if self._index is not None:
-                await self._index.disconnect()
+                index = self._index
+                self._index = None
+                await index.disconnect()
 
     async def get_index(self) -> AsyncSearchIndex:
         """Return the initialized async index or fail if startup has not run."""

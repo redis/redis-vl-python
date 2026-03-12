@@ -200,6 +200,26 @@ async def test_server_shutdown_disconnects_owned_client(
 
 
 @pytest.mark.asyncio
+async def test_server_get_index_fails_after_shutdown(
+    monkeypatch, mcp_config_path, worker_id
+):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    settings = MCPSettings(
+        config=mcp_config_path(index_name=f"mcp-get-index-after-shutdown-{worker_id}")
+    )
+    server = RedisVLMCPServer(settings)
+
+    await server.startup()
+    await server.shutdown()
+
+    with pytest.raises(RuntimeError, match="has not been started"):
+        await server.get_index()
+
+
+@pytest.mark.asyncio
 async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
     monkeypatch, mcp_config_path, worker_id
 ):
