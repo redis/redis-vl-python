@@ -76,15 +76,16 @@ class RedisVLMCPServer(FastMCP):
 
     async def shutdown(self) -> None:
         """Release owned vectorizer and Redis resources."""
+        vectorizer = self._vectorizer
+        self._vectorizer = None
         try:
-            if self._vectorizer is not None:
-                aclose = getattr(self._vectorizer, "aclose", None)
-                close = getattr(self._vectorizer, "close", None)
+            if vectorizer is not None:
+                aclose = getattr(vectorizer, "aclose", None)
+                close = getattr(vectorizer, "close", None)
                 if callable(aclose):
                     await aclose()
                 elif callable(close):
                     close()
-                self._vectorizer = None
         finally:
             if self._index is not None:
                 index = self._index
