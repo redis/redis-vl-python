@@ -178,6 +178,9 @@ class SemanticRouter(BaseModel):
             # write the routes to Redis
             self._add_routes(self.routes)
 
+    def __repr__(self) -> str:
+        return f"SemanticRouter(name={self.name!r}, routes={len(self.routes)})"
+
     @property
     def route_names(self) -> List[str]:
         """Get the list of route names.

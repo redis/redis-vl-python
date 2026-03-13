@@ -174,6 +174,12 @@ class SemanticCache(BaseLLMCache):
         # Create the search index in Redis
         self._index.create(overwrite=self.overwrite, drop=False)
 
+    def __repr__(self) -> str:
+        return (
+            f"SemanticCache(name={self.name!r}, "
+            f"distance_threshold={self.distance_threshold}, ttl={self.ttl})"
+        )
+
     def _modify_schema(
         self,
         schema: SemanticCacheIndexSchema,
