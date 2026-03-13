@@ -239,3 +239,6 @@ async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
         await server.shutdown()
 
     assert index.client is None
+
+    with pytest.raises(RuntimeError, match="has not been started"):
+        await server.get_vectorizer()
