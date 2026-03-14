@@ -51,7 +51,7 @@ def test_tag_filter_varied(operation, tags, expected):
     else:
         raise ValueError(f"Unsupported operation: {operation}")
 
-    # Verify the string representation matches the expected RediSearch query part
+    # Verify the string representation matches the expected Redis Search query part
     assert str(tf) == expected
 
 

@@ -32,7 +32,7 @@ Here's how to get started with your code contribution:
 ### Prerequisites
 
 - **Python**: RedisVL supports Python 3.9 and above
-- **Docker**: Required for running Redis Stack and integration tests
+- **Docker**: Required for running Redis and integration tests
 - **UV**: Modern Python package manager for fast dependency management
 
 ### Installing UV
@@ -88,8 +88,8 @@ We provide a comprehensive Makefile to streamline common development tasks. Here
 | Command | Description |
 |---------|-------------|
 | `make install` | Installs all dependencies using UV |
-| `make redis-start` | Starts Redis Stack in a Docker container on ports 6379 and 8001 |
-| `make redis-stop` | Stops the Redis Stack Docker container |
+| `make redis-start` | Starts Redis in a Docker container on port 6379 |
+| `make redis-stop` | Stops the Redis Docker container |
 | `make format` | Runs code formatting and import sorting |
 | `make check-types` | Runs mypy type checking |
 | `make lint` | Runs formatting, import sorting, and type checking |
@@ -106,7 +106,7 @@ We provide a comprehensive Makefile to streamline common development tasks. Here
 # Set up the project
 make install
 
-# Start Redis Stack
+# Start Redis
 make redis-start
 
 # Run linting and tests
@@ -194,26 +194,24 @@ uv run python -m http.server 8000 --directory docs/_build/html
 
 ## Redis Setup
 
-To develop and test RedisVL applications, you need Redis with Search & Query features. You have several options:
+To develop and test RedisVL applications, you need Redis with Redis Search enabled. You have several options:
 
-### Option 1: Redis Stack with Docker (Recommended for Development)
+### Option 1: Redis with Docker (Recommended for Development)
 
 ```bash
-# Start Redis Stack with RedisInsight GUI
+# Start Redis
 make redis-start
 
 # This runs:
-# docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+# docker run -d --name redis -p 6379:6379 redis:8.4
 
 # Stop when finished
 make redis-stop
 ```
 
-This also provides the [FREE RedisInsight GUI](https://redis.io/insight/) at `http://localhost:8001`.
-
 ### Option 2: Redis Cloud
 
-For production-like testing, use [Redis Cloud](https://redis.io/cloud/) which provides managed Redis instances with Search & Query capabilities.
+For production-like testing, use [Redis Cloud](https://redis.io/cloud/) which provides managed Redis instances with Redis Search capabilities.
 
 ## Reporting Issues
 

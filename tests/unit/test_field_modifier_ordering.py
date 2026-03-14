@@ -2,10 +2,10 @@
 Unit tests for field modifier ordering fix.
 
 Tests verify that field modifiers are generated in the correct order
-to satisfy RediSearch parser requirements. The canonical order is:
+to satisfy Redis Search parser requirements. The canonical order is:
     [INDEXEMPTY] [INDEXMISSING] [SORTABLE [UNF]] [NOINDEX]
 
-This is required because RediSearch has a parser limitation
+This is required because Redis Search has a parser limitation
 where INDEXEMPTY/INDEXMISSING must appear BEFORE SORTABLE in field definitions.
 """
 

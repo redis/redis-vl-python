@@ -285,7 +285,7 @@ Key vector attributes:
 
 ### Modifier Ordering
 
-RediSearch has specific requirements for the order of field modifiers. RedisVL handles this automatically, but it's useful to understand:
+Redis Search has specific requirements for the order of field modifiers. RedisVL handles this automatically, but it's useful to understand:
 
 **Canonical order**: `INDEXEMPTY` → `INDEXMISSING` → `SORTABLE` → `UNF` → `NOINDEX`
 

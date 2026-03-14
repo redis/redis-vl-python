@@ -11,7 +11,11 @@ from redis.exceptions import ConnectionError
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
-from tests.conftest import SKIP_HF, skip_if_no_redisearch, skip_if_no_redisearch_async
+from tests.conftest import (
+    SKIP_HF,
+    skip_if_no_redis_search,
+    skip_if_no_redis_search_async,
+)
 
 if not SKIP_HF:
     from redisvl.utils.vectorize import HFTextVectorizer
@@ -28,7 +32,7 @@ def vectorizer():
 
 @pytest.fixture
 def cache(client, vectorizer, redis_url, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     cache_instance = SemanticCache(
         name=f"llmcache_{worker_id}",
         vectorizer=vectorizer,
@@ -41,7 +45,7 @@ def cache(client, vectorizer, redis_url, worker_id):
 
 @pytest.fixture
 def cache_with_filters(client, vectorizer, redis_url, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     cache_instance = SemanticCache(
         name=f"llmcache_filters_{worker_id}",
         vectorizer=vectorizer,
@@ -55,7 +59,7 @@ def cache_with_filters(client, vectorizer, redis_url, worker_id):
 
 @pytest.fixture
 def cache_no_cleanup(client, vectorizer, redis_url, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     cache_instance = SemanticCache(
         name=f"llmcache_no_cleanup_{worker_id}",
         vectorizer=vectorizer,
@@ -67,7 +71,7 @@ def cache_no_cleanup(client, vectorizer, redis_url, worker_id):
 
 @pytest.fixture
 def cache_with_ttl(client, vectorizer, redis_url, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     cache_instance = SemanticCache(
         name=f"llmcache_ttl_{worker_id}",
         vectorizer=vectorizer,
@@ -81,7 +85,7 @@ def cache_with_ttl(client, vectorizer, redis_url, worker_id):
 
 @pytest.fixture
 def cache_with_redis_client(vectorizer, client, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     cache_instance = SemanticCache(
         name=f"llmcache_client_{worker_id}",
         vectorizer=vectorizer,
@@ -787,7 +791,7 @@ def test_cache_filtering(cache_with_filters):
 
 
 def test_cache_bad_filters(client, vectorizer, redis_url, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.raises(ValueError):
         cache_instance = SemanticCache(
             name=f"test_bad_filters_1_{worker_id}",
@@ -856,7 +860,7 @@ def test_complex_filters(cache_with_filters):
 
 
 def test_cache_index_overwrite(client, redis_url, worker_id, hf_vectorizer):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
     if redis_version.startswith("6.2"):
@@ -960,7 +964,7 @@ def test_no_key_collision_on_identical_prompts(redis_url, worker_id, hf_vectoriz
 
 
 def test_create_cache_with_different_vector_types(client, worker_id, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     try:
         bfloat_cache = SemanticCache(
             name=f"bfloat_cache_{worker_id}", dtype="bfloat16", redis_url=redis_url
@@ -990,7 +994,7 @@ def test_create_cache_with_different_vector_types(client, worker_id, redis_url):
 
 
 def test_bad_dtype_connecting_to_existing_cache(client, redis_url, worker_id):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
     if redis_version.startswith("6.2"):
@@ -1064,7 +1068,7 @@ def test_deprecated_dtype_argument(redis_url, worker_id):
 async def test_cache_async_context_manager(
     async_client, redis_url, worker_id, hf_vectorizer
 ):
-    await skip_if_no_redisearch_async(async_client)
+    await skip_if_no_redis_search_async(async_client)
     async with SemanticCache(
         name=f"test_cache_async_context_manager_{worker_id}",
         redis_url=redis_url,
@@ -1079,7 +1083,7 @@ async def test_cache_async_context_manager(
 async def test_cache_async_context_manager_with_exception(
     async_client, redis_url, worker_id, hf_vectorizer
 ):
-    await skip_if_no_redisearch_async(async_client)
+    await skip_if_no_redis_search_async(async_client)
     try:
         async with SemanticCache(
             name=f"test_cache_async_context_manager_with_exception_{worker_id}",

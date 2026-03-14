@@ -120,7 +120,7 @@ $ pre-commit run --all-files
 
 ## Installing Redis
 
-RedisVL requires a distribution of Redis that supports the [Search and Query](https://redis.com/modules/redis-search/) capability. There are several options:
+RedisVL requires Redis with [Redis Search](https://redis.io/docs/latest/develop/ai/search-and-query/) available. There are several options:
 
 1. [Redis Cloud](https://redis.io/cloud), a fully managed cloud offering with a free tier
 2. [Redis 8+ (Docker)](https://redis.io/downloads/), for local development and testing
@@ -128,18 +128,18 @@ RedisVL requires a distribution of Redis that supports the [Search and Query](ht
 
 ### Redis Cloud
 
-Redis Cloud is the easiest way to get started with RedisVL. You can sign up for a free account [here](https://redis.io/cloud). Make sure to have the `Search and Query`
-capability enabled when creating your database.
+Redis Cloud is the easiest way to get started with RedisVL. You can sign up for a free account [here](https://redis.io/cloud). Make sure to have `Redis Search`
+enabled when creating your database.
 
 ### Redis 8+ (local development)
 
 For local development and testing, we recommend running Redis 8+ in a Docker container:
 
 ```bash
-docker run -d --name redis -p 6379:6379 redis:latest
+docker run -d --name redis -p 6379:6379 redis:8.4
 ```
 
-Redis 8 includes built-in vector search capabilities.
+Redis 8 includes Redis Search and built-in vector search capabilities.
 
 ### Redis Enterprise (self-hosted)
 

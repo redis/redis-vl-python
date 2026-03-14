@@ -129,7 +129,7 @@ def supports_svs(client: SyncRedisClient) -> bool:
     redis_ok = is_version_gte(redis_version, SVS_MIN_REDIS_VERSION)
 
     # Check either search or searchlight module (only one is typically installed)
-    # RediSearch is the open-source module, SearchLight is the enterprise version
+    # Redis Search is the open-source module, SearchLight is the enterprise version
     modules_ok = (
         search_ver >= SVS_MIN_SEARCH_VERSION
         or searchlight_ver >= SVS_MIN_SEARCH_VERSION
@@ -158,7 +158,7 @@ async def supports_svs_async(client: AsyncRedisClient) -> bool:
     redis_ok = is_version_gte(redis_version, SVS_MIN_REDIS_VERSION)
 
     # Check either search or searchlight module (only one is typically installed)
-    # RediSearch is the open-source module, SearchLight is the enterprise version
+    # Redis Search is the open-source module, SearchLight is the enterprise version
     modules_ok = (
         search_ver >= SVS_MIN_SEARCH_VERSION
         or searchlight_ver >= SVS_MIN_SEARCH_VERSION

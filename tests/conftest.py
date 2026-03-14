@@ -48,7 +48,7 @@ def redis_container(worker_id):
     """
     # Set the Compose project name so containers do not clash across workers
     os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
-    os.environ.setdefault("REDIS_IMAGE", "redis/redis-stack-server:latest")
+    os.environ.setdefault("REDIS_IMAGE", "redis:8.4")
 
     compose = DockerCompose(
         context="tests",
@@ -73,9 +73,8 @@ def redis_cluster_container(worker_id):
     os.environ["COMPOSE_PROJECT_NAME"] = (
         project_name  # For docker compose to pick it up if needed
     )
-    # redis-stack-server comes up without modules in cluster mode, so we hard-code
-    # the Redis 8 image for now.
-    os.environ.setdefault("REDIS_IMAGE", "redis:8")
+    # Cluster tests use a pinned Redis 8 image for consistency.
+    os.environ.setdefault("REDIS_IMAGE", "redis:8.4")
 
     # The DockerCompose helper isn't working with multiple services because the
     # subprocess command returns non-zero exit codes even on successful
@@ -690,20 +689,20 @@ async def get_redis_version_async(client):
     return info["redis_version"]
 
 
-def has_redisearch_module(client):
-    """Check if RediSearch module is available."""
+def has_redis_search_module(client):
+    """Check if Redis Search module is available."""
     try:
-        # Try to list indices - this is a RediSearch command
+        # Try to list indices - this is a Redis Search command
         client.execute_command("FT._LIST")
         return True
     except Exception:
         return False
 
 
-async def has_redisearch_module_async(client):
-    """Check if RediSearch module is available (async)."""
+async def has_redis_search_module_async(client):
+    """Check if Redis Search module is available (async)."""
     try:
-        # Try to list indices - this is a RediSearch command
+        # Try to list indices - this is a Redis Search command
         await client.execute_command("FT._LIST")
         return True
     except Exception:
@@ -742,27 +741,27 @@ async def skip_if_redis_version_below_async(
         pytest.skip(skip_msg)
 
 
-def skip_if_no_redisearch(client, message: str = None):
+def skip_if_no_redis_search(client, message: str = None):
     """
-    Skip test if RediSearch module is not available.
+    Skip test if Redis Search module is not available.
 
     Args:
         client: Redis client instance
         message: Custom skip message
     """
-    if not has_redisearch_module(client):
-        skip_msg = message or "RediSearch module not available"
+    if not has_redis_search_module(client):
+        skip_msg = message or "Redis Search module not available"
         pytest.skip(skip_msg)
 
 
-async def skip_if_no_redisearch_async(client, message: str = None):
+async def skip_if_no_redis_search_async(client, message: str = None):
     """
-    Skip test if RediSearch module is not available (async version).
+    Skip test if Redis Search module is not available (async version).
 
     Args:
         client: Async Redis client instance
         message: Custom skip message
     """
-    if not await has_redisearch_module_async(client):
-        skip_msg = message or "RediSearch module not available"
+    if not await has_redis_search_module_async(client):
+        skip_msg = message or "Redis Search module not available"
         pytest.skip(skip_msg)

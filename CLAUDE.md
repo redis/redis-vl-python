@@ -13,8 +13,8 @@ make test-all         # Run all tests (includes API tests)
 make check            # Full check (lint + test)
 
 # Redis setup
-make redis-start      # Start Redis Stack container
-make redis-stop       # Stop Redis Stack container
+make redis-start      # Start Redis container
+make redis-stop       # Stop Redis container
 
 # Documentation
 make docs-build       # Build documentation
