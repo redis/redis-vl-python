@@ -64,7 +64,7 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         redis-py-version: ["5.x", "6.x", "7.x"]
-        redis-image: ["redis:8.4", "redis:latest"]
+        redis-image: ["redis/redis-stack-server:latest", "redis:latest"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
