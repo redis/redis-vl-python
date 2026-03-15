@@ -20,3 +20,5 @@ vectorizer:
 routing_config:
   max_k: 2
   aggregation_method: avg
+  cost_optimization: false
+  cost_weight: 0.1
