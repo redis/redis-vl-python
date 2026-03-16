@@ -180,11 +180,68 @@ query = SQLQuery("""
 results = index.query(query)
 ```
 
+**Aggregations and grouping:**
+
+```python
+query = SQLQuery("""
+    SELECT category, COUNT(*) as count, AVG(price) as avg_price
+    FROM products
+    GROUP BY category
+    ORDER BY count DESC
+""")
+```
+
+**Geographic queries** with `geo_distance()`:
+
+```python
+# Find stores within 50km of San Francisco
+query = SQLQuery("""
+    SELECT name, category
+    FROM stores
+    WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 50
+""")
+
+# Calculate distances
+query = SQLQuery("""
+    SELECT name, geo_distance(location, POINT(-122.4194, 37.7749)) AS distance
+    FROM stores
+""")
+```
+
+**Date queries** with ISO date literals and date functions:
+
+```python
+# Filter by date range
+query = SQLQuery("""
+    SELECT name FROM events
+    WHERE created_at BETWEEN '2024-01-01' AND '2024-03-31'
+""")
+
+# Extract date parts
+query = SQLQuery("""
+    SELECT YEAR(created_at) AS year, COUNT(*) AS count
+    FROM events
+    GROUP BY year
+""")
+```
+
+**Vector similarity search** with parameters:
+
+```python
+query = SQLQuery("""
+    SELECT title, vector_distance(embedding, :vec) AS score
+    FROM products
+    LIMIT 5
+""", params={"vec": embedding_bytes})
+```
+
 Use when your team is more comfortable with SQL syntax, or when integrating with tools that generate SQL.
 
 ```{note}
 SQLQuery requires the optional `sql-redis` package. Install with: `pip install redisvl[sql-redis]`
 ```
+
+For comprehensive examples including geographic filtering, date functions, and vector search, see the [SQL to Redis Queries guide](../user_guide/12_sql_to_redis_queries.ipynb).
 
 ## Choosing the Right Query
 
