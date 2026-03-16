@@ -47,8 +47,8 @@ class RedisModuleVersionError(RedisVLError):
             RedisModuleVersionError with formatted message
         """
         message = (
-            f"SVS-VAMANA requires Redis >= {min_redis_version} with RediSearch >= 2.8.10. "
-            f"Options: 1) Upgrade Redis Stack, "
+            f"SVS-VAMANA requires Redis >= {min_redis_version} with Redis Search >= 2.8.10. "
+            f"Options: 1) Upgrade Redis to a version with Redis Search >= 2.8.10, "
             f"2) Use algorithm='hnsw' or 'flat', "
             f"3) Remove compression parameters"
         )

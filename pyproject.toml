@@ -148,3 +148,7 @@ filterwarnings = [
 warn_unused_configs = true
 ignore_missing_imports = true
 exclude = ["env", "venv", ".venv"]
+
+[[tool.mypy.overrides]]
+module = ["mistralai", "mistralai.*"]
+follow_imports = "skip"

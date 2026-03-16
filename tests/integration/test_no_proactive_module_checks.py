@@ -20,10 +20,10 @@ from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema import IndexSchema
 from redisvl.utils.vectorize.base import BaseVectorizer
 from tests.conftest import (
-    has_redisearch_module,
-    has_redisearch_module_async,
-    skip_if_no_redisearch,
-    skip_if_no_redisearch_async,
+    has_redis_search_module,
+    has_redis_search_module_async,
+    skip_if_no_redis_search,
+    skip_if_no_redis_search_async,
 )
 
 
@@ -127,9 +127,9 @@ class TestNoProactiveModuleChecks:
         client.module_list.assert_not_called()
 
     def test_search_index_create_with_modules(self, client, sample_schema, worker_id):
-        """Test that index.create() works with RediSearch available."""
-        # Skip if RediSearch is not available
-        skip_if_no_redisearch(client)
+        """Test that index.create() works with Redis Search available."""
+        # Skip if Redis Search is not available
+        skip_if_no_redis_search(client)
 
         # Update schema name to be unique
         schema_copy = IndexSchema.from_dict(sample_schema.to_dict())
@@ -155,9 +155,9 @@ class TestNoProactiveModuleChecks:
     async def test_async_search_index_create_with_modules(
         self, async_client, sample_schema, worker_id
     ):
-        """Test that async index.create() works with RediSearch available."""
-        # Skip if RediSearch is not available
-        await skip_if_no_redisearch_async(async_client)
+        """Test that async index.create() works with Redis Search available."""
+        # Skip if Redis Search is not available
+        await skip_if_no_redis_search_async(async_client)
 
         # Update schema name to be unique
         schema_copy = IndexSchema.from_dict(sample_schema.to_dict())
@@ -328,8 +328,8 @@ class TestEdgeCases:
 
     def test_from_existing_index_no_validation(self, client, worker_id):
         """Test that SearchIndex.from_existing doesn't validate modules."""
-        # Skip if RediSearch is not available
-        skip_if_no_redisearch(client)
+        # Skip if Redis Search is not available
+        skip_if_no_redis_search(client)
 
         # First create an index normally
         schema = IndexSchema.from_dict(
@@ -344,7 +344,7 @@ class TestEdgeCases:
             index.create(overwrite=True)
         except ResponseError as e:
             if "unknown command" in str(e).lower():
-                pytest.skip("RediSearch module not available")
+                pytest.skip("Redis Search module not available")
             raise
 
         try:

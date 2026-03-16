@@ -24,7 +24,7 @@ pip install redisvl
 ```
 
 ```bash
-docker run -d --name redis -p 6379:6379 redis:latest
+docker run -d --name redis -p 6379:6379 redis:8.4
 ```
 
 Or connect to [Redis Cloud](https://redis.io/cloud) for a managed experience.

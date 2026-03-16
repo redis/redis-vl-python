@@ -4,9 +4,9 @@ DEFAULT_REQUIRED_MODULES = [
     {"name": "searchlight", "ver": 20600},
 ]
 
-# SVS-VAMANA requires Redis 8.2+ with RediSearch 2.8.10+
+# SVS-VAMANA requires Redis 8.2+ with Redis Search 2.8.10+
 SVS_REQUIRED_MODULES = [
-    {"name": "search", "ver": 20810},  # RediSearch 2.8.10+
+    {"name": "search", "ver": 20810},  # Redis Search 2.8.10+
     {"name": "searchlight", "ver": 20810},
 ]
 

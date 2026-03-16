@@ -5,7 +5,7 @@ from redis.exceptions import ConnectionError
 
 from redisvl.extensions.constants import ID_FIELD_NAME
 from redisvl.extensions.message_history import MessageHistory, SemanticMessageHistory
-from tests.conftest import SKIP_HF, skip_if_no_redisearch
+from tests.conftest import SKIP_HF, skip_if_no_redis_search
 
 requires_hf = pytest.mark.skipif(
     SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
@@ -26,7 +26,7 @@ def standard_history(app_name, client):
 
 @pytest.fixture
 def semantic_history(app_name, client, hf_vectorizer):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     history = SemanticMessageHistory(
         app_name, redis_client=client, overwrite=True, vectorizer=hf_vectorizer
     )
@@ -340,7 +340,7 @@ def test_standard_count(standard_history):
 # test semantic message history
 @requires_hf
 def test_semantic_specify_client(client, hf_vectorizer):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     history = SemanticMessageHistory(
         name="test_app",
         session_tag="abc",
@@ -647,7 +647,7 @@ def test_semantic_count(semantic_history):
 
 
 def test_different_vector_dtypes(client, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     try:
         bfloat_sess = SemanticMessageHistory(
             name="bfloat_history", dtype="bfloat16", redis_url=redis_url
@@ -678,7 +678,7 @@ def test_different_vector_dtypes(client, redis_url):
 
 
 def test_bad_dtype_connecting_to_exiting_history(client, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
     if redis_version.startswith("6.2"):
@@ -708,7 +708,7 @@ def test_bad_dtype_connecting_to_exiting_history(client, redis_url):
 
 @requires_hf
 def test_vectorizer_dtype_mismatch(client, redis_url, hf_vectorizer_float16):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.raises(ValueError):
         SemanticMessageHistory(
             name="test_dtype_mismatch",
@@ -720,7 +720,7 @@ def test_vectorizer_dtype_mismatch(client, redis_url, hf_vectorizer_float16):
 
 
 def test_invalid_vectorizer(client, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.raises(TypeError):
         SemanticMessageHistory(
             name="test_invalid_vectorizer",
@@ -731,7 +731,7 @@ def test_invalid_vectorizer(client, redis_url):
 
 
 def test_passes_through_dtype_to_default_vectorizer(client, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     # The default is float32, so we should see float64 if we pass it in.
     cache = SemanticMessageHistory(
         name="test_pass_through_dtype",
@@ -743,7 +743,7 @@ def test_passes_through_dtype_to_default_vectorizer(client, redis_url):
 
 
 def test_deprecated_dtype_argument(client, redis_url):
-    skip_if_no_redisearch(client)
+    skip_if_no_redis_search(client)
     with pytest.warns(DeprecationWarning):
         SemanticMessageHistory(
             name="float64 history", dtype="float64", redis_url=redis_url, overwrite=True

@@ -8,8 +8,8 @@ class TokenEscaper:
     Adapted from RedisOM Python.
     """
 
-    # Characters that RediSearch requires us to escape during queries.
-    # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/#tokenization-rules-for-text-fields
+    # Characters that Redis Search requires us to escape during queries.
+    # Source: https://redis.io/docs/latest/develop/ai/search-and-query/advanced-concepts/escaping/
     DEFAULT_ESCAPED_CHARS = r"[,.<>{}\[\]\\\"\':;!@#$%^&*()\-+=~\/ \?]"
 
     # Same as above but excludes * and ? to allow wildcard patterns

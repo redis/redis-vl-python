@@ -13,18 +13,18 @@ from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema import IndexSchema
 
-MIN_SEARCH_VERSION_FOR_INDEXMISSING = 21000  # RediSearch 2.10.0+
+MIN_SEARCH_VERSION_FOR_INDEXMISSING = 21000  # Redis Search 2.10.0+
 
 
 def skip_if_search_version_below_for_indexmissing(client) -> None:
-    """Skip tests that require INDEXMISSING/INDEXEMPTY if RediSearch is too old."""
+    """Skip tests that require INDEXMISSING/INDEXEMPTY if Redis Search is too old."""
     modules = RedisConnectionFactory.get_modules(client)
     search_ver = modules.get("search", 0)
     searchlight_ver = modules.get("searchlight", 0)
     current_ver = max(search_ver, searchlight_ver)
     if current_ver < MIN_SEARCH_VERSION_FOR_INDEXMISSING:
         pytest.skip(
-            "INDEXMISSING/INDEXEMPTY require RediSearch 2.10+ "
+            "INDEXMISSING/INDEXEMPTY require Redis Search 2.10+ "
             f"(found module version {current_ver})"
         )
 
@@ -408,7 +408,7 @@ class TestFieldTypeModifierSupport:
         """Verify that NumericField does not have index_empty attribute.
 
         INDEXEMPTY is only supported for TEXT and TAG fields according to
-        RediSearch documentation. NumericFieldAttributes should not have
+        Redis Search documentation. NumericFieldAttributes should not have
         an index_empty attribute.
         """
         import inspect
@@ -431,7 +431,7 @@ class TestFieldTypeModifierSupport:
         """Verify that GeoField does not have index_empty attribute.
 
         INDEXEMPTY is only supported for TEXT and TAG fields according to
-        RediSearch documentation. GeoFieldAttributes should not have
+        Redis Search documentation. GeoFieldAttributes should not have
         an index_empty attribute.
         """
         import inspect
@@ -453,7 +453,7 @@ class TestFieldTypeModifierSupport:
     def test_text_field_supports_index_empty(self, client, redis_url, worker_id):
         """Verify that TextField supports index_empty attribute.
 
-        INDEXEMPTY is supported for TEXT fields according to RediSearch documentation.
+        INDEXEMPTY is supported for TEXT fields according to Redis Search documentation.
         """
         from redisvl.schema.fields import TextFieldAttributes
 
@@ -467,7 +467,7 @@ class TestFieldTypeModifierSupport:
     def test_tag_field_supports_index_empty(self, client, redis_url, worker_id):
         """Verify that TagField supports index_empty attribute.
 
-        INDEXEMPTY is supported for TAG fields according to RediSearch documentation.
+        INDEXEMPTY is supported for TAG fields according to Redis Search documentation.
         """
         from redisvl.schema.fields import TagFieldAttributes
 

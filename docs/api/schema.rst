@@ -269,7 +269,7 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
    :color: info
 
    **Requirements:**
-    - Redis >= 8.2.0 with RediSearch >= 2.8.10
+    - Redis >= 8.2.0 with Redis Search >= 2.8.10
     - datatype must be 'float16' or 'float32' (float64/bfloat16 not supported)
 
    **Use SVS-VAMANA when:**
@@ -353,7 +353,7 @@ SVS-VAMANA (Scalable Vector Search with VAMANA graph algorithm) provides fast ap
 
 **Important Notes:**
 
-- **Requirements**: SVS-VAMANA requires Redis >= 8.2 with RediSearch >= 2.8.10.
+- **Requirements**: SVS-VAMANA requires Redis >= 8.2 with Redis Search >= 2.8.10.
 - **Datatype limitations**: SVS-VAMANA only supports `float16` and `float32` datatypes (not `bfloat16` or `float64`).
 - **Compression compatibility**: The `reduce` parameter is only valid with LeanVec compression types (`LeanVec4x8` or `LeanVec8x8`).
 - **Platform considerations**: Intel's proprietary LVQ and LeanVec optimizations are not available in Redis Open Source. On non-Intel platforms and Redis Open Source, SVS-VAMANA with compression falls back to basic 8-bit scalar quantization.
@@ -511,7 +511,7 @@ Migration Considerations
  - Tune ``ef_runtime`` at query time to balance speed vs accuracy (no index rebuild needed)
 
 **From HNSW to SVS-VAMANA:**
- - Requires Redis >= 8.2 with RediSearch >= 2.8.10
+ - Requires Redis >= 8.2 with Redis Search >= 2.8.10
  - Change datatype to float16 or float32 if using others
  - Consider compression options for memory savings
 

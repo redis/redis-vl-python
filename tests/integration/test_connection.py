@@ -28,13 +28,13 @@ def test_unpack_redis_modules():
         {
             "name": "search",
             "ver": 20811,
-            "path": "/opt/redis-stack/lib/redisearch.so",
+            "path": "/opt/redis/lib/redisearch.so",
             "args": [],
         },
         {
             "name": "ReJSON",
             "ver": 20609,
-            "path": "/opt/redis-stack/lib/rejson.so",
+            "path": "/opt/redis/lib/rejson.so",
             "args": [],
         },
     ]
