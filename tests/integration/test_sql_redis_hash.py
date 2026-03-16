@@ -1132,3 +1132,375 @@ class TestSQLQueryVectorSearch:
         assert "Science Fiction" in redis_cmd or "Science\\ Fiction" in redis_cmd
         assert "=>[KNN" in redis_cmd
         assert "KNN 3" in redis_cmd
+
+
+# =============================================================================
+# GEO Field Tests
+# =============================================================================
+
+
+@pytest.fixture
+def geo_index(redis_url, worker_id):
+    """Create a stores index with GEO field for SQL query testing."""
+    unique_id = str(uuid.uuid4())[:8]
+    index_name = f"sql_stores_{worker_id}_{unique_id}"
+
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": index_name,
+                "prefix": f"store_{worker_id}_{unique_id}",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "name", "type": "text", "attrs": {"sortable": True}},
+                {"name": "category", "type": "tag", "attrs": {"sortable": True}},
+                {"name": "location", "type": "geo"},
+                {"name": "rating", "type": "numeric", "attrs": {"sortable": True}},
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    index.create(overwrite=True)
+
+    # Load test data - stores with real US city coordinates
+    # Format: location = "longitude,latitude"
+    stores = [
+        {
+            "name": "SF Downtown",
+            "category": "retail",
+            "location": "-122.4194,37.7749",
+            "rating": 4.5,
+        },
+        {
+            "name": "SF Marina",
+            "category": "retail",
+            "location": "-122.4367,37.8030",
+            "rating": 4.2,
+        },
+        {
+            "name": "Oakland Store",
+            "category": "warehouse",
+            "location": "-122.2711,37.8044",
+            "rating": 3.8,
+        },
+        {
+            "name": "San Jose Hub",
+            "category": "warehouse",
+            "location": "-121.8863,37.3382",
+            "rating": 4.0,
+        },
+        {
+            "name": "NYC Times Square",
+            "category": "retail",
+            "location": "-73.9857,40.7580",
+            "rating": 4.8,
+        },
+        {
+            "name": "LA Hollywood",
+            "category": "retail",
+            "location": "-118.3287,34.0928",
+            "rating": 4.3,
+        },
+    ]
+
+    index.load(stores)
+
+    yield index
+
+    # Cleanup
+    index.delete(drop=True)
+
+
+class TestSQLQueryGeoOperators:
+    """Tests for GEO field queries using geo_distance() function."""
+
+    def test_geo_distance_basic_filter(self, geo_index):
+        """Test basic geo_distance filter - find stores within radius."""
+        # Find stores within 50km of SF Downtown
+        sql_query = SQLQuery(
+            f"""
+            SELECT name, category
+            FROM {geo_index.name}
+            WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 50
+            """
+        )
+
+        results = geo_index.query(sql_query)
+
+        # Should find SF Downtown, SF Marina, Oakland Store (all within 50km of SF)
+        assert len(results) == 3
+        names = {r["name"] for r in results}
+        assert "SF Downtown" in names
+        assert "SF Marina" in names
+        assert "Oakland Store" in names
+        # NYC and LA should NOT be in results
+        assert "NYC Times Square" not in names
+        assert "LA Hollywood" not in names
+
+    def test_geo_distance_with_miles(self, geo_index):
+        """Test geo_distance with miles unit."""
+        # Find stores within 10 miles of SF Downtown
+        sql_query = SQLQuery(
+            f"""
+            SELECT name
+            FROM {geo_index.name}
+            WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'mi') < 10
+            """
+        )
+
+        results = geo_index.query(sql_query)
+
+        # Should find SF Downtown, SF Marina, Oakland Store (all within 10mi)
+        assert len(results) == 3
+        names = {r["name"] for r in results}
+        assert "SF Downtown" in names
+        assert "SF Marina" in names
+        assert "Oakland Store" in names
+
+    def test_geo_distance_combined_with_tag(self, geo_index):
+        """Test geo_distance combined with TAG filter."""
+        # Find RETAIL stores within 100km of SF
+        sql_query = SQLQuery(
+            f"""
+            SELECT name, rating
+            FROM {geo_index.name}
+            WHERE category = 'retail' AND geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 100
+            """
+        )
+
+        results = geo_index.query(sql_query)
+
+        # Should find SF Downtown, SF Marina (retail stores near SF)
+        # Oakland is warehouse, San Jose is warehouse
+        assert len(results) == 2
+        names = {r["name"] for r in results}
+        assert "SF Downtown" in names
+        assert "SF Marina" in names
+        assert "Oakland Store" not in names  # warehouse, not retail
+
+    def test_geo_distance_combined_with_text(self, geo_index):
+        """Test geo_distance combined with TEXT filter."""
+        # Find stores with "Downtown" in name within 2000 miles of center US
+        sql_query = SQLQuery(
+            f"""
+            SELECT name, location
+            FROM {geo_index.name}
+            WHERE name = 'Downtown' AND geo_distance(location, POINT(-94.5786, 39.0997), 'mi') < 2000
+            """
+        )
+
+        results = geo_index.query(sql_query)
+
+        # Should find only SF Downtown (has "Downtown" in name and within 2000mi)
+        assert len(results) == 1
+        assert results[0]["name"] == "SF Downtown"
+
+    def test_geo_distance_in_select_aggregate(self, geo_index):
+        """Test geo_distance() in SELECT clause generates FT.AGGREGATE."""
+        # Calculate distance from SF Downtown to all stores
+        sql_query = SQLQuery(
+            f"""
+            SELECT name, geo_distance(location, POINT(-122.4194, 37.7749)) AS distance
+            FROM {geo_index.name}
+            """
+        )
+
+        results = geo_index.query(sql_query)
+
+        # Should return all 6 stores with distances
+        assert len(results) == 6
+
+        # Find SF Downtown - should have distance ~0
+        sf_downtown = next((r for r in results if r["name"] == "SF Downtown"), None)
+        assert sf_downtown is not None
+        assert float(sf_downtown["distance"]) < 100  # Less than 100 meters
+
+        # Find NYC - should be far away (>4000km = 4,000,000m)
+        nyc = next((r for r in results if r["name"] == "NYC Times Square"), None)
+        assert nyc is not None
+        assert float(nyc["distance"]) > 4_000_000  # More than 4000km in meters
+
+    def test_geo_distance_redis_query_string(self, geo_index, redis_url):
+        """Test redis_query_string() returns correct GEOFILTER command."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT name
+            FROM {geo_index.name}
+            WHERE geo_distance(location, POINT(-122.4194, 37.7749), 'km') < 50
+            """
+        )
+
+        redis_cmd = sql_query.redis_query_string(redis_url=redis_url)
+
+        # Verify it's a valid FT.SEARCH with GEOFILTER
+        assert redis_cmd.startswith("FT.SEARCH")
+        assert geo_index.name in redis_cmd
+        assert "GEOFILTER" in redis_cmd
+        assert "location" in redis_cmd
+        assert "-122.4194" in redis_cmd
+        assert "37.7749" in redis_cmd
+        assert "50" in redis_cmd
+        assert "km" in redis_cmd
+
+
+# =============================================================================
+# Date/Timestamp Field Tests
+# =============================================================================
+
+
+@pytest.fixture
+def date_index(redis_url, worker_id):
+    """Create an events index with NUMERIC timestamp field for SQL query testing."""
+    from datetime import datetime, timezone
+
+    unique_id = str(uuid.uuid4())[:8]
+    index_name = f"sql_events_{worker_id}_{unique_id}"
+
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": index_name,
+                "prefix": f"event_{worker_id}_{unique_id}",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "name", "type": "text", "attrs": {"sortable": True}},
+                {"name": "category", "type": "tag", "attrs": {"sortable": True}},
+                {"name": "created_at", "type": "numeric", "attrs": {"sortable": True}},
+            ],
+        },
+        redis_url=redis_url,
+    )
+
+    index.create(overwrite=True)
+
+    def to_ts(date_str):
+        dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+
+    events = [
+        {
+            "name": "New Year Kickoff",
+            "category": "meeting",
+            "created_at": to_ts("2024-01-15"),
+        },
+        {
+            "name": "Product Launch",
+            "category": "release",
+            "created_at": to_ts("2024-02-20"),
+        },
+        {
+            "name": "Team Offsite",
+            "category": "meeting",
+            "created_at": to_ts("2024-03-10"),
+        },
+        {
+            "name": "Summer Summit",
+            "category": "conference",
+            "created_at": to_ts("2024-07-15"),
+        },
+        {
+            "name": "Holiday Party 2023",
+            "category": "social",
+            "created_at": to_ts("2023-12-15"),
+        },
+    ]
+
+    index.load(events)
+
+    yield index
+
+    index.delete(drop=True)
+
+
+class TestSQLQueryDateFunctions:
+    """Tests for date functions and timestamp handling."""
+
+    def test_date_literal_filter(self, date_index):
+        """Test filtering with ISO date literal."""
+        sql_query = SQLQuery(
+            f"SELECT name FROM {date_index.name} WHERE created_at > '2024-01-01'"
+        )
+        results = date_index.query(sql_query)
+
+        # Should find 4 events in 2024 (excludes 2023 Holiday Party)
+        assert len(results) == 4
+        names = {r["name"] for r in results}
+        assert "Holiday Party 2023" not in names
+
+    def test_date_between_filter(self, date_index):
+        """Test BETWEEN with date literals."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT name FROM {date_index.name}
+            WHERE created_at BETWEEN '2024-01-01' AND '2024-03-31'
+            """
+        )
+        results = date_index.query(sql_query)
+
+        # Should find Q1 2024 events
+        assert len(results) == 3
+        names = {r["name"] for r in results}
+        assert "New Year Kickoff" in names
+        assert "Product Launch" in names
+        assert "Team Offsite" in names
+
+    def test_year_function_in_select(self, date_index):
+        """Test YEAR() extraction in SELECT."""
+        sql_query = SQLQuery(
+            f"SELECT name, YEAR(created_at) AS year FROM {date_index.name}"
+        )
+        results = date_index.query(sql_query)
+
+        assert len(results) == 5
+        # Verify years are correctly extracted
+        for r in results:
+            assert "year" in r
+            assert r["year"] in ["2023", "2024", 2023, 2024]
+
+    def test_year_function_in_where(self, date_index):
+        """Test YEAR() in WHERE clause."""
+        sql_query = SQLQuery(
+            f"SELECT name FROM {date_index.name} WHERE YEAR(created_at) = 2024"
+        )
+        results = date_index.query(sql_query)
+
+        # Should find only 2024 events
+        assert len(results) == 4
+        names = {r["name"] for r in results}
+        assert "Holiday Party 2023" not in names
+
+    def test_date_combined_with_tag(self, date_index):
+        """Test date filter combined with TAG."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT name FROM {date_index.name}
+            WHERE category = 'meeting' AND created_at > '2024-01-01'
+            """
+        )
+        results = date_index.query(sql_query)
+
+        # Should find meetings in 2024
+        assert len(results) == 2
+        names = {r["name"] for r in results}
+        assert "New Year Kickoff" in names
+        assert "Team Offsite" in names
+
+    def test_group_by_year(self, date_index):
+        """Test GROUP BY with YEAR() function."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT YEAR(created_at) AS year, COUNT(*) AS count
+            FROM {date_index.name}
+            GROUP BY year
+            """
+        )
+        results = date_index.query(sql_query)
+
+        # Should have 2 groups: 2023 and 2024
+        assert len(results) == 2
+        counts = {str(r["year"]): int(r["count"]) for r in results}
+        assert counts.get("2023") == 1
+        assert counts.get("2024") == 4
