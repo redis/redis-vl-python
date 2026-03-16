@@ -1459,21 +1459,44 @@ class TextQuery(BaseQuery):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
-            try:
-                # Try loading first; only download if not already present.
-                # This avoids race conditions when parallel workers (e.g.
-                # pytest-xdist) call nltk.download() concurrently.
+            import time
+
+            last_error: Optional[Exception] = None
+            for attempt in range(3):
                 try:
                     self._stopwords = set(nltk_stopwords.words(stopwords))
-                except LookupError:
-                    nltk.download("stopwords", quiet=True)
-                    self._stopwords = set(nltk_stopwords.words(stopwords))
-            except ImportError:
+                    break
+                except LookupError as e:
+                    # Data not downloaded yet
+                    last_error = e
+                    if attempt < 2:  # Don't download on last attempt
+                        try:
+                            nltk.download("stopwords", quiet=True)
+                            time.sleep(0.05)  # Brief delay after download
+                        except Exception:
+                            time.sleep(0.1 * (attempt + 1))  # Wait and retry
+                    else:
+                        time.sleep(0.1)
+                except ImportError:
+                    raise ValueError(
+                        f"Loading stopwords for {stopwords} failed: nltk is not installed."
+                    )
+                except Exception as e:
+                    # Corrupted file or other loading error - retry with delay
+                    last_error = e
+                    if attempt < 2:
+                        time.sleep(0.2 * (attempt + 1))  # Longer delay for corruption
+                    else:
+                        # Last attempt failed
+                        raise ValueError(
+                            f"Failed to load stopwords '{stopwords}' after 3 attempts: {e}"
+                        )
+
+            # If loop completes without break, all attempts failed
+            if last_error:
                 raise ValueError(
-                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
+                    f"Failed to load stopwords '{stopwords}' after 3 attempts: {last_error}"
                 )
-            except Exception as e:
-                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
         elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
             isinstance(word, str) for word in stopwords
         ):
