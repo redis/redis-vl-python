@@ -335,7 +335,6 @@ def test_text_query_with_string_filter():
     assert "AND" not in query_string_wildcard
 
 
-@pytest.mark.skip("Test is flaking")
 def test_text_query_word_weights():
     # verify word weights get added into the raw Redis query syntax
     query = TextQuery(
@@ -344,10 +343,19 @@ def test_text_query_word_weights():
         text_weights={"alpha": 2, "delta": 0.555, "gamma": 0.95},
     )
 
-    assert (
-        str(query)
-        == "@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}) SCORER BM25STD WITHSCORES DIALECT 2 LIMIT 0 10"
-    )
+    # Check query components without relying on exact token ordering
+    query_str = str(query)
+    assert "@description:(" in query_str
+    assert "alpha=>{$weight:2}" in query_str
+    assert "delta=>{$weight:0.555}" in query_str
+    assert "query" in query_str
+    assert "string" in query_str
+    assert "bravo" in query_str
+    assert "tango" in query_str
+    assert "SCORER BM25STD" in query_str
+    assert "WITHSCORES" in query_str
+    assert "DIALECT 2" in query_str
+    assert "LIMIT 0 10" in query_str
 
     # raise an error if weights are not positive floats
     with pytest.raises(ValueError):
