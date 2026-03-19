@@ -42,10 +42,6 @@ class Stats:
 
     def __init__(self):
         parser = argparse.ArgumentParser(usage=self.usage)
-
-        parser.add_argument(
-            "-f", "--format", help="Output format", type=str, default="rounded_outline"
-        )
         parser = add_index_parsing_options(parser)
         args = parser.parse_args(sys.argv[2:])
         try:
@@ -61,7 +57,7 @@ class Stats:
             rvl stats -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        _display_stats(index.info(), output_format=args.format)
+        _display_stats(index.info())
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
@@ -85,7 +81,7 @@ class Stats:
         return index
 
 
-def _display_stats(index_info, output_format="rounded_outline"):
+def _display_stats(index_info):
     # Extracting the statistics
     stats_data = [(key, str(index_info.get(key))) for key in STATS_KEYS]
 

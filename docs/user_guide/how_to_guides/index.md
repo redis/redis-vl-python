@@ -36,6 +36,11 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 - [Choose a Storage Type](../05_hash_vs_json.ipynb) -- Hash vs JSON formats and nested data
 :::
 
+:::{grid-item-card} 💻 CLI Operations
+
+- [Manage Indices with the CLI](../cli.ipynb) -- create, inspect, and delete indices from your terminal
+:::
+
 ::::
 
 ## Quick Reference
@@ -53,6 +58,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Improve search accuracy | [Rerank Search Results](../06_rerankers.ipynb) |
 | Optimize index performance | [Optimize Indexes with SVS-VAMANA](../09_svs_vamana.ipynb) |
 | Decide on storage format | [Choose a Storage Type](../05_hash_vs_json.ipynb) |
+| Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
 
 ```{toctree}
 :hidden:
