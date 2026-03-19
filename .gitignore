@@ -234,6 +234,8 @@ tests/data
 
 # Local working directory (personal scripts, docs, tools)
 local/
+nitin_docs/
+nitin_scripts/
 
 # Local notebooks (kept for development, not committed)
 docs/user_guide/13_index_migrations.ipynb
