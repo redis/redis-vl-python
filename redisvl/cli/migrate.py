@@ -1,13 +1,11 @@
 import argparse
 import asyncio
 import sys
-from argparse import Namespace
 from typing import Optional
 
 from redisvl.cli.utils import add_redis_connection_options, create_redis_url
 from redisvl.migration import (
     AsyncMigrationExecutor,
-    AsyncMigrationValidator,
     MigrationExecutor,
     MigrationPlanner,
     MigrationValidator,
