@@ -39,7 +39,7 @@ Schema → Index → Load → Query
 **Solve specific problems.** Task-oriented recipes for LLM extensions, querying, embeddings, optimization, and storage.
 
 +++
-LLM Caching • Filtering • Vectorizers • Reranking
+LLM Caching • Filtering • Vectorizers • Reranking • Migrations
 :::
 
 :::{grid-item-card} 💻 CLI Reference
@@ -49,7 +49,7 @@ LLM Caching • Filtering • Vectorizers • Reranking
 **Command-line tools.** Manage indices, inspect stats, and work with schemas using the `rvl` CLI.
 
 +++
-rvl index • rvl stats • Schema YAML
+rvl index • rvl stats • rvl migrate • Schema YAML
 :::
 
 :::{grid-item-card} 💡 Use Cases
