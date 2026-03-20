@@ -1,11 +1,14 @@
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 from typing import Optional
 
 from redisvl.cli.utils import add_redis_connection_options, create_redis_url
 from redisvl.migration import (
     AsyncMigrationExecutor,
+    BatchMigrationExecutor,
+    BatchMigrationPlanner,
     MigrationExecutor,
     MigrationPlanner,
     MigrationValidator,
@@ -13,8 +16,10 @@ from redisvl.migration import (
 from redisvl.migration.utils import (
     list_indexes,
     load_migration_plan,
+    load_yaml,
     write_benchmark_report,
     write_migration_report,
+    write_yaml,
 )
 from redisvl.migration.wizard import MigrationWizard
 from redisvl.utils.log import get_logger
@@ -27,12 +32,18 @@ class Migrate:
         [
             "rvl migrate <command> [<args>]\n",
             "Commands:",
-            "\thelper      Show migration guidance and supported capabilities",
-            "\tlist        List all available indexes",
-            "\tplan        Generate a migration plan for a document-preserving drop/recreate migration",
-            "\twizard      Interactively build a migration plan and schema patch",
-            "\tapply       Execute a reviewed drop/recreate migration plan (use --async for large migrations)",
-            "\tvalidate    Validate a completed migration plan against the live index",
+            "\thelper       Show migration guidance and supported capabilities",
+            "\tlist         List all available indexes",
+            "\tplan         Generate a migration plan for a document-preserving drop/recreate migration",
+            "\twizard       Interactively build a migration plan and schema patch",
+            "\tapply        Execute a reviewed drop/recreate migration plan (use --async for large migrations)",
+            "\tvalidate     Validate a completed migration plan against the live index",
+            "",
+            "Batch Commands:",
+            "\tbatch-plan   Generate a batch migration plan for multiple indexes",
+            "\tbatch-apply  Execute a batch migration plan with checkpointing",
+            "\tbatch-resume Resume an interrupted batch migration",
+            "\tbatch-status Show status of an in-progress or completed batch migration",
             "\n",
         ]
     )
@@ -42,12 +53,14 @@ class Migrate:
         parser.add_argument("command", help="Subcommand to run")
 
         args = parser.parse_args(sys.argv[2:3])
-        if not hasattr(self, args.command):
+        # Convert dashes to underscores for method lookup (e.g., batch-plan -> batch_plan)
+        command = args.command.replace("-", "_")
+        if not hasattr(self, command):
             parser.print_help()
             exit(0)
 
         try:
-            getattr(self, args.command)()
+            getattr(self, command)()
         except Exception as e:
             logger.error(e)
             exit(1)
@@ -448,3 +461,264 @@ Commands:
                 print(f"- {action}")
         if benchmark_out:
             print(f"Benchmark report written to {benchmark_out}")
+
+    # -------------------------------------------------------------------------
+    # Batch migration commands
+    # -------------------------------------------------------------------------
+
+    def batch_plan(self):
+        """Generate a batch migration plan for multiple indexes."""
+        parser = argparse.ArgumentParser(
+            usage=(
+                "rvl migrate batch-plan --schema-patch <patch.yaml> "
+                "(--pattern <glob> | --indexes <name1,name2> | --indexes-file <file>)"
+            )
+        )
+        parser.add_argument(
+            "--schema-patch", help="Path to shared schema patch file", required=True
+        )
+        parser.add_argument(
+            "--pattern", help="Glob pattern to match index names (e.g., '*_idx')"
+        )
+        parser.add_argument("--indexes", help="Comma-separated list of index names")
+        parser.add_argument(
+            "--indexes-file", help="File with index names (one per line)"
+        )
+        parser.add_argument(
+            "--failure-policy",
+            help="How to handle failures: fail_fast or continue_on_error",
+            choices=["fail_fast", "continue_on_error"],
+            default="fail_fast",
+        )
+        parser.add_argument(
+            "--plan-out",
+            help="Path to write batch_plan.yaml",
+            default="batch_plan.yaml",
+        )
+        parser = add_redis_connection_options(parser)
+        args = parser.parse_args(sys.argv[3:])
+
+        redis_url = create_redis_url(args)
+        indexes = args.indexes.split(",") if args.indexes else None
+
+        planner = BatchMigrationPlanner()
+        batch_plan = planner.create_batch_plan(
+            indexes=indexes,
+            pattern=args.pattern,
+            indexes_file=args.indexes_file,
+            schema_patch_path=args.schema_patch,
+            redis_url=redis_url,
+            failure_policy=args.failure_policy,
+        )
+
+        planner.write_batch_plan(batch_plan, args.plan_out)
+        self._print_batch_plan_summary(args.plan_out, batch_plan)
+
+    def batch_apply(self):
+        """Execute a batch migration plan with checkpointing."""
+        parser = argparse.ArgumentParser(
+            usage=(
+                "rvl migrate batch-apply --plan <batch_plan.yaml> --allow-downtime "
+                "[--state <batch_state.yaml>] [--report-dir <./reports>]"
+            )
+        )
+        parser.add_argument("--plan", help="Path to batch_plan.yaml", required=True)
+        parser.add_argument(
+            "--allow-downtime",
+            help="Explicitly acknowledge downtime for drop_recreate",
+            action="store_true",
+        )
+        parser.add_argument(
+            "--accept-data-loss",
+            help="Acknowledge that quantization is lossy and cannot be reverted",
+            action="store_true",
+        )
+        parser.add_argument(
+            "--state",
+            help="Path to checkpoint state file",
+            default="batch_state.yaml",
+        )
+        parser.add_argument(
+            "--report-dir",
+            help="Directory for per-index migration reports",
+            default="./reports",
+        )
+        parser = add_redis_connection_options(parser)
+        args = parser.parse_args(sys.argv[3:])
+
+        if not args.allow_downtime:
+            raise ValueError(
+                "batch-apply requires --allow-downtime for drop_recreate migrations"
+            )
+
+        # Load batch plan
+        from redisvl.migration.models import BatchPlan
+
+        plan_data = load_yaml(args.plan)
+        batch_plan = BatchPlan.model_validate(plan_data)
+
+        # Check for quantization warning
+        if batch_plan.requires_quantization and not args.accept_data_loss:
+            print(
+                """WARNING: This batch migration includes quantization (e.g., float32 -> float16).
+         Vector data will be modified. Original precision cannot be recovered.
+         To proceed, add --accept-data-loss flag.
+
+         If you need to preserve original vectors, backup your data first:
+           redis-cli BGSAVE"""
+            )
+            return
+
+        redis_url = create_redis_url(args)
+        executor = BatchMigrationExecutor()
+
+        def progress_callback(
+            index_name: str, position: int, total: int, status: str
+        ) -> None:
+            print(f"[{position}/{total}] {index_name}: {status}")
+
+        report = executor.apply(
+            batch_plan,
+            state_path=args.state,
+            report_dir=args.report_dir,
+            redis_url=redis_url,
+            progress_callback=progress_callback,
+        )
+
+        self._print_batch_report_summary(report)
+
+    def batch_resume(self):
+        """Resume an interrupted batch migration."""
+        parser = argparse.ArgumentParser(
+            usage=(
+                "rvl migrate batch-resume --state <batch_state.yaml> "
+                "[--plan <batch_plan.yaml>] [--retry-failed]"
+            )
+        )
+        parser.add_argument(
+            "--state", help="Path to checkpoint state file", required=True
+        )
+        parser.add_argument(
+            "--plan", help="Path to batch_plan.yaml (optional, uses state.plan_path)"
+        )
+        parser.add_argument(
+            "--retry-failed",
+            help="Retry previously failed indexes",
+            action="store_true",
+        )
+        parser.add_argument(
+            "--report-dir",
+            help="Directory for per-index migration reports",
+            default="./reports",
+        )
+        parser = add_redis_connection_options(parser)
+        args = parser.parse_args(sys.argv[3:])
+
+        redis_url = create_redis_url(args)
+        executor = BatchMigrationExecutor()
+
+        def progress_callback(
+            index_name: str, position: int, total: int, status: str
+        ) -> None:
+            print(f"[{position}/{total}] {index_name}: {status}")
+
+        report = executor.resume(
+            args.state,
+            batch_plan_path=args.plan,
+            retry_failed=args.retry_failed,
+            report_dir=args.report_dir,
+            redis_url=redis_url,
+            progress_callback=progress_callback,
+        )
+
+        self._print_batch_report_summary(report)
+
+    def batch_status(self):
+        """Show status of an in-progress or completed batch migration."""
+        parser = argparse.ArgumentParser(
+            usage="rvl migrate batch-status --state <batch_state.yaml>"
+        )
+        parser.add_argument(
+            "--state", help="Path to checkpoint state file", required=True
+        )
+        args = parser.parse_args(sys.argv[3:])
+
+        state_path = Path(args.state).resolve()
+        if not state_path.exists():
+            print(f"State file not found: {args.state}")
+            return
+
+        from redisvl.migration.models import BatchState
+
+        state_data = load_yaml(args.state)
+        state = BatchState.model_validate(state_data)
+
+        print(f"Batch ID: {state.batch_id}")
+        print(f"Started at: {state.started_at}")
+        print(f"Updated at: {state.updated_at}")
+        print(f"Current index: {state.current_index or '(none)'}")
+        print(f"Remaining: {len(state.remaining)}")
+        print(f"Completed: {len(state.completed)}")
+        print(f"  - Succeeded: {state.success_count}")
+        print(f"  - Failed: {state.failed_count}")
+
+        if state.completed:
+            print("\nCompleted indexes:")
+            for idx in state.completed:
+                status_icon = "[OK]" if idx.status == "succeeded" else "[FAIL]"
+                print(f"  {status_icon} {idx.name}")
+                if idx.error:
+                    print(f"       Error: {idx.error}")
+
+        if state.remaining:
+            print(f"\nRemaining indexes ({len(state.remaining)}):")
+            for name in state.remaining[:10]:
+                print(f"  - {name}")
+            if len(state.remaining) > 10:
+                print(f"  ... and {len(state.remaining) - 10} more")
+
+    def _print_batch_plan_summary(self, plan_out: str, batch_plan) -> None:
+        """Print summary after generating batch plan."""
+        import os
+
+        abs_path = os.path.abspath(plan_out)
+        print(f"Batch plan written to {abs_path}")
+        print(f"Batch ID: {batch_plan.batch_id}")
+        print(f"Mode: {batch_plan.mode}")
+        print(f"Failure policy: {batch_plan.failure_policy}")
+        print(f"Requires quantization: {batch_plan.requires_quantization}")
+        print(f"Total indexes: {len(batch_plan.indexes)}")
+        print(f"  - Applicable: {batch_plan.applicable_count}")
+        print(f"  - Skipped: {batch_plan.skipped_count}")
+
+        if batch_plan.skipped_count > 0:
+            print("\nSkipped indexes:")
+            for idx in batch_plan.indexes:
+                if not idx.applicable:
+                    print(f"  - {idx.name}: {idx.skip_reason}")
+
+        print(
+            f"""
+Next steps:
+  Review the plan:      cat {plan_out}
+  Apply the migration:  rvl migrate batch-apply --plan {plan_out} --allow-downtime"""
+        )
+
+        if batch_plan.requires_quantization:
+            print("                       (add --accept-data-loss for quantization)")
+
+    def _print_batch_report_summary(self, report) -> None:
+        """Print summary after batch migration completes."""
+        print(f"\nBatch migration {report.status}")
+        print(f"Batch ID: {report.batch_id}")
+        print(f"Duration: {report.summary.total_duration_seconds}s")
+        print(f"Total: {report.summary.total_indexes}")
+        print(f"  - Succeeded: {report.summary.successful}")
+        print(f"  - Failed: {report.summary.failed}")
+        print(f"  - Skipped: {report.summary.skipped}")
+
+        if report.summary.failed > 0:
+            print("\nFailed indexes:")
+            for idx in report.indexes:
+                if idx.status == "failed":
+                    print(f"  - {idx.name}: {idx.error}")
