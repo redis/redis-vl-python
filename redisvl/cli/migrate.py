@@ -19,7 +19,6 @@ from redisvl.migration.utils import (
     load_yaml,
     write_benchmark_report,
     write_migration_report,
-    write_yaml,
 )
 from redisvl.migration.wizard import MigrationWizard
 from redisvl.utils.log import get_logger
@@ -105,7 +104,7 @@ Commands:
   rvl migrate list                                  List all indexes
   rvl migrate wizard --index <name>                 Guided migration builder
   rvl migrate plan --index <name> --schema-patch <patch.yaml>
-  rvl migrate apply --plan <plan.yaml> --allow-downtime
+  rvl migrate apply --plan <plan.yaml>
   rvl migrate validate --plan <plan.yaml>"""
         )
 
@@ -211,16 +210,11 @@ Commands:
     def apply(self):
         parser = argparse.ArgumentParser(
             usage=(
-                "rvl migrate apply --plan <migration_plan.yaml> --allow-downtime "
+                "rvl migrate apply --plan <migration_plan.yaml> "
                 "[--async] [--report-out <migration_report.yaml>]"
             )
         )
         parser.add_argument("--plan", help="Path to migration_plan.yaml", required=True)
-        parser.add_argument(
-            "--allow-downtime",
-            help="Explicitly acknowledge downtime for drop_recreate",
-            action="store_true",
-        )
         parser.add_argument(
             "--async",
             dest="use_async",
@@ -245,11 +239,6 @@ Commands:
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
 
-        if not args.allow_downtime:
-            raise ValueError(
-                "apply requires --allow-downtime for drop_recreate migrations"
-            )
-
         redis_url = create_redis_url(args)
         plan = load_migration_plan(args.plan)
 
@@ -271,7 +260,7 @@ Commands:
 
         print(f"\nApplying migration to '{plan.source.index_name}'...")
 
-        def progress_callback(step: str, detail: str) -> None:
+        def progress_callback(step: str, detail: Optional[str]) -> None:
             step_labels = {
                 "drop": "[1/5] Drop index",
                 "quantize": "[2/5] Quantize vectors",
@@ -301,7 +290,7 @@ Commands:
 
         print(f"\nApplying migration to '{plan.source.index_name}' (async mode)...")
 
-        def progress_callback(step: str, detail: str) -> None:
+        def progress_callback(step: str, detail: Optional[str]) -> None:
             step_labels = {
                 "drop": "[1/5] Drop index",
                 "quantize": "[2/5] Quantize vectors",
@@ -427,9 +416,7 @@ Commands:
 
         print("\nNext steps:")
         print(f"  Review the plan:     cat {plan_out}")
-        print(
-            f"  Apply the migration: rvl migrate apply --plan {plan_out} --allow-downtime"
-        )
+        print(f"  Apply the migration: rvl migrate apply --plan {plan_out}")
         print(f"  Validate the result: rvl migrate validate --plan {plan_out}")
         print(
             f"\nTo add more changes:   rvl migrate wizard --index {plan.source.index_name} --patch schema_patch.yaml"
@@ -518,16 +505,11 @@ Commands:
         """Execute a batch migration plan with checkpointing."""
         parser = argparse.ArgumentParser(
             usage=(
-                "rvl migrate batch-apply --plan <batch_plan.yaml> --allow-downtime "
+                "rvl migrate batch-apply --plan <batch_plan.yaml> "
                 "[--state <batch_state.yaml>] [--report-dir <./reports>]"
             )
         )
         parser.add_argument("--plan", help="Path to batch_plan.yaml", required=True)
-        parser.add_argument(
-            "--allow-downtime",
-            help="Explicitly acknowledge downtime for drop_recreate",
-            action="store_true",
-        )
         parser.add_argument(
             "--accept-data-loss",
             help="Acknowledge that quantization is lossy and cannot be reverted",
@@ -545,11 +527,6 @@ Commands:
         )
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
-
-        if not args.allow_downtime:
-            raise ValueError(
-                "batch-apply requires --allow-downtime for drop_recreate migrations"
-            )
 
         # Load batch plan
         from redisvl.migration.models import BatchPlan
@@ -701,7 +678,7 @@ Commands:
             f"""
 Next steps:
   Review the plan:      cat {plan_out}
-  Apply the migration:  rvl migrate batch-apply --plan {plan_out} --allow-downtime"""
+  Apply the migration:  rvl migrate batch-apply --plan {plan_out}"""
         )
 
         if batch_plan.requires_quantization:

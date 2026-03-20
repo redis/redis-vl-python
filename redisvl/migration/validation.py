@@ -96,7 +96,10 @@ class MigrationValidator:
             )
 
         for key in query_checks.get("keys_exist", []):
-            exists = bool(target_index.client.exists(key))
+            client = target_index.client
+            if client is None:
+                raise ValueError("Redis client not connected")
+            exists = bool(client.exists(key))
             results.append(
                 QueryCheckResult(
                     name=f"key:{key}",

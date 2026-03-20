@@ -21,7 +21,7 @@ rvl migrate list --url redis://localhost:6379
 rvl migrate wizard --index myindex --url redis://localhost:6379
 
 # 3. Apply the migration
-rvl migrate apply --plan migration_plan.yaml --allow-downtime --url redis://localhost:6379
+rvl migrate apply --plan migration_plan.yaml --url redis://localhost:6379
 
 # 4. Verify the result
 rvl migrate validate --plan migration_plan.yaml --url redis://localhost:6379
@@ -266,14 +266,45 @@ merged_target_schema:
 - `diff_classification.blocked_reasons` - Must be empty
 - `merged_target_schema` - The final schema after migration
 
+## Understanding Downtime Requirements
+
+**CRITICAL**: During a `drop_recreate` migration, your application must:
+
+| Requirement | Description |
+|-------------|-------------|
+| **Pause reads** | Index is unavailable during migration |
+| **Pause writes** | Writes during migration may be missed or cause conflicts |
+
+### Why Both Reads AND Writes Must Be Paused
+
+- **Reads**: The index definition is dropped and recreated. Any queries during this window will fail.
+- **Writes**: Redis updates indexes synchronously on every write. If your app writes documents while the index is dropped, those writes are not indexed. Additionally, if you're quantizing vectors (float32 → float16), concurrent writes may conflict with the migration's re-encoding process.
+
+### What "Downtime" Means
+
+| Downtime Type | Reads | Writes | Safe? |
+|---------------|-------|--------|-------|
+| Full quiesce (recommended) | Stopped | Stopped | **YES** |
+| Read-only pause | Stopped | Continuing | **NO** |
+| Active | Active | Active | **NO** |
+
+### Recovery from Interrupted Migration
+
+| Interruption Point | Documents | Index | Recovery |
+|--------------------|-----------|-------|----------|
+| After drop, before quantize | Unchanged | **None** | Re-run apply |
+| After quantization, before create | Quantized | **None** | Manual FT.CREATE or re-run apply |
+| After create | Correct | Rebuilding | Wait for index ready |
+
+The underlying documents are **never deleted** by `drop_recreate` mode.
+
 ## Step 4: Apply the Migration
 
-The `apply` command requires `--allow-downtime` since the index will be temporarily unavailable.
+The `apply` command executes the migration. The index will be temporarily unavailable during the drop-recreate process.
 
 ```bash
 rvl migrate apply \
   --plan migration_plan.yaml \
-  --allow-downtime \
   --url redis://localhost:6379 \
   --report-out migration_report.yaml \
   --benchmark-out benchmark_report.yaml
@@ -296,14 +327,13 @@ For large migrations (especially those involving vector quantization), use the `
 ```bash
 rvl migrate apply \
   --plan migration_plan.yaml \
-  --allow-downtime \
   --async \
   --url redis://localhost:6379
 ```
 
 **What becomes async:**
 
-- Keyspace SCAN during quantization (yields between batches of 500 keys)
+- Document enumeration during quantization (uses `FT.AGGREGATE WITHCURSOR` for index-specific enumeration, falling back to SCAN only if indexing failures exist)
 - Vector read/write operations (pipelined HGET/HSET)
 - Index readiness polling (uses `asyncio.sleep()` instead of blocking)
 - Validation checks
@@ -388,7 +418,6 @@ rvl migrate validate \
 - `--url` : Redis connection URL
 - `--index` : Index name to migrate
 - `--plan` / `--plan-out` : Path to migration plan
-- `--allow-downtime` : Acknowledge index unavailability (required for apply)
 - `--async` : Use async executor for large migrations (apply only)
 - `--report-out` : Path for validation report
 - `--benchmark-out` : Path for performance metrics
@@ -504,7 +533,6 @@ rvl migrate batch-plan \
 # 3. Apply the batch plan
 rvl migrate batch-apply \
   --plan batch_plan.yaml \
-  --allow-downtime \
   --accept-data-loss \
   --url redis://localhost:6379
 
@@ -587,25 +615,30 @@ created_at: "2026-03-20T10:00:00Z"
 # Apply with fail-fast (default: stop on first error)
 rvl migrate batch-apply \
   --plan batch_plan.yaml \
-  --allow-downtime \
   --accept-data-loss \
   --url redis://localhost:6379
 
-# Apply with continue-on-error (process all possible indexes)
+# Apply with continue-on-error (set at batch-plan time)
+# Note: failure_policy is set during batch-plan, not batch-apply
+rvl migrate batch-plan \
+  --pattern "*_idx" \
+  --schema-patch quantize_patch.yaml \
+  --failure-policy continue_on_error \
+  --output batch_plan.yaml \
+  --url redis://localhost:6379
+
 rvl migrate batch-apply \
   --plan batch_plan.yaml \
-  --allow-downtime \
   --accept-data-loss \
-  --failure-policy continue_on_error \
   --url redis://localhost:6379
 ```
 
-**Flags:**
-- `--allow-downtime` : Required (each index is temporarily unavailable during migration)
+**Flags for batch-apply:**
 - `--accept-data-loss` : Required when quantizing vectors (float32 → float16 is lossy)
-- `--failure-policy` : `fail_fast` (default) or `continue_on_error`
 - `--state` : Path to checkpoint file (default: `batch_state.yaml`)
 - `--report-dir` : Directory for per-index reports (default: `./reports/`)
+
+**Note:** `--failure-policy` is set during `batch-plan`, not `batch-apply`. The policy is stored in the batch plan file.
 
 ### Resume After Failure
 
@@ -615,14 +648,12 @@ Batch migration automatically checkpoints progress. If interrupted:
 # Resume from where it left off
 rvl migrate batch-resume \
   --state batch_state.yaml \
-  --allow-downtime \
   --url redis://localhost:6379
 
 # Retry previously failed indexes
 rvl migrate batch-resume \
   --state batch_state.yaml \
   --retry-failed \
-  --allow-downtime \
   --url redis://localhost:6379
 ```
 
@@ -686,7 +717,7 @@ from redisvl.migration import BatchMigrationPlanner, BatchMigrationExecutor
 
 # Create batch plan
 planner = BatchMigrationPlanner()
-batch_plan = planner.create_plan(
+batch_plan = planner.create_batch_plan(
     redis_url="redis://localhost:6379",
     pattern="*_idx",
     schema_patch_path="quantize_patch.yaml",

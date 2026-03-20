@@ -66,6 +66,8 @@ class MigrationPlanner:
         if schema_patch_path:
             schema_patch = self.load_schema_patch(schema_patch_path)
         else:
+            # target_schema_path is guaranteed non-None here due to validation above
+            assert target_schema_path is not None
             schema_patch = self.normalize_target_schema_to_patch(
                 source_schema, target_schema_path
             )

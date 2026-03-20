@@ -56,7 +56,7 @@ The process:
 4. Wait for Redis to re-index the existing documents
 5. Validate the result
 
-**Tradeoff**: The index is unavailable during the rebuild. The migrator requires explicit acknowledgment of this downtime before proceeding.
+**Tradeoff**: The index is unavailable during the rebuild. Review the migration plan carefully before applying.
 
 ## Index only vs document dependent changes
 
@@ -130,7 +130,16 @@ Adding a vector field means all existing documents need vectors for that field. 
 
 ## Downtime considerations
 
-With `drop_recreate`, your index is unavailable between the drop and when re-indexing completes. Plan for:
+c lWith `drop_recreate`, your index is unavailable between the drop and when re-indexing completes.
+
+**CRITICAL**: Downtime requires both reads AND writes to be paused:
+
+| Requirement | Reason |
+|-------------|--------|
+| **Pause reads** | Index is unavailable during migration |
+| **Pause writes** | Redis updates indexes synchronously. Writes during migration may conflict with vector re-encoding or be missed |
+
+Plan for:
 
 - Search unavailability during the migration window
 - Partial results while indexing is in progress
@@ -151,8 +160,9 @@ The migration workflow has distinct phases. Here is what each mode affects:
 |-------|-----------|------------|-------|
 | **Plan generation** | `MigrationPlanner.create_plan()` | `AsyncMigrationPlanner.create_plan()` | Reads index metadata from Redis |
 | **Schema snapshot** | Sync Redis calls | Async Redis calls | Single `FT.INFO` command |
+| **Enumeration** | FT.AGGREGATE (or SCAN fallback) | FT.AGGREGATE (or SCAN fallback) | Before drop, only if quantization needed |
 | **Drop index** | `index.delete()` | `await index.delete()` | Single `FT.DROPINDEX` command |
-| **Quantization** | Sequential SCAN + HSET | Pipelined SCAN + batched HSET | See below |
+| **Quantization** | Sequential HGET + HSET | Pipelined HGET + batched HSET | Uses pre-enumerated keys |
 | **Create index** | `index.create()` | `await index.create()` | Single `FT.CREATE` command |
 | **Readiness polling** | `time.sleep()` loop | `asyncio.sleep()` loop | Polls `FT.INFO` until indexed |
 | **Validation** | Sync Redis calls | Async Redis calls | Schema and doc count checks |
@@ -177,13 +187,13 @@ Async execution (`--async` flag) provides benefits in specific scenarios:
 
 Converting float32 to float16 requires reading every vector, converting it, and writing it back. The async executor:
 
-- Uses `SCAN` with `COUNT 500` to iterate keys without blocking Redis (per [Redis SCAN docs](https://redis.io/docs/latest/commands/scan/), SCAN is O(1) per call)
+- Enumerates documents using `FT.AGGREGATE WITHCURSOR` for index-specific enumeration (falls back to `SCAN` only if indexing failures exist)
 - Pipelines `HSET` operations in batches (100-1000 operations per pipeline is optimal for Redis)
 - Yields to the event loop between batches so other tasks can proceed
 
 **Large keyspaces (40M+ keys)**
 
-When your Redis instance has many keys, `SCAN` iteration can take minutes. Async mode yields between batches.
+When your Redis instance has many keys and the index has indexing failures (requiring SCAN fallback), async mode yields between batches.
 
 **Async application integration**
 
@@ -205,12 +215,18 @@ asyncio.run(migrate())
 
 ### Why async helps with quantization
 
-The key difference is in the vector re-encoding loop:
+The migrator uses an optimized enumeration strategy:
+
+1. **Index-based enumeration**: Uses `FT.AGGREGATE WITHCURSOR` to enumerate only indexed documents (not the entire keyspace)
+2. **Fallback for safety**: If the index has indexing failures (`hash_indexing_failures > 0`), falls back to `SCAN` to ensure completeness
+3. **Enumerate before drop**: Captures the document list while the index still exists, then drops and quantizes
+
+This optimization provides 10-1000x speedup for sparse indexes (where only a small fraction of prefix-matching keys are indexed).
 
 **Sync quantization:**
 ```
+enumerate keys (FT.AGGREGATE or SCAN) -> store list
 for each batch of 500 keys:
-    SCAN (blocks) -> get keys
     for each key:
         HGET field (blocks)
         convert array
@@ -220,8 +236,8 @@ for each batch of 500 keys:
 
 **Async quantization:**
 ```
+enumerate keys (FT.AGGREGATE or SCAN) -> store list
 for each batch of 500 keys:
-    await SCAN -> get keys (yields)
     for each key:
         await HGET field (yields)
         convert array
