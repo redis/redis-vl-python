@@ -5,8 +5,6 @@ Tests verify that the WITHSUFFIXTRIE modifier is correctly passed to Redis
 when creating indexes, enabling optimized suffix and contains queries.
 """
 
-import pytest
-
 from redisvl.index import SearchIndex
 from redisvl.schema import IndexSchema
 
