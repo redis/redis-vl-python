@@ -379,6 +379,7 @@ class MigrationWizard:
         effective_algo = attrs.get(
             "algorithm", current.get("algorithm", "HNSW")
         ).upper()
+        valid_datatypes: tuple[str, ...]
         if effective_algo == "SVS-VAMANA":
             # SVS-VAMANA only supports float16, float32
             print(

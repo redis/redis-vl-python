@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+
+from redis.exceptions import ResponseError
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.migration.async_planner import AsyncMigrationPlanner
@@ -32,6 +34,148 @@ class AsyncMigrationExecutor:
 
     def __init__(self, validator: Optional[AsyncMigrationValidator] = None):
         self.validator = validator or AsyncMigrationValidator()
+
+    async def _enumerate_indexed_keys(
+        self,
+        client: AsyncRedisClient,
+        index_name: str,
+        batch_size: int = 1000,
+    ) -> AsyncGenerator[str, None]:
+        """Async version: Enumerate document keys using FT.AGGREGATE with SCAN fallback.
+
+        Uses FT.AGGREGATE WITHCURSOR for efficient enumeration when the index
+        has no indexing failures. Falls back to SCAN if:
+        - Index has hash_indexing_failures > 0 (would miss failed docs)
+        - FT.AGGREGATE command fails for any reason
+        """
+        # Check for indexing failures - if any, fall back to SCAN
+        try:
+            info = await client.ft(index_name).info()
+            failures = int(info.get("hash_indexing_failures", 0) or 0)
+            if failures > 0:
+                logger.warning(
+                    f"Index '{index_name}' has {failures} indexing failures. "
+                    "Using SCAN for complete enumeration."
+                )
+                async for key in self._enumerate_with_scan(
+                    client, index_name, batch_size
+                ):
+                    yield key
+                return
+        except Exception as e:
+            logger.warning(f"Failed to check index info: {e}. Using SCAN fallback.")
+            async for key in self._enumerate_with_scan(client, index_name, batch_size):
+                yield key
+            return
+
+        # Try FT.AGGREGATE enumeration
+        try:
+            async for key in self._enumerate_with_aggregate(
+                client, index_name, batch_size
+            ):
+                yield key
+        except ResponseError as e:
+            logger.warning(
+                f"FT.AGGREGATE failed: {e}. Falling back to SCAN enumeration."
+            )
+            async for key in self._enumerate_with_scan(client, index_name, batch_size):
+                yield key
+
+    async def _enumerate_with_aggregate(
+        self,
+        client: AsyncRedisClient,
+        index_name: str,
+        batch_size: int = 1000,
+    ) -> AsyncGenerator[str, None]:
+        """Async version: Enumerate keys using FT.AGGREGATE WITHCURSOR."""
+        cursor_id: Optional[int] = None
+
+        try:
+            # Initial aggregate call with LOAD 1 __key
+            result = await client.execute_command(
+                "FT.AGGREGATE",
+                index_name,
+                "*",
+                "LOAD",
+                "1",
+                "__key",
+                "WITHCURSOR",
+                "COUNT",
+                str(batch_size),
+            )
+
+            while True:
+                results_data, cursor_id = result
+
+                # Extract keys from results
+                for item in results_data[1:]:
+                    if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        key = item[1]
+                        yield key.decode() if isinstance(key, bytes) else str(key)
+
+                if cursor_id == 0:
+                    break
+
+                result = await client.execute_command(
+                    "FT.CURSOR",
+                    "READ",
+                    index_name,
+                    str(cursor_id),
+                    "COUNT",
+                    str(batch_size),
+                )
+        finally:
+            if cursor_id and cursor_id != 0:
+                try:
+                    await client.execute_command(
+                        "FT.CURSOR", "DEL", index_name, str(cursor_id)
+                    )
+                except Exception:
+                    pass
+
+    async def _enumerate_with_scan(
+        self,
+        client: AsyncRedisClient,
+        index_name: str,
+        batch_size: int = 1000,
+    ) -> AsyncGenerator[str, None]:
+        """Async version: Enumerate keys using SCAN with prefix matching."""
+        # Get prefix from index info
+        try:
+            info = await client.ft(index_name).info()
+            if isinstance(info, dict):
+                prefixes = info.get("index_definition", {}).get("prefixes", [])
+            else:
+                prefixes = []
+                for i, item in enumerate(info):
+                    if item == b"index_definition" or item == "index_definition":
+                        defn = info[i + 1]
+                        if isinstance(defn, dict):
+                            prefixes = defn.get("prefixes", [])
+                        elif isinstance(defn, list):
+                            for j, d in enumerate(defn):
+                                if d in (b"prefixes", "prefixes") and j + 1 < len(defn):
+                                    prefixes = defn[j + 1]
+                        break
+            prefix = prefixes[0] if prefixes else ""
+            if isinstance(prefix, bytes):
+                prefix = prefix.decode()
+        except Exception as e:
+            logger.warning(f"Failed to get prefix from index info: {e}")
+            prefix = ""
+
+        cursor: int = 0
+        while True:
+            cursor, keys = await client.scan(
+                cursor=cursor,
+                match=f"{prefix}*" if prefix else "*",
+                count=batch_size,
+            )
+            for key in keys:
+                yield key.decode() if isinstance(key, bytes) else str(key)
+
+            if cursor == 0:
+                break
 
     async def apply(
         self,
@@ -97,12 +241,14 @@ class AsyncMigrationExecutor:
             redis_client=redis_client,
         )
 
+        enumerate_duration = 0.0
         drop_duration = 0.0
         quantize_duration = 0.0
         recreate_duration = 0.0
         indexing_duration = 0.0
         target_info: Dict[str, Any] = {}
         docs_quantized = 0
+        keys_to_process: List[str] = []
 
         datatype_changes = AsyncMigrationPlanner.get_vector_datatype_changes(
             plan.source.schema_snapshot, plan.merged_target_schema
@@ -113,19 +259,40 @@ class AsyncMigrationExecutor:
                 progress_callback(step, detail)
 
         try:
+            # STEP 1: Enumerate keys BEFORE dropping index (if quantization needed)
+            if datatype_changes:
+                _notify("enumerate", "Enumerating indexed documents...")
+                enumerate_started = time.perf_counter()
+                client = source_index._redis_client
+                if client is None:
+                    raise ValueError("Failed to get Redis client from source index")
+                keys_to_process = [
+                    key
+                    async for key in self._enumerate_indexed_keys(
+                        client, plan.source.index_name, batch_size=1000
+                    )
+                ]
+                enumerate_duration = round(time.perf_counter() - enumerate_started, 3)
+                _notify(
+                    "enumerate",
+                    f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
+                )
+
+            # STEP 2: Drop the index
             _notify("drop", "Dropping index definition...")
             drop_started = time.perf_counter()
             await source_index.delete(drop=False)
             drop_duration = round(time.perf_counter() - drop_started, 3)
             _notify("drop", f"done ({drop_duration}s)")
 
-            if datatype_changes:
+            # STEP 3: Re-encode vectors using pre-enumerated keys
+            if datatype_changes and keys_to_process:
                 _notify("quantize", "Re-encoding vectors...")
                 quantize_started = time.perf_counter()
                 docs_quantized = await self._async_quantize_vectors(
                     source_index,
                     datatype_changes,
-                    plan,
+                    keys_to_process,
                     progress_callback=lambda done, total: _notify(
                         "quantize", f"{done:,}/{total:,} docs"
                     ),
@@ -236,66 +403,52 @@ class AsyncMigrationExecutor:
         self,
         source_index: AsyncSearchIndex,
         datatype_changes: Dict[str, Dict[str, str]],
-        plan: MigrationPlan,
+        keys: List[str],
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> int:
         """Re-encode vectors in documents for datatype changes (quantization).
 
-        This is the async version that uses async pipeline operations for
-        better performance on large indexes.
+        Uses pre-enumerated keys (from _enumerate_indexed_keys) to process
+        only the documents that were in the index, avoiding full keyspace scan.
+
+        Args:
+            source_index: The source AsyncSearchIndex (already dropped but client available)
+            datatype_changes: Dict mapping field_name -> {"source": dtype, "target": dtype}
+            keys: Pre-enumerated list of document keys to process
+            progress_callback: Optional callback(docs_done, total_docs)
+
+        Returns:
+            Number of documents processed
         """
         client = source_index._redis_client
         if client is None:
             raise ValueError("Failed to get Redis client from source index")
 
-        prefix = plan.source.schema_snapshot["index"]["prefix"]
-        storage_type = (
-            plan.source.schema_snapshot["index"].get("storage_type", "hash").lower()
-        )
-        estimated_total = int(plan.source.stats_snapshot.get("num_docs", 0) or 0)
-
+        total_keys = len(keys)
         docs_processed = 0
         batch_size = 500
-        cursor: int = 0
 
-        while True:
-            cursor, keys = await client.scan(
-                cursor=cursor,
-                match=f"{prefix}*",
-                count=batch_size,
-            )
+        for i in range(0, total_keys, batch_size):
+            batch = keys[i : i + batch_size]
+            pipe = client.pipeline()
+            keys_updated_in_batch: set[str] = set()
 
-            if keys:
-                pipe = client.pipeline()
-                keys_to_update = []
+            for key in batch:
+                # Read all vector fields that need conversion
+                for field_name, change in datatype_changes.items():
+                    field_data: bytes | None = await client.hget(key, field_name)  # type: ignore[misc,assignment]
+                    if field_data:
+                        # Convert: source dtype -> array -> target dtype -> bytes
+                        array = buffer_to_array(field_data, change["source"])
+                        new_bytes = array_to_buffer(array, change["target"])
+                        pipe.hset(key, field_name, new_bytes)  # type: ignore[arg-type]
+                        keys_updated_in_batch.add(key)
 
-                for key in keys:
-                    if storage_type == "hash":
-                        for field_name, change in datatype_changes.items():
-                            # hget returns bytes for binary data
-                            field_data: bytes | None = await client.hget(key, field_name)  # type: ignore[misc,assignment]
-                            if field_data:
-                                # field_data is bytes from Redis
-                                array = buffer_to_array(field_data, change["source"])
-                                new_bytes = array_to_buffer(array, change["target"])
-                                pipe.hset(
-                                    key, field_name, new_bytes  # type: ignore[arg-type]
-                                )
-                                keys_to_update.append(key)
-                    else:
-                        logger.warning(
-                            f"JSON storage quantization for key {key} - "
-                            "vectors stored as arrays may not need re-encoding"
-                        )
-
-                if keys_to_update:
-                    await pipe.execute()
-                    docs_processed += len(set(keys_to_update))
-                    if progress_callback:
-                        progress_callback(docs_processed, estimated_total)
-
-            if cursor == 0:
-                break
+            if keys_updated_in_batch:
+                await pipe.execute()
+                docs_processed += len(keys_updated_in_batch)
+                if progress_callback:
+                    progress_callback(docs_processed, total_keys)
 
         logger.info(f"Quantized {docs_processed} documents: {datatype_changes}")
         return docs_processed
