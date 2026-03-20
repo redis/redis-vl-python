@@ -41,28 +41,15 @@ docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
 ## Step 1: Discover Available Indexes
 
 ```bash
-rvl migrate helper --url redis://localhost:6379
 rvl migrate list --url redis://localhost:6379
 ```
 
 **Example output:**
 ```
-Index Migrator
-==============
-The migrator helps you safely change your index schema.
-
-Supported changes:
-  - Add, remove, or update text/tag/numeric/geo fields
-  - Change vector algorithm (FLAT, HNSW, SVS-VAMANA)
-  - Change distance metric (COSINE, L2, IP)
-  - Quantize vectors (float32 → float16)
-
-Commands:
-  rvl migrate list      List all indexes
-  rvl migrate wizard    Build a migration interactively
-  rvl migrate plan      Generate a migration plan
-  rvl migrate apply     Execute a migration
-  rvl migrate validate  Verify a migration
+Available indexes:
+  1. products_idx
+  2. users_idx
+  3. orders_idx
 ```
 
 ## Step 2: Build Your Schema Change
@@ -330,7 +317,6 @@ rvl migrate apply \
 **When to use async:**
 
 - Quantizing millions of vectors (float32 to float16)
-- Redis instance has 40M+ keys
 - Integrating into an async application
 
 For most migrations (index-only changes, small datasets), sync mode is sufficient and simpler.
@@ -379,14 +365,24 @@ rvl migrate validate \
 
 ## CLI Reference
 
+### Single-Index Commands
+
 | Command | Description |
 |---------|-------------|
-| `rvl migrate helper` | Show supported changes and usage tips |
 | `rvl migrate list` | List all indexes |
 | `rvl migrate wizard` | Build a migration interactively |
 | `rvl migrate plan` | Generate a migration plan |
 | `rvl migrate apply` | Execute a migration |
 | `rvl migrate validate` | Verify a migration result |
+
+### Batch Commands
+
+| Command | Description |
+|---------|-------------|
+| `rvl migrate batch-plan` | Create a batch migration plan |
+| `rvl migrate batch-apply` | Execute a batch migration |
+| `rvl migrate batch-resume` | Resume an interrupted batch |
+| `rvl migrate batch-status` | Check batch progress |
 
 **Common flags:**
 - `--url` : Redis connection URL
@@ -396,6 +392,16 @@ rvl migrate validate \
 - `--async` : Use async executor for large migrations (apply only)
 - `--report-out` : Path for validation report
 - `--benchmark-out` : Path for performance metrics
+
+**Batch-specific flags:**
+- `--pattern` : Glob pattern to match index names (e.g., `*_idx`)
+- `--indexes` : Explicit list of index names
+- `--indexes-file` : File containing index names (one per line)
+- `--schema-patch` : Path to shared schema patch YAML
+- `--state` : Path to checkpoint state file
+- `--failure-policy` : `fail_fast` or `continue_on_error`
+- `--accept-data-loss` : Required for quantization (lossy changes)
+- `--retry-failed` : Retry previously failed indexes on resume
 
 ## Troubleshooting
 
@@ -466,6 +472,258 @@ async def migrate():
 
 asyncio.run(migrate())
 ```
+
+## Batch Migration
+
+When you need to apply the same schema change to multiple indexes, use batch migration. This is common for:
+
+- Quantizing all indexes from float32 → float16
+- Standardizing vector algorithms across indexes
+- Coordinated migrations during maintenance windows
+
+### Quick Start: Batch Migration
+
+```bash
+# 1. Create a shared patch (applies to any index with an 'embedding' field)
+cat > quantize_patch.yaml << 'EOF'
+version: 1
+changes:
+  update_fields:
+    - name: embedding
+      attrs:
+        datatype: float16
+EOF
+
+# 2. Create a batch plan for all indexes matching a pattern
+rvl migrate batch-plan \
+  --pattern "*_idx" \
+  --schema-patch quantize_patch.yaml \
+  --output batch_plan.yaml \
+  --url redis://localhost:6379
+
+# 3. Apply the batch plan
+rvl migrate batch-apply \
+  --plan batch_plan.yaml \
+  --allow-downtime \
+  --accept-data-loss \
+  --url redis://localhost:6379
+
+# 4. Check status
+rvl migrate batch-status --state batch_state.yaml
+```
+
+### Batch Plan Options
+
+**Select indexes by pattern:**
+```bash
+rvl migrate batch-plan \
+  --pattern "*_idx" \
+  --schema-patch quantize_patch.yaml \
+  --output batch_plan.yaml \
+  --url redis://localhost:6379
+```
+
+**Select indexes by explicit list:**
+```bash
+rvl migrate batch-plan \
+  --indexes products_idx users_idx orders_idx \
+  --schema-patch quantize_patch.yaml \
+  --output batch_plan.yaml \
+  --url redis://localhost:6379
+```
+
+**Select indexes from a file (for 100+ indexes):**
+```bash
+# Create index list file
+echo -e "products_idx\nusers_idx\norders_idx" > indexes.txt
+
+rvl migrate batch-plan \
+  --indexes-file indexes.txt \
+  --schema-patch quantize_patch.yaml \
+  --output batch_plan.yaml \
+  --url redis://localhost:6379
+```
+
+### Batch Plan Review
+
+The generated `batch_plan.yaml` shows which indexes will be migrated:
+
+```yaml
+version: 1
+batch_id: "batch_20260320_100000"
+mode: drop_recreate
+failure_policy: fail_fast
+requires_quantization: true
+
+shared_patch:
+  version: 1
+  changes:
+    update_fields:
+      - name: embedding
+        attrs:
+          datatype: float16
+
+indexes:
+  - name: products_idx
+    applicable: true
+    skip_reason: null
+  - name: users_idx
+    applicable: true
+    skip_reason: null
+  - name: legacy_idx
+    applicable: false
+    skip_reason: "Field 'embedding' not found"
+
+created_at: "2026-03-20T10:00:00Z"
+```
+
+**Key fields:**
+- `applicable: true` means the patch applies to this index
+- `skip_reason` explains why an index will be skipped
+
+### Applying a Batch Plan
+
+```bash
+# Apply with fail-fast (default: stop on first error)
+rvl migrate batch-apply \
+  --plan batch_plan.yaml \
+  --allow-downtime \
+  --accept-data-loss \
+  --url redis://localhost:6379
+
+# Apply with continue-on-error (process all possible indexes)
+rvl migrate batch-apply \
+  --plan batch_plan.yaml \
+  --allow-downtime \
+  --accept-data-loss \
+  --failure-policy continue_on_error \
+  --url redis://localhost:6379
+```
+
+**Flags:**
+- `--allow-downtime` : Required (each index is temporarily unavailable during migration)
+- `--accept-data-loss` : Required when quantizing vectors (float32 → float16 is lossy)
+- `--failure-policy` : `fail_fast` (default) or `continue_on_error`
+- `--state` : Path to checkpoint file (default: `batch_state.yaml`)
+- `--report-dir` : Directory for per-index reports (default: `./reports/`)
+
+### Resume After Failure
+
+Batch migration automatically checkpoints progress. If interrupted:
+
+```bash
+# Resume from where it left off
+rvl migrate batch-resume \
+  --state batch_state.yaml \
+  --allow-downtime \
+  --url redis://localhost:6379
+
+# Retry previously failed indexes
+rvl migrate batch-resume \
+  --state batch_state.yaml \
+  --retry-failed \
+  --allow-downtime \
+  --url redis://localhost:6379
+```
+
+### Checking Batch Status
+
+```bash
+rvl migrate batch-status --state batch_state.yaml
+```
+
+**Example output:**
+```
+Batch Migration Status
+======================
+Batch ID: batch_20260320_100000
+Started: 2026-03-20T10:00:00Z
+Updated: 2026-03-20T10:25:00Z
+
+Completed: 2
+  - products_idx: succeeded (10:02:30)
+  - users_idx: failed - Redis connection timeout (10:05:45)
+
+In Progress: inventory_idx
+Remaining: 1 (analytics_idx)
+```
+
+### Batch Report
+
+After completion, a `batch_report.yaml` is generated:
+
+```yaml
+version: 1
+batch_id: "batch_20260320_100000"
+status: completed  # or partial_failure, failed
+summary:
+  total_indexes: 3
+  successful: 3
+  failed: 0
+  skipped: 0
+  total_duration_seconds: 127.5
+indexes:
+  - name: products_idx
+    status: succeeded
+    duration_seconds: 45.2
+    docs_migrated: 15000
+    report_path: ./reports/products_idx_report.yaml
+  - name: users_idx
+    status: succeeded
+    duration_seconds: 38.1
+    docs_migrated: 8500
+  - name: orders_idx
+    status: succeeded
+    duration_seconds: 44.2
+    docs_migrated: 22000
+completed_at: "2026-03-20T10:02:07Z"
+```
+
+### Python API for Batch Migration
+
+```python
+from redisvl.migration import BatchMigrationPlanner, BatchMigrationExecutor
+
+# Create batch plan
+planner = BatchMigrationPlanner()
+batch_plan = planner.create_plan(
+    redis_url="redis://localhost:6379",
+    pattern="*_idx",
+    schema_patch_path="quantize_patch.yaml",
+)
+
+# Review applicability
+for idx in batch_plan.indexes:
+    if idx.applicable:
+        print(f"Will migrate: {idx.name}")
+    else:
+        print(f"Skipping {idx.name}: {idx.skip_reason}")
+
+# Execute batch
+executor = BatchMigrationExecutor()
+report = executor.apply(
+    batch_plan,
+    redis_url="redis://localhost:6379",
+    state_path="batch_state.yaml",
+    report_dir="./reports/",
+    progress_callback=lambda name, pos, total, status: print(f"[{pos}/{total}] {name}: {status}"),
+)
+
+print(f"Batch status: {report.status}")
+print(f"Successful: {report.summary.successful}/{report.summary.total_indexes}")
+```
+
+### Batch Migration Tips
+
+1. **Test on a single index first**: Run a single-index migration to verify the patch works before applying to a batch.
+
+2. **Use `continue_on_error` for large batches**: This ensures one failure doesn't block all remaining indexes.
+
+3. **Schedule during low-traffic periods**: Each index has downtime during migration.
+
+4. **Review skipped indexes**: The `skip_reason` often indicates schema differences that need attention.
+
+5. **Keep checkpoint files**: The `batch_state.yaml` is essential for resume. Don't delete it until the batch completes successfully.
 
 ## Learn more
 

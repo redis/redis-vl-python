@@ -118,3 +118,106 @@ class MigrationReport(BaseModel):
     )
     warnings: List[str] = Field(default_factory=list)
     manual_actions: List[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Batch Migration Models
+# -----------------------------------------------------------------------------
+
+
+class BatchIndexEntry(BaseModel):
+    """Entry for a single index in a batch migration plan."""
+
+    name: str
+    applicable: bool = True
+    skip_reason: Optional[str] = None
+
+
+class BatchPlan(BaseModel):
+    """Plan for migrating multiple indexes with a shared patch."""
+
+    version: int = 1
+    batch_id: str
+    mode: str = "drop_recreate"
+    failure_policy: str = "fail_fast"  # or "continue_on_error"
+    requires_quantization: bool = False
+    shared_patch: SchemaPatch
+    indexes: List[BatchIndexEntry] = Field(default_factory=list)
+    created_at: str
+
+    @property
+    def applicable_count(self) -> int:
+        return sum(1 for idx in self.indexes if idx.applicable)
+
+    @property
+    def skipped_count(self) -> int:
+        return sum(1 for idx in self.indexes if not idx.applicable)
+
+
+class BatchIndexState(BaseModel):
+    """State of a single index in batch execution."""
+
+    name: str
+    status: str  # pending, in_progress, success, failed, skipped
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    failed_at: Optional[str] = None
+    error: Optional[str] = None
+    report_path: Optional[str] = None
+
+
+class BatchState(BaseModel):
+    """Checkpoint state for batch migration execution."""
+
+    batch_id: str
+    plan_path: str
+    started_at: str
+    updated_at: str
+    completed: List[BatchIndexState] = Field(default_factory=list)
+    current_index: Optional[str] = None
+    remaining: List[str] = Field(default_factory=list)
+
+    @property
+    def success_count(self) -> int:
+        return sum(1 for idx in self.completed if idx.status == "success")
+
+    @property
+    def failed_count(self) -> int:
+        return sum(1 for idx in self.completed if idx.status == "failed")
+
+    @property
+    def is_complete(self) -> bool:
+        return len(self.remaining) == 0 and self.current_index is None
+
+
+class BatchReportSummary(BaseModel):
+    """Summary statistics for batch migration."""
+
+    total_indexes: int = 0
+    successful: int = 0
+    failed: int = 0
+    skipped: int = 0
+    total_duration_seconds: float = 0.0
+
+
+class BatchIndexReport(BaseModel):
+    """Report for a single index in batch execution."""
+
+    name: str
+    status: str  # success, failed, skipped
+    duration_seconds: Optional[float] = None
+    docs_migrated: Optional[int] = None
+    report_path: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BatchReport(BaseModel):
+    """Final report for batch migration execution."""
+
+    version: int = 1
+    batch_id: str
+    status: str  # completed, partial_failure, failed
+    summary: BatchReportSummary = Field(default_factory=BatchReportSummary)
+    indexes: List[BatchIndexReport] = Field(default_factory=list)
+    started_at: str
+    completed_at: str
