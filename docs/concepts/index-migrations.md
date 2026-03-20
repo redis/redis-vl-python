@@ -139,6 +139,109 @@ With `drop_recreate`, your index is unavailable between the drop and when re-ind
 
 The duration depends on document count, field count, and vector dimensions. For large indexes, consider running migrations during low traffic periods.
 
+## Sync vs async execution
+
+The migrator provides both synchronous and asynchronous execution modes.
+
+### What becomes async and what stays sync
+
+The migration workflow has distinct phases. Here is what each mode affects:
+
+| Phase | Sync mode | Async mode | Notes |
+|-------|-----------|------------|-------|
+| **Plan generation** | `MigrationPlanner.create_plan()` | `AsyncMigrationPlanner.create_plan()` | Reads index metadata from Redis |
+| **Schema snapshot** | Sync Redis calls | Async Redis calls | Single `FT.INFO` command |
+| **Drop index** | `index.delete()` | `await index.delete()` | Single `FT.DROPINDEX` command |
+| **Quantization** | Sequential SCAN + HSET | Pipelined SCAN + batched HSET | See below |
+| **Create index** | `index.create()` | `await index.create()` | Single `FT.CREATE` command |
+| **Readiness polling** | `time.sleep()` loop | `asyncio.sleep()` loop | Polls `FT.INFO` until indexed |
+| **Validation** | Sync Redis calls | Async Redis calls | Schema and doc count checks |
+| **CLI interaction** | Always sync | Always sync | User prompts, file I/O |
+| **YAML read/write** | Always sync | Always sync | Local filesystem only |
+
+### When to use sync (default)
+
+Sync execution is simpler and sufficient for most migrations:
+
+- Small to medium indexes (under 100K documents)
+- Index-only changes (algorithm, distance metric, field options)
+- Interactive CLI usage where blocking is acceptable
+
+For migrations without quantization, the Redis operations are fast single commands. Sync mode adds no meaningful overhead.
+
+### When to use async
+
+Async execution (`--async` flag) provides benefits in specific scenarios:
+
+**Large quantization jobs (1M+ vectors)**
+
+Converting float32 to float16 requires reading every vector, converting it, and writing it back. The async executor:
+
+- Uses `SCAN` with `COUNT 500` to iterate keys without blocking Redis (per [Redis SCAN docs](https://redis.io/docs/latest/commands/scan/), SCAN is O(1) per call)
+- Pipelines `HSET` operations in batches (100-1000 operations per pipeline is optimal for Redis)
+- Yields to the event loop between batches so other tasks can proceed
+
+**Large keyspaces (40M+ keys)**
+
+When your Redis instance has many keys, `SCAN` iteration can take minutes. Async mode yields between batches.
+
+**Async application integration**
+
+If your application uses asyncio, you can integrate migration directly:
+
+```python
+import asyncio
+from redisvl.migration import AsyncMigrationPlanner, AsyncMigrationExecutor
+
+async def migrate():
+    planner = AsyncMigrationPlanner()
+    plan = await planner.create_plan("myindex", redis_url="redis://localhost:6379")
+
+    executor = AsyncMigrationExecutor()
+    report = await executor.apply(plan, redis_url="redis://localhost:6379")
+
+asyncio.run(migrate())
+```
+
+### Why async helps with quantization
+
+The key difference is in the vector re-encoding loop:
+
+**Sync quantization:**
+```
+for each batch of 500 keys:
+    SCAN (blocks) -> get keys
+    for each key:
+        HGET field (blocks)
+        convert array
+        pipeline.HSET(field, new_bytes)
+    pipeline.execute() (blocks)
+```
+
+**Async quantization:**
+```
+for each batch of 500 keys:
+    await SCAN -> get keys (yields)
+    for each key:
+        await HGET field (yields)
+        convert array
+        pipeline.HSET(field, new_bytes)
+    await pipeline.execute() (yields)
+```
+
+Each `await` is a yield point where other coroutines can run. For millions of vectors, this prevents your application from freezing.
+
+### What async does NOT improve
+
+Async execution does not reduce:
+
+- **Total migration time**: Same work, different scheduling
+- **Redis server load**: Same commands execute on the server
+- **Downtime window**: Index remains unavailable during rebuild
+- **Network round trips**: Same number of Redis calls
+
+The benefit is application responsiveness, not faster migration.
+
 ## Learn more
 
 - [Migration guide](../user_guide/how_to_guides/migrate-indexes.md): Step by step instructions

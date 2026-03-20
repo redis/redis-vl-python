@@ -1,10 +1,17 @@
 import argparse
+import asyncio
 import sys
 from argparse import Namespace
 from typing import Optional
 
 from redisvl.cli.utils import add_redis_connection_options, create_redis_url
-from redisvl.migration import MigrationExecutor, MigrationPlanner, MigrationValidator
+from redisvl.migration import (
+    AsyncMigrationExecutor,
+    AsyncMigrationValidator,
+    MigrationExecutor,
+    MigrationPlanner,
+    MigrationValidator,
+)
 from redisvl.migration.utils import (
     list_indexes,
     load_migration_plan,
@@ -26,7 +33,7 @@ class Migrate:
             "\tlist        List all available indexes",
             "\tplan        Generate a migration plan for a document-preserving drop/recreate migration",
             "\twizard      Interactively build a migration plan and schema patch",
-            "\tapply       Execute a reviewed drop/recreate migration plan",
+            "\tapply       Execute a reviewed drop/recreate migration plan (use --async for large migrations)",
             "\tvalidate    Validate a completed migration plan against the live index",
             "\n",
         ]
@@ -194,13 +201,19 @@ Commands:
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate apply --plan <migration_plan.yaml> --allow-downtime "
-                "[--report-out <migration_report.yaml>]"
+                "[--async] [--report-out <migration_report.yaml>]"
             )
         )
         parser.add_argument("--plan", help="Path to migration_plan.yaml", required=True)
         parser.add_argument(
             "--allow-downtime",
             help="Explicitly acknowledge downtime for drop_recreate",
+            action="store_true",
+        )
+        parser.add_argument(
+            "--async",
+            dest="use_async",
+            help="Use async executor (recommended for large migrations with quantization)",
             action="store_true",
         )
         parser.add_argument(
@@ -228,6 +241,21 @@ Commands:
 
         redis_url = create_redis_url(args)
         plan = load_migration_plan(args.plan)
+
+        if args.use_async:
+            report = asyncio.run(
+                self._apply_async(plan, redis_url, args.query_check_file)
+            )
+        else:
+            report = self._apply_sync(plan, redis_url, args.query_check_file)
+
+        write_migration_report(report, args.report_out)
+        if args.benchmark_out:
+            write_benchmark_report(report, args.benchmark_out)
+        self._print_report_summary(args.report_out, report, args.benchmark_out)
+
+    def _apply_sync(self, plan, redis_url: str, query_check_file: Optional[str]):
+        """Execute migration synchronously."""
         executor = MigrationExecutor()
 
         print(f"\nApplying migration to '{plan.source.index_name}'...")
@@ -241,7 +269,6 @@ Commands:
                 "validate": "[5/5] Validate",
             }
             label = step_labels.get(step, step)
-            # Use carriage return to update in place for progress
             if detail and not detail.startswith("done"):
                 print(f"  {label}: {detail}    ", end="\r", flush=True)
             else:
@@ -250,26 +277,54 @@ Commands:
         report = executor.apply(
             plan,
             redis_url=redis_url,
-            query_check_file=args.query_check_file,
+            query_check_file=query_check_file,
             progress_callback=progress_callback,
         )
 
-        # Print completion summary
+        self._print_apply_result(report)
+        return report
+
+    async def _apply_async(self, plan, redis_url: str, query_check_file: Optional[str]):
+        """Execute migration asynchronously (non-blocking for large quantization jobs)."""
+        executor = AsyncMigrationExecutor()
+
+        print(f"\nApplying migration to '{plan.source.index_name}' (async mode)...")
+
+        def progress_callback(step: str, detail: str) -> None:
+            step_labels = {
+                "drop": "[1/5] Drop index",
+                "quantize": "[2/5] Quantize vectors",
+                "create": "[3/5] Create index",
+                "index": "[4/5] Re-indexing",
+                "validate": "[5/5] Validate",
+            }
+            label = step_labels.get(step, step)
+            if detail and not detail.startswith("done"):
+                print(f"  {label}: {detail}    ", end="\r", flush=True)
+            else:
+                print(f"  {label}: {detail}    ")
+
+        report = await executor.apply(
+            plan,
+            redis_url=redis_url,
+            query_check_file=query_check_file,
+            progress_callback=progress_callback,
+        )
+
+        self._print_apply_result(report)
+        return report
+
+    def _print_apply_result(self, report) -> None:
+        """Print the result summary after migration apply."""
         if report.result == "succeeded":
             total_time = report.timings.total_migration_duration_seconds or 0
             downtime = report.timings.downtime_duration_seconds or 0
             print(f"\nMigration completed in {total_time}s (downtime: {downtime}s)")
         else:
             print(f"\nMigration {report.result}")
-            # Show errors immediately for visibility
             if report.validation.errors:
                 for error in report.validation.errors:
                     print(f"  ERROR: {error}")
-
-        write_migration_report(report, args.report_out)
-        if args.benchmark_out:
-            write_benchmark_report(report, args.benchmark_out)
-        self._print_report_summary(args.report_out, report, args.benchmark_out)
 
     def validate(self):
         parser = argparse.ArgumentParser(
