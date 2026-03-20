@@ -302,6 +302,41 @@ What `apply` does:
 6. validates the result
 7. writes report artifacts
 
+### Async execution for large migrations
+
+For large migrations (especially those involving vector quantization), use the `--async` flag:
+
+```bash
+rvl migrate apply \
+  --plan migration_plan.yaml \
+  --allow-downtime \
+  --async \
+  --url redis://localhost:6379
+```
+
+**What becomes async:**
+
+- Keyspace SCAN during quantization (yields between batches of 500 keys)
+- Vector read/write operations (pipelined HGET/HSET)
+- Index readiness polling (uses `asyncio.sleep()` instead of blocking)
+- Validation checks
+
+**What stays sync:**
+
+- CLI prompts and user interaction
+- YAML file reading/writing
+- Progress display
+
+**When to use async:**
+
+- Quantizing millions of vectors (float32 to float16)
+- Redis instance has 40M+ keys
+- Integrating into an async application
+
+For most migrations (index-only changes, small datasets), sync mode is sufficient and simpler.
+
+See {doc}`/concepts/index-migrations` for detailed async vs sync guidance.
+
 ## Step 5: Validate the Result
 
 Validation happens automatically during `apply`, but you can run it separately:
@@ -358,6 +393,7 @@ rvl migrate validate \
 - `--index` : Index name to migrate
 - `--plan` / `--plan-out` : Path to migration plan
 - `--allow-downtime` : Acknowledge index unavailability (required for apply)
+- `--async` : Use async executor for large migrations (apply only)
 - `--report-out` : Path for validation report
 - `--benchmark-out` : Path for performance metrics
 
@@ -388,6 +424,48 @@ If `apply` fails mid-migration:
 3. **If the index was dropped:** Recreate it from the plan's `merged_target_schema`
 
 The underlying documents are never deleted by `drop_recreate`.
+
+## Python API
+
+For programmatic migrations, use the migration classes directly:
+
+### Sync API
+
+```python
+from redisvl.migration import MigrationPlanner, MigrationExecutor
+
+planner = MigrationPlanner()
+plan = planner.create_plan(
+    "myindex",
+    redis_url="redis://localhost:6379",
+    schema_patch_path="schema_patch.yaml",
+)
+
+executor = MigrationExecutor()
+report = executor.apply(plan, redis_url="redis://localhost:6379")
+print(f"Migration result: {report.result}")
+```
+
+### Async API
+
+```python
+import asyncio
+from redisvl.migration import AsyncMigrationPlanner, AsyncMigrationExecutor
+
+async def migrate():
+    planner = AsyncMigrationPlanner()
+    plan = await planner.create_plan(
+        "myindex",
+        redis_url="redis://localhost:6379",
+        schema_patch_path="schema_patch.yaml",
+    )
+
+    executor = AsyncMigrationExecutor()
+    report = await executor.apply(plan, redis_url="redis://localhost:6379")
+    print(f"Migration result: {report.result}")
+
+asyncio.run(migrate())
+```
 
 ## Learn more
 
