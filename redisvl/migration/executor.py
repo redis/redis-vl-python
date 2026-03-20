@@ -20,7 +20,6 @@ from redisvl.migration.utils import (
 )
 from redisvl.migration.validation import MigrationValidator
 from redisvl.redis.utils import array_to_buffer, buffer_to_array
-from redisvl.schema import StorageType
 
 logger = logging.getLogger(__name__)
 
