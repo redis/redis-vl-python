@@ -38,7 +38,11 @@ class AsyncMigrationValidator:
         validation = MigrationValidation()
 
         live_schema = target_index.schema.to_dict()
-        validation.schema_match = schemas_equal(live_schema, plan.merged_target_schema)
+        # Use strip_unreliable=True because FT.INFO doesn't return certain
+        # attributes (ef_runtime, epsilon, initial_cap, phonetic_matcher).
+        validation.schema_match = schemas_equal(
+            live_schema, plan.merged_target_schema, strip_unreliable=True
+        )
 
         source_num_docs = int(plan.source.stats_snapshot.get("num_docs", 0) or 0)
         target_num_docs = int(target_info.get("num_docs", 0) or 0)

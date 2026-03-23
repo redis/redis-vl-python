@@ -66,9 +66,64 @@ def write_benchmark_report(report: MigrationReport, path: str) -> None:
     write_yaml(benchmark_report, path)
 
 
-def canonicalize_schema(schema_dict: Dict[str, Any]) -> Dict[str, Any]:
+# Attributes that FT.INFO does NOT return reliably.
+# These are stripped from schema comparison to avoid false validation failures.
+# The migration still works, but we cannot verify via FT.INFO read-back.
+UNRELIABLE_VECTOR_ATTRS = {"ef_runtime", "epsilon", "initial_cap"}
+UNRELIABLE_TEXT_ATTRS = {"phonetic_matcher", "withsuffixtrie"}
+UNRELIABLE_TAG_ATTRS = {"withsuffixtrie"}
+
+
+def _strip_unreliable_attrs(field: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove attributes that FT.INFO doesn't return reliably.
+
+    Also normalizes attributes that have implicit behavior:
+    - For NUMERIC + SORTABLE, Redis auto-applies UNF, so we normalize to unf=True
+    """
+    field = field.copy()
+    attrs = field.get("attrs", {})
+    if not attrs:
+        return field
+
+    attrs = attrs.copy()
+    field_type = field.get("type", "").lower()
+
+    if field_type == "vector":
+        for attr in UNRELIABLE_VECTOR_ATTRS:
+            attrs.pop(attr, None)
+    elif field_type == "text":
+        for attr in UNRELIABLE_TEXT_ATTRS:
+            attrs.pop(attr, None)
+    elif field_type == "tag":
+        for attr in UNRELIABLE_TAG_ATTRS:
+            attrs.pop(attr, None)
+    elif field_type == "numeric":
+        # Redis auto-applies UNF when SORTABLE is set on NUMERIC fields.
+        # Normalize unf to True when sortable is True to avoid false mismatches.
+        if attrs.get("sortable"):
+            attrs["unf"] = True
+
+    field["attrs"] = attrs
+    return field
+
+
+def canonicalize_schema(
+    schema_dict: Dict[str, Any], *, strip_unreliable: bool = False
+) -> Dict[str, Any]:
+    """Canonicalize schema for comparison.
+
+    Args:
+        schema_dict: The schema dictionary to canonicalize.
+        strip_unreliable: If True, remove attributes that FT.INFO doesn't
+            return reliably. Use this when comparing expected vs live schema.
+    """
     schema = IndexSchema.from_dict(schema_dict).to_dict()
-    schema["fields"] = sorted(schema.get("fields", []), key=lambda field: field["name"])
+
+    fields = schema.get("fields", [])
+    if strip_unreliable:
+        fields = [_strip_unreliable_attrs(f) for f in fields]
+
+    schema["fields"] = sorted(fields, key=lambda field: field["name"])
     prefixes = schema["index"].get("prefix")
     if isinstance(prefixes, list):
         schema["index"]["prefix"] = sorted(prefixes)
@@ -78,9 +133,21 @@ def canonicalize_schema(schema_dict: Dict[str, Any]) -> Dict[str, Any]:
     return schema
 
 
-def schemas_equal(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
-    return json.dumps(canonicalize_schema(left), sort_keys=True) == json.dumps(
-        canonicalize_schema(right), sort_keys=True
+def schemas_equal(
+    left: Dict[str, Any], right: Dict[str, Any], *, strip_unreliable: bool = False
+) -> bool:
+    """Compare two schemas for equality.
+
+    Args:
+        left: First schema dictionary.
+        right: Second schema dictionary.
+        strip_unreliable: If True, ignore attributes that FT.INFO doesn't
+            return reliably (ef_runtime, epsilon, initial_cap, phonetic_matcher).
+    """
+    return json.dumps(
+        canonicalize_schema(left, strip_unreliable=strip_unreliable), sort_keys=True
+    ) == json.dumps(
+        canonicalize_schema(right, strip_unreliable=strip_unreliable), sort_keys=True
     )
 
 

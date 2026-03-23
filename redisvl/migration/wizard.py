@@ -438,14 +438,6 @@ class MigrationWizard:
         if phonetic:
             attrs["phonetic_matcher"] = phonetic
 
-        # Withsuffixtrie
-        print("  Suffix trie: enables suffix/contains queries (*suffix, *contains*)")
-        withsuffixtrie = self._prompt_bool(
-            "Enable suffix trie", allow_blank=allow_blank
-        )
-        if withsuffixtrie is not None:
-            attrs["withsuffixtrie"] = withsuffixtrie
-
         # UNF (only if sortable)
         if attrs.get("sortable"):
             print("  UNF: preserve original form (no lowercasing) for sorting")
@@ -466,14 +458,6 @@ class MigrationWizard:
         case_sensitive = self._prompt_bool("Case sensitive", allow_blank=allow_blank)
         if case_sensitive is not None:
             attrs["case_sensitive"] = case_sensitive
-
-        # Withsuffixtrie
-        print("  Suffix trie: enables suffix/contains queries (*suffix, *contains*)")
-        withsuffixtrie = self._prompt_bool(
-            "Enable suffix trie", allow_blank=allow_blank
-        )
-        if withsuffixtrie is not None:
-            attrs["withsuffixtrie"] = withsuffixtrie
 
     def _prompt_numeric_attrs(
         self, attrs: Dict[str, Any], allow_blank: bool, sortable: Optional[bool]
