@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from redis.commands.search.query import Query
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.migration.models import (
@@ -74,11 +76,16 @@ class AsyncMigrationValidator:
             existing_count = await client.exists(*keys_to_check)
             validation.key_sample_exists = existing_count == len(keys_to_check)
 
+        # Run automatic functional checks (always)
+        functional_checks = await self._run_functional_checks(
+            target_index, source_num_docs
+        )
+        validation.query_checks.extend(functional_checks)
+
+        # Run user-provided query checks (if file provided)
         if query_check_file:
-            validation.query_checks = await self._run_query_checks(
-                target_index,
-                query_check_file,
-            )
+            user_checks = await self._run_query_checks(target_index, query_check_file)
+            validation.query_checks.extend(user_checks)
 
         if not validation.schema_match:
             validation.errors.append("Live schema does not match merged_target_schema.")
@@ -138,5 +145,41 @@ class AsyncMigrationValidator:
                         details="Key exists" if exists else "Key not found",
                     )
                 )
+
+        return results
+
+    async def _run_functional_checks(
+        self, target_index: AsyncSearchIndex, expected_doc_count: int
+    ) -> List[QueryCheckResult]:
+        """Run automatic functional checks to verify the index is operational.
+
+        These checks run automatically after every migration to prove the index
+        actually works, not just that the schema looks correct.
+        """
+        results: List[QueryCheckResult] = []
+
+        # Check 1: Wildcard search - proves the index responds and returns docs
+        try:
+            search_result = await target_index.search(Query("*").paging(0, 1))
+            total_found = search_result.total
+            passed = total_found == expected_doc_count
+            results.append(
+                QueryCheckResult(
+                    name="functional:wildcard_search",
+                    passed=passed,
+                    details=(
+                        f"Wildcard search returned {total_found} docs "
+                        f"(expected {expected_doc_count})"
+                    ),
+                )
+            )
+        except Exception as e:
+            results.append(
+                QueryCheckResult(
+                    name="functional:wildcard_search",
+                    passed=False,
+                    details=f"Wildcard search failed: {str(e)}",
+                )
+            )
 
         return results
