@@ -92,16 +92,28 @@ class AsyncMigrationPlanner:
         merged_target_schema = self._sync_planner.merge_patch(
             source_schema, schema_patch
         )
-        diff_classification = self._sync_planner.classify_diff(
-            source_schema, schema_patch, merged_target_schema
+
+        # Extract rename operations first
+        rename_operations, rename_warnings = (
+            self._sync_planner._extract_rename_operations(source_schema, schema_patch)
         )
+
+        # Classify diff with awareness of rename operations
+        diff_classification = self._sync_planner.classify_diff(
+            source_schema, schema_patch, merged_target_schema, rename_operations
+        )
+
+        # Build warnings list
+        warnings = ["Index downtime is required"]
+        warnings.extend(rename_warnings)
 
         return MigrationPlan(
             source=snapshot,
             requested_changes=schema_patch.model_dump(exclude_none=True),
             merged_target_schema=merged_target_schema.to_dict(),
             diff_classification=diff_classification,
-            warnings=["Index downtime is required"],
+            rename_operations=rename_operations,
+            warnings=warnings,
         )
 
     async def snapshot_source(

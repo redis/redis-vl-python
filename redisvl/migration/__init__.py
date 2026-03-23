@@ -13,8 +13,10 @@ from redisvl.migration.models import (
     BatchPlan,
     BatchReport,
     BatchState,
+    FieldRename,
     MigrationPlan,
     MigrationReport,
+    RenameOperations,
     SchemaPatch,
 )
 from redisvl.migration.planner import MigrationPlanner
@@ -29,6 +31,8 @@ __all__ = [
     "MigrationReport",
     "MigrationValidator",
     "MigrationWizard",
+    "FieldRename",
+    "RenameOperations",
     "SchemaPatch",
     # Batch
     "BatchMigrationExecutor",

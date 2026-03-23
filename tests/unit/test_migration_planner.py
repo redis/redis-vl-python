@@ -278,8 +278,8 @@ def test_target_schema_vector_algorithm_change_is_allowed(monkeypatch, tmp_path)
 # =============================================================================
 
 
-def test_target_schema_prefix_change_is_blocked(monkeypatch, tmp_path):
-    """Prefix change is blocked: documents are at wrong keys."""
+def test_target_schema_prefix_change_is_supported(monkeypatch, tmp_path):
+    """Prefix change is now supported via key rename operations."""
     source_schema = _make_source_schema()
     dummy_index = DummyIndex(source_schema, {"num_docs": 2}, [b"docs:1"])
     monkeypatch.setattr(
@@ -310,11 +310,12 @@ def test_target_schema_prefix_change_is_blocked(monkeypatch, tmp_path):
         target_schema_path=str(target_schema_path),
     )
 
-    assert plan.diff_classification.supported is False
-    assert any(
-        "prefix" in reason.lower() and "iterative_shadow" in reason
-        for reason in plan.diff_classification.blocked_reasons
-    )
+    # Prefix change is now supported
+    assert plan.diff_classification.supported is True
+    # Verify rename operation is populated
+    assert plan.rename_operations.change_prefix == "docs_v2"
+    # Verify warning is present
+    assert any("Prefix change" in w for w in plan.warnings)
 
 
 def test_key_separator_change_is_blocked(monkeypatch, tmp_path):
@@ -466,7 +467,7 @@ def test_vector_dimension_change_is_blocked(monkeypatch, tmp_path):
 
     assert plan.diff_classification.supported is False
     assert any(
-        "dims" in reason and "iterative_shadow" in reason
+        "dims" in reason and "document migration" in reason
         for reason in plan.diff_classification.blocked_reasons
     )
 

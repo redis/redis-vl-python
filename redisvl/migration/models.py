@@ -24,10 +24,18 @@ class FieldUpdate(BaseModel):
         return self
 
 
+class FieldRename(BaseModel):
+    """Field rename specification for schema patch inputs."""
+
+    old_name: str
+    new_name: str
+
+
 class SchemaPatchChanges(BaseModel):
     add_fields: List[Dict[str, Any]] = Field(default_factory=list)
     remove_fields: List[str] = Field(default_factory=list)
     update_fields: List[FieldUpdate] = Field(default_factory=list)
+    rename_fields: List[FieldRename] = Field(default_factory=list)
     index: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -60,6 +68,18 @@ class ValidationPolicy(BaseModel):
     require_schema_match: bool = True
 
 
+class RenameOperations(BaseModel):
+    """Tracks which rename operations are required for a migration."""
+
+    rename_index: Optional[str] = None  # New index name if renaming
+    change_prefix: Optional[str] = None  # New prefix if changing
+    rename_fields: List[FieldRename] = Field(default_factory=list)
+
+    @property
+    def has_operations(self) -> bool:
+        return bool(self.rename_index or self.change_prefix or self.rename_fields)
+
+
 class MigrationPlan(BaseModel):
     version: int = 1
     mode: str = "drop_recreate"
@@ -67,6 +87,7 @@ class MigrationPlan(BaseModel):
     requested_changes: Dict[str, Any]
     merged_target_schema: Dict[str, Any]
     diff_classification: DiffClassification
+    rename_operations: RenameOperations = Field(default_factory=RenameOperations)
     warnings: List[str] = Field(default_factory=list)
     validation: ValidationPolicy = Field(default_factory=ValidationPolicy)
 
@@ -90,6 +111,8 @@ class MigrationTimings(BaseModel):
     total_migration_duration_seconds: Optional[float] = None
     drop_duration_seconds: Optional[float] = None
     quantize_duration_seconds: Optional[float] = None
+    field_rename_duration_seconds: Optional[float] = None
+    key_rename_duration_seconds: Optional[float] = None
     recreate_duration_seconds: Optional[float] = None
     initial_indexing_duration_seconds: Optional[float] = None
     validation_duration_seconds: Optional[float] = None

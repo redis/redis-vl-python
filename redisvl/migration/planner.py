@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 from redisvl.index import SearchIndex
 from redisvl.migration.models import (
     DiffClassification,
+    FieldRename,
     KeyspaceSnapshot,
     MigrationPlan,
+    RenameOperations,
     SchemaPatch,
     SourceSnapshot,
 )
@@ -94,16 +96,28 @@ class MigrationPlanner:
         )
         source_schema = IndexSchema.from_dict(snapshot.schema_snapshot)
         merged_target_schema = self.merge_patch(source_schema, schema_patch)
-        diff_classification = self.classify_diff(
-            source_schema, schema_patch, merged_target_schema
+
+        # Extract rename operations first
+        rename_operations, rename_warnings = self._extract_rename_operations(
+            source_schema, schema_patch
         )
+
+        # Classify diff with awareness of rename operations
+        diff_classification = self.classify_diff(
+            source_schema, schema_patch, merged_target_schema, rename_operations
+        )
+
+        # Build warnings list
+        warnings = ["Index downtime is required"]
+        warnings.extend(rename_warnings)
 
         return MigrationPlan(
             source=snapshot,
             requested_changes=schema_patch.model_dump(exclude_none=True),
             merged_target_schema=merged_target_schema.to_dict(),
             diff_classification=diff_classification,
-            warnings=["Index downtime is required"],
+            rename_operations=rename_operations,
+            warnings=warnings,
         )
 
     def snapshot_source(
@@ -223,29 +237,100 @@ class MigrationPlanner:
         schema_dict["index"].update(changes.index)
         return IndexSchema.from_dict(schema_dict)
 
+    def _extract_rename_operations(
+        self,
+        source_schema: IndexSchema,
+        schema_patch: SchemaPatch,
+    ) -> Tuple[RenameOperations, List[str]]:
+        """Extract rename operations from the patch and generate warnings.
+
+        Returns:
+            Tuple of (RenameOperations, warnings list)
+        """
+        source_dict = source_schema.to_dict()
+        changes = schema_patch.changes
+        warnings: List[str] = []
+
+        # Index rename
+        rename_index: Optional[str] = None
+        if "name" in changes.index:
+            new_name = changes.index["name"]
+            old_name = source_dict["index"].get("name")
+            if new_name != old_name:
+                rename_index = new_name
+                warnings.append(
+                    f"Index rename: '{old_name}' -> '{new_name}' (index-only change, no document migration needed)"
+                )
+
+        # Prefix change
+        change_prefix: Optional[str] = None
+        if "prefix" in changes.index:
+            new_prefix = changes.index["prefix"]
+            old_prefix = source_dict["index"].get("prefix")
+            if new_prefix != old_prefix:
+                change_prefix = new_prefix
+                warnings.append(
+                    f"Prefix change: '{old_prefix}' -> '{new_prefix}' "
+                    "(requires RENAME for all keys, may be slow for large datasets)"
+                )
+
+        # Field renames from explicit rename_fields
+        rename_fields: List[FieldRename] = list(changes.rename_fields)
+        for field_rename in rename_fields:
+            warnings.append(
+                f"Field rename: '{field_rename.old_name}' -> '{field_rename.new_name}' "
+                "(requires read/write for all documents, may be slow for large datasets)"
+            )
+
+        return (
+            RenameOperations(
+                rename_index=rename_index,
+                change_prefix=change_prefix,
+                rename_fields=rename_fields,
+            ),
+            warnings,
+        )
+
     def classify_diff(
         self,
         source_schema: IndexSchema,
         schema_patch: SchemaPatch,
         merged_target_schema: IndexSchema,
+        rename_operations: Optional[RenameOperations] = None,
     ) -> DiffClassification:
         blocked_reasons: List[str] = []
         changes = schema_patch.changes
         source_dict = source_schema.to_dict()
         target_dict = merged_target_schema.to_dict()
 
+        # Check which rename operations are being handled
+        has_index_rename = rename_operations and rename_operations.rename_index
+        has_prefix_change = rename_operations and rename_operations.change_prefix
+        has_field_renames = (
+            rename_operations and len(rename_operations.rename_fields) > 0
+        )
+        renamed_field_names = set()
+        if has_field_renames and rename_operations:
+            renamed_field_names = {
+                fr.old_name for fr in rename_operations.rename_fields
+            }
+
         for index_key, target_value in changes.index.items():
             source_value = source_dict["index"].get(index_key)
             if source_value == target_value:
                 continue
             if index_key == "name":
-                blocked_reasons.append(
-                    "Changing the index name requires document migration (not yet supported)."
-                )
+                # Index rename is now supported - skip blocking if we have rename_operations
+                if not has_index_rename:
+                    blocked_reasons.append(
+                        "Changing the index name requires document migration (not yet supported)."
+                    )
             elif index_key == "prefix":
-                blocked_reasons.append(
-                    "Changing index prefixes requires document migration (not yet supported)."
-                )
+                # Prefix change is now supported
+                if not has_prefix_change:
+                    blocked_reasons.append(
+                        "Changing index prefixes requires document migration (not yet supported)."
+                    )
             elif index_key == "key_separator":
                 blocked_reasons.append(
                     "Changing the key separator requires document migration (not yet supported)."
@@ -291,9 +376,11 @@ class MigrationPlanner:
                 )
                 blocked_reasons.extend(vector_blocked)
 
-        blocked_reasons.extend(
-            self._detect_possible_field_renames(source_fields, target_fields)
-        )
+        # Detect possible field renames only if not explicitly provided
+        if not has_field_renames:
+            blocked_reasons.extend(
+                self._detect_possible_field_renames(source_fields, target_fields)
+            )
 
         return DiffClassification(
             supported=len(blocked_reasons) == 0,

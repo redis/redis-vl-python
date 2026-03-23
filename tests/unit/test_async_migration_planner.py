@@ -276,8 +276,8 @@ async def test_async_planner_algorithm_change_allowed(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_async_planner_prefix_change_blocked(monkeypatch, tmp_path):
-    """Prefix change is blocked: documents are at wrong keys."""
+async def test_async_planner_prefix_change_is_supported(monkeypatch, tmp_path):
+    """Prefix change is supported: executor will rename keys."""
     source_schema = _make_source_schema()
     dummy_index = AsyncDummyIndex(source_schema, {"num_docs": 2}, [b"docs:1"])
 
@@ -312,8 +312,8 @@ async def test_async_planner_prefix_change_blocked(monkeypatch, tmp_path):
         target_schema_path=str(target_schema_path),
     )
 
-    assert plan.diff_classification.supported is False
-    assert any(
-        "prefix" in reason.lower()
-        for reason in plan.diff_classification.blocked_reasons
-    )
+    # Prefix change is now supported
+    assert plan.diff_classification.supported is True
+    assert plan.rename_operations.change_prefix == "docs_v2"
+    # Should have a warning about key renaming
+    assert any("prefix" in w.lower() for w in plan.warnings)
