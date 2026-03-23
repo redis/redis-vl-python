@@ -4,10 +4,8 @@ Wrapper for redis-py's get_protocol_version to handle edge cases.
 This fixes issue #365 where ClusterPipeline objects may not have nodes_manager attribute.
 """
 
-from typing import Optional, Union
+from typing import Optional
 
-from redis.asyncio.cluster import ClusterPipeline as AsyncClusterPipeline
-from redis.cluster import ClusterPipeline
 from redis.commands.helpers import get_protocol_version as redis_get_protocol_version
 
 

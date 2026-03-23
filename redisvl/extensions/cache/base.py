@@ -5,13 +5,13 @@ specific cache types such as LLM caches and embedding caches.
 """
 
 from collections.abc import Mapping
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
 
 from redisvl.redis.connection import RedisConnectionFactory
-from redisvl.types import AsyncRedisClient, SyncRedisClient, SyncRedisCluster
+from redisvl.types import AsyncRedisClient, SyncRedisClient
 
 
 class BaseCache:
