@@ -219,11 +219,8 @@ class TestIndexLevelChanges:
             )
 
             assert result["supported"], "Change prefix should be supported"
-            # For prefix changes, key_sample_exists will fail because keys are renamed.
-            # Check doc_count_match instead - this confirms keys were successfully renamed.
-            assert result[
-                "doc_count_match"
-            ], f"Doc count mismatch after prefix change: {result['validation_errors']}"
+            # Validation now handles prefix change by transforming key_sample to new prefix
+            assert result["succeeded"], f"Migration failed: {result['report']}"
 
             # Verify keys were renamed
             live_index = SearchIndex.from_existing(

@@ -51,8 +51,17 @@ class MigrationValidator:
         if not key_sample:
             validation.key_sample_exists = True
         else:
-            existing_count = target_index.client.exists(*key_sample)
-            validation.key_sample_exists = existing_count == len(key_sample)
+            # Handle prefix change: transform key_sample to use new prefix
+            keys_to_check = key_sample
+            if plan.rename_operations.change_prefix:
+                old_prefix = plan.source.keyspace.prefixes[0]
+                new_prefix = plan.rename_operations.change_prefix
+                keys_to_check = [
+                    new_prefix + k[len(old_prefix) :] if k.startswith(old_prefix) else k
+                    for k in key_sample
+                ]
+            existing_count = target_index.client.exists(*keys_to_check)
+            validation.key_sample_exists = existing_count == len(keys_to_check)
 
         if query_check_file:
             validation.query_checks = self._run_query_checks(
