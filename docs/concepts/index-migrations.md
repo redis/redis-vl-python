@@ -130,7 +130,7 @@ Adding a vector field means all existing documents need vectors for that field. 
 
 ## Downtime considerations
 
-c lWith `drop_recreate`, your index is unavailable between the drop and when re-indexing completes.
+With `drop_recreate`, your index is unavailable between the drop and when re-indexing completes.
 
 **CRITICAL**: Downtime requires both reads AND writes to be paused:
 
