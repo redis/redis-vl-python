@@ -92,13 +92,14 @@ Supported changes:
   - Changing vector algorithm (FLAT, HNSW, SVS_VAMANA)
   - Changing distance metric (COSINE, L2, IP)
   - Tuning algorithm parameters (M, EF_CONSTRUCTION)
-  - Quantizing vectors (float32 to float16)
+  - Quantizing vectors (float32 to float16/bfloat16/int8/uint8)
+  - Changing key prefix (renames all keys)
+  - Renaming fields (updates all documents)
+  - Renaming the index
 
 Not yet supported:
   - Changing vector dimensions
-  - Changing key prefix or separator
   - Changing storage type (hash to JSON)
-  - Renaming fields
 
 Commands:
   rvl migrate list                                  List all indexes
@@ -556,6 +557,7 @@ Commands:
 
         report = executor.apply(
             batch_plan,
+            batch_plan_path=args.plan,
             state_path=args.state,
             report_dir=args.report_dir,
             redis_url=redis_url,
@@ -630,19 +632,27 @@ Commands:
         state_data = load_yaml(args.state)
         state = BatchState.model_validate(state_data)
 
-        print(f"Batch ID: {state.batch_id}")
-        print(f"Started at: {state.started_at}")
-        print(f"Updated at: {state.updated_at}")
-        print(f"Current index: {state.current_index or '(none)'}")
-        print(f"Remaining: {len(state.remaining)}")
-        print(f"Completed: {len(state.completed)}")
-        print(f"  - Succeeded: {state.success_count}")
-        print(f"  - Failed: {state.failed_count}")
+        print(
+            f"""Batch ID: {state.batch_id}
+Started at: {state.started_at}
+Updated at: {state.updated_at}
+Current index: {state.current_index or '(none)'}
+Remaining: {len(state.remaining)}
+Completed: {len(state.completed)}
+  - Succeeded: {state.success_count}
+  - Failed: {state.failed_count}
+  - Skipped: {state.skipped_count}"""
+        )
 
         if state.completed:
             print("\nCompleted indexes:")
             for idx in state.completed:
-                status_icon = "[OK]" if idx.status == "succeeded" else "[FAIL]"
+                if idx.status == "succeeded":
+                    status_icon = "[OK]"
+                elif idx.status == "skipped":
+                    status_icon = "[SKIP]"
+                else:
+                    status_icon = "[FAIL]"
                 print(f"  {status_icon} {idx.name}")
                 if idx.error:
                     print(f"       Error: {idx.error}")

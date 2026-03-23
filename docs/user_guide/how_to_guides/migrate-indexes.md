@@ -209,8 +209,7 @@ Before applying, review `migration_plan.yaml`:
 ```yaml
 # migration_plan.yaml (example)
 version: 1
-index_name: myindex
-migration_mode: drop_recreate
+mode: drop_recreate
 
 source:
   schema_snapshot:
@@ -225,13 +224,18 @@ source:
         type: vector
         attrs:
           dims: 384
-          algorithm: HNSW
+          algorithm: hnsw
           datatype: float32
-  doc_count: 10000
-  key_sample:
-    - "doc:1"
-    - "doc:2"
-    - "doc:3"
+  stats_snapshot:
+    num_docs: 10000
+  keyspace:
+    prefixes: ["doc:"]
+    key_sample: ["doc:1", "doc:2", "doc:3"]
+
+requested_changes:
+  add_fields:
+    - name: category
+      type: tag
 
 diff_classification:
   supported: true
@@ -240,10 +244,10 @@ diff_classification:
     - "Index will be unavailable during migration"
   blocked_reasons: []
 
-changes:
-  add_fields:
-    - name: category
-      type: tag
+rename_operations:
+  rename_index: null
+  change_prefix: null
+  rename_fields: []
 
 merged_target_schema:
   index:
@@ -259,8 +263,10 @@ merged_target_schema:
       type: vector
       attrs:
         dims: 384
-        algorithm: HNSW
+        algorithm: hnsw
         datatype: float32
+
+warnings: []
 ```
 
 **Key fields to check:**
@@ -530,7 +536,7 @@ EOF
 rvl migrate batch-plan \
   --pattern "*_idx" \
   --schema-patch quantize_patch.yaml \
-  --output batch_plan.yaml \
+  --plan-out batch_plan.yaml \
   --url redis://localhost:6379
 
 # 3. Apply the batch plan
@@ -550,16 +556,16 @@ rvl migrate batch-status --state batch_state.yaml
 rvl migrate batch-plan \
   --pattern "*_idx" \
   --schema-patch quantize_patch.yaml \
-  --output batch_plan.yaml \
+  --plan-out batch_plan.yaml \
   --url redis://localhost:6379
 ```
 
 **Select indexes by explicit list:**
 ```bash
 rvl migrate batch-plan \
-  --indexes products_idx users_idx orders_idx \
+  --indexes "products_idx,users_idx,orders_idx" \
   --schema-patch quantize_patch.yaml \
-  --output batch_plan.yaml \
+  --plan-out batch_plan.yaml \
   --url redis://localhost:6379
 ```
 
@@ -571,7 +577,7 @@ echo -e "products_idx\nusers_idx\norders_idx" > indexes.txt
 rvl migrate batch-plan \
   --indexes-file indexes.txt \
   --schema-patch quantize_patch.yaml \
-  --output batch_plan.yaml \
+  --plan-out batch_plan.yaml \
   --url redis://localhost:6379
 ```
 
@@ -627,7 +633,7 @@ rvl migrate batch-plan \
   --pattern "*_idx" \
   --schema-patch quantize_patch.yaml \
   --failure-policy continue_on_error \
-  --output batch_plan.yaml \
+  --plan-out batch_plan.yaml \
   --url redis://localhost:6379
 
 rvl migrate batch-apply \

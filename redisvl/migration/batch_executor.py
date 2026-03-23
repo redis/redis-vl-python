@@ -39,6 +39,7 @@ class BatchMigrationExecutor:
         self,
         batch_plan: BatchPlan,
         *,
+        batch_plan_path: Optional[str] = None,
         state_path: str = "batch_state.yaml",
         report_dir: str = "./reports",
         redis_url: Optional[str] = None,
@@ -49,6 +50,7 @@ class BatchMigrationExecutor:
 
         Args:
             batch_plan: The batch plan to execute.
+            batch_plan_path: Path to the batch plan file (stored in state for resume).
             state_path: Path to checkpoint state file.
             report_dir: Directory for per-index reports.
             redis_url: Redis connection URL.
@@ -70,7 +72,7 @@ class BatchMigrationExecutor:
         report_path.mkdir(parents=True, exist_ok=True)
 
         # Initialize or load state
-        state = self._init_or_load_state(batch_plan, state_path)
+        state = self._init_or_load_state(batch_plan, state_path, batch_plan_path)
         started_at = state.started_at
         batch_start_time = time.perf_counter()
 
@@ -233,17 +235,22 @@ class BatchMigrationExecutor:
                 error=str(e),
             )
 
-    def _init_or_load_state(self, batch_plan: BatchPlan, state_path: str) -> BatchState:
+    def _init_or_load_state(
+        self,
+        batch_plan: BatchPlan,
+        state_path: str,
+        batch_plan_path: Optional[str] = None,
+    ) -> BatchState:
         """Initialize new state or load existing checkpoint."""
         path = Path(state_path).resolve()
         if path.exists():
             return self._load_state(state_path)
 
-        # Create new state
+        # Create new state with plan_path for resume support
         applicable_names = [idx.name for idx in batch_plan.indexes if idx.applicable]
         return BatchState(
             batch_id=batch_plan.batch_id,
-            plan_path="",  # Will be set by caller if needed
+            plan_path=str(Path(batch_plan_path).resolve()) if batch_plan_path else "",
             started_at=timestamp_utc(),
             updated_at=timestamp_utc(),
             remaining=applicable_names,

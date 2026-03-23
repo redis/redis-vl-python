@@ -21,20 +21,26 @@ from redisvl.schema.schema import IndexSchema
 
 
 class MigrationPlanner:
-    """Migration planner for document-preserving drop/recreate flows.
+    """Migration planner for drop/recreate-based index migrations.
 
     The `drop_recreate` mode drops the index definition and recreates it with
-    a new schema. Documents remain untouched in Redis.
+    a new schema. By default, documents are preserved in Redis. When possible,
+    the planner/executor can apply transformations so the preserved documents
+    remain compatible with the new index schema.
 
     This means:
-    - Index-only changes work (algorithm, distance metric, tuning params)
-    - Document-dependent changes fail (the index expects data in a format
-      that doesn't match what's stored)
+    - Index-only changes are always safe (algorithm, distance metric, tuning
+      params, quantization, etc.)
+    - Some document-dependent changes are supported via explicit migration
+      operations in the migration plan
 
-    Document-dependent changes (not supported):
+    Supported document-dependent changes:
+    - Prefix/keyspace changes: keys are renamed via RENAME command
+    - Field renames: documents are updated to use new field names
+    - Index renaming: the new index is created with a different name
+
+    Document-dependent changes that remain unsupported:
     - Vector dimensions: stored vectors have wrong number of dimensions
-    - Prefix/keyspace: documents are at keys the new index won't scan
-    - Field rename: documents store data under the old field name
     - Storage type: documents are in hash format but index expects JSON
     """
 
@@ -216,6 +222,23 @@ class MigrationPlanner:
             field["name"]: deepcopy(field) for field in schema_dict["fields"]
         }
 
+        # Apply field renames first (before other modifications)
+        # This ensures the merged schema's field names match the executor's renamed fields
+        for rename in changes.rename_fields:
+            if rename.old_name not in fields_by_name:
+                raise ValueError(
+                    f"Cannot rename field '{rename.old_name}' because it does not exist in the source schema"
+                )
+            if rename.new_name in fields_by_name and rename.new_name != rename.old_name:
+                raise ValueError(
+                    f"Cannot rename field '{rename.old_name}' to '{rename.new_name}' because a field with the new name already exists"
+                )
+            if rename.new_name == rename.old_name:
+                continue  # No-op rename
+            field_def = fields_by_name.pop(rename.old_name)
+            field_def["name"] = rename.new_name
+            fields_by_name[rename.new_name] = field_def
+
         for field_name in changes.remove_fields:
             fields_by_name.pop(field_name, None)
 
@@ -277,6 +300,13 @@ class MigrationPlanner:
             new_prefix = changes.index["prefix"]
             old_prefix = source_dict["index"].get("prefix")
             if new_prefix != old_prefix:
+                # Block multi-prefix migrations - we only support single prefix
+                if isinstance(old_prefix, list) and len(old_prefix) > 1:
+                    raise ValueError(
+                        f"Cannot change prefix for multi-prefix indexes. "
+                        f"Source index has multiple prefixes: {old_prefix}. "
+                        f"Multi-prefix migrations are not supported."
+                    )
                 change_prefix = new_prefix
                 warnings.append(
                     f"Prefix change: '{old_prefix}' -> '{new_prefix}' "

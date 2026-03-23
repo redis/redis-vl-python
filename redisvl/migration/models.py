@@ -202,11 +202,15 @@ class BatchState(BaseModel):
 
     @property
     def success_count(self) -> int:
-        return sum(1 for idx in self.completed if idx.status == "success")
+        return sum(1 for idx in self.completed if idx.status == "succeeded")
 
     @property
     def failed_count(self) -> int:
         return sum(1 for idx in self.completed if idx.status == "failed")
+
+    @property
+    def skipped_count(self) -> int:
+        return sum(1 for idx in self.completed if idx.status == "skipped")
 
     @property
     def is_complete(self) -> bool:
