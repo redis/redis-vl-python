@@ -476,11 +476,12 @@ class MigrationWizard:
         field_name = field["name"]
 
         print(f"Current vector config for '{field_name}':")
-        print(f"  algorithm: {current.get('algorithm', 'HNSW')}")
+        current_algo = current.get("algorithm", "hnsw").upper()
+        print(f"  algorithm: {current_algo}")
         print(f"  datatype: {current.get('datatype', 'float32')}")
         print(f"  distance_metric: {current.get('distance_metric', 'cosine')}")
         print(f"  dims: {current.get('dims')} (cannot be changed)")
-        if current.get("algorithm", "HNSW") == "HNSW":
+        if current_algo == "HNSW":
             print(f"  m: {current.get('m', 16)}")
             print(f"  ef_construction: {current.get('ef_construction', 200)}")
 
@@ -491,7 +492,7 @@ class MigrationWizard:
             "  Algorithm: vector search method (FLAT=brute force, HNSW=graph, SVS-VAMANA=compressed graph)"
         )
         algo = (
-            input(f"Algorithm [current: {current.get('algorithm', 'HNSW')}]: ")
+            input(f"Algorithm [current: {current_algo}]: ")
             .strip()
             .upper()
             .replace("_", "-")  # Normalize SVS_VAMANA to SVS-VAMANA
@@ -500,9 +501,7 @@ class MigrationWizard:
             attrs["algorithm"] = algo
 
         # Datatype (quantization) - show algorithm-specific options
-        effective_algo = attrs.get(
-            "algorithm", current.get("algorithm", "HNSW")
-        ).upper()
+        effective_algo = attrs.get("algorithm", current_algo)
         valid_datatypes: tuple[str, ...]
         if effective_algo == "SVS-VAMANA":
             # SVS-VAMANA only supports float16, float32

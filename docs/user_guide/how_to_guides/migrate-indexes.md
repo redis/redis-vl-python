@@ -451,7 +451,7 @@ The index is taking longer to rebuild than expected. This can happen with large 
 
 ### Validation failed: "document count mismatch"
 
-Documents were added or removed between plan and apply. This is expected if your application is actively writing. Re-run validation with `--skip-count-check` if acceptable.
+Documents were added or removed between plan and apply. This is expected if your application is actively writing. Re-run `plan` and `apply` during a quieter period when the document count is stable, or verify the mismatch is due only to normal application traffic.
 
 ### How to recover from a failed migration
 
