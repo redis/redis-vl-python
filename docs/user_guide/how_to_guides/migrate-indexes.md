@@ -34,9 +34,11 @@ rvl migrate validate --plan migration_plan.yaml --url redis://localhost:6379
 - `redisvl` installed (`pip install redisvl`)
 
 ```bash
-# Local development with Redis Stack
-docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
+# Local development with Redis 8.0+ (recommended for full feature support)
+docker run -d --name redis -p 6379:6379 redis:8.0
 ```
+
+**Note:** Redis 8.0+ is required for INT8/UINT8 vector datatypes. SVS-VAMANA algorithm requires Redis 8.2+ and Intel AVX-512 hardware.
 
 ## Step 1: Discover Available Indexes
 
@@ -376,20 +378,21 @@ rvl migrate validate \
 |--------|-----------|-------|
 | Add text/tag/numeric/geo field | ✅ | |
 | Remove a field | ✅ | |
+| Rename a field | ✅ | Renames field in all documents |
+| Change key prefix | ✅ | Renames keys via RENAME command |
+| Rename the index | ✅ | Index-only |
 | Make a field sortable | ✅ | |
 | Change field options (separator, stemming) | ✅ | |
 | Change vector algorithm (FLAT ↔ HNSW ↔ SVS-VAMANA) | ✅ | Index-only |
 | Change distance metric (COSINE ↔ L2 ↔ IP) | ✅ | Index-only |
 | Tune HNSW parameters (M, EF_CONSTRUCTION) | ✅ | Index-only |
-| Quantize vectors (float32 → float16) | ✅ | Auto re-encode |
+| Quantize vectors (float32 → float16/bfloat16/int8/uint8) | ✅ | Auto re-encode |
 
 ## What's Blocked
 
 | Change | Why | Workaround |
 |--------|-----|------------|
 | Change vector dimensions | Requires re-embedding | Re-embed with new model, reload data |
-| Change prefix/keyspace | Documents at wrong keys | Create new index, reload data |
-| Rename a field | Stored data uses old name | Create new index, reload data |
 | Change storage type (hash ↔ JSON) | Different data format | Export, transform, reload |
 | Add a new vector field | Requires vectors for all docs | Add vectors first, then migrate |
 

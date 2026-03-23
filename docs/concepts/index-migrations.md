@@ -18,16 +18,19 @@ The migrator classifies schema changes into two categories:
 | Change | Status |
 |--------|--------|
 | Add or remove a field | Supported |
+| Rename a field | Supported |
 | Change field options (sortable, separator) | Supported |
+| Change key prefix | Supported |
+| Rename the index | Supported |
 | Change vector algorithm (FLAT, HNSW, SVS-VAMANA) | Supported |
 | Change distance metric (COSINE, L2, IP) | Supported |
 | Tune algorithm parameters (M, EF_CONSTRUCTION) | Supported |
-| Quantize vectors (float32 to float16) | Supported |
+| Quantize vectors (float32 to float16/bfloat16/int8/uint8) | Supported |
 | Change vector dimensions | Blocked |
-| Change key prefix | Blocked |
-| Rename a field | Blocked |
 | Change storage type (hash to JSON) | Blocked |
 | Add a new vector field | Blocked |
+
+**Note:** INT8 and UINT8 vector datatypes require Redis 8.0+. SVS-VAMANA algorithm requires Redis 8.2+ and Intel AVX-512 hardware.
 
 **Supported** changes can be applied automatically using `rvl migrate`. The migrator handles the index rebuild and any necessary data transformations.
 
@@ -103,18 +106,6 @@ Quantization time is proportional to document count. Plan for downtime according
 Vector dimensions are determined by your embedding model. A 384 dimensional vector from one model is mathematically incompatible with a 768 dimensional index expecting vectors from a different model. There is no way to resize an embedding.
 
 **Resolution**: Re-embed your documents using the new model and load them into a new index.
-
-### Prefix changes
-
-Changing a prefix from `docs:` to `articles:` requires copying every document to a new key. This operation doubles storage temporarily and can leave orphaned keys if interrupted.
-
-**Resolution**: Create a new index with the new prefix and reload your data.
-
-### Field renames
-
-Field names are stored in the documents themselves as hash field names or JSON keys. Renaming requires iterating through every document and updating the field name.
-
-**Resolution**: Create a new index with the correct field name and reload your data.
 
 ### Storage type changes
 
