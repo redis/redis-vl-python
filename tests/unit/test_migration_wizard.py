@@ -62,25 +62,28 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
             "$.status",  # JSON path
             "y",  # sortable
             "n",  # index_missing
-            "|",  # separator
-            "n",  # case_sensitive
             "n",  # index_empty
+            "|",  # separator (tag-specific)
+            "n",  # case_sensitive (tag-specific)
+            "n",  # withsuffixtrie (tag-specific)
             "n",  # no_index (prompted since sortable=y)
             # Update field
             "2",
             "title",  # select field
             "y",  # sortable
             "n",  # index_missing
-            "n",  # no_stem
-            "",  # weight (blank to skip)
             "n",  # index_empty
+            "n",  # no_stem (text-specific)
+            "",  # weight (blank to skip, text-specific)
+            "",  # phonetic_matcher (blank to skip)
+            "n",  # withsuffixtrie (text-specific)
             "n",  # unf (prompted since sortable=y)
             "n",  # no_index (prompted since sortable=y)
             # Remove field
             "3",
             "category",
             # Finish
-            "5",
+            "8",
         ]
     )
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -96,9 +99,10 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
             "attrs": {
                 "sortable": True,
                 "index_missing": False,
+                "index_empty": False,
                 "separator": "|",
                 "case_sensitive": False,
-                "index_empty": False,
+                "withsuffixtrie": False,
                 "no_index": False,
             },
         }
@@ -108,6 +112,7 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
     assert patch.changes.update_fields[0].name == "title"
     assert patch.changes.update_fields[0].attrs["sortable"] is True
     assert patch.changes.update_fields[0].attrs["no_stem"] is False
+    assert patch.changes.update_fields[0].attrs["withsuffixtrie"] is False
 
 
 # =============================================================================
@@ -130,7 +135,7 @@ class TestVectorAlgorithmChanges:
                 "",  # datatype (keep current)
                 "",  # distance_metric (keep current)
                 # No HNSW params prompted for FLAT
-                "5",  # Finish
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -156,7 +161,9 @@ class TestVectorAlgorithmChanges:
                 "",  # distance_metric (keep current)
                 "32",  # M
                 "400",  # EF_CONSTRUCTION
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -182,7 +189,7 @@ class TestVectorAlgorithmChanges:
                 "",  # distance_metric (keep current)
                 "64",  # GRAPH_MAX_DEGREE
                 "LVQ8",  # COMPRESSION
-                "5",  # Finish
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -209,7 +216,7 @@ class TestVectorAlgorithmChanges:
                 "",  # distance_metric (keep current)
                 "",  # GRAPH_MAX_DEGREE (keep default)
                 "",  # COMPRESSION (none)
-                "5",  # Finish
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -233,7 +240,7 @@ class TestVectorAlgorithmChanges:
                 "",  # distance_metric
                 "48",  # GRAPH_MAX_DEGREE
                 "LEANVEC8X8",  # COMPRESSION
-                "5",  # Finish
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -267,7 +274,9 @@ class TestVectorDatatypeChanges:
                 "",  # distance_metric
                 "",  # M (keep current)
                 "",  # EF_CONSTRUCTION (keep current)
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -291,7 +300,9 @@ class TestVectorDatatypeChanges:
                 "",  # distance_metric
                 "",  # M
                 "",  # EF_CONSTRUCTION
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -315,7 +326,9 @@ class TestVectorDatatypeChanges:
                 "",  # distance_metric
                 "",  # M
                 "",  # EF_CONSTRUCTION
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -349,7 +362,9 @@ class TestDistanceMetricChanges:
                 "l2",  # distance_metric
                 "",  # M
                 "",  # EF_CONSTRUCTION
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -373,7 +388,9 @@ class TestDistanceMetricChanges:
                 "ip",  # distance_metric (inner product)
                 "",  # M
                 "",  # EF_CONSTRUCTION
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -406,7 +423,9 @@ class TestCombinedVectorChanges:
                 "l2",  # distance_metric
                 "24",  # M
                 "300",  # EF_CONSTRUCTION
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -434,7 +453,7 @@ class TestCombinedVectorChanges:
                 "ip",  # distance_metric
                 "50",  # GRAPH_MAX_DEGREE
                 "LVQ4X8",  # COMPRESSION
-                "5",  # Finish
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -462,7 +481,9 @@ class TestCombinedVectorChanges:
                 "",  # distance_metric (keep current)
                 "",  # M (keep current)
                 "",  # EF_CONSTRUCTION (keep current)
-                "5",  # Finish
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",  # Finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -495,11 +516,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNSW_TYPO",  # Invalid algorithm
-                "",
-                "",
-                "",
-                "",
-                "5",
+                "",  # datatype
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -519,11 +542,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNS",  # Partial name
-                "",
-                "",
-                "",
-                "",
-                "5",
+                "",  # datatype
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -542,11 +567,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNSW; DROP TABLE users;--",  # SQL injection attempt
-                "",
-                "",
-                "",
-                "",
-                "5",
+                "",  # datatype
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -567,7 +594,7 @@ class TestWizardAdversarialInputs:
                 "flat",  # lowercase
                 "",
                 "",
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -591,7 +618,7 @@ class TestWizardAdversarialInputs:
                 "",
                 "",
                 "",
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -615,11 +642,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNSW",
-                "",
-                "",
+                "",  # datatype
+                "",  # distance_metric
                 "-16",  # Negative M
-                "",
-                "5",
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -639,11 +668,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNSW",
-                "",
-                "",
+                "",  # datatype
+                "",  # distance_metric
                 "16.5",  # Float M
-                "",
-                "5",
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -663,11 +694,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNSW",
-                "",
-                "",
+                "",  # datatype
+                "",  # distance_metric
                 "sixteen",  # String M
-                "",
-                "5",
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -687,11 +720,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "HNSW",
-                "",
-                "",
+                "",  # datatype
+                "",  # distance_metric
                 "0",  # Zero M
-                "",
-                "5",
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -717,8 +752,10 @@ class TestWizardAdversarialInputs:
                 "",
                 "",
                 "",
-                "999999999",  # Very large
-                "5",
+                "999999999",  # Very large EF_CONSTRUCTION
+                "",  # EF_RUNTIME (keep current)
+                "",  # EPSILON (keep current)
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -741,12 +778,14 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "",
+                "",  # algorithm
                 "bfloat16",  # Valid for HNSW/FLAT
-                "",
-                "",
-                "",
-                "5",
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -765,12 +804,14 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "",
+                "",  # algorithm
                 "uint8",  # Valid for HNSW/FLAT
-                "",
-                "",
-                "",
-                "5",
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -795,7 +836,7 @@ class TestWizardAdversarialInputs:
                 "",
                 "",  # graph_max_degree
                 "",  # compression
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -820,12 +861,14 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "",
-                "",
+                "",  # algorithm
+                "",  # datatype
                 "euclidean",  # Invalid (should be 'l2')
-                "",
-                "",
-                "5",
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -843,12 +886,14 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "",
-                "",
+                "",  # algorithm
+                "",  # datatype
                 "L2",  # Uppercase
-                "",
-                "",
-                "5",
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -876,7 +921,7 @@ class TestWizardAdversarialInputs:
                 "",
                 "",
                 "INVALID_COMPRESSION",  # Invalid
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -900,7 +945,7 @@ class TestWizardAdversarialInputs:
                 "",
                 "",
                 "lvq8",  # lowercase
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -923,12 +968,14 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "   ",  # Whitespace only
-                "   ",
-                "   ",
-                "   ",
-                "   ",
-                "5",
+                "   ",  # Whitespace only (algorithm)
+                "   ",  # datatype
+                "   ",  # distance_metric
+                "   ",  # M
+                "   ",  # EF_CONSTRUCTION
+                "   ",  # EF_RUNTIME
+                "   ",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -946,10 +993,10 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "  FLAT  ",  # Whitespace around
-                "",
-                "",
-                "5",
+                "  FLAT  ",  # Whitespace around (FLAT has no extra params)
+                "",  # datatype
+                "",  # distance_metric
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -968,12 +1015,14 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "embedding",
-                "HNSW🚀",  # Unicode emoji
-                "",
-                "",
-                "",
-                "",
-                "5",
+                "HNSW\U0001f680",  # Unicode emoji
+                "",  # datatype
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -992,11 +1041,13 @@ class TestWizardAdversarialInputs:
                 "2",
                 "embedding",
                 "A" * 10000,  # Very long string
-                "",
-                "",
-                "",
-                "",
-                "5",
+                "",  # datatype
+                "",  # distance_metric
+                "",  # M
+                "",  # EF_CONSTRUCTION
+                "",  # EF_RUNTIME
+                "",  # EPSILON
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1018,7 +1069,7 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "nonexistent_field",  # Doesn't exist
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1037,7 +1088,7 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "99",  # Out of range
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1055,7 +1106,7 @@ class TestWizardAdversarialInputs:
             [
                 "2",
                 "-1",  # Negative
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1078,7 +1129,7 @@ class TestWizardAdversarialInputs:
                 "99",  # Invalid action
                 "abc",  # Invalid action
                 "",  # Empty
-                "5",  # Finally finish
+                "8",  # Finally finish
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1106,7 +1157,7 @@ class TestWizardAdversarialInputs:
                 "",
                 "-40",  # Negative
                 "",
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
@@ -1130,7 +1181,7 @@ class TestWizardAdversarialInputs:
                 "",
                 "forty",  # String
                 "",
-                "5",
+                "8",
             ]
         )
         monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))

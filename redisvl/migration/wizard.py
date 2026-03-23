@@ -4,7 +4,12 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from redisvl.migration.models import FieldUpdate, SchemaPatch, SchemaPatchChanges
+from redisvl.migration.models import (
+    FieldRename,
+    FieldUpdate,
+    SchemaPatch,
+    SchemaPatchChanges,
+)
 from redisvl.migration.planner import MigrationPlanner
 from redisvl.migration.utils import list_indexes, write_yaml
 from redisvl.schema.schema import IndexSchema
@@ -75,6 +80,9 @@ class MigrationWizard:
         print(f"  Add fields: {len(patch.changes.add_fields)}")
         print(f"  Update fields: {len(patch.changes.update_fields)}")
         print(f"  Remove fields: {len(patch.changes.remove_fields)}")
+        print(f"  Rename fields: {len(patch.changes.rename_fields)}")
+        if patch.changes.index:
+            print(f"  Index changes: {list(patch.changes.index.keys())}")
         return patch.changes
 
     def _resolve_index_name(
@@ -120,8 +128,11 @@ class MigrationWizard:
             print("1. Add field        (text, tag, numeric, geo)")
             print("2. Update field     (sortable, weight, separator, vector config)")
             print("3. Remove field")
-            print("4. Preview patch    (show pending changes as YAML)")
-            print("5. Finish")
+            print("4. Rename field     (rename field in all documents)")
+            print("5. Rename index     (change index name)")
+            print("6. Change prefix    (rename all keys)")
+            print("7. Preview patch    (show pending changes as YAML)")
+            print("8. Finish")
             action = input("Enter a number: ").strip()
 
             if action == "1":
@@ -137,15 +148,27 @@ class MigrationWizard:
                 if field_name:
                     changes.remove_fields.append(field_name)
             elif action == "4":
+                field_rename = self._prompt_rename_field(source_schema)
+                if field_rename:
+                    changes.rename_fields.append(field_rename)
+            elif action == "5":
+                new_name = self._prompt_rename_index(source_schema)
+                if new_name:
+                    changes.index["name"] = new_name
+            elif action == "6":
+                new_prefix = self._prompt_change_prefix(source_schema)
+                if new_prefix:
+                    changes.index["prefix"] = new_prefix
+            elif action == "7":
                 print(
                     yaml.safe_dump(
                         {"version": 1, "changes": changes.model_dump()}, sort_keys=False
                     )
                 )
-            elif action == "5":
+            elif action == "8":
                 done = True
             else:
-                print("Invalid action. Please choose 1-5.")
+                print("Invalid action. Please choose 1-8.")
 
         return SchemaPatch(version=1, changes=changes)
 
@@ -220,28 +243,125 @@ class MigrationWizard:
         return FieldUpdate(name=selected["name"], attrs=attrs)
 
     def _prompt_remove_field(self, source_schema: Dict[str, Any]) -> Optional[str]:
-        removable_fields = [
-            field["name"]
-            for field in source_schema["fields"]
-            if field["type"] != "vector"
-        ]
+        removable_fields = [field["name"] for field in source_schema["fields"]]
         if not removable_fields:
-            print("No removable Phase 1 fields are available.")
+            print("No fields available to remove.")
             return None
 
         print("Removable fields:")
-        for position, field_name in enumerate(removable_fields, start=1):
-            print(f"{position}. {field_name}")
+        for position, field in enumerate(source_schema["fields"], start=1):
+            field_type = field["type"]
+            warning = " [WARNING: vector field]" if field_type == "vector" else ""
+            print(f"{position}. {field['name']} ({field_type}){warning}")
 
         choice = input("Select a field to remove by number or name: ").strip()
+        selected_name: Optional[str] = None
         if choice in removable_fields:
-            return choice
-        if choice.isdigit():
+            selected_name = choice
+        elif choice.isdigit():
             offset = int(choice) - 1
             if 0 <= offset < len(removable_fields):
-                return removable_fields[offset]
-        print("Invalid field selection.")
-        return None
+                selected_name = removable_fields[offset]
+
+        if not selected_name:
+            print("Invalid field selection.")
+            return None
+
+        # Check if it's a vector field and require confirmation
+        selected_field = next(
+            (f for f in source_schema["fields"] if f["name"] == selected_name), None
+        )
+        if selected_field and selected_field["type"] == "vector":
+            print(
+                f"\n  WARNING: Removing vector field '{selected_name}' will:\n"
+                "    - Remove it from the search index\n"
+                "    - Leave vector data in documents (wasted storage)\n"
+                "    - Require re-embedding if you want to restore it later"
+            )
+            confirm = input("Type 'yes' to confirm removal: ").strip().lower()
+            if confirm != "yes":
+                print("Cancelled.")
+                return None
+
+        return selected_name
+
+    def _prompt_rename_field(
+        self, source_schema: Dict[str, Any]
+    ) -> Optional[FieldRename]:
+        """Prompt user to rename a field in all documents."""
+        fields = source_schema["fields"]
+        if not fields:
+            print("No fields available to rename.")
+            return None
+
+        print("Fields available for renaming:")
+        for position, field in enumerate(fields, start=1):
+            print(f"{position}. {field['name']} ({field['type']})")
+
+        choice = input("Select a field to rename by number or name: ").strip()
+        selected: Optional[Dict[str, Any]] = None
+        for position, field in enumerate(fields, start=1):
+            if choice == str(position) or choice == field["name"]:
+                selected = field
+                break
+        if not selected:
+            print("Invalid field selection.")
+            return None
+
+        old_name = selected["name"]
+        print(f"Renaming field '{old_name}'")
+        print(
+            "  Warning: This will modify all documents to rename the field. "
+            "This is an expensive operation for large datasets."
+        )
+        new_name = input("New field name: ").strip()
+        if not new_name:
+            print("New field name is required.")
+            return None
+        if new_name == old_name:
+            print("New name is the same as the old name.")
+            return None
+
+        existing_names = {f["name"] for f in fields}
+        if new_name in existing_names:
+            print(f"Field '{new_name}' already exists.")
+            return None
+
+        return FieldRename(old_name=old_name, new_name=new_name)
+
+    def _prompt_rename_index(self, source_schema: Dict[str, Any]) -> Optional[str]:
+        """Prompt user to rename the index."""
+        current_name = source_schema["index"]["name"]
+        print(f"Current index name: {current_name}")
+        print(
+            "  Note: This only changes the index name. "
+            "Documents and keys are unchanged."
+        )
+        new_name = input("New index name: ").strip()
+        if not new_name:
+            print("New index name is required.")
+            return None
+        if new_name == current_name:
+            print("New name is the same as the current name.")
+            return None
+        return new_name
+
+    def _prompt_change_prefix(self, source_schema: Dict[str, Any]) -> Optional[str]:
+        """Prompt user to change the key prefix."""
+        current_prefix = source_schema["index"]["prefix"]
+        print(f"Current prefix: {current_prefix}")
+        print(
+            "  Warning: This will RENAME all keys from the old prefix to the new prefix. "
+            "This is an expensive operation for large datasets."
+        )
+        new_prefix = input("New prefix: ").strip()
+        if not new_prefix:
+            print("New prefix is required.")
+            return None
+        if new_prefix == current_prefix:
+            print("New prefix is the same as the current prefix.")
+            return None
+        return new_prefix
 
     def _prompt_common_attrs(
         self, field_type: str, allow_blank: bool = False
@@ -261,6 +381,14 @@ class MigrationWizard:
         index_missing = self._prompt_bool("Index missing", allow_blank=allow_blank)
         if index_missing is not None:
             attrs["index_missing"] = index_missing
+
+        # Index empty - index documents where field value is empty string
+        print(
+            "  Index empty: enables isempty() queries for documents with empty string values"
+        )
+        index_empty = self._prompt_bool("Index empty", allow_blank=allow_blank)
+        if index_empty is not None:
+            attrs["index_empty"] = index_empty
 
         # Type-specific attributes
         if field_type == "text":
@@ -302,11 +430,21 @@ class MigrationWizard:
             except ValueError:
                 print("Invalid weight value.")
 
-        # Index empty (requires Redis Search 2.10+)
-        print("  Index empty: enables searching for empty string values")
-        index_empty = self._prompt_bool("Index empty", allow_blank=allow_blank)
-        if index_empty is not None:
-            attrs["index_empty"] = index_empty
+        # Phonetic matcher
+        print(
+            "  Phonetic matcher: enables phonetic matching (e.g., 'dm:en' for Metaphone)"
+        )
+        phonetic = input("Phonetic matcher [leave blank for none]: ").strip()
+        if phonetic:
+            attrs["phonetic_matcher"] = phonetic
+
+        # Withsuffixtrie
+        print("  Suffix trie: enables suffix/contains queries (*suffix, *contains*)")
+        withsuffixtrie = self._prompt_bool(
+            "Enable suffix trie", allow_blank=allow_blank
+        )
+        if withsuffixtrie is not None:
+            attrs["withsuffixtrie"] = withsuffixtrie
 
         # UNF (only if sortable)
         if attrs.get("sortable"):
@@ -329,11 +467,13 @@ class MigrationWizard:
         if case_sensitive is not None:
             attrs["case_sensitive"] = case_sensitive
 
-        # Index empty (requires Redis Search 2.10+)
-        print("  Index empty: enables searching for empty tag values")
-        index_empty = self._prompt_bool("Index empty", allow_blank=allow_blank)
-        if index_empty is not None:
-            attrs["index_empty"] = index_empty
+        # Withsuffixtrie
+        print("  Suffix trie: enables suffix/contains queries (*suffix, *contains*)")
+        withsuffixtrie = self._prompt_bool(
+            "Enable suffix trie", allow_blank=allow_blank
+        )
+        if withsuffixtrie is not None:
+            attrs["withsuffixtrie"] = withsuffixtrie
 
     def _prompt_numeric_attrs(
         self, attrs: Dict[str, Any], allow_blank: bool, sortable: Optional[bool]
@@ -438,6 +578,33 @@ class MigrationWizard:
             ).strip()
             if ef_input and ef_input.isdigit():
                 attrs["ef_construction"] = int(ef_input)
+
+            print(
+                "  EF_RUNTIME: query-time search depth (higher=better recall, slower queries)"
+            )
+            ef_runtime_input = input(
+                f"EF_RUNTIME [current: {current.get('ef_runtime', 10)}]: "
+            ).strip()
+            if ef_runtime_input and ef_runtime_input.isdigit():
+                ef_runtime_val = int(ef_runtime_input)
+                if ef_runtime_val > 0:
+                    attrs["ef_runtime"] = ef_runtime_val
+
+            print(
+                "  EPSILON: relative factor for range queries (0.0-1.0, lower=more accurate)"
+            )
+            epsilon_input = input(
+                f"EPSILON [current: {current.get('epsilon', 0.01)}]: "
+            ).strip()
+            if epsilon_input:
+                try:
+                    epsilon_val = float(epsilon_input)
+                    if 0.0 <= epsilon_val <= 1.0:
+                        attrs["epsilon"] = epsilon_val
+                    else:
+                        print("    Epsilon must be between 0.0 and 1.0, ignoring.")
+                except ValueError:
+                    print("    Invalid epsilon value, ignoring.")
 
         elif effective_algo == "SVS-VAMANA":
             print(
