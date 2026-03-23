@@ -189,6 +189,151 @@ class MigrationExecutor:
             if cursor == 0:
                 break
 
+    def _rename_keys(
+        self,
+        client: SyncRedisClient,
+        keys: List[str],
+        old_prefix: str,
+        new_prefix: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename keys from old prefix to new prefix.
+
+        Args:
+            client: Redis client
+            keys: List of keys to rename
+            old_prefix: Current prefix (e.g., "doc:")
+            new_prefix: New prefix (e.g., "article:")
+            progress_callback: Optional callback(done, total)
+
+        Returns:
+            Number of keys successfully renamed
+        """
+        renamed = 0
+        total = len(keys)
+        pipeline_size = 100  # Process in batches
+
+        for i in range(0, total, pipeline_size):
+            batch = keys[i : i + pipeline_size]
+            pipe = client.pipeline(transaction=False)
+
+            for key in batch:
+                # Compute new key name
+                if key.startswith(old_prefix):
+                    new_key = new_prefix + key[len(old_prefix) :]
+                else:
+                    # Key doesn't match expected prefix, skip
+                    logger.warning(
+                        f"Key '{key}' does not start with prefix '{old_prefix}'"
+                    )
+                    continue
+                pipe.rename(key, new_key)
+
+            try:
+                results = pipe.execute()
+                renamed += sum(1 for r in results if r is True or r == "OK")
+            except Exception as e:
+                logger.warning(f"Error in rename batch: {e}")
+
+            if progress_callback:
+                progress_callback(min(i + pipeline_size, total), total)
+
+        return renamed
+
+    def _rename_field_in_hash(
+        self,
+        client: SyncRedisClient,
+        keys: List[str],
+        old_name: str,
+        new_name: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename a field in hash documents.
+
+        For each document:
+        1. HGET key old_name -> value
+        2. HSET key new_name value
+        3. HDEL key old_name
+        """
+        renamed = 0
+        total = len(keys)
+        pipeline_size = 100
+
+        for i in range(0, total, pipeline_size):
+            batch = keys[i : i + pipeline_size]
+
+            # First, get all old field values
+            pipe = client.pipeline(transaction=False)
+            for key in batch:
+                pipe.hget(key, old_name)
+            values = pipe.execute()
+
+            # Now set new field and delete old
+            pipe = client.pipeline(transaction=False)
+            for key, value in zip(batch, values):
+                if value is not None:
+                    pipe.hset(key, new_name, value)
+                    pipe.hdel(key, old_name)
+
+            try:
+                results = pipe.execute()
+                # Count successful HSET operations (every other result)
+                renamed += sum(1 for j, r in enumerate(results) if j % 2 == 0 and r)
+            except Exception as e:
+                logger.warning(f"Error in field rename batch: {e}")
+
+            if progress_callback:
+                progress_callback(min(i + pipeline_size, total), total)
+
+        return renamed
+
+    def _rename_field_in_json(
+        self,
+        client: SyncRedisClient,
+        keys: List[str],
+        old_path: str,
+        new_path: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename a field in JSON documents.
+
+        For each document:
+        1. JSON.GET key old_path -> value
+        2. JSON.SET key new_path value
+        3. JSON.DEL key old_path
+        """
+        renamed = 0
+        total = len(keys)
+        pipeline_size = 100
+
+        for i in range(0, total, pipeline_size):
+            batch = keys[i : i + pipeline_size]
+
+            # First, get all old field values
+            pipe = client.pipeline(transaction=False)
+            for key in batch:
+                pipe.json().get(key, old_path)
+            values = pipe.execute()
+
+            # Now set new field and delete old
+            pipe = client.pipeline(transaction=False)
+            for key, value in zip(batch, values):
+                if value is not None:
+                    pipe.json().set(key, new_path, value)
+                    pipe.json().delete(key, old_path)
+
+            try:
+                results = pipe.execute()
+                # Count successful JSON.SET operations (every other result)
+                renamed += sum(1 for j, r in enumerate(results) if j % 2 == 0 and r)
+            except Exception as e:
+                logger.warning(f"Error in JSON field rename batch: {e}")
+
+            if progress_callback:
+                progress_callback(min(i + pipeline_size, total), total)
+
+        return renamed
+
     def apply(
         self,
         plan: MigrationPlan,
@@ -258,6 +403,8 @@ class MigrationExecutor:
         enumerate_duration = 0.0
         drop_duration = 0.0
         quantize_duration = 0.0
+        field_rename_duration = 0.0
+        key_rename_duration = 0.0
         recreate_duration = 0.0
         indexing_duration = 0.0
         target_info: Dict[str, Any] = {}
@@ -269,17 +416,25 @@ class MigrationExecutor:
             plan.source.schema_snapshot, plan.merged_target_schema
         )
 
+        # Check for rename operations
+        rename_ops = plan.rename_operations
+        has_prefix_change = bool(rename_ops.change_prefix)
+        has_field_renames = bool(rename_ops.rename_fields)
+        needs_enumeration = datatype_changes or has_prefix_change or has_field_renames
+
         def _notify(step: str, detail: Optional[str] = None) -> None:
             if progress_callback:
                 progress_callback(step, detail)
 
         try:
-            # STEP 1: Enumerate keys BEFORE dropping index (if quantization needed)
-            # This allows us to use FT.AGGREGATE for efficient enumeration
-            if datatype_changes:
+            client = source_index._redis_client
+            storage_type = plan.source.keyspace.storage_type
+
+            # STEP 1: Enumerate keys BEFORE any modifications
+            # Needed for: quantization, prefix change, or field renames
+            if needs_enumeration:
                 _notify("enumerate", "Enumerating indexed documents...")
                 enumerate_started = time.perf_counter()
-                client = source_index._redis_client
                 keys_to_process = list(
                     self._enumerate_indexed_keys(
                         client, plan.source.index_name, batch_size=1000
@@ -291,17 +446,87 @@ class MigrationExecutor:
                     f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
                 )
 
-            # STEP 2: Drop the index
+            # STEP 2: Field renames (before dropping index, while docs are still indexed)
+            if has_field_renames and keys_to_process:
+                _notify("field_rename", "Renaming fields in documents...")
+                field_rename_started = time.perf_counter()
+                for field_rename in rename_ops.rename_fields:
+                    if storage_type == "json":
+                        # For JSON, use JSON paths
+                        old_path = f"$.{field_rename.old_name}"
+                        new_path = f"$.{field_rename.new_name}"
+                        self._rename_field_in_json(
+                            client,
+                            keys_to_process,
+                            old_path,
+                            new_path,
+                            progress_callback=lambda done, total: _notify(
+                                "field_rename",
+                                f"{field_rename.old_name} -> {field_rename.new_name}: {done:,}/{total:,}",
+                            ),
+                        )
+                    else:
+                        # For HASH, use field names directly
+                        self._rename_field_in_hash(
+                            client,
+                            keys_to_process,
+                            field_rename.old_name,
+                            field_rename.new_name,
+                            progress_callback=lambda done, total: _notify(
+                                "field_rename",
+                                f"{field_rename.old_name} -> {field_rename.new_name}: {done:,}/{total:,}",
+                            ),
+                        )
+                field_rename_duration = round(
+                    time.perf_counter() - field_rename_started, 3
+                )
+                _notify("field_rename", f"done ({field_rename_duration}s)")
+
+            # STEP 3: Drop the index
             _notify("drop", "Dropping index definition...")
             drop_started = time.perf_counter()
             source_index.delete(drop=False)
             drop_duration = round(time.perf_counter() - drop_started, 3)
             _notify("drop", f"done ({drop_duration}s)")
 
-            # STEP 3: Re-encode vectors using pre-enumerated keys
+            # STEP 4: Key renames (after drop, before recreate)
+            if has_prefix_change and keys_to_process:
+                _notify("key_rename", "Renaming keys...")
+                key_rename_started = time.perf_counter()
+                old_prefix = plan.source.keyspace.prefixes[0]
+                new_prefix = rename_ops.change_prefix
+                assert new_prefix is not None  # For type checker
+                renamed_count = self._rename_keys(
+                    client,
+                    keys_to_process,
+                    old_prefix,
+                    new_prefix,
+                    progress_callback=lambda done, total: _notify(
+                        "key_rename", f"{done:,}/{total:,} keys"
+                    ),
+                )
+                key_rename_duration = round(time.perf_counter() - key_rename_started, 3)
+                _notify(
+                    "key_rename",
+                    f"done ({renamed_count:,} keys in {key_rename_duration}s)",
+                )
+
+            # STEP 5: Re-encode vectors using pre-enumerated keys
             if datatype_changes and keys_to_process:
                 _notify("quantize", "Re-encoding vectors...")
                 quantize_started = time.perf_counter()
+                # If we renamed keys, update keys_to_process to new names
+                if has_prefix_change and rename_ops.change_prefix:
+                    old_prefix = plan.source.keyspace.prefixes[0]
+                    new_prefix = rename_ops.change_prefix
+                    keys_to_process = [
+                        (
+                            new_prefix + k[len(old_prefix) :]
+                            if k.startswith(old_prefix)
+                            else k
+                        )
+                        for k in keys_to_process
+                    ]
                 docs_quantized = self._quantize_vectors(
                     source_index,
                     datatype_changes,
@@ -352,11 +577,19 @@ class MigrationExecutor:
                 quantize_duration_seconds=(
                     quantize_duration if quantize_duration else None
                 ),
+                field_rename_duration_seconds=(
+                    field_rename_duration if field_rename_duration else None
+                ),
+                key_rename_duration_seconds=(
+                    key_rename_duration if key_rename_duration else None
+                ),
                 recreate_duration_seconds=recreate_duration,
                 initial_indexing_duration_seconds=indexing_duration,
                 validation_duration_seconds=validation_duration,
                 downtime_duration_seconds=round(
                     drop_duration
+                    + field_rename_duration
+                    + key_rename_duration
                     + quantize_duration
                     + recreate_duration
                     + indexing_duration,
@@ -379,17 +612,23 @@ class MigrationExecutor:
                 total_migration_duration_seconds=total_duration,
                 drop_duration_seconds=drop_duration or None,
                 quantize_duration_seconds=quantize_duration or None,
+                field_rename_duration_seconds=field_rename_duration or None,
+                key_rename_duration_seconds=key_rename_duration or None,
                 recreate_duration_seconds=recreate_duration or None,
                 initial_indexing_duration_seconds=indexing_duration or None,
                 downtime_duration_seconds=(
                     round(
                         drop_duration
+                        + field_rename_duration
+                        + key_rename_duration
                         + quantize_duration
                         + recreate_duration
                         + indexing_duration,
                         3,
                     )
                     if drop_duration
+                    or field_rename_duration
+                    or key_rename_duration
                     or quantize_duration
                     or recreate_duration
                     or indexing_duration
