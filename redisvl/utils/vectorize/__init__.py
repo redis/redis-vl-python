@@ -1,5 +1,3 @@
-import os
-
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.utils.vectorize.base import BaseVectorizer, Vectorizers
 from redisvl.utils.vectorize.bedrock import BedrockVectorizer
