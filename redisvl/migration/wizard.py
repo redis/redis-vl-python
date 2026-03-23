@@ -602,16 +602,45 @@ class MigrationWizard:
 
             print("  COMPRESSION: optional vector compression for memory savings")
             print("    Options: LVQ4, LVQ8, LVQ4x4, LVQ4x8, LeanVec4x8, LeanVec8x8")
-            compression = input("COMPRESSION [leave blank for none]: ").strip().upper()
-            if compression and compression in (
-                "LVQ4",
-                "LVQ8",
-                "LVQ4X4",
-                "LVQ4X8",
-                "LEANVEC4X8",
-                "LEANVEC8X8",
-            ):
+            print(
+                "    Note: LVQ/LeanVec optimizations require Intel hardware with AVX-512"
+            )
+            compression_input = (
+                input("COMPRESSION [leave blank for none]: ").strip().upper()
+            )
+            # Map input to correct enum case (CompressionType expects exact case)
+            compression_map = {
+                "LVQ4": "LVQ4",
+                "LVQ8": "LVQ8",
+                "LVQ4X4": "LVQ4x4",
+                "LVQ4X8": "LVQ4x8",
+                "LEANVEC4X8": "LeanVec4x8",
+                "LEANVEC8X8": "LeanVec8x8",
+            }
+            compression = compression_map.get(compression_input)
+            if compression:
                 attrs["compression"] = compression
+
+                # Prompt for REDUCE if LeanVec compression is selected
+                if compression.startswith("LeanVec"):
+                    dims = current.get("dims", 0)
+                    recommended = dims // 2 if dims > 0 else None
+                    print(
+                        f"  REDUCE: dimensionality reduction for LeanVec (must be < {dims})"
+                    )
+                    if recommended:
+                        print(
+                            f"    Recommended: {recommended} (dims/2 for balanced performance)"
+                        )
+                    reduce_input = input(f"REDUCE [leave blank to skip]: ").strip()
+                    if reduce_input and reduce_input.isdigit():
+                        reduce_val = int(reduce_input)
+                        if reduce_val > 0 and reduce_val < dims:
+                            attrs["reduce"] = reduce_val
+                        else:
+                            print(
+                                f"    Invalid: reduce must be > 0 and < {dims}, ignoring."
+                            )
 
         return attrs
 

@@ -16,6 +16,7 @@ from redisvl.migration.models import (
     SchemaPatch,
     SourceSnapshot,
 )
+from redisvl.redis.connection import supports_svs
 from redisvl.schema.schema import IndexSchema
 
 
@@ -110,6 +111,14 @@ class MigrationPlanner:
         # Build warnings list
         warnings = ["Index downtime is required"]
         warnings.extend(rename_warnings)
+
+        # Check for SVS-VAMANA in target schema and add appropriate warnings
+        svs_warnings = self._check_svs_vamana_requirements(
+            merged_target_schema,
+            redis_url=redis_url,
+            redis_client=redis_client,
+        )
+        warnings.extend(svs_warnings)
 
         return MigrationPlan(
             source=snapshot,
@@ -290,6 +299,83 @@ class MigrationPlanner:
             ),
             warnings,
         )
+
+    def _check_svs_vamana_requirements(
+        self,
+        target_schema: IndexSchema,
+        *,
+        redis_url: Optional[str] = None,
+        redis_client: Optional[Any] = None,
+    ) -> List[str]:
+        """Check SVS-VAMANA requirements and return warnings.
+
+        Checks:
+        1. If target uses SVS-VAMANA, verify Redis version supports it
+        2. Add Intel hardware warning for LVQ/LeanVec optimizations
+        """
+        warnings: List[str] = []
+        target_dict = target_schema.to_dict()
+
+        # Check if any vector field uses SVS-VAMANA
+        uses_svs = False
+        uses_compression = False
+        compression_type = None
+
+        for field in target_dict.get("fields", []):
+            if field.get("type") != "vector":
+                continue
+            attrs = field.get("attrs", {})
+            algo = attrs.get("algorithm", "").upper()
+            if algo == "SVS-VAMANA":
+                uses_svs = True
+                compression = attrs.get("compression", "")
+                if compression:
+                    uses_compression = True
+                    compression_type = compression
+
+        if not uses_svs:
+            return warnings
+
+        # Check Redis version support
+        try:
+            if redis_client:
+                client = redis_client
+            elif redis_url:
+                from redis import Redis
+
+                client = Redis.from_url(redis_url)
+            else:
+                client = None
+
+            if client and not supports_svs(client):
+                warnings.append(
+                    "SVS-VAMANA requires Redis >= 8.2.0 and Redis Search >= 2.8.10. "
+                    "The target Redis instance may not support this algorithm. "
+                    "Migration will fail at apply time if requirements are not met."
+                )
+        except Exception:
+            # If we can't check, add a general warning
+            warnings.append(
+                "SVS-VAMANA requires Redis >= 8.2.0 and Redis Search >= 2.8.10. "
+                "Verify your Redis instance supports this algorithm before applying."
+            )
+
+        # Intel hardware warning for compression
+        if uses_compression:
+            warnings.append(
+                f"SVS-VAMANA with {compression_type} compression: "
+                "LVQ and LeanVec optimizations require Intel hardware with AVX-512 support. "
+                "On non-Intel platforms or Redis Open Source, these fall back to basic "
+                "8-bit scalar quantization with reduced performance benefits."
+            )
+        else:
+            warnings.append(
+                "SVS-VAMANA: For optimal performance, Intel hardware with AVX-512 support "
+                "is recommended. LVQ/LeanVec compression options provide additional memory "
+                "savings on supported hardware."
+            )
+
+        return warnings
 
     def classify_diff(
         self,

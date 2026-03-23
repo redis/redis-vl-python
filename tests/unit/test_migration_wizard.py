@@ -65,7 +65,6 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
             "n",  # index_empty
             "|",  # separator (tag-specific)
             "n",  # case_sensitive (tag-specific)
-            "n",  # withsuffixtrie (tag-specific)
             "n",  # no_index (prompted since sortable=y)
             # Update field
             "2",
@@ -76,7 +75,6 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
             "n",  # no_stem (text-specific)
             "",  # weight (blank to skip, text-specific)
             "",  # phonetic_matcher (blank to skip)
-            "n",  # withsuffixtrie (text-specific)
             "n",  # unf (prompted since sortable=y)
             "n",  # no_index (prompted since sortable=y)
             # Remove field
@@ -102,7 +100,6 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
                 "index_empty": False,
                 "separator": "|",
                 "case_sensitive": False,
-                "withsuffixtrie": False,
                 "no_index": False,
             },
         }
@@ -112,7 +109,6 @@ def test_wizard_builds_patch_from_interactive_inputs(monkeypatch):
     assert patch.changes.update_fields[0].name == "title"
     assert patch.changes.update_fields[0].attrs["sortable"] is True
     assert patch.changes.update_fields[0].attrs["no_stem"] is False
-    assert patch.changes.update_fields[0].attrs["withsuffixtrie"] is False
 
 
 # =============================================================================
@@ -240,6 +236,7 @@ class TestVectorAlgorithmChanges:
                 "",  # distance_metric
                 "48",  # GRAPH_MAX_DEGREE
                 "LEANVEC8X8",  # COMPRESSION
+                "192",  # REDUCE (dims/2)
                 "8",  # Finish
             ]
         )
@@ -250,7 +247,8 @@ class TestVectorAlgorithmChanges:
 
         update = patch.changes.update_fields[0]
         assert update.attrs["algorithm"] == "SVS-VAMANA"
-        assert update.attrs["compression"] == "LEANVEC8X8"
+        assert update.attrs["compression"] == "LeanVec8x8"
+        assert update.attrs["reduce"] == 192
 
 
 # =============================================================================
@@ -466,7 +464,7 @@ class TestCombinedVectorChanges:
         assert update.attrs["datatype"] == "float16"
         assert update.attrs["distance_metric"] == "ip"
         assert update.attrs["graph_max_degree"] == 50
-        assert update.attrs["compression"] == "LVQ4X8"
+        assert update.attrs["compression"] == "LVQ4x8"
 
     def test_no_changes_when_all_blank(self, monkeypatch):
         """Test that blank inputs result in no changes."""

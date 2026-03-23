@@ -94,6 +94,10 @@ def _strip_unreliable_attrs(field: Dict[str, Any]) -> Dict[str, Any]:
     elif field_type == "text":
         for attr in UNRELIABLE_TEXT_ATTRS:
             attrs.pop(attr, None)
+        # Normalize weight to int for comparison (FT.INFO may return float)
+        if "weight" in attrs and isinstance(attrs["weight"], float):
+            if attrs["weight"] == int(attrs["weight"]):
+                attrs["weight"] = int(attrs["weight"])
     elif field_type == "tag":
         for attr in UNRELIABLE_TAG_ATTRS:
             attrs.pop(attr, None)
