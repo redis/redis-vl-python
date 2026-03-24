@@ -30,13 +30,6 @@ class Index:
         parser = argparse.ArgumentParser(usage=self.usage)
 
         parser.add_argument("command", help="Subcommand to run")
-        parser.add_argument(
-            "-f",
-            "--format",
-            help="Output format for info command",
-            type=str,
-            default="rounded_outline",
-        )
         parser = add_index_parsing_options(parser)
 
         args = parser.parse_args(sys.argv[2:])

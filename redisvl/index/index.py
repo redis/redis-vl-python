@@ -286,9 +286,13 @@ class BaseSearchIndex:
     def _validate_hybrid_query(self, query: Any) -> None:
         """Validate that a hybrid query can be executed."""
         try:
-            from redis.commands.search.hybrid_result import HybridResult
+            from redis.commands.search.hybrid_result import (  # noqa: F401
+                HybridResult as _HybridResult,
+            )
 
             from redisvl.query.hybrid import HybridQuery
+
+            del _HybridResult  # Only imported to check availability
         except (ImportError, ModuleNotFoundError):
             raise ImportError(_HYBRID_SEARCH_ERROR_MESSAGE)
 
@@ -894,14 +898,14 @@ class SearchIndex(BaseSearchIndex):
                 batch_size=batch_size,
                 validate=self._validate_on_load,
             )
-        except SchemaValidationError as e:
+        except SchemaValidationError:
             # Log the detailed validation error with actionable information
             logger.error("Data validation failed during load operation")
             raise
-        except Exception as e:
+        except Exception as exc:
             # Wrap other errors as general RedisVL errors
             logger.exception("Error while loading data to Redis")
-            raise RedisVLError(f"Failed to load data: {str(e)}") from e
+            raise RedisVLError(f"Failed to load data: {str(exc)}") from exc
 
     def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Fetch an object from Redis by id.
@@ -1840,14 +1844,14 @@ class AsyncSearchIndex(BaseSearchIndex):
                 batch_size=batch_size,
                 validate=self._validate_on_load,
             )
-        except SchemaValidationError as e:
+        except SchemaValidationError:
             # Log the detailed validation error with actionable information
             logger.error("Data validation failed during load operation")
             raise
-        except Exception as e:
+        except Exception as exc:
             # Wrap other errors as general RedisVL errors
             logger.exception("Error while loading data to Redis")
-            raise RedisVLError(f"Failed to load data: {str(e)}") from e
+            raise RedisVLError(f"Failed to load data: {str(exc)}") from exc
 
     async def fetch(self, id: str) -> Optional[Dict[str, Any]]:
         """Asynchronously etch an object from Redis by id. The id is typically

@@ -1,16 +1,5 @@
 from collections.abc import Collection
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, ValidationError
 from redis import __version__ as redis_version
