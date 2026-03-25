@@ -397,7 +397,11 @@ class BaseSearchIndex:
         # instead of being silently dropped by IndexSchema validation.
         copy = dict(schema_dict)
         if "_redis_url" in copy:
-            kwargs.setdefault("redis_url", copy.pop("_redis_url"))
+            url = copy.pop("_redis_url")
+            # Skip sanitized URLs (contain ****) to avoid silent auth
+            # failures — these are for inspection only, not round-trip.
+            if url and "****" not in url:
+                kwargs.setdefault("redis_url", url)
         if "_connection_kwargs" in copy:
             kwargs.setdefault("connection_kwargs", copy.pop("_connection_kwargs"))
 
@@ -435,8 +439,10 @@ class BaseSearchIndex:
 
         Args:
             include_connection: Whether to include connection parameters
-                (Redis URL and connection kwargs). Passwords are never
-                serialized. Defaults to False.
+                (Redis URL and connection kwargs). Passwords are masked
+                (``****``). The serialized URL is for **inspection
+                only** — ``from_dict`` will not restore sanitized URLs.
+                Defaults to False.
 
         Returns:
             A dictionary representation of the index configuration.
@@ -463,7 +469,8 @@ class BaseSearchIndex:
         Args:
             file_path: Destination path for the YAML file.
             include_connection: Whether to include connection parameters.
-                Passwords are never serialized. Defaults to False.
+                Passwords are masked (``****``) and the URL is for
+                **inspection only**. Defaults to False.
             overwrite: Whether to overwrite an existing file. If False,
                 raises FileExistsError when the file exists. Defaults to True.
 

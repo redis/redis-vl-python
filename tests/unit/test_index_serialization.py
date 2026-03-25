@@ -196,3 +196,13 @@ class TestRoundTrip:
         restored = SearchIndex.from_dict(d)
         assert restored._redis_url == "redis://localhost:6379"
         assert restored._connection_kwargs == {"ssl_cert_reqs": "optional"}
+
+    def test_roundtrip_dict_sanitized_url_skipped(self):
+        """Sanitized URLs (containing ****) should not be restored — they'd
+        cause auth failures."""
+        idx = _make_index(redis_url="redis://:secret@localhost:6379")
+        d = idx.to_dict(include_connection=True)
+        assert d["_redis_url"] == "redis://:****@localhost:6379"
+        restored = SearchIndex.from_dict(d)
+        # The sanitized URL should be silently skipped, not restored
+        assert restored._redis_url is None
