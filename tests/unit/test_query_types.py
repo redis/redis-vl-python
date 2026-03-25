@@ -373,6 +373,7 @@ def test_text_query_word_weights():
         assert term in desc_clause
 
     # Post-query modifiers follow after the closing paren in expected order
+    suffix = query_str[desc_close + 1 :]
     suffix_stripped = suffix.lstrip()
     assert suffix_stripped.startswith("SCORER BM25STD")
     scorer_idx = suffix_stripped.index("SCORER BM25STD")
