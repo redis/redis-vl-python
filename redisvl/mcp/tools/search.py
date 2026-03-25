@@ -1,6 +1,6 @@
 import asyncio
 import inspect
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.mcp.filters import parse_filter
@@ -234,7 +234,7 @@ async def _build_query(
     query: str,
     limit: int,
     offset: int,
-    filter_value: str | dict[str, Any] | None,
+    filter_value: Optional[Union[str, dict[str, Any]]],
     return_fields: list[str],
 ) -> tuple[Any, str, str, str]:
     """Build the RedisVL query object from configured search mode and params.
@@ -319,7 +319,7 @@ async def search_records(
     query: str,
     limit: Optional[int] = None,
     offset: int = 0,
-    filter: str | dict[str, Any] | None = None,
+    filter: Optional[Union[str, dict[str, Any]]] = None,
     return_fields: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Execute `search-records` against the configured Redis index binding."""
@@ -372,7 +372,7 @@ def register_search_tool(server: Any) -> None:
         query: str,
         limit: Optional[int] = None,
         offset: int = 0,
-        filter: str | dict[str, Any] | None = None,
+        filter: Optional[Union[str, dict[str, Any]]] = None,
         return_fields: Optional[list[str]] = None,
     ):
         """FastMCP wrapper for the `search-records` tool."""

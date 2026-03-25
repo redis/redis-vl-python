@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Optional
 
 import pytest
 
@@ -35,7 +36,7 @@ def _schema() -> IndexSchema:
     )
 
 
-def _config_with_search(search_type: str, params: dict | None = None) -> MCPConfig:
+def _config_with_search(search_type: str, params: Optional[dict] = None) -> MCPConfig:
     return MCPConfig.model_validate(
         {
             "server": {"redis_url": "redis://localhost:6379"},
@@ -74,7 +75,10 @@ class FakeIndex:
 
 class FakeServer:
     def __init__(
-        self, *, search_type: str = "vector", search_params: dict | None = None
+        self,
+        *,
+        search_type: str = "vector",
+        search_params: Optional[dict] = None,
     ):
         self.config = _config_with_search(search_type, search_params)
         self.mcp_settings = SimpleNamespace(tool_search_description=None)
