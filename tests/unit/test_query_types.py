@@ -335,7 +335,6 @@ def test_text_query_with_string_filter():
     assert "AND" not in query_string_wildcard
 
 
-@pytest.mark.skip("Test is flaking")
 def test_text_query_word_weights():
     # verify word weights get added into the raw Redis query syntax
     query = TextQuery(
@@ -344,10 +343,33 @@ def test_text_query_word_weights():
         text_weights={"alpha": 2, "delta": 0.555, "gamma": 0.95},
     )
 
-    assert (
-        str(query)
-        == "@description:(query | string | alpha=>{$weight:2} | bravo | delta=>{$weight:0.555} | tango | alpha=>{$weight:2}) SCORER BM25STD WITHSCORES DIALECT 2 LIMIT 0 10"
-    )
+    # Check query components with structural guarantees,
+    # not exact token ordering (which is non-deterministic).
+    query_str = str(query)
+
+    # Description clause is properly delimited
+    assert "@description:(" in query_str
+    desc_start = query_str.index("@description:(")
+    desc_close = query_str.index(")", desc_start)
+    desc_clause = query_str[desc_start + len("@description:(") : desc_close]
+
+    # Weighted terms appear inside the description clause
+    assert "alpha=>{$weight:2}" in desc_clause
+    assert "delta=>{$weight:0.555}" in desc_clause
+
+    # alpha appears twice (once per occurrence in input text) — count
+    assert desc_clause.count("alpha") == 2
+
+    # Unweighted terms are present
+    for term in ["query", "string", "bravo", "tango"]:
+        assert term in desc_clause
+
+    # Post-query modifiers follow after the closing paren
+    suffix = query_str[desc_close + 1 :]
+    assert suffix.lstrip().startswith("SCORER BM25STD")
+    assert "WITHSCORES" in suffix
+    assert "DIALECT 2" in suffix
+    assert "LIMIT 0 10" in suffix
 
     # raise an error if weights are not positive floats
     with pytest.raises(ValueError):
