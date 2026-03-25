@@ -70,6 +70,12 @@ class TestToDict:
         d = idx.to_dict(include_connection=True)
         assert d["_redis_url"] == "redis://admin:****@localhost:6379"
 
+    def test_include_connection_username_only_url(self):
+        """Username-only URLs (no password) are left unchanged."""
+        idx = _make_index(redis_url="redis://readonly@localhost:6379")
+        d = idx.to_dict(include_connection=True)
+        assert d["_redis_url"] == "redis://readonly@localhost:6379"
+
     def test_include_connection_no_url(self):
         """When initialized with a client, _redis_url is None — omit it."""
         idx = _make_index()

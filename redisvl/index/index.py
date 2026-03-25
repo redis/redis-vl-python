@@ -334,7 +334,6 @@ class BaseSearchIndex:
         return self.schema.index.storage_type
 
     @classmethod
-    @classmethod
     def from_yaml(cls, schema_path: str, **kwargs):
         """Create a SearchIndex from a YAML schema file.
 
@@ -354,8 +353,16 @@ class BaseSearchIndex:
 
             index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
         """
-        with open(schema_path) as f:
-            data = yaml.safe_load(f) or {}
+        path_obj = Path(schema_path)
+        try:
+            resolved_path = path_obj.resolve()
+        except Exception as exc:
+            raise ValueError(f"Invalid schema path: {schema_path}") from exc
+        try:
+            with resolved_path.open() as f:
+                data = yaml.safe_load(f) or {}
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Schema file not found: {resolved_path}") from exc
         return cls.from_dict(data, **kwargs)
 
     @classmethod
@@ -411,11 +418,15 @@ class BaseSearchIndex:
         from urllib.parse import urlparse
 
         parsed = urlparse(self._redis_url)
-        if parsed.password or parsed.username:
+        # Only mask when a password component is present (including
+        # empty-string passwords).  Username-only URLs like
+        # ``redis://user@host:6379`` are left unchanged.
+        if parsed.password is not None:
             host_info = parsed.hostname or ""
             if parsed.port:
                 host_info += f":{parsed.port}"
-            netloc = f"{parsed.username}:****@{host_info}" if parsed.username else f":****@{host_info}"
+            user_part = f"{parsed.username}:" if parsed.username is not None else ":"
+            netloc = f"{user_part}****@{host_info}"
             return parsed._replace(netloc=netloc).geturl()
         return self._redis_url
 
@@ -464,7 +475,7 @@ class BaseSearchIndex:
         if fp.exists() and not overwrite:
             raise FileExistsError(f"File {file_path} already exists.")
         with open(fp, "w") as f:
-            yaml.dump(self.to_dict(include_connection=include_connection), f)
+            yaml.dump(self.to_dict(include_connection=include_connection), f, sort_keys=False)
 
     def disconnect(self):
         """Disconnect from the Redis database."""
