@@ -284,6 +284,20 @@ async def test_read_only_mode_excludes_upsert_tool(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: RecordingVectorizer,
     )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server: None,
+    )
+
+    def fake_tool(*args: Any, **kwargs: Any):
+        del args, kwargs
+
+        def decorator(func: Any) -> Any:
+            return func
+
+        return decorator
+
+    monkeypatch.setattr(RedisVLMCPServer, "tool", fake_tool, raising=False)
 
     called: List[bool] = []
 
