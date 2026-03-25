@@ -357,3 +357,40 @@ def test_mcp_config_normalizes_hybrid_linear_text_weight():
 
     assert loaded.binding.search.type == "hybrid"
     assert loaded.binding.search.params["linear_text_weight"] == 0.3
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"knn_ef_runtime": 42},
+        {"vector_search_method": "RANGE", "range_radius": 0.4},
+        {"combination_method": "RRF", "rrf_window": 50},
+    ],
+)
+def test_mcp_config_rejects_native_only_hybrid_runtime_params(params):
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": params,
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    with pytest.raises(ValueError, match="native hybrid search support"):
+        loaded.validate_search(supports_native_hybrid_search=False)
+
+
+def test_mcp_config_allows_linear_hybrid_fallback_params():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": {
+            "text_scorer": "TFIDF",
+            "combination_method": "LINEAR",
+            "linear_text_weight": 0.3,
+        },
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    loaded.validate_search(supports_native_hybrid_search=False)

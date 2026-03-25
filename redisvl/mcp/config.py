@@ -139,13 +139,30 @@ class MCPIndexSearchConfig(BaseModel):
         self, *, supports_native_hybrid_search: bool
     ) -> None:
         """Fail startup when hybrid config depends on native-only FT.SEARCH params."""
-        if (
-            self.type == "hybrid"
-            and not supports_native_hybrid_search
-            and "knn_ef_runtime" in self.params
-        ):
+        if self.type != "hybrid" or supports_native_hybrid_search:
+            return
+
+        unsupported_params = set()
+        if self.params.get("combination_method") not in (None, "LINEAR"):
+            unsupported_params.add("combination_method")
+        unsupported_params.update(
+            key
+            for key in (
+                "vector_search_method",
+                "knn_ef_runtime",
+                "range_radius",
+                "range_epsilon",
+                "rrf_window",
+                "rrf_constant",
+            )
+            if key in self.params
+        )
+
+        if unsupported_params:
+            unsupported_list = ", ".join(sorted(unsupported_params))
             raise ValueError(
-                "search.params.knn_ef_runtime requires native hybrid search support"
+                "search.params requires native hybrid search support for: "
+                f"{unsupported_list}"
             )
 
 

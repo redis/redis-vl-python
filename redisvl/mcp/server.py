@@ -42,6 +42,7 @@ class RedisVLMCPServer(FastMCP):
         self.config: Optional[MCPConfig] = None
         self._index: Optional[AsyncSearchIndex] = None
         self._vectorizer: Optional[Any] = None
+        self._supports_native_hybrid_search: Optional[bool] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
         self._tools_registered = False
 
@@ -49,6 +50,7 @@ class RedisVLMCPServer(FastMCP):
         """Load config, inspect the configured index, and initialize dependencies."""
         self.config = load_mcp_config(self.mcp_settings.config)
         self._semaphore = asyncio.Semaphore(self.config.runtime.max_concurrency)
+        self._supports_native_hybrid_search = None
         timeout = self.config.runtime.startup_timeout_seconds
         client = None
 
@@ -109,6 +111,7 @@ class RedisVLMCPServer(FastMCP):
                 elif callable(close):
                     close()
         finally:
+            self._supports_native_hybrid_search = None
             if self._index is not None:
                 index = self._index
                 self._index = None
@@ -164,17 +167,24 @@ class RedisVLMCPServer(FastMCP):
 
     async def supports_native_hybrid_search(self) -> bool:
         """Return whether the current runtime supports Redis native hybrid search."""
+        if self._supports_native_hybrid_search is not None:
+            return self._supports_native_hybrid_search
         if self._index is None:
             raise RuntimeError("MCP server has not been started")
         if not is_version_gte(redis_py_version, "7.1.0"):
+            self._supports_native_hybrid_search = False
             return False
 
         client = await self._index._get_client()
         info = await client.info("server")
         if not is_version_gte(info.get("redis_version", "0.0.0"), "8.4.0"):
+            self._supports_native_hybrid_search = False
             return False
 
-        return hasattr(client.ft(self._index.schema.index.name), "hybrid_search")
+        self._supports_native_hybrid_search = hasattr(
+            client.ft(self._index.schema.index.name), "hybrid_search"
+        )
+        return self._supports_native_hybrid_search
 
     def _register_tools(self) -> None:
         """Register MCP tools once the server is ready."""

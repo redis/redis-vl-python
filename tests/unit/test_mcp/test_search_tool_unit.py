@@ -213,7 +213,7 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
             {
                 "id": "doc:1",
                 "score": 0.93,
-                "score_type": "vector_distance_normalized",
+                "score_type": "vector_distance",
                 "record": {
                     "content": "science doc",
                     "category": "science",
@@ -395,6 +395,20 @@ async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypat
     ]
     assert response["search_type"] == "hybrid"
     assert response["results"][0]["score"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypatch):
+    server = FakeServer(
+        search_type="hybrid",
+        search_params={
+            "combination_method": "RRF",
+            "rrf_window": 50,
+        },
+    )
+
+    with pytest.raises(ValueError, match="native hybrid search support"):
+        server.config.validate_search(supports_native_hybrid_search=False)
 
 
 def test_register_search_tool_uses_default_and_override_descriptions():

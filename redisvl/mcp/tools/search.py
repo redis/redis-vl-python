@@ -260,10 +260,15 @@ async def _build_query(
         }
         if "normalize_vector_distance" not in vector_kwargs:
             vector_kwargs["normalize_vector_distance"] = True
+        normalize_vector_distance = vector_kwargs["normalize_vector_distance"]
         return (
             VectorQuery(**vector_kwargs),
             "vector_distance",
-            "vector_distance_normalized",
+            (
+                "vector_distance_normalized"
+                if normalize_vector_distance
+                else "vector_distance"
+            ),
             search_type,
         )
 
