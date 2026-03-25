@@ -161,15 +161,40 @@ def _vector_dtype(server: Any, index: Any) -> str:
     return str(datatype).lower()
 
 
+def _validation_schema_for_record(
+    index: Any,
+    *,
+    vector_field_name: str,
+    record: Dict[str, Any],
+) -> Any:
+    """Use a JSON-shaped schema when validating list vectors for HASH storage."""
+    if index.schema.index.storage_type == StorageType.HASH and isinstance(
+        record.get(vector_field_name), list
+    ):
+        schema = index.schema.model_copy(deep=True)
+        schema.index.storage_type = StorageType.JSON
+        return schema
+    return index.schema
+
+
 def _prepare_record_for_storage(
     record: Dict[str, Any],
     *,
     server: Any,
     index: Any,
 ) -> Dict[str, Any]:
-    """Serialize vector fields for storage and validate the prepared record."""
+    """Validate records before serializing HASH vectors for storage."""
     prepared = dict(record)
     vector_field_name = server.config.runtime.vector_field_name
+    validate_object(
+        _validation_schema_for_record(
+            index,
+            vector_field_name=vector_field_name,
+            record=prepared,
+        ),
+        prepared,
+    )
+
     vector_value = prepared.get(vector_field_name)
 
     if index.schema.index.storage_type == StorageType.HASH:
@@ -178,7 +203,6 @@ def _prepare_record_for_storage(
                 vector_value,
                 _vector_dtype(server, index),
             )
-    validate_object(index.schema, prepared)
     return prepared
 
 

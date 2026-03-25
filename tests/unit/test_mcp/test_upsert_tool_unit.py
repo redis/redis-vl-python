@@ -209,6 +209,24 @@ async def test_upsert_records_preserves_supplied_vectors_when_skip_embedding_if_
 
 
 @pytest.mark.asyncio
+async def test_upsert_records_rejects_invalid_hash_vector_dimensions_before_serializing():
+    server = FakeServer(storage_type="hash", skip_embedding_if_present=True)
+
+    with pytest.raises(
+        RedisVLMCPError, match="must have 3 dimensions, got 2"
+    ) as exc_info:
+        await upsert_records(
+            server,
+            records=[{"id": "alpha", "content": "alpha doc", "embedding": [0.1, 0.2]}],
+            id_field="id",
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert server.index.load_calls == []
+    assert server.vectorizer.aembed_many_calls == []
+
+
+@pytest.mark.asyncio
 async def test_upsert_records_overwrites_supplied_vectors_when_skip_embedding_if_present_false():
     server = FakeServer(storage_type="hash", skip_embedding_if_present=True)
 
