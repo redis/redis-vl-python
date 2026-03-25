@@ -13,6 +13,8 @@ metadata:
 
 This specification defines a Model Context Protocol (MCP) server for RedisVL that allows MCP clients to search and upsert data in an existing Redis index.
 
+Search behavior is owned by server configuration. MCP clients provide query text, filtering, pagination, and field projection, but do not choose the search mode or runtime tuning parameters.
+
 The MCP design targets indexes hosted on open-source Redis Stack, Redis Cloud, or Redis Enterprise, provided the required Search capabilities are available for the configured tool behavior.
 
 The server is designed for stdio transport first and must be runnable via:
@@ -25,7 +27,7 @@ For a production-oriented usage narrative and end-to-end example, see [MCP-produ
 
 ### Goals
 
-1. Expose RedisVL search capabilities (`vector`, `fulltext`, `hybrid`) through stable MCP tools.
+1. Expose configured RedisVL search capabilities (`vector`, `fulltext`, `hybrid`) through stable MCP tools without requiring MCP clients to configure retrieval strategy.
 2. Support controlled write access via an upsert tool.
 3. Automatically reconstruct the index schema from an existing Redis index instead of requiring a full manual schema definition.
 4. Keep the vectorizer configuration explicit and user-defined.
@@ -59,7 +61,7 @@ These are hard compatibility expectations for v1.
 Notes:
 - This spec standardizes on the standalone `fastmcp` package for server implementation. It does not assume the official `mcp` package is on a 2.x line.
 - Client SDK examples may still use whichever client-side MCP package their ecosystem requires.
-- Native hybrid support is preferred when available because it aligns with current Redis runtime capabilities, but lack of native support is not a blocker for `search_type=\"hybrid\"`.
+- Native hybrid support is preferred when available because it aligns with current Redis runtime capabilities, but lack of native support is not a blocker for `indexes.<id>.search.type=\"hybrid\"` when the configured search params remain compatible with the aggregate fallback.
 
 ---
 
@@ -148,6 +150,16 @@ indexes:
             dims: 1536
             datatype: float32
 
+    search:
+      type: hybrid
+      params:
+        text_scorer: BM25STD
+        stopwords: english
+        vector_search_method: KNN
+        combination_method: LINEAR
+        linear_text_weight: 0.3
+        knn_ef_runtime: 150
+
     runtime:
       # required explicit field mapping for tool behavior
       text_field_name: content
@@ -170,6 +182,51 @@ indexes:
       max_concurrency: 16
 ```
 
+### Search Configuration (Normative)
+
+`indexes.<id>.search` defines the retrieval strategy for the sole bound index in v1. Tool callers must not override this configuration.
+
+Required fields:
+
+- `type`: `vector` | `fulltext` | `hybrid`
+- `params`: optional object whose allowed keys depend on `type`
+
+Allowed `params` by `type`:
+
+- `vector`
+  - `hybrid_policy`
+  - `batch_size`
+  - `ef_runtime`
+  - `epsilon`
+  - `search_window_size`
+  - `use_search_history`
+  - `search_buffer_capacity`
+  - `normalize_vector_distance`
+- `fulltext`
+  - `text_scorer`
+  - `stopwords`
+  - `text_weights`
+- `hybrid`
+  - `text_scorer`
+  - `stopwords`
+  - `text_weights`
+  - `vector_search_method`
+  - `knn_ef_runtime`
+  - `range_radius`
+  - `range_epsilon`
+  - `combination_method`
+  - `rrf_window`
+  - `rrf_constant`
+  - `linear_text_weight`
+
+Normalization rules:
+
+1. `linear_text_weight` is the MCP config's stable meaning for linear hybrid fusion and always represents the text-side weight.
+2. When building native `HybridQuery`, the server must pass `linear_text_weight` through as `linear_alpha`.
+3. When building `AggregateHybridQuery`, the server must translate `linear_text_weight` to `alpha = 1 - linear_text_weight` so the config meaning does not change across implementations.
+4. `linear_text_weight` is only valid when `combination_method` is `LINEAR`.
+5. Hybrid configs using FT.SEARCH-only runtime params (`knn_ef_runtime`) must fail startup if the environment only supports the aggregate fallback path.
+
 ### Schema Discovery and Override Rules
 
 1. `server.redis_url` is required.
@@ -179,19 +236,22 @@ indexes:
 5. The server must reconstruct the base schema from Redis metadata, preferably via existing RedisVL inspection primitives built on `FT.INFO`.
 6. `indexes.<id>.vectorizer` remains fully manual and is never inferred from Redis index metadata in v1.
 7. `indexes.<id>.schema_overrides` is optional and exists only to supplement incomplete inspection data.
-8. Discovered index identity is authoritative:
+8. `indexes.<id>.search.type` is required and is authoritative for query construction.
+9. `indexes.<id>.search.params` is optional but, when present, may only contain keys valid for the configured `search.type`.
+10. Tool requests implicitly target the sole configured index binding and its configured search behavior in v1. No `index`, `search_type`, or search-tuning request parameters are exposed.
+11. Tool callers may control only query text, filtering, pagination, and returned fields for `search-records`.
+12. Discovered index identity is authoritative:
    - `indexes.<id>.redis_name`
    - storage type
    - field identity (`name`, `type`, and `path` when applicable)
-9. Overrides may:
+13. Overrides may:
    - add missing attrs for a discovered field
    - replace discovered attrs for a discovered field when needed for compatibility
-10. Overrides must not:
+14. Overrides must not:
    - redefine index identity
    - add entirely new fields that do not exist in the inspected index
    - change a discovered field's `name`, `type`, or `path`
-11. Override conflicts must fail startup with a config error.
-12. Tool requests implicitly target the sole configured index binding in v1. No `index` request parameter is exposed yet.
+15. Override conflicts must fail startup with a config error.
 
 ### Env Substitution Rules
 
@@ -210,13 +270,17 @@ Server startup must fail fast if:
 4. `indexes` missing, empty, or containing more than one entry.
 5. The configured binding id is blank.
 6. `indexes.<id>.redis_name` missing or blank.
-7. The referenced Redis index does not exist.
-8. Schema inspection fails and no valid `indexes.<id>.schema_overrides` resolve the issue.
-9. `indexes.<id>.runtime.text_field_name` not in the effective schema.
-10. `indexes.<id>.runtime.vector_field_name` not in the effective schema or not vector type.
-11. `indexes.<id>.runtime.default_embed_text_field` not in the effective schema.
-12. `default_limit <= 0` or `max_limit < default_limit`.
-13. `max_upsert_records <= 0`.
+7. `indexes.<id>.search.type` missing or not one of `vector`, `fulltext`, `hybrid`.
+8. `indexes.<id>.search.params` contains keys that are incompatible with the configured `search.type`.
+9. `indexes.<id>.search.params.linear_text_weight` is present without `combination_method: LINEAR`.
+10. A hybrid config relies on FT.SEARCH-only runtime params and the environment only supports the aggregate fallback path.
+11. The referenced Redis index does not exist.
+12. Schema inspection fails and no valid `indexes.<id>.schema_overrides` resolve the issue.
+13. `indexes.<id>.runtime.text_field_name` not in the effective schema.
+14. `indexes.<id>.runtime.vector_field_name` not in the effective schema or not vector type.
+15. `indexes.<id>.runtime.default_embed_text_field` not in the effective schema.
+16. `default_limit <= 0` or `max_limit < default_limit`.
+17. `max_upsert_records <= 0`.
 
 ---
 
@@ -234,9 +298,10 @@ On server startup:
 6. Convert the inspected index metadata into an `IndexSchema`.
 7. Apply any validated `indexes.<id>.schema_overrides` to produce the effective schema.
 8. Instantiate `AsyncSearchIndex` from the effective schema.
-9. Instantiate the configured `indexes.<id>.vectorizer`.
-10. Validate vectorizer dimensions against the effective vector field dims when available.
-11. Register tools (omit upsert in read-only mode).
+9. Validate `indexes.<id>.search` against the effective schema and current runtime capabilities.
+10. Instantiate the configured `indexes.<id>.vectorizer`.
+11. Validate vectorizer dimensions against the effective vector field dims when available.
+12. Register tools (omit upsert in read-only mode).
 
 If vector field attributes cannot be reconstructed from Redis metadata on the target Redis version, startup must fail with an actionable error unless `indexes.<id>.schema_overrides` provides the missing attrs.
 
@@ -299,14 +364,13 @@ Tool executions are bounded by an async semaphore (`runtime.max_concurrency`). R
 
 ## Tool: `search-records`
 
-Search records using vector, full-text, or hybrid query.
+Search records using the configured search behavior for the bound index.
 
 ### Request Contract
 
 | Parameter | Type | Required | Default | Constraints |
 |----------|------|----------|---------|-------------|
 | `query` | str | yes | - | non-empty |
-| `search_type` | enum | no | `vector` | `vector` \| `fulltext` \| `hybrid` |
 | `limit` | int | no | `runtime.default_limit` | `1..runtime.max_limit` |
 | `offset` | int | no | `0` | `>=0` |
 | `filter` | string \\| object | no | `null` | Raw RedisVL filter string or DSL object |
@@ -335,12 +399,14 @@ Search records using vector, full-text, or hybrid query.
 
 ### Search Semantics
 
-- `vector`: embeds `query` with configured vectorizer, builds `VectorQuery`.
-- `fulltext`: builds `TextQuery`.
+- `search_type` in the response is informational metadata derived from `indexes.<id>.search.type`.
+- `search-records` must reject deprecated client-side search-mode or tuning inputs with `invalid_request`.
+- `vector`: embeds `query` with the configured vectorizer and builds `VectorQuery` using `indexes.<id>.search.params`.
+- `fulltext`: builds `TextQuery` using `indexes.<id>.search.params`.
 - `hybrid`: embeds `query` and selects the query implementation by runtime capability:
   - use native `HybridQuery` when Redis `>=8.4.0` and redis-py `>=7.1.0` are available
   - otherwise fall back to `AggregateHybridQuery`
-- The MCP request/response contract for `hybrid` is identical across both implementation paths.
+- The MCP request/response contract for `hybrid` is identical across both implementation paths because config normalization hides class-specific fusion semantics from tool callers.
 - In v1, `filter` is applied uniformly to the hybrid query rather than allowing separate text-side and vector-side filters. This is intentional to keep the API simple; future versions may expose finer-grained hybrid filtering controls.
 
 ### Errors
@@ -421,8 +487,10 @@ For the sole configured binding in v1, the server owns these validated values:
 - `text_field_name`
 - `vector_field_name`
 - `default_embed_text_field`
+- `search.type`
+- `search.params`
 
-Schema discovery is automatic in v1. Field mapping is not. Runtime field mappings remain explicit so the server does not guess among multiple valid text or vector fields.
+Schema discovery is automatic in v1. Field mapping is not. Search construction is configuration-owned. Runtime field mappings remain explicit so the server does not guess among multiple valid text or vector fields, and MCP callers do not choose retrieval mode or tuning.
 
 ---
 
@@ -478,7 +546,7 @@ async def main():
     ) as server:
         agent = Agent(
             name="search-agent",
-            instructions="Search and maintain Redis-backed knowledge.",
+            instructions="Search and maintain Redis-backed knowledge using the server-configured retrieval strategy.",
             mcp_servers=[server],
         )
 ```
@@ -494,7 +562,7 @@ from mcp import StdioServerParameters
 root_agent = LlmAgent(
     model="gemini-2.0-flash",
     name="redis_search_agent",
-    instruction="Search and maintain Redis-backed knowledge using vector search.",
+    instruction="Search and maintain Redis-backed knowledge using the server-configured retrieval strategy.",
     tools=[
         McpToolset(
             connection_params=StdioConnectionParams(
@@ -570,6 +638,8 @@ Note: Full n8n MCP client support depends on n8n's MCP implementation. Refer to 
   - env substitution success/failure
   - schema inspection merge and override validation
   - field mapping validation
+  - `indexes.<id>.search` validation by type
+  - normalized hybrid fusion validation
 - `test_filters.py`
   - DSL parsing, invalid operators, type mismatches
 - `test_errors.py`
@@ -582,10 +652,14 @@ Note: Full n8n MCP client support depends on n8n's MCP implementation. Refer to 
   - missing index failure
   - vector field inspection gap resolved by `indexes.<id>.schema_overrides`
   - conflicting override failure
+  - hybrid config with FT.SEARCH-only params rejected when only aggregate fallback is available
 - `test_search_tool.py`
-  - vector/fulltext/hybrid success paths
+  - configured `vector` / `fulltext` / `hybrid` success paths
+  - request without `search_type` succeeds
+  - deprecated client-side search-mode or tuning params rejected with `invalid_request`
+  - response reports configured `search_type`
   - native hybrid path on Redis `>=8.4.0`
-  - aggregate hybrid fallback path on older supported runtimes
+  - aggregate hybrid fallback path on older supported runtimes when config is compatible
   - pagination and field projection
   - filter behavior
 - `test_upsert_tool.py`
@@ -622,12 +696,13 @@ DoD:
 Deliverables:
 1. `search-records` request/response contract.
 2. Filter parser (JSON DSL + raw string pass-through).
-3. Hybrid query selection between native and aggregate implementations.
+3. Config-owned search construction and hybrid query selection between native and aggregate implementations.
 
 DoD:
 1. All search modes tested.
 2. Invalid filter returns `invalid_filter`.
-3. `hybrid` uses native execution when available and `AggregateHybridQuery` otherwise, without changing the MCP contract.
+3. Deprecated client-side search-mode and tuning inputs return `invalid_request`.
+4. `hybrid` uses native execution when available and `AggregateHybridQuery` otherwise, without changing the MCP contract or the meaning of `linear_text_weight`.
 
 ### Phase 3: Upsert Tool
 
@@ -657,12 +732,11 @@ DoD:
 Deliverables:
 1. Config reference and examples.
 2. Client setup examples.
-3. Companion production example document.
-4. Troubleshooting guide with common errors and fixes.
+3. Troubleshooting guide with common errors and fixes.
 
 DoD:
 1. Docs reflect normative contracts in this spec.
-2. Companion example is aligned with the config and lifecycle contract.
+2. Client-facing examples do not imply MCP callers choose retrieval mode.
 
 ---
 
@@ -670,17 +744,20 @@ DoD:
 
 1. Runtime mismatch for hybrid search.
    - Native hybrid requires newer Redis and redis-py capabilities, while older supported environments may still need the aggregate fallback path.
-   - Mitigation: explicitly detect runtime capability and select native `HybridQuery` or `AggregateHybridQuery` deterministically.
+   - Mitigation: explicitly detect runtime capability, reject incompatible hybrid configs at startup, and otherwise select native `HybridQuery` or `AggregateHybridQuery` deterministically.
 2. Dependency drift across provider vectorizers.
    - Mitigation: dependency matrix and startup validation.
-3. Ambiguous filter behavior causing agent retries.
-   - Mitigation: explicit raw-string pass-through semantics and deterministic DSL parser errors.
+3. Search behavior drift caused by client-selected tuning.
+   - Mitigation: keep search mode and query construction params in config, not in the MCP request surface.
 4. Hidden partial writes during failures.
    - Mitigation: conservative `partial_write_possible` signaling.
 5. Incomplete schema reconstruction on older Redis versions.
    - `FT.INFO` may not return enough vector metadata on some older Redis versions to fully reconstruct vector field attrs.
    - Mitigation: fail fast with an actionable error and support targeted `indexes.<id>.schema_overrides` for missing attrs.
-6. Security and deployment limitations (v1 scope).
+6. Hybrid fusion semantics differ between `HybridQuery` and `AggregateHybridQuery`.
+   - Native `HybridQuery` uses text-weight semantics while `AggregateHybridQuery` exposes vector-weight semantics.
+   - Mitigation: normalize on `linear_text_weight` in MCP config and translate internally per execution path.
+7. Security and deployment limitations (v1 scope).
    - This implementation is stdio-first and not production-hardened by itself. It does not include:
      - Authentication/authorization mechanisms.
      - Remote transports (SSE/HTTP) that would enable multi-tenant or networked deployments.
