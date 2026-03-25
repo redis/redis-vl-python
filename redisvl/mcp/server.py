@@ -8,6 +8,8 @@ from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.config import MCPConfig, load_mcp_config
 from redisvl.mcp.settings import MCPSettings
+from redisvl.mcp.tools.search import register_search_tool
+from redisvl.mcp.tools.upsert import register_upsert_tool
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
 
@@ -181,9 +183,9 @@ class RedisVLMCPServer(FastMCP):
         if self._tools_registered or not hasattr(self, "tool"):
             return
 
-        from redisvl.mcp.tools.search import register_search_tool
-
         register_search_tool(self)
+        if not self.mcp_settings.read_only:
+            register_upsert_tool(self)
         self._tools_registered = True
 
     @staticmethod
