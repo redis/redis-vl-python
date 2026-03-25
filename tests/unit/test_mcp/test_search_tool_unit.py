@@ -4,7 +4,7 @@ import pytest
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
-from redisvl.mcp.tools.search import register_search_tool, search_records
+from redisvl.mcp.tools.search import _embed_query, register_search_tool, search_records
 from redisvl.schema import IndexSchema
 
 
@@ -35,7 +35,7 @@ def _schema() -> IndexSchema:
     )
 
 
-def _config() -> MCPConfig:
+def _config_with_search(search_type: str, params: dict | None = None) -> MCPConfig:
     return MCPConfig.model_validate(
         {
             "server": {"redis_url": "redis://localhost:6379"},
@@ -43,6 +43,7 @@ def _config() -> MCPConfig:
                 "knowledge": {
                     "redis_name": "docs-index",
                     "vectorizer": {"class": "FakeVectorizer", "model": "test-model"},
+                    "search": {"type": search_type, "params": params or {}},
                     "runtime": {
                         "text_field_name": "content",
                         "vector_field_name": "embedding",
@@ -72,8 +73,10 @@ class FakeIndex:
 
 
 class FakeServer:
-    def __init__(self):
-        self.config = _config()
+    def __init__(
+        self, *, search_type: str = "vector", search_params: dict | None = None
+    ):
+        self.config = _config_with_search(search_type, search_params)
         self.mcp_settings = SimpleNamespace(tool_search_description=None)
         self.index = FakeIndex()
         self.vectorizer = FakeVectorizer()
@@ -109,6 +112,20 @@ class FakeServer:
 class FakeQuery:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+
+
+@pytest.mark.asyncio
+async def test_embed_query_falls_back_to_sync_embed_when_aembed_is_not_implemented():
+    class FallbackVectorizer:
+        async def aembed(self, text: str):
+            raise NotImplementedError
+
+        def embed(self, text: str):
+            return [0.4, 0.5, 0.6]
+
+    embedding = await _embed_query(FallbackVectorizer(), "science")
+
+    assert embedding == [0.4, 0.5, 0.6]
 
 
 @pytest.mark.asyncio
@@ -151,7 +168,10 @@ async def test_search_records_rejects_unknown_or_vector_return_fields():
 
 @pytest.mark.asyncio
 async def test_search_records_builds_vector_query_and_normalizes_results(monkeypatch):
-    server = FakeServer()
+    server = FakeServer(
+        search_type="vector",
+        search_params={"normalize_vector_distance": False, "ef_runtime": 42},
+    )
     built_queries = []
 
     class FakeVectorQuery(FakeQuery):
@@ -179,7 +199,8 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
     assert built_queries[0]["vector_field_name"] == "embedding"
     assert built_queries[0]["return_fields"] == ["content", "category", "rating"]
     assert built_queries[0]["num_results"] == 2
-    assert built_queries[0]["normalize_vector_distance"] is True
+    assert built_queries[0]["normalize_vector_distance"] is False
+    assert built_queries[0]["ef_runtime"] == 42
     assert response == {
         "search_type": "vector",
         "offset": 0,
@@ -200,7 +221,14 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
 
 @pytest.mark.asyncio
 async def test_search_records_builds_fulltext_query(monkeypatch):
-    server = FakeServer()
+    server = FakeServer(
+        search_type="fulltext",
+        search_params={
+            "text_scorer": "BM25STD.NORM",
+            "stopwords": None,
+            "text_weights": {"medical": 2.5},
+        },
+    )
     built_queries = []
 
     class FakeTextQuery(FakeQuery):
@@ -225,7 +253,6 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
     response = await search_records(
         server,
         query="medical science",
-        search_type="fulltext",
         limit=1,
         return_fields=["content", "category"],
     )
@@ -233,13 +260,28 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
     assert built_queries[0]["text"] == "medical science"
     assert built_queries[0]["text_field_name"] == "content"
     assert built_queries[0]["num_results"] == 1
+    assert built_queries[0]["text_scorer"] == "BM25STD.NORM"
+    assert built_queries[0]["stopwords"] is None
+    assert built_queries[0]["text_weights"] == {"medical": 2.5}
+    assert response["search_type"] == "fulltext"
     assert response["results"][0]["score"] == 1.5
     assert response["results"][0]["score_type"] == "text_score"
 
 
 @pytest.mark.asyncio
 async def test_search_records_builds_hybrid_query_for_native_runtime(monkeypatch):
-    server = FakeServer()
+    server = FakeServer(
+        search_type="hybrid",
+        search_params={
+            "text_scorer": "TFIDF",
+            "stopwords": None,
+            "text_weights": {"hybrid": 2.0},
+            "vector_search_method": "KNN",
+            "knn_ef_runtime": 77,
+            "combination_method": "LINEAR",
+            "linear_text_weight": 0.2,
+        },
+    )
     server.native_hybrid_supported = True
     built_queries = []
 
@@ -277,18 +319,35 @@ async def test_search_records_builds_hybrid_query_for_native_runtime(monkeypatch
     )
     server.index.query = fake_query
 
-    response = await search_records(server, query="hybrid", search_type="hybrid")
+    response = await search_records(server, query="hybrid")
 
     assert built_queries[0][0] == "native"
     assert built_queries[0][1]["vector"] == [0.1, 0.2, 0.3]
+    assert built_queries[0][1]["text_scorer"] == "TFIDF"
+    assert built_queries[0][1]["stopwords"] is None
+    assert built_queries[0][1]["text_weights"] == {"hybrid": 2.0}
+    assert built_queries[0][1]["vector_search_method"] == "KNN"
+    assert built_queries[0][1]["knn_ef_runtime"] == 77
+    assert built_queries[0][1]["combination_method"] == "LINEAR"
+    assert built_queries[0][1]["linear_alpha"] == 0.2
     assert built_queries[0][2].apply_calls == [{"__key": "@__key"}]
+    assert response["search_type"] == "hybrid"
     assert response["results"][0]["score_type"] == "hybrid_score"
     assert response["results"][0]["score"] == 2.5
 
 
 @pytest.mark.asyncio
 async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypatch):
-    server = FakeServer()
+    server = FakeServer(
+        search_type="hybrid",
+        search_params={
+            "text_scorer": "TFIDF",
+            "stopwords": None,
+            "text_weights": {"hybrid": 2.0},
+            "combination_method": "LINEAR",
+            "linear_text_weight": 0.2,
+        },
+    )
     built_queries = []
 
     class FakeHybridQuery(FakeQuery):
@@ -317,15 +376,20 @@ async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypat
     )
     server.index.query = fake_query
 
-    response = await search_records(server, query="hybrid", search_type="hybrid")
+    response = await search_records(server, query="hybrid")
 
     assert built_queries[0][0] == "fallback"
+    assert built_queries[0][1]["text_scorer"] == "TFIDF"
+    assert built_queries[0][1]["stopwords"] is None
+    assert built_queries[0][1]["text_weights"] == {"hybrid": 2.0}
+    assert built_queries[0][1]["alpha"] == pytest.approx(0.8)
     assert built_queries[0][1]["return_fields"] == [
         "__key",
         "content",
         "category",
         "rating",
     ]
+    assert response["search_type"] == "hybrid"
     assert response["results"][0]["score"] == 0.7
 
 
@@ -335,6 +399,8 @@ def test_register_search_tool_uses_default_and_override_descriptions():
 
     assert default_server.registered_tools[0]["name"] == "search-records"
     assert "Search records" in default_server.registered_tools[0]["description"]
+    assert "query" in default_server.registered_tools[0]["fn"].__annotations__
+    assert "search_type" not in default_server.registered_tools[0]["fn"].__annotations__
 
     custom_server = FakeServer()
     custom_server.mcp_settings.tool_search_description = "Custom search description"

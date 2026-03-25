@@ -8,34 +8,33 @@ from redisvl.query import AggregateHybridQuery, HybridQuery, TextQuery, VectorQu
 
 DEFAULT_SEARCH_DESCRIPTION = "Search records in the configured Redis index."
 
+_NATIVE_HYBRID_DEFAULTS = {
+    "combination_method": "LINEAR",
+    "linear_text_weight": 0.3,
+}
+
 
 def _validate_request(
     *,
     query: str,
-    search_type: str,
     limit: Optional[int],
     offset: int,
     return_fields: Optional[list[str]],
     server: Any,
     index: Any,
 ) -> tuple[int, list[str]]:
-    """Validate the MCP search request and resolve effective request defaults.
+    """Validate a `search-records` request and resolve default projection.
 
-    This function enforces the public MCP contract for `search-records` before
-    any RedisVL query objects are constructed. It also derives the default
-    return-field projection from the effective index schema.
+    The MCP caller can only supply query text, pagination, filters, and return
+    fields. Search mode and tuning are sourced from config, so this validation
+    step focuses only on the public request contract.
     """
+
     runtime = server.config.runtime
 
     if not isinstance(query, str) or not query.strip():
         raise RedisVLMCPError(
             "query must be a non-empty string",
-            code=MCPErrorCode.INVALID_REQUEST,
-            retryable=False,
-        )
-    if search_type not in {"vector", "fulltext", "hybrid"}:
-        raise RedisVLMCPError(
-            "search_type must be one of: vector, fulltext, hybrid",
             code=MCPErrorCode.INVALID_REQUEST,
             retryable=False,
         )
@@ -104,12 +103,7 @@ def _validate_request(
 def _normalize_record(
     result: dict[str, Any], score_field: str, score_type: str
 ) -> dict[str, Any]:
-    """Convert one RedisVL search result into the stable MCP result shape.
-
-    RedisVL and redis-py expose scores and document identifiers under slightly
-    different field names depending on the query type, so normalization happens
-    here before the MCP response is returned.
-    """
+    """Convert one RedisVL result into the stable MCP result shape."""
     score = result.get(score_field)
     if score is None and score_field == "score":
         score = result.get("__score")
@@ -152,13 +146,85 @@ def _normalize_record(
 
 
 async def _embed_query(vectorizer: Any, query: str) -> Any:
-    """Embed the user query through either an async or sync vectorizer API."""
-    if hasattr(vectorizer, "aembed"):
-        return await vectorizer.aembed(query)
+    """Embed the query text, tolerating vectorizers without real async support."""
+    aembed = getattr(vectorizer, "aembed", None)
+    if callable(aembed):
+        try:
+            return await aembed(query)
+        except NotImplementedError:
+            pass
     embed = getattr(vectorizer, "embed")
     if inspect.iscoroutinefunction(embed):
         return await embed(query)
     return await asyncio.to_thread(embed, query)
+
+
+def _get_configured_search(server: Any) -> tuple[str, dict[str, Any]]:
+    """Return the configured search mode and normalized query params."""
+    search_config = server.config.search
+    return search_config.type, search_config.to_query_params()
+
+
+def _build_native_hybrid_kwargs(
+    *,
+    query: str,
+    embedding: Any,
+    runtime: Any,
+    filter_expression: Any,
+    return_fields: list[str],
+    num_results: int,
+    search_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Build native `HybridQuery` kwargs from MCP config-owned hybrid params."""
+    params = {**_NATIVE_HYBRID_DEFAULTS, **search_params}
+    linear_text_weight = params.pop("linear_text_weight", None)
+    if linear_text_weight is not None:
+        params["linear_alpha"] = linear_text_weight
+
+    return {
+        "text": query,
+        "text_field_name": runtime.text_field_name,
+        "vector": embedding,
+        "vector_field_name": runtime.vector_field_name,
+        "filter_expression": filter_expression,
+        "return_fields": ["__key", *return_fields],
+        "num_results": num_results,
+        "yield_text_score_as": "text_score",
+        "yield_vsim_score_as": "vector_similarity",
+        "yield_combined_score_as": "hybrid_score",
+        **params,
+    }
+
+
+def _build_fallback_hybrid_kwargs(
+    *,
+    query: str,
+    embedding: Any,
+    runtime: Any,
+    filter_expression: Any,
+    return_fields: list[str],
+    num_results: int,
+    search_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Build aggregate fallback kwargs while preserving MCP fusion semantics."""
+    params = {
+        key: value
+        for key, value in search_params.items()
+        if key in {"text_scorer", "stopwords", "text_weights"}
+    }
+    linear_text_weight = search_params.get("linear_text_weight", 0.3)
+    params["alpha"] = 1 - linear_text_weight
+
+    return {
+        "text": query,
+        "text_field_name": runtime.text_field_name,
+        "vector": embedding,
+        "vector_field_name": runtime.vector_field_name,
+        "filter_expression": filter_expression,
+        "return_fields": ["__key", *return_fields],
+        "num_results": num_results,
+        **params,
+    }
 
 
 async def _build_query(
@@ -166,35 +232,39 @@ async def _build_query(
     server: Any,
     index: Any,
     query: str,
-    search_type: str,
     limit: int,
     offset: int,
     filter_value: str | dict[str, Any] | None,
     return_fields: list[str],
-) -> tuple[Any, str, str]:
-    """Build the RedisVL query object and score metadata for one search mode.
+) -> tuple[Any, str, str, str]:
+    """Build the RedisVL query object from configured search mode and params.
 
-    Returns the constructed query object along with the raw score field name and
-    the stable MCP `score_type` label that the response should expose.
+    Returns the query instance, the raw score field to read from RedisVL
+    results, the public MCP `score_type`, and the configured `search_type`.
     """
     runtime = server.config.runtime
+    search_type, search_params = _get_configured_search(server)
     num_results = limit + offset
     filter_expression = parse_filter(filter_value, index.schema)
 
     if search_type == "vector":
         vectorizer = await server.get_vectorizer()
         embedding = await _embed_query(vectorizer, query)
+        vector_kwargs = {
+            "vector": embedding,
+            "vector_field_name": runtime.vector_field_name,
+            "filter_expression": filter_expression,
+            "return_fields": return_fields,
+            "num_results": num_results,
+            **search_params,
+        }
+        if "normalize_vector_distance" not in vector_kwargs:
+            vector_kwargs["normalize_vector_distance"] = True
         return (
-            VectorQuery(
-                vector=embedding,
-                vector_field_name=runtime.vector_field_name,
-                filter_expression=filter_expression,
-                return_fields=return_fields,
-                num_results=num_results,
-                normalize_vector_distance=True,
-            ),
+            VectorQuery(**vector_kwargs),
             "vector_distance",
             "vector_distance_normalized",
+            search_type,
         )
 
     if search_type == "fulltext":
@@ -205,81 +275,68 @@ async def _build_query(
                 filter_expression=filter_expression,
                 return_fields=return_fields,
                 num_results=num_results,
-                stopwords=None,
+                **search_params,
             ),
             "score",
             "text_score",
+            search_type,
         )
 
     vectorizer = await server.get_vectorizer()
     embedding = await _embed_query(vectorizer, query)
     if await server.supports_native_hybrid_search():
         native_query = HybridQuery(
-            text=query,
-            text_field_name=runtime.text_field_name,
-            vector=embedding,
-            vector_field_name=runtime.vector_field_name,
-            filter_expression=filter_expression,
-            return_fields=["__key", *return_fields],
-            num_results=num_results,
-            stopwords=None,
-            combination_method="LINEAR",
-            linear_alpha=0.7,
-            yield_text_score_as="text_score",
-            yield_vsim_score_as="vector_similarity",
-            yield_combined_score_as="hybrid_score",
+            **_build_native_hybrid_kwargs(
+                query=query,
+                embedding=embedding,
+                runtime=runtime,
+                filter_expression=filter_expression,
+                return_fields=return_fields,
+                num_results=num_results,
+                search_params=search_params,
+            )
         )
         native_query.postprocessing_config.apply(__key="@__key")
-        return (
-            native_query,
-            "hybrid_score",
-            "hybrid_score",
-        )
+        return native_query, "hybrid_score", "hybrid_score", search_type
 
     fallback_query = AggregateHybridQuery(
-        text=query,
-        text_field_name=runtime.text_field_name,
-        vector=embedding,
-        vector_field_name=runtime.vector_field_name,
-        filter_expression=filter_expression,
-        return_fields=["__key", *return_fields],
-        num_results=num_results,
-        stopwords=None,
+        **_build_fallback_hybrid_kwargs(
+            query=query,
+            embedding=embedding,
+            runtime=runtime,
+            filter_expression=filter_expression,
+            return_fields=return_fields,
+            num_results=num_results,
+            search_params=search_params,
+        )
     )
-    return (
-        fallback_query,
-        "hybrid_score",
-        "hybrid_score",
-    )
+    return fallback_query, "hybrid_score", "hybrid_score", search_type
 
 
 async def search_records(
     server: Any,
     *,
     query: str,
-    search_type: str = "vector",
     limit: Optional[int] = None,
     offset: int = 0,
     filter: str | dict[str, Any] | None = None,
     return_fields: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    """Execute `search-records` against the server's configured Redis index."""
+    """Execute `search-records` against the configured Redis index binding."""
     try:
         index = await server.get_index()
         effective_limit, effective_return_fields = _validate_request(
             query=query,
-            search_type=search_type,
             limit=limit,
             offset=offset,
             return_fields=return_fields,
             server=server,
             index=index,
         )
-        built_query, score_field, score_type = await _build_query(
+        built_query, score_field, score_type, search_type = await _build_query(
             server=server,
             index=index,
             query=query.strip(),
-            search_type=search_type,
             limit=effective_limit,
             offset=offset,
             filter_value=filter,
@@ -306,14 +363,13 @@ async def search_records(
 
 
 def register_search_tool(server: Any) -> None:
-    """Register the MCP search tool on a server-like object."""
+    """Register the MCP `search-records` tool with its config-owned contract."""
     description = (
         server.mcp_settings.tool_search_description or DEFAULT_SEARCH_DESCRIPTION
     )
 
     async def search_records_tool(
         query: str,
-        search_type: str = "vector",
         limit: Optional[int] = None,
         offset: int = 0,
         filter: str | dict[str, Any] | None = None,
@@ -323,7 +379,6 @@ def register_search_tool(server: Any) -> None:
         return await search_records(
             server,
             query=query,
-            search_type=search_type,
             limit=limit,
             offset=offset,
             filter=filter,

@@ -94,7 +94,7 @@ async def searchable_index(async_client, worker_id):
 
 @pytest.fixture
 def mcp_config_path(tmp_path: Path, redis_url: str):
-    def factory(redis_name: str) -> str:
+    def factory(redis_name: str, search: dict) -> str:
         config = {
             "server": {"redis_url": redis_url},
             "indexes": {
@@ -105,6 +105,7 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
                         "model": "fake-model",
                         "dims": 3,
                     },
+                    "search": search,
                     "runtime": {
                         "text_field_name": "content",
                         "vector_field_name": "embedding",
@@ -115,7 +116,7 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
                 }
             },
         }
-        config_path = tmp_path / f"{redis_name}.yaml"
+        config_path = tmp_path / f"{redis_name}-{search['type']}.yaml"
         config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
         return str(config_path)
 
@@ -128,20 +129,42 @@ async def started_server(monkeypatch, searchable_index, mcp_config_path):
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    server = RedisVLMCPServer(
-        MCPSettings(config=mcp_config_path(searchable_index.schema.index.name))
-    )
-    await server.startup()
-    yield server
-    await server.shutdown()
+
+    async def factory(search: dict) -> RedisVLMCPServer:
+        server = RedisVLMCPServer(
+            MCPSettings(
+                config=mcp_config_path(searchable_index.schema.index.name, search)
+            )
+        )
+        await server.startup()
+        return server
+
+    servers = []
+
+    async def started(search: dict) -> RedisVLMCPServer:
+        server = await factory(search)
+        servers.append(server)
+        return server
+
+    yield started
+
+    for server in servers:
+        await server.shutdown()
 
 
 @pytest.mark.asyncio
 async def test_search_records_vector_success_with_pagination_and_projection(
     started_server,
 ):
+    server = await started_server(
+        {
+            "type": "vector",
+            "params": {"normalize_vector_distance": True},
+        }
+    )
+
     response = await search_records(
-        started_server,
+        server,
         query="science",
         limit=1,
         offset=1,
@@ -158,10 +181,19 @@ async def test_search_records_vector_success_with_pagination_and_projection(
 
 @pytest.mark.asyncio
 async def test_search_records_fulltext_success(started_server):
+    server = await started_server(
+        {
+            "type": "fulltext",
+            "params": {
+                "text_scorer": "BM25STD.NORM",
+                "stopwords": None,
+            },
+        }
+    )
+
     response = await search_records(
-        started_server,
+        server,
         query="science",
-        search_type="fulltext",
         return_fields=["content", "category"],
     )
 
@@ -174,8 +206,10 @@ async def test_search_records_fulltext_success(started_server):
 
 @pytest.mark.asyncio
 async def test_search_records_respects_raw_string_filter(started_server):
+    server = await started_server({"type": "vector"})
+
     response = await search_records(
-        started_server,
+        server,
         query="science",
         filter="@category:{science}",
         return_fields=["content", "category"],
@@ -189,8 +223,10 @@ async def test_search_records_respects_raw_string_filter(started_server):
 
 @pytest.mark.asyncio
 async def test_search_records_respects_dsl_filter(started_server):
+    server = await started_server({"type": "vector"})
+
     response = await search_records(
-        started_server,
+        server,
         query="science",
         filter={"field": "rating", "op": "gte", "value": 4.5},
         return_fields=["content", "category", "rating"],
@@ -204,9 +240,11 @@ async def test_search_records_respects_dsl_filter(started_server):
 
 @pytest.mark.asyncio
 async def test_search_records_invalid_filter_returns_invalid_filter(started_server):
+    server = await started_server({"type": "vector"})
+
     with pytest.raises(RedisVLMCPError) as exc_info:
         await search_records(
-            started_server,
+            server,
             query="science",
             filter={"field": "missing", "op": "eq", "value": "science"},
         )
@@ -217,11 +255,20 @@ async def test_search_records_invalid_filter_returns_invalid_filter(started_serv
 @pytest.mark.asyncio
 async def test_search_records_native_hybrid_success(started_server, async_client):
     await skip_if_redis_version_below_async(async_client, "8.4.0")
+    server = await started_server(
+        {
+            "type": "hybrid",
+            "params": {
+                "combination_method": "LINEAR",
+                "linear_text_weight": 0.3,
+                "stopwords": None,
+            },
+        }
+    )
 
     response = await search_records(
-        started_server,
+        server,
         query="science",
-        search_type="hybrid",
         return_fields=["content", "category"],
     )
 
@@ -237,10 +284,20 @@ async def test_search_records_fallback_hybrid_success(started_server, async_clie
     if is_version_gte(redis_version, "8.4.0"):
         pytest.skip(f"Redis version {redis_version} uses native hybrid search")
 
+    server = await started_server(
+        {
+            "type": "hybrid",
+            "params": {
+                "combination_method": "LINEAR",
+                "linear_text_weight": 0.3,
+                "stopwords": None,
+            },
+        }
+    )
+
     response = await search_records(
-        started_server,
+        server,
         query="science",
-        search_type="hybrid",
         return_fields=["content", "category"],
     )
 

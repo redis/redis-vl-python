@@ -79,6 +79,9 @@ class RedisVLMCPServer(FastMCP):
             # The server acquired this client explicitly during startup, so hand
             # ownership to the index for a single shutdown path.
             self._index._owns_redis_client = True
+            self.config.validate_search(
+                supports_native_hybrid_search=await self.supports_native_hybrid_search(),
+            )
 
             self._vectorizer = await asyncio.wait_for(
                 asyncio.to_thread(self._build_vectorizer),
