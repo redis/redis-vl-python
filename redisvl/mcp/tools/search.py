@@ -110,7 +110,7 @@ def _normalize_record(
     if score is None:
         raise RedisVLMCPError(
             f"Search result missing expected score field '{score_field}'",
-            code=MCPErrorCode.INVALID_REQUEST,
+            code=MCPErrorCode.INTERNAL_ERROR,
             retryable=False,
         )
 
@@ -123,7 +123,7 @@ def _normalize_record(
     if doc_id is None:
         raise RedisVLMCPError(
             "Search result missing id",
-            code=MCPErrorCode.INVALID_REQUEST,
+            code=MCPErrorCode.INTERNAL_ERROR,
             retryable=False,
         )
 

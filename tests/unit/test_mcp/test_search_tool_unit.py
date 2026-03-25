@@ -171,6 +171,46 @@ async def test_search_records_rejects_unknown_or_vector_return_fields():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result", "message"),
+    [
+        (
+            {
+                "id": "doc:broken",
+                "content": "science doc",
+                "category": "science",
+            },
+            "missing expected score field",
+        ),
+        (
+            {
+                "content": "science doc",
+                "category": "science",
+                "vector_distance": "0.93",
+            },
+            "missing id",
+        ),
+    ],
+)
+async def test_search_records_treats_malformed_backend_results_as_internal_errors(
+    result, message
+):
+    server = FakeServer(search_type="vector")
+
+    async def fake_query(query):
+        server.index.query_calls.append(query)
+        return [result]
+
+    server.index.query = fake_query
+
+    with pytest.raises(RedisVLMCPError, match=message) as exc_info:
+        await search_records(server, query="science")
+
+    assert exc_info.value.code == MCPErrorCode.INTERNAL_ERROR
+    assert exc_info.value.retryable is False
+
+
+@pytest.mark.asyncio
 async def test_search_records_builds_vector_query_and_normalizes_results(monkeypatch):
     server = FakeServer(
         search_type="vector",
