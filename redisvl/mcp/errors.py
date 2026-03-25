@@ -12,6 +12,7 @@ class MCPErrorCode(str, Enum):
     """Stable internal error codes exposed by the MCP framework."""
 
     INVALID_REQUEST = "invalid_request"
+    INVALID_FILTER = "invalid_filter"
     DEPENDENCY_MISSING = "dependency_missing"
     BACKEND_UNAVAILABLE = "backend_unavailable"
     INTERNAL_ERROR = "internal_error"

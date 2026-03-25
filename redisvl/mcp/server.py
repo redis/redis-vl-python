@@ -2,11 +2,13 @@ import asyncio
 from importlib import import_module
 from typing import Any, Awaitable, Optional, Type
 
+from redis import __version__ as redis_py_version
+
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.config import MCPConfig, load_mcp_config
 from redisvl.mcp.settings import MCPSettings
-from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
 
 try:
@@ -41,6 +43,7 @@ class RedisVLMCPServer(FastMCP):
         self._index: Optional[AsyncSearchIndex] = None
         self._vectorizer: Optional[Any] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
+        self._tools_registered = False
 
     async def startup(self) -> None:
         """Load config, inspect the configured index, and initialize dependencies."""
@@ -82,6 +85,7 @@ class RedisVLMCPServer(FastMCP):
                 timeout=timeout,
             )
             self._validate_vectorizer_dims(effective_schema)
+            self._register_tools()
         except Exception:
             if self._index is not None:
                 await self.shutdown()
@@ -154,6 +158,30 @@ class RedisVLMCPServer(FastMCP):
             raise ValueError(
                 f"Vectorizer dims {actual_dims} do not match configured vector field dims {configured_dims}"
             )
+
+    async def supports_native_hybrid_search(self) -> bool:
+        """Return whether the current runtime supports Redis native hybrid search."""
+        if self._index is None:
+            raise RuntimeError("MCP server has not been started")
+        if not is_version_gte(redis_py_version, "7.1.0"):
+            return False
+
+        client = await self._index._get_client()
+        info = await client.info("server")
+        if not is_version_gte(info.get("redis_version", "0.0.0"), "8.4.0"):
+            return False
+
+        return hasattr(client.ft(self._index.schema.index.name), "hybrid_search")
+
+    def _register_tools(self) -> None:
+        """Register MCP tools once the server is ready."""
+        if self._tools_registered or not hasattr(self, "tool"):
+            return
+
+        from redisvl.mcp.tools.search import register_search_tool
+
+        register_search_tool(self)
+        self._tools_registered = True
 
     @staticmethod
     def _is_missing_index_error(exc: RedisSearchError) -> bool:
