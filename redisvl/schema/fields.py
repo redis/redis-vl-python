@@ -400,6 +400,10 @@ class TextField(BaseField):
         if self.attrs.phonetic_matcher is not None:  # type: ignore
             kwargs["phonetic_matcher"] = self.attrs.phonetic_matcher  # type: ignore
 
+        # Add WITHSUFFIXTRIE if enabled
+        if self.attrs.withsuffixtrie:  # type: ignore
+            kwargs["withsuffixtrie"] = True
+
         # Add INDEXMISSING if enabled
         if self.attrs.index_missing:  # type: ignore
             kwargs["index_missing"] = True
@@ -441,6 +445,10 @@ class TagField(BaseField):
         # Only add as_name if it's not None
         if as_name is not None:
             kwargs["as_name"] = as_name
+
+        # Add WITHSUFFIXTRIE if enabled
+        if self.attrs.withsuffixtrie:  # type: ignore
+            kwargs["withsuffixtrie"] = True
 
         # Add INDEXMISSING if enabled
         if self.attrs.index_missing:  # type: ignore

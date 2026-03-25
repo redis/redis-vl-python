@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 import redis.commands.search.reducers as reducers
 import yaml

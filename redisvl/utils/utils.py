@@ -2,14 +2,13 @@ import asyncio
 import importlib
 import inspect
 import json
-import logging
 import sys
 import warnings
 from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, Dict, Optional, Sequence, TypeVar, cast
+from typing import Any, Callable, Coroutine, Dict, Optional, Sequence, TypeVar
 from warnings import warn
 
 from pydantic import BaseModel
@@ -238,7 +237,7 @@ def sync_wrapper(fn: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Non
                 asyncio.set_event_loop(loop)
             task = loop.create_task(fn())
             loop.run_until_complete(task)
-        except (RuntimeError, AttributeError, TypeError) as e:
+        except (RuntimeError, AttributeError, TypeError):
             # This could happen if an object stored an event loop and now
             # that event loop is closed, or if asyncio modules are being
             # torn down during interpreter shutdown.
