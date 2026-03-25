@@ -354,22 +354,32 @@ def test_text_query_word_weights():
     desc_clause = query_str[desc_start + len("@description:(") : desc_close]
 
     # Weighted terms appear inside the description clause
-    assert "alpha=>{$weight:2}" in desc_clause
     assert "delta=>{$weight:0.555}" in desc_clause
 
-    # alpha appears twice (once per occurrence in input text) — count
-    assert desc_clause.count("alpha") == 2
+    # alpha appears twice and both occurrences are weighted
+    alpha_weighted = "alpha=>{$weight:2}"
+    assert desc_clause.count(alpha_weighted) == 2
+    # Ensure no unweighted 'alpha' tokens slipped through
+    idx = 0
+    while True:
+        idx = desc_clause.find("alpha", idx)
+        if idx == -1:
+            break
+        assert desc_clause.startswith(alpha_weighted, idx)
+        idx += len("alpha")
 
     # Unweighted terms are present
     for term in ["query", "string", "bravo", "tango"]:
         assert term in desc_clause
 
-    # Post-query modifiers follow after the closing paren
-    suffix = query_str[desc_close + 1 :]
-    assert suffix.lstrip().startswith("SCORER BM25STD")
-    assert "WITHSCORES" in suffix
-    assert "DIALECT 2" in suffix
-    assert "LIMIT 0 10" in suffix
+    # Post-query modifiers follow after the closing paren in expected order
+    suffix_stripped = suffix.lstrip()
+    assert suffix_stripped.startswith("SCORER BM25STD")
+    scorer_idx = suffix_stripped.index("SCORER BM25STD")
+    withscores_idx = suffix_stripped.index("WITHSCORES")
+    dialect_idx = suffix_stripped.index("DIALECT 2")
+    limit_idx = suffix_stripped.index("LIMIT 0 10")
+    assert scorer_idx <= withscores_idx <= dialect_idx <= limit_idx
 
     # raise an error if weights are not positive floats
     with pytest.raises(ValueError):
