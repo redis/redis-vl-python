@@ -16,8 +16,8 @@ import sys
 import traceback
 from typing import Iterable
 
-# The MCP package requires optional extras such as pydantic-settings, so
-# import-sanity runs without extras should skip it rather than fail noisily.
+# The MCP package depends on optional MCP extras, so import-sanity runs without
+# those extras should skip it rather than fail noisily.
 EXCLUDED_MODULE_PREFIXES = ("redisvl.mcp",)
 
 

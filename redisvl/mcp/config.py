@@ -1,13 +1,14 @@
 import os
 import re
+from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from redisvl.schema.fields import BaseField
-from redisvl.schema.schema import IndexInfo, IndexSchema
+from redisvl.schema.schema import IndexSchema
 
 _ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
 
@@ -15,10 +16,9 @@ _ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
 class MCPRuntimeConfig(BaseModel):
     """Runtime limits and validated field mappings for MCP requests."""
 
-    index_mode: str = "create_if_missing"
-    text_field_name: str
-    vector_field_name: str
-    default_embed_field: str
+    text_field_name: str = Field(..., min_length=1)
+    vector_field_name: str = Field(..., min_length=1)
+    default_embed_text_field: str = Field(..., min_length=1)
     default_limit: int = 10
     max_limit: int = 100
     max_upsert_records: int = 64
@@ -29,10 +29,7 @@ class MCPRuntimeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_limits(self) -> "MCPRuntimeConfig":
-        if self.index_mode not in {"validate_only", "create_if_missing"}:
-            raise ValueError(
-                "runtime.index_mode must be validate_only or create_if_missing"
-            )
+        """Validate runtime bounds during config load."""
         if self.default_limit <= 0:
             raise ValueError("runtime.default_limit must be greater than 0")
         if self.max_limit < self.default_limit:
@@ -68,19 +65,157 @@ class MCPVectorizerConfig(BaseModel):
         return {"model": self.model, **self.extra_kwargs}
 
 
+class MCPServerConfig(BaseModel):
+    """Server-level bootstrap configuration."""
+
+    redis_url: str = Field(..., min_length=1)
+
+
+class MCPSchemaOverrideField(BaseModel):
+    """Allowed schema override fragment for one already-discovered field."""
+
+    name: str = Field(..., min_length=1)
+    type: str = Field(..., min_length=1)
+    path: Optional[str] = None
+    attrs: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPSchemaOverrides(BaseModel):
+    """Optional field-level schema patches used to fill inspection gaps."""
+
+    fields: list[MCPSchemaOverrideField] = Field(default_factory=list)
+
+
+class MCPIndexBindingConfig(BaseModel):
+    """The sole configured v1 index binding."""
+
+    redis_name: str = Field(..., min_length=1)
+    vectorizer: MCPVectorizerConfig
+    runtime: MCPRuntimeConfig
+    schema_overrides: MCPSchemaOverrides = Field(default_factory=MCPSchemaOverrides)
+
+
 class MCPConfig(BaseModel):
     """Validated MCP server configuration loaded from YAML."""
 
-    redis_url: str = Field(..., min_length=1)
-    index: IndexInfo
-    fields: Union[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]
-    vectorizer: MCPVectorizerConfig
-    runtime: MCPRuntimeConfig
+    server: MCPServerConfig
+    indexes: Dict[str, MCPIndexBindingConfig]
 
     @model_validator(mode="after")
-    def _validate_runtime_mapping(self) -> "MCPConfig":
-        """Ensure runtime field mappings point at explicit schema fields."""
-        schema = self.to_index_schema()
+    def _validate_bindings(self) -> "MCPConfig":
+        """Validate that there is exactly one configured logical binding."""
+        if len(self.indexes) != 1:
+            raise ValueError(
+                "indexes must contain exactly one configured index binding"
+            )
+
+        binding_id = next(iter(self.indexes))
+        if not binding_id.strip():
+            raise ValueError("indexes binding id must be non-blank")
+        return self
+
+    @property
+    def binding_id(self) -> str:
+        """Return the single logical binding identifier configured for v1."""
+        return next(iter(self.indexes))
+
+    @property
+    def binding(self) -> MCPIndexBindingConfig:
+        """Return the sole configured binding."""
+        return self.indexes[self.binding_id]
+
+    @property
+    def runtime(self) -> MCPRuntimeConfig:
+        """Expose the sole binding's runtime config for phase 1."""
+        return self.binding.runtime
+
+    @property
+    def vectorizer(self) -> MCPVectorizerConfig:
+        """Expose the sole binding's vectorizer config for phase 1."""
+        return self.binding.vectorizer
+
+    @property
+    def redis_name(self) -> str:
+        """Return the existing Redis index name that must be inspected at startup."""
+        return self.binding.redis_name
+
+    def inspected_schema_from_index_info(
+        self, index_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Build a schema dict from FT.INFO while preserving discovered field identity.
+
+        RedisVL's generic FT.INFO conversion omits vector fields when their attrs are
+        incomplete on older Redis versions. MCP needs those field identities to survive
+        so schema overrides can patch the missing attrs during startup.
+        """
+        from redisvl.redis.connection import convert_index_info_to_schema
+
+        schema_dict = convert_index_info_to_schema(index_info)
+        discovered_fields = {
+            field["name"]: field
+            for field in schema_dict.get("fields", [])
+            if isinstance(field, dict) and "name" in field
+        }
+
+        storage_type = index_info["index_definition"][1].lower()
+        for raw_field in index_info.get("attributes", []):
+            name = raw_field[1] if storage_type == "hash" else raw_field[3]
+            if name in discovered_fields:
+                continue
+
+            field = {
+                "name": name,
+                "type": str(raw_field[5]).lower(),
+            }
+            if storage_type == "json":
+                field["path"] = raw_field[1]
+
+            # Keep discovered field identity even when FT.INFO omitted attrs.
+            schema_dict.setdefault("fields", []).append(field)
+
+        return schema_dict
+
+    def merge_schema_overrides(
+        self, inspected_schema: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Apply validated schema overrides without allowing identity changes."""
+        merged_schema = deepcopy(inspected_schema)
+        merged_fields = merged_schema.setdefault("fields", [])
+        discovered_fields = {
+            field["name"]: field
+            for field in merged_fields
+            if isinstance(field, dict) and "name" in field
+        }
+
+        for override in self.binding.schema_overrides.fields:
+            discovered = discovered_fields.get(override.name)
+            if discovered is None:
+                raise ValueError(
+                    f"schema_overrides.fields '{override.name}' not found in inspected schema"
+                )
+
+            discovered_type = str(discovered.get("type", "")).lower()
+            override_type = override.type.lower()
+            if discovered_type != override_type:
+                raise ValueError(
+                    f"schema_overrides.fields '{override.name}' cannot change discovered field type"
+                )
+
+            discovered_path = discovered.get("path")
+            if override.path is not None and override.path != discovered_path:
+                raise ValueError(
+                    f"schema_overrides.fields '{override.name}' cannot change discovered field path"
+                )
+
+            if override.attrs:
+                merged_attrs = dict(discovered.get("attrs", {}))
+                merged_attrs.update(override.attrs)
+                discovered["attrs"] = merged_attrs
+
+        return merged_schema
+
+    def validate_runtime_mapping(self, schema: IndexSchema) -> None:
+        """Ensure runtime mappings point at explicit fields in the effective schema."""
         field_names = set(schema.field_names)
 
         if self.runtime.text_field_name not in field_names:
@@ -88,9 +223,10 @@ class MCPConfig(BaseModel):
                 f"runtime.text_field_name '{self.runtime.text_field_name}' not found in schema"
             )
 
-        if self.runtime.default_embed_field not in field_names:
+        if self.runtime.default_embed_text_field not in field_names:
             raise ValueError(
-                f"runtime.default_embed_field '{self.runtime.default_embed_field}' not found in schema"
+                "runtime.default_embed_text_field "
+                f"'{self.runtime.default_embed_text_field}' not found in schema"
             )
 
         vector_field = schema.fields.get(self.runtime.vector_field_name)
@@ -103,26 +239,20 @@ class MCPConfig(BaseModel):
                 f"runtime.vector_field_name '{self.runtime.vector_field_name}' must reference a vector field"
             )
 
-        return self
+    def to_index_schema(self, inspected_schema: Dict[str, Any]) -> IndexSchema:
+        """Apply overrides to an inspected schema and validate the effective result."""
+        merged_schema = self.merge_schema_overrides(inspected_schema)
+        schema = IndexSchema.model_validate(merged_schema)
+        self.validate_runtime_mapping(schema)
+        return schema
 
-    def to_index_schema(self) -> IndexSchema:
-        """Convert the MCP config schema fragment into a reusable `IndexSchema`."""
-        return IndexSchema.model_validate(
-            {
-                "index": self.index.model_dump(mode="python"),
-                "fields": self.fields,
-            }
-        )
+    def get_vector_field(self, schema: IndexSchema) -> BaseField:
+        """Return the effective vector field from a validated schema."""
+        return schema.fields[self.runtime.vector_field_name]
 
-    @property
-    def vector_field(self) -> BaseField:
-        """Return the configured vector field from the generated index schema."""
-        return self.to_index_schema().fields[self.runtime.vector_field_name]
-
-    @property
-    def vector_field_dims(self) -> Optional[int]:
-        """Return the configured vector dimension when the field exposes one."""
-        attrs = self.vector_field.attrs
+    def get_vector_field_dims(self, schema: IndexSchema) -> Optional[int]:
+        """Return the effective vector dimensions when the field exposes them."""
+        attrs = self.get_vector_field(schema).attrs
         return getattr(attrs, "dims", None)
 
 
@@ -143,7 +273,6 @@ def _substitute_env(value: Any) -> Any:
             return env_value
         if default is not None:
             return default
-        # Fail fast here so startup never proceeds with partially-resolved config.
         raise ValueError(f"Missing required environment variable: {name}")
 
     return _ENV_PATTERN.sub(replace, value)

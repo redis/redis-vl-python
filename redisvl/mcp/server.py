@@ -2,12 +2,15 @@ import asyncio
 from importlib import import_module
 from typing import Any, Awaitable, Optional, Type
 
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.config import MCPConfig, load_mcp_config
 from redisvl.mcp.settings import MCPSettings
+from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.schema import IndexSchema
 
 try:
-    from mcp.server.fastmcp import FastMCP
+    from fastmcp import FastMCP
 except ImportError:
 
     class FastMCP:  # type: ignore[no-redef]
@@ -28,13 +31,7 @@ def resolve_vectorizer_class(class_name: str) -> Type[Any]:
 
 
 class RedisVLMCPServer(FastMCP):
-    """MCP server exposing RedisVL vector search capabilities.
-
-    This server manages the lifecycle of a Redis vector index and an embedding
-    vectorizer, providing Model Context Protocol (MCP) tools for semantic search
-    operations. It handles configuration loading, connection management,
-    concurrency limits, and graceful shutdown of resources.
-    """
+    """MCP server exposing RedisVL capabilities for one existing Redis index."""
 
     def __init__(self, settings: MCPSettings):
         """Create a server shell with lazy config, index, and vectorizer state."""
@@ -46,32 +43,50 @@ class RedisVLMCPServer(FastMCP):
         self._semaphore: Optional[asyncio.Semaphore] = None
 
     async def startup(self) -> None:
-        """Load config, validate Redis/index state, and initialize dependencies."""
+        """Load config, inspect the configured index, and initialize dependencies."""
         self.config = load_mcp_config(self.mcp_settings.config)
         self._semaphore = asyncio.Semaphore(self.config.runtime.max_concurrency)
-        self._index = AsyncSearchIndex(
-            schema=self.config.to_index_schema(),
-            redis_url=self.config.redis_url,
-        )
-        try:
-            timeout = self.config.runtime.startup_timeout_seconds
-            index_exists = await asyncio.wait_for(self._index.exists(), timeout=timeout)
-            if not index_exists:
-                if self.config.runtime.index_mode == "validate_only":
-                    raise ValueError(
-                        f"Index '{self.config.index.name}' does not exist for validate_only mode"
-                    )
-                await asyncio.wait_for(self._index.create(), timeout=timeout)
+        timeout = self.config.runtime.startup_timeout_seconds
+        client = None
 
-            # Vectorizer construction may perform provider-specific setup, so keep it
-            # off the event loop and bound it with the same startup timeout.
+        try:
+            client = await asyncio.wait_for(
+                RedisConnectionFactory._get_aredis_connection(
+                    redis_url=self.config.server.redis_url
+                ),
+                timeout=timeout,
+            )
+            await asyncio.wait_for(client.info("server"), timeout=timeout)
+
+            try:
+                index_info = await asyncio.wait_for(
+                    AsyncSearchIndex._info(self.config.redis_name, client),
+                    timeout=timeout,
+                )
+            except RedisSearchError as exc:
+                if self._is_missing_index_error(exc):
+                    raise ValueError(
+                        f"Configured Redis index '{self.config.redis_name}' does not exist"
+                    ) from exc
+                raise
+
+            inspected_schema = self.config.inspected_schema_from_index_info(index_info)
+            effective_schema = self.config.to_index_schema(inspected_schema)
+            self._index = AsyncSearchIndex(schema=effective_schema, redis_client=client)
+            # The server acquired this client explicitly during startup, so hand
+            # ownership to the index for a single shutdown path.
+            self._index._owns_redis_client = True
+
             self._vectorizer = await asyncio.wait_for(
                 asyncio.to_thread(self._build_vectorizer),
                 timeout=timeout,
             )
-            self._validate_vectorizer_dims()
+            self._validate_vectorizer_dims(effective_schema)
         except Exception:
-            await self.shutdown()
+            if self._index is not None:
+                await self.shutdown()
+            elif client is not None:
+                await client.aclose()
             raise
 
     async def shutdown(self) -> None:
@@ -110,8 +125,6 @@ class RedisVLMCPServer(FastMCP):
         if self.config is None or self._semaphore is None:
             raise RuntimeError("MCP server has not been started")
 
-        # The semaphore centralizes backpressure so future tool handlers do not
-        # each need to reimplement request-limiting behavior.
         async with self._semaphore:
             return await asyncio.wait_for(
                 awaitable,
@@ -126,12 +139,12 @@ class RedisVLMCPServer(FastMCP):
         vectorizer_class = resolve_vectorizer_class(self.config.vectorizer.class_name)
         return vectorizer_class(**self.config.vectorizer.to_init_kwargs())
 
-    def _validate_vectorizer_dims(self) -> None:
+    def _validate_vectorizer_dims(self, schema: IndexSchema) -> None:
         """Fail startup when vectorizer dimensions disagree with schema dimensions."""
         if self.config is None or self._vectorizer is None:
             return
 
-        configured_dims = self.config.vector_field_dims
+        configured_dims = self.config.get_vector_field_dims(schema)
         actual_dims = getattr(self._vectorizer, "dims", None)
         if (
             configured_dims is not None
@@ -141,3 +154,9 @@ class RedisVLMCPServer(FastMCP):
             raise ValueError(
                 f"Vectorizer dims {actual_dims} do not match configured vector field dims {configured_dims}"
             )
+
+    @staticmethod
+    def _is_missing_index_error(exc: RedisSearchError) -> bool:
+        """Detect the Redis search errors that mean the configured index is absent."""
+        message = str(exc).lower()
+        return "unknown index name" in message or "no such index" in message

@@ -1,10 +1,12 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
+from redisvl.schema import IndexSchema
 
 
 class FakeVectorizer:
@@ -20,123 +22,233 @@ class FailingAsyncCloseVectorizer(FakeVectorizer):
 
 
 @pytest.fixture
-def mcp_config_path(tmp_path: Path, redis_url: str, worker_id: str):
-    def factory(
-        *, index_name: str, index_mode: str = "create_if_missing", vector_dims: int = 3
-    ):
-        config_path = tmp_path / f"{index_name}.yaml"
-        config_path.write_text(
-            f"""
-redis_url: {redis_url}
-index:
-  name: {index_name}
-  prefix: doc
-  storage_type: hash
-fields:
-  - name: content
-    type: text
-  - name: embedding
-    type: vector
-    attrs:
-      algorithm: flat
-      dims: 3
-      distance_metric: cosine
-      datatype: float32
-vectorizer:
-  class: FakeVectorizer
-  model: fake-model
-  dims: {vector_dims}
-runtime:
-  index_mode: {index_mode}
-  text_field_name: content
-  vector_field_name: embedding
-  default_embed_field: content
-""".strip(),
-            encoding="utf-8",
+async def existing_index(async_client, worker_id):
+    created_indexes = []
+
+    async def factory(
+        *,
+        index_name: str,
+        storage_type: str = "hash",
+        vector_path: str | None = None,
+    ) -> AsyncSearchIndex:
+        fields = [{"name": "content", "type": "text"}]
+        vector_field = {
+            "name": "embedding",
+            "type": "vector",
+            "attrs": {
+                "algorithm": "flat",
+                "dims": 3,
+                "distance_metric": "cosine",
+                "datatype": "float32",
+            },
+        }
+        if storage_type == "json":
+            fields[0]["path"] = "$.content"
+            vector_field["path"] = vector_path or "$.embedding"
+
+        fields.append(vector_field)
+        schema = IndexSchema.from_dict(
+            {
+                "index": {
+                    "name": f"{index_name}-{worker_id}",
+                    "prefix": f"{index_name}:{worker_id}",
+                    "storage_type": storage_type,
+                },
+                "fields": fields,
+            }
         )
+        index = AsyncSearchIndex(schema=schema, redis_client=async_client)
+        await index.create(overwrite=True, drop=True)
+        created_indexes.append(index)
+        return index
+
+    yield factory
+
+    for index in created_indexes:
+        try:
+            await index.delete(drop=True)
+        except Exception:
+            pass
+
+
+@pytest.fixture
+def mcp_config_path(tmp_path: Path, redis_url: str):
+    def factory(
+        *,
+        redis_name: str,
+        vector_dims: int = 3,
+        schema_overrides: dict | None = None,
+        runtime_overrides: dict | None = None,
+    ) -> str:
+        runtime = {
+            "text_field_name": "content",
+            "vector_field_name": "embedding",
+            "default_embed_text_field": "content",
+        }
+        if runtime_overrides:
+            runtime.update(runtime_overrides)
+
+        config = {
+            "server": {"redis_url": redis_url},
+            "indexes": {
+                "knowledge": {
+                    "redis_name": redis_name,
+                    "vectorizer": {
+                        "class": "FakeVectorizer",
+                        "model": "fake-model",
+                        "dims": vector_dims,
+                    },
+                    "runtime": runtime,
+                }
+            },
+        }
+        if schema_overrides is not None:
+            config["indexes"]["knowledge"]["schema_overrides"] = schema_overrides
+
+        config_path = tmp_path / f"{redis_name}.yaml"
+        config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
         return str(config_path)
 
     return factory
 
 
 @pytest.mark.asyncio
-async def test_server_startup_success(monkeypatch, mcp_config_path, worker_id):
+async def test_server_startup_success(monkeypatch, existing_index, mcp_config_path):
+    index = await existing_index(index_name="mcp-startup")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(index_name=f"mcp-startup-{worker_id}")
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=index.name))
     )
-    server = RedisVLMCPServer(settings)
 
     await server.startup()
 
-    index = await server.get_index()
+    started_index = await server.get_index()
     vectorizer = await server.get_vectorizer()
 
-    assert await index.exists() is True
+    assert await started_index.exists() is True
+    assert started_index.schema.index.name == index.name
     assert vectorizer.dims == 3
 
     await server.shutdown()
 
 
 @pytest.mark.asyncio
-async def test_server_validate_only_missing_index(
+async def test_server_fails_when_configured_index_is_missing(
     monkeypatch, mcp_config_path, worker_id
 ):
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(
-            index_name=f"mcp-missing-{worker_id}",
-            index_mode="validate_only",
-        )
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=f"missing-{worker_id}"))
     )
-    server = RedisVLMCPServer(settings)
 
     with pytest.raises(ValueError, match="does not exist"):
         await server.startup()
 
 
 @pytest.mark.asyncio
-async def test_server_create_if_missing_is_idempotent(
-    monkeypatch, mcp_config_path, worker_id
+async def test_server_uses_schema_overrides_when_inspection_is_incomplete(
+    monkeypatch, existing_index, mcp_config_path
 ):
+    index = await existing_index(index_name="mcp-overrides")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    config_path = mcp_config_path(index_name=f"mcp-idempotent-{worker_id}")
-    first = RedisVLMCPServer(MCPSettings(config=config_path))
-    second = RedisVLMCPServer(MCPSettings(config=config_path))
+    original_info = AsyncSearchIndex._info
 
-    await first.startup()
-    await first.shutdown()
-    await second.startup()
+    async def incomplete_info(name, redis_client):
+        info = await original_info(name, redis_client)
+        for field in info["attributes"]:
+            if "VECTOR" in field:
+                del field[6:]
+        return info
 
-    assert await (await second.get_index()).exists() is True
+    monkeypatch.setattr(
+        "redisvl.mcp.server.AsyncSearchIndex._info",
+        staticmethod(incomplete_info),
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                schema_overrides={
+                    "fields": [
+                        {
+                            "name": "embedding",
+                            "type": "vector",
+                            "attrs": {
+                                "algorithm": "flat",
+                                "dims": 3,
+                                "datatype": "float32",
+                                "distance_metric": "cosine",
+                            },
+                        }
+                    ]
+                },
+            )
+        )
+    )
 
-    await second.shutdown()
+    await server.startup()
+
+    started_index = await server.get_index()
+    assert started_index.schema.fields["embedding"].attrs.dims == 3
+
+    await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_server_fails_on_conflicting_schema_override(
+    monkeypatch, existing_index, mcp_config_path
+):
+    index = await existing_index(
+        index_name="mcp-conflict",
+        storage_type="json",
+        vector_path="$.embedding",
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                schema_overrides={
+                    "fields": [
+                        {
+                            "name": "embedding",
+                            "type": "vector",
+                            "path": "$.other_embedding",
+                        }
+                    ]
+                },
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="cannot change discovered field path"):
+        await server.startup()
 
 
 @pytest.mark.asyncio
 async def test_server_fails_fast_on_vector_dimension_mismatch(
-    monkeypatch, mcp_config_path, worker_id
+    monkeypatch, existing_index, mcp_config_path
 ):
+    index = await existing_index(index_name="mcp-dims")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(
-            index_name=f"mcp-dims-{worker_id}",
-            vector_dims=8,
-        )
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=index.name, vector_dims=8))
     )
-    server = RedisVLMCPServer(settings)
 
     with pytest.raises(ValueError, match="Vectorizer dims"):
         await server.startup()
@@ -144,8 +256,9 @@ async def test_server_fails_fast_on_vector_dimension_mismatch(
 
 @pytest.mark.asyncio
 async def test_server_startup_failure_disconnects_index(
-    monkeypatch, mcp_config_path, worker_id
+    monkeypatch, existing_index, mcp_config_path
 ):
+    index = await existing_index(index_name="mcp-startup-failure")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
@@ -162,13 +275,9 @@ async def test_server_startup_failure_disconnects_index(
         "redisvl.mcp.server.AsyncSearchIndex.disconnect",
         tracked_disconnect,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(
-            index_name=f"mcp-startup-failure-{worker_id}",
-            vector_dims=8,
-        )
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=index.name, vector_dims=8))
     )
-    server = RedisVLMCPServer(settings)
 
     with pytest.raises(ValueError, match="Vectorizer dims"):
         await server.startup()
@@ -178,39 +287,39 @@ async def test_server_startup_failure_disconnects_index(
 
 @pytest.mark.asyncio
 async def test_server_shutdown_disconnects_owned_client(
-    monkeypatch, mcp_config_path, worker_id
+    monkeypatch, existing_index, mcp_config_path
 ):
+    index = await existing_index(index_name="mcp-shutdown")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(index_name=f"mcp-shutdown-{worker_id}")
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=index.name))
     )
-    server = RedisVLMCPServer(settings)
 
     await server.startup()
-    index = await server.get_index()
+    started_index = await server.get_index()
 
-    assert index.client is not None
+    assert started_index.client is not None
 
     await server.shutdown()
 
-    assert index.client is None
+    assert started_index.client is None
 
 
 @pytest.mark.asyncio
 async def test_server_get_index_fails_after_shutdown(
-    monkeypatch, mcp_config_path, worker_id
+    monkeypatch, existing_index, mcp_config_path
 ):
+    index = await existing_index(index_name="mcp-get-index-after-shutdown")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FakeVectorizer,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(index_name=f"mcp-get-index-after-shutdown-{worker_id}")
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=index.name))
     )
-    server = RedisVLMCPServer(settings)
 
     await server.startup()
     await server.shutdown()
@@ -221,24 +330,24 @@ async def test_server_get_index_fails_after_shutdown(
 
 @pytest.mark.asyncio
 async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
-    monkeypatch, mcp_config_path, worker_id
+    monkeypatch, existing_index, mcp_config_path
 ):
+    index = await existing_index(index_name="mcp-shutdown-failure")
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
         lambda class_name: FailingAsyncCloseVectorizer,
     )
-    settings = MCPSettings(
-        config=mcp_config_path(index_name=f"mcp-shutdown-failure-{worker_id}")
+    server = RedisVLMCPServer(
+        MCPSettings(config=mcp_config_path(redis_name=index.name))
     )
-    server = RedisVLMCPServer(settings)
 
     await server.startup()
-    index = await server.get_index()
+    started_index = await server.get_index()
 
     with pytest.raises(RuntimeError, match="vectorizer close failed"):
         await server.shutdown()
 
-    assert index.client is None
+    assert started_index.client is None
 
     with pytest.raises(RuntimeError, match="has not been started"):
         await server.get_vectorizer()
