@@ -44,6 +44,7 @@ class MCP:
             help="Disable the upsert tool",
             action="store_true",
             dest="read_only",
+            default=None,
         )
 
         args = parser.parse_args(sys.argv[2:])
