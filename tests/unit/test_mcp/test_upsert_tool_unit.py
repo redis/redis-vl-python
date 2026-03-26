@@ -306,6 +306,21 @@ async def test_upsert_records_requires_configured_embed_source_when_embedding_ne
 
 
 @pytest.mark.asyncio
+async def test_upsert_records_validates_non_vector_fields_before_embedding():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError, match="category") as exc_info:
+        await upsert_records(
+            server,
+            records=[{"content": "alpha doc", "category": ["science"]}],
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert server.vectorizer.aembed_many_calls == []
+    assert server.index.load_calls == []
+
+
+@pytest.mark.asyncio
 async def test_upsert_records_surfaces_partial_write_possible_on_backend_failures():
     server = FakeServer()
     server.index.load_exception = RedisError("boom")

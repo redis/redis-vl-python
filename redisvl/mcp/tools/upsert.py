@@ -177,6 +177,20 @@ def _validation_schema_for_record(
     return index.schema
 
 
+def _validate_record(
+    record: Dict[str, Any], *, index: Any, vector_field_name: str
+) -> None:
+    """Validate one record against the schema, allowing HASH list vectors."""
+    validate_object(
+        _validation_schema_for_record(
+            index,
+            vector_field_name=vector_field_name,
+            record=record,
+        ),
+        record,
+    )
+
+
 def _prepare_record_for_storage(
     record: Dict[str, Any],
     *,
@@ -186,14 +200,7 @@ def _prepare_record_for_storage(
     """Validate records before serializing HASH vectors for storage."""
     prepared = dict(record)
     vector_field_name = server.config.runtime.vector_field_name
-    validate_object(
-        _validation_schema_for_record(
-            index,
-            vector_field_name=vector_field_name,
-            record=prepared,
-        ),
-        prepared,
-    )
+    _validate_record(prepared, index=index, vector_field_name=vector_field_name)
 
     vector_value = prepared.get(vector_field_name)
 
@@ -226,6 +233,12 @@ async def upsert_records(
         # storage-specific serialization so the MCP tool does not mutate inputs.
         prepared_records = [record.copy() for record in records]
         runtime = server.config.runtime
+        for record in prepared_records:
+            _validate_record(
+                record,
+                index=index,
+                vector_field_name=runtime.vector_field_name,
+            )
         embed_contents = _validate_embed_sources(
             prepared_records,
             embed_text_field=runtime.default_embed_text_field,
