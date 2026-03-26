@@ -11,10 +11,10 @@ from redisvl.redis.utils import hashify
 
 
 @pytest.fixture
-def cache(redis_url, worker_id):
+def cache(redis_url, redis_test_name):
     """Basic EmbeddingsCache fixture with cleanup."""
     cache_instance = EmbeddingsCache(
-        name=f"test_embed_cache_{worker_id}",
+        name=redis_test_name("test_embed_cache"),
         redis_url=redis_url,
     )
     yield cache_instance
@@ -23,10 +23,10 @@ def cache(redis_url, worker_id):
 
 
 @pytest.fixture
-def cache_with_ttl(redis_url):
+def cache_with_ttl(redis_url, redis_test_name):
     """EmbeddingsCache with TTL setting."""
     cache_instance = EmbeddingsCache(
-        name="test_ttl_cache",
+        name=redis_test_name("test_ttl_cache"),
         ttl=2,  # 2 second TTL for testing expiration
         redis_url=redis_url,
     )
@@ -36,10 +36,10 @@ def cache_with_ttl(redis_url):
 
 
 @pytest.fixture
-def cache_with_redis_client(client):
+def cache_with_redis_client(client, redis_test_name):
     """EmbeddingsCache with provided Redis client."""
     cache_instance = EmbeddingsCache(
-        name="test_client_cache",
+        name=redis_test_name("test_client_cache"),
         redis_client=client,
     )
     yield cache_instance
