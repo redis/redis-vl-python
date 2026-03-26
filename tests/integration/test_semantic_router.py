@@ -1,9 +1,9 @@
 import pathlib
 import warnings
+from contextlib import suppress
 
 import pytest
 from redis.exceptions import ConnectionError
-from ulid import ULID
 
 from redisvl.extensions.router import SemanticRouter
 from redisvl.extensions.router.schema import (
@@ -42,10 +42,10 @@ def routes():
 
 
 @pytest.fixture
-def semantic_router(client, routes, hf_vectorizer):
+def semantic_router(client, routes, hf_vectorizer, redis_test_name):
     skip_if_no_redis_search(client)
     router = SemanticRouter(
-        name=f"test-router-{str(ULID())}",
+        name=redis_test_name("test_router"),
         routes=routes,
         routing_config=RoutingConfig(max_k=2),
         redis_client=client,
@@ -246,10 +246,10 @@ def test_idempotent_to_dict(semantic_router):
     assert new_router.to_dict() == router_dict
 
 
-def test_bad_connection_info(routes):
+def test_bad_connection_info(routes, redis_test_name):
     with pytest.raises(ConnectionError):
         SemanticRouter(
-            name="test-router",
+            name=redis_test_name("test_router"),
             routes=routes,
             routing_config=RoutingConfig(distance_threshold=0.3, max_k=2),
             redis_url="redis://localhost:6389",  # bad connection url
@@ -257,44 +257,57 @@ def test_bad_connection_info(routes):
         )
 
 
-def test_different_vector_dtypes(client, redis_url, routes):
+def test_different_vector_dtypes(client, redis_url, routes, redis_test_name):
     skip_if_no_redis_search(client)
+    routers = []
     try:
         bfloat_router = SemanticRouter(
-            name="bfloat_router",
+            name=redis_test_name("bfloat_router"),
             routes=routes,
             dtype="bfloat16",
             redis_url=redis_url,
         )
+        routers.append(bfloat_router)
 
         float16_router = SemanticRouter(
-            name="float16_router",
+            name=redis_test_name("float16_router"),
             routes=routes,
             dtype="float16",
             redis_url=redis_url,
         )
+        routers.append(float16_router)
 
         float32_router = SemanticRouter(
-            name="float32_router",
+            name=redis_test_name("float32_router"),
             routes=routes,
             dtype="float32",
             redis_url=redis_url,
         )
+        routers.append(float32_router)
 
         float64_router = SemanticRouter(
-            name="float64_router",
+            name=redis_test_name("float64_router"),
             routes=routes,
             dtype="float64",
             redis_url=redis_url,
         )
+        routers.append(float64_router)
 
-        for router in [bfloat_router, float16_router, float32_router, float64_router]:
+        for router in routers:
             assert len(router.route_many("hello", max_k=5)) == 1
     except:
         pytest.skip("Not using a late enough version of Redis")
+    finally:
+        for router in routers:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
-def test_bad_dtype_connecting_to_exiting_router(client, redis_url, routes):
+def test_bad_dtype_connecting_to_exiting_router(
+    client, redis_url, routes, redis_test_name
+):
     skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
@@ -302,35 +315,47 @@ def test_bad_dtype_connecting_to_exiting_router(client, redis_url, routes):
         pytest.skip(
             "Redis 6.2.x FT.INFO doesn't properly return vector dims for reconnection"
         )
+    router_name = redis_test_name("float64_router")
+    router = None
 
-    router = SemanticRouter(
-        name="float64-router",
-        routes=routes,
-        dtype="float64",
-        redis_url=redis_url,
-    )
-
-    same_type = SemanticRouter(
-        name="float64-router",
-        routes=routes,
-        dtype="float64",
-        redis_url=redis_url,
-    )
-
-    with pytest.raises(ValueError):
-        bad_type = SemanticRouter(
-            name="float64-router",
+    try:
+        router = SemanticRouter(
+            name=router_name,
             routes=routes,
-            dtype="float16",
+            dtype="float64",
             redis_url=redis_url,
         )
 
+        same_type = SemanticRouter(
+            name=router_name,
+            routes=routes,
+            dtype="float64",
+            redis_url=redis_url,
+        )
+        assert same_type.name == router.name
 
-def test_vectorizer_dtype_mismatch(client, routes, redis_url, hf_vectorizer_float16):
+        with pytest.raises(ValueError):
+            SemanticRouter(
+                name=router_name,
+                routes=routes,
+                dtype="float16",
+                redis_url=redis_url,
+            )
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
+
+
+def test_vectorizer_dtype_mismatch(
+    client, routes, redis_url, hf_vectorizer_float16, redis_test_name
+):
     skip_if_no_redis_search(client)
     with pytest.raises(ValueError):
         SemanticRouter(
-            name="test_dtype_mismatch",
+            name=redis_test_name("test_dtype_mismatch"),
             routes=routes,
             dtype="float32",
             vectorizer=hf_vectorizer_float16,
@@ -339,81 +364,115 @@ def test_vectorizer_dtype_mismatch(client, routes, redis_url, hf_vectorizer_floa
         )
 
 
-def test_invalid_vectorizer(client, redis_url):
+def test_invalid_vectorizer(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     with pytest.raises(TypeError):
         SemanticRouter(
-            name="test_invalid_vectorizer",
+            name=redis_test_name("test_invalid_vectorizer"),
             vectorizer="invalid_vectorizer",  # type: ignore
             redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_passes_through_dtype_to_default_vectorizer(client, routes, redis_url):
+def test_passes_through_dtype_to_default_vectorizer(
+    client, routes, redis_url, redis_test_name
+):
     skip_if_no_redis_search(client)
     # The default is float32, so we should see float64 if we pass it in.
-    router = SemanticRouter(
-        name="test_pass_through_dtype",
-        routes=routes,
-        dtype="float64",
-        redis_url=redis_url,
-        overwrite=True,
-    )
-    assert router.vectorizer.dtype == "float64"
-
-
-def test_deprecated_dtype_argument(client, routes, redis_url):
-    skip_if_no_redis_search(client)
-    with pytest.warns(DeprecationWarning):
-        SemanticRouter(
-            name="test_deprecated_dtype",
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_pass_through_dtype"),
             routes=routes,
-            dtype="float32",
+            dtype="float64",
             redis_url=redis_url,
             overwrite=True,
         )
+        assert router.vectorizer.dtype == "float64"
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
+
+
+def test_deprecated_dtype_argument(client, routes, redis_url, redis_test_name):
+    skip_if_no_redis_search(client)
+    router = None
+    try:
+        with pytest.warns(DeprecationWarning):
+            router = SemanticRouter(
+                name=redis_test_name("test_deprecated_dtype"),
+                routes=routes,
+                dtype="float32",
+                redis_url=redis_url,
+                overwrite=True,
+            )
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
 def test_deprecated_distance_threshold_argument(
-    semantic_router, client, routes, redis_url
+    semantic_router, client, routes, redis_url, redis_test_name
 ):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
     skip_if_no_redis_search(client)
 
-    router = SemanticRouter(
-        name="test_pass_through_dtype",
-        routes=routes,
-        redis_url=redis_url,
-        overwrite=True,
-    )
-    with pytest.warns(DeprecationWarning):
-        router("hello", distance_threshold=0.3)
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_pass_through_dtype"),
+            routes=routes,
+            redis_url=redis_url,
+            overwrite=True,
+        )
+        with pytest.warns(DeprecationWarning):
+            router("hello", distance_threshold=0.3)
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
 def test_routes_different_distance_thresholds_get_two(
-    semantic_router, client, routes, redis_url
+    semantic_router, client, routes, redis_url, redis_test_name
 ):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
     skip_if_no_redis_search(client)
     routes[0].distance_threshold = 0.5
     routes[1].distance_threshold = 0.7
 
-    router = SemanticRouter(
-        name="test_routes_different_distance_thresholds",
-        routes=routes,
-        redis_url=redis_url,
-        overwrite=True,
-    )
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_routes_different_distance_thresholds"),
+            routes=routes,
+            redis_url=redis_url,
+            overwrite=True,
+        )
 
-    matches = router.route_many("hello", max_k=2)
-    assert len(matches) == 2
-    assert matches[0].name == "greeting"
-    assert matches[1].name == "farewell"
+        matches = router.route_many("hello", max_k=2)
+        assert len(matches) == 2
+        assert matches[0].name == "greeting"
+        assert matches[1].name == "farewell"
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
 def test_routes_different_distance_thresholds_get_one(
-    semantic_router, client, routes, redis_url
+    semantic_router, client, routes, redis_url, redis_test_name
 ):
     skip_if_redis_version_below(semantic_router._index.client, "7.0.0")
     skip_if_no_redis_search(client)
@@ -423,16 +482,24 @@ def test_routes_different_distance_thresholds_get_one(
     # don't match on second
     routes[1].distance_threshold = 0.3
 
-    router = SemanticRouter(
-        name="test_routes_different_distance_thresholds",
-        routes=routes,
-        redis_url=redis_url,
-        overwrite=True,
-    )
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_routes_different_distance_thresholds"),
+            routes=routes,
+            redis_url=redis_url,
+            overwrite=True,
+        )
 
-    matches = router.route_many("hello", max_k=2)
-    assert len(matches) == 1
-    assert matches[0].name == "greeting"
+        matches = router.route_many("hello", max_k=2)
+        assert len(matches) == 1
+        assert matches[0].name == "greeting"
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
 def test_add_delete_route_references(semantic_router):
@@ -455,9 +522,6 @@ def test_add_delete_route_references(semantic_router):
         route_name="farewell",
     )
 
-    if deleted_count < 2:
-        pytest.skip("Flaky test - skip")
-
     assert deleted_count == 2
 
     # delete by ref_id
@@ -477,33 +541,38 @@ def test_add_delete_route_references(semantic_router):
     assert len(router_dict["routes"][1]["references"]) == 0
 
 
-def test_from_existing(client, redis_url, routes):
+def test_from_existing(client, redis_url, routes, redis_test_name):
     skip_if_no_redis_search(client)
     skip_if_redis_version_below(client, "7.0.0")
 
     # connect separately
-    router = SemanticRouter(
-        name=f"test-router-{str(ULID())}",
-        routes=routes,
-        routing_config=RoutingConfig(max_k=2),
-        redis_url=redis_url,
-        overwrite=False,
-    )
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_router"),
+            routes=routes,
+            routing_config=RoutingConfig(max_k=2),
+            redis_url=redis_url,
+            overwrite=False,
+        )
 
-    router2 = SemanticRouter.from_existing(
-        name=router.name,
-        redis_url=redis_url,
-    )
+        router2 = SemanticRouter.from_existing(
+            name=router.name,
+            redis_url=redis_url,
+        )
 
-    assert router.to_dict() == router2.to_dict()
+        assert router.to_dict() == router2.to_dict()
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
 def test_get_route_references(semantic_router):
     # Get references for a specific route
     refs = semantic_router.get_route_references(route_name="greeting")
-
-    if len(refs) < 2:
-        pytest.skip("Flaky test - skip")
 
     # Should return at least the initial references
     assert len(refs) == 2
