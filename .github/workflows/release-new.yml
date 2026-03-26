@@ -42,18 +42,40 @@ jobs:
             const owner = context.repo.owner;
             const repo  = context.repo.repo;
             const sha   = context.sha;
+            const maxAttempts = 6;
+            let pulls;
 
             // For workflow_dispatch there may not be an associated PR;
             // allow manual runs by setting should_release=true only if you want that behavior.
             // Here we keep it strict: only release if we can find a PR with auto:release.
-            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner, repo, commit_sha: sha
-            });
+            // GitHub can briefly lag in associating the merge commit on main back to its PR,
+            // so retry for a short window before concluding there is no releasable PR.
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner, repo, commit_sha: sha
+              });
+
+              if (pulls.data.length) {
+                core.notice(
+                  `Found ${pulls.data.length} PR association(s) for commit ${sha} on attempt ${attempt}/${maxAttempts}.`
+                );
+                break;
+              }
+
+              if (attempt < maxAttempts) {
+                core.notice(
+                  `No PR associated with commit ${sha} on attempt ${attempt}/${maxAttempts}. Retrying in 10 seconds...`
+                );
+                await new Promise((resolve) => setTimeout(resolve, 10000));
+              }
+            }
 
             if (!pulls.data.length) {
               core.setOutput("should_release", "false");
               core.setOutput("pr_number", "");
-              core.notice(`No PR associated with commit ${sha}. Not releasing.`);
+              core.notice(
+                `No PR associated with commit ${sha} after ${maxAttempts} attempts. Not releasing.`
+              );
               return;
             }
 
@@ -105,6 +127,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [gate, canary-build]
     if: needs.gate.outputs.should_release == 'true'
+    outputs:
+      version: ${{ steps.latest_release.outputs.version }}
 
     steps:
       - name: Generate GitHub App token
@@ -137,6 +161,12 @@ jobs:
         run: |
           set -euo pipefail
           auto shipit --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --dry-run -v
+
+      - name: Capture previous tag
+        id: previous_tag
+        run: |
+          set -euo pipefail
+          echo "tag=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release version
         id: latest_release
@@ -176,15 +206,33 @@ jobs:
             git push origin HEAD:main
           fi
 
+      - name: Capture release commit SHA
+        id: release_commit
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Create labels
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: auto create-labels
 
-      - name: Create release
+      - name: Create and push tag
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.latest_release.outputs.version }}"
+          git tag "$TAG" "${{ steps.release_commit.outputs.sha }}"
+          git push origin "$TAG"
+
+      - name: Create GitHub release with auto notes
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
-        run: auto shipit --name "${RELEASE_BOT_NAME}" --email "${RELEASE_BOT_EMAIL}" --no-changelog
+        run: |
+          set -euo pipefail
+          auto release \
+            --from "${{ steps.previous_tag.outputs.tag }}" \
+            --to "${{ steps.release_commit.outputs.sha }}" \
+            --use-version "v${{ steps.latest_release.outputs.version }}"
 
   build-and-publish:
     runs-on: ubuntu-latest
@@ -195,7 +243,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: v${{ needs.release.outputs.version }}
           fetch-depth: 0
 
       - name: Install Python
