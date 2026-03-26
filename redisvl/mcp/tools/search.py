@@ -176,10 +176,19 @@ def _build_native_hybrid_kwargs(
     search_params: dict[str, Any],
 ) -> dict[str, Any]:
     """Build native `HybridQuery` kwargs from MCP config-owned hybrid params."""
-    params = {**_NATIVE_HYBRID_DEFAULTS, **search_params}
-    linear_text_weight = params.pop("linear_text_weight", None)
-    if linear_text_weight is not None:
+    params = dict(search_params)
+    combination_method = params.setdefault(
+        "combination_method",
+        _NATIVE_HYBRID_DEFAULTS["combination_method"],
+    )
+    if combination_method == "LINEAR":
+        linear_text_weight = params.pop(
+            "linear_text_weight",
+            _NATIVE_HYBRID_DEFAULTS["linear_text_weight"],
+        )
         params["linear_alpha"] = linear_text_weight
+    else:
+        params.pop("linear_text_weight", None)
 
     return {
         "text": query,
