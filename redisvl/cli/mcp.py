@@ -85,9 +85,6 @@ class MCP:
     def _load_mcp_components():
         """Import optional MCP dependencies only on the `rvl mcp` code path."""
         try:
-            import fastmcp  # noqa: F401
-            import pydantic_settings  # noqa: F401
-
             from redisvl.mcp import MCPSettings, RedisVLMCPServer
         except (ImportError, ModuleNotFoundError) as exc:
             raise RuntimeError(
