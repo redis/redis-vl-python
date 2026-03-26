@@ -221,7 +221,20 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${{ steps.latest_release.outputs.version }}"
-          git tag "$TAG" "${{ steps.release_commit.outputs.sha }}"
+          TARGET_SHA="${{ steps.release_commit.outputs.sha }}"
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            EXISTING_SHA="$(git rev-list -n1 "$TAG")"
+            if [ "$EXISTING_SHA" = "$TARGET_SHA" ]; then
+              echo "Tag $TAG already exists at $TARGET_SHA. Skipping creation."
+              exit 0
+            fi
+
+            echo "Tag $TAG already exists at $EXISTING_SHA but expected $TARGET_SHA."
+            exit 1
+          fi
+
+          git tag "$TAG" "$TARGET_SHA"
           git push origin "$TAG"
 
       - name: Create GitHub release with auto notes
