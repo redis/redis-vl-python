@@ -1,4 +1,5 @@
 import warnings
+from contextlib import suppress
 
 import pytest
 from redis.exceptions import ConnectionError
@@ -13,8 +14,8 @@ requires_hf = pytest.mark.skipif(
 
 
 @pytest.fixture
-def app_name():
-    return "test_app"
+def app_name(redis_test_name):
+    return redis_test_name("test_app")
 
 
 @pytest.fixture
@@ -43,24 +44,24 @@ def disable_deprecation_warnings():
 
 
 # test standard message history
-def test_specify_redis_client(client):
-    history = MessageHistory(name="test_app", redis_client=client)
+def test_specify_redis_client(app_name, client):
+    history = MessageHistory(name=app_name, redis_client=client)
     assert isinstance(history._index.client, type(client))
 
 
-def test_specify_redis_url(client, redis_url):
+def test_specify_redis_url(app_name, client, redis_url):
     history = MessageHistory(
-        name="test_app",
+        name=app_name,
         session_tag="abc",
         redis_url=redis_url,
     )
     assert isinstance(history._index.client, type(client))
 
 
-def test_standard_bad_connection_info():
+def test_standard_bad_connection_info(app_name):
     with pytest.raises(ConnectionError):
         MessageHistory(
-            name="test_app",
+            name=app_name,
             session_tag="abc",
             redis_url="redis://localhost:6389",  # bad url
         )
@@ -339,23 +340,31 @@ def test_standard_count(standard_history):
 
 # test semantic message history
 @requires_hf
-def test_semantic_specify_client(client, hf_vectorizer):
+def test_semantic_specify_client(app_name, client, hf_vectorizer):
     skip_if_no_redis_search(client)
-    history = SemanticMessageHistory(
-        name="test_app",
-        session_tag="abc",
-        redis_client=client,
-        overwrite=True,
-        vectorizer=hf_vectorizer,
-    )
-    assert isinstance(history._index.client, type(client))
+    history = None
+    try:
+        history = SemanticMessageHistory(
+            name=app_name,
+            session_tag="abc",
+            redis_client=client,
+            overwrite=True,
+            vectorizer=hf_vectorizer,
+        )
+        assert isinstance(history._index.client, type(client))
+    finally:
+        if history is not None:
+            with suppress(Exception):
+                history.clear()
+            with suppress(Exception):
+                history.delete()
 
 
 @requires_hf
-def test_semantic_bad_connection_info(hf_vectorizer):
+def test_semantic_bad_connection_info(app_name, hf_vectorizer):
     with pytest.raises(ConnectionError):
         SemanticMessageHistory(
-            name="test_app",
+            name=app_name,
             session_tag="abc",
             redis_url="redis://localhost:6389",
             vectorizer=hf_vectorizer,
@@ -646,38 +655,56 @@ def test_semantic_count(semantic_history):
     assert semantic_history.count() == 0
 
 
-def test_different_vector_dtypes(client, redis_url):
+def test_different_vector_dtypes(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
+    sessions = []
     try:
         bfloat_sess = SemanticMessageHistory(
-            name="bfloat_history", dtype="bfloat16", redis_url=redis_url
+            name=redis_test_name("bfloat_history"),
+            dtype="bfloat16",
+            redis_url=redis_url,
         )
         bfloat_sess.add_message({"role": "user", "content": "bfloat message"})
+        sessions.append(bfloat_sess)
 
         float16_sess = SemanticMessageHistory(
-            name="float16_history", dtype="float16", redis_url=redis_url
+            name=redis_test_name("float16_history"),
+            dtype="float16",
+            redis_url=redis_url,
         )
         float16_sess.add_message({"role": "user", "content": "float16 message"})
+        sessions.append(float16_sess)
 
         float32_sess = SemanticMessageHistory(
-            name="float32_history", dtype="float32", redis_url=redis_url
+            name=redis_test_name("float32_history"),
+            dtype="float32",
+            redis_url=redis_url,
         )
         float32_sess.add_message({"role": "user", "content": "float32 message"})
+        sessions.append(float32_sess)
 
         float64_sess = SemanticMessageHistory(
-            name="float64_history", dtype="float64", redis_url=redis_url
+            name=redis_test_name("float64_history"),
+            dtype="float64",
+            redis_url=redis_url,
         )
         float64_sess.add_message({"role": "user", "content": "float64 message"})
+        sessions.append(float64_sess)
 
-        for sess in [bfloat_sess, float16_sess, float32_sess, float64_sess]:
+        for sess in sessions:
             sess.set_distance_threshold(0.7)
             assert len(sess.get_relevant("float message")) == 1
-            sess.delete()  # Clean up
     except:
         pytest.skip("Required Redis modules not available or version too low")
+    finally:
+        for sess in sessions:
+            with suppress(Exception):
+                sess.clear()
+            with suppress(Exception):
+                sess.delete()
 
 
-def test_bad_dtype_connecting_to_exiting_history(client, redis_url):
+def test_bad_dtype_connecting_to_exiting_history(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
@@ -685,33 +712,45 @@ def test_bad_dtype_connecting_to_exiting_history(client, redis_url):
         pytest.skip(
             "Redis 6.2.x FT.INFO doesn't properly return vector dims for reconnection"
         )
+    history_name = redis_test_name("float64_history")
+    history = None
 
     def create_history():
         return SemanticMessageHistory(
-            name="float64 history", dtype="float64", redis_url=redis_url
+            name=history_name, dtype="float64", redis_url=redis_url
         )
 
     def create_same_type():
         return SemanticMessageHistory(
-            name="float64 history", dtype="float64", redis_url=redis_url
+            name=history_name, dtype="float64", redis_url=redis_url
         )
 
-    history = create_history()
-    same_type = create_same_type()
-    # under the hood uses from_existing
+    try:
+        history = create_history()
+        same_type = create_same_type()
+        # under the hood uses from_existing
+        assert same_type is not None
 
-    with pytest.raises(ValueError):
-        bad_type = SemanticMessageHistory(
-            name="float64 history", dtype="float16", redis_url=redis_url
-        )
+        with pytest.raises(ValueError):
+            SemanticMessageHistory(
+                name=history_name, dtype="float16", redis_url=redis_url
+            )
+    finally:
+        if history is not None:
+            with suppress(Exception):
+                history.clear()
+            with suppress(Exception):
+                history.delete()
 
 
 @requires_hf
-def test_vectorizer_dtype_mismatch(client, redis_url, hf_vectorizer_float16):
+def test_vectorizer_dtype_mismatch(
+    client, redis_url, hf_vectorizer_float16, redis_test_name
+):
     skip_if_no_redis_search(client)
     with pytest.raises(ValueError):
         SemanticMessageHistory(
-            name="test_dtype_mismatch",
+            name=redis_test_name("test_dtype_mismatch"),
             dtype="float32",
             vectorizer=hf_vectorizer_float16,
             redis_url=redis_url,
@@ -719,32 +758,51 @@ def test_vectorizer_dtype_mismatch(client, redis_url, hf_vectorizer_float16):
         )
 
 
-def test_invalid_vectorizer(client, redis_url):
+def test_invalid_vectorizer(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     with pytest.raises(TypeError):
         SemanticMessageHistory(
-            name="test_invalid_vectorizer",
+            name=redis_test_name("test_invalid_vectorizer"),
             vectorizer="invalid_vectorizer",  # type: ignore
             redis_url=redis_url,
             overwrite=True,
         )
 
 
-def test_passes_through_dtype_to_default_vectorizer(client, redis_url):
+def test_passes_through_dtype_to_default_vectorizer(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # The default is float32, so we should see float64 if we pass it in.
-    cache = SemanticMessageHistory(
-        name="test_pass_through_dtype",
-        dtype="float64",
-        redis_url=redis_url,
-        overwrite=True,
-    )
-    assert cache._vectorizer.dtype == "float64"
-
-
-def test_deprecated_dtype_argument(client, redis_url):
-    skip_if_no_redis_search(client)
-    with pytest.warns(DeprecationWarning):
-        SemanticMessageHistory(
-            name="float64 history", dtype="float64", redis_url=redis_url, overwrite=True
+    cache = None
+    try:
+        cache = SemanticMessageHistory(
+            name=redis_test_name("test_pass_through_dtype"),
+            dtype="float64",
+            redis_url=redis_url,
+            overwrite=True,
         )
+        assert cache._vectorizer.dtype == "float64"
+    finally:
+        if cache is not None:
+            with suppress(Exception):
+                cache.clear()
+            with suppress(Exception):
+                cache.delete()
+
+
+def test_deprecated_dtype_argument(client, redis_url, redis_test_name):
+    skip_if_no_redis_search(client)
+    history = None
+    try:
+        with pytest.warns(DeprecationWarning):
+            history = SemanticMessageHistory(
+                name=redis_test_name("float64_history"),
+                dtype="float64",
+                redis_url=redis_url,
+                overwrite=True,
+            )
+    finally:
+        if history is not None:
+            with suppress(Exception):
+                history.clear()
+            with suppress(Exception):
+                history.delete()
