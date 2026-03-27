@@ -136,7 +136,7 @@ def test_hybrid_query(index):
 
     results = index.query(hybrid_query)
     assert isinstance(results, list)
-    assert len(results) == 7
+    assert len(results) == 7  # all docs in the index (see `multi_vector_data` fixture)
     for doc in results:
         assert doc["user"] in [
             "john",
