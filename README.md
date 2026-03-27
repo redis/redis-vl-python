@@ -35,6 +35,7 @@ Perfect for building **RAG pipelines** with real-time retrieval, **AI agents** w
 | **[Vector Search](#retrieval)**<br/>*Similarity search with metadata filters* | **[LLM Memory](#llm-memory)**<br/>*Agentic AI context management* | **Async Support**<br/>*Async indexing and search for improved performance* |
 | **[Complex Filtering](#retrieval)**<br/>*Combine multiple filter types* | **[Semantic Routing](#semantic-routing)**<br/>*Intelligent query classification* | **[Vectorizers](#vectorizers)**<br/>*8+ embedding provider integrations* |
 | **[Hybrid Search](#retrieval)**<br/>*Combine semantic & full-text signals* | **[Embedding Caching](#embedding-caching)**<br/>*Cache embeddings for efficiency* | **[Rerankers](#rerankers)**<br/>*Improve search result relevancy* |
+|  |  | **[MCP Server](#mcp-server)**<br/>*Expose an existing Redis index to MCP clients* |
 
 </div>
 
@@ -50,7 +51,16 @@ Install `redisvl` into your Python (>=3.9) environment using `pip`:
 pip install redisvl
 ```
 
+Install the MCP server extra when you want to expose an existing Redis index through MCP:
+
+```bash
+pip install redisvl[mcp]
+```
+
+The `redisvl[mcp]` extra requires Python 3.10 or newer.
+
 > For more detailed instructions, visit the [installation guide](https://docs.redisvl.com/en/latest/user_guide/installation.html).
+> For MCP concepts and setup, see the [RedisVL MCP docs](https://docs.redisvl.com/en/latest/concepts/mcp.html) and the [MCP how-to guide](https://docs.redisvl.com/en/latest/user_guide/how_to_guides/mcp.html).
 
 ## Redis
 
@@ -525,11 +535,45 @@ usage: rvl <command> [<args>]
 
 Commands:
         index       Index manipulation (create, delete, etc.)
+        mcp         Run the RedisVL MCP server
         version     Obtain the version of RedisVL
         stats       Obtain statistics about an index
 ```
 
-> Read more about [using the CLI](https://docs.redisvl.com/en/latest/overview/cli.html).
+Run the MCP server over stdio with:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
+```
+
+Use `--read-only` to expose search without upsert.
+
+> Read more about [using the CLI](https://docs.redisvl.com/en/latest/overview/cli.html) and [running RedisVL MCP](https://docs.redisvl.com/en/latest/user_guide/how_to_guides/mcp.html).
+
+### MCP Server
+
+RedisVL includes an MCP server that lets MCP-compatible clients search or upsert data in an existing Redis index through a small, stable tool contract.
+
+The server:
+
+- connects to one existing Redis Search index
+- reconstructs the schema from Redis at startup
+- uses the configured vectorizer for query embedding and optional upsert embedding
+- exposes `search-records` and, unless read-only mode is enabled, `upsert-records`
+
+Run it over stdio with:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
+```
+
+Use `--read-only` when clients should only search:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --read-only
+```
+
+For configuration details, tool arguments, and examples, see the [RedisVL MCP docs](https://docs.redisvl.com/en/latest/concepts/mcp.html) and the [MCP how-to guide](https://docs.redisvl.com/en/latest/user_guide/how_to_guides/mcp.html).
 
 ## 🚀 Why RedisVL?
 
@@ -542,6 +586,7 @@ Built on the [Redis Python](https://github.com/redis/redis-py/tree/master) clien
 For additional help, check out the following resources:
 
 - [Getting Started Guide](https://docs.redisvl.com/en/stable/user_guide/01_getting_started.html)
+- [RedisVL MCP](https://docs.redisvl.com/en/latest/concepts/mcp.html)
 - [API Reference](https://docs.redisvl.com/en/stable/api/index.html)
 - [Redis AI Recipes](https://github.com/redis-developer/redis-ai-resources)
 

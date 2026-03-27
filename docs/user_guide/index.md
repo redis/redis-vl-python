@@ -39,7 +39,17 @@ Schema → Index → Load → Query
 **Solve specific problems.** Task-oriented recipes for LLM extensions, querying, embeddings, optimization, and storage.
 
 +++
-LLM Caching • Filtering • Vectorizers • Reranking
+LLM Caching • Filtering • MCP • Reranking
+:::
+
+:::{grid-item-card} 🧠 MCP Setup
+:link: how_to_guides/mcp
+:link-type: doc
+
+**Expose Redis through MCP.** Run the RedisVL MCP server, configure one existing index, and use search or optional upsert tools.
+
++++
+stdio transport • One index • Search and upsert
 :::
 
 :::{grid-item-card} 💻 CLI Reference

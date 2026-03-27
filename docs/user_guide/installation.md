@@ -31,6 +31,7 @@ $ pip install redisvl[vertexai]            # Google Vertex AI embeddings
 $ pip install redisvl[bedrock]             # AWS Bedrock embeddings
 
 # Other optional features
+$ pip install redisvl[mcp]                 # RedisVL MCP server support (Python 3.10+)
 $ pip install redisvl[langcache]           # LangCache managed service integration
 $ pip install redisvl[sql-redis]           # SQL query support
 ```
@@ -44,13 +45,17 @@ $ pip install redisvl\[openai\]
 You can install multiple optional dependencies at once:
 
 ```bash
-$ pip install redisvl[openai,cohere,sentence-transformers]
+$ pip install redisvl[mcp,openai,cohere,sentence-transformers]
 ```
 
 To install **all** optional dependencies at once:
 
 ```bash
 $ pip install redisvl[all]
+```
+
+```{note}
+The core RedisVL package supports Python 3.9+, but the `redisvl[mcp]` extra requires Python 3.10 or newer because the MCP server depends on `fastmcp`.
 ```
 
 ## Install RedisVL from Source

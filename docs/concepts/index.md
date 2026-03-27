@@ -47,6 +47,13 @@ Vector, filter, text, hybrid, and multi-vector query options.
 Vectorizers for embeddings and rerankers for result optimization.
 :::
 
+:::{grid-item-card} 🧠 MCP
+:link: mcp
+:link-type: doc
+
+How RedisVL exposes an existing Redis index to MCP clients through a stable tool contract.
+:::
+
 :::{grid-item-card} 🧩 Extensions
 :link: extensions
 :link-type: doc
@@ -65,5 +72,6 @@ search-and-indexing
 field-attributes
 queries
 utilities
+mcp
 extensions
 ```
