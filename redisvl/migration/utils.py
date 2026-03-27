@@ -66,16 +66,25 @@ def write_benchmark_report(report: MigrationReport, path: str) -> None:
     write_yaml(benchmark_report, path)
 
 
-# Attributes that FT.INFO does NOT return reliably.
-# These are stripped from schema comparison to avoid false validation failures.
-# The migration still works, but we cannot verify via FT.INFO read-back.
-UNRELIABLE_VECTOR_ATTRS = {"ef_runtime", "epsilon", "initial_cap"}
-UNRELIABLE_TEXT_ATTRS = {"phonetic_matcher", "withsuffixtrie"}
-UNRELIABLE_TAG_ATTRS = {"withsuffixtrie"}
+# Attributes excluded from schema validation comparison.
+# These are query-time or creation-hint parameters that FT.INFO does not return
+# and are not relevant for index structure validation (confirmed by RediSearch team).
+# - ef_runtime, epsilon: query-time tuning knobs, not index definition attributes
+# - initial_cap: creation-time memory pre-allocation hint, diverges after indexing
+EXCLUDED_VECTOR_ATTRS = {"ef_runtime", "epsilon", "initial_cap"}
+# phonetic_matcher: the matcher string (e.g. "dm:en") is not stored server-side,
+#   only a boolean flag is kept, so it cannot be read back.
+# withsuffixtrie: returned as a flag in FT.INFO but not as a KV attribute,
+#   so RedisVL's parser does not capture it yet.
+EXCLUDED_TEXT_ATTRS = {"phonetic_matcher", "withsuffixtrie"}
+EXCLUDED_TAG_ATTRS = {"withsuffixtrie"}
 
 
-def _strip_unreliable_attrs(field: Dict[str, Any]) -> Dict[str, Any]:
-    """Remove attributes that FT.INFO doesn't return reliably.
+def _strip_excluded_attrs(field: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove attributes not relevant for index validation comparison.
+
+    These are either query-time parameters, creation-time hints, or attributes
+    whose server-side representation differs from the schema definition.
 
     Also normalizes attributes that have implicit behavior:
     - For NUMERIC + SORTABLE, Redis auto-applies UNF, so we normalize to unf=True
@@ -89,17 +98,17 @@ def _strip_unreliable_attrs(field: Dict[str, Any]) -> Dict[str, Any]:
     field_type = field.get("type", "").lower()
 
     if field_type == "vector":
-        for attr in UNRELIABLE_VECTOR_ATTRS:
+        for attr in EXCLUDED_VECTOR_ATTRS:
             attrs.pop(attr, None)
     elif field_type == "text":
-        for attr in UNRELIABLE_TEXT_ATTRS:
+        for attr in EXCLUDED_TEXT_ATTRS:
             attrs.pop(attr, None)
         # Normalize weight to int for comparison (FT.INFO may return float)
         if "weight" in attrs and isinstance(attrs["weight"], float):
             if attrs["weight"] == int(attrs["weight"]):
                 attrs["weight"] = int(attrs["weight"])
     elif field_type == "tag":
-        for attr in UNRELIABLE_TAG_ATTRS:
+        for attr in EXCLUDED_TAG_ATTRS:
             attrs.pop(attr, None)
     elif field_type == "numeric":
         # Redis auto-applies UNF when SORTABLE is set on NUMERIC fields.
@@ -112,20 +121,26 @@ def _strip_unreliable_attrs(field: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def canonicalize_schema(
-    schema_dict: Dict[str, Any], *, strip_unreliable: bool = False
+    schema_dict: Dict[str, Any],
+    *,
+    strip_unreliable: bool = False,
+    strip_excluded: bool = False,
 ) -> Dict[str, Any]:
     """Canonicalize schema for comparison.
 
     Args:
         schema_dict: The schema dictionary to canonicalize.
-        strip_unreliable: If True, remove attributes that FT.INFO doesn't
-            return reliably. Use this when comparing expected vs live schema.
+        strip_unreliable: Deprecated alias for strip_excluded. Kept for
+            backward compatibility.
+        strip_excluded: If True, remove query-time and creation-hint attributes
+            that are not part of index structure validation.
     """
     schema = IndexSchema.from_dict(schema_dict).to_dict()
 
+    should_strip = strip_excluded or strip_unreliable
     fields = schema.get("fields", [])
-    if strip_unreliable:
-        fields = [_strip_unreliable_attrs(f) for f in fields]
+    if should_strip:
+        fields = [_strip_excluded_attrs(f) for f in fields]
 
     schema["fields"] = sorted(fields, key=lambda field: field["name"])
     prefixes = schema["index"].get("prefix")
@@ -138,20 +153,27 @@ def canonicalize_schema(
 
 
 def schemas_equal(
-    left: Dict[str, Any], right: Dict[str, Any], *, strip_unreliable: bool = False
+    left: Dict[str, Any],
+    right: Dict[str, Any],
+    *,
+    strip_unreliable: bool = False,
+    strip_excluded: bool = False,
 ) -> bool:
     """Compare two schemas for equality.
 
     Args:
         left: First schema dictionary.
         right: Second schema dictionary.
-        strip_unreliable: If True, ignore attributes that FT.INFO doesn't
-            return reliably (ef_runtime, epsilon, initial_cap, phonetic_matcher).
+        strip_unreliable: Deprecated alias for strip_excluded. Kept for
+            backward compatibility.
+        strip_excluded: If True, exclude query-time and creation-hint attributes
+            (ef_runtime, epsilon, initial_cap, phonetic_matcher) from comparison.
     """
+    should_strip = strip_excluded or strip_unreliable
     return json.dumps(
-        canonicalize_schema(left, strip_unreliable=strip_unreliable), sort_keys=True
+        canonicalize_schema(left, strip_excluded=should_strip), sort_keys=True
     ) == json.dumps(
-        canonicalize_schema(right, strip_unreliable=strip_unreliable), sort_keys=True
+        canonicalize_schema(right, strip_excluded=should_strip), sort_keys=True
     )
 
 

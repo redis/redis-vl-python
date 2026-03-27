@@ -40,10 +40,11 @@ class AsyncMigrationValidator:
         validation = MigrationValidation()
 
         live_schema = target_index.schema.to_dict()
-        # Use strip_unreliable=True because FT.INFO doesn't return certain
-        # attributes (ef_runtime, epsilon, initial_cap, phonetic_matcher).
+        # Exclude query-time and creation-hint attributes (ef_runtime, epsilon,
+        # initial_cap, phonetic_matcher) that are not part of index structure
+        # validation. Confirmed by RediSearch team as not relevant for this check.
         validation.schema_match = schemas_equal(
-            live_schema, plan.merged_target_schema, strip_unreliable=True
+            live_schema, plan.merged_target_schema, strip_excluded=True
         )
 
         source_num_docs = int(plan.source.stats_snapshot.get("num_docs", 0) or 0)
