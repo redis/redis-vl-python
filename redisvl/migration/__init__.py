@@ -21,6 +21,7 @@ from redisvl.migration.models import (
 )
 from redisvl.migration.planner import MigrationPlanner
 from redisvl.migration.validation import MigrationValidator
+from redisvl.migration.wizard import MigrationWizard
 
 __all__ = [
     # Sync
@@ -29,6 +30,7 @@ __all__ = [
     "MigrationPlanner",
     "MigrationReport",
     "MigrationValidator",
+    "MigrationWizard",
     "FieldRename",
     "RenameOperations",
     "SchemaPatch",
