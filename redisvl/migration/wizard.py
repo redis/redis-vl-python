@@ -113,6 +113,38 @@ class MigrationWizard:
                     return indexes[offset]
             print("Invalid selection. Please try again.")
 
+    def _apply_staged_changes(
+        self,
+        source_schema: Dict[str, Any],
+        changes: SchemaPatchChanges,
+    ) -> Dict[str, Any]:
+        """Build a working copy of source_schema reflecting staged changes.
+
+        This ensures subsequent prompts show the current state of the schema
+        after renames, removes, and adds have been queued.
+        """
+        import copy
+
+        working = copy.deepcopy(source_schema)
+
+        # Apply removes
+        removed_names = set(changes.remove_fields)
+        working["fields"] = [
+            f for f in working["fields"] if f["name"] not in removed_names
+        ]
+
+        # Apply renames
+        rename_map = {r.old_name: r.new_name for r in changes.rename_fields}
+        for field in working["fields"]:
+            if field["name"] in rename_map:
+                field["name"] = rename_map[field["name"]]
+
+        # Apply adds
+        for added in changes.add_fields:
+            working["fields"].append(added)
+
+        return working
+
     def _build_patch(
         self,
         source_schema: Dict[str, Any],
@@ -124,6 +156,9 @@ class MigrationWizard:
             changes = SchemaPatchChanges()
         done = False
         while not done:
+            # Refresh working schema to reflect staged changes
+            working_schema = self._apply_staged_changes(source_schema, changes)
+
             print("\nChoose an action:")
             print("1. Add field        (text, tag, numeric, geo)")
             print("2. Update field     (sortable, weight, separator, vector config)")
@@ -136,27 +171,27 @@ class MigrationWizard:
             action = input("Enter a number: ").strip()
 
             if action == "1":
-                field = self._prompt_add_field(source_schema)
+                field = self._prompt_add_field(working_schema)
                 if field:
                     changes.add_fields.append(field)
             elif action == "2":
-                update = self._prompt_update_field(source_schema)
+                update = self._prompt_update_field(working_schema)
                 if update:
                     changes.update_fields.append(update)
             elif action == "3":
-                field_name = self._prompt_remove_field(source_schema)
+                field_name = self._prompt_remove_field(working_schema)
                 if field_name:
                     changes.remove_fields.append(field_name)
             elif action == "4":
-                field_rename = self._prompt_rename_field(source_schema)
+                field_rename = self._prompt_rename_field(working_schema)
                 if field_rename:
                     changes.rename_fields.append(field_rename)
             elif action == "5":
-                new_name = self._prompt_rename_index(source_schema)
+                new_name = self._prompt_rename_index(working_schema)
                 if new_name:
                     changes.index["name"] = new_name
             elif action == "6":
-                new_prefix = self._prompt_change_prefix(source_schema)
+                new_prefix = self._prompt_change_prefix(working_schema)
                 if new_prefix:
                     changes.index["prefix"] = new_prefix
             elif action == "7":
@@ -528,13 +563,24 @@ class MigrationWizard:
                 "int8",
                 "uint8",
             )
-        datatype = (
-            input(f"Datatype [current: {current.get('datatype', 'float32')}]: ")
-            .strip()
-            .lower()
+        current_datatype = current.get("datatype", "float32")
+        # If switching to SVS-VAMANA and current datatype is incompatible,
+        # require the user to pick a valid one.
+        force_datatype = (
+            effective_algo == "SVS-VAMANA" and current_datatype not in valid_datatypes
         )
+        if force_datatype:
+            print(
+                f"  Current datatype '{current_datatype}' is not compatible with SVS-VAMANA. "
+                "You must select a valid datatype."
+            )
+        datatype = input(f"Datatype [current: {current_datatype}]: ").strip().lower()
         if datatype and datatype in valid_datatypes:
             attrs["datatype"] = datatype
+        elif force_datatype:
+            # Default to float32 when user skips but current dtype is incompatible
+            print("  Defaulting to float32 for SVS-VAMANA compatibility.")
+            attrs["datatype"] = "float32"
 
         # Distance metric
         print("  Distance metric: how similarity is measured (cosine, l2, ip)")
