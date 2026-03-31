@@ -1,5 +1,7 @@
+import hashlib
 import logging
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -31,6 +33,18 @@ def worker_id(request):
     """
     workerinput = getattr(request.config, "workerinput", {})
     return workerinput.get("workerid", "master")
+
+
+@pytest.fixture
+def redis_test_name(worker_id, request):
+    """Build a per-test Redis resource name stable within a test function."""
+    node_hash = hashlib.sha1(request.node.nodeid.encode("utf-8")).hexdigest()[:10]
+
+    def make_name(base: str) -> str:
+        slug = re.sub(r"[^0-9A-Za-z]+", "_", base).strip("_").lower()
+        return f"{slug or 'redis_resource'}_{worker_id}_{node_hash}"
+
+    return make_name
 
 
 @pytest.fixture(autouse=True)
@@ -466,17 +480,19 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture
-def flat_index(sample_data, redis_url, worker_id):
+def flat_index(sample_data, redis_url, redis_test_name):
     """
     A fixture that uses the "flag" algorithm for its vector field.
     """
 
     # construct a search index from the schema
+    index_name = redis_test_name("user_index")
+    index_prefix = redis_test_name("v1")
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": index_name,
+                "prefix": index_prefix,
                 "storage_type": "hash",
             },
             "fields": [
@@ -521,17 +537,19 @@ def flat_index(sample_data, redis_url, worker_id):
 
 
 @pytest.fixture
-async def async_flat_index(sample_data, redis_url, worker_id):
+async def async_flat_index(sample_data, redis_url, redis_test_name):
     """
     A fixture that uses the "flag" algorithm for its vector field.
     """
 
     # construct a search index from the schema
+    index_name = redis_test_name("user_index")
+    index_prefix = redis_test_name("v1")
     index = AsyncSearchIndex.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": index_name,
+                "prefix": index_prefix,
                 "storage_type": "hash",
             },
             "fields": [
@@ -576,16 +594,18 @@ async def async_flat_index(sample_data, redis_url, worker_id):
 
 
 @pytest.fixture
-async def async_hnsw_index(sample_data, redis_url, worker_id):
+async def async_hnsw_index(sample_data, redis_url, redis_test_name):
     """
     A fixture that uses the "hnsw" algorithm for its vector field.
     """
 
+    index_name = redis_test_name("user_index")
+    index_prefix = redis_test_name("v1")
     index = AsyncSearchIndex.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": index_name,
+                "prefix": index_prefix,
                 "storage_type": "hash",
             },
             "fields": [
@@ -625,18 +645,23 @@ async def async_hnsw_index(sample_data, redis_url, worker_id):
     # run the test
     yield index
 
+    # clean up
+    await index.delete(drop=True)
+
 
 @pytest.fixture
-def hnsw_index(sample_data, redis_url, worker_id):
+def hnsw_index(sample_data, redis_url, redis_test_name):
     """
     A fixture that uses the "hnsw" algorithm for its vector field.
     """
 
+    index_name = redis_test_name("user_index")
+    index_prefix = redis_test_name("v1")
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": index_name,
+                "prefix": index_prefix,
                 "storage_type": "hash",
             },
             "fields": [
@@ -675,6 +700,9 @@ def hnsw_index(sample_data, redis_url, worker_id):
 
     # run the test
     yield index
+
+    # clean up
+    index.delete(drop=True)
 
 
 # Version checking utilities

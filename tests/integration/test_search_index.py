@@ -169,11 +169,11 @@ def test_search_index_from_existing_complex(client):
         assert index2.schema.fields["user_embedding"].type == "vector"
 
 
-def test_search_index_from_existing_multiple_prefixes(client):
+def test_search_index_from_existing_multiple_prefixes(client, redis_test_name):
     """Test that from_existing correctly handles indices with multiple prefixes (issue #258)."""
     from redis.commands.search.field import TextField, VectorField
 
-    index_name = "test_multi_prefix"
+    index_name = redis_test_name("test_multi_prefix")
 
     # Create index manually using redis-py with multiple prefixes
     # This simulates an index created with: FT.CREATE index ON HASH PREFIX 3 prefix_a: prefix_b: prefix_c: ...
