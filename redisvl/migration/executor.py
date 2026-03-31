@@ -19,11 +19,16 @@ from redisvl.migration.reliability import (
     BatchUndoBuffer,
     QuantizationCheckpoint,
     is_already_quantized,
+    is_same_width_dtype_conversion,
     trigger_bgsave_and_wait,
 )
 from redisvl.migration.utils import (
+    build_scan_match_patterns,
     current_source_matches_snapshot,
+    detect_aof_enabled,
     estimate_disk_space,
+    get_schema_field_path,
+    normalize_keys,
     timestamp_utc,
     wait_for_index_ready,
 )
@@ -38,46 +43,12 @@ class MigrationExecutor:
     def __init__(self, validator: Optional[MigrationValidator] = None):
         self.validator = validator or MigrationValidator()
 
-    @staticmethod
-    def _normalize_keys(keys: List[str]) -> List[str]:
-        """Deduplicate and sort keys for deterministic resume checkpoints."""
-        return sorted(set(keys))
-
-    @staticmethod
-    def _build_scan_match_pattern(prefix: str, key_separator: str) -> str:
-        """Build a SCAN match pattern that respects the configured separator."""
-        if not prefix:
-            return "*"
-        if key_separator and not prefix.endswith(key_separator):
-            return f"{prefix}{key_separator}*"
-        return f"{prefix}*"
-
-    @staticmethod
-    def _detect_aof_enabled(client: Any) -> bool:
-        """Best-effort detection of whether AOF is enabled on the live Redis."""
-        try:
-            info = client.info("persistence")
-            if isinstance(info, dict) and "aof_enabled" in info:
-                return bool(int(info["aof_enabled"]))
-        except Exception:
-            logger.debug("Could not read Redis INFO persistence for AOF detection.")
-
-        try:
-            config = client.config_get("appendonly")
-            if isinstance(config, dict):
-                value = config.get("appendonly")
-                if value is not None:
-                    return str(value).lower() in {"yes", "1", "true", "on"}
-        except Exception:
-            logger.debug("Could not read Redis CONFIG GET appendonly.")
-
-        return False
-
     def _enumerate_indexed_keys(
         self,
         client: SyncRedisClient,
         index_name: str,
         batch_size: int = 1000,
+        key_separator: str = ":",
     ) -> Generator[str, None, None]:
         """Enumerate document keys using FT.AGGREGATE with SCAN fallback.
 
@@ -90,6 +61,7 @@ class MigrationExecutor:
             client: Redis client
             index_name: Name of the index to enumerate
             batch_size: Number of keys per batch
+            key_separator: Separator between prefix and key ID
 
         Yields:
             Document keys as strings
@@ -103,11 +75,15 @@ class MigrationExecutor:
                     f"Index '{index_name}' has {failures} indexing failures. "
                     "Using SCAN for complete enumeration."
                 )
-                yield from self._enumerate_with_scan(client, index_name, batch_size)
+                yield from self._enumerate_with_scan(
+                    client, index_name, batch_size, key_separator
+                )
                 return
         except Exception as e:
             logger.warning(f"Failed to check index info: {e}. Using SCAN fallback.")
-            yield from self._enumerate_with_scan(client, index_name, batch_size)
+            yield from self._enumerate_with_scan(
+                client, index_name, batch_size, key_separator
+            )
             return
 
         # Try FT.AGGREGATE enumeration
@@ -117,7 +93,9 @@ class MigrationExecutor:
             logger.warning(
                 f"FT.AGGREGATE failed: {e}. Falling back to SCAN enumeration."
             )
-            yield from self._enumerate_with_scan(client, index_name, batch_size)
+            yield from self._enumerate_with_scan(
+                client, index_name, batch_size, key_separator
+            )
 
     def _enumerate_with_aggregate(
         self,
@@ -183,6 +161,7 @@ class MigrationExecutor:
         client: SyncRedisClient,
         index_name: str,
         batch_size: int = 1000,
+        key_separator: str = ":",
     ) -> Generator[str, None, None]:
         """Enumerate keys using SCAN with prefix matching.
 
@@ -208,28 +187,32 @@ class MigrationExecutor:
                                 if d in (b"prefixes", "prefixes") and j + 1 < len(defn):
                                     prefixes = defn[j + 1]
                         break
-            prefix = prefixes[0] if prefixes else ""
-            if isinstance(prefix, bytes):
-                prefix = prefix.decode()
+            normalized_prefixes = [
+                p.decode() if isinstance(p, bytes) else str(p) for p in prefixes
+            ]
         except Exception as e:
             logger.warning(f"Failed to get prefix from index info: {e}")
-            prefix = ""
+            normalized_prefixes = []
 
-        if not prefix:
-            logger.warning("No prefix found for index, SCAN may return unexpected keys")
+        seen_keys: set[str] = set()
+        for match_pattern in build_scan_match_patterns(
+            normalized_prefixes, key_separator
+        ):
+            cursor = 0
+            while True:
+                cursor, keys = client.scan(  # type: ignore[misc]
+                    cursor=cursor,
+                    match=match_pattern,
+                    count=batch_size,
+                )
+                for key in keys:
+                    key_str = key.decode() if isinstance(key, bytes) else str(key)
+                    if key_str not in seen_keys:
+                        seen_keys.add(key_str)
+                        yield key_str
 
-        cursor = 0
-        while True:
-            cursor, keys = client.scan(  # type: ignore[misc]
-                cursor=cursor,
-                match=f"{prefix}*" if prefix else "*",
-                count=batch_size,
-            )
-            for key in keys:
-                yield key.decode() if isinstance(key, bytes) else str(key)
-
-            if cursor == 0:
-                break
+                if cursor == 0:
+                    break
 
     def _rename_keys(
         self,
@@ -426,12 +409,25 @@ class MigrationExecutor:
         if checkpoint_path:
             existing_checkpoint = QuantizationCheckpoint.load(checkpoint_path)
             if existing_checkpoint is not None:
-                resuming_from_checkpoint = True
-                logger.info(
-                    "Checkpoint found at %s, skipping source index validation "
-                    "(index may have been dropped before crash)",
-                    checkpoint_path,
-                )
+                # Validate checkpoint belongs to this migration and is incomplete
+                if existing_checkpoint.index_name != plan.source.index_name:
+                    logger.warning(
+                        "Checkpoint index '%s' does not match plan index '%s', ignoring",
+                        existing_checkpoint.index_name,
+                        plan.source.index_name,
+                    )
+                elif existing_checkpoint.status == "completed":
+                    logger.info(
+                        "Checkpoint at %s is already completed, ignoring",
+                        checkpoint_path,
+                    )
+                else:
+                    resuming_from_checkpoint = True
+                    logger.info(
+                        "Checkpoint found at %s, skipping source index validation "
+                        "(index may have been dropped before crash)",
+                        checkpoint_path,
+                    )
 
         if not resuming_from_checkpoint:
             if not current_source_matches_snapshot(
@@ -492,6 +488,22 @@ class MigrationExecutor:
         has_field_renames = bool(rename_ops.rename_fields)
         needs_quantization = bool(datatype_changes) and storage_type != "json"
         needs_enumeration = needs_quantization or has_prefix_change or has_field_renames
+        has_same_width_quantization = any(
+            is_same_width_dtype_conversion(change["source"], change["target"])
+            for change in datatype_changes.values()
+        )
+
+        if checkpoint_path and has_same_width_quantization:
+            report.validation.errors.append(
+                "Crash-safe resume is not supported for same-width datatype "
+                "changes (float16<->bfloat16 or int8<->uint8)."
+            )
+            report.manual_actions.append(
+                "Re-run without --resume for same-width vector conversions, or "
+                "split the migration to avoid same-width datatype changes."
+            )
+            report.finished_at = timestamp_utc()
+            return report
 
         def _notify(step: str, detail: Optional[str] = None) -> None:
             if progress_callback:
@@ -499,7 +511,7 @@ class MigrationExecutor:
 
         try:
             client = source_index._redis_client
-            aof_enabled = self._detect_aof_enabled(client)
+            aof_enabled = detect_aof_enabled(client)
             disk_estimate = estimate_disk_space(plan, aof_enabled=aof_enabled)
             if disk_estimate.has_quantization:
                 logger.info(
@@ -517,32 +529,31 @@ class MigrationExecutor:
                 if needs_enumeration:
                     _notify("enumerate", "Enumerating documents via SCAN (resume)...")
                     enumerate_started = time.perf_counter()
-                    prefixes = plan.source.keyspace.prefixes
-                    prefix = prefixes[0] if prefixes else ""
+                    prefixes = list(plan.source.keyspace.prefixes)
                     # If a prefix change was part of the migration, keys
                     # were already renamed before the crash, so scan with
                     # the new prefix instead.
                     if has_prefix_change and rename_ops.change_prefix:
-                        prefix = rename_ops.change_prefix
-                    match_pattern = self._build_scan_match_pattern(
-                        prefix, plan.source.keyspace.key_separator
-                    )
-                    cursor: int = 0
+                        prefixes = [rename_ops.change_prefix]
                     seen_keys: set[str] = set()
-                    while True:
-                        cursor, scanned = client.scan(  # type: ignore[misc]
-                            cursor=cursor,
-                            match=match_pattern,
-                            count=1000,
-                        )
-                        for k in scanned:
-                            key = k.decode() if isinstance(k, bytes) else str(k)
-                            if key not in seen_keys:
-                                seen_keys.add(key)
-                                keys_to_process.append(key)
-                        if cursor == 0:
-                            break
-                    keys_to_process = self._normalize_keys(keys_to_process)
+                    for match_pattern in build_scan_match_patterns(
+                        prefixes, plan.source.keyspace.key_separator
+                    ):
+                        cursor: int = 0
+                        while True:
+                            cursor, scanned = client.scan(  # type: ignore[misc]
+                                cursor=cursor,
+                                match=match_pattern,
+                                count=1000,
+                            )
+                            for k in scanned:
+                                key = k.decode() if isinstance(k, bytes) else str(k)
+                                if key not in seen_keys:
+                                    seen_keys.add(key)
+                                    keys_to_process.append(key)
+                            if cursor == 0:
+                                break
+                    keys_to_process = normalize_keys(keys_to_process)
                     enumerate_duration = round(
                         time.perf_counter() - enumerate_started, 3
                     )
@@ -562,10 +573,13 @@ class MigrationExecutor:
                     enumerate_started = time.perf_counter()
                     keys_to_process = list(
                         self._enumerate_indexed_keys(
-                            client, plan.source.index_name, batch_size=1000
+                            client,
+                            plan.source.index_name,
+                            batch_size=1000,
+                            key_separator=plan.source.keyspace.key_separator,
                         )
                     )
-                    keys_to_process = self._normalize_keys(keys_to_process)
+                    keys_to_process = normalize_keys(keys_to_process)
                     enumerate_duration = round(
                         time.perf_counter() - enumerate_started, 3
                     )
@@ -590,8 +604,14 @@ class MigrationExecutor:
                     field_rename_started = time.perf_counter()
                     for field_rename in rename_ops.rename_fields:
                         if storage_type == "json":
-                            old_path = f"$.{field_rename.old_name}"
-                            new_path = f"$.{field_rename.new_name}"
+                            old_path = get_schema_field_path(
+                                plan.source.schema_snapshot, field_rename.old_name
+                            )
+                            new_path = get_schema_field_path(
+                                plan.merged_target_schema, field_rename.new_name
+                            )
+                            if not old_path or not new_path or old_path == new_path:
+                                continue
                             self._rename_field_in_json(
                                 client,
                                 keys_to_process,
@@ -668,7 +688,7 @@ class MigrationExecutor:
                         )
                         for k in keys_to_process
                     ]
-                    keys_to_process = self._normalize_keys(keys_to_process)
+                    keys_to_process = normalize_keys(keys_to_process)
                 docs_quantized = self._quantize_vectors(
                     source_index,
                     datatype_changes,
@@ -688,6 +708,13 @@ class MigrationExecutor:
                     f"{datatype_changes}"
                 )
             elif datatype_changes and storage_type == "json":
+                if checkpoint_path and not resuming_from_checkpoint:
+                    checkpoint = QuantizationCheckpoint(
+                        index_name=source_index.name,
+                        total_keys=len(keys_to_process),
+                        checkpoint_path=checkpoint_path,
+                    )
+                    checkpoint.save()
                 _notify("quantize", "skipped (JSON vectors are re-indexed on recreate)")
 
             _notify("create", "Creating index with new schema...")
@@ -839,11 +866,31 @@ class MigrationExecutor:
                         f"Use the correct checkpoint file or remove it to start fresh."
                     )
                 if checkpoint.total_keys != total_keys:
-                    raise ValueError(
-                        f"Checkpoint total_keys={checkpoint.total_keys} does not match "
-                        f"the current key set ({total_keys}). "
-                        "Use the correct checkpoint file or remove it to start fresh."
-                    )
+                    if checkpoint.processed_keys:
+                        current_keys = set(keys)
+                        missing_processed = [
+                            key
+                            for key in checkpoint.processed_keys
+                            if key not in current_keys
+                        ]
+                        if missing_processed or total_keys < checkpoint.total_keys:
+                            raise ValueError(
+                                f"Checkpoint total_keys={checkpoint.total_keys} does not match "
+                                f"the current key set ({total_keys}). "
+                                "Use the correct checkpoint file or remove it to start fresh."
+                            )
+                        logger.warning(
+                            "Checkpoint total_keys=%d differs from current key set size=%d. "
+                            "Proceeding because all legacy processed keys are present.",
+                            checkpoint.total_keys,
+                            total_keys,
+                        )
+                    else:
+                        raise ValueError(
+                            f"Checkpoint total_keys={checkpoint.total_keys} does not match "
+                            f"the current key set ({total_keys}). "
+                            "Use the correct checkpoint file or remove it to start fresh."
+                        )
                 remaining = checkpoint.get_remaining_keys(keys)
                 logger.info(
                     "Resuming from checkpoint: %d/%d keys already processed",
