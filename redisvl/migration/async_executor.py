@@ -675,6 +675,13 @@ class AsyncMigrationExecutor:
         if checkpoint_path:
             checkpoint = QuantizationCheckpoint.load(checkpoint_path)
             if checkpoint:
+                # Validate checkpoint matches current migration
+                if checkpoint.index_name != source_index.name:
+                    raise ValueError(
+                        f"Checkpoint index '{checkpoint.index_name}' does not match "
+                        f"source index '{source_index.name}'. "
+                        f"Use the correct checkpoint file or remove it to start fresh."
+                    )
                 remaining = checkpoint.get_remaining_keys(keys)
                 logger.info(
                     "Resuming from checkpoint: %d/%d keys already processed",
@@ -742,7 +749,9 @@ class AsyncMigrationExecutor:
             docs_processed += len(keys_updated_in_batch)
 
             if checkpoint:
-                checkpoint.record_batch(list(keys_updated_in_batch))
+                # Record all keys in batch (including skipped) so they
+                # are not re-scanned on resume
+                checkpoint.record_batch(batch)
                 checkpoint.save()
 
             if progress_callback:

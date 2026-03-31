@@ -19,13 +19,26 @@ logger = logging.getLogger(__name__)
 
 # Bytes per element for each supported vector dtype.
 # Note: bfloat16 and float16 share the same element size (2 bytes),
-# so detect_vector_dtype cannot distinguish them by length alone.
+# and int8 and uint8 share 1 byte per element. detect_vector_dtype
+# cannot distinguish within these families by length alone.
 _BYTES_PER_ELEMENT: Dict[str, int] = {
     "float64": 8,
     "float32": 4,
     "float16": 2,
     "bfloat16": 2,
     "int8": 1,
+    "uint8": 1,
+}
+
+# Dtypes that share byte widths and are functionally interchangeable
+# for idempotent detection purposes (same byte length per element).
+_DTYPE_FAMILY: Dict[str, str] = {
+    "float64": "8byte",
+    "float32": "4byte",
+    "float16": "2byte",
+    "bfloat16": "2byte",
+    "int8": "1byte",
+    "uint8": "1byte",
 }
 
 
@@ -38,7 +51,9 @@ def detect_vector_dtype(data: bytes, expected_dims: int) -> Optional[str]:
     """Inspect raw vector bytes and infer the storage dtype.
 
     Uses byte length and expected dimensions to determine which dtype
-    the vector is currently stored as.
+    the vector is currently stored as. Returns the canonical representative
+    for each byte-width family (float16 for 2-byte, int8 for 1-byte),
+    since dtypes within a family cannot be distinguished by length alone.
 
     Args:
         data: Raw vector bytes from Redis.
@@ -53,8 +68,9 @@ def detect_vector_dtype(data: bytes, expected_dims: int) -> Optional[str]:
 
     nbytes = len(data)
 
-    # Check each dtype in decreasing element size to avoid ambiguity
-    # (float64 before float32 before float16/bfloat16 before int8)
+    # Check each dtype in decreasing element size to avoid ambiguity.
+    # Only canonical representatives are checked (float16 covers bfloat16,
+    # int8 covers uint8) since they share byte widths.
     for dtype in ("float64", "float32", "float16", "int8"):
         if nbytes == expected_dims * _BYTES_PER_ELEMENT[dtype]:
             return dtype
@@ -70,19 +86,26 @@ def is_already_quantized(
 ) -> bool:
     """Check whether a vector has already been converted to the target dtype.
 
+    Uses byte-width families to handle ambiguous dtypes. For example,
+    if the target is bfloat16 and the detected dtype is float16 (same
+    2 bytes per element), the vector is considered already quantized.
+    Same for uint8/int8 (both 1 byte per element).
+
     Args:
         data: Raw vector bytes.
         expected_dims: Number of dimensions.
         source_dtype: The dtype the vector was originally stored as.
-            Reserved for future validation (e.g. warning if detected dtype
-            matches neither source nor target).
         target_dtype: The dtype we want to convert to.
 
     Returns:
         True if the vector already matches the target dtype (skip conversion).
     """
     detected = detect_vector_dtype(data, expected_dims)
-    return detected is not None and detected == target_dtype
+    if detected is None:
+        return False
+    # Compare by byte-width family so float16<->bfloat16 and int8<->uint8
+    # are treated as equivalent (indistinguishable by byte length)
+    return _DTYPE_FAMILY.get(detected) == _DTYPE_FAMILY.get(target_dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +165,12 @@ class QuantizationCheckpoint(BaseModel):
 
     @classmethod
     def load(cls, path: str) -> Optional["QuantizationCheckpoint"]:
-        """Load a checkpoint from disk. Returns None if file does not exist."""
+        """Load a checkpoint from disk. Returns None if file does not exist.
+
+        Always sets checkpoint_path to the path used to load, not the
+        value stored in the file. This ensures subsequent save() calls
+        write to the correct location even if the file was moved.
+        """
         p = Path(path)
         if not p.exists():
             return None
@@ -150,7 +178,9 @@ class QuantizationCheckpoint(BaseModel):
             data = yaml.safe_load(f)
         if not data:
             return None
-        return cls.model_validate(data)
+        checkpoint = cls.model_validate(data)
+        checkpoint.checkpoint_path = str(p)
+        return checkpoint
 
     def get_remaining_keys(self, all_keys: List[str]) -> List[str]:
         """Return keys that have not yet been processed."""

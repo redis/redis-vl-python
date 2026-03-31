@@ -413,6 +413,40 @@ def test_is_already_quantized_needs_conversion():
     assert result is False
 
 
+def test_is_already_quantized_bfloat16_target():
+    """If target is bfloat16 and vector is 2-bytes-per-element, should return True.
+
+    bfloat16 and float16 share the same byte width (2 bytes per element)
+    and are treated as the same dtype family for idempotent detection.
+    """
+    import numpy as np
+
+    from redisvl.migration.reliability import is_already_quantized
+
+    vec = np.random.randn(128).astype(np.float16).tobytes()
+    result = is_already_quantized(
+        vec, expected_dims=128, source_dtype="float32", target_dtype="bfloat16"
+    )
+    assert result is True
+
+
+def test_is_already_quantized_uint8_target():
+    """If target is uint8 and vector is 1-byte-per-element, should return True.
+
+    uint8 and int8 share the same byte width (1 byte per element)
+    and are treated as the same dtype family for idempotent detection.
+    """
+    import numpy as np
+
+    from redisvl.migration.reliability import is_already_quantized
+
+    vec = np.random.randn(128).astype(np.int8).tobytes()
+    result = is_already_quantized(
+        vec, expected_dims=128, source_dtype="float32", target_dtype="uint8"
+    )
+    assert result is True
+
+
 # =============================================================================
 # TDD RED Phase: Checkpoint File Tests
 # =============================================================================
@@ -510,6 +544,29 @@ def test_checkpoint_load_nonexistent_returns_none():
 
     result = QuantizationCheckpoint.load("/tmp/nonexistent_checkpoint_xyz.yaml")
     assert result is None
+
+
+def test_checkpoint_load_forces_path(tmp_path):
+    """load() should set checkpoint_path to the file used to load, not the stored value."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    original_path = str(tmp_path / "original.yaml")
+    cp = QuantizationCheckpoint(
+        index_name="idx",
+        total_keys=10,
+        checkpoint_path=original_path,
+    )
+    cp.record_batch(["k1"])
+    cp.save()
+
+    # Move the file to a new location
+    new_path = str(tmp_path / "moved.yaml")
+    import shutil
+
+    shutil.copy(original_path, new_path)
+
+    loaded = QuantizationCheckpoint.load(new_path)
+    assert loaded.checkpoint_path == new_path  # should use load path, not stored
 
 
 # =============================================================================

@@ -236,7 +236,9 @@ class DiskSpaceEstimate(BaseModel):
                 f"  AOF growth (appendonly=yes):  ~{_format_bytes(self.aof_growth_bytes)}"
             )
         else:
-            lines.append("  AOF growth:                  n/a (appendonly=no)")
+            lines.append(
+                "  AOF growth:                  not estimated (pass aof_enabled=True if AOF is on)"
+            )
         lines.append(
             f"  Total new disk required:      ~{_format_bytes(self.total_new_disk_bytes)}"
         )
