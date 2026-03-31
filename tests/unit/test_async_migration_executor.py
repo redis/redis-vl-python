@@ -1,12 +1,15 @@
-"""Unit tests for AsyncMigrationExecutor and disk space estimator.
+"""Unit tests for migration executors and disk space estimator.
 
 These tests mirror the sync MigrationExecutor patterns but use async/await.
 Also includes pure-calculation tests for estimate_disk_space().
 """
 
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
-from redisvl.migration import AsyncMigrationExecutor
+from redisvl.migration import AsyncMigrationExecutor, MigrationExecutor
 from redisvl.migration.models import (
     DiffClassification,
     KeyspaceSnapshot,
@@ -564,6 +567,38 @@ def test_checkpoint_get_remaining_keys(tmp_path):
     assert remaining == ["k3", "k4", "k5"]
 
 
+def test_checkpoint_get_remaining_keys_uses_completed_offset_when_compact(tmp_path):
+    """Compact checkpoints should resume via completed_keys ordering."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    cp = QuantizationCheckpoint(
+        index_name="idx",
+        total_keys=5,
+        checkpoint_path=str(tmp_path / "cp.yaml"),
+    )
+    cp.record_batch(["k1", "k2"])
+
+    remaining = cp.get_remaining_keys(["k1", "k2", "k3", "k4", "k5"])
+    assert remaining == ["k3", "k4", "k5"]
+
+
+def test_checkpoint_save_excludes_processed_keys(tmp_path):
+    """New checkpoints should persist compact state without processed_keys."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    path = tmp_path / "checkpoint.yaml"
+    cp = QuantizationCheckpoint(
+        index_name="idx",
+        total_keys=3,
+        processed_keys=["k1", "k2"],
+        checkpoint_path=str(path),
+    )
+    cp.save()
+
+    raw = path.read_text()
+    assert "processed_keys" not in raw
+
+
 def test_checkpoint_load_nonexistent_returns_none():
     """Loading a nonexistent checkpoint file should return None."""
     from redisvl.migration.reliability import QuantizationCheckpoint
@@ -593,6 +628,191 @@ def test_checkpoint_load_forces_path(tmp_path):
 
     loaded = QuantizationCheckpoint.load(new_path)
     assert loaded.checkpoint_path == new_path  # should use load path, not stored
+
+
+def test_quantize_vectors_saves_checkpoint_before_processing(monkeypatch, tmp_path):
+    """Checkpoint save should happen before the first HGET in a fresh run."""
+    import numpy as np
+
+    executor = MigrationExecutor()
+    checkpoint_path = str(tmp_path / "checkpoint.yaml")
+    field_bytes = np.array([1.0, 2.0], dtype=np.float32).tobytes()
+    events: list[str] = []
+
+    original_save = executor._quantize_vectors.__globals__[
+        "QuantizationCheckpoint"
+    ].save
+
+    def tracking_save(self):
+        events.append("save")
+        return original_save(self)
+
+    monkeypatch.setattr(
+        executor._quantize_vectors.__globals__["QuantizationCheckpoint"],
+        "save",
+        tracking_save,
+    )
+
+    client = MagicMock()
+    client.hget.side_effect = lambda key, field: (events.append("hget") or field_bytes)
+    pipe = MagicMock()
+    client.pipeline.return_value = pipe
+    source_index = MagicMock()
+    source_index._redis_client = client
+    source_index.name = "idx"
+
+    result = executor._quantize_vectors(
+        source_index,
+        {"embedding": {"source": "float32", "target": "float16", "dims": 2}},
+        ["doc:1"],
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert result == 1
+    assert events[0] == "save"
+    assert Path(checkpoint_path).exists()
+
+
+def test_quantize_vectors_returns_reencoded_docs_not_scanned_docs():
+    """Quantize count should reflect converted docs, not skipped docs."""
+    import numpy as np
+
+    executor = MigrationExecutor()
+    already_quantized = np.array([1.0, 2.0], dtype=np.float16).tobytes()
+    needs_quantization = np.array([1.0, 2.0], dtype=np.float32).tobytes()
+
+    client = MagicMock()
+    client.hget.side_effect = lambda key, field: {
+        "doc:1": already_quantized,
+        "doc:2": needs_quantization,
+    }[key]
+    pipe = MagicMock()
+    client.pipeline.return_value = pipe
+    source_index = MagicMock()
+    source_index._redis_client = client
+    source_index.name = "idx"
+
+    progress: list[tuple[int, int]] = []
+    result = executor._quantize_vectors(
+        source_index,
+        {"embedding": {"source": "float32", "target": "float16", "dims": 2}},
+        ["doc:1", "doc:2"],
+        progress_callback=lambda done, total: progress.append((done, total)),
+    )
+
+    assert result == 1
+    assert progress[-1] == (2, 2)
+
+
+def test_build_scan_match_pattern_uses_separator():
+    executor = MigrationExecutor()
+    assert executor._build_scan_match_pattern("test", ":") == "test:*"
+    assert executor._build_scan_match_pattern("test:", ":") == "test:*"
+    assert executor._build_scan_match_pattern("", ":") == "*"
+
+
+def test_normalize_keys_dedupes_and_sorts():
+    executor = MigrationExecutor()
+    assert executor._normalize_keys(["b", "a", "b"]) == ["a", "b"]
+
+
+def test_detect_aof_enabled_from_info():
+    executor = MigrationExecutor()
+    client = MagicMock()
+    client.info.return_value = {"aof_enabled": 1}
+    assert executor._detect_aof_enabled(client) is True
+
+
+@pytest.mark.asyncio
+async def test_async_detect_aof_enabled_from_info():
+    executor = AsyncMigrationExecutor()
+    client = MagicMock()
+    client.info = AsyncMock(return_value={"aof_enabled": 1})
+    assert await executor._detect_aof_enabled(client) is True
+
+
+@pytest.mark.asyncio
+async def test_async_quantize_vectors_saves_checkpoint_before_processing(
+    monkeypatch, tmp_path
+):
+    """Async checkpoint save should happen before the first HGET in a fresh run."""
+    import numpy as np
+
+    executor = AsyncMigrationExecutor()
+    checkpoint_path = str(tmp_path / "checkpoint.yaml")
+    field_bytes = np.array([1.0, 2.0], dtype=np.float32).tobytes()
+    events: list[str] = []
+
+    original_save = executor._async_quantize_vectors.__globals__[
+        "QuantizationCheckpoint"
+    ].save
+
+    def tracking_save(self):
+        events.append("save")
+        return original_save(self)
+
+    monkeypatch.setattr(
+        executor._async_quantize_vectors.__globals__["QuantizationCheckpoint"],
+        "save",
+        tracking_save,
+    )
+
+    client = MagicMock()
+    client.hget = AsyncMock(
+        side_effect=lambda key, field: (events.append("hget") or field_bytes)
+    )
+    pipe = MagicMock()
+    pipe.execute = AsyncMock(return_value=[])
+    client.pipeline.return_value = pipe
+    source_index = MagicMock()
+    source_index._redis_client = client
+    source_index.name = "idx"
+
+    result = await executor._async_quantize_vectors(
+        source_index,
+        {"embedding": {"source": "float32", "target": "float16", "dims": 2}},
+        ["doc:1"],
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert result == 1
+    assert events[0] == "save"
+    assert Path(checkpoint_path).exists()
+
+
+@pytest.mark.asyncio
+async def test_async_quantize_vectors_returns_reencoded_docs_not_scanned_docs():
+    """Async quantize count should reflect converted docs, not skipped docs."""
+    import numpy as np
+
+    executor = AsyncMigrationExecutor()
+    already_quantized = np.array([1.0, 2.0], dtype=np.float16).tobytes()
+    needs_quantization = np.array([1.0, 2.0], dtype=np.float32).tobytes()
+
+    client = MagicMock()
+    client.hget = AsyncMock(
+        side_effect=lambda key, field: {
+            "doc:1": already_quantized,
+            "doc:2": needs_quantization,
+        }[key]
+    )
+    pipe = MagicMock()
+    pipe.execute = AsyncMock(return_value=[])
+    client.pipeline.return_value = pipe
+    source_index = MagicMock()
+    source_index._redis_client = client
+    source_index.name = "idx"
+
+    progress: list[tuple[int, int]] = []
+    result = await executor._async_quantize_vectors(
+        source_index,
+        {"embedding": {"source": "float32", "target": "float16", "dims": 2}},
+        ["doc:1", "doc:2"],
+        progress_callback=lambda done, total: progress.append((done, total)),
+    )
+
+    assert result == 1
+    assert progress[-1] == (2, 2)
 
 
 # =============================================================================

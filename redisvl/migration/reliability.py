@@ -125,6 +125,9 @@ class QuantizationCheckpoint(BaseModel):
     completed_keys: int = 0
     completed_batches: int = 0
     last_batch_keys: List[str] = Field(default_factory=list)
+    # Retained for backward compatibility with older checkpoint files.
+    # New checkpoints rely on completed_keys with deterministic key ordering
+    # instead of rewriting an ever-growing processed key list on every batch.
     processed_keys: List[str] = Field(default_factory=list)
     status: str = "in_progress"
     checkpoint_path: str = ""
@@ -138,7 +141,6 @@ class QuantizationCheckpoint(BaseModel):
         self.completed_keys += len(keys)
         self.completed_batches += 1
         self.last_batch_keys = list(keys)
-        self.processed_keys.extend(keys)
 
     def mark_complete(self) -> None:
         """Mark the migration as completed."""
@@ -157,7 +159,11 @@ class QuantizationCheckpoint(BaseModel):
         )
         try:
             with os.fdopen(fd, "w") as f:
-                yaml.safe_dump(self.model_dump(), f, sort_keys=False)
+                yaml.safe_dump(
+                    self.model_dump(exclude={"processed_keys"}),
+                    f,
+                    sort_keys=False,
+                )
             os.replace(tmp_path, str(path))
         except BaseException:
             # Clean up temp file on any failure
@@ -188,8 +194,14 @@ class QuantizationCheckpoint(BaseModel):
 
     def get_remaining_keys(self, all_keys: List[str]) -> List[str]:
         """Return keys that have not yet been processed."""
-        done = set(self.processed_keys)
-        return [k for k in all_keys if k not in done]
+        if self.processed_keys:
+            done = set(self.processed_keys)
+            return [k for k in all_keys if k not in done]
+
+        if self.completed_keys <= 0:
+            return list(all_keys)
+
+        return all_keys[self.completed_keys :]
 
 
 # ---------------------------------------------------------------------------
