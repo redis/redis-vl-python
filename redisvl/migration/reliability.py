@@ -15,20 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger(__name__)
+from redisvl.migration.models import DTYPE_BYTES
 
-# Bytes per element for each supported vector dtype.
-# Note: bfloat16 and float16 share the same element size (2 bytes),
-# and int8 and uint8 share 1 byte per element. detect_vector_dtype
-# cannot distinguish within these families by length alone.
-_BYTES_PER_ELEMENT: Dict[str, int] = {
-    "float64": 8,
-    "float32": 4,
-    "float16": 2,
-    "bfloat16": 2,
-    "int8": 1,
-    "uint8": 1,
-}
+logger = logging.getLogger(__name__)
 
 # Dtypes that share byte widths and are functionally interchangeable
 # for idempotent detection purposes (same byte length per element).
@@ -72,7 +61,7 @@ def detect_vector_dtype(data: bytes, expected_dims: int) -> Optional[str]:
     # Only canonical representatives are checked (float16 covers bfloat16,
     # int8 covers uint8) since they share byte widths.
     for dtype in ("float64", "float32", "float16", "int8"):
-        if nbytes == expected_dims * _BYTES_PER_ELEMENT[dtype]:
+        if nbytes == expected_dims * DTYPE_BYTES[dtype]:
             return dtype
 
     return None
