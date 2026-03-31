@@ -231,14 +231,20 @@ class AsyncMigrationExecutor:
         new_prefix: str,
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> int:
-        """Async version: Rename keys from old prefix to new prefix."""
+        """Async version: Rename keys from old prefix to new prefix.
+
+        Uses RENAMENX to avoid overwriting existing destination keys.
+        Raises on collision to prevent silent data loss.
+        """
         renamed = 0
         total = len(keys)
         pipeline_size = 100
+        collisions: List[str] = []
 
         for i in range(0, total, pipeline_size):
             batch = keys[i : i + pipeline_size]
             pipe = client.pipeline(transaction=False)
+            batch_new_keys: List[str] = []
 
             for key in batch:
                 if key.startswith(old_prefix):
@@ -248,16 +254,28 @@ class AsyncMigrationExecutor:
                         f"Key '{key}' does not start with prefix '{old_prefix}'"
                     )
                     continue
-                pipe.rename(key, new_key)
+                pipe.renamenx(key, new_key)
+                batch_new_keys.append(new_key)
 
             try:
                 results = await pipe.execute()
-                renamed += sum(1 for r in results if r is True or r == "OK")
+                for j, r in enumerate(results):
+                    if r is True or r == 1:
+                        renamed += 1
+                    else:
+                        collisions.append(batch_new_keys[j])
             except Exception as e:
                 logger.warning(f"Error in rename batch: {e}")
 
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
+
+        if collisions:
+            raise RuntimeError(
+                f"Prefix rename aborted: {len(collisions)} destination key(s) already exist "
+                f"(first 5: {collisions[:5]}). This would overwrite existing data. "
+                f"Remove conflicting keys or choose a different prefix."
+            )
 
         return renamed
 
@@ -320,9 +338,13 @@ class AsyncMigrationExecutor:
                 pipe.json().get(key, old_path)
             values = await pipe.execute()
 
+            # JSONPath GET returns results as a list; unwrap single-element
+            # results to preserve the original document shape.
             pipe = client.pipeline(transaction=False)
             for key, value in zip(batch, values):
                 if value is not None:
+                    if isinstance(value, list) and len(value) == 1:
+                        value = value[0]
                     pipe.json().set(key, new_path, value)
                     pipe.json().delete(key, old_path)
 

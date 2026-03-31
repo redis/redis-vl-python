@@ -103,6 +103,11 @@ class BatchMigrationExecutor:
                         completed_at=timestamp_utc(),
                     )
                 )
+                state.current_index = None
+                state.updated_at = timestamp_utc()
+                self._write_state(state, state_path)
+                if progress_callback:
+                    progress_callback(index_name, position, total, "skipped")
                 continue
 
             # Execute migration for this index

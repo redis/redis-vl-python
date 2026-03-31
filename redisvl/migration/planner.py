@@ -242,12 +242,23 @@ class MigrationPlanner:
         for field_name in changes.remove_fields:
             fields_by_name.pop(field_name, None)
 
+        # Build a mapping from old field names to new names so that
+        # update_fields entries referencing pre-rename names still resolve.
+        rename_map = {
+            rename.old_name: rename.new_name
+            for rename in changes.rename_fields
+            if rename.old_name != rename.new_name
+        }
+
         for field_update in changes.update_fields:
-            if field_update.name not in fields_by_name:
+            # Resolve through renames: if the update references the old name,
+            # look up the field under its new name.
+            resolved_name = rename_map.get(field_update.name, field_update.name)
+            if resolved_name not in fields_by_name:
                 raise ValueError(
                     f"Cannot update field '{field_update.name}' because it does not exist in the source schema"
                 )
-            existing_field = fields_by_name[field_update.name]
+            existing_field = fields_by_name[resolved_name]
             if field_update.type is not None:
                 existing_field["type"] = field_update.type
             if field_update.path is not None:
@@ -298,6 +309,15 @@ class MigrationPlanner:
         change_prefix: Optional[str] = None
         if "prefix" in changes.index:
             new_prefix = changes.index["prefix"]
+            # Normalize list-type prefix to a single string
+            if isinstance(new_prefix, list):
+                if len(new_prefix) != 1:
+                    raise ValueError(
+                        f"Target prefix must be a single string, got list: {new_prefix}. "
+                        f"Multi-prefix migrations are not supported."
+                    )
+                new_prefix = new_prefix[0]
+                changes.index["prefix"] = new_prefix
             old_prefix = source_dict["index"].get("prefix")
             if new_prefix != old_prefix:
                 # Block multi-prefix migrations - we only support single prefix
@@ -460,9 +480,22 @@ class MigrationPlanner:
                     f"Adding vector field '{field['name']}' requires document migration (not yet supported)."
                 )
 
+        # Build rename mapping so update_fields referencing old names resolve
+        classify_rename_map = {
+            rename.old_name: rename.new_name
+            for rename in changes.rename_fields
+            if rename.old_name != rename.new_name
+        }
+
         for field_update in changes.update_fields:
-            source_field = source_fields[field_update.name]
-            target_field = target_fields[field_update.name]
+            # Resolve through renames for source/target lookup
+            source_name = field_update.name
+            target_name = classify_rename_map.get(field_update.name, field_update.name)
+            source_field = source_fields.get(source_name)
+            target_field = target_fields.get(target_name)
+            if source_field is None or target_field is None:
+                # Field not found in source or target; skip classification
+                continue
             source_type = source_field["type"]
             target_type = target_field["type"]
 
@@ -487,11 +520,18 @@ class MigrationPlanner:
                 )
                 blocked_reasons.extend(vector_blocked)
 
-        # Detect possible field renames only if not explicitly provided
-        if not has_field_renames:
-            blocked_reasons.extend(
-                self._detect_possible_field_renames(source_fields, target_fields)
-            )
+        # Detect possible undeclared field renames. When explicit renames
+        # exist, exclude those fields from heuristic detection so we still
+        # catch additional add/remove pairs that look like renames.
+        detect_source = dict(source_fields)
+        detect_target = dict(target_fields)
+        if has_field_renames and rename_operations:
+            for fr in rename_operations.rename_fields:
+                detect_source.pop(fr.old_name, None)
+                detect_target.pop(fr.new_name, None)
+        blocked_reasons.extend(
+            self._detect_possible_field_renames(detect_source, detect_target)
+        )
 
         return DiffClassification(
             supported=len(blocked_reasons) == 0,
