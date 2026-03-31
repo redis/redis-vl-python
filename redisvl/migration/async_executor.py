@@ -41,6 +41,40 @@ class AsyncMigrationExecutor:
     def __init__(self, validator: Optional[AsyncMigrationValidator] = None):
         self.validator = validator or AsyncMigrationValidator()
 
+    @staticmethod
+    def _normalize_keys(keys: List[str]) -> List[str]:
+        """Deduplicate and sort keys for deterministic resume checkpoints."""
+        return sorted(set(keys))
+
+    @staticmethod
+    def _build_scan_match_pattern(prefix: str, key_separator: str) -> str:
+        """Build a SCAN match pattern that respects the configured separator."""
+        if not prefix:
+            return "*"
+        if key_separator and not prefix.endswith(key_separator):
+            return f"{prefix}{key_separator}*"
+        return f"{prefix}*"
+
+    async def _detect_aof_enabled(self, client: Any) -> bool:
+        """Best-effort detection of whether AOF is enabled on the live Redis."""
+        try:
+            info = await client.info("persistence")
+            if isinstance(info, dict) and "aof_enabled" in info:
+                return bool(int(info["aof_enabled"]))
+        except Exception:
+            logger.debug("Could not read Redis INFO persistence for AOF detection.")
+
+        try:
+            config = await client.config_get("appendonly")
+            if isinstance(config, dict):
+                value = config.get("appendonly")
+                if value is not None:
+                    return str(value).lower() in {"yes", "1", "true", "on"}
+        except Exception:
+            logger.debug("Could not read Redis CONFIG GET appendonly.")
+
+        return False
+
     async def _enumerate_indexed_keys(
         self,
         client: AsyncRedisClient,
@@ -398,6 +432,7 @@ class AsyncMigrationExecutor:
         target_info: Dict[str, Any] = {}
         docs_quantized = 0
         keys_to_process: List[str] = []
+        storage_type = plan.source.keyspace.storage_type
 
         datatype_changes = AsyncMigrationPlanner.get_vector_datatype_changes(
             plan.source.schema_snapshot, plan.merged_target_schema
@@ -407,18 +442,8 @@ class AsyncMigrationExecutor:
         rename_ops = plan.rename_operations
         has_prefix_change = bool(rename_ops.change_prefix)
         has_field_renames = bool(rename_ops.rename_fields)
-        needs_enumeration = datatype_changes or has_prefix_change or has_field_renames
-
-        # Compute disk space estimate before any mutations
-        disk_estimate = estimate_disk_space(plan)
-        if disk_estimate.has_quantization:
-            logger.info(
-                "Disk space estimate: RDB ~%d bytes, AOF ~%d bytes, total ~%d bytes",
-                disk_estimate.rdb_snapshot_disk_bytes,
-                disk_estimate.aof_growth_bytes,
-                disk_estimate.total_new_disk_bytes,
-            )
-        report.disk_space_estimate = disk_estimate
+        needs_quantization = bool(datatype_changes) and storage_type != "json"
+        needs_enumeration = needs_quantization or has_prefix_change or has_field_renames
 
         def _notify(step: str, detail: Optional[str] = None) -> None:
             if progress_callback:
@@ -428,7 +453,16 @@ class AsyncMigrationExecutor:
             client = source_index._redis_client
             if client is None:
                 raise ValueError("Failed to get Redis client from source index")
-            storage_type = plan.source.keyspace.storage_type
+            aof_enabled = await self._detect_aof_enabled(client)
+            disk_estimate = estimate_disk_space(plan, aof_enabled=aof_enabled)
+            if disk_estimate.has_quantization:
+                logger.info(
+                    "Disk space estimate: RDB ~%d bytes, AOF ~%d bytes, total ~%d bytes",
+                    disk_estimate.rdb_snapshot_disk_bytes,
+                    disk_estimate.aof_growth_bytes,
+                    disk_estimate.total_new_disk_bytes,
+                )
+            report.disk_space_estimate = disk_estimate
 
             if resuming_from_checkpoint:
                 # On resume after a post-drop crash, the index no longer
@@ -441,19 +475,25 @@ class AsyncMigrationExecutor:
                     prefix = prefixes[0] if prefixes else ""
                     if has_prefix_change and rename_ops.change_prefix:
                         prefix = rename_ops.change_prefix
+                    match_pattern = self._build_scan_match_pattern(
+                        prefix, plan.source.keyspace.key_separator
+                    )
                     cursor: int = 0
+                    seen_keys: set[str] = set()
                     while True:
                         cursor, scanned = await client.scan(  # type: ignore[misc]
                             cursor=cursor,
-                            match=f"{prefix}*" if prefix else "*",
+                            match=match_pattern,
                             count=1000,
                         )
                         for k in scanned:
-                            keys_to_process.append(
-                                k.decode() if isinstance(k, bytes) else str(k)
-                            )
+                            key = k.decode() if isinstance(k, bytes) else str(k)
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                keys_to_process.append(key)
                         if cursor == 0:
                             break
+                    keys_to_process = self._normalize_keys(keys_to_process)
                     enumerate_duration = round(
                         time.perf_counter() - enumerate_started, 3
                     )
@@ -476,6 +516,7 @@ class AsyncMigrationExecutor:
                             client, plan.source.index_name, batch_size=1000
                         )
                     ]
+                    keys_to_process = self._normalize_keys(keys_to_process)
                     enumerate_duration = round(
                         time.perf_counter() - enumerate_started, 3
                     )
@@ -559,7 +600,7 @@ class AsyncMigrationExecutor:
                 )
 
             # STEP 5: Re-encode vectors using pre-enumerated keys
-            if datatype_changes and keys_to_process:
+            if needs_quantization and keys_to_process:
                 _notify("quantize", "Re-encoding vectors...")
                 quantize_started = time.perf_counter()
                 # If we renamed keys (non-resume), update keys_to_process
@@ -578,6 +619,7 @@ class AsyncMigrationExecutor:
                         )
                         for k in keys_to_process
                     ]
+                    keys_to_process = self._normalize_keys(keys_to_process)
                 docs_quantized = await self._async_quantize_vectors(
                     source_index,
                     datatype_changes,
@@ -596,6 +638,8 @@ class AsyncMigrationExecutor:
                     f"Re-encoded {docs_quantized} documents for vector quantization: "
                     f"{datatype_changes}"
                 )
+            elif datatype_changes and storage_type == "json":
+                _notify("quantize", "skipped (JSON vectors are re-indexed on recreate)")
 
             _notify("create", "Creating index with new schema...")
             recreate_started = time.perf_counter()
@@ -734,6 +778,7 @@ class AsyncMigrationExecutor:
 
         total_keys = len(keys)
         docs_processed = 0
+        docs_quantized = 0
         skipped = 0
         batch_size = 500
 
@@ -748,6 +793,12 @@ class AsyncMigrationExecutor:
                         f"Checkpoint index '{checkpoint.index_name}' does not match "
                         f"source index '{source_index.name}'. "
                         f"Use the correct checkpoint file or remove it to start fresh."
+                    )
+                if checkpoint.total_keys != total_keys:
+                    raise ValueError(
+                        f"Checkpoint total_keys={checkpoint.total_keys} does not match "
+                        f"the current key set ({total_keys}). "
+                        "Use the correct checkpoint file or remove it to start fresh."
                     )
                 remaining = checkpoint.get_remaining_keys(keys)
                 logger.info(
@@ -764,6 +815,7 @@ class AsyncMigrationExecutor:
                     total_keys=total_keys,
                     checkpoint_path=checkpoint_path,
                 )
+                checkpoint.save()
                 total_keys_for_progress = total_keys
         else:
             total_keys_for_progress = total_keys
@@ -813,8 +865,7 @@ class AsyncMigrationExecutor:
             finally:
                 undo.clear()
 
-            # Count all keys in the batch as processed (including skipped),
-            # since they are recorded in the checkpoint and won't be retried.
+            docs_quantized += len(keys_updated_in_batch)
             docs_processed += len(batch)
 
             if checkpoint:
@@ -834,10 +885,10 @@ class AsyncMigrationExecutor:
             logger.info("Skipped %d already-quantized vector fields", skipped)
         logger.info(
             "Quantized %d documents across %d fields",
-            docs_processed,
+            docs_quantized,
             len(datatype_changes),
         )
-        return docs_processed
+        return docs_quantized
 
     async def _async_wait_for_index_ready(
         self,
