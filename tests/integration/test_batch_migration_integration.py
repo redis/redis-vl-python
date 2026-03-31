@@ -15,7 +15,6 @@ import yaml
 
 from redisvl.index import SearchIndex
 from redisvl.migration import BatchMigrationExecutor, BatchMigrationPlanner
-from redisvl.migration.utils import list_indexes
 from redisvl.redis.utils import array_to_buffer
 
 

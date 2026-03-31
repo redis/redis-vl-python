@@ -249,7 +249,15 @@ class BatchMigrationExecutor:
         """Initialize new state or load existing checkpoint."""
         path = Path(state_path).resolve()
         if path.exists():
-            return self._load_state(state_path)
+            loaded = self._load_state(state_path)
+            # Validate that loaded state matches the current batch plan
+            if loaded.batch_id and loaded.batch_id != batch_plan.batch_id:
+                raise ValueError(
+                    f"Checkpoint state batch_id '{loaded.batch_id}' does not match "
+                    f"current batch plan '{batch_plan.batch_id}'. "
+                    "Remove the stale state file or use a different state_path."
+                )
+            return loaded
 
         # Create new state with plan_path for resume support
         applicable_names = [idx.name for idx in batch_plan.indexes if idx.applicable]
@@ -266,6 +274,7 @@ class BatchMigrationExecutor:
     def _write_state(self, state: BatchState, state_path: str) -> None:
         """Write checkpoint state to file."""
         path = Path(state_path).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             yaml.safe_dump(state.model_dump(exclude_none=True), f, sort_keys=False)
 

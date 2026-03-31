@@ -837,6 +837,15 @@ class AsyncMigrationExecutor:
         if checkpoint_path:
             checkpoint = QuantizationCheckpoint.load(checkpoint_path)
             if checkpoint:
+                # Validate checkpoint matches current migration BEFORE
+                # checking completion status to avoid skipping quantization
+                # for an unrelated completed checkpoint.
+                if checkpoint.index_name != source_index.name:
+                    raise ValueError(
+                        f"Checkpoint index '{checkpoint.index_name}' does not match "
+                        f"source index '{source_index.name}'. "
+                        f"Use the correct checkpoint file or remove it to start fresh."
+                    )
                 # Skip if checkpoint shows a completed migration
                 if checkpoint.status == "completed":
                     logger.info(
@@ -845,13 +854,6 @@ class AsyncMigrationExecutor:
                         checkpoint.index_name,
                     )
                     return 0
-                # Validate checkpoint matches current migration
-                if checkpoint.index_name != source_index.name:
-                    raise ValueError(
-                        f"Checkpoint index '{checkpoint.index_name}' does not match "
-                        f"source index '{source_index.name}'. "
-                        f"Use the correct checkpoint file or remove it to start fresh."
-                    )
                 if checkpoint.total_keys != total_keys:
                     if checkpoint.processed_keys:
                         current_keys = set(keys)

@@ -367,4 +367,8 @@ The disk space estimator (`estimate_disk_space`) is a pure calculation that acce
 | IM-14 | Clean Up Unused Imports and Linting Across the Codebase | Backlog |
 | IM-15 | Use RENAMENX for Prefix Migrations to Fail Fast on Key Collisions | Backlog |
 | IM-16 | Auto-Detect AOF Status for Disk Space Estimation | Backlog |
+| IM-17 | Guard Against Connection Leaks in Long-Running Batch Migrations | Backlog |
+| IM-18 | Optimize O(n^2) Checkpoint Serialization for Large Key Sets | Backlog |
+| IM-19 | Add Redis Cluster Slot-Aware Key Distribution for Quantization Batches | Backlog |
+| IM-20 | Add Pipelined Reads for Quantization to Reduce Per-Key Round Trips | Backlog |
 
