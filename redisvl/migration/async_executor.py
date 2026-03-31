@@ -682,13 +682,9 @@ class AsyncMigrationExecutor:
                     f"{datatype_changes}"
                 )
             elif datatype_changes and storage_type == "json":
-                if checkpoint_path and not resuming_from_checkpoint:
-                    checkpoint = QuantizationCheckpoint(
-                        index_name=source_index.name,
-                        total_keys=len(keys_to_process),
-                        checkpoint_path=checkpoint_path,
-                    )
-                    checkpoint.save()
+                # No checkpoint for JSON: vectors are re-indexed on recreate,
+                # so there is nothing to resume. Creating one would leave a
+                # stale in-progress checkpoint that misleads future runs.
                 _notify("quantize", "skipped (JSON vectors are re-indexed on recreate)")
 
             _notify("create", "Creating index with new schema...")

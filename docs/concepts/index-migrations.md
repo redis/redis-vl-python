@@ -153,7 +153,7 @@ The migration workflow has distinct phases. Here is what each mode affects:
 | **Schema snapshot** | Sync Redis calls | Async Redis calls | Single `FT.INFO` command |
 | **Enumeration** | FT.AGGREGATE (or SCAN fallback) | FT.AGGREGATE (or SCAN fallback) | Before drop, only if quantization needed |
 | **Drop index** | `index.delete()` | `await index.delete()` | Single `FT.DROPINDEX` command |
-| **Quantization** | Sequential HGET + HSET | Pipelined HGET + batched HSET | Uses pre-enumerated keys |
+| **Quantization** | Sequential HGET + HSET | Sequential HGET + batched HSET | Uses pre-enumerated keys |
 | **Create index** | `index.create()` | `await index.create()` | Single `FT.CREATE` command |
 | **Readiness polling** | `time.sleep()` loop | `asyncio.sleep()` loop | Polls `FT.INFO` until indexed |
 | **Validation** | Sync Redis calls | Async Redis calls | Schema and doc count checks |

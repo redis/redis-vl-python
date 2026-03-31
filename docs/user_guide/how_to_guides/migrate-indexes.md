@@ -300,11 +300,12 @@ warnings: []
 
 | Interruption Point | Documents | Index | Recovery |
 |--------------------|-----------|-------|----------|
-| After drop, before quantize | Unchanged | **None** | Re-run apply |
-| After quantization, before create | Quantized | **None** | Manual FT.CREATE or re-run apply |
+| After drop, before quantize | Unchanged | **None** | Re-run apply (or `--resume` if checkpoint exists) |
+| During quantization | Partially quantized | **None** | Re-run with `--resume` to continue from checkpoint |
+| After quantization, before create | Quantized | **None** | Re-run apply (will recreate index) |
 | After create | Correct | Rebuilding | Wait for index ready |
 
-The underlying documents are **never deleted** by `drop_recreate` mode.
+The underlying documents are **never deleted** by `drop_recreate` mode. For large quantization jobs, use `--resume` to enable checkpoint-based recovery. See [Crash-safe resume for quantization](#crash-safe-resume-for-quantization) below.
 
 ## Step 4: Apply the Migration
 
@@ -342,7 +343,7 @@ rvl migrate apply \
 **What becomes async:**
 
 - Document enumeration during quantization (uses `FT.AGGREGATE WITHCURSOR` for index-specific enumeration, falling back to SCAN only if indexing failures exist)
-- Vector read/write operations (pipelined HGET/HSET)
+- Vector read/write operations (sequential async HGET, batched HSET via pipeline)
 - Index readiness polling (uses `asyncio.sleep()` instead of blocking)
 - Validation checks
 
@@ -360,6 +361,138 @@ rvl migrate apply \
 For most migrations (index-only changes, small datasets), sync mode is sufficient and simpler.
 
 See {doc}`/concepts/index-migrations` for detailed async vs sync guidance.
+
+### Crash-safe resume for quantization
+
+When migrating large datasets with vector quantization (e.g. float32 to float16), the re-encoding step can take minutes or hours. If the process is interrupted (crash, network drop, OOM kill), you don't want to start over. The `--resume` flag enables checkpoint-based recovery.
+
+#### How it works
+
+1. **Pre-flight estimate** -- before any mutations, `apply` prints a disk space estimate showing RDB snapshot cost, AOF growth (if enabled), and post-migration memory savings.
+2. **BGSAVE safety snapshot** -- the migrator triggers a Redis `BGSAVE` and waits for it to complete before modifying any data. This gives you a point-in-time snapshot to fall back on.
+3. **Checkpoint file** -- when `--resume` is provided, the migrator writes a YAML checkpoint after every batch of 500 documents. The checkpoint records how many keys have been processed and the last batch of keys written.
+4. **Batch undo buffer** -- if a single batch fails mid-write, original vector values are rolled back via pipeline before the error propagates. Only the current batch is held in memory.
+5. **Idempotent skip** -- on resume, vectors that were already converted are detected by byte-width inspection and skipped automatically.
+
+#### Step-by-step: using crash-safe resume
+
+**1. Estimate disk space (dry-run, no mutations):**
+
+```bash
+rvl migrate estimate --plan migration_plan.yaml
+```
+
+Example output:
+
+```text
+Pre-migration disk space estimate:
+  Index: products_idx (1,000,000 documents)
+  Vector field 'embedding': 768 dims, float32 -> float16
+
+  RDB snapshot (BGSAVE):        ~2.87 GB
+  AOF growth:                  not estimated (pass aof_enabled=True if AOF is on)
+  Total new disk required:      ~2.87 GB
+
+  Post-migration memory savings: ~1.43 GB (50% reduction)
+```
+
+If AOF is enabled:
+
+```bash
+rvl migrate estimate --plan migration_plan.yaml --aof-enabled
+```
+
+**2. Apply with checkpoint enabled:**
+
+```bash
+rvl migrate apply \
+  --plan migration_plan.yaml \
+  --resume quantize_checkpoint.yaml \
+  --url redis://localhost:6379 \
+  --report-out migration_report.yaml
+```
+
+The `--resume` flag takes a path to a checkpoint file. If the file does not exist, a new checkpoint is created. If it already exists (from a previous interrupted run), the migrator resumes from where it left off.
+
+**3. If the process crashes or is interrupted:**
+
+The checkpoint file (`quantize_checkpoint.yaml`) will contain the progress:
+
+```yaml
+index_name: products_idx
+total_keys: 1000000
+completed_keys: 450000
+completed_batches: 900
+last_batch_keys:
+  - 'products:449501'
+  - 'products:449502'
+  # ...
+status: in_progress
+checkpoint_path: quantize_checkpoint.yaml
+```
+
+**4. Resume the migration:**
+
+Re-run the exact same command:
+
+```bash
+rvl migrate apply \
+  --plan migration_plan.yaml \
+  --resume quantize_checkpoint.yaml \
+  --url redis://localhost:6379 \
+  --report-out migration_report.yaml
+```
+
+The migrator will:
+- Detect the existing checkpoint and skip already-processed keys
+- Re-enumerate documents via SCAN (the index was already dropped before the crash)
+- Continue quantizing from where it left off
+- Print progress like `[4/6] Quantize vectors: 450,000/1,000,000 docs`
+
+**5. On successful completion:**
+
+The checkpoint status is set to `completed`. You can safely delete the checkpoint file.
+
+#### What gets rolled back on batch failure
+
+If a batch of 500 documents fails mid-write (e.g. Redis returns an error), the migrator:
+1. Restores original vector bytes for all documents in that batch using the undo buffer
+2. Saves the checkpoint (so progress up to the last successful batch is preserved)
+3. Raises the error
+
+This means you never end up with partially-written vectors in a single batch.
+
+#### Limitations
+
+- **Same-width conversions** (float16 to bfloat16, or int8 to uint8) are **not supported** with `--resume`. These conversions cannot be detected by byte-width inspection, so idempotent skip is impossible. The migrator will refuse to proceed and suggest running without `--resume`.
+- **JSON storage** does not need vector re-encoding (Redis re-indexes JSON vectors on `FT.CREATE`). The checkpoint is still created for consistency but no batched writes occur.
+- The checkpoint file must match the migration plan. If you change the plan, delete the old checkpoint and start fresh.
+
+#### Python API with checkpoints
+
+```python
+from redisvl.migration import MigrationExecutor
+
+executor = MigrationExecutor()
+report = executor.apply(
+    plan,
+    redis_url="redis://localhost:6379",
+    checkpoint_path="quantize_checkpoint.yaml",
+)
+```
+
+For async:
+
+```python
+from redisvl.migration import AsyncMigrationExecutor
+
+executor = AsyncMigrationExecutor()
+report = await executor.apply(
+    plan,
+    redis_url="redis://localhost:6379",
+    checkpoint_path="quantize_checkpoint.yaml",
+)
+```
 
 ## Step 5: Validate the Result
 
@@ -412,6 +545,7 @@ rvl migrate validate \
 | `rvl migrate wizard` | Build a migration interactively |
 | `rvl migrate plan` | Generate a migration plan |
 | `rvl migrate apply` | Execute a migration |
+| `rvl migrate estimate` | Estimate disk space for a migration (dry-run) |
 | `rvl migrate validate` | Verify a migration result |
 
 ### Batch Commands
@@ -428,6 +562,7 @@ rvl migrate validate \
 - `--index` : Index name to migrate
 - `--plan` / `--plan-out` : Path to migration plan
 - `--async` : Use async executor for large migrations (apply only)
+- `--resume` : Path to checkpoint file for crash-safe quantization resume (apply only)
 - `--report-out` : Path for validation report
 - `--benchmark-out` : Path for performance metrics
 

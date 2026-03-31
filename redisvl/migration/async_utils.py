@@ -46,7 +46,7 @@ async def async_wait_for_index_ready(
     deadline = start + timeout_seconds
     latest_info = await index.info()
 
-    stable_ready_checks = 0
+    stable_ready_checks: Optional[int] = None
     while time.perf_counter() < deadline:
         latest_info = await index.info()
         indexing = latest_info.get("indexing")
@@ -64,7 +64,7 @@ async def async_wait_for_index_ready(
             if current_docs is None:
                 ready = True
             else:
-                if stable_ready_checks == 0:
+                if stable_ready_checks is None:
                     stable_ready_checks = int(current_docs)
                     await asyncio.sleep(poll_interval_seconds)
                     continue
