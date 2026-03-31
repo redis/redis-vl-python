@@ -281,7 +281,7 @@ class BatchMigrationExecutor:
     def _load_state(self, state_path: str) -> BatchState:
         """Load checkpoint state from file."""
         path = Path(state_path).resolve()
-        if not path.exists():
+        if not path.is_file():
             raise FileNotFoundError(f"State file not found: {state_path}")
         with open(path, "r") as f:
             data = yaml.safe_load(f) or {}
@@ -290,7 +290,7 @@ class BatchMigrationExecutor:
     def _load_batch_plan(self, plan_path: str) -> BatchPlan:
         """Load batch plan from file."""
         path = Path(plan_path).resolve()
-        if not path.exists():
+        if not path.is_file():
             raise FileNotFoundError(f"Batch plan not found: {plan_path}")
         with open(path, "r") as f:
             data = yaml.safe_load(f) or {}

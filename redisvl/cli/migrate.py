@@ -422,18 +422,22 @@ Commands:
         redis_url = create_redis_url(args)
         plan = load_migration_plan(args.plan)
         validator = MigrationValidator()
+
+        from redisvl.migration.utils import timestamp_utc
+
+        started_at = timestamp_utc()
         validation, target_info, validation_duration = validator.validate(
             plan,
             redis_url=redis_url,
             query_check_file=args.query_check_file,
         )
+        finished_at = timestamp_utc()
 
         from redisvl.migration.models import (
             MigrationBenchmarkSummary,
             MigrationReport,
             MigrationTimings,
         )
-        from redisvl.migration.utils import timestamp_utc
 
         source_size = float(
             plan.source.stats_snapshot.get("vector_index_sz_mb", 0) or 0
@@ -444,8 +448,8 @@ Commands:
             source_index=plan.source.index_name,
             target_index=plan.merged_target_schema["index"]["name"],
             result="succeeded" if not validation.errors else "failed",
-            started_at=timestamp_utc(),
-            finished_at=timestamp_utc(),
+            started_at=started_at,
+            finished_at=finished_at,
             timings=MigrationTimings(validation_duration_seconds=validation_duration),
             validation=validation,
             benchmark_summary=MigrationBenchmarkSummary(

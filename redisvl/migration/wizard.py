@@ -162,7 +162,11 @@ class MigrationWizard:
             elif action == "7":
                 print(
                     yaml.safe_dump(
-                        {"version": 1, "changes": changes.model_dump()}, sort_keys=False
+                        {
+                            "version": 1,
+                            "changes": changes.model_dump(exclude_none=True),
+                        },
+                        sort_keys=False,
                     )
                 )
             elif action == "8":

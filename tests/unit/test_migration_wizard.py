@@ -733,9 +733,7 @@ class TestWizardAdversarialInputs:
         patch = wizard._build_patch(source_schema)
 
         # Zero is a valid digit, wizard accepts it (validation at apply time)
-        # isdigit() returns False for "0" in some edge cases, let's check
         update = patch.changes.update_fields[0]
-        # "0".isdigit() returns True, so it should be accepted
         assert update.attrs.get("m") == 0
 
     def test_very_large_ef_construction_accepted(self, monkeypatch):

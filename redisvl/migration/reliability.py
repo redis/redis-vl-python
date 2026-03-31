@@ -252,7 +252,7 @@ def trigger_bgsave_and_wait(
 
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        info = client.info()
+        info = client.info("persistence")
         if isinstance(info, dict) and not info.get("rdb_bgsave_in_progress", 0):
             return True
         time.sleep(poll_interval)
@@ -276,7 +276,7 @@ async def async_trigger_bgsave_and_wait(
 
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        info = await client.info()
+        info = await client.info("persistence")
         if isinstance(info, dict) and not info.get("rdb_bgsave_in_progress", 0):
             return True
         await asyncio.sleep(poll_interval)
