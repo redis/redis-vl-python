@@ -602,13 +602,17 @@ class MigrationPlanner:
     @staticmethod
     def get_vector_datatype_changes(
         source_schema: Dict[str, Any], target_schema: Dict[str, Any]
-    ) -> Dict[str, Dict[str, str]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """Identify vector fields that need datatype conversion (quantization).
 
         Returns:
-            Dict mapping field_name -> {"source": source_dtype, "target": target_dtype}
+            Dict mapping field_name -> {
+                "source": source_dtype,
+                "target": target_dtype,
+                "dims": int  # vector dimensions for idempotent detection
+            }
         """
-        changes: Dict[str, Dict[str, str]] = {}
+        changes: Dict[str, Dict[str, Any]] = {}
         source_fields = {f["name"]: f for f in source_schema.get("fields", [])}
         target_fields = {f["name"]: f for f in target_schema.get("fields", [])}
 
@@ -621,9 +625,14 @@ class MigrationPlanner:
 
             source_dtype = source_field.get("attrs", {}).get("datatype", "float32")
             target_dtype = target_field.get("attrs", {}).get("datatype", "float32")
+            dims = source_field.get("attrs", {}).get("dims", 0)
 
             if source_dtype != target_dtype:
-                changes[name] = {"source": source_dtype, "target": target_dtype}
+                changes[name] = {
+                    "source": source_dtype,
+                    "target": target_dtype,
+                    "dims": dims,
+                }
 
         return changes
 

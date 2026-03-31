@@ -139,8 +139,131 @@ class MigrationReport(BaseModel):
     benchmark_summary: MigrationBenchmarkSummary = Field(
         default_factory=MigrationBenchmarkSummary
     )
+    disk_space_estimate: Optional["DiskSpaceEstimate"] = None
     warnings: List[str] = Field(default_factory=list)
     manual_actions: List[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Disk Space Estimation
+# -----------------------------------------------------------------------------
+
+# Bytes per element for each vector datatype
+DTYPE_BYTES: Dict[str, int] = {
+    "float64": 8,
+    "float32": 4,
+    "float16": 2,
+    "bfloat16": 2,
+    "int8": 1,
+    "uint8": 1,
+}
+
+# AOF protocol overhead per HSET command (RESP framing)
+AOF_HSET_OVERHEAD_BYTES = 114
+# JSON.SET has slightly larger RESP framing
+AOF_JSON_SET_OVERHEAD_BYTES = 140
+# RDB compression ratio for pseudo-random vector data (compresses poorly)
+RDB_COMPRESSION_RATIO = 0.95
+
+
+class VectorFieldEstimate(BaseModel):
+    """Per-field disk space breakdown for a single vector field."""
+
+    field_name: str
+    dims: int
+    source_dtype: str
+    target_dtype: str
+    source_bytes_per_doc: int
+    target_bytes_per_doc: int
+
+
+class DiskSpaceEstimate(BaseModel):
+    """Pre-migration estimate of disk and memory costs.
+
+    Produced by estimate_disk_space() as a pure calculation from the migration
+    plan. No Redis mutations are performed.
+    """
+
+    # Index metadata
+    index_name: str
+    doc_count: int
+    storage_type: str = "hash"
+
+    # Per-field breakdowns
+    vector_fields: List[VectorFieldEstimate] = Field(default_factory=list)
+
+    # Aggregate vector data sizes
+    total_source_vector_bytes: int = 0
+    total_target_vector_bytes: int = 0
+
+    # RDB snapshot cost (BGSAVE before migration)
+    rdb_snapshot_disk_bytes: int = 0
+    rdb_cow_memory_if_concurrent_bytes: int = 0
+
+    # AOF growth cost (only if aof_enabled is True)
+    aof_enabled: bool = False
+    aof_growth_bytes: int = 0
+
+    # Totals
+    total_new_disk_bytes: int = 0
+    memory_savings_after_bytes: int = 0
+
+    @property
+    def has_quantization(self) -> bool:
+        return len(self.vector_fields) > 0
+
+    def summary(self) -> str:
+        """Human-readable summary for CLI output."""
+        if not self.has_quantization:
+            return "No vector quantization in this migration. No additional disk space required."
+
+        lines = [
+            "Pre-migration disk space estimate:",
+            f"  Index: {self.index_name} ({self.doc_count:,} documents)",
+        ]
+        for vf in self.vector_fields:
+            lines.append(
+                f"  Vector field '{vf.field_name}': {vf.dims} dims, "
+                f"{vf.source_dtype} -> {vf.target_dtype}"
+            )
+
+        lines.append("")
+        lines.append(
+            f"  RDB snapshot (BGSAVE):        ~{_format_bytes(self.rdb_snapshot_disk_bytes)}"
+        )
+        if self.aof_enabled:
+            lines.append(
+                f"  AOF growth (appendonly=yes):  ~{_format_bytes(self.aof_growth_bytes)}"
+            )
+        else:
+            lines.append("  AOF growth:                  n/a (appendonly=no)")
+        lines.append(
+            f"  Total new disk required:      ~{_format_bytes(self.total_new_disk_bytes)}"
+        )
+        lines.append("")
+        lines.append(
+            f"  Post-migration memory savings: ~{_format_bytes(self.memory_savings_after_bytes)} "
+            f"({self._savings_pct()}% reduction)"
+        )
+        return "\n".join(lines)
+
+    def _savings_pct(self) -> int:
+        if self.total_source_vector_bytes == 0:
+            return 0
+        return round(
+            100 * self.memory_savings_after_bytes / self.total_source_vector_bytes
+        )
+
+
+def _format_bytes(n: int) -> str:
+    """Format byte count as human-readable string."""
+    if n >= 1_073_741_824:
+        return f"{n / 1_073_741_824:.2f} GB"
+    if n >= 1_048_576:
+        return f"{n / 1_048_576:.1f} MB"
+    if n >= 1024:
+        return f"{n / 1024:.1f} KB"
+    return f"{n} bytes"
 
 
 # -----------------------------------------------------------------------------

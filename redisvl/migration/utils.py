@@ -8,7 +8,16 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import yaml
 
 from redisvl.index import SearchIndex
-from redisvl.migration.models import MigrationPlan, MigrationReport
+from redisvl.migration.models import (
+    AOF_HSET_OVERHEAD_BYTES,
+    AOF_JSON_SET_OVERHEAD_BYTES,
+    DTYPE_BYTES,
+    RDB_COMPRESSION_RATIO,
+    DiskSpaceEstimate,
+    MigrationPlan,
+    MigrationReport,
+    VectorFieldEstimate,
+)
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema.schema import IndexSchema
 
@@ -247,3 +256,103 @@ def current_source_matches_snapshot(
 
 def timestamp_utc() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def estimate_disk_space(
+    plan: MigrationPlan,
+    *,
+    aof_enabled: bool = False,
+) -> DiskSpaceEstimate:
+    """Estimate disk space required for a migration with quantization.
+
+    This is a pure calculation based on the migration plan. No Redis
+    operations are performed.
+
+    Args:
+        plan: The migration plan containing source/target schemas.
+        aof_enabled: Whether AOF persistence is active on the Redis instance.
+
+    Returns:
+        DiskSpaceEstimate with projected costs.
+    """
+    doc_count = int(plan.source.stats_snapshot.get("num_docs", 0) or 0)
+    storage_type = plan.source.keyspace.storage_type
+    index_name = plan.source.index_name
+
+    # Find vector fields with datatype changes
+    source_fields = {
+        f["name"]: f for f in plan.source.schema_snapshot.get("fields", [])
+    }
+    target_fields = {f["name"]: f for f in plan.merged_target_schema.get("fields", [])}
+
+    vector_field_estimates: list[VectorFieldEstimate] = []
+    total_source_bytes = 0
+    total_target_bytes = 0
+    total_aof_growth = 0
+
+    aof_overhead = (
+        AOF_JSON_SET_OVERHEAD_BYTES
+        if storage_type == "json"
+        else AOF_HSET_OVERHEAD_BYTES
+    )
+
+    for name, source_field in source_fields.items():
+        if source_field.get("type") != "vector":
+            continue
+        target_field = target_fields.get(name)
+        if not target_field or target_field.get("type") != "vector":
+            continue
+
+        source_attrs = source_field.get("attrs", {})
+        target_attrs = target_field.get("attrs", {})
+        source_dtype = source_attrs.get("datatype", "float32").lower()
+        target_dtype = target_attrs.get("datatype", "float32").lower()
+
+        if source_dtype == target_dtype:
+            continue
+
+        dims = int(source_attrs.get("dims", 0))
+        source_bpe = DTYPE_BYTES.get(source_dtype, 4)
+        target_bpe = DTYPE_BYTES.get(target_dtype, 4)
+
+        source_vec_size = dims * source_bpe
+        target_vec_size = dims * target_bpe
+
+        vector_field_estimates.append(
+            VectorFieldEstimate(
+                field_name=name,
+                dims=dims,
+                source_dtype=source_dtype,
+                target_dtype=target_dtype,
+                source_bytes_per_doc=source_vec_size,
+                target_bytes_per_doc=target_vec_size,
+            )
+        )
+
+        field_source_total = doc_count * source_vec_size
+        field_target_total = doc_count * target_vec_size
+        total_source_bytes += field_source_total
+        total_target_bytes += field_target_total
+
+        if aof_enabled:
+            total_aof_growth += doc_count * (target_vec_size + aof_overhead)
+
+    rdb_snapshot_disk = int(total_source_bytes * RDB_COMPRESSION_RATIO)
+    rdb_cow_memory = total_source_bytes
+    total_new_disk = rdb_snapshot_disk + total_aof_growth
+    memory_savings = total_source_bytes - total_target_bytes
+
+    return DiskSpaceEstimate(
+        index_name=index_name,
+        doc_count=doc_count,
+        storage_type=storage_type,
+        vector_fields=vector_field_estimates,
+        total_source_vector_bytes=total_source_bytes,
+        total_target_vector_bytes=total_target_bytes,
+        rdb_snapshot_disk_bytes=rdb_snapshot_disk,
+        rdb_cow_memory_if_concurrent_bytes=rdb_cow_memory,
+        aof_enabled=aof_enabled,
+        aof_growth_bytes=total_aof_growth,
+        total_new_disk_bytes=total_new_disk,
+        memory_savings_after_bytes=memory_savings,
+    )

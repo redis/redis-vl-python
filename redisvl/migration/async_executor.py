@@ -17,7 +17,13 @@ from redisvl.migration.models import (
     MigrationTimings,
     MigrationValidation,
 )
-from redisvl.migration.utils import timestamp_utc
+from redisvl.migration.reliability import (
+    BatchUndoBuffer,
+    QuantizationCheckpoint,
+    async_trigger_bgsave_and_wait,
+    is_already_quantized,
+)
+from redisvl.migration.utils import estimate_disk_space, timestamp_utc
 from redisvl.redis.utils import array_to_buffer, buffer_to_array
 from redisvl.types import AsyncRedisClient
 
@@ -299,6 +305,7 @@ class AsyncMigrationExecutor:
         redis_client: Optional[AsyncRedisClient] = None,
         query_check_file: Optional[str] = None,
         progress_callback: Optional[Callable[[str, Optional[str]], None]] = None,
+        checkpoint_path: Optional[str] = None,
     ) -> MigrationReport:
         """Apply a migration plan asynchronously.
 
@@ -308,6 +315,8 @@ class AsyncMigrationExecutor:
             redis_client: Optional existing async Redis client.
             query_check_file: Optional file with query checks.
             progress_callback: Optional callback(step, detail) for progress updates.
+            checkpoint_path: Optional path for quantization checkpoint file.
+                When provided, enables crash-safe resume for vector re-encoding.
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -376,6 +385,17 @@ class AsyncMigrationExecutor:
         has_field_renames = bool(rename_ops.rename_fields)
         needs_enumeration = datatype_changes or has_prefix_change or has_field_renames
 
+        # Compute disk space estimate before any mutations
+        disk_estimate = estimate_disk_space(plan)
+        if disk_estimate.has_quantization:
+            logger.info(
+                "Disk space estimate: RDB ~%d bytes, AOF ~%d bytes, total ~%d bytes",
+                disk_estimate.rdb_snapshot_disk_bytes,
+                disk_estimate.aof_growth_bytes,
+                disk_estimate.total_new_disk_bytes,
+            )
+        report.disk_space_estimate = disk_estimate
+
         def _notify(step: str, detail: Optional[str] = None) -> None:
             if progress_callback:
                 progress_callback(step, detail)
@@ -401,6 +421,16 @@ class AsyncMigrationExecutor:
                     "enumerate",
                     f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
                 )
+
+            # BGSAVE safety net: snapshot data before mutations begin
+            if needs_enumeration and keys_to_process:
+                _notify("bgsave", "Triggering BGSAVE safety snapshot...")
+                try:
+                    await async_trigger_bgsave_and_wait(client)
+                    _notify("bgsave", "done")
+                except Exception as e:
+                    logger.warning("BGSAVE safety snapshot failed: %s", e)
+                    _notify("bgsave", f"skipped ({e})")
 
             # STEP 2: Field renames (before dropping index)
             if has_field_renames and keys_to_process:
@@ -488,6 +518,7 @@ class AsyncMigrationExecutor:
                     progress_callback=lambda done, total: _notify(
                         "quantize", f"{done:,}/{total:,} docs"
                     ),
+                    checkpoint_path=checkpoint_path,
                 )
                 quantize_duration = round(time.perf_counter() - quantize_started, 3)
                 _notify(
@@ -608,20 +639,24 @@ class AsyncMigrationExecutor:
     async def _async_quantize_vectors(
         self,
         source_index: AsyncSearchIndex,
-        datatype_changes: Dict[str, Dict[str, str]],
+        datatype_changes: Dict[str, Dict[str, Any]],
         keys: List[str],
         progress_callback: Optional[Callable[[int, int], None]] = None,
+        checkpoint_path: Optional[str] = None,
     ) -> int:
         """Re-encode vectors in documents for datatype changes (quantization).
 
         Uses pre-enumerated keys (from _enumerate_indexed_keys) to process
         only the documents that were in the index, avoiding full keyspace scan.
+        Includes idempotent skip (already-quantized vectors), bounded undo
+        buffer for per-batch rollback, and optional checkpointing for resume.
 
         Args:
             source_index: The source AsyncSearchIndex (already dropped but client available)
-            datatype_changes: Dict mapping field_name -> {"source": dtype, "target": dtype}
+            datatype_changes: Dict mapping field_name -> {"source", "target", "dims"}
             keys: Pre-enumerated list of document keys to process
             progress_callback: Optional callback(docs_done, total_docs)
+            checkpoint_path: Optional path for checkpoint file (enables resume)
 
         Returns:
             Number of documents processed
@@ -632,31 +667,98 @@ class AsyncMigrationExecutor:
 
         total_keys = len(keys)
         docs_processed = 0
+        skipped = 0
         batch_size = 500
 
-        for i in range(0, total_keys, batch_size):
+        # Load or create checkpoint for resume support
+        checkpoint: Optional[QuantizationCheckpoint] = None
+        if checkpoint_path:
+            checkpoint = QuantizationCheckpoint.load(checkpoint_path)
+            if checkpoint:
+                remaining = checkpoint.get_remaining_keys(keys)
+                logger.info(
+                    "Resuming from checkpoint: %d/%d keys already processed",
+                    total_keys - len(remaining),
+                    total_keys,
+                )
+                docs_processed = total_keys - len(remaining)
+                keys = remaining
+                total_keys_for_progress = total_keys
+            else:
+                checkpoint = QuantizationCheckpoint(
+                    index_name=source_index.name,
+                    total_keys=total_keys,
+                    checkpoint_path=checkpoint_path,
+                )
+                total_keys_for_progress = total_keys
+        else:
+            total_keys_for_progress = total_keys
+
+        remaining_keys = len(keys)
+
+        for i in range(0, remaining_keys, batch_size):
             batch = keys[i : i + batch_size]
             pipe = client.pipeline()
+            undo = BatchUndoBuffer()
             keys_updated_in_batch: set[str] = set()
 
-            for key in batch:
-                # Read all vector fields that need conversion
-                for field_name, change in datatype_changes.items():
-                    field_data: bytes | None = await client.hget(key, field_name)  # type: ignore[misc,assignment]
-                    if field_data:
-                        # Convert: source dtype -> array -> target dtype -> bytes
+            try:
+                for key in batch:
+                    for field_name, change in datatype_changes.items():
+                        field_data: bytes | None = await client.hget(key, field_name)  # type: ignore[misc,assignment]
+                        if not field_data:
+                            continue
+
+                        # Idempotent: skip if already converted to target dtype
+                        dims = change.get("dims", 0)
+                        if dims and is_already_quantized(
+                            field_data, dims, change["source"], change["target"]
+                        ):
+                            skipped += 1
+                            continue
+
+                        undo.store(key, field_name, field_data)
                         array = buffer_to_array(field_data, change["source"])
                         new_bytes = array_to_buffer(array, change["target"])
                         pipe.hset(key, field_name, new_bytes)  # type: ignore[arg-type]
                         keys_updated_in_batch.add(key)
 
-            if keys_updated_in_batch:
-                await pipe.execute()
-                docs_processed += len(keys_updated_in_batch)
-                if progress_callback:
-                    progress_callback(docs_processed, total_keys)
+                if keys_updated_in_batch:
+                    await pipe.execute()
+            except Exception:
+                logger.warning(
+                    "Batch %d failed, rolling back %d entries",
+                    i // batch_size,
+                    undo.size,
+                )
+                rollback_pipe = client.pipeline()
+                await undo.async_rollback(rollback_pipe)
+                if checkpoint:
+                    checkpoint.save()
+                raise
+            finally:
+                undo.clear()
 
-        logger.info(f"Quantized {docs_processed} documents: {datatype_changes}")
+            docs_processed += len(keys_updated_in_batch)
+
+            if checkpoint:
+                checkpoint.record_batch(list(keys_updated_in_batch))
+                checkpoint.save()
+
+            if progress_callback:
+                progress_callback(docs_processed, total_keys_for_progress)
+
+        if checkpoint:
+            checkpoint.mark_complete()
+            checkpoint.save()
+
+        if skipped:
+            logger.info("Skipped %d already-quantized vector fields", skipped)
+        logger.info(
+            "Quantized %d documents across %d fields",
+            docs_processed,
+            len(datatype_changes),
+        )
         return docs_processed
 
     async def _async_wait_for_index_ready(

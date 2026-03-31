@@ -1,6 +1,7 @@
-"""Unit tests for AsyncMigrationExecutor.
+"""Unit tests for AsyncMigrationExecutor and disk space estimator.
 
 These tests mirror the sync MigrationExecutor patterns but use async/await.
+Also includes pure-calculation tests for estimate_disk_space().
 """
 
 import pytest
@@ -12,7 +13,9 @@ from redisvl.migration.models import (
     MigrationPlan,
     SourceSnapshot,
     ValidationPolicy,
+    _format_bytes,
 )
+from redisvl.migration.utils import estimate_disk_space
 
 
 def _make_basic_plan():
@@ -123,3 +126,546 @@ async def test_async_executor_validates_redis_url():
     # For a proper test, we'd need to mock AsyncSearchIndex.from_existing
     # For now, we just verify the executor is created
     assert executor is not None
+
+
+# =============================================================================
+# Disk Space Estimator Tests
+# =============================================================================
+
+
+def _make_quantize_plan(
+    source_dtype="float32",
+    target_dtype="float16",
+    dims=3072,
+    doc_count=100_000,
+    storage_type="hash",
+):
+    """Helper to create a migration plan with a vector datatype change."""
+    return MigrationPlan(
+        mode="drop_recreate",
+        source=SourceSnapshot(
+            index_name="test_index",
+            keyspace=KeyspaceSnapshot(
+                storage_type=storage_type,
+                prefixes=["test"],
+                key_separator=":",
+            ),
+            schema_snapshot={
+                "index": {
+                    "name": "test_index",
+                    "prefix": "test",
+                    "storage_type": storage_type,
+                },
+                "fields": [
+                    {"name": "title", "type": "text"},
+                    {
+                        "name": "embedding",
+                        "type": "vector",
+                        "attrs": {
+                            "algorithm": "hnsw",
+                            "dims": dims,
+                            "distance_metric": "cosine",
+                            "datatype": source_dtype,
+                        },
+                    },
+                ],
+            },
+            stats_snapshot={"num_docs": doc_count},
+        ),
+        requested_changes={},
+        merged_target_schema={
+            "index": {
+                "name": "test_index",
+                "prefix": "test",
+                "storage_type": storage_type,
+            },
+            "fields": [
+                {"name": "title", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "hnsw",
+                        "dims": dims,
+                        "distance_metric": "cosine",
+                        "datatype": target_dtype,
+                    },
+                },
+            ],
+        },
+        diff_classification=DiffClassification(supported=True, blocked_reasons=[]),
+        validation=ValidationPolicy(require_doc_count_match=True),
+    )
+
+
+def test_estimate_fp32_to_fp16():
+    """FP32->FP16 with 3072 dims, 100K docs should produce expected byte counts."""
+    plan = _make_quantize_plan("float32", "float16", dims=3072, doc_count=100_000)
+    est = estimate_disk_space(plan)
+
+    assert est.has_quantization is True
+    assert len(est.vector_fields) == 1
+    vf = est.vector_fields[0]
+    assert vf.source_bytes_per_doc == 3072 * 4  # 12288
+    assert vf.target_bytes_per_doc == 3072 * 2  # 6144
+
+    assert est.total_source_vector_bytes == 100_000 * 12288
+    assert est.total_target_vector_bytes == 100_000 * 6144
+    assert est.memory_savings_after_bytes == 100_000 * (12288 - 6144)
+
+    # RDB = source * 0.95
+    assert est.rdb_snapshot_disk_bytes == int(100_000 * 12288 * 0.95)
+    # COW = full source
+    assert est.rdb_cow_memory_if_concurrent_bytes == 100_000 * 12288
+    # AOF disabled by default
+    assert est.aof_enabled is False
+    assert est.aof_growth_bytes == 0
+    assert est.total_new_disk_bytes == est.rdb_snapshot_disk_bytes
+
+
+def test_estimate_with_aof_enabled():
+    """AOF growth should include RESP overhead per HSET."""
+    plan = _make_quantize_plan("float32", "float16", dims=3072, doc_count=100_000)
+    est = estimate_disk_space(plan, aof_enabled=True)
+
+    assert est.aof_enabled is True
+    target_vec_size = 3072 * 2
+    expected_aof = 100_000 * (target_vec_size + 114)  # 114 = HSET overhead
+    assert est.aof_growth_bytes == expected_aof
+    assert est.total_new_disk_bytes == est.rdb_snapshot_disk_bytes + expected_aof
+
+
+def test_estimate_json_storage_aof():
+    """JSON storage should use higher AOF overhead (140 bytes)."""
+    plan = _make_quantize_plan(
+        "float32", "float16", dims=128, doc_count=1000, storage_type="json"
+    )
+    est = estimate_disk_space(plan, aof_enabled=True)
+
+    target_vec_size = 128 * 2
+    expected_aof = 1000 * (target_vec_size + 140)  # 140 = JSON.SET overhead
+    assert est.aof_growth_bytes == expected_aof
+
+
+def test_estimate_no_quantization():
+    """Same dtype source and target should produce empty estimate."""
+    plan = _make_quantize_plan("float32", "float32", dims=128, doc_count=1000)
+    est = estimate_disk_space(plan)
+
+    assert est.has_quantization is False
+    assert len(est.vector_fields) == 0
+    assert est.total_new_disk_bytes == 0
+    assert est.memory_savings_after_bytes == 0
+
+
+def test_estimate_fp32_to_int8():
+    """FP32->INT8 should use 1 byte per element."""
+    plan = _make_quantize_plan("float32", "int8", dims=768, doc_count=50_000)
+    est = estimate_disk_space(plan)
+
+    assert est.vector_fields[0].source_bytes_per_doc == 768 * 4
+    assert est.vector_fields[0].target_bytes_per_doc == 768 * 1
+    assert est.memory_savings_after_bytes == 50_000 * 768 * 3
+
+
+def test_estimate_summary_with_quantization():
+    """Summary string should contain key information."""
+    plan = _make_quantize_plan("float32", "float16", dims=128, doc_count=1000)
+    est = estimate_disk_space(plan)
+    summary = est.summary()
+
+    assert "Pre-migration disk space estimate" in summary
+    assert "test_index" in summary
+    assert "1,000 documents" in summary
+    assert "float32 -> float16" in summary
+    assert "RDB snapshot" in summary
+    assert "memory savings" in summary
+
+
+def test_estimate_summary_no_quantization():
+    """Summary for non-quantization migration should say no disk needed."""
+    plan = _make_quantize_plan("float32", "float32", dims=128, doc_count=1000)
+    est = estimate_disk_space(plan)
+    summary = est.summary()
+
+    assert "No vector quantization" in summary
+
+
+def test_format_bytes_gb():
+    assert _format_bytes(1_073_741_824) == "1.00 GB"
+    assert _format_bytes(2_147_483_648) == "2.00 GB"
+
+
+def test_format_bytes_mb():
+    assert _format_bytes(1_048_576) == "1.0 MB"
+    assert _format_bytes(10_485_760) == "10.0 MB"
+
+
+def test_format_bytes_kb():
+    assert _format_bytes(1024) == "1.0 KB"
+    assert _format_bytes(2048) == "2.0 KB"
+
+
+def test_format_bytes_bytes():
+    assert _format_bytes(500) == "500 bytes"
+    assert _format_bytes(0) == "0 bytes"
+
+
+def test_savings_pct():
+    """Verify savings percentage calculation."""
+    plan = _make_quantize_plan("float32", "float16", dims=128, doc_count=100)
+    est = estimate_disk_space(plan)
+    # FP32->FP16 = 50% savings
+    assert est._savings_pct() == 50
+
+
+# =============================================================================
+# TDD RED Phase: Idempotent Dtype Detection Tests
+# =============================================================================
+# These test detect_vector_dtype() and is_already_quantized() which inspect
+# raw vector bytes to determine whether a key needs conversion or can be skipped.
+
+
+def test_detect_dtype_float32_by_size():
+    """A 3072-dim vector stored as FP32 should be 12288 bytes."""
+    import numpy as np
+
+    from redisvl.migration.reliability import detect_vector_dtype
+
+    vec = np.random.randn(3072).astype(np.float32).tobytes()
+    detected = detect_vector_dtype(vec, expected_dims=3072)
+    assert detected == "float32"
+
+
+def test_detect_dtype_float16_by_size():
+    """A 3072-dim vector stored as FP16 should be 6144 bytes."""
+    import numpy as np
+
+    from redisvl.migration.reliability import detect_vector_dtype
+
+    vec = np.random.randn(3072).astype(np.float16).tobytes()
+    detected = detect_vector_dtype(vec, expected_dims=3072)
+    assert detected == "float16"
+
+
+def test_detect_dtype_int8_by_size():
+    """A 768-dim vector stored as INT8 should be 768 bytes."""
+    import numpy as np
+
+    from redisvl.migration.reliability import detect_vector_dtype
+
+    vec = np.zeros(768, dtype=np.int8).tobytes()
+    detected = detect_vector_dtype(vec, expected_dims=768)
+    assert detected == "int8"
+
+
+def test_detect_dtype_bfloat16_by_size():
+    """A 768-dim bfloat16 vector should be 1536 bytes (same as float16)."""
+    import numpy as np
+
+    from redisvl.migration.reliability import detect_vector_dtype
+
+    # bfloat16 and float16 are both 2 bytes per element
+    vec = np.random.randn(768).astype(np.float16).tobytes()
+    detected = detect_vector_dtype(vec, expected_dims=768)
+    # Cannot distinguish float16 from bfloat16 by size alone; returns "float16"
+    assert detected in ("float16", "bfloat16")
+
+
+def test_detect_dtype_empty_returns_none():
+    """Empty bytes should return None."""
+    from redisvl.migration.reliability import detect_vector_dtype
+
+    assert detect_vector_dtype(b"", expected_dims=128) is None
+
+
+def test_detect_dtype_unknown_size():
+    """Bytes that don't match any known dtype should return None."""
+    from redisvl.migration.reliability import detect_vector_dtype
+
+    # 7 bytes doesn't match any dtype for 3 dims
+    assert detect_vector_dtype(b"\x00" * 7, expected_dims=3) is None
+
+
+def test_is_already_quantized_skip():
+    """If source is float32 and vector is already float16, should return True."""
+    import numpy as np
+
+    from redisvl.migration.reliability import is_already_quantized
+
+    vec = np.random.randn(128).astype(np.float16).tobytes()
+    result = is_already_quantized(
+        vec, expected_dims=128, source_dtype="float32", target_dtype="float16"
+    )
+    assert result is True
+
+
+def test_is_already_quantized_needs_conversion():
+    """If source is float32 and vector IS float32, should return False."""
+    import numpy as np
+
+    from redisvl.migration.reliability import is_already_quantized
+
+    vec = np.random.randn(128).astype(np.float32).tobytes()
+    result = is_already_quantized(
+        vec, expected_dims=128, source_dtype="float32", target_dtype="float16"
+    )
+    assert result is False
+
+
+# =============================================================================
+# TDD RED Phase: Checkpoint File Tests
+# =============================================================================
+
+
+def test_checkpoint_create_new(tmp_path):
+    """Creating a new checkpoint should initialize with zero progress."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    cp = QuantizationCheckpoint(
+        index_name="test_index",
+        total_keys=10000,
+        checkpoint_path=str(tmp_path / "checkpoint.yaml"),
+    )
+    assert cp.index_name == "test_index"
+    assert cp.total_keys == 10000
+    assert cp.completed_keys == 0
+    assert cp.completed_batches == 0
+    assert cp.last_batch_keys == []
+    assert cp.status == "in_progress"
+
+
+def test_checkpoint_save_and_load(tmp_path):
+    """Checkpoint should persist to disk and reload with same state."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    path = str(tmp_path / "checkpoint.yaml")
+    cp = QuantizationCheckpoint(
+        index_name="test_index",
+        total_keys=5000,
+        checkpoint_path=path,
+    )
+    cp.record_batch(["key:1", "key:2", "key:3"])
+    cp.save()
+
+    loaded = QuantizationCheckpoint.load(path)
+    assert loaded.index_name == "test_index"
+    assert loaded.total_keys == 5000
+    assert loaded.completed_keys == 3
+    assert loaded.completed_batches == 1
+    assert loaded.last_batch_keys == ["key:1", "key:2", "key:3"]
+
+
+def test_checkpoint_record_multiple_batches(tmp_path):
+    """Recording multiple batches should accumulate counts."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    cp = QuantizationCheckpoint(
+        index_name="idx",
+        total_keys=100,
+        checkpoint_path=str(tmp_path / "cp.yaml"),
+    )
+    cp.record_batch(["k1", "k2"])
+    cp.record_batch(["k3", "k4", "k5"])
+
+    assert cp.completed_keys == 5
+    assert cp.completed_batches == 2
+    assert cp.last_batch_keys == ["k3", "k4", "k5"]
+
+
+def test_checkpoint_mark_complete(tmp_path):
+    """Marking complete should set status to 'completed'."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    cp = QuantizationCheckpoint(
+        index_name="idx",
+        total_keys=2,
+        checkpoint_path=str(tmp_path / "cp.yaml"),
+    )
+    cp.record_batch(["k1", "k2"])
+    cp.mark_complete()
+
+    assert cp.status == "completed"
+
+
+def test_checkpoint_get_remaining_keys(tmp_path):
+    """get_remaining_keys should return only keys not yet processed."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    cp = QuantizationCheckpoint(
+        index_name="idx",
+        total_keys=5,
+        checkpoint_path=str(tmp_path / "cp.yaml"),
+    )
+    all_keys = ["k1", "k2", "k3", "k4", "k5"]
+    cp.record_batch(["k1", "k2"])
+
+    remaining = cp.get_remaining_keys(all_keys)
+    assert remaining == ["k3", "k4", "k5"]
+
+
+def test_checkpoint_load_nonexistent_returns_none():
+    """Loading a nonexistent checkpoint file should return None."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    result = QuantizationCheckpoint.load("/tmp/nonexistent_checkpoint_xyz.yaml")
+    assert result is None
+
+
+# =============================================================================
+# TDD RED Phase: BGSAVE Safety Net Tests
+# =============================================================================
+
+
+def test_trigger_bgsave_success():
+    """BGSAVE should be triggered and waited on; returns True on success."""
+    from unittest.mock import MagicMock
+
+    from redisvl.migration.reliability import trigger_bgsave_and_wait
+
+    mock_client = MagicMock()
+    mock_client.bgsave.return_value = True
+    mock_client.info.return_value = {"rdb_bgsave_in_progress": 0}
+
+    result = trigger_bgsave_and_wait(mock_client, timeout_seconds=5)
+    assert result is True
+    mock_client.bgsave.assert_called_once()
+
+
+def test_trigger_bgsave_already_in_progress():
+    """If BGSAVE is already running, wait for it instead of starting a new one."""
+    from unittest.mock import MagicMock, call
+
+    from redisvl.migration.reliability import trigger_bgsave_and_wait
+
+    mock_client = MagicMock()
+    # First bgsave raises because one is already in progress
+    mock_client.bgsave.side_effect = Exception("Background save already in progress")
+    # First check: still running; second check: done
+    mock_client.info.side_effect = [
+        {"rdb_bgsave_in_progress": 1},
+        {"rdb_bgsave_in_progress": 0},
+    ]
+
+    result = trigger_bgsave_and_wait(mock_client, timeout_seconds=5, poll_interval=0.01)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_async_trigger_bgsave_success():
+    """Async BGSAVE should work the same as sync."""
+    from unittest.mock import AsyncMock
+
+    from redisvl.migration.reliability import async_trigger_bgsave_and_wait
+
+    mock_client = AsyncMock()
+    mock_client.bgsave.return_value = True
+    mock_client.info.return_value = {"rdb_bgsave_in_progress": 0}
+
+    result = await async_trigger_bgsave_and_wait(mock_client, timeout_seconds=5)
+    assert result is True
+    mock_client.bgsave.assert_called_once()
+
+
+# =============================================================================
+# TDD RED Phase: Bounded Undo Buffer Tests
+# =============================================================================
+
+
+def test_undo_buffer_store_and_rollback():
+    """Undo buffer should store original values and rollback via pipeline."""
+    from unittest.mock import MagicMock
+
+    from redisvl.migration.reliability import BatchUndoBuffer
+
+    buf = BatchUndoBuffer()
+    buf.store("key:1", "embedding", b"\x00\x01\x02\x03")
+    buf.store("key:2", "embedding", b"\x04\x05\x06\x07")
+
+    assert buf.size == 2
+
+    mock_pipe = MagicMock()
+    buf.rollback(mock_pipe)
+
+    # Should have called hset twice to restore originals
+    assert mock_pipe.hset.call_count == 2
+    mock_pipe.execute.assert_called_once()
+
+
+def test_undo_buffer_clear():
+    """After clear, buffer should be empty."""
+    from redisvl.migration.reliability import BatchUndoBuffer
+
+    buf = BatchUndoBuffer()
+    buf.store("key:1", "field", b"\x00")
+    assert buf.size == 1
+
+    buf.clear()
+    assert buf.size == 0
+
+
+def test_undo_buffer_empty_rollback():
+    """Rolling back an empty buffer should be a no-op."""
+    from unittest.mock import MagicMock
+
+    from redisvl.migration.reliability import BatchUndoBuffer
+
+    buf = BatchUndoBuffer()
+    mock_pipe = MagicMock()
+    buf.rollback(mock_pipe)
+
+    # No hset calls, no execute
+    mock_pipe.hset.assert_not_called()
+    mock_pipe.execute.assert_not_called()
+
+
+def test_undo_buffer_multiple_fields_same_key():
+    """Should handle multiple fields for the same key."""
+    from unittest.mock import MagicMock
+
+    from redisvl.migration.reliability import BatchUndoBuffer
+
+    buf = BatchUndoBuffer()
+    buf.store("key:1", "embedding", b"\x00\x01")
+    buf.store("key:1", "embedding2", b"\x02\x03")
+
+    assert buf.size == 2
+
+    mock_pipe = MagicMock()
+    buf.rollback(mock_pipe)
+    assert mock_pipe.hset.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_undo_buffer_async_rollback():
+    """async_rollback should await pipe.execute() for async Redis pipelines."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from redisvl.migration.reliability import BatchUndoBuffer
+
+    buf = BatchUndoBuffer()
+    buf.store("key:1", "embedding", b"\x00\x01")
+    buf.store("key:2", "embedding", b"\x02\x03")
+
+    mock_pipe = MagicMock()
+    mock_pipe.execute = AsyncMock()
+
+    await buf.async_rollback(mock_pipe)
+    assert mock_pipe.hset.call_count == 2
+    mock_pipe.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_undo_buffer_async_rollback_empty():
+    """async_rollback on empty buffer should be a no-op."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from redisvl.migration.reliability import BatchUndoBuffer
+
+    buf = BatchUndoBuffer()
+    mock_pipe = MagicMock()
+    mock_pipe.execute = AsyncMock()
+
+    await buf.async_rollback(mock_pipe)
+    mock_pipe.hset.assert_not_called()
+    mock_pipe.execute.assert_not_awaited()

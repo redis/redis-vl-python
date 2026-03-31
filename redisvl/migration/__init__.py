@@ -13,6 +13,7 @@ from redisvl.migration.models import (
     BatchPlan,
     BatchReport,
     BatchState,
+    DiskSpaceEstimate,
     FieldRename,
     MigrationPlan,
     MigrationReport,
@@ -25,6 +26,7 @@ from redisvl.migration.wizard import MigrationWizard
 
 __all__ = [
     # Sync
+    "DiskSpaceEstimate",
     "MigrationExecutor",
     "MigrationPlan",
     "MigrationPlanner",
