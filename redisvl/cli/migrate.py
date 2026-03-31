@@ -14,6 +14,7 @@ from redisvl.migration import (
     MigrationValidator,
 )
 from redisvl.migration.utils import (
+    detect_aof_enabled,
     estimate_disk_space,
     list_indexes,
     load_migration_plan,
@@ -22,6 +23,7 @@ from redisvl.migration.utils import (
     write_migration_report,
 )
 from redisvl.migration.wizard import MigrationWizard
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.utils.log import get_logger
 
 logger = get_logger("[RedisVL]")
@@ -253,7 +255,17 @@ Commands:
         plan = load_migration_plan(args.plan)
 
         # Print disk space estimate for quantization migrations
-        disk_estimate = estimate_disk_space(plan)
+        aof_enabled = False
+        try:
+            client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
+            try:
+                aof_enabled = detect_aof_enabled(client)
+            finally:
+                client.close()
+        except Exception as exc:
+            logger.debug("Could not detect AOF for CLI preflight estimate: %s", exc)
+
+        disk_estimate = estimate_disk_space(plan, aof_enabled=aof_enabled)
         if disk_estimate.has_quantization:
             print(f"\n{disk_estimate.summary()}\n")
 
@@ -280,10 +292,15 @@ Commands:
             usage="rvl migrate estimate --plan <migration_plan.yaml>"
         )
         parser.add_argument("--plan", help="Path to migration_plan.yaml", required=True)
+        parser.add_argument(
+            "--aof-enabled",
+            action="store_true",
+            help="Include AOF growth in the disk space estimate",
+        )
         args = parser.parse_args(sys.argv[3:])
 
         plan = load_migration_plan(args.plan)
-        disk_estimate = estimate_disk_space(plan)
+        disk_estimate = estimate_disk_space(plan, aof_enabled=args.aof_enabled)
         print(disk_estimate.summary())
 
     def _apply_sync(

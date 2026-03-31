@@ -18,7 +18,11 @@ from redisvl.migration.models import (
     ValidationPolicy,
     _format_bytes,
 )
-from redisvl.migration.utils import estimate_disk_space
+from redisvl.migration.utils import (
+    build_scan_match_patterns,
+    estimate_disk_space,
+    normalize_keys,
+)
 
 
 def _make_basic_plan():
@@ -239,15 +243,15 @@ def test_estimate_with_aof_enabled():
 
 
 def test_estimate_json_storage_aof():
-    """JSON storage should use higher AOF overhead (140 bytes)."""
+    """JSON storage quantization should not report in-place rewrite costs."""
     plan = _make_quantize_plan(
         "float32", "float16", dims=128, doc_count=1000, storage_type="json"
     )
     est = estimate_disk_space(plan, aof_enabled=True)
 
-    target_vec_size = 128 * 2
-    expected_aof = 1000 * (target_vec_size + 140)  # 140 = JSON.SET overhead
-    assert est.aof_growth_bytes == expected_aof
+    assert est.has_quantization is False
+    assert est.aof_growth_bytes == 0
+    assert est.total_new_disk_bytes == 0
 
 
 def test_estimate_no_quantization():
@@ -590,7 +594,6 @@ def test_checkpoint_save_excludes_processed_keys(tmp_path):
     cp = QuantizationCheckpoint(
         index_name="idx",
         total_keys=3,
-        processed_keys=["k1", "k2"],
         checkpoint_path=str(path),
     )
     cp.save()
@@ -599,11 +602,13 @@ def test_checkpoint_save_excludes_processed_keys(tmp_path):
     assert "processed_keys" not in raw
 
 
-def test_checkpoint_load_nonexistent_returns_none():
+def test_checkpoint_load_nonexistent_returns_none(tmp_path):
     """Loading a nonexistent checkpoint file should return None."""
     from redisvl.migration.reliability import QuantizationCheckpoint
 
-    result = QuantizationCheckpoint.load("/tmp/nonexistent_checkpoint_xyz.yaml")
+    result = QuantizationCheckpoint.load(
+        str(tmp_path / "nonexistent_checkpoint_xyz.yaml")
+    )
     assert result is None
 
 
@@ -628,6 +633,29 @@ def test_checkpoint_load_forces_path(tmp_path):
 
     loaded = QuantizationCheckpoint.load(new_path)
     assert loaded.checkpoint_path == new_path  # should use load path, not stored
+
+
+def test_checkpoint_save_preserves_legacy_processed_keys(tmp_path):
+    """Legacy checkpoints should keep processed_keys across subsequent saves."""
+    from redisvl.migration.reliability import QuantizationCheckpoint
+
+    path = tmp_path / "legacy.yaml"
+    path.write_text(
+        "index_name: idx\n"
+        "total_keys: 4\n"
+        "processed_keys:\n"
+        "  - k1\n"
+        "  - k2\n"
+        "status: in_progress\n"
+    )
+
+    checkpoint = QuantizationCheckpoint.load(str(path))
+    checkpoint.record_batch(["k3"])
+    checkpoint.save()
+
+    reloaded = QuantizationCheckpoint.load(str(path))
+    assert reloaded.processed_keys == ["k1", "k2", "k3"]
+    assert reloaded.completed_keys == 3
 
 
 def test_quantize_vectors_saves_checkpoint_before_processing(monkeypatch, tmp_path):
@@ -704,23 +732,23 @@ def test_quantize_vectors_returns_reencoded_docs_not_scanned_docs():
     assert progress[-1] == (2, 2)
 
 
-def test_build_scan_match_pattern_uses_separator():
-    executor = MigrationExecutor()
-    assert executor._build_scan_match_pattern("test", ":") == "test:*"
-    assert executor._build_scan_match_pattern("test:", ":") == "test:*"
-    assert executor._build_scan_match_pattern("", ":") == "*"
+def test_build_scan_match_patterns_uses_separator():
+    assert build_scan_match_patterns(["test"], ":") == ["test:*"]
+    assert build_scan_match_patterns(["test:"], ":") == ["test:*"]
+    assert build_scan_match_patterns([], ":") == ["*"]
+    assert build_scan_match_patterns(["b", "a"], ":") == ["a:*", "b:*"]
 
 
 def test_normalize_keys_dedupes_and_sorts():
-    executor = MigrationExecutor()
-    assert executor._normalize_keys(["b", "a", "b"]) == ["a", "b"]
+    assert normalize_keys(["b", "a", "b"]) == ["a", "b"]
 
 
 def test_detect_aof_enabled_from_info():
-    executor = MigrationExecutor()
+    from redisvl.migration.utils import detect_aof_enabled
+
     client = MagicMock()
     client.info.return_value = {"aof_enabled": 1}
-    assert executor._detect_aof_enabled(client) is True
+    assert detect_aof_enabled(client) is True
 
 
 @pytest.mark.asyncio
@@ -729,6 +757,96 @@ async def test_async_detect_aof_enabled_from_info():
     client = MagicMock()
     client.info = AsyncMock(return_value={"aof_enabled": 1})
     assert await executor._detect_aof_enabled(client) is True
+
+
+def test_estimate_json_quantization_is_noop():
+    """JSON datatype changes should not report in-place rewrite costs."""
+    plan = _make_quantize_plan(
+        "float32", "float16", dims=128, doc_count=1000, storage_type="json"
+    )
+    est = estimate_disk_space(plan, aof_enabled=True)
+
+    assert est.has_quantization is False
+    assert est.total_new_disk_bytes == 0
+    assert est.aof_growth_bytes == 0
+
+
+def test_estimate_unknown_dtype_raises():
+    plan = _make_quantize_plan("madeup32", "float16", dims=128, doc_count=10)
+
+    with pytest.raises(ValueError, match="Unknown source vector datatype"):
+        estimate_disk_space(plan)
+
+
+def test_enumerate_with_scan_uses_all_prefixes():
+    executor = MigrationExecutor()
+    client = MagicMock()
+    client.ft.return_value.info.return_value = {
+        "index_definition": {"prefixes": ["alpha", "beta"]}
+    }
+    client.scan.side_effect = [
+        (0, [b"alpha:1", b"shared:1"]),
+        (0, [b"beta:2", b"shared:1"]),
+    ]
+
+    keys = list(executor._enumerate_with_scan(client, "idx", batch_size=1000))
+
+    assert keys == ["alpha:1", "shared:1", "beta:2"]
+
+
+@pytest.mark.asyncio
+async def test_async_enumerate_with_scan_uses_all_prefixes():
+    executor = AsyncMigrationExecutor()
+    client = MagicMock()
+    client.ft.return_value.info = AsyncMock(
+        return_value={"index_definition": {"prefixes": ["alpha", "beta"]}}
+    )
+    client.scan = AsyncMock(
+        side_effect=[
+            (0, [b"alpha:1", b"shared:1"]),
+            (0, [b"beta:2", b"shared:1"]),
+        ]
+    )
+
+    keys = [
+        key
+        async for key in executor._enumerate_with_scan(client, "idx", batch_size=1000)
+    ]
+
+    assert keys == ["alpha:1", "shared:1", "beta:2"]
+
+
+def test_apply_rejects_same_width_resume(monkeypatch):
+    plan = _make_quantize_plan("float16", "bfloat16", dims=2, doc_count=1)
+    executor = MigrationExecutor()
+
+    def _make_index(*args, **kwargs):
+        index = MagicMock()
+        index._redis_client = MagicMock()
+        index.name = "test_index"
+        return index
+
+    monkeypatch.setattr(
+        "redisvl.migration.executor.current_source_matches_snapshot",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "redisvl.migration.executor.SearchIndex.from_existing",
+        _make_index,
+    )
+    monkeypatch.setattr(
+        "redisvl.migration.executor.SearchIndex.from_dict",
+        _make_index,
+    )
+
+    report = executor.apply(
+        plan,
+        redis_client=MagicMock(),
+        checkpoint_path="resume.yaml",
+    )
+
+    assert report.result == "failed"
+    assert "same-width datatype changes" in report.validation.errors[0]
 
 
 @pytest.mark.asyncio

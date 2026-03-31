@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -73,6 +73,60 @@ def write_benchmark_report(report: MigrationReport, path: str) -> None:
         },
     }
     write_yaml(benchmark_report, path)
+
+
+def normalize_keys(keys: List[str]) -> List[str]:
+    """Deduplicate and sort keys for deterministic resume behavior."""
+    return sorted(set(keys))
+
+
+def build_scan_match_patterns(prefixes: List[str], key_separator: str) -> List[str]:
+    """Build SCAN patterns for all configured prefixes."""
+    if not prefixes:
+        return ["*"]
+
+    patterns = set()
+    for prefix in prefixes:
+        if not prefix:
+            return ["*"]
+        if key_separator and not prefix.endswith(key_separator):
+            patterns.add(f"{prefix}{key_separator}*")
+        else:
+            patterns.add(f"{prefix}*")
+    return sorted(patterns)
+
+
+def detect_aof_enabled(client: Any) -> bool:
+    """Best-effort detection of whether AOF is enabled on the live Redis."""
+    try:
+        info = client.info("persistence")
+        if isinstance(info, dict) and "aof_enabled" in info:
+            return bool(int(info["aof_enabled"]))
+    except Exception:
+        pass
+
+    try:
+        config = client.config_get("appendonly")
+        if isinstance(config, dict):
+            value = config.get("appendonly")
+            if value is not None:
+                return str(value).lower() in {"yes", "1", "true", "on"}
+    except Exception:
+        pass
+
+    return False
+
+
+def get_schema_field_path(schema: Dict[str, Any], field_name: str) -> Optional[str]:
+    """Return the JSON path configured for a field, if present."""
+    for field in schema.get("fields", []):
+        if field.get("name") != field_name:
+            continue
+        path = field.get("path")
+        if path is None:
+            path = field.get("attrs", {}).get("path")
+        return str(path) if path is not None else None
+    return None
 
 
 # Attributes excluded from schema validation comparison.
@@ -311,9 +365,25 @@ def estimate_disk_space(
         if source_dtype == target_dtype:
             continue
 
+        if source_dtype not in DTYPE_BYTES:
+            raise ValueError(
+                f"Unknown source vector datatype '{source_dtype}' for field '{name}'. "
+                f"Supported datatypes: {', '.join(sorted(DTYPE_BYTES.keys()))}"
+            )
+        if target_dtype not in DTYPE_BYTES:
+            raise ValueError(
+                f"Unknown target vector datatype '{target_dtype}' for field '{name}'. "
+                f"Supported datatypes: {', '.join(sorted(DTYPE_BYTES.keys()))}"
+            )
+
+        if storage_type == "json":
+            # JSON-backed migrations do not rewrite per-document vector payloads
+            # during apply(); they rely on recreate + re-index instead.
+            continue
+
         dims = int(source_attrs.get("dims", 0))
-        source_bpe = DTYPE_BYTES.get(source_dtype, 4)
-        target_bpe = DTYPE_BYTES.get(target_dtype, 4)
+        source_bpe = DTYPE_BYTES[source_dtype]
+        target_bpe = DTYPE_BYTES[target_dtype]
 
         source_vec_size = dims * source_bpe
         target_vec_size = dims * target_bpe

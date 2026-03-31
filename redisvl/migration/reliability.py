@@ -31,6 +31,13 @@ _DTYPE_FAMILY: Dict[str, str] = {
 }
 
 
+def is_same_width_dtype_conversion(source_dtype: str, target_dtype: str) -> bool:
+    """Return True when two dtypes share byte width but differ in encoding."""
+    if source_dtype == target_dtype:
+        return False
+    return _DTYPE_FAMILY.get(source_dtype) == _DTYPE_FAMILY.get(target_dtype)
+
+
 # ---------------------------------------------------------------------------
 # Idempotent Dtype Detection
 # ---------------------------------------------------------------------------
@@ -141,6 +148,8 @@ class QuantizationCheckpoint(BaseModel):
         self.completed_keys += len(keys)
         self.completed_batches += 1
         self.last_batch_keys = list(keys)
+        if self.processed_keys:
+            self.processed_keys.extend(keys)
 
     def mark_complete(self) -> None:
         """Mark the migration as completed."""
@@ -158,9 +167,12 @@ class QuantizationCheckpoint(BaseModel):
             dir=path.parent, suffix=".tmp", prefix=".checkpoint_"
         )
         try:
+            exclude = set()
+            if not self.processed_keys:
+                exclude.add("processed_keys")
             with os.fdopen(fd, "w") as f:
                 yaml.safe_dump(
-                    self.model_dump(exclude={"processed_keys"}),
+                    self.model_dump(exclude=exclude),
                     f,
                     sort_keys=False,
                 )
@@ -189,6 +201,10 @@ class QuantizationCheckpoint(BaseModel):
         if not data:
             return None
         checkpoint = cls.model_validate(data)
+        if checkpoint.processed_keys and checkpoint.completed_keys < len(
+            checkpoint.processed_keys
+        ):
+            checkpoint.completed_keys = len(checkpoint.processed_keys)
         checkpoint.checkpoint_path = str(p)
         return checkpoint
 
