@@ -87,9 +87,14 @@ def is_already_quantized(
     """Check whether a vector has already been converted to the target dtype.
 
     Uses byte-width families to handle ambiguous dtypes. For example,
-    if the target is bfloat16 and the detected dtype is float16 (same
-    2 bytes per element), the vector is considered already quantized.
-    Same for uint8/int8 (both 1 byte per element).
+    if source is float32 and target is float16, a vector detected as
+    2-bytes-per-element is considered already quantized (the byte width
+    shrank from 4 to 2, so conversion already happened).
+
+    However, same-width conversions (e.g. float16 -> bfloat16 or
+    int8 -> uint8) are NOT skipped because the encoding semantics
+    differ even though the byte length is identical. We cannot
+    distinguish these by length, so we must always re-encode.
 
     Args:
         data: Raw vector bytes.
@@ -103,9 +108,19 @@ def is_already_quantized(
     detected = detect_vector_dtype(data, expected_dims)
     if detected is None:
         return False
-    # Compare by byte-width family so float16<->bfloat16 and int8<->uint8
-    # are treated as equivalent (indistinguishable by byte length)
-    return _DTYPE_FAMILY.get(detected) == _DTYPE_FAMILY.get(target_dtype)
+
+    detected_family = _DTYPE_FAMILY.get(detected)
+    target_family = _DTYPE_FAMILY.get(target_dtype)
+    source_family = _DTYPE_FAMILY.get(source_dtype)
+
+    # If detected byte-width matches target family, the vector looks converted.
+    # But if source and target share the same byte-width family (e.g.
+    # float16 -> bfloat16), we cannot tell whether conversion happened,
+    # so we must NOT skip -- always re-encode for same-width migrations.
+    if source_family == target_family:
+        return False
+
+    return detected_family == target_family
 
 
 # ---------------------------------------------------------------------------

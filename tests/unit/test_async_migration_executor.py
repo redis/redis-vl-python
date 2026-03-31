@@ -447,6 +447,32 @@ def test_is_already_quantized_uint8_target():
     assert result is True
 
 
+def test_is_already_quantized_same_width_float16_to_bfloat16():
+    """float16 -> bfloat16 should NOT be skipped (same byte width, different encoding)."""
+    import numpy as np
+
+    from redisvl.migration.reliability import is_already_quantized
+
+    vec = np.random.randn(128).astype(np.float16).tobytes()
+    result = is_already_quantized(
+        vec, expected_dims=128, source_dtype="float16", target_dtype="bfloat16"
+    )
+    assert result is False
+
+
+def test_is_already_quantized_same_width_int8_to_uint8():
+    """int8 -> uint8 should NOT be skipped (same byte width, different encoding)."""
+    import numpy as np
+
+    from redisvl.migration.reliability import is_already_quantized
+
+    vec = np.random.randn(128).astype(np.int8).tobytes()
+    result = is_already_quantized(
+        vec, expected_dims=128, source_dtype="int8", target_dtype="uint8"
+    )
+    assert result is False
+
+
 # =============================================================================
 # TDD RED Phase: Checkpoint File Tests
 # =============================================================================

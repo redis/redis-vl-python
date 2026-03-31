@@ -338,26 +338,50 @@ class AsyncMigrationExecutor:
             report.finished_at = timestamp_utc()
             return report
 
-        if not await self._async_current_source_matches_snapshot(
-            plan.source.index_name,
-            plan.source.schema_snapshot,
-            redis_url=redis_url,
-            redis_client=redis_client,
-        ):
-            report.validation.errors.append(
-                "The current live source schema no longer matches the saved source snapshot."
-            )
-            report.manual_actions.append(
-                "Re-run `rvl migrate plan` to refresh the migration plan before applying."
-            )
-            report.finished_at = timestamp_utc()
-            return report
+        # Check if we are resuming from a checkpoint (post-drop crash).
+        # If so, the source index may no longer exist in Redis, so we
+        # skip live schema validation and construct from the plan snapshot.
+        resuming_from_checkpoint = False
+        if checkpoint_path:
+            existing_checkpoint = QuantizationCheckpoint.load(checkpoint_path)
+            if existing_checkpoint is not None:
+                resuming_from_checkpoint = True
+                logger.info(
+                    "Checkpoint found at %s, skipping source index validation "
+                    "(index may have been dropped before crash)",
+                    checkpoint_path,
+                )
 
-        source_index = await AsyncSearchIndex.from_existing(
-            plan.source.index_name,
-            redis_url=redis_url,
-            redis_client=redis_client,
-        )
+        if not resuming_from_checkpoint:
+            if not await self._async_current_source_matches_snapshot(
+                plan.source.index_name,
+                plan.source.schema_snapshot,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            ):
+                report.validation.errors.append(
+                    "The current live source schema no longer matches the saved source snapshot."
+                )
+                report.manual_actions.append(
+                    "Re-run `rvl migrate plan` to refresh the migration plan before applying."
+                )
+                report.finished_at = timestamp_utc()
+                return report
+
+            source_index = await AsyncSearchIndex.from_existing(
+                plan.source.index_name,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            )
+        else:
+            # Source index was dropped before crash; reconstruct from snapshot
+            # to get a valid AsyncSearchIndex with a Redis client attached.
+            source_index = AsyncSearchIndex.from_dict(
+                plan.source.schema_snapshot,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            )
+
         target_index = AsyncSearchIndex.from_dict(
             plan.merged_target_schema,
             redis_url=redis_url,
@@ -406,75 +430,114 @@ class AsyncMigrationExecutor:
                 raise ValueError("Failed to get Redis client from source index")
             storage_type = plan.source.keyspace.storage_type
 
-            # STEP 1: Enumerate keys BEFORE any modifications
-            if needs_enumeration:
-                _notify("enumerate", "Enumerating indexed documents...")
-                enumerate_started = time.perf_counter()
-                keys_to_process = [
-                    key
-                    async for key in self._enumerate_indexed_keys(
-                        client, plan.source.index_name, batch_size=1000
+            if resuming_from_checkpoint:
+                # On resume after a post-drop crash, the index no longer
+                # exists. Enumerate keys via SCAN using the plan prefix,
+                # and skip BGSAVE / field renames / drop (already done).
+                if needs_enumeration:
+                    _notify("enumerate", "Enumerating documents via SCAN (resume)...")
+                    enumerate_started = time.perf_counter()
+                    prefixes = plan.source.keyspace.prefixes
+                    prefix = prefixes[0] if prefixes else ""
+                    if has_prefix_change and rename_ops.change_prefix:
+                        prefix = rename_ops.change_prefix
+                    cursor: int = 0
+                    while True:
+                        cursor, scanned = await client.scan(  # type: ignore[misc]
+                            cursor=cursor,
+                            match=f"{prefix}*" if prefix else "*",
+                            count=1000,
+                        )
+                        for k in scanned:
+                            keys_to_process.append(
+                                k.decode() if isinstance(k, bytes) else str(k)
+                            )
+                        if cursor == 0:
+                            break
+                    enumerate_duration = round(
+                        time.perf_counter() - enumerate_started, 3
                     )
-                ]
-                enumerate_duration = round(time.perf_counter() - enumerate_started, 3)
-                _notify(
-                    "enumerate",
-                    f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
-                )
+                    _notify(
+                        "enumerate",
+                        f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
+                    )
 
-            # BGSAVE safety net: snapshot data before mutations begin
-            if needs_enumeration and keys_to_process:
-                _notify("bgsave", "Triggering BGSAVE safety snapshot...")
-                try:
-                    await async_trigger_bgsave_and_wait(client)
-                    _notify("bgsave", "done")
-                except Exception as e:
-                    logger.warning("BGSAVE safety snapshot failed: %s", e)
-                    _notify("bgsave", f"skipped ({e})")
-
-            # STEP 2: Field renames (before dropping index)
-            if has_field_renames and keys_to_process:
-                _notify("field_rename", "Renaming fields in documents...")
-                field_rename_started = time.perf_counter()
-                for field_rename in rename_ops.rename_fields:
-                    if storage_type == "json":
-                        old_path = f"$.{field_rename.old_name}"
-                        new_path = f"$.{field_rename.new_name}"
-                        await self._rename_field_in_json(
-                            client,
-                            keys_to_process,
-                            old_path,
-                            new_path,
-                            progress_callback=lambda done, total: _notify(
-                                "field_rename",
-                                f"{field_rename.old_name} -> {field_rename.new_name}: {done:,}/{total:,}",
-                            ),
+                _notify("bgsave", "skipped (resume)")
+                _notify("drop", "skipped (already dropped)")
+            else:
+                # Normal (non-resume) path
+                # STEP 1: Enumerate keys BEFORE any modifications
+                if needs_enumeration:
+                    _notify("enumerate", "Enumerating indexed documents...")
+                    enumerate_started = time.perf_counter()
+                    keys_to_process = [
+                        key
+                        async for key in self._enumerate_indexed_keys(
+                            client, plan.source.index_name, batch_size=1000
                         )
-                    else:
-                        await self._rename_field_in_hash(
-                            client,
-                            keys_to_process,
-                            field_rename.old_name,
-                            field_rename.new_name,
-                            progress_callback=lambda done, total: _notify(
-                                "field_rename",
-                                f"{field_rename.old_name} -> {field_rename.new_name}: {done:,}/{total:,}",
-                            ),
-                        )
-                field_rename_duration = round(
-                    time.perf_counter() - field_rename_started, 3
-                )
-                _notify("field_rename", f"done ({field_rename_duration}s)")
+                    ]
+                    enumerate_duration = round(
+                        time.perf_counter() - enumerate_started, 3
+                    )
+                    _notify(
+                        "enumerate",
+                        f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
+                    )
 
-            # STEP 3: Drop the index
-            _notify("drop", "Dropping index definition...")
-            drop_started = time.perf_counter()
-            await source_index.delete(drop=False)
-            drop_duration = round(time.perf_counter() - drop_started, 3)
-            _notify("drop", f"done ({drop_duration}s)")
+                # BGSAVE safety net: snapshot data before mutations begin
+                if needs_enumeration and keys_to_process:
+                    _notify("bgsave", "Triggering BGSAVE safety snapshot...")
+                    try:
+                        await async_trigger_bgsave_and_wait(client)
+                        _notify("bgsave", "done")
+                    except Exception as e:
+                        logger.warning("BGSAVE safety snapshot failed: %s", e)
+                        _notify("bgsave", f"skipped ({e})")
+
+                # STEP 2: Field renames (before dropping index)
+                if has_field_renames and keys_to_process:
+                    _notify("field_rename", "Renaming fields in documents...")
+                    field_rename_started = time.perf_counter()
+                    for field_rename in rename_ops.rename_fields:
+                        if storage_type == "json":
+                            old_path = f"$.{field_rename.old_name}"
+                            new_path = f"$.{field_rename.new_name}"
+                            await self._rename_field_in_json(
+                                client,
+                                keys_to_process,
+                                old_path,
+                                new_path,
+                                progress_callback=lambda done, total: _notify(
+                                    "field_rename",
+                                    f"{field_rename.old_name} -> {field_rename.new_name}: {done:,}/{total:,}",
+                                ),
+                            )
+                        else:
+                            await self._rename_field_in_hash(
+                                client,
+                                keys_to_process,
+                                field_rename.old_name,
+                                field_rename.new_name,
+                                progress_callback=lambda done, total: _notify(
+                                    "field_rename",
+                                    f"{field_rename.old_name} -> {field_rename.new_name}: {done:,}/{total:,}",
+                                ),
+                            )
+                    field_rename_duration = round(
+                        time.perf_counter() - field_rename_started, 3
+                    )
+                    _notify("field_rename", f"done ({field_rename_duration}s)")
+
+                # STEP 3: Drop the index
+                _notify("drop", "Dropping index definition...")
+                drop_started = time.perf_counter()
+                await source_index.delete(drop=False)
+                drop_duration = round(time.perf_counter() - drop_started, 3)
+                _notify("drop", f"done ({drop_duration}s)")
 
             # STEP 4: Key renames (after drop, before recreate)
-            if has_prefix_change and keys_to_process:
+            # On resume, key renames were already done before the crash.
+            if has_prefix_change and keys_to_process and not resuming_from_checkpoint:
                 _notify("key_rename", "Renaming keys...")
                 key_rename_started = time.perf_counter()
                 old_prefix = plan.source.keyspace.prefixes[0]
@@ -499,8 +562,12 @@ class AsyncMigrationExecutor:
             if datatype_changes and keys_to_process:
                 _notify("quantize", "Re-encoding vectors...")
                 quantize_started = time.perf_counter()
-                # If we renamed keys, update keys_to_process to new names
-                if has_prefix_change and rename_ops.change_prefix:
+                # If we renamed keys (non-resume), update keys_to_process
+                if (
+                    has_prefix_change
+                    and rename_ops.change_prefix
+                    and not resuming_from_checkpoint
+                ):
                     old_prefix = plan.source.keyspace.prefixes[0]
                     new_prefix = rename_ops.change_prefix
                     keys_to_process = [
@@ -746,7 +813,9 @@ class AsyncMigrationExecutor:
             finally:
                 undo.clear()
 
-            docs_processed += len(keys_updated_in_batch)
+            # Count all keys in the batch as processed (including skipped),
+            # since they are recorded in the checkpoint and won't be retried.
+            docs_processed += len(batch)
 
             if checkpoint:
                 # Record all keys in batch (including skipped) so they
