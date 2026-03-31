@@ -211,7 +211,7 @@ def canonicalize_schema(
         schema["index"]["prefix"] = sorted(prefixes)
     stopwords = schema["index"].get("stopwords")
     if isinstance(stopwords, list):
-        schema["index"]["stopwords"] = list(stopwords)
+        schema["index"]["stopwords"] = sorted(stopwords)
     return schema
 
 
@@ -259,7 +259,7 @@ def wait_for_index_ready(
     deadline = start + timeout_seconds
     latest_info = index.info()
 
-    stable_ready_checks = 0
+    stable_ready_checks: Optional[int] = None
     while time.perf_counter() < deadline:
         latest_info = index.info()
         indexing = latest_info.get("indexing")
@@ -277,7 +277,7 @@ def wait_for_index_ready(
             if current_docs is None:
                 ready = True
             else:
-                if stable_ready_checks == 0:
+                if stable_ready_checks is None:
                     stable_ready_checks = int(current_docs)
                     time.sleep(poll_interval_seconds)
                     continue

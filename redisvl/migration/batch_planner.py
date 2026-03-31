@@ -149,7 +149,9 @@ class BatchMigrationPlanner:
             lines = f.readlines()
 
         return [
-            line.strip() for line in lines if line.strip() and not line.startswith("#")
+            stripped
+            for line in lines
+            if (stripped := line.strip()) and not stripped.startswith("#")
         ]
 
     def _check_index_applicability(

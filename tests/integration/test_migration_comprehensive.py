@@ -1278,28 +1278,22 @@ class TestJsonStorageType:
 
     @pytest.fixture
     def json_sample_docs(self):
-        """Sample JSON documents."""
-        import json
-
+        """Sample JSON documents (as dicts for RedisJSON)."""
         return [
-            json.dumps(
-                {
-                    "doc_id": "1",
-                    "title": "Alpha Product",
-                    "category": "electronics",
-                    "price": 99.99,
-                    "embedding": [0.1, 0.2, 0.3, 0.4],
-                }
-            ),
-            json.dumps(
-                {
-                    "doc_id": "2",
-                    "title": "Beta Service",
-                    "category": "software",
-                    "price": 149.99,
-                    "embedding": [0.2, 0.3, 0.4, 0.5],
-                }
-            ),
+            {
+                "doc_id": "1",
+                "title": "Alpha Product",
+                "category": "electronics",
+                "price": 99.99,
+                "embedding": [0.1, 0.2, 0.3, 0.4],
+            },
+            {
+                "doc_id": "2",
+                "title": "Beta Service",
+                "category": "software",
+                "price": 149.99,
+                "embedding": [0.2, 0.3, 0.4, 0.5],
+            },
         ]
 
     def test_json_add_field(
@@ -1348,11 +1342,9 @@ class TestJsonStorageType:
         index.create(overwrite=True)
 
         # Load JSON docs
-        import json as json_module
-
         for i, doc in enumerate(json_sample_docs):
             key = f"{unique_ids['prefix']}:{i+1}"
-            client.json().set(key, "$", json_module.loads(doc))
+            client.json().set(key, "$", doc)
 
         try:
             result = run_migration(

@@ -425,11 +425,6 @@ class MigrationPlanner:
         has_field_renames = (
             rename_operations and len(rename_operations.rename_fields) > 0
         )
-        renamed_field_names = set()
-        if has_field_renames and rename_operations:
-            renamed_field_names = {
-                fr.old_name for fr in rename_operations.rename_fields
-            }
 
         for index_key, target_value in changes.index.items():
             source_value = source_dict["index"].get(index_key)

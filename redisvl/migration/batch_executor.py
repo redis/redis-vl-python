@@ -170,6 +170,11 @@ class BatchMigrationExecutor:
         """
         state = self._load_state(state_path)
         plan_path = batch_plan_path or state.plan_path
+        if not plan_path or not plan_path.strip():
+            raise ValueError(
+                "No batch plan path available. Provide batch_plan_path explicitly, "
+                "or ensure the checkpoint state contains a valid plan_path."
+            )
         batch_plan = self._load_batch_plan(plan_path)
 
         # Optionally retry failed indexes

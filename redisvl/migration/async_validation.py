@@ -121,7 +121,7 @@ class AsyncMigrationValidator:
                     passed=fetched is not None,
                     details=(
                         "Document fetched successfully"
-                        if fetched
+                        if fetched is not None
                         else "Document not found"
                     ),
                 )

@@ -858,6 +858,14 @@ class MigrationExecutor:
         if checkpoint_path:
             checkpoint = QuantizationCheckpoint.load(checkpoint_path)
             if checkpoint:
+                # Skip if checkpoint shows a completed migration
+                if checkpoint.status == "completed":
+                    logger.info(
+                        "Checkpoint already marked as completed for index '%s'. "
+                        "Skipping quantization. Remove the checkpoint file to force re-run.",
+                        checkpoint.index_name,
+                    )
+                    return 0
                 # Validate checkpoint matches current migration
                 if checkpoint.index_name != source_index.name:
                     raise ValueError(

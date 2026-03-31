@@ -95,7 +95,7 @@ Supported changes:
   - Changing field options (sortable, separator, weight)
   - Changing vector algorithm (FLAT, HNSW, SVS_VAMANA)
   - Changing distance metric (COSINE, L2, IP)
-  - Tuning algorithm parameters (M, EF_CONSTRUCTION)
+  - Tuning algorithm parameters (M, EF_CONSTRUCTION, EF_RUNTIME, EPSILON)
   - Quantizing vectors (float32 to float16/bfloat16/int8/uint8)
   - Changing key prefix (renames all keys)
   - Renaming fields (updates all documents)
@@ -553,7 +553,11 @@ Commands:
         args = parser.parse_args(sys.argv[3:])
 
         redis_url = create_redis_url(args)
-        indexes = args.indexes.split(",") if args.indexes else None
+        indexes = (
+            [idx.strip() for idx in args.indexes.split(",") if idx.strip()]
+            if args.indexes
+            else None
+        )
 
         planner = BatchMigrationPlanner()
         batch_plan = planner.create_batch_plan(
@@ -611,7 +615,7 @@ Commands:
          If you need to preserve original vectors, backup your data first:
            redis-cli BGSAVE"""
             )
-            return
+            exit(1)
 
         redis_url = create_redis_url(args)
         executor = BatchMigrationExecutor()

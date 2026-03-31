@@ -8,10 +8,12 @@ Requires Redis 8.0+ for INT8/UINT8 datatype tests.
 import uuid
 
 import pytest
+from redis import Redis
 
 from redisvl.index import SearchIndex
 from redisvl.migration import MigrationExecutor, MigrationPlanner
 from redisvl.migration.models import FieldUpdate, SchemaPatch
+from tests.conftest import skip_if_redis_version_below
 
 
 def create_source_index(redis_url, worker_id, source_attrs):
@@ -136,6 +138,8 @@ class TestDatatypeChanges:
     @pytest.mark.parametrize("target_dtype", ["int8", "uint8"])
     def test_flat_quantized_datatype(self, redis_url, worker_id, target_dtype):
         """Test INT8/UINT8 datatypes (requires Redis 8.0+)."""
+        client = Redis.from_url(redis_url)
+        skip_if_redis_version_below(client, "8.0.0", "INT8/UINT8 requires Redis 8.0+")
         index, index_name = create_source_index(
             redis_url, worker_id, {"algorithm": "flat"}
         )
@@ -169,6 +173,8 @@ class TestDatatypeChanges:
     @pytest.mark.parametrize("target_dtype", ["int8", "uint8"])
     def test_hnsw_quantized_datatype(self, redis_url, worker_id, target_dtype):
         """Test INT8/UINT8 datatypes with HNSW (requires Redis 8.0+)."""
+        client = Redis.from_url(redis_url)
+        skip_if_redis_version_below(client, "8.0.0", "INT8/UINT8 requires Redis 8.0+")
         index, index_name = create_source_index(
             redis_url, worker_id, {"algorithm": "hnsw"}
         )
@@ -308,6 +314,8 @@ class TestCombinedChanges:
 
     def test_flat_to_hnsw_with_int8(self, redis_url, worker_id):
         """Combined algorithm + quantized datatype (requires Redis 8.0+)."""
+        client = Redis.from_url(redis_url)
+        skip_if_redis_version_below(client, "8.0.0", "INT8 requires Redis 8.0+")
         index, index_name = create_source_index(
             redis_url, worker_id, {"algorithm": "flat"}
         )
