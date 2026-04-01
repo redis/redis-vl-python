@@ -1001,7 +1001,7 @@ class AsyncMigrationExecutor:
         deadline = start + timeout_seconds
         latest_info = await index.info()
 
-        stable_ready_checks = 0
+        stable_ready_checks: Optional[int] = None
         while time.perf_counter() < deadline:
             latest_info = await index.info()
             indexing = latest_info.get("indexing")
@@ -1019,11 +1019,16 @@ class AsyncMigrationExecutor:
                 if current_docs is None:
                     ready = True
                 else:
-                    if stable_ready_checks == 0:
+                    if stable_ready_checks is None:
                         stable_ready_checks = int(current_docs)
                         await asyncio.sleep(poll_interval_seconds)
                         continue
-                    ready = int(current_docs) == stable_ready_checks
+                    current = int(current_docs)
+                    if current == stable_ready_checks:
+                        ready = True
+                    else:
+                        # num_docs changed; update baseline and keep waiting
+                        stable_ready_checks = current
 
             if ready:
                 return latest_info, round(time.perf_counter() - start, 3)
