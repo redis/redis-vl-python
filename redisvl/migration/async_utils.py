@@ -14,17 +14,23 @@ async def async_list_indexes(
     *, redis_url: Optional[str] = None, redis_client: Optional[AsyncRedisClient] = None
 ) -> List[str]:
     """List all search indexes in Redis (async version)."""
+    created_client = False
     if redis_client is None:
         if not redis_url:
             raise ValueError("Must provide either redis_url or redis_client")
         redis_client = await RedisConnectionFactory._get_aredis_connection(
             redis_url=redis_url
         )
-    index = AsyncSearchIndex.from_dict(
-        {"index": {"name": "__redisvl_migration_helper__"}, "fields": []},
-        redis_client=redis_client,
-    )
-    return await index.listall()
+        created_client = True
+    try:
+        index = AsyncSearchIndex.from_dict(
+            {"index": {"name": "__redisvl_migration_helper__"}, "fields": []},
+            redis_client=redis_client,
+        )
+        return await index.listall()
+    finally:
+        if created_client:
+            await redis_client.aclose()  # type: ignore[union-attr]
 
 
 async def async_wait_for_index_ready(

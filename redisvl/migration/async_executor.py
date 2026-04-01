@@ -871,7 +871,7 @@ class AsyncMigrationExecutor:
             checkpoint_path: Optional path for checkpoint file (enables resume)
 
         Returns:
-            Number of documents processed
+            Number of documents quantized
         """
         client = source_index._redis_client
         if client is None:
