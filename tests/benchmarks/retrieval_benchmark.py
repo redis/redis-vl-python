@@ -614,7 +614,7 @@ def main() -> None:
         print(f"  Size: {size:,} documents")
         print(f"{'='*60}")
 
-        client.flushall()
+        client.flushdb()
 
         result = benchmark_scale(
             client=client,
