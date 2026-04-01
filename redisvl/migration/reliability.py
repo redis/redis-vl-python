@@ -35,7 +35,11 @@ def is_same_width_dtype_conversion(source_dtype: str, target_dtype: str) -> bool
     """Return True when two dtypes share byte width but differ in encoding."""
     if source_dtype == target_dtype:
         return False
-    return _DTYPE_FAMILY.get(source_dtype) == _DTYPE_FAMILY.get(target_dtype)
+    source_family = _DTYPE_FAMILY.get(source_dtype)
+    target_family = _DTYPE_FAMILY.get(target_dtype)
+    if source_family is None or target_family is None:
+        return False
+    return source_family == target_family
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,947 @@
+{
+  "benchmark": "retrieval_fp32_vs_fp16",
+  "dataset": "dbpedia",
+  "dataset_description": "DBpedia entities, OpenAI text-embedding-ada-002, 1536d",
+  "dims": 1536,
+  "distance_metric": "cosine",
+  "hnsw_m": 16,
+  "hnsw_ef_construction": 200,
+  "ef_runtime": 10,
+  "top_k": 10,
+  "recall_k_max": 100,
+  "recall_k_values": [
+    1,
+    5,
+    10,
+    20,
+    50,
+    100
+  ],
+  "query_count": 100,
+  "configs": [
+    "FLAT_FP32",
+    "FLAT_FP16",
+    "HNSW_FP32",
+    "HNSW_FP16"
+  ],
+  "results": [
+    {
+      "size": 1000,
+      "query_count": 100,
+      "dims": 1536,
+      "distance_metric": "cosine",
+      "top_k": 10,
+      "recall_k_max": 100,
+      "ef_runtime": 10,
+      "hnsw_m": 16,
+      "hnsw_ef_construction": 200,
+      "baseline_memory_mb": 2.19,
+      "configs": {
+        "FLAT_FP32": {
+          "label": "FLAT_FP32",
+          "algorithm": "flat",
+          "datatype": "float32",
+          "load_duration_seconds": 0.088,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 6.046783447265625,
+          "memory_mb": 16.645,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.722104,
+            "p95_ms": 1.067913,
+            "p99_ms": 2.701641,
+            "mean_ms": 0.808,
+            "qps": 1237.9
+          }
+        },
+        "FLAT_FP16": {
+          "label": "FLAT_FP16",
+          "algorithm": "flat",
+          "datatype": "float16",
+          "load_duration_seconds": 0.017,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 3.046783447265625,
+          "memory_mb": 9.73,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.672271,
+            "p95_ms": 0.932071,
+            "p99_ms": 1.015216,
+            "mean_ms": 0.698,
+            "qps": 1431.74
+          }
+        },
+        "HNSW_FP32": {
+          "label": "HNSW_FP32",
+          "algorithm": "hnsw",
+          "datatype": "float32",
+          "load_duration_seconds": 0.179,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 6.342193603515625,
+          "memory_mb": 16.986,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.678562,
+            "p95_ms": 0.901213,
+            "p99_ms": 1.712823,
+            "mean_ms": 1.18,
+            "qps": 847.21
+          }
+        },
+        "HNSW_FP16": {
+          "label": "HNSW_FP16",
+          "algorithm": "hnsw",
+          "datatype": "float16",
+          "load_duration_seconds": 0.118,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 3.3422317504882812,
+          "memory_mb": 10.085,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.662188,
+            "p95_ms": 0.825333,
+            "p99_ms": 0.9287,
+            "mean_ms": 0.682,
+            "qps": 1466.39
+          }
+        }
+      },
+      "overlap_vs_ground_truth": {
+        "FLAT_FP32": {
+          "mean_overlap_at_k": 1.0,
+          "min_overlap_at_k": 1.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0
+        },
+        "FLAT_FP16": {
+          "mean_overlap_at_k": 0.985,
+          "min_overlap_at_k": 0.8,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0411
+        },
+        "HNSW_FP32": {
+          "mean_overlap_at_k": 0.999,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.01
+        },
+        "HNSW_FP16": {
+          "mean_overlap_at_k": 0.984,
+          "min_overlap_at_k": 0.8,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.042
+        }
+      },
+      "recall_vs_ground_truth": {
+        "FLAT_FP32": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "recall@50": 1.0,
+            "recall@100": 1.0
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@20": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@50": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@100": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "FLAT_FP16": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.985,
+            "recall@20": 1.0,
+            "recall@50": 1.0,
+            "recall@100": 1.0
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.985,
+              "min": 0.8,
+              "max": 1.0,
+              "std": 0.0411
+            },
+            "recall@20": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@50": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@100": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "HNSW_FP32": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.999,
+            "recall@20": 0.999,
+            "recall@50": 0.999,
+            "recall@100": 0.999
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            },
+            "recall@20": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            },
+            "recall@50": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            },
+            "recall@100": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "HNSW_FP16": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.984,
+            "recall@20": 0.999,
+            "recall@50": 0.999,
+            "recall@100": 0.999
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.984,
+              "min": 0.8,
+              "max": 1.0,
+              "std": 0.042
+            },
+            "recall@20": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            },
+            "recall@50": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            },
+            "recall@100": {
+              "mean": 0.999,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.01
+            }
+          },
+          "ground_truth_depth": 10
+        }
+      }
+    },
+    {
+      "size": 10000,
+      "query_count": 100,
+      "dims": 1536,
+      "distance_metric": "cosine",
+      "top_k": 10,
+      "recall_k_max": 100,
+      "ef_runtime": 10,
+      "hnsw_m": 16,
+      "hnsw_ef_construction": 200,
+      "baseline_memory_mb": 2.245,
+      "configs": {
+        "FLAT_FP32": {
+          "label": "FLAT_FP32",
+          "algorithm": "flat",
+          "datatype": "float32",
+          "load_duration_seconds": 0.252,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 60.46302032470703,
+          "memory_mb": 146.164,
+          "latency": {
+            "count": 100,
+            "p50_ms": 2.067416,
+            "p95_ms": 2.43948,
+            "p99_ms": 2.681044,
+            "mean_ms": 2.075,
+            "qps": 481.87
+          }
+        },
+        "FLAT_FP16": {
+          "label": "FLAT_FP16",
+          "algorithm": "flat",
+          "datatype": "float16",
+          "load_duration_seconds": 0.144,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 30.46302032470703,
+          "memory_mb": 77.001,
+          "latency": {
+            "count": 100,
+            "p50_ms": 1.343166,
+            "p95_ms": 2.437548,
+            "p99_ms": 3.615032,
+            "mean_ms": 1.489,
+            "qps": 671.62
+          }
+        },
+        "HNSW_FP32": {
+          "label": "HNSW_FP32",
+          "algorithm": "hnsw",
+          "datatype": "float32",
+          "load_duration_seconds": 7.06,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 63.53361129760742,
+          "memory_mb": 149.536,
+          "latency": {
+            "count": 100,
+            "p50_ms": 1.232333,
+            "p95_ms": 1.614627,
+            "p99_ms": 1.832658,
+            "mean_ms": 1.222,
+            "qps": 818.21
+          }
+        },
+        "HNSW_FP16": {
+          "label": "HNSW_FP16",
+          "algorithm": "hnsw",
+          "datatype": "float16",
+          "load_duration_seconds": 3.624,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 33.53794479370117,
+          "memory_mb": 80.379,
+          "latency": {
+            "count": 100,
+            "p50_ms": 1.009396,
+            "p95_ms": 1.282904,
+            "p99_ms": 1.331153,
+            "mean_ms": 1.011,
+            "qps": 988.88
+          }
+        }
+      },
+      "overlap_vs_ground_truth": {
+        "FLAT_FP32": {
+          "mean_overlap_at_k": 1.0,
+          "min_overlap_at_k": 1.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0
+        },
+        "FLAT_FP16": {
+          "mean_overlap_at_k": 0.987,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0338
+        },
+        "HNSW_FP32": {
+          "mean_overlap_at_k": 0.998,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0141
+        },
+        "HNSW_FP16": {
+          "mean_overlap_at_k": 0.985,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0359
+        }
+      },
+      "recall_vs_ground_truth": {
+        "FLAT_FP32": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "recall@50": 1.0,
+            "recall@100": 1.0
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@20": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@50": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@100": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "FLAT_FP16": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.987,
+            "recall@20": 1.0,
+            "recall@50": 1.0,
+            "recall@100": 1.0
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.987,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0338
+            },
+            "recall@20": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@50": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@100": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "HNSW_FP32": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.998,
+            "recall@20": 0.998,
+            "recall@50": 0.998,
+            "recall@100": 0.998
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            },
+            "recall@20": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            },
+            "recall@50": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            },
+            "recall@100": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "HNSW_FP16": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.985,
+            "recall@20": 0.998,
+            "recall@50": 0.998,
+            "recall@100": 0.998
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.985,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0359
+            },
+            "recall@20": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            },
+            "recall@50": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            },
+            "recall@100": {
+              "mean": 0.998,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0141
+            }
+          },
+          "ground_truth_depth": 10
+        }
+      }
+    },
+    {
+      "size": 50000,
+      "query_count": 100,
+      "dims": 1536,
+      "distance_metric": "cosine",
+      "top_k": 10,
+      "recall_k_max": 100,
+      "ef_runtime": 10,
+      "hnsw_m": 16,
+      "hnsw_ef_construction": 200,
+      "baseline_memory_mb": 2.315,
+      "configs": {
+        "FLAT_FP32": {
+          "label": "FLAT_FP32",
+          "algorithm": "flat",
+          "datatype": "float32",
+          "load_duration_seconds": 1.349,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 296.31842041015625,
+          "memory_mb": 715.144,
+          "latency": {
+            "count": 100,
+            "p50_ms": 7.583542,
+            "p95_ms": 8.681309,
+            "p99_ms": 13.095468,
+            "mean_ms": 7.797,
+            "qps": 128.25
+          }
+        },
+        "FLAT_FP16": {
+          "label": "FLAT_FP16",
+          "algorithm": "flat",
+          "datatype": "float16",
+          "load_duration_seconds": 0.795,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 149.31842041015625,
+          "memory_mb": 372.738,
+          "latency": {
+            "count": 100,
+            "p50_ms": 4.684333,
+            "p95_ms": 5.279669,
+            "p99_ms": 5.529875,
+            "mean_ms": 4.73,
+            "qps": 211.43
+          }
+        },
+        "HNSW_FP32": {
+          "label": "HNSW_FP32",
+          "algorithm": "hnsw",
+          "datatype": "float32",
+          "load_duration_seconds": 45.522,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 311.5198669433594,
+          "memory_mb": 731.507,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.968041,
+            "p95_ms": 1.374076,
+            "p99_ms": 1.540095,
+            "mean_ms": 1.016,
+            "qps": 984.42
+          }
+        },
+        "HNSW_FP16": {
+          "label": "HNSW_FP16",
+          "algorithm": "hnsw",
+          "datatype": "float16",
+          "load_duration_seconds": 26.892,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 164.51638793945312,
+          "memory_mb": 389.122,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.7165,
+            "p95_ms": 0.957075,
+            "p99_ms": 1.183413,
+            "mean_ms": 0.756,
+            "qps": 1323.04
+          }
+        }
+      },
+      "overlap_vs_ground_truth": {
+        "FLAT_FP32": {
+          "mean_overlap_at_k": 1.0,
+          "min_overlap_at_k": 1.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0
+        },
+        "FLAT_FP16": {
+          "mean_overlap_at_k": 0.978,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0416
+        },
+        "HNSW_FP32": {
+          "mean_overlap_at_k": 0.985,
+          "min_overlap_at_k": 0.7,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0479
+        },
+        "HNSW_FP16": {
+          "mean_overlap_at_k": 0.964,
+          "min_overlap_at_k": 0.7,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0595
+        }
+      },
+      "recall_vs_ground_truth": {
+        "FLAT_FP32": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 1.0,
+            "recall@20": 1.0,
+            "recall@50": 1.0,
+            "recall@100": 1.0
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@20": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@50": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@100": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "FLAT_FP16": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.978,
+            "recall@20": 1.0,
+            "recall@50": 1.0,
+            "recall@100": 1.0
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.978,
+              "min": 0.9,
+              "max": 1.0,
+              "std": 0.0416
+            },
+            "recall@20": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@50": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            },
+            "recall@100": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "std": 0.0
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "HNSW_FP32": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.985,
+            "recall@20": 0.985,
+            "recall@50": 0.985,
+            "recall@100": 0.985
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.985,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.0479
+            },
+            "recall@20": {
+              "mean": 0.985,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.0479
+            },
+            "recall@50": {
+              "mean": 0.985,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.0479
+            },
+            "recall@100": {
+              "mean": 0.985,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.0479
+            }
+          },
+          "ground_truth_depth": 10
+        },
+        "HNSW_FP16": {
+          "recall_at_k": {
+            "recall@1": 0.1,
+            "recall@5": 0.5,
+            "recall@10": 0.964,
+            "recall@20": 0.982,
+            "recall@50": 0.982,
+            "recall@100": 0.982
+          },
+          "recall_detail": {
+            "recall@1": {
+              "mean": 0.1,
+              "min": 0.1,
+              "max": 0.1,
+              "std": 0.0
+            },
+            "recall@5": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "std": 0.0
+            },
+            "recall@10": {
+              "mean": 0.964,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.0595
+            },
+            "recall@20": {
+              "mean": 0.982,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.052
+            },
+            "recall@50": {
+              "mean": 0.982,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.052
+            },
+            "recall@100": {
+              "mean": 0.982,
+              "min": 0.7,
+              "max": 1.0,
+              "std": 0.052
+            }
+          },
+          "ground_truth_depth": 10
+        }
+      }
+    }
+  ]
+}

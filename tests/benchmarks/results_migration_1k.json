@@ -1,0 +1,45 @@
+{
+  "benchmark": "migration_timing",
+  "schema_field_count": 16,
+  "vector_dims": 3072,
+  "trials_per_size": 1,
+  "results": [
+    {
+      "size": 1000,
+      "source_algo": "HNSW",
+      "source_dtype": "FLOAT32",
+      "target_algo": "FLAT",
+      "target_dtype": "FLOAT16",
+      "trials": [
+        {
+          "trial": 1,
+          "populate_duration_seconds": 0.441,
+          "timings": {
+            "total_migration_duration_seconds": 0.782,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 0.247,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 0.513,
+            "validation_duration_seconds": 0.015,
+            "downtime_duration_seconds": 0.762
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 1949.318,
+            "source_index_size_mb": 12.35,
+            "target_index_size_mb": 6.047,
+            "index_size_delta_mb": -6.303
+          },
+          "source_vector_index_mb": 12.35,
+          "source_total_index_mb": 0.744,
+          "target_vector_index_mb": 6.047,
+          "target_total_index_mb": 0.746,
+          "memory_savings_pct": -0.2,
+          "validation_passed": true,
+          "num_docs": 1000
+        }
+      ]
+    }
+  ]
+}

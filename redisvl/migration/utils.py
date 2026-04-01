@@ -281,7 +281,12 @@ def wait_for_index_ready(
                     stable_ready_checks = int(current_docs)
                     time.sleep(poll_interval_seconds)
                     continue
-                ready = int(current_docs) == stable_ready_checks
+                current = int(current_docs)
+                if current == stable_ready_checks:
+                    ready = True
+                else:
+                    # num_docs changed; update baseline and keep waiting
+                    stable_ready_checks = current
 
         if ready:
             return latest_info, round(time.perf_counter() - start, 3)

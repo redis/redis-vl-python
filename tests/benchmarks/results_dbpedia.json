@@ -1,0 +1,341 @@
+{
+  "benchmark": "retrieval_fp32_vs_fp16",
+  "dataset": "dbpedia",
+  "dataset_description": "DBpedia entities, OpenAI text-embedding-ada-002, 1536d",
+  "dims": 1536,
+  "distance_metric": "cosine",
+  "hnsw_m": 16,
+  "hnsw_ef_construction": 200,
+  "ef_runtime": 10,
+  "top_k": 10,
+  "query_count": 100,
+  "configs": [
+    "FLAT_FP32",
+    "FLAT_FP16",
+    "HNSW_FP32",
+    "HNSW_FP16"
+  ],
+  "results": [
+    {
+      "size": 1000,
+      "query_count": 100,
+      "dims": 1536,
+      "distance_metric": "cosine",
+      "top_k": 10,
+      "ef_runtime": 10,
+      "hnsw_m": 16,
+      "hnsw_ef_construction": 200,
+      "baseline_memory_mb": 2.179,
+      "configs": {
+        "FLAT_FP32": {
+          "label": "FLAT_FP32",
+          "algorithm": "flat",
+          "datatype": "float32",
+          "load_duration_seconds": 0.04,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 6.046783447265625,
+          "memory_mb": 16.66,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.366,
+            "p95_ms": 0.447423,
+            "p99_ms": 0.538086,
+            "mean_ms": 0.377,
+            "qps": 2651.3
+          }
+        },
+        "FLAT_FP16": {
+          "label": "FLAT_FP16",
+          "algorithm": "flat",
+          "datatype": "float16",
+          "load_duration_seconds": 0.017,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 3.046783447265625,
+          "memory_mb": 9.759,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.308896,
+            "p95_ms": 0.379158,
+            "p99_ms": 0.433612,
+            "mean_ms": 0.316,
+            "qps": 3160.82
+          }
+        },
+        "HNSW_FP32": {
+          "label": "HNSW_FP32",
+          "algorithm": "hnsw",
+          "datatype": "float32",
+          "load_duration_seconds": 0.171,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 6.342193603515625,
+          "memory_mb": 17.001,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.290875,
+            "p95_ms": 0.345521,
+            "p99_ms": 0.42147,
+            "mean_ms": 0.299,
+            "qps": 3344.38
+          }
+        },
+        "HNSW_FP16": {
+          "label": "HNSW_FP16",
+          "algorithm": "hnsw",
+          "datatype": "float16",
+          "load_duration_seconds": 0.114,
+          "num_docs": 1000,
+          "vector_index_sz_mb": 3.3422317504882812,
+          "memory_mb": 10.1,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.268709,
+            "p95_ms": 0.331542,
+            "p99_ms": 0.49146,
+            "mean_ms": 0.278,
+            "qps": 3591.02
+          }
+        }
+      },
+      "overlap_vs_ground_truth": {
+        "FLAT_FP32": {
+          "mean_overlap_at_k": 1.0,
+          "min_overlap_at_k": 1.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0
+        },
+        "FLAT_FP16": {
+          "mean_overlap_at_k": 0.985,
+          "min_overlap_at_k": 0.8,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0411
+        },
+        "HNSW_FP32": {
+          "mean_overlap_at_k": 0.925,
+          "min_overlap_at_k": 0.4,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.1114
+        },
+        "HNSW_FP16": {
+          "mean_overlap_at_k": 0.907,
+          "min_overlap_at_k": 0.4,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.1166
+        }
+      }
+    },
+    {
+      "size": 10000,
+      "query_count": 100,
+      "dims": 1536,
+      "distance_metric": "cosine",
+      "top_k": 10,
+      "ef_runtime": 10,
+      "hnsw_m": 16,
+      "hnsw_ef_construction": 200,
+      "baseline_memory_mb": 2.26,
+      "configs": {
+        "FLAT_FP32": {
+          "label": "FLAT_FP32",
+          "algorithm": "flat",
+          "datatype": "float32",
+          "load_duration_seconds": 0.257,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 60.46302032470703,
+          "memory_mb": 146.178,
+          "latency": {
+            "count": 100,
+            "p50_ms": 1.381459,
+            "p95_ms": 1.604508,
+            "p99_ms": 1.697623,
+            "mean_ms": 1.407,
+            "qps": 710.78
+          }
+        },
+        "FLAT_FP16": {
+          "label": "FLAT_FP16",
+          "algorithm": "flat",
+          "datatype": "float16",
+          "load_duration_seconds": 0.164,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 30.46302032470703,
+          "memory_mb": 77.016,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.790333,
+            "p95_ms": 0.89695,
+            "p99_ms": 0.975148,
+            "mean_ms": 0.797,
+            "qps": 1255.33
+          }
+        },
+        "HNSW_FP32": {
+          "label": "HNSW_FP32",
+          "algorithm": "hnsw",
+          "datatype": "float32",
+          "load_duration_seconds": 5.884,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 63.53361129760742,
+          "memory_mb": 149.55,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.347542,
+            "p95_ms": 0.438817,
+            "p99_ms": 0.580133,
+            "mean_ms": 0.358,
+            "qps": 2793.45
+          }
+        },
+        "HNSW_FP16": {
+          "label": "HNSW_FP16",
+          "algorithm": "hnsw",
+          "datatype": "float16",
+          "load_duration_seconds": 2.949,
+          "num_docs": 10000,
+          "vector_index_sz_mb": 33.53794479370117,
+          "memory_mb": 80.393,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.316396,
+            "p95_ms": 0.421021,
+            "p99_ms": 0.55855,
+            "mean_ms": 0.33,
+            "qps": 3029.17
+          }
+        }
+      },
+      "overlap_vs_ground_truth": {
+        "FLAT_FP32": {
+          "mean_overlap_at_k": 1.0,
+          "min_overlap_at_k": 1.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0
+        },
+        "FLAT_FP16": {
+          "mean_overlap_at_k": 0.987,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0338
+        },
+        "HNSW_FP32": {
+          "mean_overlap_at_k": 0.88,
+          "min_overlap_at_k": 0.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.2454
+        },
+        "HNSW_FP16": {
+          "mean_overlap_at_k": 0.872,
+          "min_overlap_at_k": 0.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.2318
+        }
+      }
+    },
+    {
+      "size": 50000,
+      "query_count": 100,
+      "dims": 1536,
+      "distance_metric": "cosine",
+      "top_k": 10,
+      "ef_runtime": 10,
+      "hnsw_m": 16,
+      "hnsw_ef_construction": 200,
+      "baseline_memory_mb": 2.329,
+      "configs": {
+        "FLAT_FP32": {
+          "label": "FLAT_FP32",
+          "algorithm": "flat",
+          "datatype": "float32",
+          "load_duration_seconds": 0.977,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 296.31842041015625,
+          "memory_mb": 715.131,
+          "latency": {
+            "count": 100,
+            "p50_ms": 6.486167,
+            "p95_ms": 7.520218,
+            "p99_ms": 10.513048,
+            "mean_ms": 6.891,
+            "qps": 145.11
+          }
+        },
+        "FLAT_FP16": {
+          "label": "FLAT_FP16",
+          "algorithm": "flat",
+          "datatype": "float16",
+          "load_duration_seconds": 0.802,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 149.31842041015625,
+          "memory_mb": 372.724,
+          "latency": {
+            "count": 100,
+            "p50_ms": 4.133542,
+            "p95_ms": 4.512132,
+            "p99_ms": 4.930624,
+            "mean_ms": 4.157,
+            "qps": 240.58
+          }
+        },
+        "HNSW_FP32": {
+          "label": "HNSW_FP32",
+          "algorithm": "hnsw",
+          "datatype": "float32",
+          "load_duration_seconds": 41.181,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 311.5198669433594,
+          "memory_mb": 731.544,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.358583,
+            "p95_ms": 0.576504,
+            "p99_ms": 0.759528,
+            "mean_ms": 0.385,
+            "qps": 2597.15
+          }
+        },
+        "HNSW_FP16": {
+          "label": "HNSW_FP16",
+          "algorithm": "hnsw",
+          "datatype": "float16",
+          "load_duration_seconds": 24.361,
+          "num_docs": 50000,
+          "vector_index_sz_mb": 164.51638793945312,
+          "memory_mb": 389.09,
+          "latency": {
+            "count": 100,
+            "p50_ms": 0.317208,
+            "p95_ms": 0.475398,
+            "p99_ms": 0.570408,
+            "mean_ms": 0.331,
+            "qps": 3017.8
+          }
+        }
+      },
+      "overlap_vs_ground_truth": {
+        "FLAT_FP32": {
+          "mean_overlap_at_k": 1.0,
+          "min_overlap_at_k": 1.0,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0
+        },
+        "FLAT_FP16": {
+          "mean_overlap_at_k": 0.978,
+          "min_overlap_at_k": 0.9,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.0416
+        },
+        "HNSW_FP32": {
+          "mean_overlap_at_k": 0.847,
+          "min_overlap_at_k": 0.2,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.1494
+        },
+        "HNSW_FP16": {
+          "mean_overlap_at_k": 0.846,
+          "min_overlap_at_k": 0.2,
+          "max_overlap_at_k": 1.0,
+          "std_overlap_at_k": 0.1507
+        }
+      }
+    }
+  ]
+}

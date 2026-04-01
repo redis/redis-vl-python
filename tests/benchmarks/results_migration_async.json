@@ -1,0 +1,315 @@
+{
+  "benchmark": "migration_timing",
+  "executor": "async",
+  "schema_field_count": 16,
+  "vector_dims": 3072,
+  "trials_per_size": 3,
+  "results": [
+    {
+      "size": 1000,
+      "source_algo": "HNSW",
+      "source_dtype": "FLOAT32",
+      "target_algo": "FLAT",
+      "target_dtype": "FLOAT16",
+      "trials": [
+        {
+          "trial": 1,
+          "load_time_seconds": 0.408,
+          "migrate_time_seconds": 0.831,
+          "total_time_seconds": 1.239,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 0.831,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 0.302,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 0.512,
+            "validation_duration_seconds": 0.009,
+            "downtime_duration_seconds": 0.816
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 1953.125,
+            "source_index_size_mb": 12.35,
+            "target_index_size_mb": 6.047,
+            "index_size_delta_mb": -6.303
+          },
+          "source_vector_index_mb": 12.35,
+          "source_total_index_mb": 0.743,
+          "target_vector_index_mb": 6.047,
+          "target_total_index_mb": 0.747,
+          "vector_memory_savings_pct": 51.0,
+          "validation_passed": true,
+          "num_docs": 1000
+        },
+        {
+          "trial": 2,
+          "load_time_seconds": 0.41,
+          "migrate_time_seconds": 0.823,
+          "total_time_seconds": 1.233,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 0.823,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 0.294,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 0.51,
+            "validation_duration_seconds": 0.011,
+            "downtime_duration_seconds": 0.806
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 1960.784,
+            "source_index_size_mb": 12.35,
+            "target_index_size_mb": 6.047,
+            "index_size_delta_mb": -6.303
+          },
+          "source_vector_index_mb": 12.35,
+          "source_total_index_mb": 0.75,
+          "target_vector_index_mb": 6.047,
+          "target_total_index_mb": 0.752,
+          "vector_memory_savings_pct": 51.0,
+          "validation_passed": true,
+          "num_docs": 1000
+        },
+        {
+          "trial": 3,
+          "load_time_seconds": 0.416,
+          "migrate_time_seconds": 0.818,
+          "total_time_seconds": 1.234,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 0.818,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 0.291,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 0.512,
+            "validation_duration_seconds": 0.008,
+            "downtime_duration_seconds": 0.805
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 1953.125,
+            "source_index_size_mb": 12.35,
+            "target_index_size_mb": 6.047,
+            "index_size_delta_mb": -6.303
+          },
+          "source_vector_index_mb": 12.35,
+          "source_total_index_mb": 0.75,
+          "target_vector_index_mb": 6.047,
+          "target_total_index_mb": 0.752,
+          "vector_memory_savings_pct": 51.0,
+          "validation_passed": true,
+          "num_docs": 1000
+        }
+      ]
+    },
+    {
+      "size": 10000,
+      "source_algo": "HNSW",
+      "source_dtype": "FLOAT32",
+      "target_algo": "FLAT",
+      "target_dtype": "FLOAT16",
+      "trials": [
+        {
+          "trial": 1,
+          "load_time_seconds": 25.312,
+          "migrate_time_seconds": 4.127,
+          "total_time_seconds": 29.439,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 4.127,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 3.088,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 1.013,
+            "validation_duration_seconds": 0.007,
+            "downtime_duration_seconds": 4.103
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 9871.668,
+            "source_index_size_mb": 123.461,
+            "target_index_size_mb": 60.463,
+            "index_size_delta_mb": -62.998
+          },
+          "source_vector_index_mb": 123.461,
+          "source_total_index_mb": 7.055,
+          "target_vector_index_mb": 60.463,
+          "target_total_index_mb": 7.082,
+          "vector_memory_savings_pct": 51.0,
+          "validation_passed": true,
+          "num_docs": 10000
+        },
+        {
+          "trial": 2,
+          "load_time_seconds": 28.408,
+          "migrate_time_seconds": 4.151,
+          "total_time_seconds": 32.559,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 4.151,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 3.114,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 1.008,
+            "validation_duration_seconds": 0.007,
+            "downtime_duration_seconds": 4.124
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 9920.635,
+            "source_index_size_mb": 123.461,
+            "target_index_size_mb": 60.463,
+            "index_size_delta_mb": -62.998
+          },
+          "source_vector_index_mb": 123.461,
+          "source_total_index_mb": 7.046,
+          "target_vector_index_mb": 60.463,
+          "target_total_index_mb": 7.063,
+          "vector_memory_savings_pct": 51.0,
+          "validation_passed": true,
+          "num_docs": 10000
+        },
+        {
+          "trial": 3,
+          "load_time_seconds": 27.27,
+          "migrate_time_seconds": 4.481,
+          "total_time_seconds": 31.751,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 4.481,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 3.439,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.003,
+            "initial_indexing_duration_seconds": 1.011,
+            "validation_duration_seconds": 0.008,
+            "downtime_duration_seconds": 4.453
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 9891.197,
+            "source_index_size_mb": 123.461,
+            "target_index_size_mb": 60.463,
+            "index_size_delta_mb": -62.998
+          },
+          "source_vector_index_mb": 123.461,
+          "source_total_index_mb": 7.05,
+          "target_vector_index_mb": 60.463,
+          "target_total_index_mb": 7.074,
+          "vector_memory_savings_pct": 51.0,
+          "validation_passed": true,
+          "num_docs": 10000
+        }
+      ]
+    },
+    {
+      "size": 100000,
+      "source_algo": "HNSW",
+      "source_dtype": "FLOAT32",
+      "target_algo": "FLAT",
+      "target_dtype": "FLOAT16",
+      "trials": [
+        {
+          "trial": 1,
+          "load_time_seconds": 487.891,
+          "migrate_time_seconds": 35.844,
+          "total_time_seconds": 523.735,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 35.844,
+            "drop_duration_seconds": 0.001,
+            "quantize_duration_seconds": 29.606,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 6.059,
+            "validation_duration_seconds": 0.021,
+            "downtime_duration_seconds": 35.668
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 16504.374,
+            "source_index_size_mb": 1211.066,
+            "target_index_size_mb": 592.648,
+            "index_size_delta_mb": -618.418
+          },
+          "source_vector_index_mb": 1211.066,
+          "source_total_index_mb": 70.507,
+          "target_vector_index_mb": 592.648,
+          "target_total_index_mb": 70.728,
+          "vector_memory_savings_pct": 51.1,
+          "validation_passed": true,
+          "num_docs": 100000
+        },
+        {
+          "trial": 2,
+          "load_time_seconds": 457.93,
+          "migrate_time_seconds": 35.758,
+          "total_time_seconds": 493.688,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 35.758,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 29.516,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.002,
+            "initial_indexing_duration_seconds": 6.067,
+            "validation_duration_seconds": 0.011,
+            "downtime_duration_seconds": 35.585
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 16482.611,
+            "source_index_size_mb": 1211.066,
+            "target_index_size_mb": 592.648,
+            "index_size_delta_mb": -618.418
+          },
+          "source_vector_index_mb": 1211.066,
+          "source_total_index_mb": 70.472,
+          "target_vector_index_mb": 592.648,
+          "target_total_index_mb": 70.692,
+          "vector_memory_savings_pct": 51.1,
+          "validation_passed": true,
+          "num_docs": 100000
+        },
+        {
+          "trial": 3,
+          "load_time_seconds": 447.494,
+          "migrate_time_seconds": 35.913,
+          "total_time_seconds": 483.407,
+          "enumerate_method": "FT.AGGREGATE",
+          "timings": {
+            "total_migration_duration_seconds": 35.913,
+            "drop_duration_seconds": 0.0,
+            "quantize_duration_seconds": 29.67,
+            "field_rename_duration_seconds": null,
+            "key_rename_duration_seconds": null,
+            "recreate_duration_seconds": 0.003,
+            "initial_indexing_duration_seconds": 6.065,
+            "validation_duration_seconds": 0.01,
+            "downtime_duration_seconds": 35.738
+          },
+          "benchmark_summary": {
+            "documents_indexed_per_second": 16488.046,
+            "source_index_size_mb": 1211.066,
+            "target_index_size_mb": 592.648,
+            "index_size_delta_mb": -618.418
+          },
+          "source_vector_index_mb": 1211.066,
+          "source_total_index_mb": 70.539,
+          "target_vector_index_mb": 592.648,
+          "target_total_index_mb": 70.765,
+          "vector_memory_savings_pct": 51.1,
+          "validation_passed": true,
+          "num_docs": 100000
+        }
+      ]
+    }
+  ]
+}
