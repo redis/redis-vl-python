@@ -352,7 +352,8 @@ def compute_recall(
             cand_set = set(cand[:k])
             denom = min(ground_truth_depth, len(gt_set))
             if denom == 0:
-                ratios.append(1.0)
+                # Empty ground truth means nothing to recall; use 0.0
+                ratios.append(0.0)
             else:
                 ratios.append(len(gt_set & cand_set) / denom)
         mean_recall = round(statistics.mean(ratios), 4)

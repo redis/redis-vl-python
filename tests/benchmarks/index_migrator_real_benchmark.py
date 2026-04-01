@@ -171,7 +171,12 @@ def encode_texts(
     texts: Sequence[str],
     batch_size: int,
 ) -> tuple[np.ndarray, float]:
-    encoder = SentenceTransformer(model_name, local_files_only=True)
+    try:
+        encoder = SentenceTransformer(model_name, local_files_only=True)
+    except OSError:
+        # Model not cached locally yet; download it
+        print(f"Model '{model_name}' not found locally, downloading...")
+        encoder = SentenceTransformer(model_name)
     start = time.perf_counter()
     embeddings = encoder.encode(
         list(texts),

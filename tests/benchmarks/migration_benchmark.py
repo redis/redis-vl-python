@@ -21,8 +21,6 @@ import argparse
 import asyncio
 import json
 import random
-import string
-import struct
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -326,14 +324,15 @@ def run_migration(
         if detail:
             print(f"    [{step}] {detail}")
 
-    report = executor.apply(
-        plan,
-        redis_url=redis_url,
-        progress_callback=progress,
-    )
-
-    _orig_logger.removeHandler(handler)
-    _orig_logger.setLevel(_orig_level)
+    try:
+        report = executor.apply(
+            plan,
+            redis_url=redis_url,
+            progress_callback=progress,
+        )
+    finally:
+        _orig_logger.removeHandler(handler)
+        _orig_logger.setLevel(_orig_level)
 
     return {"report": report.model_dump(), "enumerate_method": enumerate_method}
 
@@ -385,14 +384,15 @@ async def async_run_migration(
         if detail:
             print(f"    [{step}] {detail}")
 
-    report = await executor.apply(
-        plan,
-        redis_url=redis_url,
-        progress_callback=progress,
-    )
-
-    _orig_logger.removeHandler(handler)
-    _orig_logger.setLevel(_orig_level)
+    try:
+        report = await executor.apply(
+            plan,
+            redis_url=redis_url,
+            progress_callback=progress,
+        )
+    finally:
+        _orig_logger.removeHandler(handler)
+        _orig_logger.setLevel(_orig_level)
 
     return {"report": report.model_dump(), "enumerate_method": enumerate_method}
 
@@ -532,7 +532,7 @@ def run_benchmark(
             }
 
             # Print isolated timings
-            enum_s = timings.get("drop_duration_seconds", 0) or 0
+            _enum_s = timings.get("drop_duration_seconds", 0) or 0  # noqa: F841
             quant_s = timings.get("quantize_duration_seconds") or 0
             index_s = timings.get("initial_indexing_duration_seconds") or 0
             down_s = timings.get("downtime_duration_seconds") or 0

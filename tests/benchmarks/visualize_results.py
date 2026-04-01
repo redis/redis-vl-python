@@ -302,7 +302,7 @@ def chart_memory_savings(results: List[Dict], dataset: str, output_dir: str):
         for r in results:
             m32 = r["configs"][fp32]["memory_mb"]
             m16 = r["configs"][fp16]["memory_mb"]
-            pct = (1 - m16 / m32) * 100
+            pct = (1 - m16 / m32) * 100 if m32 > 0 else 0.0
             savings.append(pct)
 
         bars = ax.bar(
