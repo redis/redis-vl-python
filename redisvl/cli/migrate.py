@@ -59,8 +59,9 @@ class Migrate:
         # Convert dashes to underscores for method lookup (e.g., batch-plan -> batch_plan)
         command = args.command.replace("-", "_")
         if not hasattr(self, command):
+            print(f"Unknown subcommand: {args.command}")
             parser.print_help()
-            exit(0)
+            exit(1)
 
         try:
             getattr(self, command)()
@@ -93,7 +94,7 @@ Available indexes:"""
 Supported changes:
   - Adding or removing non-vector fields (text, tag, numeric, geo)
   - Changing field options (sortable, separator, weight)
-  - Changing vector algorithm (FLAT, HNSW, SVS_VAMANA)
+  - Changing vector algorithm (FLAT, HNSW, SVS-VAMANA)
   - Changing distance metric (COSINE, L2, IP)
   - Tuning algorithm parameters (M, EF_CONSTRUCTION, EF_RUNTIME, EPSILON)
   - Quantizing vectors (float32 to float16/bfloat16/int8/uint8)
@@ -317,12 +318,14 @@ Commands:
 
         def progress_callback(step: str, detail: Optional[str]) -> None:
             step_labels = {
-                "enumerate": "[1/6] Enumerate keys",
-                "bgsave": "[2/6] BGSAVE snapshot",
-                "drop": "[3/6] Drop index",
-                "quantize": "[4/6] Quantize vectors",
-                "create": "[5/6] Create index",
-                "index": "[6/6] Re-indexing",
+                "enumerate": "[1/8] Enumerate keys",
+                "bgsave": "[2/8] BGSAVE snapshot",
+                "drop": "[3/8] Drop index",
+                "quantize": "[4/8] Quantize vectors",
+                "field_rename": "[5/8] Rename fields",
+                "key_rename": "[6/8] Rename keys",
+                "create": "[7/8] Create index",
+                "index": "[8/8] Re-indexing",
                 "validate": "Validate",
             }
             label = step_labels.get(step, step)
@@ -356,12 +359,14 @@ Commands:
 
         def progress_callback(step: str, detail: Optional[str]) -> None:
             step_labels = {
-                "enumerate": "[1/6] Enumerate keys",
-                "bgsave": "[2/6] BGSAVE snapshot",
-                "drop": "[3/6] Drop index",
-                "quantize": "[4/6] Quantize vectors",
-                "create": "[5/6] Create index",
-                "index": "[6/6] Re-indexing",
+                "enumerate": "[1/8] Enumerate keys",
+                "bgsave": "[2/8] BGSAVE snapshot",
+                "drop": "[3/8] Drop index",
+                "quantize": "[4/8] Quantize vectors",
+                "field_rename": "[5/8] Rename fields",
+                "key_rename": "[6/8] Rename keys",
+                "create": "[7/8] Create index",
+                "index": "[8/8] Re-indexing",
                 "validate": "Validate",
             }
             label = step_labels.get(step, step)
@@ -699,7 +704,7 @@ Commands:
         state_path = Path(args.state).resolve()
         if not state_path.exists():
             print(f"State file not found: {args.state}")
-            return
+            exit(1)
 
         from redisvl.migration.models import BatchState
 
