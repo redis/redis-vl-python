@@ -173,7 +173,13 @@ class MigrationWizard:
             if action == "1":
                 field = self._prompt_add_field(working_schema)
                 if field:
-                    changes.add_fields.append(field)
+                    staged_names = {f["name"] for f in changes.add_fields}
+                    if field["name"] in staged_names:
+                        print(
+                            f"Field '{field['name']}' is already staged for addition."
+                        )
+                    else:
+                        changes.add_fields.append(field)
             elif action == "2":
                 update = self._prompt_update_field(working_schema)
                 if update:

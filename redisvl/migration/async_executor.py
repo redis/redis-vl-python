@@ -346,15 +346,17 @@ class AsyncMigrationExecutor:
 
             # JSONPath GET returns results as a list; unwrap single-element
             # results to preserve the original document shape.
+            # Missing paths return None or [] depending on Redis version.
             pipe = client.pipeline(transaction=False)
+            batch_ops = 0
             for key, value in zip(batch, values):
-                if value is not None:
-                    if isinstance(value, list) and len(value) == 1:
-                        value = value[0]
-                    pipe.json().set(key, new_path, value)
-                    pipe.json().delete(key, old_path)
-
-            batch_ops = sum(1 for v in values if v is not None)
+                if value is None or value == []:
+                    continue
+                if isinstance(value, list) and len(value) == 1:
+                    value = value[0]
+                pipe.json().set(key, new_path, value)
+                pipe.json().delete(key, old_path)
+                batch_ops += 1
             try:
                 await pipe.execute()
                 # Count by number of keys that had old field values,
