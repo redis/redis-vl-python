@@ -266,6 +266,7 @@ class AsyncMigrationExecutor:
                         collisions.append(batch_new_keys[j])
             except Exception as e:
                 logger.warning(f"Error in rename batch: {e}")
+                raise
 
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
@@ -301,16 +302,21 @@ class AsyncMigrationExecutor:
             values = await pipe.execute()
 
             pipe = client.pipeline(transaction=False)
+            batch_ops = 0
             for key, value in zip(batch, values):
                 if value is not None:
                     pipe.hset(key, new_name, value)
                     pipe.hdel(key, old_name)
+                    batch_ops += 1
 
             try:
-                results = await pipe.execute()
-                renamed += sum(1 for j, r in enumerate(results) if j % 2 == 0 and r)
+                await pipe.execute()
+                # Count by number of keys that had old field values,
+                # not by HSET return (HSET returns 0 for existing field updates)
+                renamed += batch_ops
             except Exception as e:
                 logger.warning(f"Error in field rename batch: {e}")
+                raise
 
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
@@ -348,11 +354,15 @@ class AsyncMigrationExecutor:
                     pipe.json().set(key, new_path, value)
                     pipe.json().delete(key, old_path)
 
+            batch_ops = sum(1 for v in values if v is not None)
             try:
-                results = await pipe.execute()
-                renamed += sum(1 for j, r in enumerate(results) if j % 2 == 0 and r)
+                await pipe.execute()
+                # Count by number of keys that had old field values,
+                # not by JSON.SET return value
+                renamed += batch_ops
             except Exception as e:
                 logger.warning(f"Error in JSON field rename batch: {e}")
+                raise
 
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
