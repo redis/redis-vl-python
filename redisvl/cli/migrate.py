@@ -428,6 +428,7 @@ Commands:
         plan = load_migration_plan(args.plan)
         validator = MigrationValidator()
 
+        # Local import to avoid circular dependency with migration module
         from redisvl.migration.utils import timestamp_utc
 
         started_at = timestamp_utc()
@@ -438,6 +439,7 @@ Commands:
         )
         finished_at = timestamp_utc()
 
+        # Local import to avoid circular dependency with migration module
         from redisvl.migration.models import (
             MigrationBenchmarkSummary,
             MigrationReport,
@@ -608,7 +610,7 @@ Commands:
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
 
-        # Load batch plan
+        # Local import to avoid circular dependency with migration module
         from redisvl.migration.models import BatchPlan
 
         plan_data = load_yaml(args.plan)
@@ -706,6 +708,7 @@ Commands:
             print(f"State file not found: {args.state}")
             exit(1)
 
+        # Local import to avoid circular dependency with migration module
         from redisvl.migration.models import BatchState
 
         state_data = load_yaml(args.state)
