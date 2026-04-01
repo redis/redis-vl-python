@@ -1,5 +1,3 @@
-import pytest
-
 from redisvl.migration.wizard import MigrationWizard
 
 
