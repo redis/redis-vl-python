@@ -617,6 +617,14 @@ class TestNoIndexModifierIntegration:
         )
         assert result[0] == 3
 
+        # Filtering by NOINDEX field should return no results
+        filter_result = client.execute_command(
+            "FT.SEARCH",
+            f"test_noindex_{worker_id}",
+            "@sort_only:[5 10]",
+        )
+        assert filter_result[0] == 0
+
         # Cleanup
         client.delete(
             f"noindex_{worker_id}:1",
