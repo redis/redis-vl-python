@@ -113,6 +113,24 @@ class MigrationWizard:
                     return indexes[offset]
             print("Invalid selection. Please try again.")
 
+    @staticmethod
+    def _filter_staged_adds(
+        working_schema: Dict[str, Any], staged_add_names: set
+    ) -> Dict[str, Any]:
+        """Return a copy of working_schema with staged-add fields removed.
+
+        This prevents staged additions from appearing in update/rename
+        candidate lists.
+        """
+        import copy
+
+        filtered = copy.deepcopy(working_schema)
+        filtered["fields"] = [
+            f for f in filtered["fields"] if f["name"] not in staged_add_names
+        ]
+        return filtered
+
+
     def _apply_staged_changes(
         self,
         source_schema: Dict[str, Any],
@@ -138,6 +156,16 @@ class MigrationWizard:
         for field in working["fields"]:
             if field["name"] in rename_map:
                 field["name"] = rename_map[field["name"]]
+
+        # Apply updates (reflect attribute changes in working schema)
+        update_map = {u.name: u for u in changes.update_fields}
+        for field in working["fields"]:
+            if field["name"] in update_map:
+                upd = update_map[field["name"]]
+                if upd.attrs:
+                    field.setdefault("attrs", {}).update(upd.attrs)
+                if upd.type:
+                    field["type"] = upd.type
 
         # Apply adds
         for added in changes.add_fields:
@@ -181,15 +209,36 @@ class MigrationWizard:
                     else:
                         changes.add_fields.append(field)
             elif action == "2":
-                update = self._prompt_update_field(working_schema)
+                # Filter out staged additions from update candidates
+                staged_add_names = {f["name"] for f in changes.add_fields}
+                update_schema = self._filter_staged_adds(
+                    working_schema, staged_add_names
+                )
+                update = self._prompt_update_field(update_schema)
                 if update:
                     changes.update_fields.append(update)
             elif action == "3":
                 field_name = self._prompt_remove_field(working_schema)
                 if field_name:
-                    changes.remove_fields.append(field_name)
+                    # If removing a staged-add, cancel the add instead of
+                    # appending to remove_fields
+                    staged_add_names = {f["name"] for f in changes.add_fields}
+                    if field_name in staged_add_names:
+                        changes.add_fields = [
+                            f
+                            for f in changes.add_fields
+                            if f["name"] != field_name
+                        ]
+                        print(f"Cancelled staged addition of '{field_name}'.")
+                    else:
+                        changes.remove_fields.append(field_name)
             elif action == "4":
-                field_rename = self._prompt_rename_field(working_schema)
+                # Filter out staged additions from rename candidates
+                staged_add_names = {f["name"] for f in changes.add_fields}
+                rename_schema = self._filter_staged_adds(
+                    working_schema, staged_add_names
+                )
+                field_rename = self._prompt_rename_field(rename_schema)
                 if field_rename:
                     changes.rename_fields.append(field_rename)
             elif action == "5":
@@ -542,7 +591,7 @@ class MigrationWizard:
             .upper()
             .replace("_", "-")  # Normalize SVS_VAMANA to SVS-VAMANA
         )
-        if algo and algo in ("FLAT", "HNSW", "SVS-VAMANA"):
+        if algo and algo in ("FLAT", "HNSW", "SVS-VAMANA") and algo != current_algo:
             attrs["algorithm"] = algo
 
         # Datatype (quantization) - show algorithm-specific options
