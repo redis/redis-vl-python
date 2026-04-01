@@ -10,9 +10,8 @@ Tests use mocked Redis clients to verify:
 """
 
 from fnmatch import fnmatch
-from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 import yaml
