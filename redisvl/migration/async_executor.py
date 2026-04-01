@@ -268,15 +268,17 @@ class AsyncMigrationExecutor:
                 logger.warning(f"Error in rename batch: {e}")
                 raise
 
+            # Fail fast on collisions to avoid partial renames across batches.
+            if collisions:
+                raise RuntimeError(
+                    f"Prefix rename aborted after {renamed} successful rename(s): "
+                    f"{len(collisions)} destination key(s) already exist "
+                    f"(first 5: {collisions[:5]}). This would overwrite existing data. "
+                    f"Remove conflicting keys or choose a different prefix."
+                )
+
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
-
-        if collisions:
-            raise RuntimeError(
-                f"Prefix rename aborted: {len(collisions)} destination key(s) already exist "
-                f"(first 5: {collisions[:5]}). This would overwrite existing data. "
-                f"Remove conflicting keys or choose a different prefix."
-            )
 
         return renamed
 
@@ -296,15 +298,28 @@ class AsyncMigrationExecutor:
         for i in range(0, total, pipeline_size):
             batch = keys[i : i + pipeline_size]
 
+            # Get old field values AND check if destination exists
             pipe = client.pipeline(transaction=False)
             for key in batch:
                 pipe.hget(key, old_name)
-            values = await pipe.execute()
+                pipe.hexists(key, new_name)
+            raw_results = await pipe.execute()
+            # Interleaved: [hget_0, hexists_0, hget_1, hexists_1, ...]
+            values = raw_results[0::2]
+            dest_exists = raw_results[1::2]
 
             pipe = client.pipeline(transaction=False)
             batch_ops = 0
-            for key, value in zip(batch, values):
+            for key, value, exists in zip(batch, values, dest_exists):
                 if value is not None:
+                    if exists:
+                        logger.warning(
+                            "Field '%s' already exists in key '%s'; "
+                            "overwriting with value from '%s'",
+                            new_name,
+                            key,
+                            old_name,
+                        )
                     pipe.hset(key, new_name, value)
                     pipe.hdel(key, old_name)
                     batch_ops += 1
@@ -427,8 +442,12 @@ class AsyncMigrationExecutor:
                         plan.source.index_name,
                     )
                 elif existing_checkpoint.status == "completed":
+                    # Quantization completed before the crash -- still need
+                    # to resume from post-drop state (index recreation).
+                    resuming_from_checkpoint = True
                     logger.info(
-                        "Checkpoint at %s is already completed, ignoring",
+                        "Checkpoint at %s is already completed; resuming "
+                        "index recreation from post-drop state",
                         checkpoint_path,
                     )
                 else:
@@ -488,12 +507,14 @@ class AsyncMigrationExecutor:
         storage_type = plan.source.keyspace.storage_type
 
         datatype_changes = AsyncMigrationPlanner.get_vector_datatype_changes(
-            plan.source.schema_snapshot, plan.merged_target_schema
+            plan.source.schema_snapshot,
+            plan.merged_target_schema,
+            rename_operations=plan.rename_operations,
         )
 
         # Check for rename operations
         rename_ops = plan.rename_operations
-        has_prefix_change = bool(rename_ops.change_prefix)
+        has_prefix_change = rename_ops.change_prefix is not None
         has_field_renames = bool(rename_ops.rename_fields)
         needs_quantization = bool(datatype_changes) and storage_type != "json"
         needs_enumeration = needs_quantization or has_prefix_change or has_field_renames
@@ -1015,6 +1036,7 @@ class AsyncMigrationExecutor:
 
         stable_ready_checks: Optional[int] = None
         while time.perf_counter() < deadline:
+            ready = False
             latest_info = await index.info()
             indexing = latest_info.get("indexing")
             percent_indexed = latest_info.get("percent_indexed")
