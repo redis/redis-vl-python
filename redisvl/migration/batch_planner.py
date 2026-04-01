@@ -37,6 +37,7 @@ class BatchMigrationPlanner:
         redis_client: Optional[Any] = None,
         failure_policy: str = "fail_fast",
     ) -> BatchPlan:
+        # --- NEW: validate failure_policy early ---
         """Create a batch migration plan for multiple indexes.
 
         Args:
@@ -51,6 +52,13 @@ class BatchMigrationPlanner:
         Returns:
             BatchPlan with shared patch and per-index applicability.
         """
+        _VALID_FAILURE_POLICIES = {"fail_fast", "continue_on_error"}
+        if failure_policy not in _VALID_FAILURE_POLICIES:
+            raise ValueError(
+                f"Invalid failure_policy '{failure_policy}'. "
+                f"Must be one of: {sorted(_VALID_FAILURE_POLICIES)}"
+            )
+
         # Get Redis client
         client = redis_client
         if client is None:
@@ -95,6 +103,7 @@ class BatchMigrationPlanner:
                     datatype_changes = MigrationPlanner.get_vector_datatype_changes(
                         plan.source.schema_snapshot,
                         plan.merged_target_schema,
+                        rename_operations=plan.rename_operations,
                     )
                     if datatype_changes:
                         requires_quantization = True
@@ -134,7 +143,8 @@ class BatchMigrationPlanner:
         if indexes_file:
             return self._load_indexes_from_file(indexes_file)
 
-        # Pattern matching
+        # Pattern matching -- pattern is guaranteed non-None at this point
+        assert pattern is not None, "pattern must be set when reaching fnmatch"
         all_indexes = list_indexes(redis_client=redis_client)
         matched = [idx for idx in all_indexes if fnmatch.fnmatch(idx, pattern)]
         return sorted(matched)
@@ -167,10 +177,18 @@ class BatchMigrationPlanner:
             schema_dict = index.schema.to_dict()
             field_names = {f["name"] for f in schema_dict.get("fields", [])}
 
-            # Check that all update_fields exist in this index
+            # Build a set of field names that includes rename targets so
+            # that update_fields referencing the NEW name of a renamed field
+            # are considered applicable.
+            rename_target_names = {
+                fr.new_name for fr in shared_patch.changes.rename_fields
+            }
+            effective_field_names = field_names | rename_target_names
+
+            # Check that all update_fields exist in this index (or are rename targets)
             missing_fields = []
             for field_update in shared_patch.changes.update_fields:
-                if field_update.name not in field_names:
+                if field_update.name not in effective_field_names:
                     missing_fields.append(field_update.name)
 
             if missing_fields:

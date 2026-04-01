@@ -80,12 +80,17 @@ class BatchMigrationExecutor:
         applicable_indexes = [idx for idx in batch_plan.indexes if idx.applicable]
         total = len(applicable_indexes)
 
+        # Calculate the correct starting position for progress reporting
+        # (accounts for already-completed indexes during resume)
+        already_completed = len(state.completed)
+
         # Process each remaining index
-        for position, index_name in enumerate(state.remaining[:], start=1):
+        for offset, index_name in enumerate(state.remaining[:]):
             state.current_index = index_name
             state.updated_at = timestamp_utc()
             self._write_state(state, state_path)
 
+            position = already_completed + offset + 1
             if progress_callback:
                 progress_callback(index_name, position, total, "starting")
 
@@ -133,18 +138,8 @@ class BatchMigrationExecutor:
                 index_state.status == "failed"
                 and batch_plan.failure_policy == "fail_fast"
             ):
-                # Mark remaining as skipped
-                for remaining_name in state.remaining[:]:
-                    state.remaining.remove(remaining_name)
-                    state.completed.append(
-                        BatchIndexState(
-                            name=remaining_name,
-                            status="skipped",
-                            completed_at=timestamp_utc(),
-                        )
-                    )
-                state.updated_at = timestamp_utc()
-                self._write_state(state, state_path)
+                # Leave remaining indexes in state.remaining so that
+                # checkpoint resume can pick them up later.
                 break
 
         # Build final report
@@ -225,13 +220,14 @@ class BatchMigrationExecutor:
                 redis_client=redis_client,
             )
 
-            # Write individual report
-            report_file = report_dir / f"{index_name}_report.yaml"
+            # Sanitize index_name to prevent path traversal
+            safe_name = index_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+            report_file = report_dir / f"{safe_name}_report.yaml"
             write_yaml(report.model_dump(exclude_none=True), str(report_file))
 
             return BatchIndexState(
                 name=index_name,
-                status="succeeded" if report.result == "succeeded" else "failed",
+                status="success" if report.result == "succeeded" else "failed",
                 completed_at=timestamp_utc(),
                 report_path=str(report_file),
                 error=report.validation.errors[0] if report.validation.errors else None,
@@ -277,11 +273,18 @@ class BatchMigrationExecutor:
         )
 
     def _write_state(self, state: BatchState, state_path: str) -> None:
-        """Write checkpoint state to file."""
+        """Write checkpoint state to file atomically.
+
+        Writes to a temporary file first, then renames to avoid corruption
+        if the process crashes mid-write.
+        """
         path = Path(state_path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        tmp_path = path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
             yaml.safe_dump(state.model_dump(exclude_none=True), f, sort_keys=False)
+            f.flush()
+        tmp_path.replace(path)
 
     def _load_state(self, state_path: str) -> BatchState:
         """Load checkpoint state from file."""
@@ -323,12 +326,23 @@ class BatchMigrationExecutor:
                     error=idx_state.error,
                 )
             )
-            if idx_state.status == "succeeded":
+            if idx_state.status in ("succeeded", "success"):
                 succeeded += 1
             elif idx_state.status == "failed":
                 failed += 1
             else:
                 skipped += 1
+
+        # Add remaining indexes (fail-fast left them pending) as skipped
+        for remaining_name in state.remaining:
+            index_reports.append(
+                BatchIndexReport(
+                    name=remaining_name,
+                    status="skipped",
+                    error="Skipped due to fail_fast policy",
+                )
+            )
+            skipped += 1
 
         # Add non-applicable indexes as skipped
         for idx in batch_plan.indexes:
