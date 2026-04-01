@@ -1,3 +1,11 @@
+from redisvl.migration.async_executor import AsyncMigrationExecutor
+from redisvl.migration.async_planner import AsyncMigrationPlanner
+from redisvl.migration.async_utils import (
+    async_current_source_matches_snapshot,
+    async_list_indexes,
+    async_wait_for_index_ready,
+)
+from redisvl.migration.async_validation import AsyncMigrationValidator
 from redisvl.migration.executor import MigrationExecutor
 from redisvl.migration.models import (
     DiskSpaceEstimate,
@@ -21,4 +29,12 @@ __all__ = [
     "FieldRename",
     "RenameOperations",
     "SchemaPatch",
+    # Async
+    "AsyncMigrationExecutor",
+    "AsyncMigrationPlanner",
+    "AsyncMigrationValidator",
+    # Async utilities
+    "async_current_source_matches_snapshot",
+    "async_list_indexes",
+    "async_wait_for_index_ready",
 ]
