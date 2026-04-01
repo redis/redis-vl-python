@@ -22,16 +22,18 @@ from redisvl.migration.models import (
 )
 from redisvl.migration.planner import MigrationPlanner
 from redisvl.migration.validation import MigrationValidator
+from redisvl.migration.wizard import MigrationWizard
 
 __all__ = [
     # Sync
     "DiskSpaceEstimate",
-    "FieldRename",
     "MigrationExecutor",
     "MigrationPlan",
     "MigrationPlanner",
     "MigrationReport",
     "MigrationValidator",
+    "MigrationWizard",
+    "FieldRename",
     "RenameOperations",
     "SchemaPatch",
     # Batch
@@ -44,6 +46,7 @@ __all__ = [
     "AsyncMigrationExecutor",
     "AsyncMigrationPlanner",
     "AsyncMigrationValidator",
+    # Async utilities
     "async_current_source_matches_snapshot",
     "async_list_indexes",
     "async_wait_for_index_ready",
