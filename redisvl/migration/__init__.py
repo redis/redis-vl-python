@@ -6,8 +6,13 @@ from redisvl.migration.async_utils import (
     async_wait_for_index_ready,
 )
 from redisvl.migration.async_validation import AsyncMigrationValidator
+from redisvl.migration.batch_executor import BatchMigrationExecutor
+from redisvl.migration.batch_planner import BatchMigrationPlanner
 from redisvl.migration.executor import MigrationExecutor
 from redisvl.migration.models import (
+    BatchPlan,
+    BatchReport,
+    BatchState,
     DiskSpaceEstimate,
     FieldRename,
     MigrationPlan,
@@ -29,6 +34,12 @@ __all__ = [
     "MigrationValidator",
     "RenameOperations",
     "SchemaPatch",
+    # Batch
+    "BatchMigrationExecutor",
+    "BatchMigrationPlanner",
+    "BatchPlan",
+    "BatchReport",
+    "BatchState",
     # Async
     "AsyncMigrationExecutor",
     "AsyncMigrationPlanner",
