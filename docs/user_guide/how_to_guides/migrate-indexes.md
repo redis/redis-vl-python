@@ -319,12 +319,43 @@ rvl migrate apply \
   --benchmark-out benchmark_report.yaml
 ```
 
-What `apply` does:
+### What `apply` does
 
-1. checks that the live source schema still matches the saved source snapshot
-2. drops only the index structure
-3. preserves the existing documents
-4. recreates the same index name with the merged target schema
+The migration executor follows this sequence:
+
+**STEP 1: Enumerate keys** (before any modifications)
+- Discovers all document keys belonging to the source index
+- Uses `FT.AGGREGATE WITHCURSOR` for efficient enumeration
+- Falls back to `SCAN` if the index has indexing failures
+- Keys are stored in memory for quantization or rename operations
+
+**STEP 2: Drop source index**
+- Issues `FT.DROPINDEX` to remove the index structure
+- **The underlying documents remain in Redis** - only the index metadata is deleted
+- After this point, the index is unavailable until step 6 completes
+
+**STEP 3: Quantize vectors** (if changing vector datatype)
+- For each document in the enumerated key list:
+  - Reads the document (including the old vector)
+  - Converts the vector to the new datatype (e.g., float32 → float16)
+  - Writes back the converted vector to the same document
+- Processes documents in batches of 500 using Redis pipelines
+- Skipped for JSON storage (vectors are re-indexed automatically on recreate)
+- **Checkpoint support**: For large datasets, use `--resume` to enable crash-safe recovery
+
+**STEP 4: Key renames** (if changing key prefix)
+- If the migration changes the key prefix, renames each key from old prefix to new prefix
+- Skipped if no prefix change
+
+**STEP 5: Create target index**
+- Issues `FT.CREATE` with the merged target schema
+- Redis begins background indexing of existing documents
+
+**STEP 6: Wait for re-indexing**
+- Polls `FT.INFO` until indexing completes
+- The index becomes available for queries when this completes
+
+**Summary**: The migration preserves all documents, drops only the index structure, performs any document-level transformations (quantization, renames), then recreates the index with the new schema.
 5. waits for indexing readiness
 6. validates the result
 7. writes report artifacts
