@@ -106,9 +106,14 @@ To change a schema, you create a new index with the updated configuration, reind
 
 Planning your schema carefully upfront reduces the need for migrations, but the capability exists when requirements evolve.
 
+RedisVL now includes a dedicated migration workflow for this lifecycle:
+
+- `drop_recreate` for document-preserving rebuilds, including vector quantization (`float32` → `float16`)
+
+That means schema evolution is no longer only a manual operational pattern. It is also a product surface in RedisVL with a planner, CLI, and validation artifacts.
+
 ---
 
-**Related concepts:** {doc}`field-attributes` explains how to configure field options like `sortable` and `index_missing`. {doc}`queries` covers the different query types available.
+**Related concepts:** {doc}`field-attributes` explains how to configure field options like `sortable` and `index_missing`. {doc}`queries` covers the different query types available. {doc}`index-migrations` explains migration modes, supported changes, and architecture.
 
-**Learn more:** {doc}`/user_guide/01_getting_started` walks through building your first index. {doc}`/user_guide/05_hash_vs_json` compares storage options in depth. {doc}`/user_guide/02_complex_filtering` covers query composition.
-
+**Learn more:** {doc}`/user_guide/01_getting_started` walks through building your first index. {doc}`/user_guide/05_hash_vs_json` compares storage options in depth. {doc}`/user_guide/02_complex_filtering` covers query composition. {doc}`/user_guide/how_to_guides/migrate-indexes` shows how to use the migration CLI in practice.

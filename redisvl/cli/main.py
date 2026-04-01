@@ -54,3 +54,4 @@ class RedisVlCLI:
 
     def migrate(self):
         Migrate()
+        exit(0)

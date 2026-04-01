@@ -251,11 +251,32 @@ Before suggesting a new feature:
 
 ## Pull Request Process
 
-1. **Fork and create a branch**: Create a descriptive branch name (e.g., `fix-search-bug` or `add-vector-similarity`)
+1. **Fork and create a branch**: Use a conventional branch name such as `feat/index-migrator`, `fix/search-bug`, or `docs/vectorizer-guide`
 2. **Make your changes**: Follow our coding standards and include tests
 3. **Test thoroughly**: Ensure your changes work and don't break existing functionality
 4. **Update documentation**: Add or update documentation as needed
 5. **Submit your PR**: Include a clear description of what your changes do
+
+### Branch Naming and Commit Messages
+
+We use conventional branch names and Conventional Commits to keep history easy to scan and automate.
+
+Branch naming:
+
+- Use `<type>/<short-kebab-description>`
+- Recommended types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `build`, `ci`
+- Examples:
+  - `feat/index-migrator`
+  - `fix/async-sentinel-pool`
+  - `docs/migration-benchmarking`
+
+Commit messages:
+
+- Use `<type>(optional-scope): <summary>`
+- Examples:
+  - `feat(migrate): add drop recreate plan generation`
+  - `docs(index-migrator): add benchmark guidance`
+  - `fix(cli): reject unsupported migration diffs`
 
 ### Review Process
 
