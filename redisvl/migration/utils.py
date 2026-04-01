@@ -261,6 +261,7 @@ def wait_for_index_ready(
 
     stable_ready_checks: Optional[int] = None
     while time.perf_counter() < deadline:
+        ready = False
         latest_info = index.info()
         indexing = latest_info.get("indexing")
         percent_indexed = latest_info.get("percent_indexed")

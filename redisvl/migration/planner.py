@@ -86,6 +86,7 @@ class MigrationPlanner:
             schema_patch=schema_patch,
             redis_url=redis_url,
             redis_client=redis_client,
+            _snapshot=snapshot,
         )
 
     def create_plan_from_patch(
@@ -95,12 +96,15 @@ class MigrationPlanner:
         schema_patch: SchemaPatch,
         redis_url: Optional[str] = None,
         redis_client: Optional[Any] = None,
+        _snapshot: Optional[Any] = None,
     ) -> MigrationPlan:
-        snapshot = self.snapshot_source(
-            index_name,
-            redis_url=redis_url,
-            redis_client=redis_client,
-        )
+        if _snapshot is None:
+            _snapshot = self.snapshot_source(
+                index_name,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            )
+        snapshot = _snapshot
         source_schema = IndexSchema.from_dict(snapshot.schema_snapshot)
         merged_target_schema = self.merge_patch(source_schema, schema_patch)
 
@@ -309,7 +313,7 @@ class MigrationPlanner:
         change_prefix: Optional[str] = None
         if "prefix" in changes.index:
             new_prefix = changes.index["prefix"]
-            # Normalize list-type prefix to a single string
+            # Normalize list-type prefix to a single string (local copy only)
             if isinstance(new_prefix, list):
                 if len(new_prefix) != 1:
                     raise ValueError(
@@ -317,7 +321,6 @@ class MigrationPlanner:
                         f"Multi-prefix migrations are not supported."
                     )
                 new_prefix = new_prefix[0]
-                changes.index["prefix"] = new_prefix
             old_prefix = source_dict["index"].get("prefix")
             if new_prefix != old_prefix:
                 # Block multi-prefix migrations - we only support single prefix
@@ -441,7 +444,7 @@ class MigrationPlanner:
 
         # Check which rename operations are being handled
         has_index_rename = rename_operations and rename_operations.rename_index
-        has_prefix_change = rename_operations and rename_operations.change_prefix
+        has_prefix_change = rename_operations and rename_operations.change_prefix is not None
         has_field_renames = (
             rename_operations and len(rename_operations.rename_fields) > 0
         )
@@ -480,17 +483,29 @@ class MigrationPlanner:
                     f"Adding vector field '{field['name']}' requires document migration (not yet supported)."
                 )
 
-        # Build rename mapping so update_fields referencing old names resolve
+        # Build rename mappings: old->new and new->old so update_fields
+        # can reference either the pre-rename or post-rename name
         classify_rename_map = {
             rename.old_name: rename.new_name
             for rename in changes.rename_fields
             if rename.old_name != rename.new_name
         }
+        reverse_rename_map = {v: k for k, v in classify_rename_map.items()}
 
         for field_update in changes.update_fields:
-            # Resolve through renames for source/target lookup
-            source_name = field_update.name
-            target_name = classify_rename_map.get(field_update.name, field_update.name)
+            # Resolve through renames: update_fields may use old or new name
+            if field_update.name in classify_rename_map:
+                # update references old name -> look up source by old, target by new
+                source_name = field_update.name
+                target_name = classify_rename_map[field_update.name]
+            elif field_update.name in reverse_rename_map:
+                # update references new name -> look up source by old, target by new
+                source_name = reverse_rename_map[field_update.name]
+                target_name = field_update.name
+            else:
+                # no rename involved
+                source_name = field_update.name
+                target_name = field_update.name
             source_field = source_fields.get(source_name)
             target_field = target_fields.get(target_name)
             if source_field is None or target_field is None:
@@ -636,12 +651,17 @@ class MigrationPlanner:
 
     @staticmethod
     def get_vector_datatype_changes(
-        source_schema: Dict[str, Any], target_schema: Dict[str, Any]
+        source_schema: Dict[str, Any],
+        target_schema: Dict[str, Any],
+        rename_operations: Optional[Any] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Identify vector fields that need datatype conversion (quantization).
 
+        Handles renamed vector fields by using rename_operations to map
+        source field names to their target counterparts.
+
         Returns:
-            Dict mapping field_name -> {
+            Dict mapping source_field_name -> {
                 "source": source_dtype,
                 "target": target_dtype,
                 "dims": int  # vector dimensions for idempotent detection
@@ -651,10 +671,18 @@ class MigrationPlanner:
         source_fields = {f["name"]: f for f in source_schema.get("fields", [])}
         target_fields = {f["name"]: f for f in target_schema.get("fields", [])}
 
+        # Build rename map: source_name -> target_name
+        field_rename_map: Dict[str, str] = {}
+        if rename_operations and hasattr(rename_operations, "rename_fields"):
+            for fr in rename_operations.rename_fields:
+                field_rename_map[fr.old_name] = fr.new_name
+
         for name, source_field in source_fields.items():
             if source_field.get("type") != "vector":
                 continue
-            target_field = target_fields.get(name)
+            # Look up target by renamed name if applicable
+            target_name = field_rename_map.get(name, name)
+            target_field = target_fields.get(target_name)
             if not target_field or target_field.get("type") != "vector":
                 continue
 

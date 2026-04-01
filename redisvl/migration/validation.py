@@ -56,13 +56,24 @@ class MigrationValidator:
         else:
             # Handle prefix change: transform key_sample to use new prefix
             keys_to_check = key_sample
-            if plan.rename_operations.change_prefix:
+            if plan.rename_operations.change_prefix is not None:
                 old_prefix = plan.source.keyspace.prefixes[0]
                 new_prefix = plan.rename_operations.change_prefix
-                keys_to_check = [
-                    new_prefix + k[len(old_prefix) :] if k.startswith(old_prefix) else k
-                    for k in key_sample
-                ]
+                # Normalize separator: strip trailing separator from both
+                # prefixes to avoid double/missing separator in transformed keys
+                sep = ":"
+                old_base = old_prefix.rstrip(sep)
+                new_base = new_prefix.rstrip(sep) if new_prefix else ""
+                keys_to_check = []
+                for k in key_sample:
+                    if k.startswith(old_prefix):
+                        suffix = k[len(old_prefix):]
+                        if new_base:
+                            keys_to_check.append(f"{new_base}{sep}{suffix}")
+                        else:
+                            keys_to_check.append(suffix)
+                    else:
+                        keys_to_check.append(k)
             existing_count = target_index.client.exists(*keys_to_check)
             validation.key_sample_exists = existing_count == len(keys_to_check)
 
@@ -81,7 +92,7 @@ class MigrationValidator:
             validation.errors.append(
                 "Live document count does not match source num_docs."
             )
-        if validation.indexing_failures_delta != 0:
+        if validation.indexing_failures_delta > 0:
             validation.errors.append("Indexing failures increased during migration.")
         if not validation.key_sample_exists:
             validation.errors.append(

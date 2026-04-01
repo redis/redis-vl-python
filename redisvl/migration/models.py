@@ -244,8 +244,9 @@ class DiskSpaceEstimate(BaseModel):
         )
         lines.append("")
         lines.append(
-            f"  Post-migration memory savings: ~{_format_bytes(self.memory_savings_after_bytes)} "
-            f"({self._savings_pct()}% reduction)"
+            f"  Post-migration memory delta:   ~{_format_bytes(abs(self.memory_savings_after_bytes))} "
+            f"({'reduction' if self.memory_savings_after_bytes >= 0 else 'increase'}, "
+            f"{abs(self._savings_pct())}%)"
         )
         return "\n".join(lines)
 
@@ -327,7 +328,7 @@ class BatchState(BaseModel):
 
     @property
     def success_count(self) -> int:
-        return sum(1 for idx in self.completed if idx.status == "succeeded")
+        return sum(1 for idx in self.completed if idx.status == "success")
 
     @property
     def failed_count(self) -> int:
