@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from redisvl.utils.log import get_logger
 import time
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
@@ -34,7 +34,7 @@ from redisvl.migration.utils import (
 from redisvl.redis.utils import array_to_buffer, buffer_to_array
 from redisvl.types import AsyncRedisClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AsyncMigrationExecutor:
