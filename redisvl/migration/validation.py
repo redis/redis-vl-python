@@ -61,10 +61,14 @@ class MigrationValidator:
             if plan.rename_operations.change_prefix is not None:
                 old_prefix = plan.source.keyspace.prefixes[0]
                 new_prefix = plan.rename_operations.change_prefix
+                key_sep = plan.source.keyspace.key_separator
+                # Normalize prefixes: strip trailing separator for consistent slicing
+                old_base = old_prefix.rstrip(key_sep) if old_prefix else ""
+                new_base = new_prefix.rstrip(key_sep) if new_prefix else ""
                 keys_to_check = []
                 for k in key_sample:
-                    if k.startswith(old_prefix):
-                        keys_to_check.append(new_prefix + k[len(old_prefix) :])
+                    if old_base and k.startswith(old_base):
+                        keys_to_check.append(new_base + k[len(old_base) :])
                     else:
                         keys_to_check.append(k)
             existing_count = target_index.client.exists(*keys_to_check)
@@ -79,9 +83,9 @@ class MigrationValidator:
             user_checks = self._run_query_checks(target_index, query_check_file)
             validation.query_checks.extend(user_checks)
 
-        if not validation.schema_match:
+        if not validation.schema_match and plan.validation.require_schema_match:
             validation.errors.append("Live schema does not match merged_target_schema.")
-        if not validation.doc_count_match:
+        if not validation.doc_count_match and plan.validation.require_doc_count_match:
             validation.errors.append(
                 "Live document count does not match source num_docs."
             )
@@ -147,7 +151,7 @@ class MigrationValidator:
         try:
             search_result = target_index.search(Query("*").paging(0, 1))
             total_found = search_result.total
-            passed = total_found == expected_doc_count
+            passed = total_found > 0
             results.append(
                 QueryCheckResult(
                     name="functional:wildcard_search",

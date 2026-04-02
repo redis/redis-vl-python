@@ -578,11 +578,12 @@ class MigrationPlanner:
         for prefix in prefixes:
             if len(key_sample) >= self.key_sample_limit:
                 break
-            match_pattern = (
-                f"{prefix}*"
-                if prefix.endswith(key_separator)
-                else f"{prefix}{key_separator}*"
-            )
+            if prefix == "":
+                match_pattern = "*"
+            elif prefix.endswith(key_separator):
+                match_pattern = f"{prefix}*"
+            else:
+                match_pattern = f"{prefix}{key_separator}*"
             cursor = 0
             while True:
                 cursor, keys = client.scan(
