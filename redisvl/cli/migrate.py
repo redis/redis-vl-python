@@ -597,7 +597,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
          If you need to preserve original vectors, backup your data first:
            redis-cli BGSAVE"""
             )
-            exit(1)
+            sys.exit(1)
 
         redis_url = create_redis_url(args)
         executor = BatchMigrationExecutor()
@@ -677,7 +677,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         state_path = Path(args.state).resolve()
         if not state_path.exists():
             print(f"State file not found: {args.state}")
-            exit(1)
+            sys.exit(1)
 
         from redisvl.migration.models import BatchState
 

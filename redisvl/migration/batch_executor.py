@@ -220,9 +220,12 @@ class BatchMigrationExecutor:
                 redis_client=redis_client,
             )
 
-            # Sanitize index_name to prevent path traversal
+            # Sanitize index_name to prevent path traversal and invalid filenames
             safe_name = (
-                index_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+                index_name.replace("/", "_")
+                .replace("\\", "_")
+                .replace("..", "_")
+                .replace(":", "_")
             )
             report_file = report_dir / f"{safe_name}_report.yaml"
             write_yaml(report.model_dump(exclude_none=True), str(report_file))
