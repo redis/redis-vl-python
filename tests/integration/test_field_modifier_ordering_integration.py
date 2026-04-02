@@ -399,6 +399,241 @@ class TestFieldModifierIntegration:
         index.delete(drop=True)
 
 
+class TestIndexEmptyIntegration:
+    """Integration tests for INDEXEMPTY functionality."""
+
+    def test_text_field_index_empty_creates_successfully(
+        self, client, redis_url, worker_id
+    ):
+        """Test that INDEXEMPTY on text field allows index creation."""
+        skip_if_search_version_below_for_indexmissing(client)
+        schema_dict = {
+            "index": {
+                "name": f"test_text_empty_{worker_id}",
+                "prefix": f"textempty_{worker_id}:",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "description",
+                    "type": "text",
+                    "attrs": {"index_empty": True},
+                }
+            ],
+        }
+
+        schema = IndexSchema.from_dict(schema_dict)
+        index = SearchIndex(schema=schema, redis_url=redis_url)
+        index.create(overwrite=True)
+
+        # Verify index was created
+        info = client.execute_command("FT.INFO", f"test_text_empty_{worker_id}")
+        assert info is not None
+
+        # Create documents with empty and non-empty values
+        client.hset(f"textempty_{worker_id}:1", "description", "has content")
+        client.hset(f"textempty_{worker_id}:2", "description", "")
+        client.hset(f"textempty_{worker_id}:3", "description", "more content")
+
+        # Search should work, empty string doc should be indexed
+        result = client.execute_command(
+            "FT.SEARCH",
+            f"test_text_empty_{worker_id}",
+            "*",
+        )
+        # All 3 docs should be found
+        assert result[0] == 3
+
+        # Cleanup
+        client.delete(
+            f"textempty_{worker_id}:1",
+            f"textempty_{worker_id}:2",
+            f"textempty_{worker_id}:3",
+        )
+        index.delete(drop=True)
+
+    def test_tag_field_index_empty_creates_successfully(
+        self, client, redis_url, worker_id
+    ):
+        """Test that INDEXEMPTY on tag field allows index creation."""
+        skip_if_search_version_below_for_indexmissing(client)
+        schema_dict = {
+            "index": {
+                "name": f"test_tag_empty_{worker_id}",
+                "prefix": f"tagempty_{worker_id}:",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "category",
+                    "type": "tag",
+                    "attrs": {"index_empty": True},
+                }
+            ],
+        }
+
+        schema = IndexSchema.from_dict(schema_dict)
+        index = SearchIndex(schema=schema, redis_url=redis_url)
+        index.create(overwrite=True)
+
+        # Verify index was created
+        info = client.execute_command("FT.INFO", f"test_tag_empty_{worker_id}")
+        assert info is not None
+
+        # Create documents with empty and non-empty values
+        client.hset(f"tagempty_{worker_id}:1", "category", "electronics")
+        client.hset(f"tagempty_{worker_id}:2", "category", "")
+        client.hset(f"tagempty_{worker_id}:3", "category", "books")
+
+        # Search should work
+        result = client.execute_command(
+            "FT.SEARCH",
+            f"test_tag_empty_{worker_id}",
+            "*",
+        )
+        # All 3 docs should be found
+        assert result[0] == 3
+
+        # Cleanup
+        client.delete(
+            f"tagempty_{worker_id}:1",
+            f"tagempty_{worker_id}:2",
+            f"tagempty_{worker_id}:3",
+        )
+        index.delete(drop=True)
+
+
+class TestUnfModifierIntegration:
+    """Integration tests for UNF (un-normalized form) modifier."""
+
+    def test_text_field_unf_requires_sortable(self, client, redis_url, worker_id):
+        """Test that UNF on text field works only when sortable is also True."""
+        skip_if_search_version_below_for_indexmissing(client)
+        schema_dict = {
+            "index": {
+                "name": f"test_text_unf_{worker_id}",
+                "prefix": f"textunf_{worker_id}:",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "title",
+                    "type": "text",
+                    "attrs": {"sortable": True, "unf": True},
+                }
+            ],
+        }
+
+        schema = IndexSchema.from_dict(schema_dict)
+        index = SearchIndex(schema=schema, redis_url=redis_url)
+
+        # Should create successfully
+        index.create(overwrite=True)
+
+        info = client.execute_command("FT.INFO", f"test_text_unf_{worker_id}")
+        assert info is not None
+
+        index.delete(drop=True)
+
+    def test_numeric_field_unf_with_sortable(self, client, redis_url, worker_id):
+        """Test that UNF on numeric field works when sortable is True."""
+        skip_if_search_version_below_for_indexmissing(client)
+        schema_dict = {
+            "index": {
+                "name": f"test_num_unf_{worker_id}",
+                "prefix": f"numunf_{worker_id}:",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "price",
+                    "type": "numeric",
+                    "attrs": {"sortable": True, "unf": True},
+                }
+            ],
+        }
+
+        schema = IndexSchema.from_dict(schema_dict)
+        index = SearchIndex(schema=schema, redis_url=redis_url)
+
+        # Should create successfully
+        index.create(overwrite=True)
+
+        info = client.execute_command("FT.INFO", f"test_num_unf_{worker_id}")
+        assert info is not None
+
+        index.delete(drop=True)
+
+
+class TestNoIndexModifierIntegration:
+    """Integration tests for NOINDEX modifier."""
+
+    def test_noindex_with_sortable_allows_sorting_not_searching(
+        self, client, redis_url, worker_id
+    ):
+        """Test that NOINDEX field can be sorted but not searched."""
+        schema_dict = {
+            "index": {
+                "name": f"test_noindex_{worker_id}",
+                "prefix": f"noindex_{worker_id}:",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "searchable",
+                    "type": "text",
+                },
+                {
+                    "name": "sort_only",
+                    "type": "numeric",
+                    "attrs": {"sortable": True, "no_index": True},
+                },
+            ],
+        }
+
+        schema = IndexSchema.from_dict(schema_dict)
+        index = SearchIndex(schema=schema, redis_url=redis_url)
+        index.create(overwrite=True)
+
+        # Add test documents
+        client.hset(
+            f"noindex_{worker_id}:1", mapping={"searchable": "hello", "sort_only": 10}
+        )
+        client.hset(
+            f"noindex_{worker_id}:2", mapping={"searchable": "world", "sort_only": 5}
+        )
+        client.hset(
+            f"noindex_{worker_id}:3", mapping={"searchable": "test", "sort_only": 15}
+        )
+
+        # Sorting by no_index field should work
+        result = client.execute_command(
+            "FT.SEARCH",
+            f"test_noindex_{worker_id}",
+            "*",
+            "SORTBY",
+            "sort_only",
+            "ASC",
+        )
+        assert result[0] == 3
+
+        # Filtering by NOINDEX field should return no results
+        filter_result = client.execute_command(
+            "FT.SEARCH",
+            f"test_noindex_{worker_id}",
+            "@sort_only:[5 10]",
+        )
+        assert filter_result[0] == 0
+
+        # Cleanup
+        client.delete(
+            f"noindex_{worker_id}:1",
+            f"noindex_{worker_id}:2",
+            f"noindex_{worker_id}:3",
+        )
+        index.delete(drop=True)
+
+
 class TestFieldTypeModifierSupport:
     """Test that field types only support their documented modifiers."""
 

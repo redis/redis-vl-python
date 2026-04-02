@@ -15,6 +15,7 @@ def _command_overview():
         "Command groups:",
         "  index       Create, inspect, list, and delete Redis search indexes",
         "  stats       Show statistics for an existing Redis search index",
+        "  migrate     Plan, apply, and validate index migrations (experimental)",
         "  version     Show the installed RedisVL version",
         "  mcp         Run the RedisVL MCP server",
     ]
@@ -77,6 +78,12 @@ class RedisVlCLI:
         from redisvl.cli.version import Version
 
         Version()
+        sys.exit(0)
+
+    def migrate(self):
+        from redisvl.cli.migrate import Migrate
+
+        Migrate()
         sys.exit(0)
 
     def stats(self):
