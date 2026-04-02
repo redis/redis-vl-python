@@ -442,14 +442,29 @@ class AsyncMigrationExecutor:
                         plan.source.index_name,
                     )
                 elif existing_checkpoint.status == "completed":
-                    # Quantization completed before the crash -- still need
-                    # to resume from post-drop state (index recreation).
-                    resuming_from_checkpoint = True
-                    logger.info(
-                        "Checkpoint at %s is already completed; resuming "
-                        "index recreation from post-drop state",
-                        checkpoint_path,
+                    # Quantization completed previously. Only resume if
+                    # the source index is actually gone (post-drop crash).
+                    source_still_exists = (
+                        await self._async_current_source_matches_snapshot(
+                            plan.source.index_name,
+                            plan.source.schema_snapshot,
+                            redis_url=redis_url,
+                            redis_client=redis_client,
+                        )
                     )
+                    if source_still_exists:
+                        logger.info(
+                            "Checkpoint at %s is completed and source index "
+                            "still exists; treating as fresh run",
+                            checkpoint_path,
+                        )
+                    else:
+                        resuming_from_checkpoint = True
+                        logger.info(
+                            "Checkpoint at %s is already completed; resuming "
+                            "index recreation from post-drop state",
+                            checkpoint_path,
+                        )
                 else:
                     resuming_from_checkpoint = True
                     logger.info(
@@ -540,7 +555,7 @@ class AsyncMigrationExecutor:
                 progress_callback(step, detail)
 
         try:
-            client = source_index._redis_client
+            client = await source_index._get_client()
             if client is None:
                 raise ValueError("Failed to get Redis client from source index")
             aof_enabled = await self._detect_aof_enabled(client)
@@ -718,9 +733,21 @@ class AsyncMigrationExecutor:
                         for k in keys_to_process
                     ]
                     keys_to_process = normalize_keys(keys_to_process)
+                # Remap datatype_changes keys from source to target field
+                # names when field renames exist, since quantization runs
+                # after field renames (step 2).
+                effective_changes = datatype_changes
+                if has_field_renames and not resuming_from_checkpoint:
+                    field_rename_map = {
+                        fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                    }
+                    effective_changes = {
+                        field_rename_map.get(k, k): v
+                        for k, v in datatype_changes.items()
+                    }
                 docs_quantized = await self._async_quantize_vectors(
                     source_index,
-                    datatype_changes,
+                    effective_changes,
                     keys_to_process,
                     progress_callback=lambda done, total: _notify(
                         "quantize", f"{done:,}/{total:,} docs"
@@ -873,7 +900,7 @@ class AsyncMigrationExecutor:
         Returns:
             Number of documents quantized
         """
-        client = source_index._redis_client
+        client = await source_index._get_client()
         if client is None:
             raise ValueError("Failed to get Redis client from source index")
 

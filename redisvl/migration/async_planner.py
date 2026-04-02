@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.migration.models import (
@@ -74,6 +74,7 @@ class AsyncMigrationPlanner:
             schema_patch=schema_patch,
             redis_url=redis_url,
             redis_client=redis_client,
+            _snapshot=snapshot,
         )
 
     async def create_plan_from_patch(
@@ -83,12 +84,15 @@ class AsyncMigrationPlanner:
         schema_patch: SchemaPatch,
         redis_url: Optional[str] = None,
         redis_client: Optional[AsyncRedisClient] = None,
+        _snapshot: Optional[Any] = None,
     ) -> MigrationPlan:
-        snapshot = await self.snapshot_source(
-            index_name,
-            redis_url=redis_url,
-            redis_client=redis_client,
-        )
+        if _snapshot is None:
+            _snapshot = await self.snapshot_source(
+                index_name,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            )
+        snapshot = _snapshot
         source_schema = IndexSchema.from_dict(snapshot.schema_snapshot)
         merged_target_schema = self._sync_planner.merge_patch(
             source_schema, schema_patch
