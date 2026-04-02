@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from redisvl.cli.index import Index
+from redisvl.cli.migrate import Migrate
 from redisvl.cli.stats import Stats
 from redisvl.cli.version import Version
 from redisvl.utils.log import get_logger
@@ -16,6 +17,7 @@ def _usage():
         "\tindex       Index manipulation (create, delete, etc.)",
         "\tversion     Obtain the version of RedisVL",
         "\tstats       Obtain statistics about an index",
+        "\tmigrate     Index migration planning and execution",
     ]
     return "\n".join(usage) + "\n"
 
@@ -49,3 +51,6 @@ class RedisVlCLI:
     def stats(self):
         Stats()
         exit(0)
+
+    def migrate(self):
+        Migrate()
