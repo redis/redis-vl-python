@@ -260,6 +260,10 @@ class BatchMigrationExecutor:
                     f"current batch plan '{batch_plan.batch_id}'. "
                     "Remove the stale state file or use a different state_path."
                 )
+            # Update plan_path if caller provided one (handles cases where
+            # the original path was empty or pointed to a deleted temp dir).
+            if batch_plan_path:
+                loaded.plan_path = str(Path(batch_plan_path).resolve())
             return loaded
 
         # Create new state with plan_path for resume support
