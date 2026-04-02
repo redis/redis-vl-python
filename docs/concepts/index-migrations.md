@@ -79,7 +79,7 @@ These changes complete quickly because they only require rebuilding the index.
 - Field renames: Stored field names must be updated in every document.
 - Dimension changes: Vectors must be re-embedded with a different model.
 
-The migrator handles datatype changes automatically. Other document dependent changes are blocked because they require application level logic or external services.
+The migrator handles datatype changes and field renames automatically. Dimension changes are blocked because they require re-embedding with a different model (application level logic).
 
 ## Vector quantization
 

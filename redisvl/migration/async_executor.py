@@ -1073,12 +1073,19 @@ class AsyncMigrationExecutor:
             percent_indexed = latest_info.get("percent_indexed")
 
             if percent_indexed is not None or indexing is not None:
-                ready = float(percent_indexed or 0) >= 1.0 and not bool(indexing)
+                pct = float(percent_indexed) if percent_indexed is not None else None
+                is_indexing = bool(indexing)
+                if pct is not None:
+                    ready = pct >= 1.0 and not is_indexing
+                else:
+                    # percent_indexed missing but indexing flag present:
+                    # treat as ready when indexing flag is falsy (0 / False).
+                    ready = not is_indexing
                 if progress_callback:
                     total_docs = int(latest_info.get("num_docs", 0))
-                    pct = float(percent_indexed or 0)
-                    indexed_docs = int(total_docs * pct)
-                    progress_callback(indexed_docs, total_docs, pct * 100)
+                    display_pct = pct if pct is not None else (1.0 if ready else 0.0)
+                    indexed_docs = int(total_docs * display_pct)
+                    progress_callback(indexed_docs, total_docs, display_pct * 100)
             else:
                 current_docs = latest_info.get("num_docs")
                 if current_docs is None:
