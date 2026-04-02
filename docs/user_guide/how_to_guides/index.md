@@ -35,6 +35,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 :::{grid-item-card} 💾 Storage
 
 - [Choose a Storage Type](../05_hash_vs_json.ipynb) -- Hash vs JSON formats and nested data
+- [Migrate an Index](migrate-indexes.md) -- use the migrator helper, wizard, plan, apply, and validate workflow
 :::
 
 :::{grid-item-card} 💻 CLI Operations
@@ -63,6 +64,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Decide on storage format | [Choose a Storage Type](../05_hash_vs_json.ipynb) |
 | Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
 | Expose an index through MCP | [Run RedisVL MCP](mcp.md) |
+| Plan and run a supported index migration | [Migrate an Index](migrate-indexes.md) |
 
 ```{toctree}
 :hidden:
@@ -80,4 +82,5 @@ Cache Embeddings <../10_embeddings_cache>
 Use Advanced Query Types <../11_advanced_queries>
 Write SQL Queries for Redis <../12_sql_to_redis_queries>
 Run RedisVL MCP <mcp>
+Migrate an Index <migrate-indexes>
 ```
