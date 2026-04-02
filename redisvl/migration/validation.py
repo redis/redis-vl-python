@@ -61,14 +61,12 @@ class MigrationValidator:
             if plan.rename_operations.change_prefix is not None:
                 old_prefix = plan.source.keyspace.prefixes[0]
                 new_prefix = plan.rename_operations.change_prefix
-                key_sep = plan.source.keyspace.key_separator
-                # Normalize prefixes: strip trailing separator for consistent slicing
-                old_base = old_prefix.rstrip(key_sep) if old_prefix else ""
-                new_base = new_prefix.rstrip(key_sep) if new_prefix else ""
+                # Mirror executor logic exactly:
+                #   new_key = new_prefix + key[len(old_prefix):]
                 keys_to_check = []
                 for k in key_sample:
-                    if old_base and k.startswith(old_base):
-                        keys_to_check.append(new_base + k[len(old_base) :])
+                    if k.startswith(old_prefix):
+                        keys_to_check.append(new_prefix + k[len(old_prefix) :])
                     else:
                         keys_to_check.append(k)
             existing_count = target_index.client.exists(*keys_to_check)

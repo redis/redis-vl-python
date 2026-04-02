@@ -7,10 +7,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import yaml
 
-from redisvl.utils.log import get_logger
-
-logger = get_logger(__name__)
-
 from redisvl.index import SearchIndex
 from redisvl.migration.models import (
     AOF_HSET_OVERHEAD_BYTES,
@@ -24,6 +20,9 @@ from redisvl.migration.models import (
 )
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.schema.schema import IndexSchema
+from redisvl.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def list_indexes(

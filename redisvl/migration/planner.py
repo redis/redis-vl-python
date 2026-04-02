@@ -212,7 +212,15 @@ class MigrationPlanner:
 
         for index_key, target_value in target_dict["index"].items():
             source_value = source_dict["index"].get(index_key)
-            if source_value != target_value:
+            # Normalize single-element list prefixes for comparison so that
+            # e.g. source ["docs"] and target "docs" are treated as equal.
+            sv, tv = source_value, target_value
+            if index_key == "prefix":
+                if isinstance(sv, list) and len(sv) == 1:
+                    sv = sv[0]
+                if isinstance(tv, list) and len(tv) == 1:
+                    tv = tv[0]
+            if sv != tv:
                 changes["index"][index_key] = target_value
 
         return SchemaPatch.model_validate({"version": 1, "changes": changes})
