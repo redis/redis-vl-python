@@ -3,7 +3,12 @@ import sys
 from typing import Optional
 
 from redisvl.cli.utils import add_redis_connection_options, create_redis_url
-from redisvl.migration import MigrationExecutor, MigrationPlanner, MigrationValidator
+from redisvl.migration import (
+    MigrationExecutor,
+    MigrationPlanner,
+    MigrationValidator,
+    MigrationWizard,
+)
 from redisvl.migration.utils import (
     detect_aof_enabled,
     estimate_disk_space,
@@ -25,6 +30,7 @@ class Migrate:
             "Commands:",
             "\thelper       Show migration guidance and supported capabilities",
             "\tlist         List all available indexes",
+            "\twizard       Interactively build a migration plan and schema patch",
             "\tplan         Generate a migration plan for a document-preserving drop/recreate migration",
             "\tapply        Execute a reviewed drop/recreate migration plan",
             "\testimate     Estimate disk space required for a migration plan (dry-run, no mutations)",
@@ -84,6 +90,7 @@ Not yet supported:
 
 Commands:
   rvl migrate list                                  List all indexes
+  rvl migrate wizard --index <name>                 Guided migration builder
   rvl migrate plan --index <name> --schema-patch <patch.yaml>
   rvl migrate apply --plan <plan.yaml>
   rvl migrate validate --plan <plan.yaml>"""
@@ -100,6 +107,58 @@ Commands:
         print("Available indexes:")
         for position, index_name in enumerate(indexes, start=1):
             print(f"{position}. {index_name}")
+
+    def wizard(self):
+        parser = argparse.ArgumentParser(
+            usage=(
+                "rvl migrate wizard [--index <name>] "
+                "[--patch <existing_patch.yaml>] "
+                "[--plan-out <migration_plan.yaml>] [--patch-out <schema_patch.yaml>]"
+            )
+        )
+        parser.add_argument("-i", "--index", help="Source index name", required=False)
+        parser.add_argument(
+            "--patch",
+            help="Load an existing schema patch to continue editing",
+            default=None,
+        )
+        parser.add_argument(
+            "--plan-out",
+            help="Path to write migration_plan.yaml",
+            default="migration_plan.yaml",
+        )
+        parser.add_argument(
+            "--patch-out",
+            help="Path to write schema_patch.yaml (for later editing)",
+            default="schema_patch.yaml",
+        )
+        parser.add_argument(
+            "--target-schema-out",
+            help="Optional path to write the merged target schema",
+            default=None,
+        )
+        parser.add_argument(
+            "--key-sample-limit",
+            help="Maximum number of keys to sample from the index keyspace",
+            type=int,
+            default=10,
+        )
+        parser = add_redis_connection_options(parser)
+        args = parser.parse_args(sys.argv[3:])
+
+        redis_url = create_redis_url(args)
+        wizard = MigrationWizard(
+            planner=MigrationPlanner(key_sample_limit=args.key_sample_limit)
+        )
+        plan = wizard.run(
+            index_name=args.index,
+            redis_url=redis_url,
+            existing_patch_path=args.patch,
+            plan_out=args.plan_out,
+            patch_out=args.patch_out,
+            target_schema_out=args.target_schema_out,
+        )
+        self._print_plan_summary(args.plan_out, plan)
 
     def plan(self):
         parser = argparse.ArgumentParser(
