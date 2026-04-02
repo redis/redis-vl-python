@@ -209,6 +209,22 @@ async def test_upsert_records_preserves_supplied_vectors_when_skip_embedding_if_
 
 
 @pytest.mark.asyncio
+async def test_upsert_records_deep_copies_nested_values_before_loading():
+    server = FakeServer(storage_type="json", skip_embedding_if_present=True)
+    original_embedding = [0.1, 0.2, 0.3]
+    records = [{"id": "alpha", "content": "alpha doc", "embedding": original_embedding}]
+
+    await upsert_records(server, records=records, id_field="id")
+
+    loaded_record = server.index.load_calls[0]["data"][0]
+    assert loaded_record["embedding"] == original_embedding
+    assert loaded_record["embedding"] is not original_embedding
+
+    loaded_record["embedding"][0] = 9.9
+    assert records[0]["embedding"] == [0.1, 0.2, 0.3]
+
+
+@pytest.mark.asyncio
 async def test_upsert_records_rejects_invalid_hash_vector_dimensions_before_serializing():
     server = FakeServer(storage_type="hash", skip_embedding_if_present=True)
 
