@@ -92,9 +92,9 @@ class AsyncMigrationValidator:
             user_checks = await self._run_query_checks(target_index, query_check_file)
             validation.query_checks.extend(user_checks)
 
-        if not validation.schema_match:
+        if not validation.schema_match and plan.validation.require_schema_match:
             validation.errors.append("Live schema does not match merged_target_schema.")
-        if not validation.doc_count_match:
+        if not validation.doc_count_match and plan.validation.require_doc_count_match:
             validation.errors.append(
                 "Live document count does not match source num_docs."
             )

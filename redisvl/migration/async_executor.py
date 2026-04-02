@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+
 from redisvl.utils.log import get_logger
 import time
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
@@ -458,6 +460,9 @@ class AsyncMigrationExecutor:
                             "still exists; treating as fresh run",
                             checkpoint_path,
                         )
+                        # Remove the stale checkpoint so that downstream
+                        # steps (e.g. _quantize_vectors) don't skip work.
+                        Path(checkpoint_path).unlink(missing_ok=True)
                     else:
                         resuming_from_checkpoint = True
                         logger.info(
@@ -737,7 +742,7 @@ class AsyncMigrationExecutor:
                 # names when field renames exist, since quantization runs
                 # after field renames (step 2).
                 effective_changes = datatype_changes
-                if has_field_renames and not resuming_from_checkpoint:
+                if has_field_renames:
                     field_rename_map = {
                         fr.old_name: fr.new_name for fr in rename_ops.rename_fields
                     }
@@ -1111,11 +1116,15 @@ class AsyncMigrationExecutor:
         """Check if current source schema matches the snapshot (async version)."""
         from redisvl.migration.utils import schemas_equal
 
-        current_index = await AsyncSearchIndex.from_existing(
-            index_name,
-            redis_url=redis_url,
-            redis_client=redis_client,
-        )
+        try:
+            current_index = await AsyncSearchIndex.from_existing(
+                index_name,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            )
+        except Exception:
+            # Index no longer exists (e.g. already dropped during migration)
+            return False
         return schemas_equal(current_index.schema.to_dict(), expected_schema)
 
     def _build_benchmark_summary(
