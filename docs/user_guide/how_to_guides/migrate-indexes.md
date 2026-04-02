@@ -396,11 +396,11 @@ When migrating large datasets with vector quantization (e.g. float32 to float16)
 
 #### How it works
 
-1. **Pre-flight estimate** -- before any mutations, `apply` prints a disk space estimate showing RDB snapshot cost, AOF growth (if enabled), and post-migration memory savings.
-2. **BGSAVE safety snapshot** -- the migrator triggers a Redis `BGSAVE` and waits for it to complete before modifying any data. This gives you a point-in-time snapshot to fall back on.
-3. **Checkpoint file** -- when `--resume` is provided, the migrator writes a YAML checkpoint after every batch of 500 documents. The checkpoint records how many keys have been processed and the last batch of keys written.
-4. **Batch undo buffer** -- if a single batch fails mid-write, original vector values are rolled back via pipeline before the error propagates. Only the current batch is held in memory.
-5. **Idempotent skip** -- on resume, vectors that were already converted are detected by byte-width inspection and skipped automatically.
+1. **Pre-flight estimate**: before any mutations, `apply` prints a disk space estimate showing RDB snapshot cost, AOF growth (if enabled), and post-migration memory savings.
+2. **BGSAVE safety snapshot**: the migrator triggers a Redis `BGSAVE` and waits for it to complete before modifying any data. This gives you a point-in-time snapshot to fall back on.
+3. **Checkpoint file**: when `--resume` is provided, the migrator writes a YAML checkpoint after every batch of 500 documents. The checkpoint records how many keys have been processed and the last batch of keys written.
+4. **Batch undo buffer**: if a single batch fails mid-write, original vector values are rolled back via pipeline before the error propagates. Only the current batch is held in memory.
+5. **Idempotent skip**: on resume, vectors that were already converted are detected by byte-width inspection and skipped automatically.
 
 #### Step-by-step: using crash-safe resume
 
