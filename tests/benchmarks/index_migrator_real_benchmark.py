@@ -369,7 +369,6 @@ def run_quantization_migration(
             "supported": plan.diff_classification.supported,
             "datatype_changes": datatype_changes,
             "result": report.result,
-            "plan_path": str(plan_path),
         }
 
 
@@ -415,7 +414,6 @@ def assert_planner_allows_algorithm_change(
             "plan_duration_seconds": round(duration, 3),
             "supported": plan.diff_classification.supported,
             "blocked_reasons": plan.diff_classification.blocked_reasons,
-            "plan_path": str(plan_path),
         }
 
 
