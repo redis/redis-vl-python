@@ -356,9 +356,6 @@ The migration executor follows this sequence:
 - The index becomes available for queries when this completes
 
 **Summary**: The migration preserves all documents, drops only the index structure, performs any document-level transformations (quantization, renames), then recreates the index with the new schema.
-5. waits for indexing readiness
-6. validates the result
-7. writes report artifacts
 
 ### Async execution for large migrations
 

@@ -304,6 +304,30 @@ Commands:
         disk_estimate = estimate_disk_space(plan, aof_enabled=args.aof_enabled)
         print(disk_estimate.summary())
 
+    @staticmethod
+    def _make_progress_callback():
+        """Create a progress callback for migration apply (shared by sync and async)."""
+        step_labels = {
+            "enumerate": "[1/8] Enumerate keys",
+            "bgsave": "[2/8] BGSAVE snapshot",
+            "drop": "[3/8] Drop index",
+            "quantize": "[4/8] Quantize vectors",
+            "field_rename": "[5/8] Rename fields",
+            "key_rename": "[6/8] Rename keys",
+            "create": "[7/8] Create index",
+            "index": "[8/8] Re-indexing",
+            "validate": "Validate",
+        }
+
+        def progress_callback(step: str, detail: Optional[str]) -> None:
+            label = step_labels.get(step, step)
+            if detail and not detail.startswith("done"):
+                print(f"  {label}: {detail}    ", end="\r", flush=True)
+            else:
+                print(f"  {label}: {detail}    ")
+
+        return progress_callback
+
     def _apply_sync(
         self,
         plan,
@@ -316,29 +340,11 @@ Commands:
 
         print(f"\nApplying migration to '{plan.source.index_name}'...")
 
-        def progress_callback(step: str, detail: Optional[str]) -> None:
-            step_labels = {
-                "enumerate": "[1/8] Enumerate keys",
-                "bgsave": "[2/8] BGSAVE snapshot",
-                "drop": "[3/8] Drop index",
-                "quantize": "[4/8] Quantize vectors",
-                "field_rename": "[5/8] Rename fields",
-                "key_rename": "[6/8] Rename keys",
-                "create": "[7/8] Create index",
-                "index": "[8/8] Re-indexing",
-                "validate": "Validate",
-            }
-            label = step_labels.get(step, step)
-            if detail and not detail.startswith("done"):
-                print(f"  {label}: {detail}    ", end="\r", flush=True)
-            else:
-                print(f"  {label}: {detail}    ")
-
         report = executor.apply(
             plan,
             redis_url=redis_url,
             query_check_file=query_check_file,
-            progress_callback=progress_callback,
+            progress_callback=self._make_progress_callback(),
             checkpoint_path=checkpoint_path,
         )
 
@@ -357,29 +363,11 @@ Commands:
 
         print(f"\nApplying migration to '{plan.source.index_name}' (async mode)...")
 
-        def progress_callback(step: str, detail: Optional[str]) -> None:
-            step_labels = {
-                "enumerate": "[1/8] Enumerate keys",
-                "bgsave": "[2/8] BGSAVE snapshot",
-                "drop": "[3/8] Drop index",
-                "quantize": "[4/8] Quantize vectors",
-                "field_rename": "[5/8] Rename fields",
-                "key_rename": "[6/8] Rename keys",
-                "create": "[7/8] Create index",
-                "index": "[8/8] Re-indexing",
-                "validate": "Validate",
-            }
-            label = step_labels.get(step, step)
-            if detail and not detail.startswith("done"):
-                print(f"  {label}: {detail}    ", end="\r", flush=True)
-            else:
-                print(f"  {label}: {detail}    ")
-
         report = await executor.apply(
             plan,
             redis_url=redis_url,
             query_check_file=query_check_file,
-            progress_callback=progress_callback,
+            progress_callback=self._make_progress_callback(),
             checkpoint_path=checkpoint_path,
         )
 

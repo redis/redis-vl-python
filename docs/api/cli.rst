@@ -443,6 +443,152 @@ The command returns the following metrics:
    * - ``vector_index_sz_mb``
      - Vector index size in megabytes
 
+rvl migrate
+-----------
+
+Manage document-preserving index migrations. This command group provides subcommands for planning, executing, and validating schema migrations that preserve existing data.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate <subcommand> [OPTIONS]
+
+**Subcommands**
+
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
+
+   * - Subcommand
+     - Description
+   * - ``helper``
+     - Show migration guidance and supported capabilities
+   * - ``list``
+     - List all available indexes
+   * - ``plan``
+     - Generate a migration plan from a schema patch or target schema
+   * - ``wizard``
+     - Interactively build a migration plan and schema patch
+   * - ``apply``
+     - Execute a reviewed drop/recreate migration plan
+   * - ``estimate``
+     - Estimate disk space required for a migration (dry-run)
+   * - ``validate``
+     - Validate a completed migration against the live index
+   * - ``batch-plan``
+     - Generate a batch migration plan for multiple indexes
+   * - ``batch-apply``
+     - Execute a batch migration plan with checkpointing
+   * - ``batch-resume``
+     - Resume an interrupted batch migration
+   * - ``batch-status``
+     - Show status of an in-progress or completed batch migration
+
+rvl migrate plan
+^^^^^^^^^^^^^^^^
+
+Generate a migration plan for a document-preserving drop/recreate migration.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate plan --index <name> (--patch <patch.yaml> | --target-schema <schema.yaml>) [OPTIONS]
+
+**Required Options**
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--index``, ``-i``
+     - Name of the source index to migrate
+   * - ``--patch``
+     - Path to a YAML schema patch file (mutually exclusive with ``--target-schema``)
+   * - ``--target-schema``
+     - Path to a full target schema YAML file (mutually exclusive with ``--patch``)
+
+**Optional Options**
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--output``, ``-o``
+     - Output path for the migration plan YAML (default: ``migration_plan.yaml``)
+
+**Example**
+
+.. code-block:: bash
+
+    rvl migrate plan -i my_index --patch changes.yaml -o plan.yaml
+
+rvl migrate apply
+^^^^^^^^^^^^^^^^^
+
+Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migrations involving vector quantization.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate apply --plan <migration_plan.yaml> [OPTIONS]
+
+**Required Options**
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--plan``
+     - Path to the migration plan YAML file
+
+**Optional Options**
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--async``
+     - Run migration asynchronously (recommended for large quantization jobs)
+   * - ``--query-check``
+     - Path to a YAML file with post-migration query checks
+   * - ``--resume``
+     - Path to a checkpoint file for crash-safe recovery
+
+**Example**
+
+.. code-block:: bash
+
+    rvl migrate apply --plan plan.yaml
+    rvl migrate apply --plan plan.yaml --async --resume checkpoint.yaml
+
+rvl migrate wizard
+^^^^^^^^^^^^^^^^^^
+
+Interactively build a schema patch and migration plan through a guided wizard.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate wizard [--index <name>] [OPTIONS]
+
+**Example**
+
+.. code-block:: bash
+
+    rvl migrate wizard -i my_index -o plan.yaml
+
 Exit Codes
 ==========
 
