@@ -151,7 +151,12 @@ class MigrationValidator:
         try:
             search_result = target_index.search(Query("*").paging(0, 1))
             total_found = search_result.total
-            passed = total_found > 0
+            # When expected_doc_count is 0 (empty index), a successful
+            # search returning 0 docs is correct behaviour, not a failure.
+            if expected_doc_count == 0:
+                passed = total_found == 0
+            else:
+                passed = total_found > 0
             results.append(
                 QueryCheckResult(
                     name="functional:wildcard_search",
