@@ -93,7 +93,7 @@ def sample_docs():
             "description": "First product description",
             "category": "electronics",
             "price": 99.99,
-            "location": "-122.4194,37.7749",  # SF coordinates
+            "location": "37.7749,-122.4194",  # SF coordinates (lat,lon)
             "embedding": array_to_buffer([0.1, 0.2, 0.3, 0.4], "float32"),
         },
         {
@@ -102,7 +102,7 @@ def sample_docs():
             "description": "Second service description",
             "category": "software",
             "price": 149.99,
-            "location": "-73.9857,40.7484",  # NYC coordinates
+            "location": "40.7484,-73.9857",  # NYC coordinates (lat,lon)
             "embedding": array_to_buffer([0.2, 0.3, 0.4, 0.5], "float32"),
         },
         {
@@ -111,7 +111,7 @@ def sample_docs():
             "description": "",  # Empty for index_empty tests
             "category": "",  # Empty for index_empty tests
             "price": 0,
-            "location": "-118.2437,34.0522",  # LA coordinates
+            "location": "34.0522,-118.2437",  # LA coordinates (lat,lon)
             "embedding": array_to_buffer([0.3, 0.4, 0.5, 0.6], "float32"),
         },
     ]
@@ -1258,15 +1258,15 @@ class TestJsonStorageType:
                 "storage_type": "json",
             },
             "fields": [
-                {"name": "doc_id", "type": "tag", "attrs": {"path": "$.doc_id"}},
-                {"name": "title", "type": "text", "attrs": {"path": "$.title"}},
-                {"name": "category", "type": "tag", "attrs": {"path": "$.category"}},
-                {"name": "price", "type": "numeric", "attrs": {"path": "$.price"}},
+                {"name": "doc_id", "type": "tag", "path": "$.doc_id"},
+                {"name": "title", "type": "text", "path": "$.title"},
+                {"name": "category", "type": "tag", "path": "$.category"},
+                {"name": "price", "type": "numeric", "path": "$.price"},
                 {
                     "name": "embedding",
                     "type": "vector",
+                    "path": "$.embedding",
                     "attrs": {
-                        "path": "$.embedding",
                         "algorithm": "hnsw",
                         "dims": 4,
                         "distance_metric": "cosine",
@@ -1320,7 +1320,7 @@ class TestJsonStorageType:
                             {
                                 "name": "status",
                                 "type": "tag",
-                                "attrs": {"path": "$.status"},
+                                "path": "$.status",
                             }
                         ],
                     },
