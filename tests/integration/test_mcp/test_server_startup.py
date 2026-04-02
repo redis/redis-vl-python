@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -388,3 +389,148 @@ async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
 
     with pytest.raises(RuntimeError, match="has not been started"):
         await server.get_vectorizer()
+
+
+@pytest.mark.asyncio
+async def test_run_guarded_allows_admitted_request_to_finish_during_shutdown(
+    monkeypatch, existing_index, mcp_config_path
+):
+    index = await existing_index(index_name="mcp-guarded-shutdown-drain")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                runtime_overrides={"max_concurrency": 2, "request_timeout_seconds": 5},
+            )
+        )
+    )
+
+    await server.startup()
+    started_index = await server.get_index()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def guarded_operation():
+        entered.set()
+        await release.wait()
+        return "done"
+
+    operation_task = asyncio.create_task(
+        server.run_guarded("drain-during-shutdown", guarded_operation())
+    )
+    await entered.wait()
+
+    shutdown_task = asyncio.create_task(server.shutdown())
+    await asyncio.sleep(0)
+
+    assert shutdown_task.done() is False
+    assert started_index.client is not None
+
+    release.set()
+
+    assert await operation_task == "done"
+    await shutdown_task
+
+    assert started_index.client is None
+
+
+@pytest.mark.asyncio
+async def test_run_guarded_rejects_new_requests_after_shutdown_begins(
+    monkeypatch, existing_index, mcp_config_path
+):
+    index = await existing_index(index_name="mcp-guarded-stop-reject-new")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                runtime_overrides={"max_concurrency": 2, "request_timeout_seconds": 5},
+            )
+        )
+    )
+
+    await server.startup()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def guarded_operation():
+        entered.set()
+        await release.wait()
+        return "done"
+
+    active_task = asyncio.create_task(
+        server.run_guarded("active-during-shutdown", guarded_operation())
+    )
+    await entered.wait()
+
+    shutdown_task = asyncio.create_task(server.shutdown())
+    await asyncio.sleep(0)
+
+    future = asyncio.get_running_loop().create_future()
+    future.set_result("later")
+    with pytest.raises(RuntimeError, match="not running"):
+        await server.run_guarded("reject-after-stop", future)
+
+    release.set()
+    assert await active_task == "done"
+    await shutdown_task
+
+
+@pytest.mark.asyncio
+async def test_run_guarded_rejects_requests_waiting_on_semaphore_when_shutdown_starts(
+    monkeypatch, existing_index, mcp_config_path
+):
+    index = await existing_index(index_name="mcp-guarded-stop-queued")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                runtime_overrides={"max_concurrency": 1, "request_timeout_seconds": 5},
+            )
+        )
+    )
+
+    await server.startup()
+    first_entered = asyncio.Event()
+    release_first = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def first_operation():
+        first_entered.set()
+        await release_first.wait()
+        return "first"
+
+    async def second_operation():
+        second_started.set()
+        return "second"
+
+    first_task = asyncio.create_task(server.run_guarded("first-op", first_operation()))
+    await first_entered.wait()
+
+    second_task = asyncio.create_task(
+        server.run_guarded("second-op", second_operation())
+    )
+    await asyncio.sleep(0)
+
+    shutdown_task = asyncio.create_task(server.shutdown())
+    await asyncio.sleep(0)
+
+    release_first.set()
+
+    assert await first_task == "first"
+    with pytest.raises(RuntimeError, match="not running"):
+        await second_task
+
+    assert second_started.is_set() is False
+    await shutdown_task

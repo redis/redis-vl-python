@@ -171,6 +171,46 @@ async def test_search_records_rejects_unknown_or_vector_return_fields():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result", "message"),
+    [
+        (
+            {
+                "id": "doc:broken",
+                "content": "science doc",
+                "category": "science",
+            },
+            "missing expected score field",
+        ),
+        (
+            {
+                "content": "science doc",
+                "category": "science",
+                "vector_distance": "0.93",
+            },
+            "missing id",
+        ),
+    ],
+)
+async def test_search_records_treats_malformed_backend_results_as_internal_errors(
+    result, message
+):
+    server = FakeServer(search_type="vector")
+
+    async def fake_query(query):
+        server.index.query_calls.append(query)
+        return [result]
+
+    server.index.query = fake_query
+
+    with pytest.raises(RedisVLMCPError, match=message) as exc_info:
+        await search_records(server, query="science")
+
+    assert exc_info.value.code == MCPErrorCode.INTERNAL_ERROR
+    assert exc_info.value.retryable is False
+
+
+@pytest.mark.asyncio
 async def test_search_records_builds_vector_query_and_normalizes_results(monkeypatch):
     server = FakeServer(
         search_type="vector",
@@ -213,7 +253,7 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
             {
                 "id": "doc:1",
                 "score": 0.93,
-                "score_type": "vector_distance_normalized",
+                "score_type": "vector_distance",
                 "record": {
                     "content": "science doc",
                     "category": "science",
@@ -341,6 +381,67 @@ async def test_search_records_builds_hybrid_query_for_native_runtime(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_search_records_avoids_linear_defaults_for_rrf_native_hybrid_query(
+    monkeypatch,
+):
+    server = FakeServer(
+        search_type="hybrid",
+        search_params={
+            "combination_method": "RRF",
+            "rrf_window": 50,
+        },
+    )
+    server.native_hybrid_supported = True
+    built_queries = []
+
+    class FakePostProcessingConfig:
+        def __init__(self):
+            self.apply_calls = []
+
+        def apply(self, **kwargs):
+            self.apply_calls.append(kwargs)
+
+    class FakeHybridQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            self.postprocessing_config = FakePostProcessingConfig()
+            built_queries.append(("native", kwargs, self.postprocessing_config))
+            super().__init__(**kwargs)
+
+    class FakeAggregateHybridQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(("fallback", kwargs))
+            super().__init__(**kwargs)
+
+    async def fake_query(query):
+        server.index.query_calls.append(query)
+        return [
+            {
+                "id": "doc:rrf",
+                "content": "hybrid doc",
+                "hybrid_score": "1.2",
+            }
+        ]
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.HybridQuery", FakeHybridQuery)
+    monkeypatch.setattr(
+        "redisvl.mcp.tools.search.AggregateHybridQuery", FakeAggregateHybridQuery
+    )
+    server.index.query = fake_query
+
+    response = await search_records(server, query="hybrid")
+
+    assert built_queries[0][0] == "native"
+    assert built_queries[0][1]["combination_method"] == "RRF"
+    assert built_queries[0][1]["rrf_window"] == 50
+    assert "linear_alpha" not in built_queries[0][1]
+    assert "linear_text_weight" not in built_queries[0][1]
+    assert built_queries[0][2].apply_calls == [{"__key": "@__key"}]
+    assert response["search_type"] == "hybrid"
+    assert response["results"][0]["score_type"] == "hybrid_score"
+    assert response["results"][0]["score"] == 1.2
+
+
+@pytest.mark.asyncio
 async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypatch):
     server = FakeServer(
         search_type="hybrid",
@@ -395,6 +496,20 @@ async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypat
     ]
     assert response["search_type"] == "hybrid"
     assert response["results"][0]["score"] == 0.7
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypatch):
+    server = FakeServer(
+        search_type="hybrid",
+        search_params={
+            "combination_method": "RRF",
+            "rrf_window": 50,
+        },
+    )
+
+    with pytest.raises(ValueError, match="native hybrid search support"):
+        server.config.validate_search(supports_native_hybrid_search=False)
 
 
 def test_register_search_tool_uses_default_and_override_descriptions():
