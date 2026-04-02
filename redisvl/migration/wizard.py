@@ -787,7 +787,8 @@ class MigrationWizard:
                 return None
             if not allow_blank and value == "":
                 return False
-            print("Please answer y, n, or skip.")
+            hint = "y, n, or skip" if allow_blank else "y or n"
+            print(f"Please answer {hint}.")
 
     def _prompt_from_choices(
         self,
