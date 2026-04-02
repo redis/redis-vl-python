@@ -260,7 +260,14 @@ class MigrationWizard:
                 )
                 field_rename = self._prompt_rename_field(rename_schema)
                 if field_rename:
-                    changes.rename_fields.append(field_rename)
+                    # Check rename target doesn't collide with staged additions
+                    if field_rename.new_name in staged_add_names:
+                        print(
+                            f"Cannot rename to '{field_rename.new_name}': "
+                            "a field with that name is already staged for addition."
+                        )
+                    else:
+                        changes.rename_fields.append(field_rename)
             elif action == "5":
                 new_name = self._prompt_rename_index(working_schema)
                 if new_name:
