@@ -122,7 +122,7 @@ FT.AGGREGATE idx "*"
 
 **Key Files:** `redisvl/migration/models.py`, `planner.py`, `executor.py`, `async_executor.py`
 
-**Spec:** `nitin_docs/index_migrator/30_rename_operations_spec.md`
+**Spec:** `local_docs/index_migrator/30_rename_operations_spec.md`
 
 ---
 
@@ -211,9 +211,9 @@ A four-layer reliability model. A pre-migration `BGSAVE` (run sequentially, wait
 3. `rvl migrate apply --resume` picks up from the last checkpoint and completes the migration
 4. Each key conversion is idempotent -- running the migration twice on the same key produces the correct result
 5. If a batch fails mid-write, only that batch's vectors are rolled back using the bounded undo buffer
-6. A disk space estimator function calculates projected RDB snapshot size, AOF growth, and total new disk required based on doc count, vector dimensions, source/target dtype, and AOF status. The estimator runs before any mutations and prints a human-readable summary. If available disk is below 80% of the estimate, the CLI prompts for confirmation. The estimator also supports a standalone dry-run mode via `rvl migrate estimate --plan plan.yaml`. See `nitin_docs/index_migrator/40_reliability_brainstorm.md` section "Pre-Migration Disk Space Estimator" for the full specification including inputs, outputs (DiskSpaceEstimate dataclass), calculation logic, CLI output format, integration points, and edge cases.
+6. A disk space estimator function calculates projected RDB snapshot size, AOF growth, and total new disk required based on doc count, vector dimensions, source/target dtype, and AOF status. The estimator runs before any mutations and prints a human-readable summary. If available disk is below 80% of the estimate, the CLI prompts for confirmation. The estimator also supports a standalone dry-run mode via `rvl migrate estimate --plan plan.yaml`. See `local_docs/index_migrator/40_reliability_brainstorm.md` section "Pre-Migration Disk Space Estimator" for the full specification including inputs, outputs (DiskSpaceEstimate dataclass), calculation logic, CLI output format, integration points, and edge cases.
 
-**Alternatives Considered:** Undo log (WAL-style), new-field-then-swap (side-write), shadow index (blue-green), streaming with bounded undo buffer. See `nitin_docs/index_migrator/40_reliability_brainstorm.md` for full analysis.
+**Alternatives Considered:** Undo log (WAL-style), new-field-then-swap (side-write), shadow index (blue-green), streaming with bounded undo buffer. See `local_docs/index_migrator/40_reliability_brainstorm.md` for full analysis.
 
 ---
 
@@ -261,7 +261,7 @@ Some migrations cannot use `drop_recreate` because the stored data is incompatib
 - Operator handoff for cutover decision
 - Cleanup of old index/keys after cutover
 
-**Spec:** `nitin_docs/index_migrator/20_v2_iterative_shadow_spec.md`
+**Spec:** `local_docs/index_migrator/20_v2_iterative_shadow_spec.md`
 
 ---
 
@@ -307,7 +307,7 @@ Current quantization implementation does O(N) round trips for reads (one `HGET` 
 During development, pyflakes identified unused imports across the codebase. These were fixed in migration files but not committed for non-migration files to keep the PR focused.
 
 **What This Requires:**
-- Fix remaining unused imports (see `nitin_docs/issues/unused_imports_cleanup.md`)
+- Fix remaining unused imports (see `local_docs/issues/unused_imports_cleanup.md`)
 - Update `.pylintrc` to remove deprecated Python 2/3 compat options
 - Consider adding `check-lint` to the main `lint` target after cleanup
 

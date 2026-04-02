@@ -145,7 +145,7 @@ Phase 2 tasks are planned work only. They should not start until Phase 1 impleme
 - `Goal`: Add future-facing tests and docs for clustered shadow migration planning.
 - `Inputs`: completed Phase 2 planner and executor behavior
 - `Outputs`: test coverage, manual scale rehearsal instructions, and updated planning docs
-- `Touchpoints`: `tests/`, `nitin_docs/index_migrator`, `redisvl/cli`
+- `Touchpoints`: `tests/`, `local_docs/index_migrator`, `redisvl/cli`
 - `Dependencies`: `V2-T04`, `V2-T05`, `V2-T06`
 - `Acceptance Criteria`:
   - planner outcomes are covered in automated tests
