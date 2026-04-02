@@ -381,7 +381,7 @@ class TestBatchMigrationResumeIntegration:
             "completed": [
                 {
                     "name": index_names[0],
-                    "status": "succeeded",
+                    "status": "success",
                     "completed_at": "2026-03-20T10:00:30Z",
                 }
             ],

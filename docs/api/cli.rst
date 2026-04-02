@@ -509,7 +509,7 @@ Generate a migration plan for a document-preserving drop/recreate migration.
    * - ``--schema-patch``
      - Path to a YAML schema patch file (mutually exclusive with ``--target-schema``)
    * - ``--target-schema``
-     - Path to a full target schema YAML file (mutually exclusive with ``--patch``)
+     - Path to a full target schema YAML file (mutually exclusive with ``--schema-patch``)
 
 **Optional Options**
 
@@ -560,7 +560,7 @@ Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migra
      - Description
    * - ``--async``
      - Run migration asynchronously (recommended for large quantization jobs)
-   * - ``--query-check``
+   * - ``--query-check-file``
      - Path to a YAML file with post-migration query checks
    * - ``--resume``
      - Path to a checkpoint file for crash-safe recovery
