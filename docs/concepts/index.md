@@ -26,6 +26,13 @@ How RedisVL components connect: schemas, indexes, queries, and extensions.
 Schemas, fields, documents, storage types, and query patterns.
 :::
 
+:::{grid-item-card} 🔄 Index Migrations
+:link: index-migrations
+:link-type: doc
+
+How RedisVL handles migration planning, rebuilds, and future shadow migration.
+:::
+
 :::{grid-item-card} 🏷️ Field Attributes
 :link: field-attributes
 :link-type: doc
@@ -69,6 +76,7 @@ Pre-built patterns: caching, message history, and semantic routing.
 
 architecture
 search-and-indexing
+index-migrations
 field-attributes
 queries
 utilities
