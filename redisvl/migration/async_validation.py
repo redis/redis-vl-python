@@ -65,24 +65,17 @@ class AsyncMigrationValidator:
             validation.key_sample_exists = False
             validation.errors.append("Failed to get Redis client for key sample check")
         else:
-            # Handle prefix change: transform key_sample to use new prefix
+            # Handle prefix change: transform key_sample to use new prefix.
+            # Must match the executor's RENAME logic exactly:
+            #   new_key = new_prefix + key[len(old_prefix):]
             keys_to_check = key_sample
             if plan.rename_operations.change_prefix is not None:
                 old_prefix = plan.source.keyspace.prefixes[0]
                 new_prefix = plan.rename_operations.change_prefix
-                # Normalize separator: strip trailing separator from both
-                # prefixes to avoid double/missing separator in transformed keys
-                sep = ":"
-                old_base = old_prefix.rstrip(sep)
-                new_base = new_prefix.rstrip(sep) if new_prefix else ""
                 keys_to_check = []
                 for k in key_sample:
                     if k.startswith(old_prefix):
-                        suffix = k[len(old_prefix):]
-                        if new_base:
-                            keys_to_check.append(f"{new_base}{sep}{suffix}")
-                        else:
-                            keys_to_check.append(suffix)
+                        keys_to_check.append(new_prefix + k[len(old_prefix) :])
                     else:
                         keys_to_check.append(k)
             existing_count = await client.exists(*keys_to_check)
