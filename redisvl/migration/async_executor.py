@@ -744,8 +744,7 @@ class AsyncMigrationExecutor:
                 effective_changes = datatype_changes
                 if has_field_renames:
                     field_rename_map = {
-                        fr.old_name: fr.new_name
-                        for fr in rename_ops.rename_fields
+                        fr.old_name: fr.new_name for fr in rename_ops.rename_fields
                     }
                     effective_changes = {
                         field_rename_map.get(k, k): v
