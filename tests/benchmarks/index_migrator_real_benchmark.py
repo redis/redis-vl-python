@@ -147,13 +147,18 @@ def load_ag_news_records_from_csv(
     with open(csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         for idx, row in enumerate(reader):
-            if idx >= required_docs:
+            if len(row) < 3:
+                continue
+            # Skip header row if present (label column should be a digit)
+            if idx == 0 and not row[0].strip().isdigit():
+                continue
+            if len(records) >= required_docs:
                 break
             label, title, description = row
             text = f"{title}. {description}".strip()
             records.append(
                 {
-                    "doc_id": f"ag-news-{idx}",
+                    "doc_id": f"ag-news-{len(records)}",
                     "text": text,
                     "label": AG_NEWS_LABELS[int(label) - 1],
                 }
@@ -430,7 +435,7 @@ def benchmark_scale(
     query_embeddings = all_embeddings[size : size + query_count]
     dims = int(all_embeddings.shape[1])
 
-    client.flushall()
+    client.flushdb()
 
     baseline_memory = get_memory_snapshot(client)
     planner = MigrationPlanner(key_sample_limit=5)
