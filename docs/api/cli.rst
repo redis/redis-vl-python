@@ -494,7 +494,7 @@ Generate a migration plan for a document-preserving drop/recreate migration.
 
 .. code-block:: bash
 
-    rvl migrate plan --index <name> (--patch <patch.yaml> | --target-schema <schema.yaml>) [OPTIONS]
+    rvl migrate plan --index <name> (--schema-patch <patch.yaml> | --target-schema <schema.yaml>) [OPTIONS]
 
 **Required Options**
 
@@ -506,7 +506,7 @@ Generate a migration plan for a document-preserving drop/recreate migration.
      - Description
    * - ``--index``, ``-i``
      - Name of the source index to migrate
-   * - ``--patch``
+   * - ``--schema-patch``
      - Path to a YAML schema patch file (mutually exclusive with ``--target-schema``)
    * - ``--target-schema``
      - Path to a full target schema YAML file (mutually exclusive with ``--patch``)
@@ -519,14 +519,14 @@ Generate a migration plan for a document-preserving drop/recreate migration.
 
    * - Option
      - Description
-   * - ``--output``, ``-o``
+   * - ``--plan-out``
      - Output path for the migration plan YAML (default: ``migration_plan.yaml``)
 
 **Example**
 
 .. code-block:: bash
 
-    rvl migrate plan -i my_index --patch changes.yaml -o plan.yaml
+    rvl migrate plan -i my_index --schema-patch changes.yaml --plan-out plan.yaml
 
 rvl migrate apply
 ^^^^^^^^^^^^^^^^^
@@ -587,7 +587,7 @@ Interactively build a schema patch and migration plan through a guided wizard.
 
 .. code-block:: bash
 
-    rvl migrate wizard -i my_index -o plan.yaml
+    rvl migrate wizard -i my_index --plan-out plan.yaml
 
 Exit Codes
 ==========
