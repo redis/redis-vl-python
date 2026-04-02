@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-
-from redisvl.utils.log import get_logger
 import time
+from pathlib import Path
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from redis.exceptions import ResponseError
