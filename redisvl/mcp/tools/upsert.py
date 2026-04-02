@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
@@ -231,7 +232,7 @@ async def upsert_records(
         )
         # Copy caller-provided records before enriching them with embeddings or
         # storage-specific serialization so the MCP tool does not mutate inputs.
-        prepared_records = [record.copy() for record in records]
+        prepared_records = [deepcopy(record) for record in records]
         runtime = server.config.runtime
         for record in prepared_records:
             _validate_record(
