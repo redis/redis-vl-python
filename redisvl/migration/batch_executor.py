@@ -190,6 +190,7 @@ class BatchMigrationExecutor:
         # Re-run apply with the updated state
         return self.apply(
             batch_plan,
+            batch_plan_path=batch_plan_path,
             state_path=state_path,
             report_dir=report_dir,
             redis_url=redis_url,
