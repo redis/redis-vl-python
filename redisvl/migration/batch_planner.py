@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any, List, Optional
 
+import redis.exceptions
 import yaml
 
 from redisvl.index import SearchIndex
@@ -198,6 +199,38 @@ class BatchMigrationPlanner:
                     skip_reason=f"Missing fields: {', '.join(missing_fields)}",
                 )
 
+            # Validate rename targets don't collide with each other or
+            # existing fields (after accounting for the source being renamed away)
+            if shared_patch.changes.rename_fields:
+                rename_targets = [
+                    fr.new_name for fr in shared_patch.changes.rename_fields
+                ]
+                rename_sources = {
+                    fr.old_name for fr in shared_patch.changes.rename_fields
+                }
+                seen_targets: dict[str, int] = {}
+                for t in rename_targets:
+                    seen_targets[t] = seen_targets.get(t, 0) + 1
+                duplicates = [t for t, c in seen_targets.items() if c > 1]
+                if duplicates:
+                    return BatchIndexEntry(
+                        name=index_name,
+                        applicable=False,
+                        skip_reason=f"Rename targets collide: {', '.join(duplicates)}",
+                    )
+                # Check if any rename target already exists and isn't itself being renamed away
+                collisions = [
+                    t
+                    for t in rename_targets
+                    if t in field_names and t not in rename_sources
+                ]
+                if collisions:
+                    return BatchIndexEntry(
+                        name=index_name,
+                        applicable=False,
+                        skip_reason=f"Rename targets already exist: {', '.join(collisions)}",
+                    )
+
             # Check that add_fields don't already exist
             existing_adds: list[str] = []
             for field in shared_patch.changes.add_fields:
@@ -232,6 +265,15 @@ class BatchMigrationPlanner:
 
             return BatchIndexEntry(name=index_name, applicable=True)
 
+        except (
+            ConnectionError,
+            OSError,
+            TimeoutError,
+            redis.exceptions.ConnectionError,
+        ) as e:
+            # Infrastructure failures should propagate, not be silently
+            # treated as "not applicable".
+            raise
         except Exception as e:
             return BatchIndexEntry(
                 name=index_name,
