@@ -170,6 +170,11 @@ class MigrationWizard:
         for added in changes.add_fields:
             working["fields"].append(added)
 
+        # Apply index-level changes (name, prefix) so preview reflects them
+        if changes.index:
+            for key, value in changes.index.items():
+                working["index"][key] = value
+
         return working
 
     def _build_patch(
@@ -215,7 +220,18 @@ class MigrationWizard:
                 )
                 update = self._prompt_update_field(update_schema)
                 if update:
-                    changes.update_fields.append(update)
+                    # Merge with existing update for same field if present
+                    existing = next(
+                        (u for u in changes.update_fields if u.name == update.name),
+                        None,
+                    )
+                    if existing:
+                        if update.attrs:
+                            existing.attrs = {**(existing.attrs or {}), **update.attrs}
+                        if update.type:
+                            existing.type = update.type
+                    else:
+                        changes.update_fields.append(update)
             elif action == "3":
                 field_name = self._prompt_remove_field(working_schema)
                 if field_name:
@@ -229,6 +245,13 @@ class MigrationWizard:
                         print(f"Cancelled staged addition of '{field_name}'.")
                     else:
                         changes.remove_fields.append(field_name)
+                        # Also remove any queued updates or renames for this field
+                        changes.update_fields = [
+                            u for u in changes.update_fields if u.name != field_name
+                        ]
+                        changes.rename_fields = [
+                            r for r in changes.rename_fields if r.old_name != field_name
+                        ]
             elif action == "4":
                 # Filter out staged additions from rename candidates
                 staged_add_names = {f["name"] for f in changes.add_fields}
