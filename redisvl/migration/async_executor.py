@@ -986,7 +986,7 @@ class AsyncMigrationExecutor:
 
         for i in range(0, remaining_keys, batch_size):
             batch = keys[i : i + batch_size]
-            pipe = client.pipeline()
+            pipe = client.pipeline(transaction=False)
             undo = BatchUndoBuffer()
             keys_updated_in_batch: set[str] = set()
 
