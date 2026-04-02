@@ -77,7 +77,9 @@ class RenameOperations(BaseModel):
 
     @property
     def has_operations(self) -> bool:
-        return bool(self.rename_index or self.change_prefix or self.rename_fields)
+        return bool(
+            self.rename_index or self.change_prefix is not None or self.rename_fields
+        )
 
 
 class MigrationPlan(BaseModel):

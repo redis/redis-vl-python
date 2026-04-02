@@ -322,6 +322,9 @@ class MigrationPlanner:
                     )
                 new_prefix = new_prefix[0]
             old_prefix = source_dict["index"].get("prefix")
+            # Normalize single-element list to string for comparison
+            if isinstance(old_prefix, list) and len(old_prefix) == 1:
+                old_prefix = old_prefix[0]
             if new_prefix != old_prefix:
                 # Block multi-prefix migrations - we only support single prefix
                 if isinstance(old_prefix, list) and len(old_prefix) > 1:
@@ -390,6 +393,7 @@ class MigrationPlanner:
             return warnings
 
         # Check Redis version support
+        created_client = None
         try:
             if redis_client:
                 client = redis_client
@@ -397,6 +401,7 @@ class MigrationPlanner:
                 from redis import Redis
 
                 client = Redis.from_url(redis_url)
+                created_client = client
             else:
                 client = None
 
@@ -412,6 +417,9 @@ class MigrationPlanner:
                 "SVS-VAMANA requires Redis >= 8.2.0 and Redis Search >= 2.8.10. "
                 "Verify your Redis instance supports this algorithm before applying."
             )
+        finally:
+            if created_client:
+                created_client.close()
 
         # Intel hardware warning for compression
         if uses_compression:

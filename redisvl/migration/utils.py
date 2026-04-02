@@ -267,12 +267,19 @@ def wait_for_index_ready(
         percent_indexed = latest_info.get("percent_indexed")
 
         if percent_indexed is not None or indexing is not None:
-            ready = float(percent_indexed or 0) >= 1.0 and not bool(indexing)
+            pct = float(percent_indexed) if percent_indexed is not None else None
+            is_indexing = bool(indexing)
+            if pct is not None:
+                ready = pct >= 1.0 and not is_indexing
+            else:
+                # percent_indexed missing but indexing flag present:
+                # treat as ready when indexing flag is falsy (0 / False).
+                ready = not is_indexing
             if progress_callback:
                 total_docs = int(latest_info.get("num_docs", 0))
-                pct = float(percent_indexed or 0)
-                indexed_docs = int(total_docs * pct)
-                progress_callback(indexed_docs, total_docs, pct * 100)
+                display_pct = pct if pct is not None else (1.0 if ready else 0.0)
+                indexed_docs = int(total_docs * display_pct)
+                progress_callback(indexed_docs, total_docs, display_pct * 100)
         else:
             current_docs = latest_info.get("num_docs")
             if current_docs is None:
@@ -345,6 +352,13 @@ def estimate_disk_space(
     }
     target_fields = {f["name"]: f for f in plan.merged_target_schema.get("fields", [])}
 
+    # Build rename map: source_name -> target_name
+    field_rename_map: Dict[str, str] = {}
+    rename_ops = plan.rename_operations
+    if rename_ops and rename_ops.rename_fields:
+        for fr in rename_ops.rename_fields:
+            field_rename_map[fr.old_name] = fr.new_name
+
     vector_field_estimates: list[VectorFieldEstimate] = []
     total_source_bytes = 0
     total_target_bytes = 0
@@ -359,7 +373,9 @@ def estimate_disk_space(
     for name, source_field in source_fields.items():
         if source_field.get("type") != "vector":
             continue
-        target_field = target_fields.get(name)
+        # Look up target by renamed name if applicable
+        target_name = field_rename_map.get(name, name)
+        target_field = target_fields.get(target_name)
         if not target_field or target_field.get("type") != "vector":
             continue
 
