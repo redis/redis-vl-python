@@ -20,8 +20,14 @@ import json
 import os
 from typing import Any, Dict, List
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
+except ImportError:
+    raise ImportError(
+        "matplotlib is required by this visualization script. "
+        "Install it with: pip install matplotlib"
+    )
 import numpy as np
 
 # Redis-inspired color palette
