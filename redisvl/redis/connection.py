@@ -327,6 +327,19 @@ def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
             # Default to float32 if missing
             normalized["datatype"] = "float32"
 
+        # Handle HNSW-specific parameters
+        if "m" in vector_attrs:
+            try:
+                normalized["m"] = int(vector_attrs["m"])
+            except (ValueError, TypeError):
+                pass
+
+        if "ef_construction" in vector_attrs:
+            try:
+                normalized["ef_construction"] = int(vector_attrs["ef_construction"])
+            except (ValueError, TypeError):
+                pass
+
         # Handle SVS-VAMANA specific parameters
         # Compression - Redis uses different internal names, so we need to map them
         if "compression" in vector_attrs:
