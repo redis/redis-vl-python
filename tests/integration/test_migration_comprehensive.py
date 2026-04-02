@@ -1211,6 +1211,39 @@ class TestVectorAttributes:
             cleanup_index(index)
             raise
 
+    def test_change_datatype_quantization(
+        self, redis_url, tmp_path, base_schema, sample_docs
+    ):
+        """Test changing vector datatype (quantization)."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+
+        try:
+            result = run_migration(
+                redis_url,
+                tmp_path,
+                base_schema["index"]["name"],
+                {
+                    "version": 1,
+                    "changes": {
+                        "update_fields": [
+                            {"name": "embedding", "attrs": {"datatype": "float16"}}
+                        ],
+                    },
+                },
+            )
+
+            assert result["supported"], "Change datatype should be supported"
+            assert result["succeeded"], f"Migration failed: {result['report']}"
+            cleanup_index(index)
+        except Exception:
+            cleanup_index(index)
+            raise
+
+
+# ==============================================================================
+# 8. JSON Storage Type Tests
+# ==============================================================================
+
 
 class TestJsonStorageType:
     """Tests for migrations with JSON storage type."""
