@@ -231,11 +231,16 @@ class BatchMigrationPlanner:
                         skip_reason=f"Rename targets already exist: {', '.join(collisions)}",
                     )
 
-            # Check that add_fields don't already exist
+            # Check that add_fields don't already exist.
+            # Fields being renamed away free their name for new additions.
+            rename_sources = {
+                fr.old_name for fr in shared_patch.changes.rename_fields
+            }
+            post_rename_fields = (field_names - rename_sources) | rename_target_names
             existing_adds: list[str] = []
             for field in shared_patch.changes.add_fields:
                 field_name = field.get("name")
-                if field_name and field_name in field_names:
+                if field_name and field_name in post_rename_fields:
                     existing_adds.append(field_name)
 
             if existing_adds:
