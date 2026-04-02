@@ -130,7 +130,6 @@ class MigrationWizard:
         ]
         return filtered
 
-
     def _apply_staged_changes(
         self,
         source_schema: Dict[str, Any],
@@ -225,9 +224,7 @@ class MigrationWizard:
                     staged_add_names = {f["name"] for f in changes.add_fields}
                     if field_name in staged_add_names:
                         changes.add_fields = [
-                            f
-                            for f in changes.add_fields
-                            if f["name"] != field_name
+                            f for f in changes.add_fields if f["name"] != field_name
                         ]
                         print(f"Cancelled staged addition of '{field_name}'.")
                     else:

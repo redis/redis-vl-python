@@ -652,8 +652,9 @@ class TestWizardAdversarialInputs:
         wizard = MigrationWizard()
         patch = wizard._build_patch(source_schema)
 
-        update = patch.changes.update_fields[0]
-        assert "m" not in update.attrs  # Negative should be ignored
+        # Negative M is ignored, and since algorithm/datatype/metric are unchanged,
+        # no update should be generated at all
+        assert len(patch.changes.update_fields) == 0
 
     def test_float_m_ignored(self, monkeypatch):
         """Test that float M value is ignored."""
@@ -678,8 +679,9 @@ class TestWizardAdversarialInputs:
         wizard = MigrationWizard()
         patch = wizard._build_patch(source_schema)
 
-        update = patch.changes.update_fields[0]
-        assert "m" not in update.attrs
+        # Float M is ignored, and since algorithm/datatype/metric are unchanged,
+        # no update should be generated at all
+        assert len(patch.changes.update_fields) == 0
 
     def test_string_m_ignored(self, monkeypatch):
         """Test that string M value is ignored."""
@@ -704,8 +706,9 @@ class TestWizardAdversarialInputs:
         wizard = MigrationWizard()
         patch = wizard._build_patch(source_schema)
 
-        update = patch.changes.update_fields[0]
-        assert "m" not in update.attrs
+        # String M is ignored, and since algorithm/datatype/metric are unchanged,
+        # no update should be generated at all
+        assert len(patch.changes.update_fields) == 0
 
     def test_zero_m_accepted(self, monkeypatch):
         """Test that zero M is accepted (validation happens at schema level)."""
