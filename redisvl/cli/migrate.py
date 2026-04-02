@@ -717,7 +717,7 @@ Completed: {len(state.completed)}
         if state.completed:
             print("\nCompleted indexes:")
             for idx in state.completed:
-                if idx.status == "succeeded":
+                if idx.status == "success":
                     status_icon = "[OK]"
                 elif idx.status == "skipped":
                     status_icon = "[SKIP]"

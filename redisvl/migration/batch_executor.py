@@ -332,7 +332,7 @@ class BatchMigrationExecutor:
                     error=idx_state.error,
                 )
             )
-            if idx_state.status in ("succeeded", "success"):
+            if idx_state.status == "success":
                 succeeded += 1
             elif idx_state.status == "failed":
                 failed += 1
