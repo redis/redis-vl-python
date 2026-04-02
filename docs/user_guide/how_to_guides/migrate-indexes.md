@@ -829,6 +829,8 @@ rvl migrate batch-resume \
   --url redis://localhost:6379
 ```
 
+**Note:** If the batch plan involves quantization (e.g., `float32` → `float16`), you must pass `--accept-data-loss` to `batch-resume`, just as with `batch-apply`.
+
 ### Checking Batch Status
 
 ```bash
@@ -844,7 +846,7 @@ Started: 2026-03-20T10:00:00Z
 Updated: 2026-03-20T10:25:00Z
 
 Completed: 2
-  - products_idx: succeeded (10:02:30)
+  - products_idx: success (10:02:30)
   - users_idx: failed - Redis connection timeout (10:05:45)
 
 In Progress: inventory_idx
@@ -867,16 +869,16 @@ summary:
   total_duration_seconds: 127.5
 indexes:
   - name: products_idx
-    status: succeeded
+    status: success
     duration_seconds: 45.2
     docs_migrated: 15000
     report_path: ./reports/products_idx_report.yaml
   - name: users_idx
-    status: succeeded
+    status: success
     duration_seconds: 38.1
     docs_migrated: 8500
   - name: orders_idx
-    status: succeeded
+    status: success
     duration_seconds: 44.2
     docs_migrated: 22000
 completed_at: "2026-03-20T10:02:07Z"

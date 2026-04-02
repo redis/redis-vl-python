@@ -48,6 +48,9 @@ index = SearchIndex(schema, redis_url="redis://localhost:6379")
   token.strip().strip(",").replace(""", "").replace(""", "").lower()
   ```
 
+### Protected Directories
+**CRITICAL**: NEVER delete the `nitin_docs/` directory or any files within it.
+
 ### Git Operations
 **CRITICAL**: NEVER use `git push` or attempt to push to remote repositories. The user will handle all git push operations.
 
