@@ -1,9 +1,11 @@
 import argparse
+import asyncio
 import sys
 from typing import Optional
 
 from redisvl.cli.utils import add_redis_connection_options, create_redis_url
 from redisvl.migration import (
+    AsyncMigrationExecutor,
     MigrationExecutor,
     MigrationPlanner,
     MigrationValidator,
@@ -32,7 +34,7 @@ class Migrate:
             "\tlist         List all available indexes",
             "\twizard       Interactively build a migration plan and schema patch",
             "\tplan         Generate a migration plan for a document-preserving drop/recreate migration",
-            "\tapply        Execute a reviewed drop/recreate migration plan",
+            "\tapply        Execute a reviewed drop/recreate migration plan (use --async for large migrations)",
             "\testimate     Estimate disk space required for a migration plan (dry-run, no mutations)",
             "\tvalidate     Validate a completed migration plan against the live index",
             "\n",
@@ -199,11 +201,17 @@ Commands:
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate apply --plan <migration_plan.yaml> "
-                "[--resume <checkpoint.yaml>] "
+                "[--async] [--resume <checkpoint.yaml>] "
                 "[--report-out <migration_report.yaml>]"
             )
         )
         parser.add_argument("--plan", help="Path to migration_plan.yaml", required=True)
+        parser.add_argument(
+            "--async",
+            dest="use_async",
+            help="Use async executor (recommended for large migrations with quantization)",
+            action="store_true",
+        )
         parser.add_argument(
             "--resume",
             dest="checkpoint_path",
@@ -246,9 +254,16 @@ Commands:
         if disk_estimate.has_quantization:
             print(f"\n{disk_estimate.summary()}\n")
 
-        report = self._apply_sync(
-            plan, redis_url, args.query_check_file, args.checkpoint_path
-        )
+        if args.use_async:
+            report = asyncio.run(
+                self._apply_async(
+                    plan, redis_url, args.query_check_file, args.checkpoint_path
+                )
+            )
+        else:
+            report = self._apply_sync(
+                plan, redis_url, args.query_check_file, args.checkpoint_path
+            )
 
         write_migration_report(report, args.report_out)
         if args.benchmark_out:
@@ -309,6 +324,29 @@ Commands:
         print(f"\nApplying migration to '{plan.source.index_name}'...")
 
         report = executor.apply(
+            plan,
+            redis_url=redis_url,
+            query_check_file=query_check_file,
+            progress_callback=self._make_progress_callback(),
+            checkpoint_path=checkpoint_path,
+        )
+
+        self._print_apply_result(report)
+        return report
+
+    async def _apply_async(
+        self,
+        plan,
+        redis_url: str,
+        query_check_file: Optional[str],
+        checkpoint_path: Optional[str] = None,
+    ):
+        """Execute migration asynchronously (non-blocking for large quantization jobs)."""
+        executor = AsyncMigrationExecutor()
+
+        print(f"\nApplying migration to '{plan.source.index_name}' (async mode)...")
+
+        report = await executor.apply(
             plan,
             redis_url=redis_url,
             query_check_file=query_check_file,
