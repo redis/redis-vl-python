@@ -24,7 +24,7 @@ Some tests use L2-only validation due to Redis FT.INFO limitations:
 - prefix change (keys renamed), HNSW params, initial_cap, phonetic_matcher, numeric unf
 
 Run: pytest tests/integration/test_migration_comprehensive.py -v
-Spec: nitin_docs/index_migrator/32_integration_test_spec.md
+Spec: local_docs/index_migrator/32_integration_test_spec.md
 """
 
 import uuid

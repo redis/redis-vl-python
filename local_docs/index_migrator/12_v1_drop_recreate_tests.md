@@ -129,5 +129,5 @@ Phase 1 should not be considered ready until all of the following are true:
 - at least one manual smoke test passes
 - at least one benchmark rehearsal has been documented on a representative dataset
 - help text matches the spec
-- the docs in `nitin_docs/index_migrator/` still match the shipped CLI behavior
+- the docs in `local_docs/index_migrator/` still match the shipped CLI behavior
 - the release notes or implementation summary clearly state that `drop_recreate` is downtime-accepting

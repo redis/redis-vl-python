@@ -67,7 +67,7 @@ For Phase 2 planning:
 
 ## Locked Decisions
 
-- The planning workspace lives entirely under `nitin_docs/index_migrator/`.
+- The planning workspace lives entirely under `local_docs/index_migrator/`.
 - The default artifact format for plans and reports is YAML.
 - Benchmarking is built into migration reporting, not a separate subsystem.
 - The default execution unit is a single index (batch mode runs indexes sequentially).
