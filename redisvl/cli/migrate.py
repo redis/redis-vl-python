@@ -42,13 +42,13 @@ class Migrate:
         if not hasattr(self, command):
             print(f"Unknown subcommand: {args.command}")
             parser.print_help()
-            exit(1)
+            sys.exit(1)
 
         try:
             getattr(self, command)()
         except Exception as e:
             logger.error(e)
-            exit(1)
+            sys.exit(1)
 
     def helper(self):
         parser = argparse.ArgumentParser(
@@ -219,10 +219,10 @@ Commands:
         step_labels = {
             "enumerate": "[1/8] Enumerate keys",
             "bgsave": "[2/8] BGSAVE snapshot",
-            "drop": "[3/8] Drop index",
-            "quantize": "[4/8] Quantize vectors",
-            "field_rename": "[5/8] Rename fields",
-            "key_rename": "[6/8] Rename keys",
+            "field_rename": "[3/8] Rename fields",
+            "drop": "[4/8] Drop index",
+            "key_rename": "[5/8] Rename keys",
+            "quantize": "[6/8] Quantize vectors",
             "create": "[7/8] Create index",
             "index": "[8/8] Re-indexing",
             "validate": "Validate",
