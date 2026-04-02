@@ -161,6 +161,7 @@ class AsyncMigrationPlanner:
             return warnings
 
         # Check Redis version support
+        created_client = False
         try:
             if redis_client:
                 client = redis_client
@@ -168,6 +169,7 @@ class AsyncMigrationPlanner:
                 from redis.asyncio import Redis
 
                 client = Redis.from_url(redis_url)
+                created_client = True
             else:
                 client = None
 
@@ -182,6 +184,9 @@ class AsyncMigrationPlanner:
                 "SVS-VAMANA requires Redis >= 8.2.0 and Redis Search >= 2.8.10. "
                 "Verify your Redis instance supports this algorithm before applying."
             )
+        finally:
+            if created_client and client is not None:
+                await client.aclose()  # type: ignore[union-attr]
 
         # Intel hardware warning for compression
         if uses_compression:
