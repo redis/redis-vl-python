@@ -21,6 +21,7 @@ UPDATABLE_FIELD_TYPES = ["text", "tag", "numeric", "geo", "vector"]
 class MigrationWizard:
     def __init__(self, planner: Optional[MigrationPlanner] = None):
         self.planner = planner or MigrationPlanner()
+        self._existing_sortable: bool = False
 
     def run(
         self,
@@ -44,6 +45,15 @@ class MigrationWizard:
             redis_client=redis_client,
         )
         source_schema = IndexSchema.from_dict(snapshot.schema_snapshot)
+
+        # Guard: the wizard does not support indexes with multiple prefixes.
+        prefixes = source_schema.index.prefix
+        if isinstance(prefixes, list) and len(prefixes) > 1:
+            raise ValueError(
+                f"Index '{resolved_index_name}' has multiple prefixes "
+                f"({prefixes}). The migration wizard only supports single-prefix "
+                "indexes. Use the planner API directly for multi-prefix indexes."
+            )
 
         print(f"Building a migration plan for index '{resolved_index_name}'")
         self._print_source_schema(source_schema.to_dict())
@@ -156,8 +166,13 @@ class MigrationWizard:
             if field["name"] in rename_map:
                 field["name"] = rename_map[field["name"]]
 
-        # Apply updates (reflect attribute changes in working schema)
-        update_map = {u.name: u for u in changes.update_fields}
+        # Apply updates (reflect attribute changes in working schema).
+        # Resolve update names through the rename map so that updates staged
+        # before a rename (referencing the old name) still match.
+        update_map = {}
+        for u in changes.update_fields:
+            resolved = rename_map.get(u.name, u.name)
+            update_map[resolved] = u
         for field in working["fields"]:
             if field["name"] in update_map:
                 upd = update_map[field["name"]]
@@ -245,12 +260,27 @@ class MigrationWizard:
                         print(f"Cancelled staged addition of '{field_name}'.")
                     else:
                         changes.remove_fields.append(field_name)
-                        # Also remove any queued updates or renames for this field
+                        # Also remove any queued updates or renames for this field.
+                        # Check both old_name and new_name so that:
+                        #  - renames FROM this field are dropped (old_name match)
+                        #  - renames TO this field are dropped (new_name match)
+                        # Also drop updates referencing either the field itself or
+                        # any pre-rename name that mapped to it.
+                        rename_aliases = {field_name}
+                        for r in changes.rename_fields:
+                            if r.new_name == field_name:
+                                rename_aliases.add(r.old_name)
+                            if r.old_name == field_name:
+                                rename_aliases.add(r.new_name)
                         changes.update_fields = [
-                            u for u in changes.update_fields if u.name != field_name
+                            u
+                            for u in changes.update_fields
+                            if u.name not in rename_aliases
                         ]
                         changes.rename_fields = [
-                            r for r in changes.rename_fields if r.old_name != field_name
+                            r
+                            for r in changes.rename_fields
+                            if r.old_name != field_name and r.new_name != field_name
                         ]
             elif action == "4":
                 # Filter out staged additions from rename candidates
@@ -357,7 +387,11 @@ class MigrationWizard:
         if selected["type"] == "vector":
             attrs = self._prompt_vector_attrs(selected)
         else:
-            attrs = self._prompt_common_attrs(selected["type"], allow_blank=True)
+            attrs = self._prompt_common_attrs(
+                selected["type"],
+                allow_blank=True,
+                existing_attrs=selected.get("attrs"),
+            )
         if not attrs:
             print("No changes collected.")
             return None
@@ -485,7 +519,10 @@ class MigrationWizard:
         return new_prefix
 
     def _prompt_common_attrs(
-        self, field_type: str, allow_blank: bool = False
+        self,
+        field_type: str,
+        allow_blank: bool = False,
+        existing_attrs: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         attrs: Dict[str, Any] = {}
 
@@ -511,6 +548,11 @@ class MigrationWizard:
         if index_empty is not None:
             attrs["index_empty"] = index_empty
 
+        # Track whether the field was already sortable so that type-specific
+        # prompt helpers (text UNF, numeric UNF) can offer dependent prompts
+        # even when the user leaves sortable blank during an update.
+        self._existing_sortable = (existing_attrs or {}).get("sortable", False)
+
         # Type-specific attributes
         if field_type == "text":
             self._prompt_text_attrs(attrs, allow_blank)
@@ -519,8 +561,11 @@ class MigrationWizard:
         elif field_type == "numeric":
             self._prompt_numeric_attrs(attrs, allow_blank, sortable)
 
-        # No index - only meaningful with sortable
-        if sortable or (allow_blank and attrs.get("sortable")):
+        # No index - only meaningful with sortable.
+        # When updating (allow_blank), also check the existing field's sortable
+        # state so we offer dependent prompts even if the user left sortable blank.
+        _existing_sortable = self._existing_sortable
+        if sortable or (allow_blank and (_existing_sortable or attrs.get("sortable"))):
             print("  No index: store field for sorting only, not searchable")
             no_index = self._prompt_bool("No index", allow_blank=allow_blank)
             if no_index is not None:
@@ -560,7 +605,7 @@ class MigrationWizard:
             attrs["phonetic_matcher"] = phonetic
 
         # UNF (only if sortable)
-        if attrs.get("sortable"):
+        if attrs.get("sortable") or self._existing_sortable:
             print("  UNF: preserve original form (no lowercasing) for sorting")
             unf = self._prompt_bool("UNF (un-normalized form)", allow_blank=allow_blank)
             if unf is not None:
@@ -585,7 +630,7 @@ class MigrationWizard:
     ) -> None:
         """Prompt for numeric field specific attributes."""
         # UNF (only if sortable)
-        if sortable or attrs.get("sortable"):
+        if sortable or attrs.get("sortable") or self._existing_sortable:
             print("  UNF: preserve exact numeric representation for sorting")
             unf = self._prompt_bool("UNF (un-normalized form)", allow_blank=allow_blank)
             if unf is not None:
