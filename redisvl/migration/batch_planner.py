@@ -5,7 +5,7 @@ from __future__ import annotations
 import fnmatch
 import uuid
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import redis.exceptions
 import yaml
@@ -86,30 +86,14 @@ class BatchMigrationPlanner:
         requires_quantization = False
 
         for index_name in index_names:
-            entry = self._check_index_applicability(
+            entry, has_quantization = self._check_index_applicability(
                 index_name=index_name,
                 shared_patch=shared_patch,
                 redis_client=client,
             )
             batch_entries.append(entry)
-
-            # Check if any applicable index requires quantization
-            if entry.applicable:
-                try:
-                    plan = self._single_planner.create_plan_from_patch(
-                        index_name,
-                        schema_patch=shared_patch,
-                        redis_client=client,
-                    )
-                    datatype_changes = MigrationPlanner.get_vector_datatype_changes(
-                        plan.source.schema_snapshot,
-                        plan.merged_target_schema,
-                        rename_operations=plan.rename_operations,
-                    )
-                    if datatype_changes:
-                        requires_quantization = True
-                except Exception:
-                    pass  # Already handled in applicability check
+            if has_quantization:
+                requires_quantization = True
 
         batch_id = f"batch_{uuid.uuid4().hex[:12]}"
 
@@ -171,8 +155,12 @@ class BatchMigrationPlanner:
         index_name: str,
         shared_patch: SchemaPatch,
         redis_client: Any,
-    ) -> BatchIndexEntry:
-        """Check if the shared patch can be applied to a specific index."""
+    ) -> Tuple[BatchIndexEntry, bool]:
+        """Check if the shared patch can be applied to a specific index.
+
+        Returns:
+            Tuple of (BatchIndexEntry, requires_quantization).
+        """
         try:
             index = SearchIndex.from_existing(index_name, redis_client=redis_client)
             schema_dict = index.schema.to_dict()
@@ -193,10 +181,13 @@ class BatchMigrationPlanner:
                     missing_fields.append(field_update.name)
 
             if missing_fields:
-                return BatchIndexEntry(
-                    name=index_name,
-                    applicable=False,
-                    skip_reason=f"Missing fields: {', '.join(missing_fields)}",
+                return (
+                    BatchIndexEntry(
+                        name=index_name,
+                        applicable=False,
+                        skip_reason=f"Missing fields: {', '.join(missing_fields)}",
+                    ),
+                    False,
                 )
 
             # Validate rename targets don't collide with each other or
@@ -213,10 +204,13 @@ class BatchMigrationPlanner:
                     seen_targets[t] = seen_targets.get(t, 0) + 1
                 duplicates = [t for t, c in seen_targets.items() if c > 1]
                 if duplicates:
-                    return BatchIndexEntry(
-                        name=index_name,
-                        applicable=False,
-                        skip_reason=f"Rename targets collide: {', '.join(duplicates)}",
+                    return (
+                        BatchIndexEntry(
+                            name=index_name,
+                            applicable=False,
+                            skip_reason=f"Rename targets collide: {', '.join(duplicates)}",
+                        ),
+                        False,
                     )
                 # Check if any rename target already exists and isn't itself being renamed away
                 collisions = [
@@ -225,10 +219,13 @@ class BatchMigrationPlanner:
                     if t in field_names and t not in rename_sources
                 ]
                 if collisions:
-                    return BatchIndexEntry(
-                        name=index_name,
-                        applicable=False,
-                        skip_reason=f"Rename targets already exist: {', '.join(collisions)}",
+                    return (
+                        BatchIndexEntry(
+                            name=index_name,
+                            applicable=False,
+                            skip_reason=f"Rename targets already exist: {', '.join(collisions)}",
+                        ),
+                        False,
                     )
 
             # Check that add_fields don't already exist.
@@ -242,10 +239,13 @@ class BatchMigrationPlanner:
                     existing_adds.append(field_name)
 
             if existing_adds:
-                return BatchIndexEntry(
-                    name=index_name,
-                    applicable=False,
-                    skip_reason=f"Fields already exist: {', '.join(existing_adds)}",
+                return (
+                    BatchIndexEntry(
+                        name=index_name,
+                        applicable=False,
+                        skip_reason=f"Fields already exist: {', '.join(existing_adds)}",
+                    ),
+                    False,
                 )
 
             # Try creating a plan to check for blocked changes
@@ -256,17 +256,29 @@ class BatchMigrationPlanner:
             )
 
             if not plan.diff_classification.supported:
-                return BatchIndexEntry(
-                    name=index_name,
-                    applicable=False,
-                    skip_reason=(
-                        plan.diff_classification.blocked_reasons[0]
-                        if plan.diff_classification.blocked_reasons
-                        else "Unsupported changes"
+                return (
+                    BatchIndexEntry(
+                        name=index_name,
+                        applicable=False,
+                        skip_reason=(
+                            plan.diff_classification.blocked_reasons[0]
+                            if plan.diff_classification.blocked_reasons
+                            else "Unsupported changes"
+                        ),
                     ),
+                    False,
                 )
 
-            return BatchIndexEntry(name=index_name, applicable=True)
+            # Detect quantization from the plan we already created
+            has_quantization = bool(
+                MigrationPlanner.get_vector_datatype_changes(
+                    plan.source.schema_snapshot,
+                    plan.merged_target_schema,
+                    rename_operations=plan.rename_operations,
+                )
+            )
+
+            return BatchIndexEntry(name=index_name, applicable=True), has_quantization
 
         except (
             ConnectionError,
@@ -278,10 +290,13 @@ class BatchMigrationPlanner:
             # treated as "not applicable".
             raise
         except Exception as e:
-            return BatchIndexEntry(
-                name=index_name,
-                applicable=False,
-                skip_reason=str(e),
+            return (
+                BatchIndexEntry(
+                    name=index_name,
+                    applicable=False,
+                    skip_reason=str(e),
+                ),
+                False,
             )
 
     def write_batch_plan(self, batch_plan: BatchPlan, path: str) -> None:
