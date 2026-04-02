@@ -444,7 +444,9 @@ class MigrationPlanner:
 
         # Check which rename operations are being handled
         has_index_rename = rename_operations and rename_operations.rename_index
-        has_prefix_change = rename_operations and rename_operations.change_prefix is not None
+        has_prefix_change = (
+            rename_operations and rename_operations.change_prefix is not None
+        )
         has_field_renames = (
             rename_operations and len(rename_operations.rename_fields) > 0
         )
