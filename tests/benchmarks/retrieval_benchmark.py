@@ -439,7 +439,10 @@ def benchmark_single_config(
             "num_docs": int(info.get("num_docs", 0) or 0),
             "vector_index_sz_mb": float(info.get("vector_index_sz_mb", 0) or 0),
             "memory_mb": memory_mb,
-            "latency": {k: v for k, v in query_metrics.items() if k != "result_sets"},
+            "latency": {
+                "queried_top_k": top_k,
+                **{k: v for k, v in query_metrics.items() if k != "result_sets"},
+            },
             "result_sets": query_metrics["result_sets"],
         }
     finally:

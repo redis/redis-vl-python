@@ -552,10 +552,12 @@ def benchmark_scale(
             },
         }
     finally:
-        try:
-            migrated_index.delete(drop=True)
-        except Exception:
-            pass
+        for idx in (source_index, migrated_index):
+            try:
+                if idx is not None:
+                    idx.delete(drop=True)
+            except Exception:
+                pass
 
 
 def main() -> None:
