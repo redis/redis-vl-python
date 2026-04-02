@@ -14,9 +14,10 @@ def create_redis_url(args: Namespace) -> str:
     elif args.url:
         return args.url
     else:
-        url = "redis://"
         if args.ssl:
-            url += "rediss://"
+            url = "rediss://"
+        else:
+            url = "redis://"
         if args.user:
             url += args.user
             if args.password:
@@ -26,11 +27,7 @@ def create_redis_url(args: Namespace) -> str:
         return url
 
 
-def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
-    parser.add_argument("-i", "--index", help="Index name", type=str, required=False)
-    parser.add_argument(
-        "-s", "--schema", help="Path to schema file", type=str, required=False
-    )
+def add_redis_connection_options(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument("-u", "--url", help="Redis URL", type=str, required=False)
     parser.add_argument("--host", help="Redis host", type=str, default="localhost")
     parser.add_argument("-p", "--port", help="Redis port", type=int, default=6379)
@@ -38,3 +35,11 @@ def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument("--ssl", help="Use SSL", action="store_true")
     parser.add_argument("-a", "--password", help="Redis password", type=str, default="")
     return parser
+
+
+def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
+    parser.add_argument("-i", "--index", help="Index name", type=str, required=False)
+    parser.add_argument(
+        "-s", "--schema", help="Path to schema file", type=str, required=False
+    )
+    return add_redis_connection_options(parser)
