@@ -75,6 +75,56 @@ def create_redis_url(args: Namespace) -> str:
     return _build_redis_url(args)
 
 
+def _add_redis_connection_args(parser_or_group: ArgumentParser) -> None:
+    """Add Redis connection flags to a parser or argument group."""
+    parser_or_group.add_argument(
+        "-u",
+        "--url",
+        help="Redis URL for data-plane commands",
+        type=str,
+        required=False,
+    )
+    parser_or_group.add_argument(
+        "--host",
+        help="Redis host for data-plane commands",
+        type=str,
+        default=None,
+    )
+    parser_or_group.add_argument(
+        "-p",
+        "--port",
+        help="Redis port for data-plane commands",
+        type=int,
+        default=None,
+    )
+    parser_or_group.add_argument(
+        "--user",
+        help="Redis username for data-plane commands",
+        type=str,
+        default=None,
+    )
+    parser_or_group.add_argument(
+        "--ssl", help="Use SSL for Redis", action="store_true"
+    )
+    parser_or_group.add_argument(
+        "-a",
+        "--password",
+        help="Redis password for data-plane commands",
+        type=str,
+        default=None,
+    )
+
+
+def add_redis_connection_options(parser: ArgumentParser) -> ArgumentParser:
+    """Add only Redis connection flags (no index selection) to a parser.
+
+    Used by the ``migrate`` CLI which manages its own index arguments.
+    """
+    redis_group = parser.add_argument_group("Redis connection options")
+    _add_redis_connection_args(redis_group)
+    return parser
+
+
 def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
     index_target_group = parser.add_argument_group("Index selection")
     index_target_group.add_argument(
@@ -93,40 +143,7 @@ def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
     )
 
     redis_group = parser.add_argument_group("Redis connection options")
-    redis_group.add_argument(
-        "-u",
-        "--url",
-        help="Redis URL for data-plane commands",
-        type=str,
-        required=False,
-    )
-    redis_group.add_argument(
-        "--host",
-        help="Redis host for data-plane commands",
-        type=str,
-        default=None,
-    )
-    redis_group.add_argument(
-        "-p",
-        "--port",
-        help="Redis port for data-plane commands",
-        type=int,
-        default=None,
-    )
-    redis_group.add_argument(
-        "--user",
-        help="Redis username for data-plane commands",
-        type=str,
-        default=None,
-    )
-    redis_group.add_argument("--ssl", help="Use SSL for Redis", action="store_true")
-    redis_group.add_argument(
-        "-a",
-        "--password",
-        help="Redis password for data-plane commands",
-        type=str,
-        default=None,
-    )
+    _add_redis_connection_args(redis_group)
     return parser
 
 
