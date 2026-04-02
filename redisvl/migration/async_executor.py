@@ -35,6 +35,7 @@ from redisvl.migration.utils import (
 )
 from redisvl.redis.utils import array_to_buffer, buffer_to_array
 from redisvl.types import AsyncRedisClient
+from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
 

@@ -233,9 +233,7 @@ class BatchMigrationPlanner:
 
             # Check that add_fields don't already exist.
             # Fields being renamed away free their name for new additions.
-            rename_sources = {
-                fr.old_name for fr in shared_patch.changes.rename_fields
-            }
+            rename_sources = {fr.old_name for fr in shared_patch.changes.rename_fields}
             post_rename_fields = (field_names - rename_sources) | rename_target_names
             existing_adds: list[str] = []
             for field in shared_patch.changes.add_fields:
