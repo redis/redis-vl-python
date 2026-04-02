@@ -4,6 +4,7 @@ import threading
 import time
 import warnings
 import weakref
+from pathlib import Path
 from math import ceil
 from typing import (
     TYPE_CHECKING,
@@ -28,6 +29,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
+import yaml
 
 from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import VectorQuery
@@ -335,6 +337,10 @@ class BaseSearchIndex:
     def from_yaml(cls, schema_path: str, **kwargs):
         """Create a SearchIndex from a YAML schema file.
 
+        If the YAML file contains ``_redis_url`` or ``_connection_kwargs``
+        keys (produced by ``to_yaml(include_connection=True)``), they are
+        automatically passed to the constructor.
+
         Args:
             schema_path (str): Path to the YAML schema file.
 
@@ -347,15 +353,26 @@ class BaseSearchIndex:
 
             index = SearchIndex.from_yaml("schemas/schema.yaml", redis_url="redis://localhost:6379")
         """
-        schema = IndexSchema.from_yaml(schema_path)
-        return cls(schema=schema, **kwargs)
+        path_obj = Path(schema_path)
+        try:
+            resolved_path = path_obj.resolve()
+        except Exception as exc:
+            raise ValueError(f"Invalid schema path: {schema_path}") from exc
+        try:
+            with resolved_path.open() as f:
+                data = yaml.safe_load(f) or {}
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Schema file not found: {resolved_path}") from exc
+        return cls.from_dict(data, **kwargs)
 
     @classmethod
     def from_dict(cls, schema_dict: Dict[str, Any], **kwargs):
         """Create a SearchIndex from a dictionary.
 
         Args:
-            schema_dict (Dict[str, Any]): A dictionary containing the schema.
+            schema_dict (Dict[str, Any]): A dictionary containing the schema
+                and optionally ``_redis_url`` and ``_connection_kwargs``
+                (produced by ``to_dict(include_connection=True)``).
 
         Returns:
             SearchIndex: A RedisVL SearchIndex object.
@@ -376,8 +393,96 @@ class BaseSearchIndex:
             }, redis_url="redis://localhost:6379")
 
         """
-        schema = IndexSchema.from_dict(schema_dict)
+        # Extract connection metadata so it reaches the constructor
+        # instead of being silently dropped by IndexSchema validation.
+        copy = dict(schema_dict)
+        if "_redis_url" in copy:
+            url = copy.pop("_redis_url")
+            # Skip sanitized URLs (contain ****) to avoid silent auth
+            # failures — these are for inspection only, not round-trip.
+            if url and "****" not in url:
+                kwargs.setdefault("redis_url", url)
+        if "_connection_kwargs" in copy:
+            kwargs.setdefault("connection_kwargs", copy.pop("_connection_kwargs"))
+
+        schema = IndexSchema.from_dict(copy)
         return cls(schema=schema, **kwargs)
+
+    def _sanitize_redis_url(self) -> Optional[str]:
+        """Sanitize a Redis URL by masking passwords.
+
+        Handles both ``user:password@`` and ``:password@`` URL patterns.
+
+        Returns:
+            Optional[str]: The sanitized URL, or None if ``_redis_url``
+            is not set.
+        """
+        if not self._redis_url:
+            return None
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self._redis_url)
+        # Only mask when a password component is present (including
+        # empty-string passwords).  Username-only URLs like
+        # ``redis://user@host:6379`` are left unchanged.
+        if parsed.password is not None:
+            host_info = parsed.hostname or ""
+            if parsed.port:
+                host_info += f":{parsed.port}"
+            user_part = f"{parsed.username}:" if parsed.username is not None else ":"
+            netloc = f"{user_part}****@{host_info}"
+            return parsed._replace(netloc=netloc).geturl()
+        return self._redis_url
+
+    def to_dict(self, include_connection: bool = False) -> Dict[str, Any]:
+        """Serialize the index configuration to a dictionary.
+
+        Args:
+            include_connection: Whether to include connection parameters
+                (Redis URL and connection kwargs). Passwords are masked
+                (``****``). The serialized URL is for **inspection
+                only** — ``from_dict`` will not restore sanitized URLs.
+                Defaults to False.
+
+        Returns:
+            A dictionary representation of the index configuration.
+        """
+        config = self.schema.to_dict()
+
+        if include_connection:
+            if self._redis_url is not None:
+                config["_redis_url"] = self._sanitize_redis_url()
+            safe_keys = {"ssl_cert_reqs"}
+            if self._connection_kwargs:
+                config["_connection_kwargs"] = {
+                    k: v for k, v in self._connection_kwargs.items()
+                    if k in safe_keys
+                }
+
+        return config
+
+    def to_yaml(
+        self, file_path: str, include_connection: bool = False, overwrite: bool = True
+    ) -> None:
+        """Serialize the index configuration to a YAML file.
+
+        Args:
+            file_path: Destination path for the YAML file.
+            include_connection: Whether to include connection parameters.
+                Passwords are masked (``****``) and the URL is for
+                **inspection only**. Defaults to False.
+            overwrite: Whether to overwrite an existing file. If False,
+                raises FileExistsError when the file exists. Defaults to True.
+
+        Raises:
+            FileExistsError: If *file_path* already exists and
+                *overwrite* is False.
+        """
+        fp = Path(file_path).resolve()
+        if fp.exists() and not overwrite:
+            raise FileExistsError(f"File {file_path} already exists.")
+        with open(fp, "w") as f:
+            yaml.dump(self.to_dict(include_connection=include_connection), f, sort_keys=False)
 
     def disconnect(self):
         """Disconnect from the Redis database."""
