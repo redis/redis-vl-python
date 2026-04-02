@@ -221,7 +221,9 @@ class BatchMigrationExecutor:
             )
 
             # Sanitize index_name to prevent path traversal
-            safe_name = index_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+            safe_name = (
+                index_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+            )
             report_file = report_dir / f"{safe_name}_report.yaml"
             write_yaml(report.model_dump(exclude_none=True), str(report_file))
 

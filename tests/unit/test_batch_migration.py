@@ -831,7 +831,7 @@ class TestBatchMigrationExecutorCheckpointing:
             completed=[
                 BatchIndexState(
                     name="idx1",
-                    status="succeeded",
+                    status="success",
                     completed_at="2026-03-20T10:05:00Z",
                 )
             ],
@@ -970,7 +970,7 @@ class TestBatchMigrationExecutorFailurePolicies:
                     name="idx1", status="failed", completed_at="2026-03-20T10:03:00Z"
                 ),
                 BatchIndexState(
-                    name="idx2", status="succeeded", completed_at="2026-03-20T10:05:00Z"
+                    name="idx2", status="success", completed_at="2026-03-20T10:05:00Z"
                 ),
             ],
             current_index=None,
@@ -1046,7 +1046,7 @@ class TestBatchMigrationExecutorProgressCallback:
             "index": "idx1",
             "pos": 1,
             "total": 3,
-            "status": "succeeded",
+            "status": "success",
         }
 
 
