@@ -1,3 +1,4 @@
+from redisvl.migration.executor import MigrationExecutor
 from redisvl.migration.models import (
     DiskSpaceEstimate,
     FieldRename,
@@ -12,6 +13,7 @@ from redisvl.migration.validation import MigrationValidator
 __all__ = [
     "DiskSpaceEstimate",
     "FieldRename",
+    "MigrationExecutor",
     "MigrationPlan",
     "MigrationPlanner",
     "MigrationReport",

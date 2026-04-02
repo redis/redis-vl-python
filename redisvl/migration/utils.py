@@ -7,6 +7,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import yaml
 
+from redisvl.utils.log import get_logger
+
+logger = get_logger(__name__)
+
 from redisvl.index import SearchIndex
 from redisvl.migration.models import (
     AOF_HSET_OVERHEAD_BYTES,
@@ -83,11 +87,19 @@ def normalize_keys(keys: List[str]) -> List[str]:
 def build_scan_match_patterns(prefixes: List[str], key_separator: str) -> List[str]:
     """Build SCAN patterns for all configured prefixes."""
     if not prefixes:
+        logger.warning(
+            "No prefixes provided for SCAN pattern. "
+            "Using '*' which will scan the entire keyspace."
+        )
         return ["*"]
 
     patterns = set()
     for prefix in prefixes:
         if not prefix:
+            logger.warning(
+                "Empty prefix in prefix list. "
+                "Using '*' which will scan the entire keyspace."
+            )
             return ["*"]
         if key_separator and not prefix.endswith(key_separator):
             patterns.add(f"{prefix}{key_separator}*")
@@ -313,11 +325,15 @@ def current_source_matches_snapshot(
     redis_url: Optional[str] = None,
     redis_client: Optional[Any] = None,
 ) -> bool:
-    current_index = SearchIndex.from_existing(
-        index_name,
-        redis_url=redis_url,
-        redis_client=redis_client,
-    )
+    try:
+        current_index = SearchIndex.from_existing(
+            index_name,
+            redis_url=redis_url,
+            redis_client=redis_client,
+        )
+    except Exception:
+        # Index no longer exists (e.g. already dropped during migration)
+        return False
     return schemas_equal(current_index.schema.to_dict(), expected_schema)
 
 
