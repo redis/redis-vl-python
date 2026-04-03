@@ -564,8 +564,13 @@ class MigrationWizard:
         # No index - only meaningful with sortable.
         # When updating (allow_blank), also check the existing field's sortable
         # state so we offer dependent prompts even if the user left sortable blank.
+        # But if sortable was explicitly set to False, skip dependent prompts.
         _existing_sortable = self._existing_sortable
-        if sortable or (allow_blank and (_existing_sortable or attrs.get("sortable"))):
+        if sortable or (
+            sortable is None
+            and allow_blank
+            and (_existing_sortable or attrs.get("sortable"))
+        ):
             print("  No index: store field for sorting only, not searchable")
             no_index = self._prompt_bool("No index", allow_blank=allow_blank)
             if no_index is not None:
@@ -604,8 +609,10 @@ class MigrationWizard:
         if phonetic:
             attrs["phonetic_matcher"] = phonetic
 
-        # UNF (only if sortable)
-        if attrs.get("sortable") or self._existing_sortable:
+        # UNF (only if sortable – skip if sortable was explicitly set to False)
+        if attrs.get("sortable") or (
+            attrs.get("sortable") is not False and self._existing_sortable
+        ):
             print("  UNF: preserve original form (no lowercasing) for sorting")
             unf = self._prompt_bool("UNF (un-normalized form)", allow_blank=allow_blank)
             if unf is not None:
@@ -629,8 +636,10 @@ class MigrationWizard:
         self, attrs: Dict[str, Any], allow_blank: bool, sortable: Optional[bool]
     ) -> None:
         """Prompt for numeric field specific attributes."""
-        # UNF (only if sortable)
-        if sortable or attrs.get("sortable") or self._existing_sortable:
+        # UNF (only if sortable – skip if sortable was explicitly set to False)
+        if sortable or (
+            sortable is not False and (attrs.get("sortable") or self._existing_sortable)
+        ):
             print("  UNF: preserve exact numeric representation for sorting")
             unf = self._prompt_bool("UNF (un-normalized form)", allow_blank=allow_blank)
             if unf is not None:

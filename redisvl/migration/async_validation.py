@@ -167,14 +167,23 @@ class AsyncMigrationValidator:
         try:
             search_result = await target_index.search(Query("*").paging(0, 1))
             total_found = search_result.total
-            passed = total_found == expected_doc_count
+            # When expected_doc_count is 0 (empty index), a successful
+            # search returning 0 docs is correct behaviour, not a failure.
+            if expected_doc_count == 0:
+                passed = total_found == 0
+            else:
+                passed = total_found > 0
+            if expected_doc_count == 0:
+                detail_expectation = "expected 0"
+            else:
+                detail_expectation = f"expected >0, source had {expected_doc_count}"
             results.append(
                 QueryCheckResult(
                     name="functional:wildcard_search",
                     passed=passed,
                     details=(
                         f"Wildcard search returned {total_found} docs "
-                        f"(expected {expected_doc_count})"
+                        f"({detail_expectation})"
                     ),
                 )
             )

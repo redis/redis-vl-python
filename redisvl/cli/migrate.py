@@ -638,6 +638,11 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             action="store_true",
         )
         parser.add_argument(
+            "--accept-data-loss",
+            help="Acknowledge vector quantization data loss",
+            action="store_true",
+        )
+        parser.add_argument(
             "--report-dir",
             help="Directory for per-index migration reports",
             default="./reports",
@@ -645,8 +650,24 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
 
-        redis_url = create_redis_url(args)
+        # Load the batch plan to check for quantization safety gate
         executor = BatchMigrationExecutor()
+        state = executor._load_state(args.state)
+        plan_path = args.plan or state.plan_path or None
+        if plan_path:
+            batch_plan = executor._load_batch_plan(plan_path)
+            if batch_plan.requires_quantization and not args.accept_data_loss:
+                print(
+                    """WARNING: This batch migration includes quantization (e.g., float32 -> float16).
+         Vector data will be modified. Original precision cannot be recovered.
+         To proceed, add --accept-data-loss flag.
+
+         If you need to preserve original vectors, backup your data first:
+           redis-cli BGSAVE"""
+                )
+                sys.exit(1)
+
+        redis_url = create_redis_url(args)
 
         def progress_callback(
             index_name: str, position: int, total: int, status: str

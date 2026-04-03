@@ -155,13 +155,17 @@ class MigrationValidator:
                 passed = total_found == 0
             else:
                 passed = total_found > 0
+            if expected_doc_count == 0:
+                detail_expectation = "expected 0"
+            else:
+                detail_expectation = f"expected >0, source had {expected_doc_count}"
             results.append(
                 QueryCheckResult(
                     name="functional:wildcard_search",
                     passed=passed,
                     details=(
                         f"Wildcard search returned {total_found} docs "
-                        f"(expected {expected_doc_count})"
+                        f"({detail_expectation})"
                     ),
                 )
             )
