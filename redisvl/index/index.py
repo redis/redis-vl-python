@@ -121,6 +121,19 @@ SearchParams = Union[
 ]
 
 
+def _get_sql_redis_options(sql_query: SQLQuery) -> Dict[str, Any]:
+    """Return normalized sql-redis executor options for a SQLQuery."""
+    return {
+        "schema_cache_strategy": "lazy",
+        **getattr(sql_query, "sql_redis_options", {}),
+    }
+
+
+def _sql_executor_cache_key(sql_redis_options: Dict[str, Any]) -> str:
+    """Build a stable cache key for sql-redis executor reuse."""
+    return json.dumps(sql_redis_options, sort_keys=True, default=repr)
+
+
 def process_results(
     results: "Result", query: BaseQuery, schema: IndexSchema
 ) -> List[Dict[str, Any]]:
@@ -480,6 +493,7 @@ class SearchIndex(BaseSearchIndex):
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
         self._lock = threading.Lock()
+        self._sql_executors: Dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = redis_client is None
@@ -488,6 +502,7 @@ class SearchIndex(BaseSearchIndex):
 
     def disconnect(self):
         """Disconnect from the Redis database."""
+        self.invalidate_sql_schema_cache()
         if self._owns_redis_client is False:
             logger.info("Index does not own client, not disconnecting")
             return
@@ -587,6 +602,7 @@ class SearchIndex(BaseSearchIndex):
                 through the `REDIS_URL` environment variable.
             ModuleNotFoundError: If required Redis modules are not installed.
         """
+        self.invalidate_sql_schema_cache()
         self.__redis_client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
@@ -607,6 +623,7 @@ class SearchIndex(BaseSearchIndex):
             TypeError: If the provided client is not valid.
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
+        self.invalidate_sql_schema_cache()
         self.__redis_client = redis_client
         return self
 
@@ -685,6 +702,7 @@ class SearchIndex(BaseSearchIndex):
                     definition=definition,
                     stopwords=stopwords,
                 )
+            self.invalidate_sql_schema_cache()
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Failed to create index '{self.name}' on Redis: {str(e)}"
@@ -725,6 +743,7 @@ class SearchIndex(BaseSearchIndex):
                 self._redis_client.execute_command(*cmd_args, target_nodes=target_nodes)
             else:
                 self._redis_client.execute_command(*cmd_args)
+            self.invalidate_sql_schema_cache()
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
@@ -784,7 +803,12 @@ class SearchIndex(BaseSearchIndex):
             else:
                 break
 
+        self.invalidate_sql_schema_cache()
         return total_records_deleted
+
+    def invalidate_sql_schema_cache(self) -> None:
+        """Clear cached sql-redis executors and schema state for this index."""
+        self._sql_executors.clear()
 
     def drop_keys(self, keys: Union[str, List[str]]) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
@@ -951,18 +975,19 @@ class SearchIndex(BaseSearchIndex):
             ImportError: If sql-redis package is not installed.
         """
         try:
-            from sql_redis.executor import Executor
-            from sql_redis.schema import SchemaRegistry
+            from sql_redis import create_executor
         except ImportError:
             raise ImportError(
                 "sql-redis is required for SQL query support. "
                 "Install it with: pip install redisvl[sql-redis]"
             )
 
-        registry = SchemaRegistry(self._redis_client)
-        registry.load_all()  # Loads index schemas from Redis
-
-        executor = Executor(self._redis_client, registry)
+        sql_redis_options = _get_sql_redis_options(sql_query)
+        cache_key = _sql_executor_cache_key(sql_redis_options)
+        executor = self._sql_executors.get(cache_key)
+        if executor is None:
+            executor = create_executor(self._redis_client, **sql_redis_options)
+            self._sql_executors[cache_key] = executor
 
         # Execute the query with any params
         result = executor.execute(sql_query.sql, params=sql_query.params)
@@ -1381,6 +1406,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
         self._lock = asyncio.Lock()
+        self._sql_executors: Dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = redis_client is None
@@ -1445,6 +1471,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             "connect() is deprecated; pass connection parameters in __init__",
             DeprecationWarning,
         )
+        self.invalidate_sql_schema_cache()
         client = await RedisConnectionFactory._get_aredis_connection(
             redis_url=redis_url, **kwargs
         )
@@ -1457,6 +1484,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         This method is deprecated; please provide connection parameters in __init__.
         """
         redis_client = await self._validate_client(redis_client)
+        self.invalidate_sql_schema_cache()
         await self.disconnect()
         async with self._lock:
             self._redis_client = redis_client
@@ -1605,6 +1633,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                     definition=definition,
                     stopwords=stopwords,
                 )
+            self.invalidate_sql_schema_cache()
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Failed to create index '{self.name}' on Redis: {str(e)}"
@@ -1645,6 +1674,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 await client.execute_command(*cmd_args, target_nodes=target_nodes)
             else:
                 await client.execute_command(*cmd_args)
+            self.invalidate_sql_schema_cache()
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
@@ -1706,7 +1736,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             else:
                 break
 
+        self.invalidate_sql_schema_cache()
         return total_records_deleted
+
+    def invalidate_sql_schema_cache(self) -> None:
+        """Clear cached sql-redis executors and schema state for this index."""
+        self._sql_executors.clear()
 
     async def drop_keys(self, keys: Union[str, List[str]]) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
@@ -2110,7 +2145,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             ImportError: If sql-redis package is not installed.
         """
         try:
-            from sql_redis import AsyncExecutor, AsyncSchemaRegistry
+            from sql_redis import create_async_executor
         except ImportError:
             raise ImportError(
                 "sql-redis is required for SQL query support. "
@@ -2118,10 +2153,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             )
 
         client = await self._get_client()
-        registry = AsyncSchemaRegistry(client)
-        await registry.load_all()  # Loads index schemas from Redis asynchronously
-
-        executor = AsyncExecutor(client, registry)
+        sql_redis_options = _get_sql_redis_options(sql_query)
+        cache_key = _sql_executor_cache_key(sql_redis_options)
+        executor = self._sql_executors.get(cache_key)
+        if executor is None:
+            executor = await create_async_executor(client, **sql_redis_options)
+            self._sql_executors[cache_key] = executor
 
         # Execute the query with any params asynchronously
         result = await executor.execute(sql_query.sql, params=sql_query.params)
@@ -2250,6 +2287,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         return await self._info(index_name, client)
 
     async def disconnect(self):
+        self.invalidate_sql_schema_cache()
         if self._owns_redis_client is False:
             return
         if self._redis_client is not None:

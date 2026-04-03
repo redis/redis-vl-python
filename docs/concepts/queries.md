@@ -180,6 +180,26 @@ query = SQLQuery("""
 results = index.query(query)
 ```
 
+`SQLQuery` also accepts `sql_redis_options`, which are forwarded to the
+underlying `sql-redis` executor. This is mainly useful for tuning schema
+caching behavior.
+
+```python
+query = SQLQuery(
+    """
+    SELECT title, price, category
+    FROM products
+    WHERE category = 'electronics' AND price < 100
+    """,
+    sql_redis_options={"schema_cache_strategy": "lazy"},
+)
+```
+
+- `"lazy"` (default) loads schemas only when a query touches an index, which
+  keeps startup and one-off queries cheaper.
+- `"load_all"` preloads all schemas up front, which can help repeated query
+  workloads that span many indexes.
+
 **Aggregations and grouping:**
 
 ```python

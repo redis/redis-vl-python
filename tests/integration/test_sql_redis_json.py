@@ -1203,6 +1203,81 @@ class TestAsyncSQLQuery:
         assert "price" in results[0]
 
     @pytest.mark.asyncio
+    async def test_async_sql_query_defaults_to_lazy_schema_cache(
+        self, async_sql_index, redis_url
+    ):
+        """Default async SQLQuery execution should cache only the referenced schema."""
+        other_index = AsyncSearchIndex.from_dict(
+            {
+                "index": {
+                    "name": f"async_sql_aux_{uuid.uuid4().hex[:8]}",
+                    "prefix": f"async_sql_aux_{uuid.uuid4().hex[:8]}",
+                    "storage_type": "json",
+                },
+                "fields": [{"name": "name", "type": "text"}],
+            },
+            redis_url=redis_url,
+        )
+        await other_index.create(overwrite=True)
+
+        try:
+            await async_sql_index.query(
+                SQLQuery(f"SELECT title FROM {async_sql_index.name}")
+            )
+
+            assert len(async_sql_index._sql_executors) == 1
+            executor = next(iter(async_sql_index._sql_executors.values()))
+            assert async_sql_index.name in executor._schema_registry._schemas
+            assert other_index.name not in executor._schema_registry._schemas
+        finally:
+            await other_index.delete(drop=True)
+
+    @pytest.mark.asyncio
+    async def test_async_sql_query_can_request_load_all_schema_cache(
+        self, async_sql_index, redis_url
+    ):
+        """Async SQLQuery should pass through eager schema cache configuration."""
+        other_index = AsyncSearchIndex.from_dict(
+            {
+                "index": {
+                    "name": f"async_sql_aux_{uuid.uuid4().hex[:8]}",
+                    "prefix": f"async_sql_aux_{uuid.uuid4().hex[:8]}",
+                    "storage_type": "json",
+                },
+                "fields": [{"name": "name", "type": "text"}],
+            },
+            redis_url=redis_url,
+        )
+        await other_index.create(overwrite=True)
+
+        try:
+            await async_sql_index.query(
+                SQLQuery(
+                    f"SELECT title FROM {async_sql_index.name}",
+                    sql_redis_options={"schema_cache_strategy": "load_all"},
+                )
+            )
+
+            executor = next(iter(async_sql_index._sql_executors.values()))
+            assert async_sql_index.name in executor._schema_registry._schemas
+            assert other_index.name in executor._schema_registry._schemas
+        finally:
+            await other_index.delete(drop=True)
+
+    @pytest.mark.asyncio
+    async def test_async_clear_invalidates_sql_schema_cache(self, async_sql_index):
+        """Async lifecycle operations should clear cached sql-redis executors."""
+        await async_sql_index.query(
+            SQLQuery(f"SELECT title FROM {async_sql_index.name}")
+        )
+
+        assert async_sql_index._sql_executors
+
+        await async_sql_index.clear()
+
+        assert not async_sql_index._sql_executors
+
+    @pytest.mark.asyncio
     async def test_async_sql_aggregate(self, async_sql_index):
         """Test async COUNT(*) aggregation (FT.AGGREGATE code path)."""
         sql_query = SQLQuery(f"SELECT COUNT(*) as total FROM {async_sql_index.name}")

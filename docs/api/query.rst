@@ -251,3 +251,13 @@ SQLQuery
    SQLQuery translates SQL SELECT statements into Redis FT.SEARCH or FT.AGGREGATE commands.
    The SQL syntax supports WHERE clauses, field selection, ordering, and parameterized queries
    for vector similarity searches.
+
+.. note::
+   SQLQuery accepts a ``sql_redis_options`` dictionary that is passed through to
+   ``sql-redis`` executor creation. The most common option is
+   ``schema_cache_strategy``:
+
+   - ``"lazy"`` (default) loads schemas on demand, which keeps one-off or
+     narrow queries cheaper.
+   - ``"load_all"`` eagerly loads all schemas up front, which can help when
+     running many SQL queries across many indexes.
