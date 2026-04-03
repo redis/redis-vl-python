@@ -234,3 +234,4 @@ tests/data
 
 # Local working directory (personal scripts, docs, tools)
 local/
+local_docs/
