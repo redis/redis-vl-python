@@ -344,8 +344,13 @@ class MultiVectorQuery(AggregationQuery):
         super().__init__(query_string)
 
         # calculate the respective vector similarities
+        # use exists() guard so documents where Redis did not yield a distance
+        # (e.g. when the index contains >10 000 entries) get score 0 instead
+        # of raising "Could not find the value for a parameter name".
         for i in range(len(self._vectors)):
-            self.apply(**{f"score_{i}": f"(2 - @distance_{i})/2"})
+            self.apply(
+                **{f"score_{i}": f"if(exists(@distance_{i}), (2 - @distance_{i})/2, 0)"}
+            )
 
         # construct the scoring string based on the vector similarity scores and weights
         combined_scores = []
