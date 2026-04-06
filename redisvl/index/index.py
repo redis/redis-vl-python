@@ -2155,11 +2155,21 @@ class AsyncSearchIndex(BaseSearchIndex):
         client = await self._get_client()
         sql_redis_options = _get_sql_redis_options(sql_query)
         cache_key = _sql_executor_cache_key(sql_redis_options)
-        executor = self._sql_executors.get(cache_key)
-        if executor is None:
-            executor = await create_async_executor(client, **sql_redis_options)
-            self._sql_executors[cache_key] = executor
 
+        sql_executors_lock = getattr(self, "_sql_executors_lock", None)
+        if sql_executors_lock is None:
+            sql_executors_lock = asyncio.Lock()
+            existing_sql_executors_lock = getattr(self, "_sql_executors_lock", None)
+            if existing_sql_executors_lock is None:
+                self._sql_executors_lock = sql_executors_lock
+            else:
+                sql_executors_lock = existing_sql_executors_lock
+
+        async with sql_executors_lock:
+            executor = self._sql_executors.get(cache_key)
+            if executor is None:
+                executor = await create_async_executor(client, **sql_redis_options)
+                self._sql_executors[cache_key] = executor
         # Execute the query with any params asynchronously
         result = await executor.execute(sql_query.sql, params=sql_query.params)
 
