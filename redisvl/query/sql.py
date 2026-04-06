@@ -10,6 +10,13 @@ class SQLQuery:
     This class allows users to write SQL SELECT statements that are
     automatically translated into Redis FT.SEARCH or FT.AGGREGATE commands.
 
+    For TEXT fields with ``sql-redis >= 0.4.0``:
+
+    - ``=`` performs exact phrase or exact-term matching
+    - ``LIKE`` performs wildcard/pattern matching using SQL ``%`` wildcards
+    - ``fuzzy(field, 'term')`` performs typo-tolerant matching
+    - ``fulltext(field, 'query')`` performs tokenized text search
+
     .. code-block:: python
 
         from redisvl.query import SQLQuery
@@ -51,6 +58,12 @@ class SQLQuery:
                 ``{"schema_cache_strategy": "load_all"}`` eagerly loads
                 all schemas up front. These options exist to balance startup
                 cost vs repeated-query performance across many indexes.
+
+        Note:
+            ``sql-redis >= 0.4.0`` uses explicit TEXT search operators.
+            Use ``=`` for exact phrase matching, ``LIKE`` for wildcard
+            matching, ``fuzzy()`` for typo-tolerant matching, and
+            ``fulltext()`` for tokenized search.
         """
         self.sql = sql
         self.params = params or {}

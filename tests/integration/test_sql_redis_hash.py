@@ -499,7 +499,7 @@ class TestSQLQueryTextOperators:
     """Tests for SQL text field operators."""
 
     def test_text_equals(self, sql_index):
-        """Test text = operator (full-text search)."""
+        """Test text = operator for single-token TEXT matching."""
         sql_query = SQLQuery(
             f"""
             SELECT title, name
@@ -514,7 +514,7 @@ class TestSQLQueryTextOperators:
             assert "laptop" in result["title"].lower()
 
     def test_text_not_equals(self, sql_index):
-        """Test text != operator (negated full-text search)."""
+        """Test text != operator for negated single-token TEXT matching."""
         sql_query = SQLQuery(
             f"""
             SELECT title, name
@@ -530,12 +530,12 @@ class TestSQLQueryTextOperators:
             assert "laptop" not in result["title"].lower()
 
     def test_text_prefix(self, sql_index):
-        """Test text prefix search with wildcard (term*)."""
+        """Test text prefix search with LIKE pattern matching."""
         sql_query = SQLQuery(
             f"""
             SELECT title, name
             FROM {sql_index.name}
-            WHERE title = 'lap*'
+            WHERE title LIKE 'lap%'
         """
         )
         results = sql_index.query(sql_query)
@@ -546,12 +546,12 @@ class TestSQLQueryTextOperators:
             assert "lap" in result["title"].lower()
 
     def test_text_suffix(self, sql_index):
-        """Test text suffix search with wildcard (*term)."""
+        """Test text suffix search with LIKE pattern matching."""
         sql_query = SQLQuery(
             f"""
             SELECT title, name
             FROM {sql_index.name}
-            WHERE name = '*book'
+            WHERE name LIKE '%book'
         """
         )
         results = sql_index.query(sql_query)
@@ -562,12 +562,12 @@ class TestSQLQueryTextOperators:
             assert "book" in result["name"].lower()
 
     def test_text_fuzzy(self, sql_index):
-        """Test text fuzzy search with Levenshtein distance (%term%)."""
+        """Test text fuzzy search with fuzzy(field, value)."""
         sql_query = SQLQuery(
             f"""
             SELECT title, name
             FROM {sql_index.name}
-            WHERE title = '%laptap%'
+            WHERE fuzzy(title, 'laptap')
         """
         )
         results = sql_index.query(sql_query)
@@ -576,6 +576,23 @@ class TestSQLQueryTextOperators:
         for result in results:
             # Should fuzzy match "laptop" even with typo "laptap"
             assert "laptop" in result["title"].lower()
+
+    def test_text_fulltext(self, sql_index):
+        """Test text tokenized search with fulltext(field, query)."""
+        sql_query = SQLQuery(
+            f"""
+            SELECT title, name
+            FROM {sql_index.name}
+            WHERE fulltext(title, 'laptop keyboard')
+        """
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) >= 1
+        for result in results:
+            title_lower = result["title"].lower()
+            assert "laptop" in title_lower
+            assert "keyboard" in title_lower
 
     def test_text_phrase(self, sql_index):
         """Test text phrase search (multi-word exact phrase)."""
@@ -1351,7 +1368,7 @@ class TestSQLQueryGeoOperators:
             f"""
             SELECT name, location
             FROM {geo_index.name}
-            WHERE name = 'Downtown' AND geo_distance(location, POINT(-94.5786, 39.0997), 'mi') < 2000
+            WHERE name LIKE '%Downtown%' AND geo_distance(location, POINT(-94.5786, 39.0997), 'mi') < 2000
             """
         )
 
