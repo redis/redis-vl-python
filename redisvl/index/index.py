@@ -984,10 +984,11 @@ class SearchIndex(BaseSearchIndex):
 
         sql_redis_options = _get_sql_redis_options(sql_query)
         cache_key = _sql_executor_cache_key(sql_redis_options)
-        executor = self._sql_executors.get(cache_key)
-        if executor is None:
-            executor = create_executor(self._redis_client, **sql_redis_options)
-            self._sql_executors[cache_key] = executor
+        with self._lock:
+            executor = self._sql_executors.get(cache_key)
+            if executor is None:
+                executor = create_executor(self._redis_client, **sql_redis_options)
+                self._sql_executors[cache_key] = executor
 
         # Execute the query with any params
         result = executor.execute(sql_query.sql, params=sql_query.params)
