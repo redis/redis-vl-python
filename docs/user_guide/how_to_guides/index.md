@@ -39,6 +39,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 :::{grid-item-card} 💻 CLI Operations
 
 - [Manage Indices with the CLI](../cli.ipynb) -- create, inspect, and delete indices from your terminal
+- [Run RedisVL MCP](mcp.md) -- expose an existing Redis index to MCP clients
 :::
 
 ::::
@@ -59,6 +60,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Optimize index performance | [Optimize Indexes with SVS-VAMANA](../09_svs_vamana.ipynb) |
 | Decide on storage format | [Choose a Storage Type](../05_hash_vs_json.ipynb) |
 | Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
+| Expose an index through MCP | [Run RedisVL MCP](mcp.md) |
 
 ```{toctree}
 :hidden:
@@ -74,4 +76,5 @@ Optimize Indexes with SVS-VAMANA <../09_svs_vamana>
 Cache Embeddings <../10_embeddings_cache>
 Use Advanced Query Types <../11_advanced_queries>
 Write SQL Queries for Redis <../12_sql_to_redis_queries>
+Run RedisVL MCP <mcp>
 ```

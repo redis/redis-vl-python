@@ -77,7 +77,6 @@ The behavioral contract stays the same. The operational controls around networki
 ```yaml
 server:
   redis_url: ${REDIS_URL}
-  read_only: true
 
 indexes:
   knowledge:
@@ -97,6 +96,15 @@ indexes:
             dims: 1536
             datatype: float32
 
+    search:
+      type: hybrid
+      params:
+        text_scorer: BM25STD
+        stopwords: english
+        vector_search_method: KNN
+        combination_method: LINEAR
+        linear_text_weight: 0.3
+
     runtime:
       text_field_name: content
       vector_field_name: embedding
@@ -107,6 +115,12 @@ indexes:
       startup_timeout_seconds: 30
       request_timeout_seconds: 45
       max_concurrency: 16
+```
+
+Run the server in read-only mode with the CLI flag or environment variable instead of YAML:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml --read-only
 ```
 
 Why this is realistic:
@@ -127,7 +141,6 @@ Request:
 ```json
 {
   "query": "How do we mitigate elevated cache miss rate after a regional failover?",
-  "search_type": "vector",
   "limit": 5,
   "filter": {
     "and": [
@@ -152,7 +165,6 @@ Request:
 ```json
 {
   "query": "deprecation of legacy cache invalidation flow",
-  "search_type": "hybrid",
   "limit": 3,
   "filter": {
     "field": "product",

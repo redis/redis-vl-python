@@ -111,6 +111,7 @@ class MCP:
             return
 
         started = False
+
         try:
             await server.startup()
             started = True
@@ -118,6 +119,7 @@ class MCP:
             result = server.run(transport="stdio")
             if inspect.isawaitable(result):
                 await result
+
         finally:
             if started:
                 try:

@@ -342,7 +342,7 @@ Tool executions are bounded by an async semaphore (`runtime.max_concurrency`). R
     {
       "or": [
         { "field": "rating", "op": "gte", "value": 4.5 },
-        { "field": "is_pinned", "op": "eq", "value": true }
+        { "field": "category", "op": "eq", "value": "featured" }
       ]
     }
   ]
@@ -433,7 +433,6 @@ Not registered when read-only mode is enabled.
 |----------|------|----------|---------|-------------|
 | `records` | list[object] | yes | - | non-empty and `len(records) <= runtime.max_upsert_records` |
 | `id_field` | str | no | `null` | if set, must exist in every record |
-| `embed_text_field` | str | no | `runtime.default_embed_text_field` | must exist in every record |
 | `skip_embedding_if_present` | bool | no | `runtime.skip_embedding_if_present` | if false, always re-embed |
 
 ### Response Contract
@@ -449,7 +448,7 @@ Not registered when read-only mode is enabled.
 ### Upsert Semantics
 
 1. Validate input records before writing.
-2. Resolve `embed_text_field`.
+2. Use `runtime.default_embed_text_field` for records that require embedding.
 3. Respect `skip_embedding_if_present` (default true): only generate embeddings for records missing configured vector field.
 4. Populate configured vector field.
 5. Call `AsyncSearchIndex.load`.
@@ -664,7 +663,7 @@ Note: Full n8n MCP client support depends on n8n's MCP implementation. Refer to 
   - filter behavior
 - `test_upsert_tool.py`
   - insert/update success
-  - id_field/embed_text_field validation failures
+  - id_field validation failures
   - read-only mode excludes tool
 
 ### Deterministic Verification Commands
