@@ -3,6 +3,8 @@
 import re
 from typing import Any, Dict, Optional
 
+from redisvl.redis.connection import RedisConnectionFactory
+
 
 class SQLQuery:
     """A query class that translates SQL-like syntax into Redis queries.
@@ -168,9 +170,9 @@ class SQLQuery:
 
         # Get or create Redis client
         if redis_client is None:
-            from redis import Redis
-
-            redis_client = Redis.from_url(redis_url)
+            redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=redis_url
+            )
 
         sql_redis_options = {
             "schema_cache_strategy": "lazy",

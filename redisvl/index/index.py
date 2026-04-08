@@ -531,16 +531,16 @@ class SearchIndex(BaseSearchIndex):
         Raises:
             ValueError: If redis_url or redis_client is not provided.
         """
-        if redis_url:
-            redis_client = RedisConnectionFactory.get_redis_connection(
-                redis_url=redis_url,
-                **kwargs,
-            )
-        elif redis_client:
+        if redis_client:
             # Validate client type and set lib name
             RedisConnectionFactory.validate_sync_redis(redis_client)
             # Mark that client was already validated to avoid duplicate calls
             kwargs["_client_validated"] = True
+        elif redis_url:
+            redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=redis_url,
+                **kwargs,
+            )
 
         if not redis_client:
             raise ValueError("Must provide either a redis_url or redis_client")
@@ -1437,16 +1437,16 @@ class AsyncSearchIndex(BaseSearchIndex):
                 "Must provide either a redis_url or redis_client to fetch Redis index info."
             )
 
-        if redis_url:
-            redis_client = await RedisConnectionFactory._get_aredis_connection(
-                redis_url=redis_url,
-                **kwargs,
-            )
-        elif redis_client:
+        if redis_client:
             # Validate client type and set lib name
             await RedisConnectionFactory.validate_async_redis(redis_client)
             # Mark that client was already validated to avoid duplicate calls
             kwargs["_client_validated"] = True
+        elif redis_url:
+            redis_client = await RedisConnectionFactory._get_aredis_connection(
+                redis_url=redis_url,
+                **kwargs,
+            )
 
         if redis_client is None:
             raise ValueError(

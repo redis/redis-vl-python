@@ -97,12 +97,8 @@ class Index:
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
-        try:
-            redis_url = create_redis_url(args)
-            conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
-        except ValueError:
-            print("Must set REDIS_URL environment variable or provide host and port")
-            exit(1)
+        redis_url = create_redis_url(args)
+        conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
 
         if args.index:
             schema = IndexSchema.from_dict({"index": {"name": args.index}})

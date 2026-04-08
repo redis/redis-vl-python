@@ -115,7 +115,20 @@ class BaseCache:
             # Create new Redis client
             url = self.redis_kwargs["redis_url"]
             kwargs = self.redis_kwargs["connection_kwargs"]
-            self._redis_client = Redis.from_url(url, **kwargs)  # type: ignore
+            if url is not None and not isinstance(url, str):
+                raise TypeError(
+                    "Expected `redis_url` to be a string (e.g. 'redis://localhost:6379'), "
+                    f"but got type: {type(url).__name__}"
+                )
+            if not isinstance(kwargs, Mapping):
+                raise TypeError(
+                    "Expected `connection_kwargs` to be a dictionary (e.g. {'decode_responses': True}), "
+                    f"but got type: {type(kwargs).__name__}"
+                )
+            self._redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=url,
+                **kwargs,
+            )
         return self._redis_client
 
     async def _get_async_redis_client(self) -> AsyncRedisClient:

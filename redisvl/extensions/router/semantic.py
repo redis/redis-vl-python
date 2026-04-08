@@ -117,14 +117,14 @@ class SemanticRouter(BaseModel):
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
-        if redis_url:
+        if redis_client:
+            # Just validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client)
+        else:
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url,
                 **kwargs,
             )
-        elif redis_client:
-            # Just validate client type and set lib name
-            RedisConnectionFactory.validate_sync_redis(redis_client)
         if redis_client is None:
             raise ValueError(
                 "Creating Redis client failed. Please check the redis_url and connection_kwargs."
