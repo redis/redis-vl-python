@@ -42,7 +42,9 @@ class Stats:
     def __init__(self):
         parser = argparse.ArgumentParser(usage=self.usage)
         parser = add_index_parsing_options(parser)
-        args = parser.parse_args(sys.argv[2:])
+        argv = sys.argv[2:]
+        args = parser.parse_args(argv)
+        args._argv = tuple(argv)
         try:
             self.stats(args)
         except Exception as e:

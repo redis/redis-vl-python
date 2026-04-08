@@ -1,5 +1,6 @@
 import os
-from argparse import Action, ArgumentParser, Namespace
+from argparse import ArgumentParser, Namespace
+from collections.abc import Sequence
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
 from redisvl.utils.log import get_logger
@@ -7,69 +8,58 @@ from redisvl.utils.log import get_logger
 logger = get_logger("[RedisVL]")
 DEFAULT_REDIS_HOST = "localhost"
 DEFAULT_REDIS_PORT = 6379
-_TRACKED_CONNECTION_OPTIONS_ATTR = "_tracked_connection_options"
-_TRACK_CONNECTION_OPTIONS_ATTR = "_track_connection_options"
+_HOST_FLAGS = ("--host",)
+_PORT_FLAGS = ("-p", "--port")
+_USER_FLAGS = ("--user",)
+_PASSWORD_FLAGS = ("-a", "--password")
+_SSL_FLAGS = ("--ssl",)
+_ALL_CONNECTION_FLAGS = (
+    _HOST_FLAGS,
+    _PORT_FLAGS,
+    _USER_FLAGS,
+    _PASSWORD_FLAGS,
+    _SSL_FLAGS,
+)
 
 
-def _get_tracked_connection_options(args: Namespace) -> set[str]:
-    return set(getattr(args, _TRACKED_CONNECTION_OPTIONS_ATTR, ()))
+def _get_cli_argv(args: Namespace) -> tuple[str, ...]:
+    raw_argv = getattr(args, "_argv", ())
+    return tuple(raw_argv) if isinstance(raw_argv, Sequence) else ()
 
 
-def _is_tracking_connection_options(args: Namespace) -> bool:
-    return bool(getattr(args, _TRACK_CONNECTION_OPTIONS_ATTR, False))
-
-
-def _mark_connection_option(args: Namespace, option: str) -> None:
-    tracked_options = _get_tracked_connection_options(args)
-    tracked_options.add(option)
-    setattr(args, _TRACKED_CONNECTION_OPTIONS_ATTR, tracked_options)
-
-
-class _StoreTrackedOption(Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        _mark_connection_option(namespace, self.dest)
-        setattr(namespace, self.dest, values)
-
-
-class _StoreTrackedTrue(Action):
-    def __init__(self, option_strings, dest, default=False, required=False, help=None):
-        super().__init__(
-            option_strings,
-            dest,
-            nargs=0,
-            default=default,
-            required=required,
-            help=help,
-        )
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        _mark_connection_option(namespace, self.dest)
-        setattr(namespace, self.dest, True)
+def _argv_has_flag(argv: Sequence[str], *flags: str) -> bool:
+    return any(flag in argv for flag in flags)
 
 
 def _has_explicit_connection_options(args: Namespace) -> bool:
-    if _is_tracking_connection_options(args):
-        return bool(
-            _get_tracked_connection_options(args)
-            & {"host", "port", "user", "password", "ssl"}
-        )
+    argv = _get_cli_argv(args)
+    if argv:
+        return any(_argv_has_flag(argv, *flags) for flags in _ALL_CONNECTION_FLAGS)
 
     return any(
-        getattr(args, attribute, None) is not None
-        for attribute in ("host", "port", "user", "password")
-    ) or bool(getattr(args, "ssl", False))
+        (
+            getattr(args, "host", None) not in (None, DEFAULT_REDIS_HOST),
+            getattr(args, "port", None) not in (None, DEFAULT_REDIS_PORT),
+            getattr(args, "user", None) not in (None, "", "default"),
+            bool(getattr(args, "password", None)),
+            bool(getattr(args, "ssl", False)),
+        )
+    )
 
 
 def _get_auth_credentials(args: Namespace) -> tuple[str | None, str | None]:
-    if _is_tracking_connection_options(args):
-        tracked_options = _get_tracked_connection_options(args)
-        user = getattr(args, "user", None) if "user" in tracked_options else None
-        password = (
-            getattr(args, "password", None) if "password" in tracked_options else None
-        )
+    argv = _get_cli_argv(args)
+    if argv:
+        user = args.user if _argv_has_flag(argv, *_USER_FLAGS) else None
+        password = args.password if _argv_has_flag(argv, *_PASSWORD_FLAGS) else None
         return user, password
 
-    return getattr(args, "user", None), getattr(args, "password", None)
+    user = getattr(args, "user", None)
+    if user in (None, "", "default"):
+        user = None
+
+    password = getattr(args, "password", None) or None
+    return user, password
 
 
 def _build_redis_url(args: Namespace) -> str:
@@ -107,46 +97,24 @@ def create_redis_url(args: Namespace) -> str:
 
 
 def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
-    parser.set_defaults(
-        **{
-            _TRACK_CONNECTION_OPTIONS_ATTR: True,
-            _TRACKED_CONNECTION_OPTIONS_ATTR: (),
-        }
-    )
     parser.add_argument("-i", "--index", help="Index name", type=str, required=False)
     parser.add_argument(
         "-s", "--schema", help="Path to schema file", type=str, required=False
     )
     parser.add_argument("-u", "--url", help="Redis URL", type=str, required=False)
     parser.add_argument(
-        "--host",
-        help="Redis host",
-        type=str,
-        default=DEFAULT_REDIS_HOST,
-        action=_StoreTrackedOption,
+        "--host", help="Redis host", type=str, default=DEFAULT_REDIS_HOST
     )
     parser.add_argument(
-        "-p",
-        "--port",
-        help="Redis port",
-        type=int,
-        default=DEFAULT_REDIS_PORT,
-        action=_StoreTrackedOption,
+        "-p", "--port", help="Redis port", type=int, default=DEFAULT_REDIS_PORT
     )
-    parser.add_argument(
-        "--user",
-        help="Redis username",
-        type=str,
-        default="default",
-        action=_StoreTrackedOption,
-    )
-    parser.add_argument("--ssl", help="Use SSL", action=_StoreTrackedTrue)
+    parser.add_argument("--user", help="Redis username", type=str, default="default")
+    parser.add_argument("--ssl", help="Use SSL", action="store_true")
     parser.add_argument(
         "-a",
         "--password",
         help="Redis password",
         type=str,
         default="",
-        action=_StoreTrackedOption,
     )
     return parser

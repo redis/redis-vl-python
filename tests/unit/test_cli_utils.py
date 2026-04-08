@@ -6,11 +6,12 @@ from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 def _args(**overrides) -> Namespace:
     values = {
         "url": None,
-        "host": None,
-        "port": None,
-        "user": None,
-        "password": None,
+        "host": "localhost",
+        "port": 6379,
+        "user": "default",
+        "password": "",
         "ssl": False,
+        "_argv": (),
     }
     values.update(overrides)
     return Namespace(**values)
@@ -30,7 +31,13 @@ def test_create_redis_url_prefers_explicit_connection_flags_over_env(monkeypatch
     monkeypatch.setenv("REDIS_URL", "redis://env:6379")
 
     assert (
-        create_redis_url(_args(host="cache.local", port=6380))
+        create_redis_url(
+            _args(
+                host="cache.local",
+                port=6380,
+                _argv=("--host", "cache.local", "-p", "6380"),
+            )
+        )
         == "redis://cache.local:6380"
     )
 
@@ -61,6 +68,17 @@ def test_create_redis_url_builds_ssl_url_without_double_scheme(monkeypatch):
                 user="alice",
                 password="secret",
                 ssl=True,
+                _argv=(
+                    "--host",
+                    "cache.local",
+                    "-p",
+                    "6380",
+                    "--user",
+                    "alice",
+                    "-a",
+                    "secret",
+                    "--ssl",
+                ),
             )
         )
         == "rediss://alice:secret@cache.local:6380"
@@ -81,7 +99,13 @@ def test_create_redis_url_supports_password_only_auth(monkeypatch):
     monkeypatch.delenv("REDIS_URL", raising=False)
 
     assert (
-        create_redis_url(_args(host="cache.local", password="secret"))
+        create_redis_url(
+            _args(
+                host="cache.local",
+                password="secret",
+                _argv=("--host", "cache.local", "-a", "secret"),
+            )
+        )
         == "redis://:secret@cache.local:6379"
     )
 
@@ -92,7 +116,20 @@ def test_parser_defaults_do_not_override_env(monkeypatch):
     monkeypatch.setenv("REDIS_URL", "redis://env:6379")
 
     args = parser.parse_args([])
+    args._argv = ()
 
     assert args.host == "localhost"
     assert args.port == 6379
     assert create_redis_url(args) == "redis://env:6379"
+
+
+def test_explicit_default_host_still_overrides_env(monkeypatch):
+    """Treat an explicitly provided default host as higher priority than REDIS_URL."""
+    parser = add_index_parsing_options(ArgumentParser())
+    monkeypatch.setenv("REDIS_URL", "redis://env:6379")
+
+    argv = ["--host", "localhost"]
+    args = parser.parse_args(argv)
+    args._argv = tuple(argv)
+
+    assert create_redis_url(args) == "redis://localhost:6379"
