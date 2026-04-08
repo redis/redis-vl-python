@@ -117,9 +117,11 @@ class SemanticRouter(BaseModel):
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
+        resolved_redis_url: Optional[str] = redis_url
         if redis_client:
             # Just validate client type and set lib name
             RedisConnectionFactory.validate_sync_redis(redis_client)
+            resolved_redis_url = None
         else:
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url,
@@ -136,7 +138,7 @@ class SemanticRouter(BaseModel):
                 f"No valid router config found for {name}. Received: {router_dict!r}"
             )
         return cls.from_dict(
-            router_dict, redis_url=redis_url, redis_client=redis_client
+            router_dict, redis_url=resolved_redis_url, redis_client=redis_client
         )
 
     @deprecated_argument("dtype")

@@ -116,6 +116,7 @@ def test_semantic_router_from_existing_prefers_provided_client():
     mock_get_connection.assert_not_called()
     provided_client.json.return_value.get.assert_called_once_with("router:route_config")
     assert mock_from_dict.call_args.args[0] == router_dict
+    assert mock_from_dict.call_args.kwargs["redis_url"] is None
     assert mock_from_dict.call_args.kwargs["redis_client"] is provided_client
     assert result is loaded_router
 
