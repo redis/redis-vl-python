@@ -35,6 +35,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = [
+    "fastmcp>=2.0.0 ; python_version >= '3.10'",
+    "pydantic-settings>=2.0",
+]
 mistralai = ["mistralai>=1.0.0"]
 openai = ["openai>=1.1.0"]
 nltk = ["nltk>=3.8.1,<4"]
