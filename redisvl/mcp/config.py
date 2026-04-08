@@ -122,10 +122,9 @@ class MCPIndexSearchConfig(BaseModel):
                 f"search.type '{self.type}': {', '.join(invalid_keys)}"
             )
 
-        if (
-            "linear_text_weight" in self.params
-            and self.params.get("combination_method") != "LINEAR"
-        ):
+        if "linear_text_weight" in self.params and self.params.get(
+            "combination_method"
+        ) not in (None, "LINEAR"):
             raise ValueError(
                 "search.params.linear_text_weight requires combination_method to be LINEAR"
             )
