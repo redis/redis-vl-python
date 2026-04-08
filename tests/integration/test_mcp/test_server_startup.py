@@ -8,7 +8,9 @@ import yaml
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
+from redisvl.redis.connection import is_version_gte
 from redisvl.schema import IndexSchema
+from tests.conftest import get_redis_version_async
 
 
 class FakeVectorizer:
@@ -81,6 +83,7 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
         vector_dims: int = 3,
         schema_overrides: Optional[dict] = None,
         runtime_overrides: Optional[dict] = None,
+        search: Optional[dict] = None,
     ) -> str:
         runtime = {
             "text_field_name": "content",
@@ -100,6 +103,7 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
                         "model": "fake-model",
                         "dims": vector_dims,
                     },
+                    "search": search or {"type": "vector"},
                     "runtime": runtime,
                 }
             },
@@ -135,6 +139,38 @@ async def test_server_startup_success(monkeypatch, existing_index, mcp_config_pa
     assert vectorizer.dims == 3
 
     await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_server_fails_when_hybrid_config_requires_native_runtime(
+    monkeypatch, existing_index, mcp_config_path, async_client
+):
+    redis_version = await get_redis_version_async(async_client)
+    if is_version_gte(redis_version, "8.4.0"):
+        pytest.skip(f"Redis version {redis_version} supports native hybrid search")
+
+    index = await existing_index(index_name="mcp-native-required")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                search={
+                    "type": "hybrid",
+                    "params": {
+                        "vector_search_method": "KNN",
+                        "knn_ef_runtime": 150,
+                    },
+                },
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="knn_ef_runtime"):
+        await server.startup()
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,18 @@ def test_import_error_maps_to_dependency_missing():
     assert mapped.retryable is False
 
 
+def test_filter_error_is_preserved():
+    original = RedisVLMCPError(
+        "bad filter",
+        code=MCPErrorCode.INVALID_FILTER,
+        retryable=False,
+    )
+
+    mapped = map_exception(original)
+
+    assert mapped is original
+
+
 def test_redis_errors_map_to_backend_unavailable():
     mapped = map_exception(RedisSearchError("redis unavailable"))
 

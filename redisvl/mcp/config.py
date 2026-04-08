@@ -2,7 +2,7 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -71,6 +71,100 @@ class MCPServerConfig(BaseModel):
     redis_url: str = Field(..., min_length=1)
 
 
+class MCPIndexSearchConfig(BaseModel):
+    """Configured search mode and query tuning for the bound index.
+
+    The MCP request contract only exposes query text, filtering, pagination, and
+    field projection. Search mode and query-tuning behavior are owned entirely by
+    YAML config and validated here.
+    """
+
+    type: Literal["vector", "fulltext", "hybrid"]
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_params(self) -> "MCPIndexSearchConfig":
+        """Reject params that do not belong to the configured search mode."""
+        allowed_params = {
+            "vector": {
+                "hybrid_policy",
+                "batch_size",
+                "ef_runtime",
+                "epsilon",
+                "search_window_size",
+                "use_search_history",
+                "search_buffer_capacity",
+                "normalize_vector_distance",
+            },
+            "fulltext": {
+                "text_scorer",
+                "stopwords",
+                "text_weights",
+            },
+            "hybrid": {
+                "text_scorer",
+                "stopwords",
+                "text_weights",
+                "vector_search_method",
+                "knn_ef_runtime",
+                "range_radius",
+                "range_epsilon",
+                "combination_method",
+                "rrf_window",
+                "rrf_constant",
+                "linear_text_weight",
+            },
+        }
+        invalid_keys = sorted(set(self.params) - allowed_params[self.type])
+        if invalid_keys:
+            raise ValueError(
+                "search.params contains keys incompatible with "
+                f"search.type '{self.type}': {', '.join(invalid_keys)}"
+            )
+
+        if "linear_text_weight" in self.params and self.params.get(
+            "combination_method"
+        ) not in (None, "LINEAR"):
+            raise ValueError(
+                "search.params.linear_text_weight requires combination_method to be LINEAR"
+            )
+        return self
+
+    def to_query_params(self) -> Dict[str, Any]:
+        """Return normalized query kwargs exactly as configured."""
+        return dict(self.params)
+
+    def validate_runtime_capabilities(
+        self, *, supports_native_hybrid_search: bool
+    ) -> None:
+        """Fail startup when hybrid config depends on native-only FT.SEARCH params."""
+        if self.type != "hybrid" or supports_native_hybrid_search:
+            return
+
+        unsupported_params = set()
+        if self.params.get("combination_method") not in (None, "LINEAR"):
+            unsupported_params.add("combination_method")
+        unsupported_params.update(
+            key
+            for key in (
+                "vector_search_method",
+                "knn_ef_runtime",
+                "range_radius",
+                "range_epsilon",
+                "rrf_window",
+                "rrf_constant",
+            )
+            if key in self.params
+        )
+
+        if unsupported_params:
+            unsupported_list = ", ".join(sorted(unsupported_params))
+            raise ValueError(
+                "search.params requires native hybrid search support for: "
+                f"{unsupported_list}"
+            )
+
+
 class MCPSchemaOverrideField(BaseModel):
     """Allowed schema override fragment for one already-discovered field."""
 
@@ -91,6 +185,7 @@ class MCPIndexBindingConfig(BaseModel):
 
     redis_name: str = Field(..., min_length=1)
     vectorizer: MCPVectorizerConfig
+    search: MCPIndexSearchConfig
     runtime: MCPRuntimeConfig
     schema_overrides: MCPSchemaOverrides = Field(default_factory=MCPSchemaOverrides)
 
@@ -133,6 +228,11 @@ class MCPConfig(BaseModel):
     def vectorizer(self) -> MCPVectorizerConfig:
         """Expose the sole binding's vectorizer config for phase 1."""
         return self.binding.vectorizer
+
+    @property
+    def search(self) -> MCPIndexSearchConfig:
+        """Expose the sole binding's configured search behavior."""
+        return self.binding.search
 
     @property
     def redis_name(self) -> str:
@@ -254,6 +354,16 @@ class MCPConfig(BaseModel):
         """Return the effective vector dimensions when the field exposes them."""
         attrs = self.get_vector_field(schema).attrs
         return getattr(attrs, "dims", None)
+
+    def validate_search(
+        self,
+        *,
+        supports_native_hybrid_search: bool,
+    ) -> None:
+        """Validate configured search behavior against current runtime support."""
+        self.search.validate_runtime_capabilities(
+            supports_native_hybrid_search=supports_native_hybrid_search
+        )
 
 
 def _substitute_env(value: Any) -> Any:

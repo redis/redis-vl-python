@@ -164,7 +164,7 @@ class Tag(FilterField):
         return FilterExpression(str(self))
 
     @check_operator_misuse
-    def __ne__(self, other) -> "FilterExpression":
+    def __ne__(self, other: Union[List[str], str]) -> "FilterExpression":
         """Create a Tag inequality filter expression.
 
         Args:
@@ -298,7 +298,7 @@ class Geo(FilterField):
         return FilterExpression(str(self))
 
     @check_operator_misuse
-    def __ne__(self, other) -> "FilterExpression":
+    def __ne__(self, other: GeoRadius) -> "FilterExpression":
         """Create a geographic filter outside of a specified GeoRadius.
 
         Args:
@@ -349,11 +349,11 @@ class Num(FilterField):
 
     SUPPORTED_VAL_TYPES = (int, float, tuple, type(None))
 
-    def __eq__(self, other: int) -> "FilterExpression":
+    def __eq__(self, other: Union[int, float]) -> "FilterExpression":
         """Create a Numeric equality filter expression.
 
         Args:
-            other (int): The value to filter on.
+            other (Union[int, float]): The value to filter on.
 
         .. code-block:: python
 
@@ -364,11 +364,11 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
-    def __ne__(self, other: int) -> "FilterExpression":
+    def __ne__(self, other: Union[int, float]) -> "FilterExpression":
         """Create a Numeric inequality filter expression.
 
         Args:
-            other (int): The value to filter on.
+            other (Union[int, float]): The value to filter on.
 
         .. code-block:: python
 
@@ -380,11 +380,11 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
 
-    def __gt__(self, other: int) -> "FilterExpression":
+    def __gt__(self, other: Union[int, float]) -> "FilterExpression":
         """Create a Numeric greater than filter expression.
 
         Args:
-            other (int): The value to filter on.
+            other (Union[int, float]): The value to filter on.
 
         .. code-block:: python
 
@@ -396,11 +396,11 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
 
-    def __lt__(self, other: int) -> "FilterExpression":
+    def __lt__(self, other: Union[int, float]) -> "FilterExpression":
         """Create a Numeric less than filter expression.
 
         Args:
-            other (int): The value to filter on.
+            other (Union[int, float]): The value to filter on.
 
         .. code-block:: python
 
@@ -412,11 +412,11 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
         return FilterExpression(str(self))
 
-    def __ge__(self, other: int) -> "FilterExpression":
+    def __ge__(self, other: Union[int, float]) -> "FilterExpression":
         """Create a Numeric greater than or equal to filter expression.
 
         Args:
-            other (int): The value to filter on.
+            other (Union[int, float]): The value to filter on.
 
         .. code-block:: python
 
@@ -428,11 +428,11 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
         return FilterExpression(str(self))
 
-    def __le__(self, other: int) -> "FilterExpression":
+    def __le__(self, other: Union[int, float]) -> "FilterExpression":
         """Create a Numeric less than or equal to filter expression.
 
         Args:
-            other (int): The value to filter on.
+            other (Union[int, float]): The value to filter on.
 
         .. code-block:: python
 
@@ -759,7 +759,9 @@ class Timestamp(Num):
 
         raise TypeError(f"Unsupported type for timestamp conversion: {type(value)}")
 
-    def __eq__(self, other) -> FilterExpression:
+    def __eq__(
+        self, other: Union[datetime.datetime, datetime.date, str, int, float]
+    ) -> FilterExpression:
         """
         Filter for timestamps equal to the specified value.
         For date objects (without time), this matches the entire day.
@@ -774,6 +776,7 @@ class Timestamp(Num):
             # For date objects, match the entire day
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
+            assert isinstance(other, datetime.date)  # validate for mypy
             start = datetime.datetime.combine(other, datetime.time.min).astimezone(
                 datetime.timezone.utc
             )
@@ -786,7 +789,9 @@ class Timestamp(Num):
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
-    def __ne__(self, other) -> FilterExpression:
+    def __ne__(
+        self, other: Union[datetime.datetime, datetime.date, str, int, float]
+    ) -> FilterExpression:
         """
         Filter for timestamps not equal to the specified value.
         For date objects (without time), this excludes the entire day.
@@ -801,6 +806,7 @@ class Timestamp(Num):
             # For date objects, exclude the entire day
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
+            assert isinstance(other, datetime.date)  # validate for mypy
             start = datetime.datetime.combine(other, datetime.time.min)
             end = datetime.datetime.combine(other, datetime.time.max)
             return self.between(start, end)

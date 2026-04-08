@@ -15,6 +15,7 @@ def _valid_config() -> dict:
             "knowledge": {
                 "redis_name": "docs-index",
                 "vectorizer": {"class": "FakeVectorizer", "model": "test-model"},
+                "search": {"type": "vector"},
                 "runtime": {
                     "text_field_name": "content",
                     "vector_field_name": "embedding",
@@ -68,17 +69,19 @@ def test_load_mcp_config_env_substitution(tmp_path: Path, monkeypatch):
 server:
   redis_url: ${REDIS_URL:-redis://localhost:6379}
 indexes:
-  knowledge:
-    redis_name: docs-index
-    vectorizer:
-      class: FakeVectorizer
-      model: ${VECTOR_MODEL:-test-model}
-      api_config:
-        api_key: ${OPENAI_API_KEY}
-    runtime:
-      text_field_name: content
-      vector_field_name: embedding
-      default_embed_text_field: content
+    knowledge:
+      redis_name: docs-index
+      vectorizer:
+        class: FakeVectorizer
+        model: ${VECTOR_MODEL:-test-model}
+        api_config:
+          api_key: ${OPENAI_API_KEY}
+      search:
+        type: vector
+      runtime:
+        text_field_name: content
+        vector_field_name: embedding
+        default_embed_text_field: content
 """.strip(),
         encoding="utf-8",
     )
@@ -101,15 +104,17 @@ def test_load_mcp_config_required_env_missing(tmp_path: Path, monkeypatch):
 server:
   redis_url: redis://localhost:6379
 indexes:
-  knowledge:
-    redis_name: docs-index
-    vectorizer:
-      class: FakeVectorizer
-      model: ${VECTOR_MODEL}
-    runtime:
-      text_field_name: content
-      vector_field_name: embedding
-      default_embed_text_field: content
+    knowledge:
+      redis_name: docs-index
+      vectorizer:
+        class: FakeVectorizer
+        model: ${VECTOR_MODEL}
+      search:
+        type: vector
+      runtime:
+        text_field_name: content
+        vector_field_name: embedding
+        default_embed_text_field: content
 """.strip(),
         encoding="utf-8",
     )
@@ -166,6 +171,7 @@ def test_mcp_config_binding_helpers():
 
     assert config.binding_id == "knowledge"
     assert config.binding.redis_name == "docs-index"
+    assert config.binding.search.type == "vector"
     assert config.runtime.default_embed_text_field == "content"
     assert config.vectorizer.class_name == "FakeVectorizer"
     assert config.redis_name == "docs-index"
@@ -275,3 +281,131 @@ def test_load_mcp_config_requires_exactly_one_binding(tmp_path: Path):
 
     with pytest.raises(ValueError, match="exactly one configured index binding"):
         load_mcp_config(str(config_path))
+
+
+@pytest.mark.parametrize("search_type", ["vector", "fulltext", "hybrid"])
+def test_mcp_config_accepts_search_types(search_type):
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": search_type}
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.binding.search.type == search_type
+    assert loaded.binding.search.params == {}
+
+
+def test_mcp_config_requires_search_type():
+    config = _valid_config()
+    del config["indexes"]["knowledge"]["search"]["type"]
+
+    with pytest.raises(ValueError, match="type"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_invalid_search_type():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "semantic"}
+
+    with pytest.raises(ValueError, match="vector|fulltext|hybrid"):
+        MCPConfig.model_validate(config)
+
+
+@pytest.mark.parametrize(
+    ("search_type", "params"),
+    [
+        ("vector", {"text_scorer": "BM25STD"}),
+        ("fulltext", {"normalize_vector_distance": True}),
+        ("hybrid", {"normalize_vector_distance": True}),
+    ],
+)
+def test_mcp_config_rejects_invalid_search_params(search_type, params):
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": search_type,
+        "params": params,
+    }
+
+    with pytest.raises(ValueError, match="search.params"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_linear_text_weight_without_linear_combination():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": {
+            "combination_method": "RRF",
+            "linear_text_weight": 0.3,
+        },
+    }
+
+    with pytest.raises(ValueError, match="linear_text_weight"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_normalizes_hybrid_linear_text_weight():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": {
+            "combination_method": "LINEAR",
+            "linear_text_weight": 0.3,
+        },
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.binding.search.type == "hybrid"
+    assert loaded.binding.search.params["linear_text_weight"] == 0.3
+
+
+def test_mcp_config_allows_linear_text_weight_without_explicit_combination_method():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": {
+            "linear_text_weight": 0.3,
+        },
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.binding.search.type == "hybrid"
+    assert loaded.binding.search.params["linear_text_weight"] == 0.3
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"knn_ef_runtime": 42},
+        {"vector_search_method": "RANGE", "range_radius": 0.4},
+        {"combination_method": "RRF", "rrf_window": 50},
+    ],
+)
+def test_mcp_config_rejects_native_only_hybrid_runtime_params(params):
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": params,
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    with pytest.raises(ValueError, match="native hybrid search support"):
+        loaded.validate_search(supports_native_hybrid_search=False)
+
+
+def test_mcp_config_allows_linear_hybrid_fallback_params():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": {
+            "text_scorer": "TFIDF",
+            "combination_method": "LINEAR",
+            "linear_text_weight": 0.3,
+        },
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    loaded.validate_search(supports_native_hybrid_search=False)
