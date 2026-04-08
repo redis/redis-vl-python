@@ -359,6 +359,21 @@ def test_mcp_config_normalizes_hybrid_linear_text_weight():
     assert loaded.binding.search.params["linear_text_weight"] == 0.3
 
 
+def test_mcp_config_allows_linear_text_weight_without_explicit_combination_method():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {
+        "type": "hybrid",
+        "params": {
+            "linear_text_weight": 0.3,
+        },
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.binding.search.type == "hybrid"
+    assert loaded.binding.search.params["linear_text_weight"] == 0.3
+
+
 @pytest.mark.parametrize(
     "params",
     [
