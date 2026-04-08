@@ -10,6 +10,13 @@ class SQLQuery:
     This class allows users to write SQL SELECT statements that are
     automatically translated into Redis FT.SEARCH or FT.AGGREGATE commands.
 
+    For TEXT fields with ``sql-redis >= 0.4.0``:
+
+    - ``=`` performs exact phrase or exact-term matching
+    - ``LIKE`` performs wildcard/pattern matching using SQL ``%`` wildcards
+    - ``fuzzy(field, 'term')`` performs typo-tolerant matching
+    - ``fulltext(field, 'query')`` performs tokenized text search
+
     .. code-block:: python
 
         from redisvl.query import SQLQuery
@@ -30,16 +37,37 @@ class SQLQuery:
         ``pip install redisvl[sql-redis]``
     """
 
-    def __init__(self, sql: str, params: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        sql: str,
+        params: Optional[Dict[str, Any]] = None,
+        *,
+        sql_redis_options: Optional[Dict[str, Any]] = None,
+    ):
         """Initialize a SQLQuery.
 
         Args:
             sql: The SQL SELECT statement to execute.
             params: Optional dictionary of parameters for parameterized queries.
                    Useful for passing vector data for similarity searches.
+            sql_redis_options: Optional passthrough options forwarded to
+                ``sql-redis`` executor creation. Use this to tune how SQL
+                query translation loads and caches index schema metadata.
+                For example, ``{"schema_cache_strategy": "lazy"}`` loads
+                schemas on demand (the RedisVL default), while
+                ``{"schema_cache_strategy": "load_all"}`` eagerly loads
+                all schemas up front. These options exist to balance startup
+                cost vs repeated-query performance across many indexes.
+
+        Note:
+            ``sql-redis >= 0.4.0`` uses explicit TEXT search operators.
+            Use ``=`` for exact phrase matching, ``LIKE`` for wildcard
+            matching, ``fuzzy()`` for typo-tolerant matching, and
+            ``fulltext()`` for tokenized search.
         """
         self.sql = sql
         self.params = params or {}
+        self.sql_redis_options = dict(sql_redis_options or {})
 
     def _substitute_params(self, sql: str, params: Dict[str, Any]) -> str:
         """Substitute parameter placeholders in SQL with actual values.
@@ -131,8 +159,7 @@ class SQLQuery:
                 # Output: FT.SEARCH products "@category:{electronics}"
         """
         try:
-            from sql_redis.schema import SchemaRegistry
-            from sql_redis.translator import Translator
+            from sql_redis import create_executor
         except ImportError:
             raise ImportError(
                 "sql-redis is required for SQL query support. "
@@ -145,15 +172,14 @@ class SQLQuery:
 
             redis_client = Redis.from_url(redis_url)
 
-        # Load schemas from Redis
-        registry = SchemaRegistry(redis_client)
-        registry.load_all()
-
-        # Translate SQL to Redis command
-        translator = Translator(registry)
+        sql_redis_options = {
+            "schema_cache_strategy": "lazy",
+            **self.sql_redis_options,
+        }
+        executor = create_executor(redis_client, **sql_redis_options)
 
         # Substitute non-bytes params in SQL before translation
         sql = self._substitute_params(self.sql, self.params)
 
-        translated = translator.translate(sql)
+        translated = executor._translator.translate(sql)
         return translated.to_command_string()

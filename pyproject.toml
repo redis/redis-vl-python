@@ -54,7 +54,7 @@ pillow = [
     "pillow>=11.3.0",
 ]
 sql-redis = [
-    "sql-redis>=0.3.0",
+    "sql-redis>=0.4.0",
 ]
 all = [
     "mistralai>=1.0.0",
@@ -69,7 +69,7 @@ all = [
     "boto3>=1.36.0,<2",
     "urllib3<2.2.0",
     "pillow>=11.3.0",
-    "sql-redis>=0.3.0",
+    "sql-redis>=0.4.0",
 ]
 
 [project.urls]

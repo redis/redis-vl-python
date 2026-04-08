@@ -180,6 +180,44 @@ query = SQLQuery("""
 results = index.query(query)
 ```
 
+`SQLQuery` also accepts `sql_redis_options`, which are forwarded to the
+underlying `sql-redis` executor. This is mainly useful for tuning schema
+caching behavior.
+
+```python
+query = SQLQuery(
+    """
+    SELECT title, price, category
+    FROM products
+    WHERE category = 'electronics' AND price < 100
+    """,
+    sql_redis_options={"schema_cache_strategy": "lazy"},
+)
+```
+
+- `"lazy"` (default) loads schemas only when a query touches an index, which
+  keeps startup and one-off queries cheaper.
+- `"load_all"` preloads all schemas up front, which can help repeated query
+  workloads that span many indexes.
+
+For TEXT fields with `sql-redis >= 0.4.0`:
+
+- `=` performs exact phrase or exact-term matching
+- `LIKE` performs prefix/suffix/contains matching using SQL `%` wildcards
+- `fuzzy(field, 'term')` performs typo-tolerant matching
+- `fulltext(field, 'query')` performs tokenized search
+
+```python
+query = SQLQuery("SELECT * FROM products WHERE title = 'gaming laptop'")
+query = SQLQuery("SELECT * FROM products WHERE title LIKE 'lap%'")
+query = SQLQuery("SELECT * FROM products WHERE fuzzy(title, 'laptap')")
+query = SQLQuery("SELECT * FROM products WHERE fulltext(title, 'laptop OR tablet')")
+```
+
+Use `=` when you want an exact phrase, `LIKE` for prefix/suffix/contains
+patterns, `fuzzy()` for typo-tolerant lookup, and `fulltext()` for tokenized
+search operators such as `OR`, optional terms, or proximity.
+
 **Aggregations and grouping:**
 
 ```python
