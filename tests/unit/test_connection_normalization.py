@@ -20,6 +20,15 @@ def _schema_dict(name: str = "idx") -> dict:
     }
 
 
+def _fake_sql_redis_module(command: str = "FT.SEARCH idx *"):
+    translated = MagicMock()
+    translated.to_command_string.return_value = command
+    executor = MagicMock()
+    executor._translator.translate.return_value = translated
+    module = SimpleNamespace(create_executor=MagicMock(return_value=executor))
+    return module
+
+
 def test_search_index_from_existing_prefers_provided_client():
     provided_client = MagicMock()
 
@@ -138,13 +147,7 @@ def test_base_cache_sync_client_creation_uses_connection_factory():
 
 
 def test_sql_query_uses_connection_factory_for_redis_url():
-    translated = MagicMock()
-    translated.to_command_string.return_value = "FT.SEARCH idx *"
-    executor = MagicMock()
-    executor._translator.translate.return_value = translated
-    fake_sql_redis_module = SimpleNamespace(
-        create_executor=MagicMock(return_value=executor)
-    )
+    fake_sql_redis_module = _fake_sql_redis_module()
     mock_client = MagicMock()
 
     with (
@@ -169,13 +172,7 @@ def test_sql_query_uses_connection_factory_for_redis_url():
 
 
 def test_sql_query_does_not_create_new_connection_when_client_provided():
-    translated = MagicMock()
-    translated.to_command_string.return_value = "FT.SEARCH idx *"
-    executor = MagicMock()
-    executor._translator.translate.return_value = translated
-    fake_sql_redis_module = SimpleNamespace(
-        create_executor=MagicMock(return_value=executor)
-    )
+    fake_sql_redis_module = _fake_sql_redis_module()
     provided_client = MagicMock()
 
     with (
