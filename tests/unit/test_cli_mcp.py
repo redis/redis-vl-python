@@ -214,6 +214,46 @@ def test_mcp_command_runs_startup_then_stdio_then_shutdown(monkeypatch):
     ]
 
 
+def test_mcp_command_prefers_run_async_without_manual_lifecycle(monkeypatch):
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def startup(self):
+            calls.append(("startup",))
+
+        async def run_async(self, transport="stdio"):
+            calls.append(("run_async", transport))
+
+        async def shutdown(self):
+            calls.append(("shutdown",))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 0
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("run_async", "stdio"),
+    ]
+
+
 def test_mcp_command_reports_startup_failures(monkeypatch, capsys):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
@@ -253,6 +293,52 @@ def test_mcp_command_reports_startup_failures(monkeypatch, capsys):
     assert exc_info.value.code == 1
     assert calls == [("settings", "/tmp/mcp.yaml", None), ("startup",)]
     assert "boom" in out.err or "boom" in out.out
+
+
+def test_mcp_command_reports_run_async_failures_without_manual_shutdown(
+    monkeypatch, capsys
+):
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def startup(self):
+            calls.append(("startup",))
+
+        async def run_async(self, transport="stdio"):
+            calls.append(("run_async", transport))
+            raise RuntimeError("run_async failed")
+
+        async def shutdown(self):
+            calls.append(("shutdown",))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    out = capsys.readouterr()
+
+    assert exc_info.value.code == 1
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("run_async", "stdio"),
+    ]
+    assert "run_async failed" in out.err or "run_async failed" in out.out
 
 
 def test_mcp_command_shuts_down_when_run_fails(monkeypatch, capsys):

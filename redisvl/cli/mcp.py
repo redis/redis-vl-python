@@ -103,27 +103,29 @@ class MCP:
 
     async def _serve(self, server):
         """Run startup, stdio serving, and shutdown on one event loop."""
+        # Prefer FastMCP's async transport path so it can own startup/shutdown
+        # through its lifespan manager on the current event loop.
+        run_async = getattr(server, "run_async", None)
+        if callable(run_async):
+            await run_async(transport="stdio")
+            return
+
         started = False
 
         try:
             await server.startup()
             started = True
 
-            # Prefer FastMCP's async transport path so startup, serving, and
-            # shutdown all share the same event loop.
-            run_async = getattr(server, "run_async", None)
-            if callable(run_async):
-                await run_async(transport="stdio")
-            else:
-                result = server.run(transport="stdio")
-                if inspect.isawaitable(result):
-                    await result
+            result = server.run(transport="stdio")
+            if inspect.isawaitable(result):
+                await result
+
         finally:
             if started:
                 try:
-                    result = server.shutdown()
-                    if inspect.isawaitable(result):
-                        await result
+                    shutdown_result = server.shutdown()
+                    if inspect.isawaitable(shutdown_result):
+                        await shutdown_result
                 except RuntimeError as exc:
                     # KeyboardInterrupt during stdio shutdown can leave FastMCP
                     # tearing down after the loop is already closing.
