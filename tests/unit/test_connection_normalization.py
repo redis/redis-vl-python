@@ -30,6 +30,7 @@ def _fake_sql_redis_module(command: str = "FT.SEARCH idx *"):
 
 
 def test_search_index_from_existing_prefers_provided_client():
+    """Use the provided sync Redis client instead of constructing a new one."""
     provided_client = MagicMock()
 
     with (
@@ -59,6 +60,7 @@ def test_search_index_from_existing_prefers_provided_client():
 
 @pytest.mark.asyncio
 async def test_async_search_index_from_existing_prefers_provided_client():
+    """Use the provided async Redis client instead of constructing a new one."""
     provided_client = AsyncMock()
 
     with (
@@ -91,6 +93,7 @@ async def test_async_search_index_from_existing_prefers_provided_client():
 
 
 def test_semantic_router_from_existing_prefers_provided_client():
+    """Reuse the provided Redis client when loading a semantic router."""
     provided_client = MagicMock()
     router_dict = {
         "name": "router",
@@ -131,6 +134,7 @@ def test_semantic_router_from_existing_prefers_provided_client():
 
 
 def test_base_cache_sync_client_creation_uses_connection_factory():
+    """Create cache Redis clients through the shared connection factory."""
     cache = EmbeddingsCache(redis_url="redis+sentinel://localhost:26379/mymaster")
     mock_client = MagicMock()
 
@@ -147,6 +151,7 @@ def test_base_cache_sync_client_creation_uses_connection_factory():
 
 
 def test_sql_query_uses_connection_factory_for_redis_url():
+    """Build SQL query helper connections through the shared connection factory."""
     fake_sql_redis_module = _fake_sql_redis_module()
     mock_client = MagicMock()
 
@@ -172,6 +177,7 @@ def test_sql_query_uses_connection_factory_for_redis_url():
 
 
 def test_sql_query_does_not_create_new_connection_when_client_provided():
+    """Reuse a provided SQL query client instead of creating a new connection."""
     fake_sql_redis_module = _fake_sql_redis_module()
     provided_client = MagicMock()
 

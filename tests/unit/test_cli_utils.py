@@ -1,6 +1,6 @@
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 
-from redisvl.cli.utils import create_redis_url
+from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 
 
 def _args(**overrides) -> Namespace:
@@ -17,6 +17,7 @@ def _args(**overrides) -> Namespace:
 
 
 def test_create_redis_url_prefers_explicit_url(monkeypatch):
+    """Use the explicit Redis URL before any other connection source."""
     monkeypatch.setenv("REDIS_URL", "redis://env:6379")
 
     assert (
@@ -25,6 +26,7 @@ def test_create_redis_url_prefers_explicit_url(monkeypatch):
 
 
 def test_create_redis_url_prefers_explicit_connection_flags_over_env(monkeypatch):
+    """Use explicit host and port flags before the REDIS_URL environment variable."""
     monkeypatch.setenv("REDIS_URL", "redis://env:6379")
 
     assert (
@@ -34,18 +36,21 @@ def test_create_redis_url_prefers_explicit_connection_flags_over_env(monkeypatch
 
 
 def test_create_redis_url_uses_env_when_no_cli_connection_options(monkeypatch):
+    """Use REDIS_URL when no explicit CLI connection options are provided."""
     monkeypatch.setenv("REDIS_URL", "redis://env:6379")
 
     assert create_redis_url(_args()) == "redis://env:6379"
 
 
 def test_create_redis_url_falls_back_to_local_default(monkeypatch):
+    """Fall back to the local Redis default when no other connection source is set."""
     monkeypatch.delenv("REDIS_URL", raising=False)
 
     assert create_redis_url(_args()) == "redis://localhost:6379"
 
 
 def test_create_redis_url_builds_ssl_url_without_double_scheme(monkeypatch):
+    """Build a valid rediss URL when SSL is enabled."""
     monkeypatch.delenv("REDIS_URL", raising=False)
 
     assert (
@@ -63,6 +68,7 @@ def test_create_redis_url_builds_ssl_url_without_double_scheme(monkeypatch):
 
 
 def test_create_redis_url_omits_default_username_for_local_connections(monkeypatch):
+    """Omit implicit auth when building the default local Redis URL."""
     monkeypatch.delenv("REDIS_URL", raising=False)
 
     assert (
@@ -71,9 +77,22 @@ def test_create_redis_url_omits_default_username_for_local_connections(monkeypat
 
 
 def test_create_redis_url_supports_password_only_auth(monkeypatch):
+    """Allow password-only Redis auth without injecting a username."""
     monkeypatch.delenv("REDIS_URL", raising=False)
 
     assert (
         create_redis_url(_args(host="cache.local", password="secret"))
         == "redis://:secret@cache.local:6379"
     )
+
+
+def test_parser_defaults_do_not_override_env(monkeypatch):
+    """Preserve parser defaults without letting them outrank REDIS_URL."""
+    parser = add_index_parsing_options(ArgumentParser())
+    monkeypatch.setenv("REDIS_URL", "redis://env:6379")
+
+    args = parser.parse_args([])
+
+    assert args.host == "localhost"
+    assert args.port == 6379
+    assert create_redis_url(args) == "redis://env:6379"
