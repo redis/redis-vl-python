@@ -307,7 +307,6 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
                 "record": {
                     "content": "science doc",
                     "category": "science",
-                    "score": "user score",
                 },
             }
         ],
@@ -363,7 +362,7 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
     assert response["search_type"] == "fulltext"
     assert response["results"][0]["score"] == 1.5
     assert response["results"][0]["score_type"] == "text_score"
-    assert response["results"][0]["record"]["score"] == "schema score"
+    assert "score" not in response["results"][0]["record"]
     assert "hybrid_score" not in response["results"][0]["record"]
 
 
@@ -559,6 +558,7 @@ async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypat
 @pytest.mark.parametrize(
     ("search_type", "schema_field_name", "supports_native"),
     [
+        ("vector", "score", False),
         ("vector", "vector_distance", False),
         ("vector", "text_score", False),
         ("fulltext", "__score", False),

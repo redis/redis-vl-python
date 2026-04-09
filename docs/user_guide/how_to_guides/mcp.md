@@ -179,7 +179,7 @@ Notes:
 - `filter` accepts either a raw string or a JSON DSL object
 - `offset + limit` must stay within `runtime.max_result_window`
 - startup rejects schemas that use MCP-reserved score metadata field names:
-  `vector_distance`, `__score`, `text_score`, `vector_similarity`, `hybrid_score`
+  `score`, `vector_distance`, `__score`, `text_score`, `vector_similarity`, `hybrid_score`
 
 ### `upsert-records`
 

@@ -275,7 +275,7 @@ async def upsert_records(
         except Exception as exc:
             mapped = map_exception(exc)
             mapped.metadata["partial_write_possible"] = True
-            raise mapped
+            raise mapped from exc
 
         return {
             "status": "success",
@@ -285,7 +285,7 @@ async def upsert_records(
     except RedisVLMCPError:
         raise
     except Exception as exc:
-        raise map_exception(exc)
+        raise map_exception(exc) from exc
 
 
 def register_upsert_tool(server: Any) -> None:

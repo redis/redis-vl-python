@@ -12,7 +12,14 @@ from redisvl.schema.schema import IndexSchema
 
 _ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
 _RESERVED_SCORE_METADATA_FIELDS = frozenset(
-    {"vector_distance", "__score", "text_score", "vector_similarity", "hybrid_score"}
+    {
+        "score",
+        "vector_distance",
+        "__score",
+        "text_score",
+        "vector_similarity",
+        "hybrid_score",
+    }
 )
 
 

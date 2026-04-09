@@ -346,6 +346,7 @@ async def test_upsert_records_surfaces_partial_write_possible_on_backend_failure
 
     assert exc_info.value.code == MCPErrorCode.BACKEND_UNAVAILABLE
     assert exc_info.value.metadata["partial_write_possible"] is True
+    assert isinstance(exc_info.value.__cause__, RedisError)
 
 
 def test_register_upsert_tool_uses_default_and_override_descriptions():
