@@ -66,6 +66,9 @@ RedisVL MCP is inspection-first:
 
 In some environments, Redis metadata can be incomplete for vector field attributes. When that happens, `schema_overrides` can patch missing attrs for fields that were already discovered. It does not create new fields or change discovered field identity.
 
+Startup also validates that the inspected schema does not collide with
+MCP-reserved score metadata field names for the configured search mode.
+
 ## Read-Only and Read-Write Modes
 
 RedisVL MCP always registers `search-records`.

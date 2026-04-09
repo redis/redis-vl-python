@@ -2,6 +2,7 @@ import asyncio
 import inspect
 from typing import Any, Optional, Union
 
+from redisvl.mcp.config import reserved_score_metadata_field_names
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.mcp.filters import parse_filter
 from redisvl.query import AggregateHybridQuery, HybridQuery, TextQuery, VectorQuery
@@ -108,12 +109,14 @@ def _validate_request(
 
 
 def _normalize_record(
-    result: dict[str, Any], score_field: str, score_type: str
+    result: dict[str, Any],
+    score_field: str,
+    score_type: str,
 ) -> dict[str, Any]:
     """Convert one RedisVL result into the stable MCP result shape."""
     score = result.get(score_field)
-    if score is None and score_field == "score":
-        score = result.get("__score")
+    if score_field == "score" and "__score" in result:
+        score = result["__score"]
     if score is None:
         raise RedisVLMCPError(
             f"Search result missing expected score field '{score_field}'",
@@ -134,14 +137,7 @@ def _normalize_record(
             retryable=False,
         )
 
-    for field_name in (
-        "vector_distance",
-        "score",
-        "__score",
-        "text_score",
-        "vector_similarity",
-        "hybrid_score",
-    ):
+    for field_name in reserved_score_metadata_field_names():
         record.pop(field_name, None)
 
     return {
@@ -318,7 +314,12 @@ async def _build_query(
             )
         )
         native_query.postprocessing_config.apply(__key="@__key")
-        return native_query, "hybrid_score", "hybrid_score", search_type
+        return (
+            native_query,
+            "hybrid_score",
+            "hybrid_score",
+            search_type,
+        )
 
     fallback_query = AggregateHybridQuery(
         **_build_fallback_hybrid_kwargs(
@@ -331,7 +332,12 @@ async def _build_query(
             search_params=search_params,
         )
     )
-    return fallback_query, "hybrid_score", "hybrid_score", search_type
+    return (
+        fallback_query,
+        "hybrid_score",
+        "hybrid_score",
+        search_type,
+    )
 
 
 async def search_records(
@@ -373,7 +379,11 @@ async def search_records(
             "offset": offset,
             "limit": effective_limit,
             "results": [
-                _normalize_record(result, score_field, score_type)
+                _normalize_record(
+                    result,
+                    score_field,
+                    score_type,
+                )
                 for result in sliced_results
             ],
         }

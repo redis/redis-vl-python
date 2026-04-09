@@ -11,6 +11,14 @@ from redisvl.schema.fields import BaseField
 from redisvl.schema.schema import IndexSchema
 
 _ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::-([^}]*))?\}")
+_RESERVED_SCORE_METADATA_FIELDS = frozenset(
+    {"vector_distance", "__score", "text_score", "vector_similarity", "hybrid_score"}
+)
+
+
+def reserved_score_metadata_field_names() -> frozenset[str]:
+    """Return MCP-reserved score metadata field names."""
+    return _RESERVED_SCORE_METADATA_FIELDS
 
 
 class MCPRuntimeConfig(BaseModel):
@@ -365,12 +373,21 @@ class MCPConfig(BaseModel):
     def validate_search(
         self,
         *,
+        schema: IndexSchema,
         supports_native_hybrid_search: bool,
     ) -> None:
         """Validate configured search behavior against current runtime support."""
         self.search.validate_runtime_capabilities(
             supports_native_hybrid_search=supports_native_hybrid_search
         )
+        conflicting_fields = sorted(
+            set(schema.field_names) & reserved_score_metadata_field_names()
+        )
+        if conflicting_fields:
+            raise ValueError(
+                "Schema fields conflict with MCP-reserved score metadata names "
+                f"for search.type '{self.search.type}': {', '.join(conflicting_fields)}"
+            )
 
 
 def _substitute_env(value: Any) -> Any:

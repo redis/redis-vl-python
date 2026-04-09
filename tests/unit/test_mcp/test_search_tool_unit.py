@@ -279,6 +279,7 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
                 "id": "doc:1",
                 "content": "science doc",
                 "category": "science",
+                "score": "user score",
                 "vector_distance": "0.93",
             }
         ]
@@ -306,6 +307,7 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
                 "record": {
                     "content": "science doc",
                     "category": "science",
+                    "score": "user score",
                 },
             }
         ],
@@ -334,9 +336,11 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
         return [
             {
                 "id": "doc:2",
+                "score": "schema score",
                 "content": "medical science",
                 "category": "health",
                 "__score": "1.5",
+                "hybrid_score": "keep me",
             }
         ]
 
@@ -359,6 +363,8 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
     assert response["search_type"] == "fulltext"
     assert response["results"][0]["score"] == 1.5
     assert response["results"][0]["score_type"] == "text_score"
+    assert response["results"][0]["record"]["score"] == "schema score"
+    assert "hybrid_score" not in response["results"][0]["record"]
 
 
 @pytest.mark.asyncio
@@ -402,6 +408,7 @@ async def test_search_records_builds_hybrid_query_for_native_runtime(monkeypatch
             {
                 "id": "doc:3",
                 "content": "hybrid doc",
+                "vector_distance": "preserve me",
                 "hybrid_score": "2.5",
             }
         ]
@@ -427,6 +434,7 @@ async def test_search_records_builds_hybrid_query_for_native_runtime(monkeypatch
     assert response["search_type"] == "hybrid"
     assert response["results"][0]["score_type"] == "hybrid_score"
     assert response["results"][0]["score"] == 2.5
+    assert "vector_distance" not in response["results"][0]["record"]
 
 
 @pytest.mark.asyncio
@@ -548,6 +556,56 @@ async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("search_type", "schema_field_name", "supports_native"),
+    [
+        ("vector", "vector_distance", False),
+        ("vector", "text_score", False),
+        ("fulltext", "__score", False),
+        ("hybrid", "hybrid_score", True),
+        ("hybrid", "vector_similarity", False),
+    ],
+)
+async def test_validate_search_rejects_reserved_score_metadata_field_names(
+    search_type,
+    schema_field_name,
+    supports_native,
+):
+    config = _config_with_search(search_type)
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": "docs-index",
+                "prefix": "doc",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "content", "type": "text"},
+                {"name": "category", "type": "tag"},
+                {"name": "rating", "type": "numeric"},
+                {"name": schema_field_name, "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
+    )
+
+    with pytest.raises(ValueError, match="MCP-reserved score metadata names"):
+        config.validate_search(
+            schema=schema,
+            supports_native_hybrid_search=supports_native,
+        )
+
+
+@pytest.mark.asyncio
 async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypatch):
     server = FakeServer(
         search_type="hybrid",
@@ -558,7 +616,10 @@ async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypa
     )
 
     with pytest.raises(ValueError, match="native hybrid search support"):
-        server.config.validate_search(supports_native_hybrid_search=False)
+        server.config.validate_search(
+            schema=_schema(),
+            supports_native_hybrid_search=False,
+        )
 
 
 def test_register_search_tool_uses_default_and_override_descriptions():

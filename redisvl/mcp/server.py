@@ -294,6 +294,7 @@ class RedisVLMCPServer(FastMCP):
         effective_schema = await self._load_effective_schema(client, timeout)
         self._initialize_index(effective_schema, client)
         self.config.validate_search(
+            schema=effective_schema,
             supports_native_hybrid_search=await self.supports_native_hybrid_search(),
         )
         await self._initialize_vectorizer(effective_schema, timeout)
