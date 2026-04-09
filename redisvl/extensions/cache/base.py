@@ -5,7 +5,7 @@ specific cache types such as LLM caches and embedding caches.
 """
 
 from collections.abc import Mapping
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
@@ -113,18 +113,8 @@ class BaseCache:
         """
         if self._redis_client is None:
             # Create new Redis client
-            url = self.redis_kwargs["redis_url"]
-            kwargs = self.redis_kwargs["connection_kwargs"]
-            if url is not None and not isinstance(url, str):
-                raise TypeError(
-                    "Expected `redis_url` to be a string (e.g. 'redis://localhost:6379'), "
-                    f"but got type: {type(url).__name__}"
-                )
-            if not isinstance(kwargs, Mapping):
-                raise TypeError(
-                    "Expected `connection_kwargs` to be a dictionary (e.g. {'decode_responses': True}), "
-                    f"but got type: {type(kwargs).__name__}"
-                )
+            url = cast(Optional[str], self.redis_kwargs["redis_url"])
+            kwargs = cast(Dict[str, Any], self.redis_kwargs["connection_kwargs"])
             self._redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=url,
                 **kwargs,
@@ -145,15 +135,12 @@ class BaseCache:
                     client
                 )
             else:
-                url = str(self.redis_kwargs["redis_url"])
-                kwargs = self.redis_kwargs.get("connection_kwargs", {})
-                if not isinstance(kwargs, Mapping):
-                    raise TypeError(
-                        "Expected `connection_kwargs` to be a dictionary (e.g. {'decode_responses': True}), "
-                        f"but got type: {type(kwargs).__name__}"
-                    )
+                url = cast(Optional[str], self.redis_kwargs["redis_url"])
+                kwargs = cast(Dict[str, Any], self.redis_kwargs["connection_kwargs"])
                 self._async_redis_client = (
-                    RedisConnectionFactory.get_async_redis_connection(url, **kwargs)
+                    RedisConnectionFactory.get_async_redis_connection(
+                        redis_url=url, **kwargs
+                    )
                 )
         return self._async_redis_client
 
