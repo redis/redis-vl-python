@@ -28,8 +28,13 @@ def _get_auth_credentials(args: Namespace) -> tuple[Optional[str], Optional[str]
 
 def _build_redis_url(args: Namespace) -> str:
     scheme = "rediss" if getattr(args, "ssl", False) else "redis"
-    host = getattr(args, "host", None) or DEFAULT_REDIS_HOST
-    port = getattr(args, "port", None) or DEFAULT_REDIS_PORT
+    host = getattr(args, "host", None)
+    if host is None:
+        host = DEFAULT_REDIS_HOST
+
+    port = getattr(args, "port", None)
+    if port is None:
+        port = DEFAULT_REDIS_PORT
     user, password = _get_auth_credentials(args)
 
     auth = ""
