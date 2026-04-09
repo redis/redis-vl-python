@@ -291,15 +291,20 @@ class RedisVLMCPServer(FastMCP):
         timeout = self.config.runtime.startup_timeout_seconds
 
         client = await self._connect_redis_client(timeout)
-        effective_schema = await self._load_effective_schema(client, timeout)
-        self._initialize_index(effective_schema, client)
-        self.config.validate_search(
-            schema=effective_schema,
-            supports_native_hybrid_search=await self.supports_native_hybrid_search(),
-        )
-        await self._initialize_vectorizer(effective_schema, timeout)
-        self._register_tools()
-        return client
+        try:
+            effective_schema = await self._load_effective_schema(client, timeout)
+            self._initialize_index(effective_schema, client)
+            self.config.validate_search(
+                schema=effective_schema,
+                supports_native_hybrid_search=await self.supports_native_hybrid_search(),
+            )
+            await self._initialize_vectorizer(effective_schema, timeout)
+            self._register_tools()
+            return client
+        except Exception:
+            if self._index is None:
+                await client.aclose()
+            raise
 
     async def _connect_redis_client(self, timeout: int) -> Any:
         """Connect to Redis and verify the server is reachable."""
