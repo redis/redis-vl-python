@@ -61,7 +61,7 @@ class MessageHistory(BaseMessageHistory):
             schema=schema,
             redis_client=redis_client,
             redis_url=redis_url,
-            **connection_kwargs,
+            connection_kwargs=connection_kwargs or None,
         )
 
         self._index.create(overwrite=False)

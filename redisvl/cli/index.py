@@ -98,13 +98,12 @@ class Index:
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
         redis_url = create_redis_url(args)
-        conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
 
         if args.index:
             schema = IndexSchema.from_dict({"index": {"name": args.index}})
             index = SearchIndex(schema=schema, redis_url=redis_url)
         elif args.schema:
-            index = SearchIndex.from_yaml(args.schema, redis_client=conn)
+            index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
         else:
             print("Index name or schema must be provided")
             exit(1)

@@ -103,7 +103,7 @@ class SemanticMessageHistory(BaseMessageHistory):
             schema=schema,
             redis_client=redis_client,
             redis_url=redis_url,
-            **connection_kwargs,
+            connection_kwargs=connection_kwargs or None,
         )
 
         # Check for existing message history index
