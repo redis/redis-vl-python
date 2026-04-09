@@ -32,9 +32,7 @@ class Index:
         parser.add_argument("command", help="Subcommand to run")
         parser = add_index_parsing_options(parser)
 
-        argv = sys.argv[2:]
-        args = parser.parse_args(argv)
-        args._argv = tuple(argv)
+        args = parser.parse_args(sys.argv[2:])
         if not hasattr(self, args.command):
             parser.print_help()
             exit(0)
