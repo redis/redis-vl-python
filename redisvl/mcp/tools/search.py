@@ -58,6 +58,13 @@ def _validate_request(
             code=MCPErrorCode.INVALID_REQUEST,
             retryable=False,
         )
+    if offset + effective_limit > runtime.max_result_window:
+        raise RedisVLMCPError(
+            "offset + limit must be less than or equal to "
+            f"{runtime.max_result_window}",
+            code=MCPErrorCode.INVALID_REQUEST,
+            retryable=False,
+        )
 
     schema_fields = set(index.schema.field_names)
     vector_field_name = runtime.vector_field_name

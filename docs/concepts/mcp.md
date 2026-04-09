@@ -40,6 +40,10 @@ MCP callers can control:
 - `filter`
 - `return_fields`
 
+These request-time controls are still bounded by runtime config. In particular,
+deep paging is limited by a configured maximum result window, enforced as
+`offset + limit`.
+
 MCP callers do not choose:
 
 - which index to target

@@ -99,6 +99,7 @@ indexes:
       default_embed_text_field: content
       default_limit: 10
       max_limit: 25
+      max_result_window: 1000
       max_upsert_records: 64
       skip_embedding_if_present: true
       startup_timeout_seconds: 30
@@ -113,6 +114,7 @@ indexes:
 - `runtime.text_field_name` tells full-text and hybrid search which field to search
 - `runtime.vector_field_name` tells the server which vector field to use
 - `runtime.default_embed_text_field` tells upsert which text field to embed when a record needs embedding
+- `runtime.max_result_window` caps deep paging by limiting the maximum `offset + limit`
 - `schema_overrides` is only for patching incomplete field attrs discovered from Redis
 
 ## Tool Contracts
@@ -175,6 +177,7 @@ Notes:
 - when `return_fields` is omitted, RedisVL MCP returns all non-vector fields
 - returning the configured vector field is rejected
 - `filter` accepts either a raw string or a JSON DSL object
+- `offset + limit` must stay within `runtime.max_result_window`
 
 ### `upsert-records`
 

@@ -21,6 +21,7 @@ class MCPRuntimeConfig(BaseModel):
     default_embed_text_field: str = Field(..., min_length=1)
     default_limit: int = 10
     max_limit: int = 100
+    max_result_window: int = 1000
     max_upsert_records: int = 64
     skip_embedding_if_present: bool = True
     startup_timeout_seconds: int = 30
@@ -35,6 +36,12 @@ class MCPRuntimeConfig(BaseModel):
         if self.max_limit < self.default_limit:
             raise ValueError(
                 "runtime.max_limit must be greater than or equal to runtime.default_limit"
+            )
+        if self.max_result_window <= 0:
+            raise ValueError("runtime.max_result_window must be greater than 0")
+        if self.max_result_window < self.max_limit:
+            raise ValueError(
+                "runtime.max_result_window must be greater than or equal to runtime.max_limit"
             )
         if self.max_upsert_records <= 0:
             raise ValueError("runtime.max_upsert_records must be greater than 0")

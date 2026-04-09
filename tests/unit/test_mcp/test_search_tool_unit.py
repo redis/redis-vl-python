@@ -36,7 +36,21 @@ def _schema() -> IndexSchema:
     )
 
 
-def _config_with_search(search_type: str, params: Optional[dict] = None) -> MCPConfig:
+def _config_with_search(
+    search_type: str,
+    params: Optional[dict] = None,
+    runtime_overrides: Optional[dict] = None,
+) -> MCPConfig:
+    runtime_config = {
+        "text_field_name": "content",
+        "vector_field_name": "embedding",
+        "default_embed_text_field": "content",
+        "default_limit": 2,
+        "max_limit": 5,
+    }
+    if runtime_overrides:
+        runtime_config.update(runtime_overrides)
+
     return MCPConfig.model_validate(
         {
             "server": {"redis_url": "redis://localhost:6379"},
@@ -45,13 +59,7 @@ def _config_with_search(search_type: str, params: Optional[dict] = None) -> MCPC
                     "redis_name": "docs-index",
                     "vectorizer": {"class": "FakeVectorizer", "model": "test-model"},
                     "search": {"type": search_type, "params": params or {}},
-                    "runtime": {
-                        "text_field_name": "content",
-                        "vector_field_name": "embedding",
-                        "default_embed_text_field": "content",
-                        "default_limit": 2,
-                        "max_limit": 5,
-                    },
+                    "runtime": runtime_config,
                 }
             },
         }
@@ -79,8 +87,13 @@ class FakeServer:
         *,
         search_type: str = "vector",
         search_params: Optional[dict] = None,
+        runtime_overrides: Optional[dict] = None,
     ):
-        self.config = _config_with_search(search_type, search_params)
+        self.config = _config_with_search(
+            search_type,
+            search_params,
+            runtime_overrides,
+        )
         self.mcp_settings = SimpleNamespace(tool_search_description=None)
         self.index = FakeIndex()
         self.vectorizer = FakeVectorizer()
@@ -154,6 +167,42 @@ async def test_search_records_rejects_invalid_limit_and_offset():
 
     assert limit_exc.value.code == MCPErrorCode.INVALID_REQUEST
     assert offset_exc.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_result_windows_larger_than_runtime_cap():
+    server = FakeServer(runtime_overrides={"max_limit": 3, "max_result_window": 3})
+
+    with pytest.raises(
+        RedisVLMCPError, match="offset \\+ limit must be less than or equal to 3"
+    ) as exc_info:
+        await search_records(server, query="science", offset=2, limit=2)
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_allows_result_window_boundary_and_default_limit(
+    monkeypatch,
+):
+    server = FakeServer(runtime_overrides={"max_limit": 4, "max_result_window": 4})
+    built_queries = []
+
+    class FakeVectorQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    async def fake_query(query):
+        server.index.query_calls.append(query)
+        return []
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.VectorQuery", FakeVectorQuery)
+    server.index.query = fake_query
+
+    await search_records(server, query="science", offset=2)
+
+    assert built_queries[0]["num_results"] == 4
 
 
 @pytest.mark.asyncio
