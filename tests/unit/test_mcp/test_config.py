@@ -390,9 +390,13 @@ def test_mcp_config_rejects_native_only_hybrid_runtime_params(params):
     }
 
     loaded = MCPConfig.model_validate(config)
+    schema = loaded.to_index_schema(_inspected_schema())
 
     with pytest.raises(ValueError, match="native hybrid search support"):
-        loaded.validate_search(supports_native_hybrid_search=False)
+        loaded.validate_search(
+            schema=schema,
+            supports_native_hybrid_search=False,
+        )
 
 
 def test_mcp_config_allows_linear_hybrid_fallback_params():
@@ -407,5 +411,9 @@ def test_mcp_config_allows_linear_hybrid_fallback_params():
     }
 
     loaded = MCPConfig.model_validate(config)
+    schema = loaded.to_index_schema(_inspected_schema())
 
-    loaded.validate_search(supports_native_hybrid_search=False)
+    loaded.validate_search(
+        schema=schema,
+        supports_native_hybrid_search=False,
+    )

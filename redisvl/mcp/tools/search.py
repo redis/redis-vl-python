@@ -13,6 +13,16 @@ _NATIVE_HYBRID_DEFAULTS = {
     "combination_method": "LINEAR",
     "linear_text_weight": 0.3,
 }
+_FALLBACK_HYBRID_UNSUPPORTED_PARAMS = frozenset(
+    {
+        "vector_search_method",
+        "knn_ef_runtime",
+        "range_radius",
+        "range_epsilon",
+        "rrf_window",
+        "rrf_constant",
+    }
+)
 
 
 def _validate_request(
@@ -219,12 +229,14 @@ def _build_fallback_hybrid_kwargs(
     search_params: dict[str, Any],
 ) -> dict[str, Any]:
     """Build aggregate fallback kwargs while preserving MCP fusion semantics."""
-    params = {
-        key: value
-        for key, value in search_params.items()
-        if key in {"text_scorer", "stopwords", "text_weights"}
-    }
-    linear_text_weight = search_params.get("linear_text_weight", 0.3)
+    params = dict(search_params)
+    linear_text_weight = params.pop(
+        "linear_text_weight",
+        _NATIVE_HYBRID_DEFAULTS["linear_text_weight"],
+    )
+    params.pop("combination_method", None)
+    for key in _FALLBACK_HYBRID_UNSUPPORTED_PARAMS:
+        params.pop(key, None)
     params["alpha"] = 1 - linear_text_weight
 
     return {

@@ -5,7 +5,12 @@ import pytest
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
-from redisvl.mcp.tools.search import _embed_query, register_search_tool, search_records
+from redisvl.mcp.tools.search import (
+    _build_fallback_hybrid_kwargs,
+    _embed_query,
+    register_search_tool,
+    search_records,
+)
 from redisvl.schema import IndexSchema
 
 
@@ -558,6 +563,9 @@ async def test_search_records_builds_hybrid_query_for_fallback_runtime(monkeypat
 @pytest.mark.parametrize(
     ("search_type", "schema_field_name", "supports_native"),
     [
+        ("vector", "id", False),
+        ("vector", "__key", False),
+        ("vector", "key", False),
         ("vector", "score", False),
         ("vector", "vector_distance", False),
         ("vector", "text_score", False),
@@ -603,6 +611,38 @@ async def test_validate_search_rejects_reserved_score_metadata_field_names(
             schema=schema,
             supports_native_hybrid_search=supports_native,
         )
+
+
+def test_build_fallback_hybrid_kwargs_drops_only_fallback_unsupported_params():
+    kwargs = _build_fallback_hybrid_kwargs(
+        query="hybrid",
+        embedding=[0.1, 0.2, 0.3],
+        runtime=SimpleNamespace(
+            text_field_name="content",
+            vector_field_name="embedding",
+        ),
+        filter_expression=None,
+        return_fields=["content"],
+        num_results=3,
+        search_params={
+            "text_scorer": "TFIDF",
+            "stopwords": None,
+            "text_weights": {"hybrid": 2.0},
+            "combination_method": "LINEAR",
+            "linear_text_weight": 0.2,
+            "vector_search_method": "KNN",
+            "knn_ef_runtime": 77,
+        },
+    )
+
+    assert kwargs["text_scorer"] == "TFIDF"
+    assert kwargs["stopwords"] is None
+    assert kwargs["text_weights"] == {"hybrid": 2.0}
+    assert kwargs["alpha"] == pytest.approx(0.8)
+    assert "combination_method" not in kwargs
+    assert "linear_text_weight" not in kwargs
+    assert "vector_search_method" not in kwargs
+    assert "knn_ef_runtime" not in kwargs
 
 
 @pytest.mark.asyncio
