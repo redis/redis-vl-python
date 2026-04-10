@@ -14,6 +14,7 @@ def _usage():
         "rvl <command> [<args>]\n",
         "Commands:",
         "\tindex       Index manipulation (create, delete, etc.)",
+        "\tmcp         Run the RedisVL MCP server",
         "\tversion     Obtain the version of RedisVL",
         "\tstats       Obtain statistics about an index",
     ]
@@ -40,6 +41,12 @@ class RedisVlCLI:
 
     def index(self):
         Index()
+        exit(0)
+
+    def mcp(self):
+        from redisvl.cli.mcp import MCP
+
+        MCP()
         exit(0)
 
     def version(self):
