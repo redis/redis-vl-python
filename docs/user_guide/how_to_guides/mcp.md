@@ -35,10 +35,26 @@ pip install redisvl[mcp,openai]
 
 ## Start the Server
 
-Run the server over stdio:
+Run the server over stdio (default):
 
 ```bash
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
+```
+
+Run it over Streamable HTTP for remote MCP clients:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+Run it over SSE:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --host 0.0.0.0 --port 9000
+```
+
+```{warning}
+Streamable HTTP and SSE endpoints are **unauthenticated by default**. Only bind to public interfaces (`--host 0.0.0.0`) on trusted networks or behind an authenticating reverse proxy. When not using `--read-only`, the `upsert-records` tool is also exposed to any client that can reach the server.
 ```
 
 Run it in read-only mode to expose search without upsert:
@@ -46,6 +62,18 @@ Run it in read-only mode to expose search without upsert:
 ```bash
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --read-only
 ```
+
+### CLI Flags
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--config` | — | Path to the MCP YAML config (required) |
+| `--transport` | `stdio` | Transport protocol: `stdio`, `sse`, or `streamable-http` |
+| `--host` | `127.0.0.1` | Bind address (only used with `sse` and `streamable-http`) |
+| `--port` | `8000` | Bind port (only used with `sse` and `streamable-http`) |
+| `--read-only` | off | Disable the `upsert-records` tool |
+
+### Environment Variables
 
 You can also control boot settings through environment variables:
 
@@ -55,6 +83,28 @@ You can also control boot settings through environment variables:
 | `REDISVL_MCP_READ_ONLY` | Disable `upsert-records` when set to `true` |
 | `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Override the search tool description |
 | `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | Override the upsert tool description |
+
+## Connect a Remote MCP Client
+
+When using Streamable HTTP or SSE transport, point your MCP client at the server URL:
+
+- **Streamable HTTP**: `http://<host>:<port>/mcp`
+- **SSE**: `http://<host>:<port>/sse`
+
+> **Note:** `<host>` here is the bind address the server was started with. The default `127.0.0.1` only accepts connections from the same machine. To allow connections from other machines, start the server with `--host 0.0.0.0` and use the machine's actual IP or hostname in the client URL.
+
+For example, to configure a remote MCP client to connect to a Streamable HTTP server running on `192.168.1.10:8000`:
+
+```json
+{
+  "mcpServers": {
+    "redisvl": {
+      "url": "http://192.168.1.10:8000/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
 
 ## Example Config
 
