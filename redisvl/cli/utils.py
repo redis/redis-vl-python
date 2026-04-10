@@ -1,6 +1,7 @@
 import os
 from argparse import ArgumentParser, Namespace
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
 from redisvl.utils.log import get_logger
@@ -17,7 +18,6 @@ def _has_explicit_connection_options(args: Namespace) -> bool:
             getattr(args, "port", None) is not None,
             bool(getattr(args, "user", None)),
             bool(getattr(args, "password", None)),
-            bool(getattr(args, "ssl", False)),
         )
     )
 
@@ -49,6 +49,13 @@ def _build_redis_url(args: Namespace) -> str:
     return f"{scheme}://{auth}{host}:{port}"
 
 
+def _apply_ssl_scheme(url: str) -> str:
+    parsed_url = urlparse(url)
+    if parsed_url.scheme == "rediss":
+        return url
+    return urlunparse(parsed_url._replace(scheme="rediss"))
+
+
 def create_redis_url(args: Namespace) -> str:
     if args.url:
         return args.url
@@ -60,6 +67,8 @@ def create_redis_url(args: Namespace) -> str:
         logger.info(
             f"Using Redis address from environment variable, {REDIS_URL_ENV_VAR}"
         )
+        if getattr(args, "ssl", False):
+            return _apply_ssl_scheme(env_address)
         return env_address
 
     return _build_redis_url(args)

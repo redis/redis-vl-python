@@ -49,6 +49,12 @@ def test_parser_leaves_connection_options_unset_by_default(parse_args):
             id="ssl-with-auth",
         ),
         pytest.param(
+            ["--ssl"],
+            "redis://production-host:6380/0",
+            "rediss://production-host:6380/0",
+            id="ssl-modifies-environment-url",
+        ),
+        pytest.param(
             ["--host=cache.local", "-a", "secret"],
             None,
             "redis://:secret@cache.local:6379",
