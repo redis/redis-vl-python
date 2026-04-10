@@ -88,6 +88,7 @@ from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
+    _split_from_existing_kwargs,
     convert_index_info_to_schema,
     supports_svs,
     supports_svs_async,
@@ -111,30 +112,6 @@ REQUIRED_MODULES_FOR_INTROSPECTION = [
     {"name": "search", "ver": 20810},
     {"name": "searchlight", "ver": 20810},
 ]
-
-
-def _split_from_existing_kwargs(
-    kwargs: Dict[str, Any], *, nested_connection_keys: Sequence[str]
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    init_kwargs: Dict[str, Any] = {}
-    connection_kwargs: Dict[str, Any] = {}
-
-    for key in ("validate_on_load", "lib_name"):
-        if key in kwargs:
-            init_kwargs[key] = kwargs.pop(key)
-
-    for key in list(kwargs):
-        if key.startswith("_"):
-            init_kwargs[key] = kwargs.pop(key)
-
-    for key in nested_connection_keys:
-        nested_kwargs = kwargs.pop(key, None)
-        if nested_kwargs is not None:
-            connection_kwargs.update(nested_kwargs)
-
-    connection_kwargs.update(kwargs)
-    return init_kwargs, connection_kwargs
-
 
 SearchParams = Union[
     Tuple[

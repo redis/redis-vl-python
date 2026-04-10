@@ -15,7 +15,7 @@ def _has_explicit_connection_options(args: Namespace) -> bool:
         (
             getattr(args, "host", None) is not None,
             getattr(args, "port", None) is not None,
-            getattr(args, "user", None) is not None,
+            bool(getattr(args, "user", None)),
             bool(getattr(args, "password", None)),
             bool(getattr(args, "ssl", False)),
         )
@@ -23,7 +23,7 @@ def _has_explicit_connection_options(args: Namespace) -> bool:
 
 
 def _get_auth_credentials(args: Namespace) -> tuple[Optional[str], Optional[str]]:
-    return getattr(args, "user", None), getattr(args, "password", None)
+    return getattr(args, "user", None) or None, getattr(args, "password", None) or None
 
 
 def _build_redis_url(args: Namespace) -> str:

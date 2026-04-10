@@ -18,7 +18,7 @@ from redisvl.extensions.router.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
-from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.connection import RedisConnectionFactory, _split_from_existing_kwargs
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
@@ -124,9 +124,11 @@ class SemanticRouter(BaseModel):
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
-        connection_kwargs = dict(kwargs.pop("connection_kwargs", {}) or {})
-        lib_name = kwargs.pop("lib_name", None)
-        connection_kwargs.update(kwargs)
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
+            dict(kwargs),
+            nested_connection_keys=("connection_kwargs",),
+        )
+        lib_name = init_kwargs.get("lib_name")
         index_kwargs: Dict[str, Any] = {}
         created_redis_client = False
 
@@ -167,7 +169,7 @@ class SemanticRouter(BaseModel):
                 redis_url=resolved_redis_url,
                 redis_client=redis_client,
                 connection_kwargs=connection_kwargs or None,
-                _index_kwargs=index_kwargs or None,
+                _index_kwargs={**init_kwargs, **index_kwargs} or None,
             )
         except Exception:
             if created_redis_client and redis_client is not None:

@@ -55,6 +55,12 @@ def test_parser_leaves_connection_options_unset_by_default(parse_args):
             id="password-only-auth",
         ),
         pytest.param(
+            ["--user="],
+            "redis://env:6379",
+            "redis://env:6379",
+            id="empty-user-does-not-override-env",
+        ),
+        pytest.param(
             ["--host=localhost"],
             "redis://env:6379",
             "redis://localhost:6379",

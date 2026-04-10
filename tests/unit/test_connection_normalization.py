@@ -231,7 +231,7 @@ def test_semantic_router_from_existing_prefers_provided_client():
 
 
 def test_semantic_router_from_existing_rebuilds_from_redis_url():
-    """Reuse a single Redis client when loading a router from redis_url."""
+    """Keep internal kwargs out of the connection factory when loading a router."""
     created_client = MagicMock()
     router_dict = {
         "name": "router",
@@ -259,6 +259,7 @@ def test_semantic_router_from_existing_rebuilds_from_redis_url():
             redis_url="redis://localhost:6380",
             connection_kwargs={"decode_responses": True},
             socket_timeout=5.0,
+            _internal_flag=True,
         )
 
     mock_get_connection.assert_called_once_with(
@@ -275,6 +276,7 @@ def test_semantic_router_from_existing_rebuilds_from_redis_url():
         "socket_timeout": 5.0,
     }
     assert mock_from_dict.call_args.kwargs["_index_kwargs"] == {
+        "_internal_flag": True,
         "_client_validated": True,
         "_owns_redis_client": True,
     }
