@@ -60,13 +60,7 @@ class Stats:
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
-        try:
-            redis_url = create_redis_url(args)
-        except ValueError:
-            logger.error(
-                "Must set REDIS_ADDRESS environment variable or provide host and port"
-            )
-            exit(0)
+        redis_url = create_redis_url(args)
 
         if args.index:
             schema = IndexSchema.from_dict({"index": {"name": args.index}})

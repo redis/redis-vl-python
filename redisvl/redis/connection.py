@@ -1,5 +1,16 @@
 import os
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    overload,
+)
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
 
@@ -27,6 +38,29 @@ from redisvl.utils.log import get_logger
 from redisvl.utils.utils import deprecated_argument, deprecated_function
 
 logger = get_logger(__name__)
+
+
+def _split_from_existing_kwargs(
+    kwargs: Dict[str, Any], *, nested_connection_keys: Sequence[str]
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    init_kwargs: Dict[str, Any] = {}
+    connection_kwargs: Dict[str, Any] = {}
+
+    for key in ("validate_on_load", "lib_name"):
+        if key in kwargs:
+            init_kwargs[key] = kwargs.pop(key)
+
+    for key in list(kwargs):
+        if key.startswith("_"):
+            init_kwargs[key] = kwargs.pop(key)
+
+    for key in nested_connection_keys:
+        nested_kwargs = kwargs.pop(key, None)
+        if nested_kwargs is not None:
+            connection_kwargs.update(nested_kwargs)
+
+    connection_kwargs.update(kwargs)
+    return init_kwargs, connection_kwargs
 
 
 def _strip_cluster_from_url_and_kwargs(

@@ -57,12 +57,12 @@ from redisvl.utils.redis_protocol import get_protocol_version
 
 # Redis 5.x compatibility (6 fixed the import path)
 if redis_version.startswith("5"):
-    from redis.commands.search.indexDefinition import (  # type: ignore[import-untyped]
-        IndexDefinition,
+    from redis.commands.search.indexDefinition import (
+        IndexDefinition,  # type: ignore[import-untyped]
     )
 else:
-    from redis.commands.search.index_definition import (  # type: ignore[no-redef]
-        IndexDefinition,
+    from redis.commands.search.index_definition import (
+        IndexDefinition,  # type: ignore[no-redef]
     )
 
 # Need Result outside TYPE_CHECKING for cast
@@ -88,6 +88,7 @@ from redisvl.query.aggregate import AggregateHybridQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.connection import (
     RedisConnectionFactory,
+    _split_from_existing_kwargs,
     convert_index_info_to_schema,
     supports_svs,
     supports_svs_async,
@@ -496,7 +497,7 @@ class SearchIndex(BaseSearchIndex):
         self._sql_executors: Dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        self._owns_redis_client = redis_client is None
+        self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
         if self._owns_redis_client:
             weakref.finalize(self, self.disconnect)
 
@@ -531,16 +532,28 @@ class SearchIndex(BaseSearchIndex):
         Raises:
             ValueError: If redis_url or redis_client is not provided.
         """
-        if redis_url:
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
+            dict(kwargs),
+            nested_connection_keys=("connection_kwargs", "connection_args"),
+        )
+        lib_name = cast(Optional[str], init_kwargs.get("lib_name"))
+        created_redis_client = False
+
+        if redis_client:
+            # Validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client, lib_name)
+            # Mark that client was already validated to avoid duplicate calls
+            init_kwargs["_client_validated"] = True
+        elif redis_url:
+            factory_kwargs = {**connection_kwargs}
+            if lib_name is not None:
+                factory_kwargs["lib_name"] = lib_name
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url,
-                **kwargs,
+                **factory_kwargs,
             )
-        elif redis_client:
-            # Validate client type and set lib name
-            RedisConnectionFactory.validate_sync_redis(redis_client)
-            # Mark that client was already validated to avoid duplicate calls
-            kwargs["_client_validated"] = True
+            init_kwargs["_client_validated"] = True
+            created_redis_client = True
 
         if not redis_client:
             raise ValueError("Must provide either a redis_url or redis_client")
@@ -549,7 +562,16 @@ class SearchIndex(BaseSearchIndex):
         index_info = cls._info(name, redis_client)
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
-        return cls(schema, redis_client, **kwargs)
+        if created_redis_client:
+            init_kwargs["_owns_redis_client"] = True
+            return cls(
+                schema,
+                redis_client=redis_client,
+                redis_url=redis_url,
+                connection_kwargs=connection_kwargs or None,
+                **init_kwargs,
+            )
+        return cls(schema, redis_client=redis_client, **init_kwargs)
 
     @property
     def client(self) -> Optional[SyncRedisClient]:
@@ -1410,7 +1432,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self._sql_executors: Dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
-        self._owns_redis_client = redis_client is None
+        self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
         if self._owns_redis_client:
             weakref.finalize(self, sync_wrapper(self.disconnect))
 
@@ -1437,16 +1459,28 @@ class AsyncSearchIndex(BaseSearchIndex):
                 "Must provide either a redis_url or redis_client to fetch Redis index info."
             )
 
-        if redis_url:
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
+            dict(kwargs),
+            nested_connection_keys=("connection_kwargs", "redis_kwargs"),
+        )
+        lib_name = cast(Optional[str], init_kwargs.get("lib_name"))
+        created_redis_client = False
+
+        if redis_client:
+            # Validate client type and set lib name
+            await RedisConnectionFactory.validate_async_redis(redis_client, lib_name)
+            # Mark that client was already validated to avoid duplicate calls
+            init_kwargs["_client_validated"] = True
+        elif redis_url:
+            factory_kwargs = {**connection_kwargs}
+            if lib_name is not None:
+                factory_kwargs["lib_name"] = lib_name
             redis_client = await RedisConnectionFactory._get_aredis_connection(
                 redis_url=redis_url,
-                **kwargs,
+                **factory_kwargs,
             )
-        elif redis_client:
-            # Validate client type and set lib name
-            await RedisConnectionFactory.validate_async_redis(redis_client)
-            # Mark that client was already validated to avoid duplicate calls
-            kwargs["_client_validated"] = True
+            init_kwargs["_client_validated"] = True
+            created_redis_client = True
 
         if redis_client is None:
             raise ValueError(
@@ -1458,7 +1492,16 @@ class AsyncSearchIndex(BaseSearchIndex):
         index_info = await cls._info(name, redis_client)
         schema_dict = convert_index_info_to_schema(index_info)
         schema = IndexSchema.from_dict(schema_dict)
-        return cls(schema, redis_client=redis_client, **kwargs)
+        if created_redis_client:
+            init_kwargs["_owns_redis_client"] = True
+            return cls(
+                schema,
+                redis_client=redis_client,
+                redis_url=redis_url,
+                connection_kwargs=connection_kwargs or None,
+                **init_kwargs,
+            )
+        return cls(schema, redis_client=redis_client, **init_kwargs)
 
     @property
     def client(self) -> Optional[AsyncRedisClient]:

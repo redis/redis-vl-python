@@ -18,7 +18,7 @@ from redisvl.extensions.router.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
-from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.connection import RedisConnectionFactory, _split_from_existing_kwargs
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
@@ -72,6 +72,7 @@ class SemanticRouter(BaseModel):
                 for the redis client. Defaults to empty {}.
         """
         dtype = kwargs.pop("dtype", None)
+        index_kwargs = kwargs.pop("_index_kwargs", None)
 
         # Validate a provided vectorizer or set the default
         if vectorizer:
@@ -104,7 +105,13 @@ class SemanticRouter(BaseModel):
             redis_client=redis_client,
         )
 
-        self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
+        self._initialize_index(
+            redis_client,
+            redis_url,
+            overwrite,
+            connection_kwargs=connection_kwargs or None,
+            index_kwargs=index_kwargs,
+        )
 
         self._index.client.json().set(f"{self.name}:route_config", f".", self.to_dict())  # type: ignore
 
@@ -117,27 +124,57 @@ class SemanticRouter(BaseModel):
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
-        if redis_url:
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
+            dict(kwargs),
+            nested_connection_keys=("connection_kwargs",),
+        )
+        lib_name = init_kwargs.get("lib_name")
+        index_kwargs: Dict[str, Any] = {}
+        created_redis_client = False
+
+        if redis_client:
+            # Just validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client, lib_name)
+            index_kwargs["_client_validated"] = True
+        else:
+            factory_kwargs = {**connection_kwargs}
+            if lib_name is not None:
+                factory_kwargs["lib_name"] = lib_name
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url,
-                **kwargs,
+                **factory_kwargs,
             )
-        elif redis_client:
-            # Just validate client type and set lib name
-            RedisConnectionFactory.validate_sync_redis(redis_client)
-        if redis_client is None:
-            raise ValueError(
-                "Creating Redis client failed. Please check the redis_url and connection_kwargs."
-            )
+            index_kwargs["_client_validated"] = True
+            index_kwargs["_owns_redis_client"] = True
+            if lib_name is not None:
+                index_kwargs["lib_name"] = lib_name
+            created_redis_client = True
 
-        router_dict = redis_client.json().get(f"{name}:route_config")
+        try:
+            router_dict = redis_client.json().get(f"{name}:route_config")
+        except Exception:
+            if created_redis_client and redis_client is not None:
+                redis_client.close()
+            raise
         if not isinstance(router_dict, dict):
+            if created_redis_client and redis_client is not None:
+                redis_client.close()
             raise ValueError(
                 f"No valid router config found for {name}. Received: {router_dict!r}"
             )
-        return cls.from_dict(
-            router_dict, redis_url=redis_url, redis_client=redis_client
-        )
+        resolved_redis_url = redis_url if created_redis_client else None
+        try:
+            return cls.from_dict(
+                router_dict,
+                redis_url=resolved_redis_url,
+                redis_client=redis_client,
+                connection_kwargs=connection_kwargs or None,
+                _index_kwargs={**init_kwargs, **index_kwargs} or None,
+            )
+        except Exception:
+            if created_redis_client and redis_client is not None:
+                redis_client.close()
+            raise
 
     @deprecated_argument("dtype")
     def _initialize_index(
@@ -146,7 +183,8 @@ class SemanticRouter(BaseModel):
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         dtype: str = "float32",
-        **connection_kwargs,
+        connection_kwargs: Optional[Dict[str, Any]] = None,
+        index_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Initialize the search index and handle Redis connection."""
 
@@ -158,7 +196,8 @@ class SemanticRouter(BaseModel):
             schema=schema,
             redis_client=redis_client,
             redis_url=redis_url,
-            **connection_kwargs,
+            connection_kwargs=connection_kwargs,
+            **(index_kwargs or {}),
         )
 
         # Check for existing router index
