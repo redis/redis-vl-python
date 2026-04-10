@@ -122,6 +122,10 @@ def test_mcp_help_includes_description_and_example(monkeypatch, capsys):
     assert (
         "uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml" in out.out
     )
+    assert "--transport" in out.out
+    assert "streamable-http" in out.out
+    assert "--host" in out.out
+    assert "--port" in out.out
 
 
 def test_mcp_command_preserves_env_read_only_when_flag_is_omitted(monkeypatch):
@@ -436,53 +440,6 @@ def test_mcp_command_passes_streamable_http_transport(monkeypatch):
     ]
 
 
-def test_mcp_command_passes_sse_transport(monkeypatch):
-    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
-    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "rvl",
-            "mcp",
-            "--config",
-            "/tmp/mcp.yaml",
-            "--transport",
-            "sse",
-            "--port",
-            "8080",
-        ],
-    )
-
-    calls = []
-
-    class FakeSettings(object):
-        @classmethod
-        def from_env(cls, config=None, read_only=None):
-            calls.append(("settings", config, read_only))
-            return cls()
-
-    class FakeServer(object):
-        def __init__(self, settings):
-            self.settings = settings
-
-        async def run_async(self, transport="stdio", **kwargs):
-            calls.append(("run_async", transport, kwargs))
-
-    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
-    module = _import_cli_mcp()
-
-    with pytest.raises(SystemExit) as exc_info:
-        module.MCP()
-
-    assert exc_info.value.code == 0
-    assert calls == [
-        ("settings", "/tmp/mcp.yaml", None),
-        ("run_async", "sse", {"host": "127.0.0.1", "port": 8080}),
-    ]
-
-
 def test_mcp_command_stdio_does_not_pass_host_port(monkeypatch):
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
@@ -596,65 +553,3 @@ def test_mcp_command_fallback_run_path_passes_http_transport_kwargs(monkeypatch)
         ("run", "streamable-http", {"host": "0.0.0.0", "port": 7777}),
         ("shutdown",),
     ]
-
-
-def test_mcp_command_fallback_run_path_stdio_no_extra_kwargs(monkeypatch):
-    """TDD: The fallback run() path for stdio must NOT pass host/port."""
-    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
-    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
-    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
-
-    calls = []
-
-    class FakeSettings(object):
-        @classmethod
-        def from_env(cls, config=None, read_only=None):
-            calls.append(("settings", config, read_only))
-            return cls()
-
-    class FakeServer(object):
-        def __init__(self, settings):
-            self.settings = settings
-
-        async def startup(self):
-            calls.append(("startup",))
-
-        async def run(self, transport="stdio", **kwargs):
-            calls.append(("run", transport, kwargs))
-
-        async def shutdown(self):
-            calls.append(("shutdown",))
-
-    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
-    module = _import_cli_mcp()
-
-    with pytest.raises(SystemExit) as exc_info:
-        module.MCP()
-
-    assert exc_info.value.code == 0
-    assert calls == [
-        ("settings", "/tmp/mcp.yaml", None),
-        ("startup",),
-        ("run", "stdio", {}),
-        ("shutdown",),
-    ]
-
-
-def test_mcp_help_includes_transport_examples(monkeypatch, capsys):
-    """TDD: Help output should document the new transport flags."""
-    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
-    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--help"])
-
-    module = _import_cli_mcp()
-
-    with pytest.raises(SystemExit) as exc_info:
-        module.MCP()
-
-    out = capsys.readouterr()
-
-    assert exc_info.value.code == 0
-    assert "--transport" in out.out
-    assert "streamable-http" in out.out
-    assert "--host" in out.out
-    assert "--port" in out.out

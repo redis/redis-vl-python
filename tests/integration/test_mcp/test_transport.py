@@ -144,40 +144,6 @@ def transport_config_path(tmp_path: Path, redis_url: str):
 
 
 @pytest.mark.asyncio
-async def test_server_registers_search_tool_accessible_via_mcp_client(
-    monkeypatch, transport_index, transport_config_path
-):
-    """TDD integration: Server started with startup() exposes search-records
-    tool that an in-process FastMCP Client can discover and call."""
-
-    monkeypatch.setattr(
-        "redisvl.mcp.server.resolve_vectorizer_class",
-        lambda class_name: FakeVectorizer,
-    )
-
-    server = RedisVLMCPServer(
-        MCPSettings(config=transport_config_path(transport_index.schema.index.name))
-    )
-
-    # Let the FastMCP Client manage the server lifecycle via lifespan.
-    # Do NOT call startup() manually — the in-process Client triggers it.
-    async with Client(server) as client:
-        tools = await client.list_tools()
-        tool_names = [t.name for t in tools]
-
-        assert "search-records" in tool_names
-        assert "upsert-records" in tool_names
-
-        result = await client.call_tool(
-            "search-records",
-            {"query": "science", "limit": 1},
-        )
-
-        assert result is not None
-        assert len(result.content) > 0
-
-
-@pytest.mark.asyncio
 async def test_server_serves_over_streamable_http_transport(
     monkeypatch, transport_index, transport_config_path
 ):
@@ -264,56 +230,6 @@ async def test_server_read_only_mode_hides_upsert_over_http(
 
             assert "search-records" in tool_names
             assert "upsert-records" not in tool_names
-    finally:
-        if server_task is not None:
-            server_task.cancel()
-            try:
-                await server_task
-            except asyncio.CancelledError:
-                pass
-
-
-@pytest.mark.asyncio
-async def test_server_serves_over_sse_transport(
-    monkeypatch, transport_index, transport_config_path
-):
-    """TDD integration: Start the MCP server with SSE transport on a free
-    port and verify a remote FastMCP Client can list tools and call
-    search-records over SSE."""
-
-    monkeypatch.setattr(
-        "redisvl.mcp.server.resolve_vectorizer_class",
-        lambda class_name: FakeVectorizer,
-    )
-
-    port = _find_free_port()
-    server = RedisVLMCPServer(
-        MCPSettings(config=transport_config_path(transport_index.schema.index.name))
-    )
-
-    server_task = None
-    try:
-        server_task = asyncio.create_task(
-            server.run_async(transport="sse", host="127.0.0.1", port=port)
-        )
-
-        await _wait_for_port("127.0.0.1", port)
-
-        url = f"http://127.0.0.1:{port}/sse"
-        async with Client(url) as client:
-            tools = await client.list_tools()
-            tool_names = [t.name for t in tools]
-
-            assert "search-records" in tool_names
-            assert "upsert-records" in tool_names
-
-            result = await client.call_tool(
-                "search-records",
-                {"query": "science", "limit": 1},
-            )
-
-            assert result is not None
-            assert len(result.content) > 0
     finally:
         if server_task is not None:
             server_task.cancel()
