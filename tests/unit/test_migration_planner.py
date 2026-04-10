@@ -888,3 +888,121 @@ def test_change_hnsw_tuning_params_is_allowed(monkeypatch, tmp_path):
 
     assert plan.diff_classification.supported is True
     assert len(plan.diff_classification.blocked_reasons) == 0
+
+
+def test_plan_warns_when_source_has_hash_indexing_failures(monkeypatch, tmp_path):
+    """Plan should include a warning when the source index has hash_indexing_failures > 0."""
+    source_schema = _make_source_schema()
+    dummy_index = DummyIndex(
+        source_schema,
+        {"num_docs": 5, "hash_indexing_failures": 3},
+        [b"docs:1"],
+    )
+    monkeypatch.setattr(
+        "redisvl.migration.planner.SearchIndex.from_existing",
+        lambda *args, **kwargs: dummy_index,
+    )
+
+    patch_path = tmp_path / "schema_patch.yaml"
+    patch_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "changes": {
+                    "add_fields": [
+                        {"name": "status", "type": "tag", "path": "$.status"}
+                    ],
+                },
+            },
+            sort_keys=False,
+        )
+    )
+
+    planner = MigrationPlanner()
+    plan = planner.create_plan(
+        "docs",
+        redis_url="redis://localhost:6379",
+        schema_patch_path=str(patch_path),
+    )
+
+    failure_warnings = [w for w in plan.warnings if "hash indexing failure" in w]
+    assert len(failure_warnings) == 1
+    assert "3" in failure_warnings[0]
+
+
+def test_plan_no_warning_when_source_has_zero_indexing_failures(monkeypatch, tmp_path):
+    """Plan should NOT include an indexing failure warning when failures == 0."""
+    source_schema = _make_source_schema()
+    dummy_index = DummyIndex(
+        source_schema,
+        {"num_docs": 5, "hash_indexing_failures": 0},
+        [b"docs:1"],
+    )
+    monkeypatch.setattr(
+        "redisvl.migration.planner.SearchIndex.from_existing",
+        lambda *args, **kwargs: dummy_index,
+    )
+
+    patch_path = tmp_path / "schema_patch.yaml"
+    patch_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "changes": {
+                    "add_fields": [
+                        {"name": "status", "type": "tag", "path": "$.status"}
+                    ],
+                },
+            },
+            sort_keys=False,
+        )
+    )
+
+    planner = MigrationPlanner()
+    plan = planner.create_plan(
+        "docs",
+        redis_url="redis://localhost:6379",
+        schema_patch_path=str(patch_path),
+    )
+
+    failure_warnings = [w for w in plan.warnings if "hash indexing failure" in w]
+    assert len(failure_warnings) == 0
+
+
+def test_plan_no_warning_when_stats_missing_failures_key(monkeypatch, tmp_path):
+    """Plan should handle missing hash_indexing_failures key gracefully."""
+    source_schema = _make_source_schema()
+    dummy_index = DummyIndex(
+        source_schema,
+        {"num_docs": 5},  # No hash_indexing_failures key
+        [b"docs:1"],
+    )
+    monkeypatch.setattr(
+        "redisvl.migration.planner.SearchIndex.from_existing",
+        lambda *args, **kwargs: dummy_index,
+    )
+
+    patch_path = tmp_path / "schema_patch.yaml"
+    patch_path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "changes": {
+                    "add_fields": [
+                        {"name": "status", "type": "tag", "path": "$.status"}
+                    ],
+                },
+            },
+            sort_keys=False,
+        )
+    )
+
+    planner = MigrationPlanner()
+    plan = planner.create_plan(
+        "docs",
+        redis_url="redis://localhost:6379",
+        schema_patch_path=str(patch_path),
+    )
+
+    failure_warnings = [w for w in plan.warnings if "hash indexing failure" in w]
+    assert len(failure_warnings) == 0

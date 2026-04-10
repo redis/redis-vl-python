@@ -1367,3 +1367,323 @@ class TestJsonStorageType:
         except Exception:
             cleanup_index(index)
             raise
+
+
+# ==============================================================================
+# 9. Hash Indexing Failures Validation Tests
+# ==============================================================================
+
+
+class TestHashIndexingFailuresValidation:
+    """Tests for validation when source index has hash_indexing_failures.
+
+    These tests verify that the migrator correctly handles indexes where some
+    documents fail to index (e.g., due to wrong vector dimensions). The
+    validation logic should compare total keys (num_docs + failures) instead
+    of just num_docs, so that resolved failures don't trigger false negatives.
+    """
+
+    def test_migration_with_indexing_failures_passes_validation(
+        self, redis_url, tmp_path, unique_ids, client
+    ):
+        """Migration should pass validation when source has hash_indexing_failures.
+
+        Scenario: Create index with dims=4, load 3 correct docs + 2 docs with
+        wrong-dimension vectors. The 2 bad docs cause hash_indexing_failures.
+        Run a simple migration (add a text field). After migration, validation
+        should pass because total keys (num_docs + failures) are conserved.
+        """
+        schema = {
+            "index": {
+                "name": unique_ids["name"],
+                "prefix": unique_ids["prefix"],
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "title", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "hnsw",
+                        "dims": 4,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
+
+        index = setup_index(
+            redis_url,
+            schema,
+            [
+                {
+                    "doc_id": "1",
+                    "title": "Good doc one",
+                    "embedding": array_to_buffer([0.1, 0.2, 0.3, 0.4], "float32"),
+                },
+                {
+                    "doc_id": "2",
+                    "title": "Good doc two",
+                    "embedding": array_to_buffer([0.2, 0.3, 0.4, 0.5], "float32"),
+                },
+                {
+                    "doc_id": "3",
+                    "title": "Good doc three",
+                    "embedding": array_to_buffer([0.3, 0.4, 0.5, 0.6], "float32"),
+                },
+            ],
+        )
+
+        try:
+            # Manually add 2 keys with wrong-dimension vectors (8-dim instead of 4)
+            # These will cause hash_indexing_failures
+            bad_vec = array_to_buffer(
+                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8], "float32"
+            )
+            client.hset(
+                f"{unique_ids['prefix']}:bad1",
+                mapping={"title": "Bad doc one", "embedding": bad_vec},
+            )
+            client.hset(
+                f"{unique_ids['prefix']}:bad2",
+                mapping={"title": "Bad doc two", "embedding": bad_vec},
+            )
+
+            # Wait briefly for indexing to settle
+            import time
+
+            time.sleep(0.5)
+
+            # Verify we have indexing failures
+            info = index.info()
+            num_docs = int(info.get("num_docs", 0))
+            failures = int(info.get("hash_indexing_failures", 0))
+            assert num_docs == 3, f"Expected 3 indexed docs, got {num_docs}"
+            assert failures == 2, f"Expected 2 indexing failures, got {failures}"
+
+            # Run migration: add a text field (simple, non-destructive)
+            result = run_migration(
+                redis_url,
+                tmp_path,
+                unique_ids["name"],
+                {
+                    "version": 1,
+                    "changes": {
+                        "add_fields": [{"name": "category", "type": "tag"}],
+                    },
+                },
+            )
+
+            assert result["supported"], "Add field should be supported"
+            assert result[
+                "succeeded"
+            ], f"Migration failed: {result['validation_errors']}"
+            assert result["doc_count_match"], (
+                f"Doc count should match (total keys conserved). "
+                f"Errors: {result['validation_errors']}"
+            )
+
+            cleanup_index(index)
+        except Exception:
+            cleanup_index(index)
+            raise
+
+    def test_quantization_resolves_failures_passes_validation(
+        self, redis_url, tmp_path, unique_ids, client
+    ):
+        """Quantization migration that resolves indexing failures should pass.
+
+        Scenario: Create index with dims=4 float32, load 3 docs with float32
+        vectors. Then add 2 docs with float16 vectors (same dims but wrong
+        byte size for float32). These cause hash_indexing_failures. Migrate to
+        float16 — now the previously failed docs become indexable and the
+        previously good docs get re-encoded. Total keys are conserved.
+        """
+        schema = {
+            "index": {
+                "name": unique_ids["name"],
+                "prefix": unique_ids["prefix"],
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "title", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "hnsw",
+                        "dims": 4,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
+
+        index = setup_index(
+            redis_url,
+            schema,
+            [
+                {
+                    "doc_id": "1",
+                    "title": "Float32 doc one",
+                    "embedding": array_to_buffer([0.1, 0.2, 0.3, 0.4], "float32"),
+                },
+                {
+                    "doc_id": "2",
+                    "title": "Float32 doc two",
+                    "embedding": array_to_buffer([0.2, 0.3, 0.4, 0.5], "float32"),
+                },
+                {
+                    "doc_id": "3",
+                    "title": "Float32 doc three",
+                    "embedding": array_to_buffer([0.3, 0.4, 0.5, 0.6], "float32"),
+                },
+            ],
+        )
+
+        try:
+            # Add 2 docs with float16 vectors (8 bytes for 4 dims vs 16 bytes)
+            # These will fail to index under float32 schema due to wrong byte size
+            f16_vec = array_to_buffer([0.4, 0.5, 0.6, 0.7], "float16")
+            client.hset(
+                f"{unique_ids['prefix']}:f16_1",
+                mapping={"title": "Float16 doc one", "embedding": f16_vec},
+            )
+            client.hset(
+                f"{unique_ids['prefix']}:f16_2",
+                mapping={"title": "Float16 doc two", "embedding": f16_vec},
+            )
+
+            import time
+
+            time.sleep(0.5)
+
+            # Verify initial state: 3 indexed + 2 failures
+            info = index.info()
+            num_docs = int(info.get("num_docs", 0))
+            failures = int(info.get("hash_indexing_failures", 0))
+            assert num_docs == 3, f"Expected 3 indexed docs, got {num_docs}"
+            assert failures == 2, f"Expected 2 indexing failures, got {failures}"
+
+            # Run quantization migration: float32 -> float16
+            # The executor re-encodes the 3 float32 docs to float16.
+            # After re-indexing, the 2 previously-failed float16 docs should now
+            # index successfully. Total keys: 5 before and 5 after.
+            result = run_migration(
+                redis_url,
+                tmp_path,
+                unique_ids["name"],
+                {
+                    "version": 1,
+                    "changes": {
+                        "update_fields": [
+                            {"name": "embedding", "attrs": {"datatype": "float16"}}
+                        ],
+                    },
+                },
+            )
+
+            assert result["supported"], "Quantization should be supported"
+            assert result[
+                "succeeded"
+            ], f"Migration failed: {result['validation_errors']}"
+            assert result["doc_count_match"], (
+                f"Doc count should match (total keys conserved). "
+                f"Errors: {result['validation_errors']}"
+            )
+
+            cleanup_index(index)
+        except Exception:
+            cleanup_index(index)
+            raise
+
+    def test_planner_warns_about_indexing_failures(
+        self, redis_url, tmp_path, unique_ids, client
+    ):
+        """Planner should emit a warning when source has hash_indexing_failures."""
+        schema = {
+            "index": {
+                "name": unique_ids["name"],
+                "prefix": unique_ids["prefix"],
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "title", "type": "text"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": 4,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
+
+        index = setup_index(
+            redis_url,
+            schema,
+            [
+                {
+                    "doc_id": "1",
+                    "title": "Good doc",
+                    "embedding": array_to_buffer([0.1, 0.2, 0.3, 0.4], "float32"),
+                },
+            ],
+        )
+
+        try:
+            # Add a doc with wrong-dimension vector
+            bad_vec = array_to_buffer([0.1, 0.2], "float32")  # 2-dim instead of 4
+            client.hset(
+                f"{unique_ids['prefix']}:bad1",
+                mapping={"title": "Bad doc", "embedding": bad_vec},
+            )
+
+            import time
+
+            time.sleep(0.5)
+
+            # Verify we have failures
+            info = index.info()
+            failures = int(info.get("hash_indexing_failures", 0))
+            assert failures > 0, "Expected at least 1 indexing failure"
+
+            # Create plan and check for warning
+            patch_path = tmp_path / "patch.yaml"
+            patch_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "version": 1,
+                        "changes": {
+                            "add_fields": [{"name": "status", "type": "tag"}],
+                        },
+                    },
+                    sort_keys=False,
+                )
+            )
+
+            planner = MigrationPlanner()
+            plan = planner.create_plan(
+                unique_ids["name"],
+                redis_url=redis_url,
+                schema_patch_path=str(patch_path),
+            )
+
+            failure_warnings = [
+                w for w in plan.warnings if "hash indexing failure" in w
+            ]
+            assert len(failure_warnings) == 1, (
+                f"Expected 1 indexing failure warning, got {len(failure_warnings)}. "
+                f"All warnings: {plan.warnings}"
+            )
+
+            cleanup_index(index)
+        except Exception:
+            cleanup_index(index)
+            raise

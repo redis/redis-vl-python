@@ -42,13 +42,21 @@ class MigrationValidator:
 
         source_num_docs = int(plan.source.stats_snapshot.get("num_docs", 0) or 0)
         target_num_docs = int(target_info.get("num_docs", 0) or 0)
-        validation.doc_count_match = source_num_docs == target_num_docs
 
         source_failures = int(
             plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
         )
         target_failures = int(target_info.get("hash_indexing_failures", 0) or 0)
         validation.indexing_failures_delta = target_failures - source_failures
+
+        # Compare total keys (num_docs + hash_indexing_failures) instead of
+        # just num_docs. Migrations can resolve indexing failures (e.g. a
+        # vector datatype change may fix documents that previously failed to
+        # index), shifting counts between the two buckets while the total
+        # number of keys under the prefix stays the same.
+        source_total = source_num_docs + source_failures
+        target_total = target_num_docs + target_failures
+        validation.doc_count_match = source_total == target_total
 
         key_sample = plan.source.keyspace.key_sample
         if not key_sample:
@@ -72,8 +80,10 @@ class MigrationValidator:
             existing_count = target_index.client.exists(*keys_to_check)
             validation.key_sample_exists = existing_count == len(keys_to_check)
 
-        # Run automatic functional checks (always)
-        functional_checks = self._run_functional_checks(target_index, source_num_docs)
+        # Run automatic functional checks (always).
+        # Use source_total (num_docs + failures) as the expected count so that
+        # resolved indexing failures don't cause the wildcard check to fail.
+        functional_checks = self._run_functional_checks(target_index, source_total)
         validation.query_checks.extend(functional_checks)
 
         # Run user-provided query checks (if file provided)
@@ -85,7 +95,10 @@ class MigrationValidator:
             validation.errors.append("Live schema does not match merged_target_schema.")
         if not validation.doc_count_match and plan.validation.require_doc_count_match:
             validation.errors.append(
-                "Live document count does not match source num_docs."
+                f"Total key count mismatch: source had {source_total} "
+                f"(num_docs={source_num_docs}, failures={source_failures}), "
+                f"target has {target_total} "
+                f"(num_docs={target_num_docs}, failures={target_failures})."
             )
         if validation.indexing_failures_delta > 0:
             validation.errors.append("Indexing failures increased during migration.")
