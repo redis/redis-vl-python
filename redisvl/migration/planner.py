@@ -122,6 +122,18 @@ class MigrationPlanner:
         warnings = ["Index downtime is required"]
         warnings.extend(rename_warnings)
 
+        # Warn if source index has hash indexing failures
+        source_failures = int(
+            snapshot.stats_snapshot.get("hash_indexing_failures", 0) or 0
+        )
+        if source_failures > 0:
+            warnings.append(
+                f"Source index has {source_failures:,} hash indexing failure(s). "
+                "Documents that previously failed to index may become indexable after "
+                "migration, causing the post-migration document count to differ from "
+                "the pre-migration count. This is expected and validation accounts for it."
+            )
+
         # Check for SVS-VAMANA in target schema and add appropriate warnings
         svs_warnings = self._check_svs_vamana_requirements(
             merged_target_schema,
