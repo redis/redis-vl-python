@@ -12,6 +12,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+fastmcp = pytest.importorskip(
+    "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
+)
+from fastmcp import Client
+
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
@@ -144,7 +149,6 @@ async def test_server_registers_search_tool_accessible_via_mcp_client(
 ):
     """TDD integration: Server started with startup() exposes search-records
     tool that an in-process FastMCP Client can discover and call."""
-    from fastmcp import Client
 
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
@@ -180,7 +184,6 @@ async def test_server_serves_over_streamable_http_transport(
     """TDD integration: Start the MCP server with streamable-http transport
     on a free port and verify a remote FastMCP Client can list tools and
     call search-records over HTTP."""
-    from fastmcp import Client
 
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
@@ -232,7 +235,6 @@ async def test_server_read_only_mode_hides_upsert_over_http(
 ):
     """TDD integration: In read-only mode, the upsert-records tool should
     not be registered, even when accessed over HTTP."""
-    from fastmcp import Client
 
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
@@ -278,7 +280,6 @@ async def test_server_serves_over_sse_transport(
     """TDD integration: Start the MCP server with SSE transport on a free
     port and verify a remote FastMCP Client can list tools and call
     search-records over SSE."""
-    from fastmcp import Client
 
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
