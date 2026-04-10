@@ -546,10 +546,16 @@ Run the MCP server over stdio (default):
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
 ```
 
-Or over Streamable HTTP / SSE for remote MCP clients:
+Or over Streamable HTTP for remote MCP clients:
 
 ```bash
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+Or over SSE:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --host 0.0.0.0 --port 9000
 ```
 
 Use `--read-only` to expose search without upsert.
