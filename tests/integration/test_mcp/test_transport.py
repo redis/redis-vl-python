@@ -1,7 +1,7 @@
 """Integration tests for MCP server HTTP transport support.
 
 These tests verify that the RedisVL MCP server properly starts and serves
-tools over streamable-http and SSE transports, using FastMCP's in-process
+tools over streamable-http, SSE, and in-process transports using FastMCP's
 Client for end-to-end validation.
 """
 
@@ -35,6 +35,24 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+async def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> None:
+    """Poll until the given host:port accepts a TCP connection."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        try:
+            _, writer = await asyncio.open_connection(host, port)
+            writer.close()
+            await writer.wait_closed()
+            return
+        except OSError:
+            if asyncio.get_event_loop().time() >= deadline:
+                raise TimeoutError(
+                    f"Server on {host}:{port} did not become ready "
+                    f"within {timeout}s"
+                )
+            await asyncio.sleep(0.05)
 
 
 @pytest.fixture
@@ -181,8 +199,8 @@ async def test_server_serves_over_streamable_http_transport(
             server.run_async(transport="streamable-http", host="127.0.0.1", port=port)
         )
 
-        # Give the HTTP server time to bind
-        await asyncio.sleep(1.0)
+        # Wait for the HTTP server to accept connections
+        await _wait_for_port("127.0.0.1", port)
 
         url = f"http://127.0.0.1:{port}/mcp"
         async with Client(url) as client:
@@ -204,7 +222,7 @@ async def test_server_serves_over_streamable_http_transport(
             server_task.cancel()
             try:
                 await server_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
 
 
@@ -235,7 +253,7 @@ async def test_server_read_only_mode_hides_upsert_over_http(
             server.run_async(transport="streamable-http", host="127.0.0.1", port=port)
         )
 
-        await asyncio.sleep(1.0)
+        await _wait_for_port("127.0.0.1", port)
 
         url = f"http://127.0.0.1:{port}/mcp"
         async with Client(url) as client:
@@ -249,5 +267,56 @@ async def test_server_read_only_mode_hides_upsert_over_http(
             server_task.cancel()
             try:
                 await server_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_server_serves_over_sse_transport(
+    monkeypatch, transport_index, transport_config_path
+):
+    """TDD integration: Start the MCP server with SSE transport on a free
+    port and verify a remote FastMCP Client can list tools and call
+    search-records over SSE."""
+    from fastmcp import Client
+
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+
+    port = _find_free_port()
+    server = RedisVLMCPServer(
+        MCPSettings(config=transport_config_path(transport_index.schema.index.name))
+    )
+
+    server_task = None
+    try:
+        server_task = asyncio.create_task(
+            server.run_async(transport="sse", host="127.0.0.1", port=port)
+        )
+
+        await _wait_for_port("127.0.0.1", port)
+
+        url = f"http://127.0.0.1:{port}/sse"
+        async with Client(url) as client:
+            tools = await client.list_tools()
+            tool_names = [t.name for t in tools]
+
+            assert "search-records" in tool_names
+            assert "upsert-records" in tool_names
+
+            result = await client.call_tool(
+                "search-records",
+                {"query": "science", "limit": 1},
+            )
+
+            assert result is not None
+            assert len(result.content) > 0
+    finally:
+        if server_task is not None:
+            server_task.cancel()
+            try:
+                await server_task
+            except asyncio.CancelledError:
                 pass
