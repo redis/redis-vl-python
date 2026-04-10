@@ -49,6 +49,12 @@ def test_parser_leaves_connection_options_unset_by_default(parse_args):
             id="ssl-with-auth",
         ),
         pytest.param(
+            ["--host=cache.local", "--user=alice", "--password=p@ss:w/rd?#"],
+            None,
+            "redis://alice:p%40ss%3Aw%2Frd%3F%23@cache.local:6379",
+            id="encodes-reserved-auth-characters",
+        ),
+        pytest.param(
             ["--ssl"],
             "redis://production-host:6380/0",
             "rediss://production-host:6380/0",

@@ -1,7 +1,7 @@
 import os
 from argparse import ArgumentParser, Namespace
 from typing import Optional
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
 from redisvl.utils.log import get_logger
@@ -39,12 +39,12 @@ def _build_redis_url(args: Namespace) -> str:
 
     auth = ""
     if user:
-        auth = user
+        auth = quote(user, safe="")
         if password:
-            auth += f":{password}"
+            auth += f":{quote(password, safe='')}"
         auth += "@"
     elif password:
-        auth = f":{password}@"
+        auth = f":{quote(password, safe='')}@"
 
     return f"{scheme}://{auth}{host}:{port}"
 
