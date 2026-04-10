@@ -49,7 +49,7 @@ LLM Caching • Filtering • MCP • Reranking
 **Expose Redis through MCP.** Run the RedisVL MCP server, configure one existing index, and use search or optional upsert tools.
 
 +++
-stdio transport • One index • Search and upsert
+stdio, HTTP, SSE • One index • Search and upsert
 :::
 
 :::{grid-item-card} 💻 CLI Reference

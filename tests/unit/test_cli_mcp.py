@@ -385,3 +385,276 @@ def test_mcp_command_shuts_down_when_run_fails(monkeypatch, capsys):
         ("shutdown",),
     ]
     assert "run failed" in out.err or "run failed" in out.out
+
+
+def test_mcp_command_passes_streamable_http_transport(monkeypatch):
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rvl",
+            "mcp",
+            "--config",
+            "/tmp/mcp.yaml",
+            "--transport",
+            "streamable-http",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9000",
+        ],
+    )
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def run_async(self, transport="stdio", **kwargs):
+            calls.append(("run_async", transport, kwargs))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 0
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("run_async", "streamable-http", {"host": "0.0.0.0", "port": 9000}),
+    ]
+
+
+def test_mcp_command_passes_sse_transport(monkeypatch):
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rvl",
+            "mcp",
+            "--config",
+            "/tmp/mcp.yaml",
+            "--transport",
+            "sse",
+            "--port",
+            "8080",
+        ],
+    )
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def run_async(self, transport="stdio", **kwargs):
+            calls.append(("run_async", transport, kwargs))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 0
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("run_async", "sse", {"host": "127.0.0.1", "port": 8080}),
+    ]
+
+
+def test_mcp_command_stdio_does_not_pass_host_port(monkeypatch):
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def run_async(self, transport="stdio", **kwargs):
+            calls.append(("run_async", transport, kwargs))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 0
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("run_async", "stdio", {}),
+    ]
+
+
+def test_mcp_command_rejects_invalid_transport(monkeypatch, capsys):
+    """TDD: argparse should reject transports not in the choices list."""
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["rvl", "mcp", "--config", "/tmp/mcp.yaml", "--transport", "websocket"],
+    )
+
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 1
+    out = capsys.readouterr()
+    assert "invalid choice" in out.err or "invalid choice" in out.out
+
+
+def test_mcp_command_fallback_run_path_passes_http_transport_kwargs(monkeypatch):
+    """TDD: When run_async is absent, the fallback run() path must also
+    forward transport and host/port kwargs for HTTP transports."""
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rvl",
+            "mcp",
+            "--config",
+            "/tmp/mcp.yaml",
+            "--transport",
+            "streamable-http",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "7777",
+        ],
+    )
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        """No run_async -- forces the fallback startup/run/shutdown path."""
+
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def startup(self):
+            calls.append(("startup",))
+
+        async def run(self, transport="stdio", **kwargs):
+            calls.append(("run", transport, kwargs))
+
+        async def shutdown(self):
+            calls.append(("shutdown",))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 0
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("startup",),
+        ("run", "streamable-http", {"host": "0.0.0.0", "port": 7777}),
+        ("shutdown",),
+    ]
+
+
+def test_mcp_command_fallback_run_path_stdio_no_extra_kwargs(monkeypatch):
+    """TDD: The fallback run() path for stdio must NOT pass host/port."""
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
+    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 11, 0))
+    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
+
+    calls = []
+
+    class FakeSettings(object):
+        @classmethod
+        def from_env(cls, config=None, read_only=None):
+            calls.append(("settings", config, read_only))
+            return cls()
+
+    class FakeServer(object):
+        def __init__(self, settings):
+            self.settings = settings
+
+        async def startup(self):
+            calls.append(("startup",))
+
+        async def run(self, transport="stdio", **kwargs):
+            calls.append(("run", transport, kwargs))
+
+        async def shutdown(self):
+            calls.append(("shutdown",))
+
+    _install_fake_redisvl_mcp(monkeypatch, FakeSettings, FakeServer)
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    assert exc_info.value.code == 0
+    assert calls == [
+        ("settings", "/tmp/mcp.yaml", None),
+        ("startup",),
+        ("run", "stdio", {}),
+        ("shutdown",),
+    ]
+
+
+def test_mcp_help_includes_transport_examples(monkeypatch, capsys):
+    """TDD: Help output should document the new transport flags."""
+    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
+    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--help"])
+
+    module = _import_cli_mcp()
+
+    with pytest.raises(SystemExit) as exc_info:
+        module.MCP()
+
+    out = capsys.readouterr()
+
+    assert exc_info.value.code == 0
+    assert "--transport" in out.out
+    assert "streamable-http" in out.out
+    assert "--host" in out.out
+    assert "--port" in out.out

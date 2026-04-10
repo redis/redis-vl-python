@@ -540,10 +540,16 @@ Commands:
         stats       Obtain statistics about an index
 ```
 
-Run the MCP server over stdio with:
+Run the MCP server over stdio (default):
 
 ```bash
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
+```
+
+Or over Streamable HTTP / SSE for remote MCP clients:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 Use `--read-only` to expose search without upsert.
@@ -560,11 +566,18 @@ The server:
 - reconstructs the schema from Redis at startup
 - uses the configured vectorizer for query embedding and optional upsert embedding
 - exposes `search-records` and, unless read-only mode is enabled, `upsert-records`
+- supports stdio (default), Streamable HTTP, and SSE transports
 
-Run it over stdio with:
+Run it over stdio (default):
 
 ```bash
 uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml
+```
+
+Run it over Streamable HTTP for remote clients:
+
+```bash
+uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 Use `--read-only` when clients should only search:

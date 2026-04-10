@@ -25,7 +25,7 @@ This keeps the Redis index as the source of truth for search behavior while givi
 RedisVL MCP works with a focused model:
 
 - One server process binds to exactly one existing Redis index.
-- The server uses stdio transport.
+- The server supports stdio (default), Streamable HTTP, and SSE transports.
 - Search behavior is owned by configuration, not by MCP callers.
 - The vectorizer is configured explicitly.
 - Upsert is optional and can be disabled with read-only mode.

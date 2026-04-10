@@ -20,12 +20,14 @@ class MCP:
     description = "Expose a configured Redis index to MCP clients for search and optional upsert operations."
     epilog = (
         "Use this command when wiring RedisVL into an MCP client.\n\n"
-        "Example:\n"
-        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml"
+        "Examples:\n"
+        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml\n"
+        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml --transport streamable-http --port 8000\n"
+        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml --transport sse --host 0.0.0.0 --port 9000"
     )
     usage = "\n".join(
         [
-            "rvl mcp --config <path> [--read-only]\n",
+            "rvl mcp --config <path> [--read-only] [--transport <type>] [--host <host>] [--port <port>]\n",
             "\n",
         ]
     )
@@ -46,6 +48,23 @@ class MCP:
             dest="read_only",
             default=None,
         )
+        parser.add_argument(
+            "--transport",
+            help="Transport protocol (default: stdio)",
+            choices=["stdio", "sse", "streamable-http"],
+            default="stdio",
+        )
+        parser.add_argument(
+            "--host",
+            help="Host to bind to for HTTP transports (default: 127.0.0.1)",
+            default="127.0.0.1",
+        )
+        parser.add_argument(
+            "--port",
+            help="Port to bind to for HTTP transports (default: 8000)",
+            type=int,
+            default=8000,
+        )
 
         args = parser.parse_args(sys.argv[2:])
         self._run(args)
@@ -61,7 +80,14 @@ class MCP:
                 read_only=args.read_only,
             )
             server = server_cls(settings)
-            self._run_awaitable(self._serve(server))
+            self._run_awaitable(
+                self._serve(
+                    server,
+                    transport=args.transport,
+                    host=args.host,
+                    port=args.port,
+                )
+            )
         except KeyboardInterrupt:
             raise SystemExit(0)
         except Exception as exc:
@@ -101,13 +127,18 @@ class MCP:
         """Bridge the synchronous CLI entrypoint to async server lifecycle code."""
         return asyncio.run(awaitable)
 
-    async def _serve(self, server):
-        """Run startup, stdio serving, and shutdown on one event loop."""
+    async def _serve(self, server, transport="stdio", host="127.0.0.1", port=8000):
+        """Run startup, serving, and shutdown on one event loop."""
+        transport_kwargs = {}
+        if transport in ("sse", "streamable-http"):
+            transport_kwargs["host"] = host
+            transport_kwargs["port"] = port
+
         # Prefer FastMCP's async transport path so it can own startup/shutdown
         # through its lifespan manager on the current event loop.
         run_async = getattr(server, "run_async", None)
         if callable(run_async):
-            await run_async(transport="stdio")
+            await run_async(transport=transport, **transport_kwargs)
             return
 
         started = False
@@ -116,7 +147,7 @@ class MCP:
             await server.startup()
             started = True
 
-            result = server.run(transport="stdio")
+            result = server.run(transport=transport, **transport_kwargs)
             if inspect.isawaitable(result):
                 await result
 
