@@ -395,7 +395,7 @@ class MigrationPlanner:
         # Check if any vector field uses SVS-VAMANA
         uses_svs = False
         uses_compression = False
-        compression_type = None
+        compression_types: set = set()
 
         for field in target_dict.get("fields", []):
             if field.get("type") != "vector":
@@ -407,7 +407,7 @@ class MigrationPlanner:
                 compression = attrs.get("compression", "")
                 if compression:
                     uses_compression = True
-                    compression_type = compression
+                    compression_types.add(compression)
 
         if not uses_svs:
             return warnings
@@ -443,8 +443,9 @@ class MigrationPlanner:
 
         # Intel hardware warning for compression
         if uses_compression:
+            compression_label = ", ".join(sorted(compression_types))
             warnings.append(
-                f"SVS-VAMANA with {compression_type} compression: "
+                f"SVS-VAMANA with {compression_label} compression: "
                 "LVQ and LeanVec optimizations require Intel hardware with AVX-512 support. "
                 "On non-Intel platforms or Redis Open Source, these fall back to basic "
                 "8-bit scalar quantization with reduced performance benefits."

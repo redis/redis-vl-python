@@ -239,9 +239,6 @@ requested_changes:
 
 diff_classification:
   supported: true
-  mode: drop_recreate
-  warnings:
-    - "Index will be unavailable during migration"
   blocked_reasons: []
 
 rename_operations:
@@ -266,12 +263,14 @@ merged_target_schema:
         algorithm: hnsw
         datatype: float32
 
-warnings: []
+warnings:
+  - "Index downtime is required"
 ```
 
 **Key fields to check:**
 - `diff_classification.supported` - Must be `true` to proceed
 - `diff_classification.blocked_reasons` - Must be empty
+- `warnings` - Top-level warnings about the migration
 - `merged_target_schema` - The final schema after migration
 
 ## Understanding Downtime Requirements
@@ -820,16 +819,18 @@ Batch migration automatically checkpoints progress. If interrupted:
 # Resume from where it left off
 rvl migrate batch-resume \
   --state batch_state.yaml \
+  --accept-data-loss \
   --url redis://localhost:6379
 
 # Retry previously failed indexes
 rvl migrate batch-resume \
   --state batch_state.yaml \
   --retry-failed \
+  --accept-data-loss \
   --url redis://localhost:6379
 ```
 
-**Note:** If the batch plan involves quantization (e.g., `float32` → `float16`), you must pass `--accept-data-loss` to `batch-resume`, just as with `batch-apply`.
+**Note:** If the batch plan involves quantization (e.g., `float32` → `float16`), you must pass `--accept-data-loss` to `batch-resume`, just as with `batch-apply`. Omit `--accept-data-loss` if the batch plan does not involve quantization.
 
 ### Checking Batch Status
 
@@ -870,17 +871,13 @@ summary:
 indexes:
   - name: products_idx
     status: success
-    duration_seconds: 45.2
-    docs_migrated: 15000
     report_path: ./reports/products_idx_report.yaml
   - name: users_idx
     status: success
-    duration_seconds: 38.1
-    docs_migrated: 8500
+    report_path: ./reports/users_idx_report.yaml
   - name: orders_idx
     status: success
-    duration_seconds: 44.2
-    docs_migrated: 22000
+    report_path: ./reports/orders_idx_report.yaml
 completed_at: "2026-03-20T10:02:07Z"
 ```
 

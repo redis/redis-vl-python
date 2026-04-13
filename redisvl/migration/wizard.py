@@ -160,11 +160,15 @@ class MigrationWizard:
             f for f in working["fields"] if f["name"] not in removed_names
         ]
 
-        # Apply renames
+        # Apply renames.  Apply each rename sequentially so that chained
+        # renames (A→B, B→C) are handled correctly even if they weren't
+        # collapsed at input time.
         rename_map = {r.old_name: r.new_name for r in changes.rename_fields}
-        for field in working["fields"]:
-            if field["name"] in rename_map:
-                field["name"] = rename_map[field["name"]]
+        for r in changes.rename_fields:
+            for field in working["fields"]:
+                if field["name"] == r.old_name:
+                    field["name"] = r.new_name
+                    break
 
         # Apply updates (reflect attribute changes in working schema).
         # Resolve update names through the rename map so that updates staged
@@ -297,7 +301,20 @@ class MigrationWizard:
                             "a field with that name is already staged for addition."
                         )
                     else:
-                        changes.rename_fields.append(field_rename)
+                        # Collapse chained renames: if there's an existing
+                        # rename X→Y and the user now renames Y→Z, collapse
+                        # into a single X→Z rename.
+                        collapsed = False
+                        for ridx, prev_rename in enumerate(changes.rename_fields):
+                            if prev_rename.new_name == field_rename.old_name:
+                                changes.rename_fields[ridx] = FieldRename(
+                                    old_name=prev_rename.old_name,
+                                    new_name=field_rename.new_name,
+                                )
+                                collapsed = True
+                                break
+                        if not collapsed:
+                            changes.rename_fields.append(field_rename)
             elif action == "5":
                 new_name = self._prompt_rename_index(working_schema)
                 if new_name:
@@ -575,6 +592,16 @@ class MigrationWizard:
             no_index = self._prompt_bool("No index", allow_blank=allow_blank)
             if no_index is not None:
                 attrs["no_index"] = no_index
+
+        # When explicitly disabling sortable on a previously-sortable field,
+        # clear sortable-dependent attributes that are no longer meaningful.
+        # UNF and no_index are only used with sortable; leaving them set would
+        # be confusing even though Redis technically allows it.
+        if sortable is False and _existing_sortable:
+            if "unf" not in attrs:
+                attrs["unf"] = False
+            if "no_index" not in attrs:
+                attrs["no_index"] = False
 
         return attrs
 

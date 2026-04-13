@@ -374,8 +374,9 @@ The migration wizard (`rvl migrate wizard`) supports updating field attributes o
 
 | Attribute | Notes |
 |-----------|-------|
-| `phonetic_matcher` | Enable phonetic search |
 | `withsuffixtrie` | Suffix/contains search optimization |
+
+*Note: `phonetic_matcher` is supported by the wizard for text fields.*
 
 **Example manual patch** for adding `index_missing` to a field:
 

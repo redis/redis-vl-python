@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional
 
+from redis.cluster import RedisCluster
 from redis.exceptions import ResponseError
 
 from redisvl.index import SearchIndex
@@ -108,11 +109,20 @@ class MigrationExecutor:
 
         More efficient than SCAN for sparse indexes (only returns indexed docs).
         Requires LOAD 1 __key to retrieve document keys.
+
+        Note: FT.AGGREGATE cursors expire after ~5 minutes of idle time on the
+        server side.  If the caller processes a batch slowly (e.g. performing
+        heavy per-key work between reads), a subsequent FT.CURSOR READ will
+        fail with a ``Cursor not found`` error.  This is caught and re-raised
+        so the caller (_enumerate_indexed_keys) can fall back to SCAN.
         """
         cursor_id: Optional[int] = None
 
         try:
             # Initial aggregate call with LOAD 1 __key (not LOAD 0!)
+            # Use MAXIDLE to extend the server-side cursor idle timeout.
+            # Default Redis cursor idle timeout is 300 000 ms (5 min);
+            # we request the maximum allowed (300 000 ms).
             result = client.execute_command(
                 "FT.AGGREGATE",
                 index_name,
@@ -123,6 +133,8 @@ class MigrationExecutor:
                 "WITHCURSOR",
                 "COUNT",
                 str(batch_size),
+                "MAXIDLE",
+                "300000",
             )
 
             while True:
@@ -138,7 +150,9 @@ class MigrationExecutor:
                 if cursor_id == 0:
                     break
 
-                # Read next batch
+                # Read next batch.  The cursor may have expired if the caller
+                # took longer than MAXIDLE between reads — let the
+                # ResponseError propagate so the caller can fall back to SCAN.
                 result = client.execute_command(
                     "FT.CURSOR",
                     "READ",
@@ -228,6 +242,10 @@ class MigrationExecutor:
         Uses RENAMENX to avoid overwriting existing destination keys.
         Raises on collision to prevent silent data loss.
 
+        For Redis Cluster, RENAME/RENAMENX fails with CROSSSLOT errors when
+        old and new keys hash to different slots.  In that case we fall back
+        to DUMP/RESTORE/DEL per key, which works across slots.
+
         Args:
             client: Redis client
             keys: List of keys to rename
@@ -238,53 +256,123 @@ class MigrationExecutor:
         Returns:
             Number of keys successfully renamed
         """
+        is_cluster = isinstance(client, RedisCluster)
+        if is_cluster:
+            return self._rename_keys_cluster(
+                client, keys, old_prefix, new_prefix, progress_callback
+            )
+        return self._rename_keys_standalone(
+            client, keys, old_prefix, new_prefix, progress_callback
+        )
+
+    def _rename_keys_standalone(
+        self,
+        client: SyncRedisClient,
+        keys: List[str],
+        old_prefix: str,
+        new_prefix: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename keys using pipelined RENAMENX (standalone Redis only)."""
         renamed = 0
         total = len(keys)
-        pipeline_size = 100  # Process in batches
+        pipeline_size = 100
         collisions: List[str] = []
+        successfully_renamed: List[tuple] = []  # (old_key, new_key) for recovery info
 
         for i in range(0, total, pipeline_size):
             batch = keys[i : i + pipeline_size]
             pipe = client.pipeline(transaction=False)
-            batch_new_keys: List[str] = []
+            batch_key_pairs: List[tuple] = []  # (old_key, new_key)
 
             for key in batch:
-                # Compute new key name
                 if key.startswith(old_prefix):
                     new_key = new_prefix + key[len(old_prefix) :]
                 else:
-                    # Key doesn't match expected prefix, skip
                     logger.warning(
                         f"Key '{key}' does not start with prefix '{old_prefix}'"
                     )
                     continue
                 pipe.renamenx(key, new_key)
-                batch_new_keys.append(new_key)
+                batch_key_pairs.append((key, new_key))
 
             try:
                 results = pipe.execute()
                 for j, r in enumerate(results):
                     if r is True or r == 1:
                         renamed += 1
+                        successfully_renamed.append(batch_key_pairs[j])
                     else:
-                        collisions.append(batch_new_keys[j])
+                        collisions.append(batch_key_pairs[j][1])
             except Exception as e:
                 logger.warning(f"Error in rename batch: {e}")
                 raise
 
             # Fail fast on collisions to avoid partial renames across batches.
-            # Keys already renamed in THIS batch are not rolled back -- caller
-            # can inspect the error to understand which keys moved.
             if collisions:
                 raise RuntimeError(
                     f"Prefix rename aborted after {renamed} successful rename(s): "
                     f"{len(collisions)} destination key(s) already exist "
                     f"(first 5: {collisions[:5]}). This would overwrite existing data. "
-                    f"Remove conflicting keys or choose a different prefix."
+                    f"Remove conflicting keys or choose a different prefix. "
+                    f"Note: {renamed} key(s) were already renamed from "
+                    f"'{old_prefix}*' to '{new_prefix}*' and must be reversed "
+                    f"manually if you want to retry."
                 )
 
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
+
+        return renamed
+
+    def _rename_keys_cluster(
+        self,
+        client: SyncRedisClient,
+        keys: List[str],
+        old_prefix: str,
+        new_prefix: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename keys using DUMP/RESTORE/DEL for Redis Cluster.
+
+        RENAME/RENAMENX raises CROSSSLOT errors when source and destination
+        hash to different slots.  DUMP/RESTORE works across slots because
+        each command targets a single key.
+        """
+        renamed = 0
+        total = len(keys)
+
+        for idx, key in enumerate(keys):
+            if not key.startswith(old_prefix):
+                logger.warning(f"Key '{key}' does not start with prefix '{old_prefix}'")
+                continue
+            new_key = new_prefix + key[len(old_prefix) :]
+
+            # Collision check
+            if client.exists(new_key):
+                raise RuntimeError(
+                    f"Prefix rename aborted after {renamed} successful rename(s): "
+                    f"destination key '{new_key}' already exists. "
+                    f"Remove conflicting keys or choose a different prefix."
+                )
+
+            # DUMP → RESTORE → DEL (atomic per-key, cross-slot safe)
+            dumped = client.dump(key)
+            if dumped is None:
+                logger.warning(f"Key '{key}' does not exist, skipping")
+                continue
+            ttl = int(client.pttl(key))  # type: ignore[arg-type]
+            # pttl returns -1 (no expiry) or -2 (key missing)
+            restore_ttl = max(ttl, 0)
+            client.restore(new_key, restore_ttl, dumped, replace=False)  # type: ignore[arg-type]
+            client.delete(key)
+            renamed += 1
+
+            if progress_callback and (idx + 1) % 100 == 0:
+                progress_callback(idx + 1, total)
+
+        if progress_callback:
+            progress_callback(total, total)
 
         return renamed
 
@@ -451,6 +539,12 @@ class MigrationExecutor:
             return report
 
         # Check if we are resuming from a checkpoint (post-drop crash).
+        # Migration order is:  enumerate → field-renames → DROP → key-renames
+        # → quantize → CREATE.  The index is dropped *before* quantization
+        # completes, so a crash during quantization or CREATE leaves the DB
+        # in a state where the source index is gone but data keys still exist.
+        # The checkpoint file records which keys have already been quantized,
+        # allowing a resume to skip those and continue from where it left off.
         # If so, the source index may no longer exist in Redis, so we
         # skip live schema validation and construct from the plan snapshot.
         resuming_from_checkpoint = False
@@ -460,10 +554,12 @@ class MigrationExecutor:
                 # Validate checkpoint belongs to this migration and is incomplete
                 if existing_checkpoint.index_name != plan.source.index_name:
                     logger.warning(
-                        "Checkpoint index '%s' does not match plan index '%s', ignoring",
+                        "Checkpoint index '%s' does not match plan index '%s', "
+                        "removing stale checkpoint",
                         existing_checkpoint.index_name,
                         plan.source.index_name,
                     )
+                    Path(checkpoint_path).unlink(missing_ok=True)
                 elif existing_checkpoint.status == "completed":
                     # Quantization completed previously. Only resume if
                     # the source index is actually gone (post-drop crash).
@@ -710,7 +806,13 @@ class MigrationExecutor:
                     )
                     _notify("field_rename", f"done ({field_rename_duration}s)")
 
-                # STEP 3: Drop the index
+                # STEP 3: Drop the index.
+                # NOTE: drop + recreate is intentionally non-atomic.  Between
+                # FT.DROPINDEX and FT.CREATE the index does not exist, causing
+                # queries to fail.  This is inherent to the drop_recreate mode
+                # and is documented as expected downtime.  Using a Lua script
+                # would not help because FT.DROPINDEX/FT.CREATE are module
+                # commands that cannot run inside MULTI/EVAL.
                 _notify("drop", "Dropping index definition...")
                 drop_started = time.perf_counter()
                 source_index.delete(drop=False)
@@ -740,7 +842,10 @@ class MigrationExecutor:
                     f"done ({renamed_count:,} keys in {key_rename_duration}s)",
                 )
 
-            # STEP 5: Re-encode vectors using pre-enumerated keys
+            # STEP 5: Re-encode vectors using pre-enumerated keys.
+            # NOTE: Keys are enumerated in step 1 (via FT.AGGREGATE or SCAN),
+            # so the cursor is fully consumed before we reach this point.
+            # There is no FT.AGGREGATE cursor alive during quantization.
             if needs_quantization and keys_to_process:
                 _notify("quantize", "Re-encoding vectors...")
                 quantize_started = time.perf_counter()
