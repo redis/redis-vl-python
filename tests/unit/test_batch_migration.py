@@ -336,14 +336,15 @@ class TestBatchMigrationPlannerIndexSelection:
         patch_path.write_text(yaml.safe_dump(make_shared_patch()))
 
         planner = BatchMigrationPlanner()
-        # Duplicates are preserved - user explicitly listed them twice
+        # Duplicates are deduplicated to avoid migrating the same index twice
         batch_plan = planner.create_batch_plan(
             indexes=["idx1", "idx1", "idx2"],
             schema_patch_path=str(patch_path),
             redis_client=mock_client,
         )
 
-        assert len(batch_plan.indexes) == 3
+        assert len(batch_plan.indexes) == 2
+        assert [e.name for e in batch_plan.indexes] == ["idx1", "idx2"]
 
     def test_non_existent_index(self, monkeypatch, tmp_path):
         """Non-existent index should be marked as not applicable."""

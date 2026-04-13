@@ -123,7 +123,8 @@ class BatchMigrationPlanner:
             raise ValueError("Provide only one of: indexes, pattern, or indexes_file")
 
         if indexes:
-            return list(indexes)
+            # Deduplicate while preserving order
+            return list(dict.fromkeys(indexes))
 
         if indexes_file:
             return self._load_indexes_from_file(indexes_file)

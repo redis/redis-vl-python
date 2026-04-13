@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
+from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.exceptions import ResponseError
 
 from redisvl.index import AsyncSearchIndex
@@ -126,7 +127,12 @@ class AsyncMigrationExecutor:
         index_name: str,
         batch_size: int = 1000,
     ) -> AsyncGenerator[str, None]:
-        """Async version: Enumerate keys using FT.AGGREGATE WITHCURSOR."""
+        """Async version: Enumerate keys using FT.AGGREGATE WITHCURSOR.
+
+        Uses MAXIDLE to extend the server-side cursor idle timeout (default
+        ~5 min).  If the cursor still expires, the ResponseError propagates
+        so the caller can fall back to SCAN.
+        """
         cursor_id: Optional[int] = None
 
         try:
@@ -141,6 +147,8 @@ class AsyncMigrationExecutor:
                 "WITHCURSOR",
                 "COUNT",
                 str(batch_size),
+                "MAXIDLE",
+                "300000",
             )
 
             while True:
@@ -234,18 +242,37 @@ class AsyncMigrationExecutor:
     ) -> int:
         """Async version: Rename keys from old prefix to new prefix.
 
-        Uses RENAMENX to avoid overwriting existing destination keys.
-        Raises on collision to prevent silent data loss.
+        Uses RENAMENX for standalone Redis.  For Redis Cluster, falls back
+        to DUMP/RESTORE/DEL to avoid CROSSSLOT errors.
         """
+        is_cluster = isinstance(client, AsyncRedisCluster)
+        if is_cluster:
+            return await self._rename_keys_cluster(
+                client, keys, old_prefix, new_prefix, progress_callback
+            )
+        return await self._rename_keys_standalone(
+            client, keys, old_prefix, new_prefix, progress_callback
+        )
+
+    async def _rename_keys_standalone(
+        self,
+        client: AsyncRedisClient,
+        keys: List[str],
+        old_prefix: str,
+        new_prefix: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename keys using pipelined RENAMENX (standalone Redis only)."""
         renamed = 0
         total = len(keys)
         pipeline_size = 100
         collisions: List[str] = []
+        successfully_renamed: List[tuple] = []
 
         for i in range(0, total, pipeline_size):
             batch = keys[i : i + pipeline_size]
             pipe = client.pipeline(transaction=False)
-            batch_new_keys: List[str] = []
+            batch_key_pairs: List[tuple] = []
 
             for key in batch:
                 if key.startswith(old_prefix):
@@ -256,30 +283,80 @@ class AsyncMigrationExecutor:
                     )
                     continue
                 pipe.renamenx(key, new_key)
-                batch_new_keys.append(new_key)
+                batch_key_pairs.append((key, new_key))
 
             try:
                 results = await pipe.execute()
                 for j, r in enumerate(results):
                     if r is True or r == 1:
                         renamed += 1
+                        successfully_renamed.append(batch_key_pairs[j])
                     else:
-                        collisions.append(batch_new_keys[j])
+                        collisions.append(batch_key_pairs[j][1])
             except Exception as e:
                 logger.warning(f"Error in rename batch: {e}")
                 raise
 
-            # Fail fast on collisions to avoid partial renames across batches.
             if collisions:
                 raise RuntimeError(
                     f"Prefix rename aborted after {renamed} successful rename(s): "
                     f"{len(collisions)} destination key(s) already exist "
                     f"(first 5: {collisions[:5]}). This would overwrite existing data. "
-                    f"Remove conflicting keys or choose a different prefix."
+                    f"Remove conflicting keys or choose a different prefix. "
+                    f"Note: {renamed} key(s) were already renamed from "
+                    f"'{old_prefix}*' to '{new_prefix}*' and must be reversed "
+                    f"manually if you want to retry."
                 )
 
             if progress_callback:
                 progress_callback(min(i + pipeline_size, total), total)
+
+        return renamed
+
+    async def _rename_keys_cluster(
+        self,
+        client: AsyncRedisClient,
+        keys: List[str],
+        old_prefix: str,
+        new_prefix: str,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Rename keys using DUMP/RESTORE/DEL for Redis Cluster.
+
+        RENAME/RENAMENX raises CROSSSLOT errors when source and destination
+        hash to different slots.  DUMP/RESTORE works across slots.
+        """
+        renamed = 0
+        total = len(keys)
+
+        for idx, key in enumerate(keys):
+            if not key.startswith(old_prefix):
+                logger.warning(f"Key '{key}' does not start with prefix '{old_prefix}'")
+                continue
+            new_key = new_prefix + key[len(old_prefix) :]
+
+            if await client.exists(new_key):
+                raise RuntimeError(
+                    f"Prefix rename aborted after {renamed} successful rename(s): "
+                    f"destination key '{new_key}' already exists. "
+                    f"Remove conflicting keys or choose a different prefix."
+                )
+
+            dumped = await client.dump(key)
+            if dumped is None:
+                logger.warning(f"Key '{key}' does not exist, skipping")
+                continue
+            ttl = await client.pttl(key)
+            restore_ttl = max(ttl, 0)
+            await client.restore(new_key, restore_ttl, dumped, replace=False)
+            await client.delete(key)
+            renamed += 1
+
+            if progress_callback and (idx + 1) % 100 == 0:
+                progress_callback(idx + 1, total)
+
+        if progress_callback:
+            progress_callback(total, total)
 
         return renamed
 
@@ -438,10 +515,12 @@ class AsyncMigrationExecutor:
                 # Validate checkpoint belongs to this migration and is incomplete
                 if existing_checkpoint.index_name != plan.source.index_name:
                     logger.warning(
-                        "Checkpoint index '%s' does not match plan index '%s', ignoring",
+                        "Checkpoint index '%s' does not match plan index '%s', "
+                        "removing stale checkpoint",
                         existing_checkpoint.index_name,
                         plan.source.index_name,
                     )
+                    Path(checkpoint_path).unlink(missing_ok=True)
                 elif existing_checkpoint.status == "completed":
                     # Quantization completed previously. Only resume if
                     # the source index is actually gone (post-drop crash).

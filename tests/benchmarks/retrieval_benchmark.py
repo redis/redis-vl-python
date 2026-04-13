@@ -233,7 +233,7 @@ def wait_for_index_ready(
     info = index.info()
     while time.perf_counter() < deadline:
         info = index.info()
-        pct = float(info.get("percent_indexed", 1))
+        pct = float(info.get("percent_indexed", 0))
         indexing = info.get("indexing", 0)
         if pct >= 1.0 and not indexing:
             return info
