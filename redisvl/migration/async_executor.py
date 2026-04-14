@@ -905,7 +905,7 @@ class AsyncMigrationExecutor:
                                     for fn, data in fields.items():
                                         wpipe.hset(key, fn, data)
                                 await wpipe.execute()
-                            docs_quantized += len(batch_keys)
+                            docs_quantized += len(converted) if converted else 0
                             if progress_callback:
                                 _notify(
                                     "quantize",
