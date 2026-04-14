@@ -820,7 +820,13 @@ class AsyncMigrationExecutor:
 
                 # Dump original vectors to backup file (before drop)
                 active_backup = None
-                if needs_quantization and keys_to_process and backup_path:
+                use_multi_worker = num_workers > 1 and backup_dir is not None
+                if (
+                    needs_quantization
+                    and keys_to_process
+                    and backup_path
+                    and not use_multi_worker
+                ):
                     effective_changes = datatype_changes
                     if has_field_renames:
                         field_rename_map = {
@@ -888,7 +894,43 @@ class AsyncMigrationExecutor:
                             field_rename_map.get(k, k): v
                             for k, v in datatype_changes.items()
                         }
-                    if active_backup:
+
+                    # Update key references if prefix changed
+                    if has_prefix_change and rename_ops.change_prefix:
+                        old_prefix = plan.source.keyspace.prefixes[0]
+                        new_prefix = rename_ops.change_prefix
+                        keys_to_process = [
+                            (
+                                new_prefix + k[len(old_prefix) :]
+                                if k.startswith(old_prefix)
+                                else k
+                            )
+                            for k in keys_to_process
+                        ]
+
+                    if use_multi_worker:
+                        from redisvl.migration.quantize import (
+                            async_multi_worker_quantize,
+                        )
+
+                        assert backup_dir is not None
+                        assert redis_url is not None
+                        _notify(
+                            "quantize",
+                            f"Re-encoding vectors ({num_workers} workers)...",
+                        )
+                        quantize_started = time.perf_counter()
+                        mw_result = await async_multi_worker_quantize(
+                            redis_url=redis_url,
+                            keys=keys_to_process,
+                            datatype_changes=effective_changes,
+                            backup_dir=backup_dir,
+                            index_name=plan.source.index_name,
+                            num_workers=num_workers,
+                            batch_size=batch_size,
+                        )
+                        docs_quantized = mw_result.total_docs_quantized
+                    elif active_backup:
                         _notify("quantize", "Re-encoding vectors from backup...")
                         quantize_started = time.perf_counter()
                         docs_quantized = await self._quantize_from_backup(
@@ -903,16 +945,6 @@ class AsyncMigrationExecutor:
                         _notify("quantize", "Re-encoding vectors...")
                         quantize_started = time.perf_counter()
                         if has_prefix_change and rename_ops.change_prefix:
-                            old_prefix = plan.source.keyspace.prefixes[0]
-                            new_prefix = rename_ops.change_prefix
-                            keys_to_process = [
-                                (
-                                    new_prefix + k[len(old_prefix) :]
-                                    if k.startswith(old_prefix)
-                                    else k
-                                )
-                                for k in keys_to_process
-                            ]
                             keys_to_process = normalize_keys(keys_to_process)
                         docs_quantized = await self._async_quantize_vectors(
                             source_index,

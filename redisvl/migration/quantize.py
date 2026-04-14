@@ -288,3 +288,137 @@ def multi_worker_quantize(
         num_workers=actual_workers,
         worker_results=worker_results,
     )
+
+
+async def _async_worker_quantize(
+    worker_id: int,
+    redis_url: str,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+    backup_path: str,
+    index_name: str,
+    batch_size: int,
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+) -> Dict[str, Any]:
+    """Async single worker: dump originals + convert + write back."""
+    import redis.asyncio as aioredis
+
+    from redisvl.migration.backup import VectorBackup
+
+    client = aioredis.from_url(redis_url)
+    try:
+        # Phase 1: Dump originals
+        backup = VectorBackup.create(
+            path=backup_path,
+            index_name=index_name,
+            fields=datatype_changes,
+            batch_size=batch_size,
+        )
+
+        total = len(keys)
+        field_names = list(datatype_changes.keys())
+
+        for batch_start in range(0, total, batch_size):
+            batch_keys = keys[batch_start : batch_start + batch_size]
+            pipe = client.pipeline(transaction=False)
+            call_order: List[tuple] = []
+            for key in batch_keys:
+                for field_name in field_names:
+                    pipe.hget(key, field_name)
+                    call_order.append((key, field_name))
+            results = await pipe.execute()
+
+            originals: Dict[str, Dict[str, bytes]] = {}
+            for (key, field_name), value in zip(call_order, results):
+                if value is not None:
+                    if key not in originals:
+                        originals[key] = {}
+                    originals[key][field_name] = value
+
+            backup.write_batch(batch_start // batch_size, batch_keys, originals)
+            if progress_callback:
+                progress_callback(
+                    "dump", worker_id, min(batch_start + batch_size, total)
+                )
+
+        backup.mark_dump_complete()
+
+        # Phase 2: Convert + write from backup
+        backup.start_quantize()
+        docs_quantized = 0
+
+        for batch_idx, (batch_keys, batch_originals) in enumerate(
+            backup.iter_batches()
+        ):
+            converted = convert_vectors(batch_originals, datatype_changes)
+            if converted:
+                pipe = client.pipeline(transaction=False)
+                for key, fields in converted.items():
+                    for field_name, data in fields.items():
+                        pipe.hset(key, field_name, data)
+                await pipe.execute()
+            backup.mark_batch_quantized(batch_idx)
+            docs_quantized += len(batch_keys)
+            if progress_callback:
+                progress_callback("quantize", worker_id, docs_quantized)
+
+        backup.mark_complete()
+        return {"worker_id": worker_id, "docs": docs_quantized}
+    finally:
+        await client.aclose()
+
+
+async def async_multi_worker_quantize(
+    redis_url: str,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+    backup_dir: str,
+    index_name: str,
+    num_workers: int = 1,
+    batch_size: int = 500,
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+) -> MultiWorkerResult:
+    """Orchestrate async multi-worker quantization via asyncio.gather.
+
+    Each worker gets its own async Redis connection and backup file shard.
+    """
+    import asyncio
+    from pathlib import Path
+
+    slices = split_keys(keys, num_workers)
+    actual_workers = len(slices)
+
+    if actual_workers == 0:
+        return MultiWorkerResult(
+            total_docs_quantized=0, num_workers=0, worker_results=[]
+        )
+
+    safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    worker_backup_paths = [
+        str(Path(backup_dir) / f"migration_backup_{safe_name}_worker{i}")
+        for i in range(actual_workers)
+    ]
+
+    coroutines = [
+        _async_worker_quantize(
+            worker_id=i,
+            redis_url=redis_url,
+            keys=slices[i],
+            datatype_changes=datatype_changes,
+            backup_path=worker_backup_paths[i],
+            index_name=index_name,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+        )
+        for i in range(actual_workers)
+    ]
+
+    results = await asyncio.gather(*coroutines)
+    worker_results = list(results)
+    total_docs = sum(r["docs"] for r in worker_results)
+
+    return MultiWorkerResult(
+        total_docs_quantized=total_docs,
+        num_workers=actual_workers,
+        worker_results=worker_results,
+    )
