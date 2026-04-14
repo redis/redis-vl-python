@@ -502,6 +502,7 @@ class MigrationExecutor:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
+        keep_backup: bool = False,
     ) -> MigrationReport:
         """Apply a migration plan.
 
@@ -518,6 +519,8 @@ class MigrationExecutor:
             batch_size: Keys per pipeline batch (default 500).
             num_workers: Number of parallel workers for quantization (default 1).
                 Each worker gets its own Redis connection and backup file shard.
+            keep_backup: If True, keep backup files after successful migration.
+                Default False (auto-cleanup on success).
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -1064,7 +1067,24 @@ class MigrationExecutor:
         finally:
             report.finished_at = timestamp_utc()
 
+        # Auto-cleanup backup files on success
+        if backup_dir and not keep_backup and report.result == "succeeded":
+            self._cleanup_backup_files(backup_dir, plan.source.index_name)
+
         return report
+
+    def _cleanup_backup_files(self, backup_dir: str, index_name: str) -> None:
+        """Remove backup files after successful migration."""
+        import glob
+
+        safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        pattern = str(Path(backup_dir) / f"migration_backup_{safe_name}*")
+        for f in glob.glob(pattern):
+            try:
+                Path(f).unlink()
+                logger.debug("Removed backup file: %s", f)
+            except OSError as e:
+                logger.warning("Failed to remove backup file %s: %s", f, e)
 
     # ------------------------------------------------------------------
     # Two-phase quantization: dump originals → convert from backup

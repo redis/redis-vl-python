@@ -242,6 +242,13 @@ Commands:
             default=1,
         )
         parser.add_argument(
+            "--keep-backup",
+            dest="keep_backup",
+            action="store_true",
+            help="Keep backup files after successful migration (default: auto-delete).",
+            default=False,
+        )
+        parser.add_argument(
             "--report-out",
             help="Path to write migration_report.yaml",
             default="migration_report.yaml",
@@ -286,6 +293,7 @@ Commands:
                     backup_dir=args.backup_dir,
                     batch_size=args.batch_size,
                     num_workers=args.num_workers,
+                    keep_backup=args.keep_backup,
                 )
             )
         else:
@@ -296,6 +304,7 @@ Commands:
                 backup_dir=args.backup_dir,
                 batch_size=args.batch_size,
                 num_workers=args.num_workers,
+                keep_backup=args.keep_backup,
             )
 
         write_migration_report(report, args.report_out)
@@ -352,6 +361,7 @@ Commands:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
+        keep_backup: bool = False,
     ):
         """Execute migration synchronously."""
         executor = MigrationExecutor()
@@ -366,6 +376,7 @@ Commands:
             backup_dir=backup_dir,
             batch_size=batch_size,
             num_workers=num_workers,
+            keep_backup=keep_backup,
         )
 
         self._print_apply_result(report)
@@ -379,6 +390,7 @@ Commands:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
+        keep_backup: bool = False,
     ):
         """Execute migration asynchronously (non-blocking for large quantization jobs)."""
         executor = AsyncMigrationExecutor()
@@ -393,6 +405,7 @@ Commands:
             backup_dir=backup_dir,
             batch_size=batch_size,
             num_workers=num_workers,
+            keep_backup=keep_backup,
         )
 
         self._print_apply_result(report)
