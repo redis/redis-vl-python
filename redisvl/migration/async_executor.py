@@ -473,6 +473,8 @@ class AsyncMigrationExecutor:
         query_check_file: Optional[str] = None,
         progress_callback: Optional[Callable[[str, Optional[str]], None]] = None,
         checkpoint_path: Optional[str] = None,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
     ) -> MigrationReport:
         """Apply a migration plan asynchronously.
 
@@ -482,8 +484,9 @@ class AsyncMigrationExecutor:
             redis_client: Optional existing async Redis client.
             query_check_file: Optional file with query checks.
             progress_callback: Optional callback(step, detail) for progress updates.
-            checkpoint_path: Optional path for quantization checkpoint file.
-                When provided, enables crash-safe resume for vector re-encoding.
+            checkpoint_path: Deprecated — use backup_dir instead.
+            backup_dir: Directory for vector backup files.
+            batch_size: Keys per pipeline batch (default 500).
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -505,25 +508,42 @@ class AsyncMigrationExecutor:
             report.finished_at = timestamp_utc()
             return report
 
-        # Check if we are resuming from a checkpoint (post-drop crash).
-        # If so, the source index may no longer exist in Redis, so we
-        # skip live schema validation and construct from the plan snapshot.
+        # Check if we are resuming from a backup file (post-crash).
+        from redisvl.migration.backup import VectorBackup
+
+        resuming_from_backup = False
+        existing_backup: Optional[VectorBackup] = None
+        backup_path: Optional[str] = None
+
+        if backup_dir:
+            safe_name = (
+                plan.source.index_name.replace("/", "_")
+                .replace("\\", "_")
+                .replace(":", "_")
+            )
+            backup_path = str(Path(backup_dir) / f"migration_backup_{safe_name}")
+            existing_backup = VectorBackup.load(backup_path)
+
+            if existing_backup is not None:
+                if existing_backup.header.index_name != plan.source.index_name:
+                    existing_backup = None
+                elif existing_backup.header.phase == "completed":
+                    resuming_from_backup = True
+                elif existing_backup.header.phase in ("active", "ready"):
+                    resuming_from_backup = True
+                elif existing_backup.header.phase == "dump":
+                    Path(backup_path + ".header").unlink(missing_ok=True)
+                    Path(backup_path + ".data").unlink(missing_ok=True)
+                    existing_backup = None
+
+        # Legacy checkpoint support
         resuming_from_checkpoint = False
-        if checkpoint_path:
+        if checkpoint_path and not backup_dir:
             existing_checkpoint = QuantizationCheckpoint.load(checkpoint_path)
             if existing_checkpoint is not None:
-                # Validate checkpoint belongs to this migration and is incomplete
                 if existing_checkpoint.index_name != plan.source.index_name:
-                    logger.warning(
-                        "Checkpoint index '%s' does not match plan index '%s', "
-                        "removing stale checkpoint",
-                        existing_checkpoint.index_name,
-                        plan.source.index_name,
-                    )
                     Path(checkpoint_path).unlink(missing_ok=True)
                 elif existing_checkpoint.status == "completed":
-                    # Quantization completed previously. Only resume if
-                    # the source index is actually gone (post-drop crash).
                     source_still_exists = (
                         await self._async_current_source_matches_snapshot(
                             plan.source.index_name,
@@ -533,30 +553,15 @@ class AsyncMigrationExecutor:
                         )
                     )
                     if source_still_exists:
-                        logger.info(
-                            "Checkpoint at %s is completed and source index "
-                            "still exists; treating as fresh run",
-                            checkpoint_path,
-                        )
-                        # Remove the stale checkpoint so that downstream
-                        # steps (e.g. _quantize_vectors) don't skip work.
                         Path(checkpoint_path).unlink(missing_ok=True)
                     else:
                         resuming_from_checkpoint = True
-                        logger.info(
-                            "Checkpoint at %s is already completed; resuming "
-                            "index recreation from post-drop state",
-                            checkpoint_path,
-                        )
                 else:
                     resuming_from_checkpoint = True
-                    logger.info(
-                        "Checkpoint found at %s, skipping source index validation "
-                        "(index may have been dropped before crash)",
-                        checkpoint_path,
-                    )
 
-        if not resuming_from_checkpoint:
+        resuming = resuming_from_backup or resuming_from_checkpoint
+
+        if not resuming:
             if not await self._async_current_source_matches_snapshot(
                 plan.source.index_name,
                 plan.source.schema_snapshot,
@@ -652,10 +657,40 @@ class AsyncMigrationExecutor:
                 )
             report.disk_space_estimate = disk_estimate
 
-            if resuming_from_checkpoint:
-                # On resume after a post-drop crash, the index no longer
-                # exists. Enumerate keys via SCAN using the plan prefix,
-                # and skip BGSAVE / field renames / drop (already done).
+            if resuming_from_backup and existing_backup is not None:
+                if existing_backup.header.phase == "completed":
+                    _notify("enumerate", "skipped (resume from backup)")
+                    _notify("drop", "skipped (already dropped)")
+                    _notify("quantize", "skipped (already completed)")
+                elif existing_backup.header.phase in ("active", "ready"):
+                    _notify("enumerate", "skipped (resume from backup)")
+                    _notify("drop", "skipped (already dropped)")
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+                    _notify("quantize", "Resuming vector re-encoding from backup...")
+                    quantize_started = time.perf_counter()
+                    docs_quantized = await self._quantize_from_backup(
+                        client=client,
+                        backup=existing_backup,
+                        datatype_changes=effective_changes,
+                        progress_callback=lambda done, total: _notify(
+                            "quantize", f"{done:,}/{total:,} docs"
+                        ),
+                    )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
+            elif resuming_from_checkpoint:
+                # Legacy checkpoint resume path
                 if needs_enumeration:
                     _notify("enumerate", "Enumerating documents via SCAN (resume)...")
                     enumerate_started = time.perf_counter()
@@ -666,10 +701,10 @@ class AsyncMigrationExecutor:
                     for match_pattern in build_scan_match_patterns(
                         prefixes, plan.source.keyspace.key_separator
                     ):
-                        cursor: int = 0
+                        cursor_val: int = 0
                         while True:
-                            cursor, scanned = await client.scan(  # type: ignore[misc]
-                                cursor=cursor,
+                            cursor_val, scanned = await client.scan(  # type: ignore[misc]
+                                cursor=cursor_val,
                                 match=match_pattern,
                                 count=1000,
                             )
@@ -678,7 +713,7 @@ class AsyncMigrationExecutor:
                                 if key not in seen_keys:
                                     seen_keys.add(key)
                                     keys_to_process.append(key)
-                            if cursor == 0:
+                            if cursor_val == 0:
                                 break
                     keys_to_process = normalize_keys(keys_to_process)
                     enumerate_duration = round(
@@ -688,12 +723,35 @@ class AsyncMigrationExecutor:
                         "enumerate",
                         f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
                     )
-
-                _notify("bgsave", "skipped (resume)")
                 _notify("drop", "skipped (already dropped)")
+                if needs_quantization and keys_to_process:
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+                    _notify("quantize", "Re-encoding vectors...")
+                    quantize_started = time.perf_counter()
+                    docs_quantized = await self._async_quantize_vectors(
+                        source_index,
+                        effective_changes,
+                        keys_to_process,
+                        progress_callback=lambda done, total: _notify(
+                            "quantize", f"{done:,}/{total:,} docs"
+                        ),
+                        checkpoint_path=checkpoint_path,
+                    )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
             else:
                 # Normal (non-resume) path
-                # STEP 1: Enumerate keys BEFORE any modifications
                 if needs_enumeration:
                     _notify("enumerate", "Enumerating indexed documents...")
                     enumerate_started = time.perf_counter()
@@ -715,17 +773,7 @@ class AsyncMigrationExecutor:
                         f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
                     )
 
-                # BGSAVE safety net: snapshot data before mutations begin
-                if needs_enumeration and keys_to_process:
-                    _notify("bgsave", "Triggering BGSAVE safety snapshot...")
-                    try:
-                        await async_trigger_bgsave_and_wait(client)
-                        _notify("bgsave", "done")
-                    except Exception as e:
-                        logger.warning("BGSAVE safety snapshot failed: %s", e)
-                        _notify("bgsave", f"skipped ({e})")
-
-                # STEP 2: Field renames (before dropping index)
+                # Field renames
                 if has_field_renames and keys_to_process:
                     _notify("field_rename", "Renaming fields in documents...")
                     field_rename_started = time.perf_counter()
@@ -765,92 +813,124 @@ class AsyncMigrationExecutor:
                     )
                     _notify("field_rename", f"done ({field_rename_duration}s)")
 
-                # STEP 3: Drop the index
+                # Dump original vectors to backup file (before drop)
+                active_backup = None
+                if needs_quantization and keys_to_process and backup_path:
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+                    _notify("dump", "Backing up original vectors...")
+                    dump_started = time.perf_counter()
+                    active_backup = await self._dump_vectors(
+                        client=client,
+                        index_name=plan.source.index_name,
+                        keys=keys_to_process,
+                        datatype_changes=effective_changes,
+                        backup_path=backup_path,
+                        batch_size=batch_size,
+                        progress_callback=lambda done, total: _notify(
+                            "dump", f"{done:,}/{total:,} docs"
+                        ),
+                    )
+                    dump_duration = round(time.perf_counter() - dump_started, 3)
+                    _notify("dump", f"done ({dump_duration}s)")
+
+                # Drop the index
                 _notify("drop", "Dropping index definition...")
                 drop_started = time.perf_counter()
                 await source_index.delete(drop=False)
                 drop_duration = round(time.perf_counter() - drop_started, 3)
                 _notify("drop", f"done ({drop_duration}s)")
 
-            # STEP 4: Key renames (after drop, before recreate)
-            # On resume, key renames were already done before the crash.
-            if has_prefix_change and keys_to_process and not resuming_from_checkpoint:
-                _notify("key_rename", "Renaming keys...")
-                key_rename_started = time.perf_counter()
-                old_prefix = plan.source.keyspace.prefixes[0]
-                new_prefix = rename_ops.change_prefix
-                assert new_prefix is not None
-                renamed_count = await self._rename_keys(
-                    client,
-                    keys_to_process,
-                    old_prefix,
-                    new_prefix,
-                    progress_callback=lambda done, total: _notify(
-                        "key_rename", f"{done:,}/{total:,} keys"
-                    ),
-                )
-                key_rename_duration = round(time.perf_counter() - key_rename_started, 3)
-                _notify(
-                    "key_rename",
-                    f"done ({renamed_count:,} keys in {key_rename_duration}s)",
-                )
-
-            # STEP 5: Re-encode vectors using pre-enumerated keys
-            if needs_quantization and keys_to_process:
-                _notify("quantize", "Re-encoding vectors...")
-                quantize_started = time.perf_counter()
-                # If we renamed keys (non-resume), update keys_to_process
-                if (
-                    has_prefix_change
-                    and rename_ops.change_prefix
-                    and not resuming_from_checkpoint
-                ):
+                # Key renames
+                if has_prefix_change and keys_to_process:
+                    _notify("key_rename", "Renaming keys...")
+                    key_rename_started = time.perf_counter()
                     old_prefix = plan.source.keyspace.prefixes[0]
                     new_prefix = rename_ops.change_prefix
-                    keys_to_process = [
-                        (
-                            new_prefix + k[len(old_prefix) :]
-                            if k.startswith(old_prefix)
-                            else k
+                    assert new_prefix is not None
+                    renamed_count = await self._rename_keys(
+                        client,
+                        keys_to_process,
+                        old_prefix,
+                        new_prefix,
+                        progress_callback=lambda done, total: _notify(
+                            "key_rename", f"{done:,}/{total:,} keys"
+                        ),
+                    )
+                    key_rename_duration = round(
+                        time.perf_counter() - key_rename_started, 3
+                    )
+                    _notify(
+                        "key_rename",
+                        f"done ({renamed_count:,} keys in {key_rename_duration}s)",
+                    )
+
+                # Quantize vectors
+                if needs_quantization and keys_to_process:
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+                    if active_backup:
+                        _notify("quantize", "Re-encoding vectors from backup...")
+                        quantize_started = time.perf_counter()
+                        docs_quantized = await self._quantize_from_backup(
+                            client=client,
+                            backup=active_backup,
+                            datatype_changes=effective_changes,
+                            progress_callback=lambda done, total: _notify(
+                                "quantize", f"{done:,}/{total:,} docs"
+                            ),
                         )
-                        for k in keys_to_process
-                    ]
-                    keys_to_process = normalize_keys(keys_to_process)
-                # Remap datatype_changes keys from source to target field
-                # names when field renames exist, since quantization runs
-                # after field renames (step 2).
-                effective_changes = datatype_changes
-                if has_field_renames:
-                    field_rename_map = {
-                        fr.old_name: fr.new_name for fr in rename_ops.rename_fields
-                    }
-                    effective_changes = {
-                        field_rename_map.get(k, k): v
-                        for k, v in datatype_changes.items()
-                    }
-                docs_quantized = await self._async_quantize_vectors(
-                    source_index,
-                    effective_changes,
-                    keys_to_process,
-                    progress_callback=lambda done, total: _notify(
-                        "quantize", f"{done:,}/{total:,} docs"
-                    ),
-                    checkpoint_path=checkpoint_path,
-                )
-                quantize_duration = round(time.perf_counter() - quantize_started, 3)
-                _notify(
-                    "quantize",
-                    f"done ({docs_quantized:,} docs in {quantize_duration}s)",
-                )
-                report.warnings.append(
-                    f"Re-encoded {docs_quantized} documents for vector quantization: "
-                    f"{datatype_changes}"
-                )
-            elif datatype_changes and storage_type == "json":
-                # No checkpoint for JSON: vectors are re-indexed on recreate,
-                # so there is nothing to resume. Creating one would leave a
-                # stale in-progress checkpoint that misleads future runs.
-                _notify("quantize", "skipped (JSON vectors are re-indexed on recreate)")
+                    else:
+                        _notify("quantize", "Re-encoding vectors...")
+                        quantize_started = time.perf_counter()
+                        if has_prefix_change and rename_ops.change_prefix:
+                            old_prefix = plan.source.keyspace.prefixes[0]
+                            new_prefix = rename_ops.change_prefix
+                            keys_to_process = [
+                                (
+                                    new_prefix + k[len(old_prefix) :]
+                                    if k.startswith(old_prefix)
+                                    else k
+                                )
+                                for k in keys_to_process
+                            ]
+                            keys_to_process = normalize_keys(keys_to_process)
+                        docs_quantized = await self._async_quantize_vectors(
+                            source_index,
+                            effective_changes,
+                            keys_to_process,
+                            progress_callback=lambda done, total: _notify(
+                                "quantize", f"{done:,}/{total:,} docs"
+                            ),
+                            checkpoint_path=checkpoint_path,
+                        )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
+                    report.warnings.append(
+                        f"Re-encoded {docs_quantized} documents for vector quantization: "
+                        f"{datatype_changes}"
+                    )
+                elif datatype_changes and storage_type == "json":
+                    _notify(
+                        "quantize", "skipped (JSON vectors are re-indexed on recreate)"
+                    )
 
             _notify("create", "Creating index with new schema...")
             recreate_started = time.perf_counter()
@@ -957,6 +1037,103 @@ class AsyncMigrationExecutor:
             report.finished_at = timestamp_utc()
 
         return report
+
+    # ------------------------------------------------------------------
+    # Two-phase quantization: dump originals → convert from backup
+    # ------------------------------------------------------------------
+
+    async def _dump_vectors(
+        self,
+        client: Any,
+        index_name: str,
+        keys: List[str],
+        datatype_changes: Dict[str, Dict[str, Any]],
+        backup_path: str,
+        batch_size: int = 500,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> "VectorBackup":
+        """Phase 1: Pipeline-read original vectors and write to backup file.
+
+        Async version. Runs BEFORE index drop.
+        """
+        from redisvl.migration.backup import VectorBackup
+
+        backup = VectorBackup.create(
+            path=backup_path,
+            index_name=index_name,
+            fields=datatype_changes,
+            batch_size=batch_size,
+        )
+
+        total = len(keys)
+        field_names = list(datatype_changes.keys())
+
+        for batch_start in range(0, total, batch_size):
+            batch_keys = keys[batch_start : batch_start + batch_size]
+
+            # Pipelined async reads
+            pipe = client.pipeline(transaction=False)
+            call_order: List[tuple] = []
+            for key in batch_keys:
+                for field_name in field_names:
+                    pipe.hget(key, field_name)
+                    call_order.append((key, field_name))
+            results = await pipe.execute()
+
+            # Reassemble
+            originals: Dict[str, Dict[str, bytes]] = {}
+            for (key, field_name), value in zip(call_order, results):
+                if value is not None:
+                    if key not in originals:
+                        originals[key] = {}
+                    originals[key][field_name] = value
+
+            backup.write_batch(batch_start // batch_size, batch_keys, originals)
+            if progress_callback:
+                progress_callback(min(batch_start + batch_size, total), total)
+
+        backup.mark_dump_complete()
+        return backup
+
+    async def _quantize_from_backup(
+        self,
+        client: Any,
+        backup: "VectorBackup",
+        datatype_changes: Dict[str, Dict[str, Any]],
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Phase 2: Read originals from backup file, convert, pipeline-write.
+
+        Async version. Runs AFTER index drop.
+        """
+        from redisvl.migration.quantize import convert_vectors
+
+        if backup.header.phase == "ready":
+            backup.start_quantize()
+
+        docs_quantized = 0
+        docs_done = backup.header.quantize_completed_batches * backup.header.batch_size
+
+        for batch_idx, (batch_keys, originals) in enumerate(
+            backup.iter_remaining_batches()
+        ):
+            actual_batch_idx = backup.header.quantize_completed_batches + batch_idx
+            converted = convert_vectors(originals, datatype_changes)
+            if converted:
+                pipe = client.pipeline(transaction=False)
+                for key, fields in converted.items():
+                    for field_name, data in fields.items():
+                        pipe.hset(key, field_name, data)
+                await pipe.execute()
+            backup.mark_batch_quantized(actual_batch_idx)
+            docs_quantized += len(batch_keys)
+            docs_done += len(batch_keys)
+            if progress_callback:
+                total = backup.header.dump_completed_batches * backup.header.batch_size
+                progress_callback(docs_done, total)
+
+        backup.mark_complete()
+        return docs_quantized
 
     async def _async_quantize_vectors(
         self,
