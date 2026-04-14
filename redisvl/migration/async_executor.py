@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional
@@ -547,7 +548,10 @@ class AsyncMigrationExecutor:
                 .replace("\\", "_")
                 .replace(":", "_")
             )
-            backup_path = str(Path(backup_dir) / f"migration_backup_{safe_name}")
+            name_hash = hashlib.sha256(plan.source.index_name.encode()).hexdigest()[:8]
+            backup_path = str(
+                Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}"
+            )
             existing_backup = VectorBackup.load(backup_path)
 
             if existing_backup is not None:
@@ -692,6 +696,36 @@ class AsyncMigrationExecutor:
                         "quantize",
                         f"done ({docs_quantized:,} docs in {quantize_duration}s)",
                     )
+
+                # Key prefix renames may not have happened before the crash
+                # (they run after index drop in the normal path). Re-apply
+                # idempotently.
+                if has_prefix_change:
+                    resume_keys = []
+                    for batch_keys, _ in existing_backup.iter_batches():
+                        resume_keys.extend(batch_keys)
+                    if resume_keys:
+                        old_prefix = plan.source.keyspace.prefixes[0]
+                        new_prefix = rename_ops.change_prefix
+                        assert new_prefix is not None
+                        _notify("key_rename", "Renaming keys (resume)...")
+                        key_rename_started = time.perf_counter()
+                        renamed_count = await self._rename_keys(
+                            client,
+                            resume_keys,
+                            old_prefix,
+                            new_prefix,
+                            progress_callback=lambda done, total: _notify(
+                                "key_rename", f"{done:,}/{total:,} keys"
+                            ),
+                        )
+                        key_rename_duration = round(
+                            time.perf_counter() - key_rename_started, 3
+                        )
+                        _notify(
+                            "key_rename",
+                            f"done ({renamed_count:,} keys in {key_rename_duration}s)",
+                        )
             else:
                 # Normal (non-resume) path
                 if needs_enumeration:
@@ -1057,7 +1091,8 @@ class AsyncMigrationExecutor:
         that happen to share the same prefix.
         """
         safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-        base_prefix = f"migration_backup_{safe_name}"
+        name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
+        base_prefix = f"migration_backup_{safe_name}_{name_hash}"
         known_suffixes = (".header", ".data")
         backup_dir_path = Path(backup_dir)
 
