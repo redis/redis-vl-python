@@ -69,12 +69,12 @@ def create_index_and_load(r):
     for _ in range(60):
         info = r.execute_command("FT.INFO", INDEX_NAME)
         info_dict = dict(zip(info[::2], info[1::2]))
-        nd = int(info_dict.get(b"num_docs", info_dict.get("num_docs", 0)))
-        if nd >= NUM_DOCS:
+        num_indexed = int(info_dict.get(b"num_docs", info_dict.get("num_docs", 0)))
+        if num_indexed >= NUM_DOCS:
             break
         time.sleep(0.5)
-    log(f"Index ready: {nd:,} docs indexed")
-    return nd
+    log(f"Index ready: {num_indexed:,} docs indexed")
+    return num_indexed
 
 
 def verify_vectors(r, expected_bytes, label=""):

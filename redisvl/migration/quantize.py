@@ -157,40 +157,65 @@ def _worker_quantize(
 
     client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
     try:
-        # Phase 1: Dump originals to backup shard
-        backup = VectorBackup.create(
-            path=backup_path,
-            index_name=index_name,
-            fields=datatype_changes,
-            batch_size=batch_size,
-        )
+        # Try to resume from existing backup shard first
+        backup = VectorBackup.load(backup_path)
+        if backup is not None:
+            logger.info(
+                "Worker %d: resuming from existing backup (phase=%s, "
+                "dump_batches=%d, quantize_batches=%d)",
+                worker_id,
+                backup.header.phase,
+                backup.header.dump_completed_batches,
+                backup.header.quantize_completed_batches,
+            )
+        else:
+            backup = VectorBackup.create(
+                path=backup_path,
+                index_name=index_name,
+                fields=datatype_changes,
+                batch_size=batch_size,
+            )
 
         total = len(keys)
-        for batch_start in range(0, total, batch_size):
-            batch_keys = keys[batch_start : batch_start + batch_size]
-            originals = pipeline_read_vectors(client, batch_keys, datatype_changes)
-            backup.write_batch(batch_start // batch_size, batch_keys, originals)
-            if progress_callback:
-                progress_callback(
-                    "dump", worker_id, min(batch_start + batch_size, total)
-                )
 
-        backup.mark_dump_complete()
+        # Phase 1: Dump originals to backup shard (skip if already complete)
+        if backup.header.phase == "dump":
+            start_batch = backup.header.dump_completed_batches
+            for batch_start in range(start_batch * batch_size, total, batch_size):
+                batch_keys = keys[batch_start : batch_start + batch_size]
+                originals = pipeline_read_vectors(client, batch_keys, datatype_changes)
+                backup.write_batch(batch_start // batch_size, batch_keys, originals)
+                if progress_callback:
+                    progress_callback(
+                        "dump", worker_id, min(batch_start + batch_size, total)
+                    )
+            backup.mark_dump_complete()
 
-        # Phase 2: Convert + write from backup
-        backup.start_quantize()
-        docs_quantized = 0
+        # Phase 2: Convert + write from backup (skip completed batches)
+        if backup.header.phase in ("ready", "active"):
+            backup.start_quantize()
+            docs_quantized = 0
 
-        for batch_idx, (batch_keys, originals) in enumerate(backup.iter_batches()):
-            converted = convert_vectors(originals, datatype_changes)
-            if converted:
-                pipeline_write_vectors(client, converted)
-            backup.mark_batch_quantized(batch_idx)
-            docs_quantized += len(batch_keys)
-            if progress_callback:
-                progress_callback("quantize", worker_id, docs_quantized)
+            for batch_idx, (batch_keys, originals) in enumerate(backup.iter_batches()):
+                if batch_idx < backup.header.quantize_completed_batches:
+                    docs_quantized += len(batch_keys)
+                    continue
+                converted = convert_vectors(originals, datatype_changes)
+                if converted:
+                    pipeline_write_vectors(client, converted)
+                backup.mark_batch_quantized(batch_idx)
+                docs_quantized += len(batch_keys)
+                if progress_callback:
+                    progress_callback("quantize", worker_id, docs_quantized)
 
-        backup.mark_complete()
+            backup.mark_complete()
+        elif backup.header.phase == "completed":
+            # Already done from previous run
+            docs_quantized = sum(
+                1 for _ in range(0, total, batch_size) for _ in keys[:batch_size]
+            )
+            docs_quantized = total
+
         return {"worker_id": worker_id, "docs": docs_quantized}
     finally:
         try:
@@ -309,62 +334,82 @@ async def _async_worker_quantize(
 
     client = aioredis.from_url(redis_url)
     try:
-        # Phase 1: Dump originals
-        backup = VectorBackup.create(
-            path=backup_path,
-            index_name=index_name,
-            fields=datatype_changes,
-            batch_size=batch_size,
-        )
+        # Try to resume from existing backup shard first
+        backup = VectorBackup.load(backup_path)
+        if backup is not None:
+            logger.info(
+                "Async worker %d: resuming from existing backup (phase=%s, "
+                "dump_batches=%d, quantize_batches=%d)",
+                worker_id,
+                backup.header.phase,
+                backup.header.dump_completed_batches,
+                backup.header.quantize_completed_batches,
+            )
+        else:
+            backup = VectorBackup.create(
+                path=backup_path,
+                index_name=index_name,
+                fields=datatype_changes,
+                batch_size=batch_size,
+            )
 
         total = len(keys)
         field_names = list(datatype_changes.keys())
 
-        for batch_start in range(0, total, batch_size):
-            batch_keys = keys[batch_start : batch_start + batch_size]
-            pipe = client.pipeline(transaction=False)
-            call_order: List[tuple] = []
-            for key in batch_keys:
-                for field_name in field_names:
-                    pipe.hget(key, field_name)
-                    call_order.append((key, field_name))
-            results = await pipe.execute()
-
-            originals: Dict[str, Dict[str, bytes]] = {}
-            for (key, field_name), value in zip(call_order, results):
-                if value is not None:
-                    if key not in originals:
-                        originals[key] = {}
-                    originals[key][field_name] = value
-
-            backup.write_batch(batch_start // batch_size, batch_keys, originals)
-            if progress_callback:
-                progress_callback(
-                    "dump", worker_id, min(batch_start + batch_size, total)
-                )
-
-        backup.mark_dump_complete()
-
-        # Phase 2: Convert + write from backup
-        backup.start_quantize()
-        docs_quantized = 0
-
-        for batch_idx, (batch_keys, batch_originals) in enumerate(
-            backup.iter_batches()
-        ):
-            converted = convert_vectors(batch_originals, datatype_changes)
-            if converted:
+        # Phase 1: Dump originals (skip if already complete)
+        if backup.header.phase == "dump":
+            start_batch = backup.header.dump_completed_batches
+            for batch_start in range(start_batch * batch_size, total, batch_size):
+                batch_keys = keys[batch_start : batch_start + batch_size]
                 pipe = client.pipeline(transaction=False)
-                for key, fields in converted.items():
-                    for field_name, data in fields.items():
-                        pipe.hset(key, field_name, data)
-                await pipe.execute()
-            backup.mark_batch_quantized(batch_idx)
-            docs_quantized += len(batch_keys)
-            if progress_callback:
-                progress_callback("quantize", worker_id, docs_quantized)
+                call_order: List[tuple] = []
+                for key in batch_keys:
+                    for field_name in field_names:
+                        pipe.hget(key, field_name)
+                        call_order.append((key, field_name))
+                results = await pipe.execute()
 
-        backup.mark_complete()
+                originals: Dict[str, Dict[str, bytes]] = {}
+                for (key, field_name), value in zip(call_order, results):
+                    if value is not None:
+                        if key not in originals:
+                            originals[key] = {}
+                        originals[key][field_name] = value
+
+                backup.write_batch(batch_start // batch_size, batch_keys, originals)
+                if progress_callback:
+                    progress_callback(
+                        "dump", worker_id, min(batch_start + batch_size, total)
+                    )
+            backup.mark_dump_complete()
+
+        # Phase 2: Convert + write from backup (skip completed batches)
+        if backup.header.phase in ("ready", "active"):
+            backup.start_quantize()
+            docs_quantized = 0
+
+            for batch_idx, (batch_keys, batch_originals) in enumerate(
+                backup.iter_batches()
+            ):
+                if batch_idx < backup.header.quantize_completed_batches:
+                    docs_quantized += len(batch_keys)
+                    continue
+                converted = convert_vectors(batch_originals, datatype_changes)
+                if converted:
+                    pipe = client.pipeline(transaction=False)
+                    for key, fields in converted.items():
+                        for field_name, data in fields.items():
+                            pipe.hset(key, field_name, data)
+                    await pipe.execute()
+                backup.mark_batch_quantized(batch_idx)
+                docs_quantized += len(batch_keys)
+                if progress_callback:
+                    progress_callback("quantize", worker_id, docs_quantized)
+
+            backup.mark_complete()
+        elif backup.header.phase == "completed":
+            docs_quantized = total
+
         return {"worker_id": worker_id, "docs": docs_quantized}
     finally:
         await client.aclose()

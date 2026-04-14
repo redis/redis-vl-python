@@ -166,19 +166,19 @@ def create_index_and_load(r):
     for attempt in range(7200):
         info = r.execute_command("FT.INFO", INDEX_NAME)
         info_dict = dict(zip(info[::2], info[1::2]))
-        nd = int(info_dict.get(b"num_docs", info_dict.get("num_docs", 0)))
+        num_indexed = int(info_dict.get(b"num_docs", info_dict.get("num_docs", 0)))
         pct = float(info_dict.get(b"percent_indexed",
                                    info_dict.get("percent_indexed", "0")))
         if pct >= 1.0:
             break
         if attempt % 15 == 0:
             elapsed_idx = time.perf_counter() - idx_start
-            log(f"    indexing: {nd:,}/{NUM_DOCS:,} docs "
+            log(f"    indexing: {num_indexed:,}/{NUM_DOCS:,} docs "
                 f"({pct*100:.1f}%, {elapsed_idx:.0f}s elapsed)...")
         time.sleep(1)
     idx_elapsed = time.perf_counter() - idx_start
-    log(f"  Index ready: {nd:,} docs indexed in {idx_elapsed:.1f}s")
-    return nd
+    log(f"  Index ready: {num_indexed:,} docs indexed in {idx_elapsed:.1f}s")
+    return num_indexed
 
 
 def verify_vectors(r, expected_dtype, bytes_per_element, sample_size=10000):
