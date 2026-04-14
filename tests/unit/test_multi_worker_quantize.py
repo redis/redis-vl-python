@@ -189,3 +189,106 @@ class TestMultiWorkerResult:
         assert result.total_docs_quantized == 1000
         assert result.num_workers == 4
         assert len(result.worker_results) == 4
+
+
+class TestWorkerResume:
+    """Test sync and async worker resume from partial backups."""
+
+    def _make_partial_backup(self, tmp_path, phase="dump", dump_batches=1):
+        """Create a partial backup to simulate crash-resume."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp = str(tmp_path / "migration_backup_testidx_shard_0")
+        datatype_changes = {
+            "embedding": {"source": "float32", "target": "float16", "dims": 4}
+        }
+        backup = VectorBackup.create(
+            path=bp,
+            index_name="testidx",
+            fields=datatype_changes,
+            batch_size=2,
+        )
+        # Write some batches
+        for i in range(dump_batches):
+            keys = [f"doc:{i * 2}", f"doc:{i * 2 + 1}"]
+            originals = {
+                k: {"embedding": _make_float32_vector(4, seed=float(j))}
+                for j, k in enumerate(keys)
+            }
+            backup.write_batch(i, keys, originals)
+
+        if phase == "ready":
+            backup.mark_dump_complete()
+        elif phase == "active":
+            backup.mark_dump_complete()
+            backup.start_quantize()
+        return bp, datatype_changes
+
+    def test_sync_worker_resumes_from_ready_phase(self, tmp_path):
+        """Sync worker should skip dump and proceed to quantize on resume."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp, dt_changes = self._make_partial_backup(
+            tmp_path, phase="ready", dump_batches=2
+        )
+
+        # Verify backup is in ready phase
+        backup = VectorBackup.load(bp)
+        assert backup is not None
+        assert backup.header.phase == "ready"
+        assert backup.header.dump_completed_batches == 2
+
+    def test_sync_worker_resumes_from_dump_phase(self, tmp_path):
+        """Sync worker should resume dumping from the last completed batch."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp, dt_changes = self._make_partial_backup(
+            tmp_path, phase="dump", dump_batches=1
+        )
+
+        backup = VectorBackup.load(bp)
+        assert backup is not None
+        assert backup.header.phase == "dump"
+        assert backup.header.dump_completed_batches == 1
+        # Worker should start from batch 1, not 0
+
+    def test_sync_worker_skips_completed_backup(self, tmp_path):
+        """Completed backup should be detected and skipped."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp, dt_changes = self._make_partial_backup(
+            tmp_path, phase="active", dump_batches=2
+        )
+        backup = VectorBackup.load(bp)
+        # Mark all batches quantized
+        for i in range(2):
+            backup.mark_batch_quantized(i)
+        backup.mark_complete()
+
+        # Reload and verify
+        backup = VectorBackup.load(bp)
+        assert backup.header.phase == "completed"
+
+    @pytest.mark.asyncio
+    async def test_async_worker_loads_existing_backup(self, tmp_path):
+        """Async worker should load existing backup instead of creating new."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp, dt_changes = self._make_partial_backup(
+            tmp_path, phase="ready", dump_batches=2
+        )
+
+        # Verify load succeeds and returns existing backup
+        backup = VectorBackup.load(bp)
+        assert backup is not None
+        assert backup.header.phase == "ready"
+        assert backup.header.dump_completed_batches == 2
+
+        # Verify create would fail (backup already exists)
+        with pytest.raises(FileExistsError):
+            VectorBackup.create(
+                path=bp,
+                index_name="testidx",
+                fields=dt_changes,
+                batch_size=2,
+            )
