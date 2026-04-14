@@ -510,7 +510,7 @@ Commands:
             client.close()
 
         print(
-            f"\n✅ Rollback complete: {total_restored:,} vectors restored to original values"
+            f"\nRollback complete: {total_restored:,} vectors restored to original values"
         )
         print(
             "Note: You may need to recreate the original index schema "
