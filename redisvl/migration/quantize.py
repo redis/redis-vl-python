@@ -7,6 +7,7 @@ Also provides multi-worker orchestration for parallel quantization
 using ThreadPoolExecutor (sync) or asyncio.gather (async).
 """
 
+import hashlib
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -264,8 +265,9 @@ def multi_worker_quantize(
 
     # Generate backup paths per worker
     safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
     worker_backup_paths = [
-        str(Path(backup_dir) / f"migration_backup_{safe_name}_worker{i}")
+        str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}_worker{i}")
         for i in range(actual_workers)
     ]
 
@@ -441,8 +443,9 @@ async def async_multi_worker_quantize(
         )
 
     safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
     worker_backup_paths = [
-        str(Path(backup_dir) / f"migration_backup_{safe_name}_worker{i}")
+        str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}_worker{i}")
         for i in range(actual_workers)
     ]
 
