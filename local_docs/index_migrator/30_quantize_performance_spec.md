@@ -124,24 +124,70 @@ Binary file using msgpack for compactness and speed. Structure:
   ...
 ```
 
-Each batch is written as a length-prefixed msgpack blob. The header is rewritten (atomically via temp+rename) after each batch to update progress counters.
+Each batch is written as a length-prefixed msgpack blob. The header is
+stored in a separate small file (`<backup>.header`) and updated atomically
+(write to temp file + `os.rename`) after each batch operation.
 
-#### Resume semantics
+#### Progress tracking
 
-Phase transitions: `dump` → `ready` → `active` → `completed`
+The header has two counters that track exactly where the migration is:
 
-- `dump` — Dump in progress. Index is still alive. No mutations yet.
-- `ready` — Dump complete. All originals on disk. Index still alive. Safe to proceed to drop.
-- `active` — Index dropped, quantize in progress. Backup file has full key list + originals.
-- `completed` — All writes done. Safe to create index.
+- `dump_completed_batches` — how many batches have been read from Redis
+  and written to the backup file
+- `quantize_completed_batches` — how many batches have been converted and
+  written back to Redis
+
+**Dump progress (Phase 1):**
+
+```
+for batch_idx, batch in enumerate(chunked(keys, batch_size)):
+    originals = pipeline_read(client, batch, fields)    # pipelined HGET
+    backup.write_batch(batch_idx, batch, originals)      # append to file
+    backup.update_header(dump_completed_batches=batch_idx + 1)  # atomic
+```
+
+No Redis state modified. On crash at `dump_completed_batches=N`, just
+re-enumerate and resume from batch N.
+
+**Quantize progress (Phase 2):**
+
+```
+for batch_idx, (batch_keys, originals) in enumerate(backup.iter_batches()):
+    if batch_idx < backup.header.quantize_completed_batches:
+        continue  # already written to Redis in a previous run
+    converted = convert_all(originals, datatype_changes)
+    pipeline_write(client, converted)                    # pipelined HSET
+    backup.update_header(quantize_completed_batches=batch_idx + 1)  # atomic
+```
+
+The header update happens **only after** `pipeline_write` succeeds. If the
+process crashes mid-batch (after some HSETs execute but before the header
+update), the header still says `quantize_completed_batches=N`. On resume,
+batch N is re-processed. This is safe because:
+
+- **HSET is idempotent** — re-writing the same converted value is a no-op
+- **Originals are in the backup file** — if you need to rollback, read
+  batch N's originals from disk and HSET them back
+- **No partial state** — either the header says "batch N done" (all HSETs
+  committed + header flushed) or it doesn't (re-process the whole batch)
+
+#### Phase transitions and resume
+
+Phase values: `dump` → `ready` → `active` → `completed`
+
+| Phase | Meaning | Index state | What to do on resume |
+|-------|---------|-------------|---------------------|
+| `dump` | Dump in progress | **Alive** | Re-enumerate via FT.AGGREGATE, resume dump from `dump_completed_batches` |
+| `ready` | Dump complete, pre-drop | **Alive** | All originals on disk. Proceed to drop + quantize |
+| `active` | Quantize in progress | **Dropped** | Key list + originals in file. Resume quantize from `quantize_completed_batches` |
+| `completed` | All writes done | **Dropped** | Skip to FT.CREATE |
 
 On resume:
-- **No backup file:** Restart from scratch. No mutations happened.
-- **`phase=dump`:** Index is alive. Re-enumerate via FT.AGGREGATE, resume dump from `dump_completed_batches`.
-- **`phase=ready`:** Index is alive, all originals on disk. Proceed to drop + quantize.
-- **`phase=active`:** Index is gone, but backup file has the full key list and originals. Resume quantize from `quantize_completed_batches`. No enumeration needed.
-- **`phase=completed`:** Skip to FT.CREATE.
-- **Rollback (any phase):** Read originals from backup file, pipeline-HSET them back. Works at any point after dump completes.
+- **No backup file:** No mutations happened. Restart from scratch.
+- **Backup file exists:** Read header, check `phase`, resume from the
+  appropriate point. No SCAN, no re-discovery. The file has everything.
+- **Rollback:** At any point after dump completes, read originals from
+  backup file, pipeline-HSET them back to Redis.
 
 #### What this replaces
 
