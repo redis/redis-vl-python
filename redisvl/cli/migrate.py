@@ -209,7 +209,7 @@ Commands:
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate apply --plan <migration_plan.yaml> "
-                "[--async] [--resume <checkpoint.yaml>] "
+                "[--async] [--backup-dir <dir>] [--workers N] "
                 "[--report-out <migration_report.yaml>]"
             )
         )
@@ -219,12 +219,6 @@ Commands:
             dest="use_async",
             help="Use async executor (recommended for large migrations with quantization)",
             action="store_true",
-        )
-        parser.add_argument(
-            "--resume",
-            dest="checkpoint_path",
-            help="(Deprecated) Path to quantization checkpoint file. Use --backup-dir instead.",
-            default=None,
         )
         parser.add_argument(
             "--backup-dir",
@@ -289,7 +283,6 @@ Commands:
                     plan,
                     redis_url,
                     args.query_check_file,
-                    checkpoint_path=args.checkpoint_path,
                     backup_dir=args.backup_dir,
                     batch_size=args.batch_size,
                     num_workers=args.num_workers,
@@ -300,7 +293,6 @@ Commands:
                 plan,
                 redis_url,
                 args.query_check_file,
-                checkpoint_path=args.checkpoint_path,
                 backup_dir=args.backup_dir,
                 batch_size=args.batch_size,
                 num_workers=args.num_workers,
@@ -357,7 +349,6 @@ Commands:
         plan,
         redis_url: str,
         query_check_file: Optional[str],
-        checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
@@ -372,7 +363,6 @@ Commands:
             redis_url=redis_url,
             query_check_file=query_check_file,
             progress_callback=self._make_progress_callback(),
-            checkpoint_path=checkpoint_path,
             backup_dir=backup_dir,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -386,7 +376,6 @@ Commands:
         plan,
         redis_url: str,
         query_check_file: Optional[str],
-        checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
@@ -401,7 +390,6 @@ Commands:
             redis_url=redis_url,
             query_check_file=query_check_file,
             progress_callback=self._make_progress_callback(),
-            checkpoint_path=checkpoint_path,
             backup_dir=backup_dir,
             batch_size=batch_size,
             num_workers=num_workers,

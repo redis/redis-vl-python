@@ -21,13 +21,7 @@ from redisvl.migration.models import (
     MigrationTimings,
     MigrationValidation,
 )
-from redisvl.migration.reliability import (
-    BatchUndoBuffer,
-    QuantizationCheckpoint,
-    async_trigger_bgsave_and_wait,
-    is_already_quantized,
-    is_same_width_dtype_conversion,
-)
+from redisvl.migration.reliability import is_same_width_dtype_conversion
 from redisvl.migration.utils import (
     build_scan_match_patterns,
     estimate_disk_space,
@@ -35,7 +29,6 @@ from redisvl.migration.utils import (
     normalize_keys,
     timestamp_utc,
 )
-from redisvl.redis.utils import array_to_buffer, buffer_to_array
 from redisvl.types import AsyncRedisClient
 from redisvl.utils.log import get_logger
 
@@ -475,7 +468,6 @@ class AsyncMigrationExecutor:
         redis_client: Optional[AsyncRedisClient] = None,
         query_check_file: Optional[str] = None,
         progress_callback: Optional[Callable[[str, Optional[str]], None]] = None,
-        checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
@@ -488,7 +480,6 @@ class AsyncMigrationExecutor:
             redis_client: Optional existing async Redis client.
             query_check_file: Optional file with query checks.
             progress_callback: Optional callback(step, detail) for progress updates.
-            checkpoint_path: Deprecated — use backup_dir instead.
             backup_dir: Directory for vector backup files.
             batch_size: Keys per pipeline batch (default 500).
             num_workers: Number of parallel workers (default 1).
@@ -541,30 +532,7 @@ class AsyncMigrationExecutor:
                     Path(backup_path + ".data").unlink(missing_ok=True)
                     existing_backup = None
 
-        # Legacy checkpoint support
-        resuming_from_checkpoint = False
-        if checkpoint_path and not backup_dir:
-            existing_checkpoint = QuantizationCheckpoint.load(checkpoint_path)
-            if existing_checkpoint is not None:
-                if existing_checkpoint.index_name != plan.source.index_name:
-                    Path(checkpoint_path).unlink(missing_ok=True)
-                elif existing_checkpoint.status == "completed":
-                    source_still_exists = (
-                        await self._async_current_source_matches_snapshot(
-                            plan.source.index_name,
-                            plan.source.schema_snapshot,
-                            redis_url=redis_url,
-                            redis_client=redis_client,
-                        )
-                    )
-                    if source_still_exists:
-                        Path(checkpoint_path).unlink(missing_ok=True)
-                    else:
-                        resuming_from_checkpoint = True
-                else:
-                    resuming_from_checkpoint = True
-
-        resuming = resuming_from_backup or resuming_from_checkpoint
+        resuming = resuming_from_backup
 
         if not resuming:
             if not await self._async_current_source_matches_snapshot(
@@ -631,13 +599,13 @@ class AsyncMigrationExecutor:
             for change in datatype_changes.values()
         )
 
-        if checkpoint_path and has_same_width_quantization:
+        if backup_dir and has_same_width_quantization:
             report.validation.errors.append(
                 "Crash-safe resume is not supported for same-width datatype "
                 "changes (float16<->bfloat16 or int8<->uint8)."
             )
             report.manual_actions.append(
-                "Re-run without --resume for same-width vector conversions, or "
+                "Re-run without --backup-dir for same-width vector conversions, or "
                 "split the migration to avoid same-width datatype changes."
             )
             report.finished_at = timestamp_utc()
@@ -688,67 +656,6 @@ class AsyncMigrationExecutor:
                         progress_callback=lambda done, total: _notify(
                             "quantize", f"{done:,}/{total:,} docs"
                         ),
-                    )
-                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
-                    _notify(
-                        "quantize",
-                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
-                    )
-            elif resuming_from_checkpoint:
-                # Legacy checkpoint resume path
-                if needs_enumeration:
-                    _notify("enumerate", "Enumerating documents via SCAN (resume)...")
-                    enumerate_started = time.perf_counter()
-                    prefixes = list(plan.source.keyspace.prefixes)
-                    if has_prefix_change and rename_ops.change_prefix:
-                        prefixes = [rename_ops.change_prefix]
-                    seen_keys: set[str] = set()
-                    for match_pattern in build_scan_match_patterns(
-                        prefixes, plan.source.keyspace.key_separator
-                    ):
-                        cursor_val: int = 0
-                        while True:
-                            cursor_val, scanned = await client.scan(  # type: ignore[misc]
-                                cursor=cursor_val,
-                                match=match_pattern,
-                                count=1000,
-                            )
-                            for k in scanned:
-                                key = k.decode() if isinstance(k, bytes) else str(k)
-                                if key not in seen_keys:
-                                    seen_keys.add(key)
-                                    keys_to_process.append(key)
-                            if cursor_val == 0:
-                                break
-                    keys_to_process = normalize_keys(keys_to_process)
-                    enumerate_duration = round(
-                        time.perf_counter() - enumerate_started, 3
-                    )
-                    _notify(
-                        "enumerate",
-                        f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
-                    )
-                _notify("drop", "skipped (already dropped)")
-                if needs_quantization and keys_to_process:
-                    effective_changes = datatype_changes
-                    if has_field_renames:
-                        field_rename_map = {
-                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
-                        }
-                        effective_changes = {
-                            field_rename_map.get(k, k): v
-                            for k, v in datatype_changes.items()
-                        }
-                    _notify("quantize", "Re-encoding vectors...")
-                    quantize_started = time.perf_counter()
-                    docs_quantized = await self._async_quantize_vectors(
-                        source_index,
-                        effective_changes,
-                        keys_to_process,
-                        progress_callback=lambda done, total: _notify(
-                            "quantize", f"{done:,}/{total:,} docs"
-                        ),
-                        checkpoint_path=checkpoint_path,
                     )
                     quantize_duration = round(time.perf_counter() - quantize_started, 3)
                     _notify(
@@ -942,19 +849,46 @@ class AsyncMigrationExecutor:
                             ),
                         )
                     else:
+                        # No backup dir — direct pipeline read + convert + write
+                        from redisvl.migration.quantize import (
+                            convert_vectors,
+                            pipeline_write_vectors,
+                        )
+
                         _notify("quantize", "Re-encoding vectors...")
                         quantize_started = time.perf_counter()
-                        if has_prefix_change and rename_ops.change_prefix:
-                            keys_to_process = normalize_keys(keys_to_process)
-                        docs_quantized = await self._async_quantize_vectors(
-                            source_index,
-                            effective_changes,
-                            keys_to_process,
-                            progress_callback=lambda done, total: _notify(
-                                "quantize", f"{done:,}/{total:,} docs"
-                            ),
-                            checkpoint_path=checkpoint_path,
-                        )
+                        docs_quantized = 0
+                        total = len(keys_to_process)
+                        field_names = list(effective_changes.keys())
+                        for batch_start in range(0, total, batch_size):
+                            batch_keys = keys_to_process[
+                                batch_start : batch_start + batch_size
+                            ]
+                            # Async pipelined read
+                            pipe = client.pipeline(transaction=False)
+                            call_order: list[tuple] = []
+                            for key in batch_keys:
+                                for fn in field_names:
+                                    pipe.hget(key, fn)
+                                    call_order.append((key, fn))
+                            results = await pipe.execute()
+                            originals: dict[str, dict[str, bytes]] = {}
+                            for (key, fn), value in zip(call_order, results):
+                                if value is not None:
+                                    originals.setdefault(key, {})[fn] = value
+                            converted = convert_vectors(originals, effective_changes)
+                            if converted:
+                                wpipe = client.pipeline(transaction=False)
+                                for key, fields in converted.items():
+                                    for fn, data in fields.items():
+                                        wpipe.hset(key, fn, data)
+                                await wpipe.execute()
+                            docs_quantized += len(batch_keys)
+                            if progress_callback:
+                                _notify(
+                                    "quantize",
+                                    f"{docs_quantized:,}/{total:,} docs",
+                                )
                     quantize_duration = round(time.perf_counter() - quantize_started, 3)
                     _notify(
                         "quantize",
@@ -1170,179 +1104,6 @@ class AsyncMigrationExecutor:
                 progress_callback(docs_done, total)
 
         backup.mark_complete()
-        return docs_quantized
-
-    async def _async_quantize_vectors(
-        self,
-        source_index: AsyncSearchIndex,
-        datatype_changes: Dict[str, Dict[str, Any]],
-        keys: List[str],
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-        checkpoint_path: Optional[str] = None,
-    ) -> int:
-        """Re-encode vectors in documents for datatype changes (quantization).
-
-        Uses pre-enumerated keys (from _enumerate_indexed_keys) to process
-        only the documents that were in the index, avoiding full keyspace scan.
-        Includes idempotent skip (already-quantized vectors), bounded undo
-        buffer for per-batch rollback, and optional checkpointing for resume.
-
-        Args:
-            source_index: The source AsyncSearchIndex (already dropped but client available)
-            datatype_changes: Dict mapping field_name -> {"source", "target", "dims"}
-            keys: Pre-enumerated list of document keys to process
-            progress_callback: Optional callback(docs_done, total_docs)
-            checkpoint_path: Optional path for checkpoint file (enables resume)
-
-        Returns:
-            Number of documents quantized
-        """
-        client = await source_index._get_client()
-        if client is None:
-            raise ValueError("Failed to get Redis client from source index")
-
-        total_keys = len(keys)
-        docs_processed = 0
-        docs_quantized = 0
-        skipped = 0
-        batch_size = 500
-
-        # Load or create checkpoint for resume support
-        checkpoint: Optional[QuantizationCheckpoint] = None
-        if checkpoint_path:
-            checkpoint = QuantizationCheckpoint.load(checkpoint_path)
-            if checkpoint:
-                # Validate checkpoint matches current migration BEFORE
-                # checking completion status to avoid skipping quantization
-                # for an unrelated completed checkpoint.
-                if checkpoint.index_name != source_index.name:
-                    raise ValueError(
-                        f"Checkpoint index '{checkpoint.index_name}' does not match "
-                        f"source index '{source_index.name}'. "
-                        f"Use the correct checkpoint file or remove it to start fresh."
-                    )
-                # Skip if checkpoint shows a completed migration
-                if checkpoint.status == "completed":
-                    logger.info(
-                        "Checkpoint already marked as completed for index '%s'. "
-                        "Skipping quantization. Remove the checkpoint file to force re-run.",
-                        checkpoint.index_name,
-                    )
-                    return 0
-                if checkpoint.total_keys != total_keys:
-                    if checkpoint.processed_keys:
-                        current_keys = set(keys)
-                        missing_processed = [
-                            key
-                            for key in checkpoint.processed_keys
-                            if key not in current_keys
-                        ]
-                        if missing_processed or total_keys < checkpoint.total_keys:
-                            raise ValueError(
-                                f"Checkpoint total_keys={checkpoint.total_keys} does not match "
-                                f"the current key set ({total_keys}). "
-                                "Use the correct checkpoint file or remove it to start fresh."
-                            )
-                        logger.warning(
-                            "Checkpoint total_keys=%d differs from current key set size=%d. "
-                            "Proceeding because all legacy processed keys are present.",
-                            checkpoint.total_keys,
-                            total_keys,
-                        )
-                    else:
-                        raise ValueError(
-                            f"Checkpoint total_keys={checkpoint.total_keys} does not match "
-                            f"the current key set ({total_keys}). "
-                            "Use the correct checkpoint file or remove it to start fresh."
-                        )
-                remaining = checkpoint.get_remaining_keys(keys)
-                logger.info(
-                    "Resuming from checkpoint: %d/%d keys already processed",
-                    total_keys - len(remaining),
-                    total_keys,
-                )
-                docs_processed = total_keys - len(remaining)
-                keys = remaining
-                total_keys_for_progress = total_keys
-            else:
-                checkpoint = QuantizationCheckpoint(
-                    index_name=source_index.name,
-                    total_keys=total_keys,
-                    checkpoint_path=checkpoint_path,
-                )
-                checkpoint.save()
-                total_keys_for_progress = total_keys
-        else:
-            total_keys_for_progress = total_keys
-
-        remaining_keys = len(keys)
-
-        for i in range(0, remaining_keys, batch_size):
-            batch = keys[i : i + batch_size]
-            pipe = client.pipeline(transaction=False)
-            undo = BatchUndoBuffer()
-            keys_updated_in_batch: set[str] = set()
-
-            try:
-                for key in batch:
-                    for field_name, change in datatype_changes.items():
-                        field_data: bytes | None = await client.hget(key, field_name)  # type: ignore[misc,assignment]
-                        if not field_data:
-                            continue
-
-                        # Idempotent: skip if already converted to target dtype
-                        dims = change.get("dims", 0)
-                        if dims and is_already_quantized(
-                            field_data, dims, change["source"], change["target"]
-                        ):
-                            skipped += 1
-                            continue
-
-                        undo.store(key, field_name, field_data)
-                        array = buffer_to_array(field_data, change["source"])
-                        new_bytes = array_to_buffer(array, change["target"])
-                        pipe.hset(key, field_name, new_bytes)  # type: ignore[arg-type]
-                        keys_updated_in_batch.add(key)
-
-                if keys_updated_in_batch:
-                    await pipe.execute()
-            except Exception:
-                logger.warning(
-                    "Batch %d failed, rolling back %d entries",
-                    i // batch_size,
-                    undo.size,
-                )
-                rollback_pipe = client.pipeline()
-                await undo.async_rollback(rollback_pipe)
-                if checkpoint:
-                    checkpoint.save()
-                raise
-            finally:
-                undo.clear()
-
-            docs_quantized += len(keys_updated_in_batch)
-            docs_processed += len(batch)
-
-            if checkpoint:
-                # Record all keys in batch (including skipped) so they
-                # are not re-scanned on resume
-                checkpoint.record_batch(batch)
-                checkpoint.save()
-
-            if progress_callback:
-                progress_callback(docs_processed, total_keys_for_progress)
-
-        if checkpoint:
-            checkpoint.mark_complete()
-            checkpoint.save()
-
-        if skipped:
-            logger.info("Skipped %d already-quantized vector fields", skipped)
-        logger.info(
-            "Quantized %d documents across %d fields",
-            docs_quantized,
-            len(datatype_changes),
-        )
         return docs_quantized
 
     async def _async_wait_for_index_ready(
