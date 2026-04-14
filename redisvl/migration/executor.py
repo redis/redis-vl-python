@@ -504,6 +504,8 @@ class MigrationExecutor:
         query_check_file: Optional[str] = None,
         progress_callback: Optional[Callable[[str, Optional[str]], None]] = None,
         checkpoint_path: Optional[str] = None,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
     ) -> MigrationReport:
         """Apply a migration plan.
 
@@ -515,8 +517,10 @@ class MigrationExecutor:
             progress_callback: Optional callback(step, detail) for progress updates.
                 step: Current step name (e.g., "drop", "quantize", "create", "index", "validate")
                 detail: Optional detail string (e.g., "1000/5000 docs (20%)")
-            checkpoint_path: Optional path for quantization checkpoint file.
-                When provided, enables crash-safe resume for vector re-encoding.
+            checkpoint_path: Deprecated — use backup_dir instead.
+            backup_dir: Directory for vector backup files. When provided,
+                enables crash-safe resume and rollback for quantization.
+            batch_size: Keys per pipeline batch (default 500).
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -538,20 +542,67 @@ class MigrationExecutor:
             report.finished_at = timestamp_utc()
             return report
 
-        # Check if we are resuming from a checkpoint (post-drop crash).
-        # Migration order is:  enumerate → field-renames → DROP → key-renames
-        # → quantize → CREATE.  The index is dropped *before* quantization
-        # completes, so a crash during quantization or CREATE leaves the DB
-        # in a state where the source index is gone but data keys still exist.
-        # The checkpoint file records which keys have already been quantized,
-        # allowing a resume to skip those and continue from where it left off.
-        # If so, the source index may no longer exist in Redis, so we
-        # skip live schema validation and construct from the plan snapshot.
+        # Check if we are resuming from a backup file (post-crash).
+        # New migration order: enumerate → field-renames → DUMP → DROP
+        # → key-renames → QUANTIZE → CREATE.
+        # The backup file stores original vectors and tracks progress.
+        # If a backup file exists, we can determine exactly where the
+        # previous run stopped and resume from there.
+        from redisvl.migration.backup import VectorBackup
+
+        resuming_from_backup = False
+        existing_backup: Optional[VectorBackup] = None
+        backup_path: Optional[str] = None
+
+        if backup_dir:
+            # Sanitize index name for filesystem
+            safe_name = (
+                plan.source.index_name.replace("/", "_")
+                .replace("\\", "_")
+                .replace(":", "_")
+            )
+            backup_path = str(Path(backup_dir) / f"migration_backup_{safe_name}")
+            existing_backup = VectorBackup.load(backup_path)
+
+            if existing_backup is not None:
+                if existing_backup.header.index_name != plan.source.index_name:
+                    logger.warning(
+                        "Backup index '%s' does not match plan index '%s', ignoring",
+                        existing_backup.header.index_name,
+                        plan.source.index_name,
+                    )
+                    existing_backup = None
+                elif existing_backup.header.phase == "completed":
+                    # Previous run completed quantization. Index may need recreating.
+                    resuming_from_backup = True
+                    logger.info(
+                        "Backup at %s is completed; skipping to index creation",
+                        backup_path,
+                    )
+                elif existing_backup.header.phase in ("active", "ready"):
+                    # Crash after dump (possibly after drop). Resume.
+                    resuming_from_backup = True
+                    logger.info(
+                        "Backup at %s found (phase=%s), resuming migration",
+                        backup_path,
+                        existing_backup.header.phase,
+                    )
+                elif existing_backup.header.phase == "dump":
+                    # Crash during dump — index should still be alive.
+                    # For simplicity, remove partial backup and restart.
+                    logger.info(
+                        "Partial dump found at %s, restarting dump",
+                        backup_path,
+                    )
+                    Path(backup_path + ".header").unlink(missing_ok=True)
+                    Path(backup_path + ".data").unlink(missing_ok=True)
+                    existing_backup = None
+
+        # Legacy checkpoint_path support
         resuming_from_checkpoint = False
-        if checkpoint_path:
+        if checkpoint_path and not backup_dir:
             existing_checkpoint = QuantizationCheckpoint.load(checkpoint_path)
             if existing_checkpoint is not None:
-                # Validate checkpoint belongs to this migration and is incomplete
                 if existing_checkpoint.index_name != plan.source.index_name:
                     logger.warning(
                         "Checkpoint index '%s' does not match plan index '%s', "
@@ -561,10 +612,6 @@ class MigrationExecutor:
                     )
                     Path(checkpoint_path).unlink(missing_ok=True)
                 elif existing_checkpoint.status == "completed":
-                    # Quantization completed previously. Only resume if
-                    # the source index is actually gone (post-drop crash).
-                    # If the source still exists, this is a fresh run and
-                    # the stale checkpoint should be ignored.
                     source_still_exists = current_source_matches_snapshot(
                         plan.source.index_name,
                         plan.source.schema_snapshot,
@@ -572,30 +619,15 @@ class MigrationExecutor:
                         redis_client=redis_client,
                     )
                     if source_still_exists:
-                        logger.info(
-                            "Checkpoint at %s is completed and source index "
-                            "still exists; treating as fresh run",
-                            checkpoint_path,
-                        )
-                        # Remove the stale checkpoint so that downstream
-                        # steps (e.g. _quantize_vectors) don't skip work.
                         Path(checkpoint_path).unlink(missing_ok=True)
                     else:
                         resuming_from_checkpoint = True
-                        logger.info(
-                            "Checkpoint at %s is already completed; resuming "
-                            "index recreation from post-drop state",
-                            checkpoint_path,
-                        )
                 else:
                     resuming_from_checkpoint = True
-                    logger.info(
-                        "Checkpoint found at %s, skipping source index validation "
-                        "(index may have been dropped before crash)",
-                        checkpoint_path,
-                    )
 
-        if not resuming_from_checkpoint:
+        resuming = resuming_from_backup or resuming_from_checkpoint
+
+        if not resuming:
             if not current_source_matches_snapshot(
                 plan.source.index_name,
                 plan.source.schema_snapshot,
@@ -690,27 +722,60 @@ class MigrationExecutor:
                 )
             report.disk_space_estimate = disk_estimate
 
-            if resuming_from_checkpoint:
-                # On resume after a post-drop crash, the index no longer
-                # exists. Enumerate keys via SCAN using the plan prefix,
-                # and skip BGSAVE / field renames / drop (already done).
+            if resuming_from_backup and existing_backup is not None:
+                # Resume from backup file. The backup has the key list
+                # and original vectors — no enumeration or SCAN needed.
+                if existing_backup.header.phase == "completed":
+                    # Quantize already done, skip to CREATE
+                    _notify("enumerate", "skipped (resume from backup)")
+                    _notify("drop", "skipped (already dropped)")
+                    _notify("quantize", "skipped (already completed)")
+                elif existing_backup.header.phase in ("active", "ready"):
+                    _notify("enumerate", "skipped (resume from backup)")
+                    _notify("drop", "skipped (already dropped)")
+
+                    # Remap datatype_changes if field renames happened
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+
+                    _notify("quantize", "Resuming vector re-encoding from backup...")
+                    quantize_started = time.perf_counter()
+                    docs_quantized = self._quantize_from_backup(
+                        client=client,
+                        backup=existing_backup,
+                        datatype_changes=effective_changes,
+                        progress_callback=lambda done, total: _notify(
+                            "quantize", f"{done:,}/{total:,} docs"
+                        ),
+                    )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
+            elif resuming_from_checkpoint:
+                # Legacy checkpoint resume path (SCAN-based)
                 if needs_enumeration:
                     _notify("enumerate", "Enumerating documents via SCAN (resume)...")
                     enumerate_started = time.perf_counter()
                     prefixes = list(plan.source.keyspace.prefixes)
-                    # If a prefix change was part of the migration, keys
-                    # were already renamed before the crash, so scan with
-                    # the new prefix instead.
                     if has_prefix_change and rename_ops.change_prefix:
                         prefixes = [rename_ops.change_prefix]
                     seen_keys: set[str] = set()
                     for match_pattern in build_scan_match_patterns(
                         prefixes, plan.source.keyspace.key_separator
                     ):
-                        cursor: int = 0
+                        cursor_val: int = 0
                         while True:
-                            cursor, scanned = client.scan(  # type: ignore[misc]
-                                cursor=cursor,
+                            cursor_val, scanned = client.scan(  # type: ignore[misc]
+                                cursor=cursor_val,
                                 match=match_pattern,
                                 count=1000,
                             )
@@ -719,7 +784,7 @@ class MigrationExecutor:
                                 if key not in seen_keys:
                                     seen_keys.add(key)
                                     keys_to_process.append(key)
-                            if cursor == 0:
+                            if cursor_val == 0:
                                 break
                     keys_to_process = normalize_keys(keys_to_process)
                     enumerate_duration = round(
@@ -729,13 +794,37 @@ class MigrationExecutor:
                         "enumerate",
                         f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
                     )
-
-                _notify("bgsave", "skipped (resume)")
                 _notify("drop", "skipped (already dropped)")
+
+                if needs_quantization and keys_to_process:
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+                    _notify("quantize", "Re-encoding vectors...")
+                    quantize_started = time.perf_counter()
+                    docs_quantized = self._quantize_vectors(
+                        source_index,
+                        effective_changes,
+                        keys_to_process,
+                        progress_callback=lambda done, total: _notify(
+                            "quantize", f"{done:,}/{total:,} docs"
+                        ),
+                        checkpoint_path=checkpoint_path,
+                    )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
             else:
                 # Normal (non-resume) path
                 # STEP 1: Enumerate keys BEFORE any modifications
-                # Needed for: quantization, prefix change, or field renames
                 if needs_enumeration:
                     _notify("enumerate", "Enumerating indexed documents...")
                     enumerate_started = time.perf_counter()
@@ -755,16 +844,6 @@ class MigrationExecutor:
                         "enumerate",
                         f"found {len(keys_to_process):,} documents ({enumerate_duration}s)",
                     )
-
-                # BGSAVE safety net: snapshot data before mutations begin
-                if needs_enumeration and keys_to_process:
-                    _notify("bgsave", "Triggering BGSAVE safety snapshot...")
-                    try:
-                        trigger_bgsave_and_wait(client)
-                        _notify("bgsave", "done")
-                    except Exception as e:
-                        logger.warning("BGSAVE safety snapshot failed: %s", e)
-                        _notify("bgsave", f"skipped ({e})")
 
                 # STEP 2: Field renames (before dropping index)
                 if has_field_renames and keys_to_process:
@@ -806,103 +885,141 @@ class MigrationExecutor:
                     )
                     _notify("field_rename", f"done ({field_rename_duration}s)")
 
-                # STEP 3: Drop the index.
-                # NOTE: drop + recreate is intentionally non-atomic.  Between
-                # FT.DROPINDEX and FT.CREATE the index does not exist, causing
-                # queries to fail.  This is inherent to the drop_recreate mode
-                # and is documented as expected downtime.  Using a Lua script
-                # would not help because FT.DROPINDEX/FT.CREATE are module
-                # commands that cannot run inside MULTI/EVAL.
+                # STEP 3: Dump original vectors to backup file (before drop)
+                dump_duration = 0.0
+                active_backup = None
+                if needs_quantization and keys_to_process and backup_path:
+                    # Remap field names for dump if needed
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+                    _notify("dump", "Backing up original vectors...")
+                    dump_started = time.perf_counter()
+                    active_backup = self._dump_vectors(
+                        client=client,
+                        index_name=plan.source.index_name,
+                        keys=keys_to_process,
+                        datatype_changes=effective_changes,
+                        backup_path=backup_path,
+                        batch_size=batch_size,
+                        progress_callback=lambda done, total: _notify(
+                            "dump", f"{done:,}/{total:,} docs"
+                        ),
+                    )
+                    dump_duration = round(time.perf_counter() - dump_started, 3)
+                    _notify("dump", f"done ({dump_duration}s)")
+
+                # STEP 4: Drop the index
                 _notify("drop", "Dropping index definition...")
                 drop_started = time.perf_counter()
                 source_index.delete(drop=False)
                 drop_duration = round(time.perf_counter() - drop_started, 3)
                 _notify("drop", f"done ({drop_duration}s)")
 
-            # STEP 4: Key renames (after drop, before recreate)
-            # On resume, key renames were already done before the crash.
-            if has_prefix_change and keys_to_process and not resuming_from_checkpoint:
-                _notify("key_rename", "Renaming keys...")
-                key_rename_started = time.perf_counter()
-                old_prefix = plan.source.keyspace.prefixes[0]
-                new_prefix = rename_ops.change_prefix
-                assert new_prefix is not None  # For type checker
-                renamed_count = self._rename_keys(
-                    client,
-                    keys_to_process,
-                    old_prefix,
-                    new_prefix,
-                    progress_callback=lambda done, total: _notify(
-                        "key_rename", f"{done:,}/{total:,} keys"
-                    ),
-                )
-                key_rename_duration = round(time.perf_counter() - key_rename_started, 3)
-                _notify(
-                    "key_rename",
-                    f"done ({renamed_count:,} keys in {key_rename_duration}s)",
-                )
-
-            # STEP 5: Re-encode vectors using pre-enumerated keys.
-            # NOTE: Keys are enumerated in step 1 (via FT.AGGREGATE or SCAN),
-            # so the cursor is fully consumed before we reach this point.
-            # There is no FT.AGGREGATE cursor alive during quantization.
-            if needs_quantization and keys_to_process:
-                _notify("quantize", "Re-encoding vectors...")
-                quantize_started = time.perf_counter()
-                # If we renamed keys (non-resume), update keys_to_process
-                if (
-                    has_prefix_change
-                    and rename_ops.change_prefix
-                    and not resuming_from_checkpoint
-                ):
+                # STEP 5: Key renames (after drop, before recreate)
+                if has_prefix_change and keys_to_process:
+                    _notify("key_rename", "Renaming keys...")
+                    key_rename_started = time.perf_counter()
                     old_prefix = plan.source.keyspace.prefixes[0]
                     new_prefix = rename_ops.change_prefix
-                    keys_to_process = [
-                        (
-                            new_prefix + k[len(old_prefix) :]
-                            if k.startswith(old_prefix)
-                            else k
+                    assert new_prefix is not None
+                    renamed_count = self._rename_keys(
+                        client,
+                        keys_to_process,
+                        old_prefix,
+                        new_prefix,
+                        progress_callback=lambda done, total: _notify(
+                            "key_rename", f"{done:,}/{total:,} keys"
+                        ),
+                    )
+                    key_rename_duration = round(
+                        time.perf_counter() - key_rename_started, 3
+                    )
+                    _notify(
+                        "key_rename",
+                        f"done ({renamed_count:,} keys in {key_rename_duration}s)",
+                    )
+
+                # STEP 6: Quantize vectors
+                if needs_quantization and keys_to_process:
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+
+                    if active_backup:
+                        # New path: quantize from backup file (no Redis reads)
+                        _notify("quantize", "Re-encoding vectors from backup...")
+                        quantize_started = time.perf_counter()
+                        # If keys were renamed, update key references
+                        if has_prefix_change and rename_ops.change_prefix:
+                            old_prefix = plan.source.keyspace.prefixes[0]
+                            new_prefix = rename_ops.change_prefix
+                            keys_to_process = [
+                                (
+                                    new_prefix + k[len(old_prefix) :]
+                                    if k.startswith(old_prefix)
+                                    else k
+                                )
+                                for k in keys_to_process
+                            ]
+                        docs_quantized = self._quantize_from_backup(
+                            client=client,
+                            backup=active_backup,
+                            datatype_changes=effective_changes,
+                            progress_callback=lambda done, total: _notify(
+                                "quantize", f"{done:,}/{total:,} docs"
+                            ),
                         )
-                        for k in keys_to_process
-                    ]
-                    keys_to_process = normalize_keys(keys_to_process)
-                # Remap datatype_changes keys from source to target field
-                # names when field renames exist, since quantization runs
-                # after field renames (step 2).  The plan always stores
-                # datatype_changes keyed by source field names, so the
-                # remap is needed regardless of whether we are resuming.
-                effective_changes = datatype_changes
-                if has_field_renames:
-                    field_rename_map = {
-                        fr.old_name: fr.new_name for fr in rename_ops.rename_fields
-                    }
-                    effective_changes = {
-                        field_rename_map.get(k, k): v
-                        for k, v in datatype_changes.items()
-                    }
-                docs_quantized = self._quantize_vectors(
-                    source_index,
-                    effective_changes,
-                    keys_to_process,
-                    progress_callback=lambda done, total: _notify(
-                        "quantize", f"{done:,}/{total:,} docs"
-                    ),
-                    checkpoint_path=checkpoint_path,
-                )
-                quantize_duration = round(time.perf_counter() - quantize_started, 3)
-                _notify(
-                    "quantize",
-                    f"done ({docs_quantized:,} docs in {quantize_duration}s)",
-                )
-                report.warnings.append(
-                    f"Re-encoded {docs_quantized} documents for vector quantization: "
-                    f"{datatype_changes}"
-                )
-            elif datatype_changes and storage_type == "json":
-                # No checkpoint for JSON: vectors are re-indexed on recreate,
-                # so there is nothing to resume. Creating one would leave a
-                # stale in-progress checkpoint that misleads future runs.
-                _notify("quantize", "skipped (JSON vectors are re-indexed on recreate)")
+                    else:
+                        # Fallback: no backup dir, use legacy per-key quantize
+                        _notify("quantize", "Re-encoding vectors...")
+                        quantize_started = time.perf_counter()
+                        if has_prefix_change and rename_ops.change_prefix:
+                            old_prefix = plan.source.keyspace.prefixes[0]
+                            new_prefix = rename_ops.change_prefix
+                            keys_to_process = [
+                                (
+                                    new_prefix + k[len(old_prefix) :]
+                                    if k.startswith(old_prefix)
+                                    else k
+                                )
+                                for k in keys_to_process
+                            ]
+                            keys_to_process = normalize_keys(keys_to_process)
+                        docs_quantized = self._quantize_vectors(
+                            source_index,
+                            effective_changes,
+                            keys_to_process,
+                            progress_callback=lambda done, total: _notify(
+                                "quantize", f"{done:,}/{total:,} docs"
+                            ),
+                            checkpoint_path=checkpoint_path,
+                        )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
+                    report.warnings.append(
+                        f"Re-encoded {docs_quantized} documents for vector quantization: "
+                        f"{datatype_changes}"
+                    )
+                elif datatype_changes and storage_type == "json":
+                    _notify(
+                        "quantize", "skipped (JSON vectors are re-indexed on recreate)"
+                    )
 
             _notify("create", "Creating index with new schema...")
             recreate_started = time.perf_counter()
