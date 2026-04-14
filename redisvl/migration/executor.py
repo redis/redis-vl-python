@@ -330,43 +330,75 @@ class MigrationExecutor:
         new_prefix: str,
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> int:
-        """Rename keys using DUMP/RESTORE/DEL for Redis Cluster.
+        """Rename keys using batched DUMP/RESTORE/DEL for Redis Cluster.
 
         RENAME/RENAMENX raises CROSSSLOT errors when source and destination
-        hash to different slots.  DUMP/RESTORE works across slots because
-        each command targets a single key.
+        hash to different slots.  DUMP/RESTORE works across slots.
+
+        Batches DUMP+PTTL reads and RESTORE+DEL writes in groups of
+        ``pipeline_size`` to reduce per-key round-trip overhead.
         """
         renamed = 0
         total = len(keys)
+        pipeline_size = 100
 
-        for idx, key in enumerate(keys):
-            if not key.startswith(old_prefix):
-                logger.warning(f"Key '{key}' does not start with prefix '{old_prefix}'")
+        for i in range(0, total, pipeline_size):
+            batch = keys[i : i + pipeline_size]
+
+            # Build (key, new_key) pairs for this batch
+            pairs = []
+            for key in batch:
+                if not key.startswith(old_prefix):
+                    logger.warning(
+                        "Key '%s' does not start with prefix '%s'", key, old_prefix
+                    )
+                    continue
+                new_key = new_prefix + key[len(old_prefix) :]
+                pairs.append((key, new_key))
+
+            if not pairs:
                 continue
-            new_key = new_prefix + key[len(old_prefix) :]
 
-            # Collision check
-            if client.exists(new_key):
-                raise RuntimeError(
-                    f"Prefix rename aborted after {renamed} successful rename(s): "
-                    f"destination key '{new_key}' already exists. "
-                    f"Remove conflicting keys or choose a different prefix."
-                )
+            # Phase 1: Check destination keys don't exist (batched)
+            check_pipe = client.pipeline(transaction=False)
+            for _, new_key in pairs:
+                check_pipe.exists(new_key)
+            exists_results = check_pipe.execute()
+            for (_, new_key), exists in zip(pairs, exists_results):
+                if exists:
+                    raise RuntimeError(
+                        f"Prefix rename aborted after {renamed} successful rename(s): "
+                        f"destination key '{new_key}' already exists. "
+                        f"Remove conflicting keys or choose a different prefix."
+                    )
 
-            # DUMP → RESTORE → DEL (atomic per-key, cross-slot safe)
-            dumped = client.dump(key)
-            if dumped is None:
-                logger.warning(f"Key '{key}' does not exist, skipping")
-                continue
-            ttl = int(client.pttl(key))  # type: ignore[arg-type]
-            # pttl returns -1 (no expiry) or -2 (key missing)
-            restore_ttl = max(ttl, 0)
-            client.restore(new_key, restore_ttl, dumped, replace=False)  # type: ignore[arg-type]
-            client.delete(key)
-            renamed += 1
+            # Phase 2: DUMP + PTTL all source keys (batched — 1 RTT)
+            dump_pipe = client.pipeline(transaction=False)
+            for key, _ in pairs:
+                dump_pipe.dump(key)
+                dump_pipe.pttl(key)
+            dump_results = dump_pipe.execute()
 
-            if progress_callback and (idx + 1) % 100 == 0:
-                progress_callback(idx + 1, total)
+            # Phase 3: RESTORE + DEL (batched — 1 RTT)
+            restore_pipe = client.pipeline(transaction=False)
+            valid_pairs = []
+            for idx, (key, new_key) in enumerate(pairs):
+                dumped = dump_results[idx * 2]
+                ttl = int(dump_results[idx * 2 + 1])  # type: ignore[arg-type]
+                if dumped is None:
+                    logger.warning("Key '%s' does not exist, skipping", key)
+                    continue
+                restore_ttl = max(ttl, 0)
+                restore_pipe.restore(new_key, restore_ttl, dumped, replace=False)  # type: ignore[arg-type]
+                restore_pipe.delete(key)
+                valid_pairs.append((key, new_key))
+
+            if valid_pairs:
+                restore_pipe.execute()
+                renamed += len(valid_pairs)
+
+            if progress_callback:
+                progress_callback(min(i + pipeline_size, total), total)
 
         if progress_callback:
             progress_callback(total, total)
@@ -629,6 +661,18 @@ class MigrationExecutor:
                 Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}"
             )
             existing_backup = VectorBackup.load(backup_path)
+
+            # Fallback: probe for legacy backup filename (pre-hash naming)
+            if existing_backup is None:
+                legacy_path = str(Path(backup_dir) / f"migration_backup_{safe_name}")
+                legacy_backup = VectorBackup.load(legacy_path)
+                if legacy_backup is not None:
+                    logger.info(
+                        "Found legacy backup at %s (pre-hash naming), using it",
+                        legacy_path,
+                    )
+                    existing_backup = legacy_backup
+                    backup_path = legacy_path
 
             if existing_backup is not None:
                 if existing_backup.header.index_name != plan.source.index_name:
