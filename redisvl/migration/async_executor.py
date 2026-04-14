@@ -478,6 +478,7 @@ class AsyncMigrationExecutor:
         checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
+        num_workers: int = 1,
     ) -> MigrationReport:
         """Apply a migration plan asynchronously.
 
@@ -490,6 +491,7 @@ class AsyncMigrationExecutor:
             checkpoint_path: Deprecated — use backup_dir instead.
             backup_dir: Directory for vector backup files.
             batch_size: Keys per pipeline batch (default 500).
+            num_workers: Number of parallel workers (default 1).
         """
         started_at = timestamp_utc()
         started = time.perf_counter()

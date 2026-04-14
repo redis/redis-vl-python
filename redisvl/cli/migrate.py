@@ -240,6 +240,14 @@ Commands:
             default=500,
         )
         parser.add_argument(
+            "--workers",
+            dest="num_workers",
+            type=int,
+            help="Number of parallel workers for quantization (default 1). "
+            "Each worker gets its own Redis connection. Requires --backup-dir.",
+            default=1,
+        )
+        parser.add_argument(
             "--report-out",
             help="Path to write migration_report.yaml",
             default="migration_report.yaml",
@@ -284,6 +292,7 @@ Commands:
                     checkpoint_path=args.checkpoint_path,
                     backup_dir=args.backup_dir,
                     batch_size=args.batch_size,
+                    num_workers=args.num_workers,
                 )
             )
         else:
@@ -294,6 +303,7 @@ Commands:
                 checkpoint_path=args.checkpoint_path,
                 backup_dir=args.backup_dir,
                 batch_size=args.batch_size,
+                num_workers=args.num_workers,
             )
 
         write_migration_report(report, args.report_out)
@@ -350,6 +360,7 @@ Commands:
         checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
+        num_workers: int = 1,
     ):
         """Execute migration synchronously."""
         executor = MigrationExecutor()
@@ -364,6 +375,7 @@ Commands:
             checkpoint_path=checkpoint_path,
             backup_dir=backup_dir,
             batch_size=batch_size,
+            num_workers=num_workers,
         )
 
         self._print_apply_result(report)
@@ -377,6 +389,7 @@ Commands:
         checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
+        num_workers: int = 1,
     ):
         """Execute migration asynchronously (non-blocking for large quantization jobs)."""
         executor = AsyncMigrationExecutor()
@@ -391,6 +404,7 @@ Commands:
             checkpoint_path=checkpoint_path,
             backup_dir=backup_dir,
             batch_size=batch_size,
+            num_workers=num_workers,
         )
 
         self._print_apply_result(report)
