@@ -1036,17 +1036,33 @@ class AsyncMigrationExecutor:
         return report
 
     def _cleanup_backup_files(self, backup_dir: str, index_name: str) -> None:
-        """Remove backup files after successful migration."""
-        import glob
+        """Remove backup files after successful migration.
 
+        Only removes files with the exact extensions produced by VectorBackup
+        (.header and .data), avoiding accidental deletion of unrelated files
+        that happen to share the same prefix.
+        """
         safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-        pattern = str(Path(backup_dir) / f"migration_backup_{safe_name}*")
-        for f in glob.glob(pattern):
+        base_prefix = f"migration_backup_{safe_name}"
+        known_suffixes = (".header", ".data")
+        backup_dir_path = Path(backup_dir)
+
+        for entry in backup_dir_path.iterdir():
+            if not entry.is_file():
+                continue
+            name = entry.name
+            if not name.startswith(base_prefix):
+                continue
+            if not any(name.endswith(s) for s in known_suffixes):
+                continue
+            remainder = name[len(base_prefix) :]
+            if remainder and remainder[0] not in (".", "_"):
+                continue
             try:
-                Path(f).unlink()
-                logger.debug("Removed backup file: %s", f)
+                entry.unlink()
+                logger.debug("Removed backup file: %s", entry)
             except OSError as e:
-                logger.warning("Failed to remove backup file %s: %s", f, e)
+                logger.warning("Failed to remove backup file %s: %s", entry, e)
 
     # ------------------------------------------------------------------
     # Two-phase quantization: dump originals → convert from backup

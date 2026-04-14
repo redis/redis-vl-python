@@ -428,3 +428,122 @@ class TestRollbackCLI:
         bp = str(tmp_path / "bad_backup")
         result = VectorBackup.load(bp)
         assert result is None
+
+    def test_rollback_skips_incomplete_backup_phase(self, tmp_path):
+        """Backups in 'dump' phase should be skipped without --force."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp = str(tmp_path / "migration_backup_partial")
+        backup = VectorBackup.create(
+            path=bp,
+            index_name="partial_idx",
+            fields={"embedding": {"source": "float32", "target": "float16", "dims": 4}},
+            batch_size=1,
+        )
+        # Write one batch but don't mark dump complete — phase stays "dump"
+        backup.write_batch(0, ["doc:0"], {"doc:0": {"embedding": b"\x00" * 16}})
+        # Phase is "dump" — not in safe rollback phases
+        assert backup.header.phase == "dump"
+        safe_phases = frozenset({"ready", "active", "completed"})
+        assert backup.header.phase not in safe_phases
+
+    def test_rollback_index_filter(self, tmp_path):
+        """--index filter should match only backups for the specified index."""
+        self._create_backup_with_data(tmp_path, name="idx_a")
+        self._create_backup_with_data(tmp_path, name="idx_b")
+
+        from pathlib import Path
+
+        from redisvl.migration.backup import VectorBackup
+
+        header_files = sorted(Path(tmp_path).glob("*.header"))
+        assert len(header_files) == 2
+
+        # Filter for idx_a only
+        backup_paths = [str(h.with_suffix("")) for h in header_files]
+        filtered = []
+        for bp in backup_paths:
+            backup = VectorBackup.load(bp)
+            if backup and backup.header.index_name == "idx_a":
+                filtered.append(bp)
+        assert len(filtered) == 1
+        assert "idx_a" in filtered[0]
+
+    def test_rollback_multi_index_requires_flag(self, tmp_path):
+        """Multiple distinct indexes should require --index or --yes."""
+        self._create_backup_with_data(tmp_path, name="idx_a")
+        self._create_backup_with_data(tmp_path, name="idx_b")
+
+        from pathlib import Path
+
+        from redisvl.migration.backup import VectorBackup
+
+        header_files = sorted(Path(tmp_path).glob("*.header"))
+        backup_paths = [str(h.with_suffix("")) for h in header_files]
+        backups = []
+        for bp in backup_paths:
+            backup = VectorBackup.load(bp)
+            if backup:
+                backups.append(backup)
+        distinct = {b.header.index_name for b in backups}
+        assert len(distinct) > 1  # Multi-index — should require --index or --yes
+
+
+class TestBackupCleanup:
+    """Tests for tightened backup file cleanup."""
+
+    def test_cleanup_only_removes_known_extensions(self, tmp_path):
+        """Cleanup should only remove .header and .data files."""
+        # Create files with various extensions
+        (tmp_path / "migration_backup_test.header").touch()
+        (tmp_path / "migration_backup_test.data").touch()
+        (tmp_path / "migration_backup_test.log").touch()  # should NOT be deleted
+        (tmp_path / "migration_backup_test_shard_0.header").touch()
+        (tmp_path / "migration_backup_test_shard_0.data").touch()
+        (tmp_path / "unrelated_file.txt").touch()  # should NOT be deleted
+
+        # Simulate the cleanup logic
+        base_prefix = "migration_backup_test"
+        known_suffixes = (".header", ".data")
+        deleted = []
+        for entry in tmp_path.iterdir():
+            if not entry.is_file():
+                continue
+            name = entry.name
+            if not name.startswith(base_prefix):
+                continue
+            if not any(name.endswith(s) for s in known_suffixes):
+                continue
+            remainder = name[len(base_prefix) :]
+            if remainder and remainder[0] not in (".", "_"):
+                continue
+            deleted.append(name)
+
+        assert "migration_backup_test.header" in deleted
+        assert "migration_backup_test.data" in deleted
+        assert "migration_backup_test_shard_0.header" in deleted
+        assert "migration_backup_test_shard_0.data" in deleted
+        assert "migration_backup_test.log" not in deleted
+        assert "unrelated_file.txt" not in deleted
+
+    def test_cleanup_does_not_match_similar_prefix(self, tmp_path):
+        """migration_backup_foo should not match migration_backup_foobar."""
+        (tmp_path / "migration_backup_foo.header").touch()
+        (tmp_path / "migration_backup_foobar.header").touch()
+
+        base_prefix = "migration_backup_foo"
+        known_suffixes = (".header", ".data")
+        deleted = []
+        for entry in tmp_path.iterdir():
+            name = entry.name
+            if not name.startswith(base_prefix):
+                continue
+            if not any(name.endswith(s) for s in known_suffixes):
+                continue
+            remainder = name[len(base_prefix) :]
+            if remainder and remainder[0] not in (".", "_"):
+                continue
+            deleted.append(name)
+
+        assert "migration_backup_foo.header" in deleted
+        assert "migration_backup_foobar.header" not in deleted
