@@ -223,8 +223,21 @@ Commands:
         parser.add_argument(
             "--resume",
             dest="checkpoint_path",
-            help="Path to quantization checkpoint file for crash-safe resume",
+            help="(Deprecated) Path to quantization checkpoint file. Use --backup-dir instead.",
             default=None,
+        )
+        parser.add_argument(
+            "--backup-dir",
+            dest="backup_dir",
+            help="Directory for vector backup files. Enables crash-safe resume and rollback.",
+            default=None,
+        )
+        parser.add_argument(
+            "--batch-size",
+            dest="batch_size",
+            type=int,
+            help="Keys per pipeline batch (default 500)",
+            default=500,
         )
         parser.add_argument(
             "--report-out",
@@ -265,12 +278,22 @@ Commands:
         if args.use_async:
             report = asyncio.run(
                 self._apply_async(
-                    plan, redis_url, args.query_check_file, args.checkpoint_path
+                    plan,
+                    redis_url,
+                    args.query_check_file,
+                    checkpoint_path=args.checkpoint_path,
+                    backup_dir=args.backup_dir,
+                    batch_size=args.batch_size,
                 )
             )
         else:
             report = self._apply_sync(
-                plan, redis_url, args.query_check_file, args.checkpoint_path
+                plan,
+                redis_url,
+                args.query_check_file,
+                checkpoint_path=args.checkpoint_path,
+                backup_dir=args.backup_dir,
+                batch_size=args.batch_size,
             )
 
         write_migration_report(report, args.report_out)
@@ -325,6 +348,8 @@ Commands:
         redis_url: str,
         query_check_file: Optional[str],
         checkpoint_path: Optional[str] = None,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
     ):
         """Execute migration synchronously."""
         executor = MigrationExecutor()
@@ -337,6 +362,8 @@ Commands:
             query_check_file=query_check_file,
             progress_callback=self._make_progress_callback(),
             checkpoint_path=checkpoint_path,
+            backup_dir=backup_dir,
+            batch_size=batch_size,
         )
 
         self._print_apply_result(report)
@@ -348,6 +375,8 @@ Commands:
         redis_url: str,
         query_check_file: Optional[str],
         checkpoint_path: Optional[str] = None,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
     ):
         """Execute migration asynchronously (non-blocking for large quantization jobs)."""
         executor = AsyncMigrationExecutor()
@@ -360,6 +389,8 @@ Commands:
             query_check_file=query_check_file,
             progress_callback=self._make_progress_callback(),
             checkpoint_path=checkpoint_path,
+            backup_dir=backup_dir,
+            batch_size=batch_size,
         )
 
         self._print_apply_result(report)
