@@ -561,57 +561,43 @@ The dump phase adds one extra read pass over all keys. But since reads are now p
 - PR review (async pipelining): Copilot comment on `async_executor.py:639-654`
 - PR review (sync pipelining): Copilot comment on `executor.py:674-695`
 
-## Implementation Status
+## Implementation Status — COMPLETE
 
 Branch: `feat/migrate-perf-overhaul`
 
-### Implemented (Changes 1 + 2)
+All three spec changes are implemented. Legacy components removed.
+
+### Implemented
 
 | Component | File | Status |
 |-----------|------|--------|
-| `VectorBackup` class | `redisvl/migration/backup.py` | ✅ Done — 16 tests |
-| Pipeline read/write/convert helpers | `redisvl/migration/quantize.py` | ✅ Done — 6 tests |
-| `_dump_vectors` on `MigrationExecutor` | `redisvl/migration/executor.py` | ✅ Done — 4 tests |
-| `_quantize_from_backup` on `MigrationExecutor` | `redisvl/migration/executor.py` | ✅ Done |
-| `apply()` refactored: dump→drop→quantize | `redisvl/migration/executor.py` | ✅ Done |
-| Async `_dump_vectors` / `_quantize_from_backup` | `redisvl/migration/async_executor.py` | ✅ Done |
-| Async `apply()` refactored | `redisvl/migration/async_executor.py` | ✅ Done |
+| `VectorBackup` class | `redisvl/migration/backup.py` | ✅ 16 tests |
+| Pipeline read/write/convert helpers | `redisvl/migration/quantize.py` | ✅ 6 tests |
+| `split_keys`, `MultiWorkerResult` | `redisvl/migration/quantize.py` | ✅ 5 tests |
+| `multi_worker_quantize` (sync) | `redisvl/migration/quantize.py` | ✅ 3 tests |
+| `async_multi_worker_quantize` | `redisvl/migration/quantize.py` | ✅ Done |
+| `_dump_vectors` / `_quantize_from_backup` | Both executors | ✅ 4 tests |
+| `apply()` refactored: dump→drop→quantize | Both executors | ✅ Done |
+| Multi-worker wired into `apply()` | Both executors | ✅ Done |
 | `--backup-dir` CLI flag | `redisvl/cli/migrate.py` | ✅ Done |
 | `--batch-size` CLI flag | `redisvl/cli/migrate.py` | ✅ Done |
-| TYPE_CHECKING import for mypy | Both executors | ✅ Done |
-| BGSAVE removed from normal path | Both executors | ✅ Done |
-| Legacy `--resume` / `checkpoint_path` | Both executors | ✅ Preserved as fallback |
+| `--workers` CLI flag | `redisvl/cli/migrate.py` | ✅ Done |
+| `--keep-backup` CLI flag | `redisvl/cli/migrate.py` | ✅ Done |
+| Auto-cleanup backup files on success | Both executors | ✅ Done |
+| Disk space estimation | Already existed | ✅ Pre-existing |
 
-**Test results:** 812 unit tests pass, mypy clean, pre-commit clean.
+### Removed (legacy components)
 
-### Deferred (Change 3: Multi-worker)
+| Component | Status |
+|-----------|--------|
+| `QuantizationCheckpoint` usage | ❌ Removed from executors |
+| `BatchUndoBuffer` usage | ❌ Removed from executors |
+| `trigger_bgsave_and_wait` / async | ❌ Removed from executors |
+| `_quantize_vectors` / `_async_quantize_vectors` | ❌ Removed |
+| `--resume` / `checkpoint_path` CLI flag | ❌ Removed |
+| 32 legacy tests | ❌ Removed |
 
-Multi-worker parallelism (`--workers N`) is fully specced above but
-deferred to a follow-up PR. Reasons:
+Note: `reliability.py` module still exists (provides `is_same_width_dtype_conversion`
+and other utilities). Its legacy classes are no longer imported by executors.
 
-1. Pipeline reads alone provide ~10x speedup (50min → 5min), which
-   may be sufficient for most use cases.
-2. Multi-worker adds complexity (ThreadPoolExecutor, per-worker connections,
-   per-worker backup shards, progress merging) that should be validated
-   with benchmarks before shipping.
-3. Safety constraints (replication backlog, AOF pressure, cluster slot
-   awareness) need documentation and testing.
-
-When implementing:
-- Sync: `concurrent.futures.ThreadPoolExecutor`
-- Async: `asyncio.gather` with N concurrent coroutines
-- Each worker: own Redis connection + own backup file shard
-- Default N=1, opt-in via `--workers N`
-
-### Not removed (legacy compatibility)
-
-The following components are **kept** for backward compatibility with
-the `--resume` / `checkpoint_path` code path:
-
-- `QuantizationCheckpoint` in `reliability.py`
-- `trigger_bgsave_and_wait` / `async_trigger_bgsave_and_wait`
-- `BatchUndoBuffer`
-- `_quantize_vectors` / `_async_quantize_vectors` methods
-
-These will be removed in a follow-up once `--backup-dir` is validated
-in production and `--resume` is fully deprecated.
+**Test results:** 788 unit tests pass, mypy clean, pre-commit clean.
