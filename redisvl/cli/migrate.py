@@ -283,6 +283,15 @@ Commands:
         if args.legacy_resume is not None:
             import warnings
 
+            # Fail fast if the value looks like a checkpoint file (old semantics)
+            if os.path.isfile(args.legacy_resume) or args.legacy_resume.endswith(
+                (".yaml", ".yml")
+            ):
+                parser.error(
+                    "--resume semantics have changed: it now expects a backup "
+                    "directory, not a checkpoint file. Use --backup-dir <dir> instead."
+                )
+
             warnings.warn(
                 "--resume is deprecated and will be removed in a future version. "
                 "Use --backup-dir instead: the backup directory replaces "
@@ -291,8 +300,11 @@ Commands:
                 stacklevel=1,
             )
             if args.backup_dir is None:
-                # Treat --resume value as a backup directory
                 args.backup_dir = args.legacy_resume
+
+        # Validate --workers > 1 requires --backup-dir
+        if args.num_workers > 1 and args.backup_dir is None:
+            parser.error("--workers > 1 requires --backup-dir")
 
         redis_url = create_redis_url(args)
         plan = load_migration_plan(args.plan)
@@ -362,7 +374,7 @@ Commands:
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate rollback --backup-dir <dir> "
-                "[--batch-size N] [--url <redis_url>]"
+                "[--index <name>] [--url <redis_url>]"
             )
         )
         parser.add_argument(
@@ -372,11 +384,10 @@ Commands:
             required=True,
         )
         parser.add_argument(
-            "--batch-size",
-            dest="batch_size",
-            type=int,
-            help="Keys per pipeline batch when restoring (default 500)",
-            default=500,
+            "--index",
+            dest="index_name",
+            help="Only restore backups for this index name (filters by backup header)",
+            default=None,
         )
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
@@ -401,14 +412,43 @@ Commands:
         # Derive backup base paths (strip .header suffix)
         backup_paths = [str(h.with_suffix("")) for h in header_files]
 
+        # Load and filter backups
+        backups_to_restore = []
+        for bp in backup_paths:
+            backup = VectorBackup.load(bp)
+            if backup is None:
+                print(f"  Skipping {bp}: could not load backup")
+                continue
+            if args.index_name and backup.header.index_name != args.index_name:
+                print(
+                    f"  Skipping {os.path.basename(bp)}: "
+                    f"index '{backup.header.index_name}' != '{args.index_name}'"
+                )
+                continue
+            backups_to_restore.append((bp, backup))
+
+        if not backups_to_restore:
+            print("Error: no matching backup files found")
+            sys.exit(1)
+
+        # Warn if multiple distinct indexes detected without --index filter
+        distinct_indexes = {b.header.index_name for _, b in backups_to_restore}
+        if len(distinct_indexes) > 1 and not args.index_name:
+            print(
+                f"Warning: found backups for {len(distinct_indexes)} distinct indexes: "
+                f"{', '.join(sorted(distinct_indexes))}. "
+                f"Use --index to filter, or press Enter to continue."
+            )
+            try:
+                input()
+            except (EOFError, KeyboardInterrupt):
+                print("\nAborted.")
+                sys.exit(1)
+
         client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         total_restored = 0
         try:
-            for bp in backup_paths:
-                backup = VectorBackup.load(bp)
-                if backup is None:
-                    print(f"  Skipping {bp}: could not load backup")
-                    continue
+            for bp, backup in backups_to_restore:
                 print(
                     f"Restoring from: {os.path.basename(bp)} "
                     f"(index={backup.header.index_name}, "

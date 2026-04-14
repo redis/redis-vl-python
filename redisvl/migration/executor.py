@@ -997,7 +997,7 @@ class MigrationExecutor:
                             converted = convert_vectors(originals, effective_changes)
                             if converted:
                                 pipeline_write_vectors(client, converted)
-                            docs_quantized += len(batch_keys)
+                            docs_quantized += len(converted) if converted else 0
                             if progress_callback:
                                 _notify(
                                     "quantize",
