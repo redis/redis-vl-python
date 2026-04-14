@@ -399,7 +399,7 @@ Commands:
             sys.exit(1)
 
         # Derive backup base paths (strip .header suffix)
-        backup_paths = [str(h).removesuffix(".header") for h in header_files]
+        backup_paths = [str(h.with_suffix("")) for h in header_files]
 
         client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         total_restored = 0
@@ -419,13 +419,15 @@ Commands:
                 batch_count = 0
                 for keys, originals in backup.iter_batches():
                     pipe = client.pipeline(transaction=False)
+                    batch_restored = 0
                     for key in keys:
                         if key in originals:
                             for field_name, original_bytes in originals[key].items():
                                 pipe.hset(key, field_name, original_bytes)
+                            batch_restored += 1
                     pipe.execute()
                     batch_count += 1
-                    total_restored += len(keys)
+                    total_restored += batch_restored
                     if batch_count % 10 == 0:
                         print(
                             f"  Restored {total_restored:,} vectors "

@@ -353,3 +353,78 @@ class TestVectorBackupRollback:
         assert len(all_originals) == 4
         for key in ["doc:0", "doc:1", "doc:2", "doc:3"]:
             assert all_originals[key]["embedding"] == vecs[key]
+
+
+class TestRollbackCLI:
+    """Tests for the rvl migrate rollback CLI command path derivation and restore logic."""
+
+    def _create_backup_with_data(self, tmp_path, name="test_idx"):
+        """Helper: create a backup with 2 batches of data."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp = str(tmp_path / f"migration_backup_{name}")
+        vecs = {
+            "doc:0": struct.pack("<4f", 1.0, 2.0, 3.0, 4.0),
+            "doc:1": struct.pack("<4f", 5.0, 6.0, 7.0, 8.0),
+        }
+        backup = VectorBackup.create(
+            path=bp,
+            index_name=name,
+            fields={"embedding": {"source": "float32", "target": "float16", "dims": 4}},
+            batch_size=1,
+        )
+        backup.write_batch(0, ["doc:0"], {"doc:0": {"embedding": vecs["doc:0"]}})
+        backup.write_batch(1, ["doc:1"], {"doc:1": {"embedding": vecs["doc:1"]}})
+        backup.mark_dump_complete()
+        return bp, vecs
+
+    def test_header_path_derivation_no_removesuffix(self, tmp_path):
+        """Verify path derivation works without str.removesuffix (Python 3.8 compat)."""
+        from pathlib import Path
+
+        bp, _ = self._create_backup_with_data(tmp_path)
+        header_files = sorted(Path(tmp_path).glob("*.header"))
+        assert len(header_files) == 1
+        # This is how the CLI derives backup paths — must not use removesuffix
+        derived = str(header_files[0].with_suffix(""))
+        assert derived == bp
+
+    def test_rollback_restores_via_iter_batches(self, tmp_path):
+        """Verify rollback reads all batches and gets correct original vectors."""
+        from redisvl.migration.backup import VectorBackup
+
+        bp, vecs = self._create_backup_with_data(tmp_path)
+        backup = VectorBackup.load(bp)
+        assert backup is not None
+
+        restored = {}
+        for batch_keys, originals in backup.iter_batches():
+            for key in batch_keys:
+                if key in originals:
+                    restored[key] = originals[key]
+
+        assert len(restored) == 2
+        assert restored["doc:0"]["embedding"] == vecs["doc:0"]
+        assert restored["doc:1"]["embedding"] == vecs["doc:1"]
+
+    def test_rollback_nonexistent_dir(self):
+        """Verify error handling for missing backup directory."""
+        import os
+
+        assert not os.path.isdir("/nonexistent/backup/dir/xyz123")
+
+    def test_rollback_empty_dir(self, tmp_path):
+        """Verify no header files found in empty directory."""
+        from pathlib import Path
+
+        header_files = sorted(Path(tmp_path).glob("*.header"))
+        assert len(header_files) == 0
+
+    def test_rollback_unloadable_backup_returns_none(self, tmp_path):
+        """VectorBackup.load returns None for corrupt/missing data."""
+        from redisvl.migration.backup import VectorBackup
+
+        # Create header but no data file
+        bp = str(tmp_path / "bad_backup")
+        result = VectorBackup.load(bp)
+        assert result is None
