@@ -189,6 +189,122 @@ On resume:
 - **Rollback:** At any point after dump completes, read originals from
   backup file, pipeline-HSET them back to Redis.
 
+#### Worked example: crash and resume
+
+Setup: 2,000 keys, batch_size=500, quantizing `embedding` from float32 → float16.
+4 batches total:
+
+```
+batch 0 = doc:0    – doc:499    (always these keys, fixed at dump time)
+batch 1 = doc:500  – doc:999
+batch 2 = doc:1000 – doc:1499
+batch 3 = doc:1500 – doc:1999
+```
+
+The batch layout is frozen when the dump completes. Batch index 2 always
+means keys doc:1000–doc:1499 whether it's the first run or a resume after
+crash. One integer counter is enough to track progress.
+
+**Phase 1 — Dump (index alive, no mutations):**
+
+```
+batch 0: pipeline HGET doc:0..499   → write float32 bytes to backup file
+         header: phase=dump, dump_completed_batches=1
+batch 1: pipeline HGET doc:500..999 → write to file
+         header: dump_completed_batches=2
+batch 2: pipeline HGET doc:1000..1499 → write to file
+         header: dump_completed_batches=3
+batch 3: pipeline HGET doc:1500..1999 → write to file
+         header: dump_completed_batches=4
+
+header: phase=ready   (dump complete, all originals on disk)
+```
+
+No Redis data modified. Index still alive.
+
+**Drop index + key renames happen here.**
+
+```
+header: phase=active  (mutations starting)
+```
+
+**Phase 2 — Quantize (index dropped):**
+
+```
+batch 0: read originals from backup file (local disk, no Redis read)
+         convert float32 → float16 in memory
+         pipeline HSET doc:0..499 with float16 bytes → pipe.execute() ✓
+         header: quantize_completed_batches=1   ← atomic write AFTER execute
+
+batch 1: read from file → convert → pipeline HSET doc:500..999 → execute ✓
+         header: quantize_completed_batches=2
+
+batch 2: read from file → convert → pipeline HSET doc:1000..1499
+         pipe.execute() → ☠️ CRASH (process killed mid-pipeline)
+         header update NEVER HAPPENED
+```
+
+**State after crash:**
+
+```
+Redis:
+  doc:0    – doc:499   → float16  ✅  (batch 0, fully committed)
+  doc:500  – doc:999   → float16  ✅  (batch 1, fully committed)
+  doc:1000 – doc:1200  → float16  ⚠️  (batch 2, partial — ~200 keys written before crash)
+  doc:1201 – doc:1499  → float32  ❌  (batch 2, rest not yet written)
+  doc:1500 – doc:1999  → float32  ❌  (batch 3, not started)
+
+Backup file header:
+  phase: active
+  quantize_completed_batches: 2   ← NOT updated (crash happened before atomic write)
+
+Backup file data:
+  batch 0: {doc:0..499:   original float32 bytes}   ← all originals preserved
+  batch 1: {doc:500..999: original float32 bytes}
+  batch 2: {doc:1000..1499: original float32 bytes}
+  batch 3: {doc:1500..1999: original float32 bytes}
+```
+
+**Resume — user runs migrate again:**
+
+```
+Read header → phase=active, quantize_completed_batches=2
+
+batch 0: 0 < 2 → skip
+batch 1: 1 < 2 → skip
+
+batch 2: 2 >= 2 → re-process entire batch
+         read doc:1000..1499 originals from backup file
+         convert float32 → float16
+         pipeline HSET all 500 keys → pipe.execute() ✓
+         header: quantize_completed_batches=3
+
+         doc:1000–doc:1200 already had float16 from the crashed run.
+         HSET overwrites with the same float16 value. Idempotent. No harm.
+
+batch 3: 3 >= 2 → process normally
+         read doc:1500..1999 from file → convert → HSET → execute ✓
+         header: quantize_completed_batches=4
+
+header: phase=completed
+```
+
+All 2,000 keys now float16. Proceed to FT.CREATE.
+
+**Rollback — user wants original float32 back instead:**
+
+```
+Read backup file
+batch 0: read original float32 bytes → pipeline HSET doc:0..499
+batch 1: read originals → pipeline HSET doc:500..999
+batch 2: read originals → pipeline HSET doc:1000..1499
+batch 3: read originals → pipeline HSET doc:1500..1999
+Done — all 2,000 keys restored to float32
+```
+
+The backup file makes rollback possible at any point because it stores
+the actual vector bytes, not just a list of which keys were processed.
+
 #### What this replaces
 
 | Old component | New replacement |
