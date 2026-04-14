@@ -129,6 +129,8 @@ def split_keys(keys: List[str], num_workers: int) -> List[List[str]]:
     Returns:
         List of key slices (some may be empty if keys < workers)
     """
+    if num_workers < 1:
+        raise ValueError(f"num_workers must be >= 1, got {num_workers}")
     if not keys:
         return []
     n = len(keys)

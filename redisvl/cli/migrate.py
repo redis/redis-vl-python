@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -40,6 +41,7 @@ class Migrate:
             "\tplan         Generate a migration plan for a document-preserving drop/recreate migration",
             "\tapply        Execute a reviewed drop/recreate migration plan (use --async for large migrations)",
             "\testimate     Estimate disk space required for a migration plan (dry-run, no mutations)",
+            "\trollback     Restore original vectors from a backup directory (undo quantization)",
             "\tvalidate     Validate a completed migration plan against the live index",
             "\tbatch-plan   Generate a batch migration plan for multiple indexes",
             "\tbatch-apply  Execute a batch migration plan with checkpointing",
@@ -248,6 +250,13 @@ Commands:
             help="Keep backup files after successful migration (default: auto-delete).",
             default=False,
         )
+        # Deprecated alias for --backup-dir (was --resume in previous versions)
+        parser.add_argument(
+            "--resume",
+            dest="legacy_resume",
+            help=argparse.SUPPRESS,  # hidden from help
+            default=None,
+        )
         parser.add_argument(
             "--report-out",
             help="Path to write migration_report.yaml",
@@ -265,6 +274,25 @@ Commands:
         )
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
+
+        # Validate --workers
+        if args.num_workers < 1:
+            parser.error("--workers must be >= 1")
+
+        # Handle deprecated --resume flag
+        if args.legacy_resume is not None:
+            import warnings
+
+            warnings.warn(
+                "--resume is deprecated and will be removed in a future version. "
+                "Use --backup-dir instead: the backup directory replaces "
+                "checkpoint files for crash-safe resume and rollback.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
+            if args.backup_dir is None:
+                # Treat --resume value as a backup directory
+                args.backup_dir = args.legacy_resume
 
         redis_url = create_redis_url(args)
         plan = load_migration_plan(args.plan)
@@ -328,6 +356,95 @@ Commands:
         plan = load_migration_plan(args.plan)
         disk_estimate = estimate_disk_space(plan, aof_enabled=args.aof_enabled)
         print(disk_estimate.summary())
+
+    def rollback(self):
+        """Restore original vectors from a backup directory (undo quantization)."""
+        parser = argparse.ArgumentParser(
+            usage=(
+                "rvl migrate rollback --backup-dir <dir> "
+                "[--batch-size N] [--url <redis_url>]"
+            )
+        )
+        parser.add_argument(
+            "--backup-dir",
+            dest="backup_dir",
+            help="Directory containing vector backup files from a prior migration",
+            required=True,
+        )
+        parser.add_argument(
+            "--batch-size",
+            dest="batch_size",
+            type=int,
+            help="Keys per pipeline batch when restoring (default 500)",
+            default=500,
+        )
+        parser = add_redis_connection_options(parser)
+        args = parser.parse_args(sys.argv[3:])
+
+        redis_url = create_redis_url(args)
+
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.redis.connection import RedisConnectionFactory
+
+        # Find backup files in the directory
+        backup_dir = args.backup_dir
+        if not os.path.isdir(backup_dir):
+            print(f"Error: backup directory not found: {backup_dir}")
+            sys.exit(1)
+
+        # Look for .header files to find backups
+        header_files = sorted(Path(backup_dir).glob("*.header"))
+        if not header_files:
+            print(f"Error: no backup files found in {backup_dir}")
+            sys.exit(1)
+
+        # Derive backup base paths (strip .header suffix)
+        backup_paths = [str(h).removesuffix(".header") for h in header_files]
+
+        client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
+        total_restored = 0
+        try:
+            for bp in backup_paths:
+                backup = VectorBackup.load(bp)
+                if backup is None:
+                    print(f"  Skipping {bp}: could not load backup")
+                    continue
+                print(
+                    f"Restoring from: {os.path.basename(bp)} "
+                    f"(index={backup.header.index_name}, "
+                    f"phase={backup.header.phase}, "
+                    f"batches={backup.header.dump_completed_batches})"
+                )
+
+                batch_count = 0
+                for keys, originals in backup.iter_batches():
+                    pipe = client.pipeline(transaction=False)
+                    for key in keys:
+                        if key in originals:
+                            for field_name, original_bytes in originals[key].items():
+                                pipe.hset(key, field_name, original_bytes)
+                    pipe.execute()
+                    batch_count += 1
+                    total_restored += len(keys)
+                    if batch_count % 10 == 0:
+                        print(
+                            f"  Restored {total_restored:,} vectors "
+                            f"({batch_count}/{backup.header.dump_completed_batches} batches)"
+                        )
+
+                print(
+                    f"  Done: {batch_count} batches restored from {os.path.basename(bp)}"
+                )
+        finally:
+            client.close()
+
+        print(
+            f"\n✅ Rollback complete: {total_restored:,} vectors restored to original values"
+        )
+        print(
+            "Note: You may need to recreate the original index schema "
+            "(FT.CREATE) if the index was changed during migration."
+        )
 
     @staticmethod
     def _make_progress_callback():

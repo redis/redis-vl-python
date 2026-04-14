@@ -506,21 +506,67 @@ class MigrationExecutor:
     ) -> MigrationReport:
         """Apply a migration plan.
 
+        Executes the migration phases in order: enumerate → dump → drop →
+        key-renames → quantize → create → index → validate.
+
+        **Single-worker mode** (default): original vectors are read from Redis
+        and backed up to disk *before* the index is dropped, then converted
+        and written back after the drop. This provides the strongest
+        crash-safety: if the process dies after drop, the complete backup is
+        already on disk for manual rollback.
+
+        **Multi-worker mode** (``num_workers > 1``): for performance, the dump
+        and quantize phases are fused — each worker reads its key shard,
+        writes the original to its backup shard, converts, and writes the
+        quantized vector back, all *after* the index drop. This avoids a
+        redundant full read pass but means the backup may be incomplete if
+        the process crashes mid-quantize. A re-run with the same
+        ``backup_dir`` will detect partial backups and resume from where it
+        left off.
+
         Args:
-            plan: The migration plan to apply.
-            redis_url: Redis connection URL.
-            redis_client: Optional existing Redis client.
-            query_check_file: Optional file with query checks.
-            progress_callback: Optional callback(step, detail) for progress updates.
-                step: Current step name (e.g., "drop", "quantize", "create", "index", "validate")
-                detail: Optional detail string (e.g., "1000/5000 docs (20%)")
+            plan: The migration plan to apply (from ``MigrationPlanner.create_plan``).
+            redis_url: Redis connection URL (e.g. ``"redis://localhost:6379"``).
+                Required when *num_workers* > 1 so each worker can open its own
+                connection. Mutually exclusive with *redis_client* for the
+                multi-worker path.
+            redis_client: Optional existing Redis client. Ignored when
+                *num_workers* > 1.
+            query_check_file: Optional YAML file containing post-migration
+                queries to verify search results.
+            progress_callback: Optional ``callback(step, detail)`` invoked
+                during each migration phase.
+
+                * *step*: phase name (``"enumerate"``, ``"dump"``, ``"drop"``,
+                  ``"quantize"``, ``"create"``, ``"index"``, ``"validate"``)
+                * *detail*: human-readable progress string
+                  (e.g. ``"1000/5000 docs"``) or ``None``
             backup_dir: Directory for vector backup files. When provided,
-                enables crash-safe resume and rollback for quantization.
-            batch_size: Keys per pipeline batch (default 500).
-            num_workers: Number of parallel workers for quantization (default 1).
-                Each worker gets its own Redis connection and backup file shard.
-            keep_backup: If True, keep backup files after successful migration.
-                Default False (auto-cleanup on success).
+                original vectors are saved to disk before mutation, enabling
+                crash-safe resume (re-run the same command) and manual rollback.
+                Required when *num_workers* > 1.  Disk usage is approximately
+                ``num_docs × dims × bytes_per_element`` (e.g. ~2.9 GB for 1 M
+                768-dim float32 vectors).
+            batch_size: Number of keys per Redis pipeline batch (default 500).
+                Controls the granularity of pipelined ``HGET``/``HSET`` calls.
+                Larger batches reduce round-trips but increase per-batch memory.
+                Values between 200 and 1000 are typical.
+            num_workers: Number of parallel quantization workers (default 1).
+                Each worker opens its own Redis connection and writes to its own
+                backup-file shard. Requires *backup_dir* and *redis_url*.
+                Parallelism improves throughput for high-dimensional vectors
+                where conversion is CPU-bound. For low-dimensional vectors
+                (≤ 256 dims), a single worker is often faster because the
+                per-worker overhead (process spawning, extra connections)
+                outweighs the parallelism benefit. Diminishing returns above
+                4–8 workers on a single Redis instance.
+            keep_backup: If ``True``, retain backup files after a successful
+                migration. Default ``False`` (auto-cleanup on success). Useful
+                for post-migration auditing or manual rollback.
+
+        Returns:
+            MigrationReport: Outcome including timing breakdown, validation
+            results, and any warnings or manual actions.
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -894,8 +940,14 @@ class MigrationExecutor:
                         # Multi-worker path: dump + quantize in parallel
                         from redisvl.migration.quantize import multi_worker_quantize
 
-                        assert backup_dir is not None
-                        assert redis_url is not None
+                        if backup_dir is None:
+                            raise ValueError(
+                                "--backup-dir is required when using --workers > 1"
+                            )
+                        if redis_url is None:
+                            raise ValueError(
+                                "redis_url is required when using num_workers > 1"
+                            )
                         _notify(
                             "quantize",
                             f"Re-encoding vectors ({num_workers} workers)...",
@@ -1165,12 +1217,13 @@ class MigrationExecutor:
             backup.start_quantize()
 
         docs_quantized = 0
-        docs_done = backup.header.quantize_completed_batches * backup.header.batch_size
+        start_batch = backup.header.quantize_completed_batches
+        docs_done = start_batch * backup.header.batch_size
 
         for batch_idx, (batch_keys, originals) in enumerate(
             backup.iter_remaining_batches()
         ):
-            actual_batch_idx = backup.header.quantize_completed_batches + batch_idx
+            actual_batch_idx = start_batch + batch_idx
             converted = convert_vectors(originals, datatype_changes)
             if converted:
                 pipeline_write_vectors(client, converted)

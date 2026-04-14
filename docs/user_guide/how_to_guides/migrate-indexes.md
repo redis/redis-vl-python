@@ -589,9 +589,14 @@ rvl migrate validate \
 - `--index` : Index name to migrate
 - `--plan` / `--plan-out` : Path to migration plan
 - `--async` : Use async executor for large migrations (apply only)
-- `--resume` : Path to checkpoint file for crash-safe quantization resume (apply only)
 - `--report-out` : Path for validation report
 - `--benchmark-out` : Path for performance metrics
+
+**Apply flags (quantization & reliability):**
+- `--backup-dir <dir>` : Directory for vector backup files. Enables crash-safe resume and manual rollback. Required when using `--workers` > 1.
+- `--batch-size <N>` : Keys per pipeline batch (default 500). Values 200–1000 are typical.
+- `--workers <N>` : Parallel quantization workers (default 1). Each worker opens its own Redis connection. See [Performance](#performance-tuning) for guidance.
+- `--keep-backup` : Retain backup files after a successful migration (default: auto-cleanup).
 
 **Batch-specific flags:**
 - `--pattern` : Glob pattern to match index names (e.g., `*_idx`)
@@ -631,6 +636,111 @@ If `apply` fails mid-migration:
 
 The underlying documents are never deleted by `drop_recreate`.
 
+## Backup, Resume & Rollback
+
+### How Backups Work
+
+When you pass `--backup-dir` (or `backup_dir` in the Python API), the
+migration executor saves **original vector bytes** to disk before mutating
+them. This enables two key capabilities:
+
+1. **Crash-safe resume** — if the process dies mid-migration, re-running the
+   same command with the same `--backup-dir` automatically detects partial
+   progress and resumes from the last completed batch.
+2. **Manual rollback** — the backup files contain the original (pre-quantization)
+   vector values, which can be restored to undo a migration.
+
+Backup files are written to the specified directory with this layout:
+
+```
+<backup-dir>/
+  migration_backup_<index_name>.header   # JSON: phase, progress counters, field metadata
+  migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
+```
+
+**Disk usage:** approximately `num_docs × dims × bytes_per_element`.
+For example, 1M docs with 768-dim float32 vectors ≈ 2.9 GB.
+
+By default, backup files are **automatically deleted** after a successful
+migration. Pass `--keep-backup` to retain them for post-migration auditing
+or potential rollback.
+
+### Crash-Safe Resume
+
+If a migration is interrupted (crash, network error, Ctrl+C), simply re-run
+the exact same command:
+
+```bash
+# Original command that was interrupted
+rvl migrate apply --plan plan.yaml --url redis://localhost:6379 \
+  --backup-dir /tmp/backups --workers 4
+
+# Just re-run it — progress is resumed automatically
+rvl migrate apply --plan plan.yaml --url redis://localhost:6379 \
+  --backup-dir /tmp/backups --workers 4
+```
+
+The executor detects the existing backup header, reads how many batches were
+completed, and resumes from the next unfinished batch. No data is duplicated
+or lost.
+
+```{note}
+**Single-worker vs multi-worker resume:** In single-worker mode, the full
+backup is written *before* the index is dropped, so a crash at any point
+leaves a complete backup on disk. In multi-worker mode, dump and quantize
+are fused (each worker reads, backs up, and converts its shard in one pass
+*after* the index drop). A crash during this fused phase may leave partial
+backup shards. Re-running detects and resumes from partial state.
+```
+
+### Rollback
+
+If you need to undo a quantization migration and restore original vectors,
+use the `rollback` command:
+
+```bash
+rvl migrate rollback --backup-dir /tmp/backups --url redis://localhost:6379
+```
+
+This reads every batch from the backup files and pipeline-HSETs the original
+(pre-quantization) vector bytes back into Redis. After rollback completes:
+
+- Your vector data is restored to its original datatype
+- You will need to **manually recreate the original index schema** if the
+  index was changed during migration (the rollback command restores data
+  only, not the index definition)
+
+```bash
+# After rollback, recreate the original index if needed:
+rvl index create --schema original_schema.yaml --url redis://localhost:6379
+```
+
+```{important}
+Rollback requires that backup files were preserved. Either pass
+`--keep-backup` during migration, or ensure the backup directory was not
+cleaned up. Without backup files, rollback is not possible.
+```
+
+### Python API for Rollback
+
+```python
+from redisvl.migration.backup import VectorBackup
+import redis
+
+r = redis.from_url("redis://localhost:6379")
+backup = VectorBackup.load("/tmp/backups/migration_backup_myindex")
+
+for keys, originals in backup.iter_batches():
+    pipe = r.pipeline(transaction=False)
+    for key in keys:
+        if key in originals:
+            for field_name, original_bytes in originals[key].items():
+                pipe.hset(key, field_name, original_bytes)
+    pipe.execute()
+
+print("Rollback complete")
+```
+
 ## Python API
 
 For programmatic migrations, use the migration classes directly:
@@ -652,6 +762,20 @@ report = executor.apply(plan, redis_url="redis://localhost:6379")
 print(f"Migration result: {report.result}")
 ```
 
+With backup and multi-worker quantization:
+
+```python
+report = executor.apply(
+    plan,
+    redis_url="redis://localhost:6379",
+    backup_dir="/tmp/migration_backups",   # enables crash-safe resume
+    batch_size=500,                        # keys per pipeline batch
+    num_workers=4,                         # parallel quantization workers
+    keep_backup=True,                      # retain backups for rollback
+)
+print(f"Quantized in {report.timings.quantize_duration_seconds}s")
+```
+
 ### Async API
 
 ```python
@@ -667,7 +791,12 @@ async def migrate():
     )
 
     executor = AsyncMigrationExecutor()
-    report = await executor.apply(plan, redis_url="redis://localhost:6379")
+    report = await executor.apply(
+        plan,
+        redis_url="redis://localhost:6379",
+        backup_dir="/tmp/migration_backups",
+        num_workers=4,
+    )
     print(f"Migration result: {report.result}")
 
 asyncio.run(migrate())
@@ -926,6 +1055,64 @@ print(f"Successful: {report.summary.successful}/{report.summary.total_indexes}")
 4. **Review skipped indexes**: The `skip_reason` often indicates schema differences that need attention.
 
 5. **Keep checkpoint files**: The `batch_state.yaml` is essential for resume. Don't delete it until the batch completes successfully.
+
+## Performance Tuning
+
+### Quantization Throughput
+
+Vector quantization (e.g. float32 → float16) is the most time-consuming
+phase of a datatype migration. Observed throughput on a local Redis instance:
+
+| Workers | Dims | Throughput | Notes |
+|---------|------|------------|-------|
+| 1       | 256  | ~70K docs/sec | Single worker is fastest for low dims |
+| 4       | 256  | ~62K docs/sec | Worker overhead exceeds parallelism benefit |
+| 1       | 1536 | ~15K docs/sec | Higher dims = more conversion work |
+| 4       | 1536 | ~15K docs/sec | I/O-bound; Redis is the bottleneck |
+
+**Guidance:**
+- For **low-dimensional vectors** (≤ 256 dims), use `--workers 1` (the default). Per-vector conversion is so cheap that process-spawning and extra-connection overhead outweigh the parallelism benefit.
+- For **high-dimensional vectors** (≥ 768 dims), `--workers 2-4` may help if the Redis server has available CPU headroom. Diminishing returns above 4–8 workers on a single Redis instance because Redis command processing is single-threaded.
+- The main bottleneck for large migrations is typically **index rebuild time** (the `FT.CREATE` background indexing after vectors are written), not quantization itself.
+
+### Batch Size
+
+The `--batch-size` flag controls how many keys are read/written per Redis
+pipeline round-trip. The default of 500 is a good balance. Larger batches
+(1000+) reduce round-trips but increase per-batch memory and latency.
+
+### Backup Disk Space
+
+When `--backup-dir` is provided, original vectors are saved to disk before
+mutation. Approximate size: `num_docs × dims × bytes_per_element`.
+
+| Docs   | Dims | Source dtype | Backup size |
+|--------|------|-------------|-------------|
+| 100K   | 768  | float32     | ~292 MB     |
+| 1M     | 768  | float32     | ~2.9 GB     |
+| 1M     | 1536 | float32     | ~5.7 GB     |
+
+### HNSW vs FLAT Index Capacity
+
+```{note}
+When migrating from **HNSW** to **FLAT**, the target index may report a
+*higher* document count than the source. This is not a bug — it reflects
+a fundamental difference in how the two algorithms store vectors.
+
+HNSW maintains a navigable small-world graph with per-node neighbor lists.
+This graph overhead limits how many vectors can fit in available memory.
+FLAT stores vectors as a simple array with no graph overhead.
+
+If the source HNSW index was operating near its memory capacity, some
+documents may have been registered in Redis Search's document table but
+not fully indexed into the HNSW graph. After migration to FLAT, those
+same documents become fully searchable because FLAT requires less memory
+per vector.
+
+The migration validator compares the total key count
+(`num_docs + hash_indexing_failures`) between source and target, so this
+scenario is handled correctly in the general case.
+```
 
 ## Learn more
 
