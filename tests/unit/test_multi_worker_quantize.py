@@ -71,6 +71,25 @@ class TestSplitKeys:
         slices = split_keys([], num_workers=4)
         assert slices == []
 
+    def test_split_zero_workers_raises(self):
+        from redisvl.migration.quantize import split_keys
+
+        with pytest.raises(ValueError, match="num_workers must be >= 1"):
+            split_keys(["doc:0"], num_workers=0)
+
+    def test_split_negative_workers_raises(self):
+        from redisvl.migration.quantize import split_keys
+
+        with pytest.raises(ValueError, match="num_workers must be >= 1"):
+            split_keys(["doc:0", "doc:1"], num_workers=-1)
+
+    def test_split_zero_workers_empty_keys_raises(self):
+        """Even with empty keys, invalid num_workers should still raise."""
+        from redisvl.migration.quantize import split_keys
+
+        with pytest.raises(ValueError, match="num_workers must be >= 1"):
+            split_keys([], num_workers=0)
+
 
 class TestMultiWorkerSync:
     """Test multi-worker quantization with ThreadPoolExecutor."""

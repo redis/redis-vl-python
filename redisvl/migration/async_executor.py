@@ -475,16 +475,30 @@ class AsyncMigrationExecutor:
     ) -> MigrationReport:
         """Apply a migration plan asynchronously.
 
+        Async counterpart of :meth:`MigrationExecutor.apply`. Uses
+        ``await`` for Redis I/O so the event loop remains responsive during
+        large quantization jobs. Multi-worker quantization uses
+        ``asyncio.gather`` with independent connections.
+
         Args:
-            plan: The migration plan to apply.
-            redis_url: Redis connection URL.
+            plan: The migration plan to apply (from
+                ``AsyncMigrationPlanner.create_plan``).
+            redis_url: Redis connection URL (e.g.
+                ``"redis://localhost:6379"``). Required when
+                *num_workers* > 1.
             redis_client: Optional existing async Redis client.
-            query_check_file: Optional file with query checks.
-            progress_callback: Optional callback(step, detail) for progress updates.
-            backup_dir: Directory for vector backup files.
-            batch_size: Keys per pipeline batch (default 500).
-            num_workers: Number of parallel workers (default 1).
-            keep_backup: If True, keep backup files after success. Default False.
+            query_check_file: Optional YAML file with post-migration queries.
+            progress_callback: Optional ``callback(step, detail)``.
+            backup_dir: Directory for vector backup files. Enables crash-safe
+                resume and rollback. Required when *num_workers* > 1.
+                Disk usage ≈ ``num_docs × dims × bytes_per_element``.
+            batch_size: Keys per pipeline batch (default 500). Values
+                between 200 and 1000 are typical.
+            num_workers: Parallel quantization workers (default 1). For
+                low-dimensional vectors (≤ 256 dims) a single worker is
+                often fastest. Diminishing returns above 4–8 workers.
+            keep_backup: Retain backup files after success (default
+                ``False``).
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -822,8 +836,14 @@ class AsyncMigrationExecutor:
                             async_multi_worker_quantize,
                         )
 
-                        assert backup_dir is not None
-                        assert redis_url is not None
+                        if backup_dir is None:
+                            raise ValueError(
+                                "--backup-dir is required when using --workers > 1"
+                            )
+                        if redis_url is None:
+                            raise ValueError(
+                                "redis_url is required when using num_workers > 1"
+                            )
                         _notify(
                             "quantize",
                             f"Re-encoding vectors ({num_workers} workers)...",
@@ -1102,12 +1122,13 @@ class AsyncMigrationExecutor:
             backup.start_quantize()
 
         docs_quantized = 0
-        docs_done = backup.header.quantize_completed_batches * backup.header.batch_size
+        start_batch = backup.header.quantize_completed_batches
+        docs_done = start_batch * backup.header.batch_size
 
         for batch_idx, (batch_keys, originals) in enumerate(
             backup.iter_remaining_batches()
         ):
-            actual_batch_idx = backup.header.quantize_completed_batches + batch_idx
+            actual_batch_idx = start_batch + batch_idx
             converted = convert_vectors(originals, datatype_changes)
             if converted:
                 pipe = client.pipeline(transaction=False)

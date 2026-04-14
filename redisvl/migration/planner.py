@@ -56,6 +56,36 @@ class MigrationPlanner:
         target_schema_path: Optional[str] = None,
         redis_client: Optional[Any] = None,
     ) -> MigrationPlan:
+        """Generate a migration plan by comparing the live index to a desired schema.
+
+        Snapshots the current index metadata from Redis, loads the requested
+        changes from either a *schema_patch_path* or *target_schema_path*, and
+        produces a :class:`MigrationPlan` that describes every step required to
+        reach the target schema.
+
+        No data is modified — this is a read-only planning step. The resulting
+        plan should be reviewed before passing to
+        :meth:`MigrationExecutor.apply`.
+
+        Args:
+            index_name: Name of the existing Redis Search index.
+            redis_url: Redis connection URL
+                (e.g. ``"redis://localhost:6379"``).
+            schema_patch_path: Path to a YAML schema-patch file describing
+                incremental changes (add/remove/update fields, change
+                algorithm, rename fields, etc.).
+            target_schema_path: Path to a full target-schema YAML file.
+                The planner diffs the live schema against this target.
+            redis_client: Optional pre-existing Redis client instance.
+
+        Returns:
+            MigrationPlan: An immutable plan object containing the source
+            snapshot, diff classification, target schema, and any warnings.
+
+        Raises:
+            ValueError: If neither or both of *schema_patch_path* and
+                *target_schema_path* are provided.
+        """
         if not schema_patch_path and not target_schema_path:
             raise ValueError(
                 "Must provide either --schema-patch or --target-schema for migration planning"
