@@ -509,6 +509,7 @@ class MigrationExecutor:
         checkpoint_path: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
+        num_workers: int = 1,
     ) -> MigrationReport:
         """Apply a migration plan.
 
@@ -524,6 +525,8 @@ class MigrationExecutor:
             backup_dir: Directory for vector backup files. When provided,
                 enables crash-safe resume and rollback for quantization.
             batch_size: Keys per pipeline batch (default 500).
+            num_workers: Number of parallel workers for quantization (default 1).
+                Each worker gets its own Redis connection and backup file shard.
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -889,10 +892,18 @@ class MigrationExecutor:
                     _notify("field_rename", f"done ({field_rename_duration}s)")
 
                 # STEP 3: Dump original vectors to backup file (before drop)
+                # For multi-worker, dump happens inside multi_worker_quantize
+                # after the drop, so we skip the separate dump step.
                 dump_duration = 0.0
                 active_backup = None
-                if needs_quantization and keys_to_process and backup_path:
-                    # Remap field names for dump if needed
+                use_multi_worker = num_workers > 1 and backup_dir is not None
+                if (
+                    needs_quantization
+                    and keys_to_process
+                    and backup_path
+                    and not use_multi_worker
+                ):
+                    # Single-worker dump before drop
                     effective_changes = datatype_changes
                     if has_field_renames:
                         field_rename_map = {
@@ -961,22 +972,44 @@ class MigrationExecutor:
                             for k, v in datatype_changes.items()
                         }
 
-                    if active_backup:
-                        # New path: quantize from backup file (no Redis reads)
+                    # Update key references if prefix changed
+                    if has_prefix_change and rename_ops.change_prefix:
+                        old_prefix = plan.source.keyspace.prefixes[0]
+                        new_prefix = rename_ops.change_prefix
+                        keys_to_process = [
+                            (
+                                new_prefix + k[len(old_prefix) :]
+                                if k.startswith(old_prefix)
+                                else k
+                            )
+                            for k in keys_to_process
+                        ]
+
+                    if use_multi_worker:
+                        # Multi-worker path: dump + quantize in parallel
+                        from redisvl.migration.quantize import multi_worker_quantize
+
+                        assert backup_dir is not None
+                        assert redis_url is not None
+                        _notify(
+                            "quantize",
+                            f"Re-encoding vectors ({num_workers} workers)...",
+                        )
+                        quantize_started = time.perf_counter()
+                        mw_result = multi_worker_quantize(
+                            redis_url=redis_url,
+                            keys=keys_to_process,
+                            datatype_changes=effective_changes,
+                            backup_dir=backup_dir,
+                            index_name=plan.source.index_name,
+                            num_workers=num_workers,
+                            batch_size=batch_size,
+                        )
+                        docs_quantized = mw_result.total_docs_quantized
+                    elif active_backup:
+                        # Single-worker backup path
                         _notify("quantize", "Re-encoding vectors from backup...")
                         quantize_started = time.perf_counter()
-                        # If keys were renamed, update key references
-                        if has_prefix_change and rename_ops.change_prefix:
-                            old_prefix = plan.source.keyspace.prefixes[0]
-                            new_prefix = rename_ops.change_prefix
-                            keys_to_process = [
-                                (
-                                    new_prefix + k[len(old_prefix) :]
-                                    if k.startswith(old_prefix)
-                                    else k
-                                )
-                                for k in keys_to_process
-                            ]
                         docs_quantized = self._quantize_from_backup(
                             client=client,
                             backup=active_backup,
@@ -990,16 +1023,6 @@ class MigrationExecutor:
                         _notify("quantize", "Re-encoding vectors...")
                         quantize_started = time.perf_counter()
                         if has_prefix_change and rename_ops.change_prefix:
-                            old_prefix = plan.source.keyspace.prefixes[0]
-                            new_prefix = rename_ops.change_prefix
-                            keys_to_process = [
-                                (
-                                    new_prefix + k[len(old_prefix) :]
-                                    if k.startswith(old_prefix)
-                                    else k
-                                )
-                                for k in keys_to_process
-                            ]
                             keys_to_process = normalize_keys(keys_to_process)
                         docs_quantized = self._quantize_vectors(
                             source_index,
