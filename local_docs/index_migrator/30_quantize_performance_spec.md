@@ -560,3 +560,58 @@ The dump phase adds one extra read pass over all keys. But since reads are now p
 - PR review (pipelined reads): nkode run `ce95e0e4`, finding #2
 - PR review (async pipelining): Copilot comment on `async_executor.py:639-654`
 - PR review (sync pipelining): Copilot comment on `executor.py:674-695`
+
+## Implementation Status
+
+Branch: `feat/migrate-perf-overhaul`
+
+### Implemented (Changes 1 + 2)
+
+| Component | File | Status |
+|-----------|------|--------|
+| `VectorBackup` class | `redisvl/migration/backup.py` | ✅ Done — 16 tests |
+| Pipeline read/write/convert helpers | `redisvl/migration/quantize.py` | ✅ Done — 6 tests |
+| `_dump_vectors` on `MigrationExecutor` | `redisvl/migration/executor.py` | ✅ Done — 4 tests |
+| `_quantize_from_backup` on `MigrationExecutor` | `redisvl/migration/executor.py` | ✅ Done |
+| `apply()` refactored: dump→drop→quantize | `redisvl/migration/executor.py` | ✅ Done |
+| Async `_dump_vectors` / `_quantize_from_backup` | `redisvl/migration/async_executor.py` | ✅ Done |
+| Async `apply()` refactored | `redisvl/migration/async_executor.py` | ✅ Done |
+| `--backup-dir` CLI flag | `redisvl/cli/migrate.py` | ✅ Done |
+| `--batch-size` CLI flag | `redisvl/cli/migrate.py` | ✅ Done |
+| TYPE_CHECKING import for mypy | Both executors | ✅ Done |
+| BGSAVE removed from normal path | Both executors | ✅ Done |
+| Legacy `--resume` / `checkpoint_path` | Both executors | ✅ Preserved as fallback |
+
+**Test results:** 812 unit tests pass, mypy clean, pre-commit clean.
+
+### Deferred (Change 3: Multi-worker)
+
+Multi-worker parallelism (`--workers N`) is fully specced above but
+deferred to a follow-up PR. Reasons:
+
+1. Pipeline reads alone provide ~10x speedup (50min → 5min), which
+   may be sufficient for most use cases.
+2. Multi-worker adds complexity (ThreadPoolExecutor, per-worker connections,
+   per-worker backup shards, progress merging) that should be validated
+   with benchmarks before shipping.
+3. Safety constraints (replication backlog, AOF pressure, cluster slot
+   awareness) need documentation and testing.
+
+When implementing:
+- Sync: `concurrent.futures.ThreadPoolExecutor`
+- Async: `asyncio.gather` with N concurrent coroutines
+- Each worker: own Redis connection + own backup file shard
+- Default N=1, opt-in via `--workers N`
+
+### Not removed (legacy compatibility)
+
+The following components are **kept** for backward compatibility with
+the `--resume` / `checkpoint_path` code path:
+
+- `QuantizationCheckpoint` in `reliability.py`
+- `trigger_bgsave_and_wait` / `async_trigger_bgsave_and_wait`
+- `BatchUndoBuffer`
+- `_quantize_vectors` / `_async_quantize_vectors` methods
+
+These will be removed in a follow-up once `--backup-dir` is validated
+in production and `--resume` is fully deprecated.
