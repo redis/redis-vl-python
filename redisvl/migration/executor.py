@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional
+
+if TYPE_CHECKING:
+    from redisvl.migration.backup import VectorBackup
 
 from redis.cluster import RedisCluster
 from redis.exceptions import ResponseError

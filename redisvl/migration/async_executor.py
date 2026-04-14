@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from redisvl.migration.backup import VectorBackup
 
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.exceptions import ResponseError
