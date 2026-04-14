@@ -503,6 +503,7 @@ class MigrationExecutor:
         batch_size: int = 500,
         num_workers: int = 1,
         keep_backup: bool = False,
+        checkpoint_path: Optional[str] = None,  # deprecated, use backup_dir
     ) -> MigrationReport:
         """Apply a migration plan.
 
@@ -568,6 +569,19 @@ class MigrationExecutor:
             MigrationReport: Outcome including timing breakdown, validation
             results, and any warnings or manual actions.
         """
+        # Handle deprecated checkpoint_path parameter
+        if checkpoint_path is not None:
+            import warnings
+
+            warnings.warn(
+                "checkpoint_path is deprecated and will be removed in a future "
+                "version. Use backup_dir instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if backup_dir is None:
+                backup_dir = checkpoint_path
+
         started_at = timestamp_utc()
         started = time.perf_counter()
 

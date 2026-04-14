@@ -472,6 +472,7 @@ class AsyncMigrationExecutor:
         batch_size: int = 500,
         num_workers: int = 1,
         keep_backup: bool = False,
+        checkpoint_path: Optional[str] = None,  # deprecated, use backup_dir
     ) -> MigrationReport:
         """Apply a migration plan asynchronously.
 
@@ -519,6 +520,19 @@ class AsyncMigrationExecutor:
             )
             report.finished_at = timestamp_utc()
             return report
+
+        # Handle deprecated checkpoint_path parameter
+        if checkpoint_path is not None:
+            import warnings
+
+            warnings.warn(
+                "checkpoint_path is deprecated and will be removed in a future "
+                "version. Use backup_dir instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if backup_dir is None:
+                backup_dir = checkpoint_path
 
         # Check if we are resuming from a backup file (post-crash).
         from redisvl.migration.backup import VectorBackup
