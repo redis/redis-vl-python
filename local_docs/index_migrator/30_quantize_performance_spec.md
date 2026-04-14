@@ -81,19 +81,26 @@ Remove BGSAVE entirely. Replace the current checkpoint (which only tracks progre
 **Two-phase approach (Alternative A):**
 
 ```
-Phase 1 — DUMP:
+Phase 1 — DUMP (before index drop, index still alive):
+  Enumerate keys via FT.AGGREGATE
   For each batch of 500 keys:
-    Pipeline-read all vector fields
+    Pipeline-read all vector fields via HGET
     Append {key: {field: original_bytes}} to backup file
     Flush to disk
 
-Phase 2 — QUANTIZE:
-  For each batch of 500 keys:
-    Read original vectors FROM the backup file (not Redis — already have them from phase 1)
+Phase 2 — QUANTIZE (after index drop):
+  For each batch in the backup file:
+    Read original vectors FROM the backup file (no Redis reads)
     Convert dtype
     Pipeline-write new vectors to Redis
     Update progress counter in backup file header
 ```
+
+The dump runs while the index is alive, so FT.AGGREGATE is always available
+for enumeration. After the dump completes, the backup file contains the full
+key list and all original vectors. The quantize phase never reads from Redis
+— it reads originals from the local file and writes converted vectors back.
+**SCAN is never used at any point.**
 
 #### Backup file format
 
@@ -104,7 +111,7 @@ Binary file using msgpack for compactness and speed. Structure:
   index_name: str
   total_keys: int
   fields: {field_name: {source_dtype, target_dtype, dims}}
-  phase: "dump" | "quantize" | "completed"
+  phase: "dump" | "ready" | "active" | "completed"
   dump_completed_batches: int
   quantize_completed_batches: int
   batch_size: int
@@ -121,9 +128,20 @@ Each batch is written as a length-prefixed msgpack blob. The header is rewritten
 
 #### Resume semantics
 
-- **Crash during phase 1 (dump):** Restart dump from `dump_completed_batches`. No Redis state was modified yet.
-- **Crash during phase 2 (quantize):** Resume from `quantize_completed_batches`. Original bytes are in the backup file for any batch. Idempotent dtype detection still applies as a safety net.
-- **Rollback:** Read originals from backup file, HSET them back. Works for any batch at any time.
+Phase transitions: `dump` → `ready` → `active` → `completed`
+
+- `dump` — Dump in progress. Index is still alive. No mutations yet.
+- `ready` — Dump complete. All originals on disk. Index still alive. Safe to proceed to drop.
+- `active` — Index dropped, quantize in progress. Backup file has full key list + originals.
+- `completed` — All writes done. Safe to create index.
+
+On resume:
+- **No backup file:** Restart from scratch. No mutations happened.
+- **`phase=dump`:** Index is alive. Re-enumerate via FT.AGGREGATE, resume dump from `dump_completed_batches`.
+- **`phase=ready`:** Index is alive, all originals on disk. Proceed to drop + quantize.
+- **`phase=active`:** Index is gone, but backup file has the full key list and originals. Resume quantize from `quantize_completed_batches`. No enumeration needed.
+- **`phase=completed`:** Skip to FT.CREATE.
+- **Rollback (any phase):** Read originals from backup file, pipeline-HSET them back. Works at any point after dump completes.
 
 #### What this replaces
 
@@ -243,28 +261,65 @@ Per the benchmark notes on N-worker risks:
 ## Migration flow (new)
 
 ```
-STEP 1: Enumerate keys (FT.AGGREGATE / SCAN fallback)
+STEP 1: Enumerate keys (FT.AGGREGATE — index is alive)
            │
 STEP 2: Field renames (if any, pipelined)
            │
-STEP 3: Drop index (FT.DROPINDEX)
+STEP 3: Dump originals to backup file     ← NEW, index still alive
+         N workers, pipelined HGET reads
+         backup file per worker
            │
-STEP 4: Key renames (if any, DUMP/RESTORE/DEL)
+STEP 4: Drop index (FT.DROPINDEX)
            │
-STEP 5: Quantize (NEW — two-phase with backup file)
-         ├─ Phase A: Dump originals to backup file(s)
-         │   N workers, pipelined reads, backup file per worker
-         ├─ Phase B: Convert + write back to Redis
-         │   N workers, read from backup file, pipelined writes
-         │
-STEP 6: Create index (FT.CREATE with new schema)
+STEP 5: Key renames (if any, DUMP/RESTORE/DEL)
            │
-STEP 7: Wait for indexing (poll FT.INFO percent_indexed)
+STEP 6: Quantize (read from backup file, write to Redis)
+         N workers, pipelined HSET writes
+         no Redis reads — originals come from local file
            │
-STEP 8: Validate (schema match, doc count, key sample, query checks)
+STEP 7: Create index (FT.CREATE with new schema)
+           │
+STEP 8: Wait for indexing (poll FT.INFO percent_indexed)
+           │
+STEP 9: Validate (schema match, doc count, key sample, query checks)
 ```
 
-Note: BGSAVE step removed entirely.
+BGSAVE removed entirely. SCAN removed entirely — never needed.
+
+### Why SCAN is never needed
+
+The dump phase (Step 3) runs while the index is still alive. Enumeration
+always uses FT.AGGREGATE against the live index. Once the dump completes,
+every key and its original vector bytes are stored in the backup file. All
+subsequent steps (drop, key renames, quantize) use the key list from the
+backup file — they never need to re-discover keys from Redis.
+
+On resume after crash:
+- **Crash during dump (Steps 1-3):** Index is still alive (hasn't been
+  dropped). Re-enumerate via FT.AGGREGATE. Resume dump from
+  `dump_completed_batches`.
+- **Crash after drop (Steps 4-6):** Backup file has the complete key list
+  and all original vectors. Resume quantize from `quantize_completed_batches`.
+  No enumeration needed — just read the file.
+- **Crash during create/validate (Steps 7-9):** Data is fully written.
+  Just re-run FT.CREATE + validate.
+
+### Crash recovery matrix
+
+| Crash point | Index state | Backup file state | Recovery |
+|---|---|---|---|
+| During enumerate (1) | Alive | Doesn't exist | Restart from scratch |
+| During field renames (2) | Alive | Doesn't exist | Restart — renames are idempotent (HSET) |
+| During dump (3) | **Alive** | `phase=dump`, partial | Re-enumerate via FT.AGGREGATE, resume dump |
+| After dump, before drop | **Alive** | `phase=ready`, complete | Proceed to drop |
+| During/after drop (4) | **Gone** | `phase=active` | Key list + originals in file, proceed |
+| During key renames (5) | Gone | `phase=active` | Proceed — renames are idempotent |
+| During quantize (6) | Gone | `phase=active`, `quantize_batch=M` | Resume from batch M |
+| During create (7) | Gone/rebuilding | `phase=completed` | Re-run FT.CREATE |
+| During wait/validate (8-9) | Building | `phase=completed` | Re-poll, re-validate |
+
+**No crash scenario requires SCAN.** Every recovery path uses either
+FT.AGGREGATE (index alive) or the backup file (index dropped but file has keys).
 
 ## Files changed
 
