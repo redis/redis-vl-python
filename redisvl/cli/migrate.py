@@ -369,12 +369,15 @@ Commands:
         disk_estimate = estimate_disk_space(plan, aof_enabled=args.aof_enabled)
         print(disk_estimate.summary())
 
+    # Phases that indicate a safe/complete backup for rollback
+    _SAFE_ROLLBACK_PHASES = frozenset({"ready", "active", "completed"})
+
     def rollback(self):
         """Restore original vectors from a backup directory (undo quantization)."""
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate rollback --backup-dir <dir> "
-                "[--index <name>] [--url <redis_url>]"
+                "[--index <name>] [--yes] [--force] [--url <redis_url>]"
             )
         )
         parser.add_argument(
@@ -388,6 +391,21 @@ Commands:
             dest="index_name",
             help="Only restore backups for this index name (filters by backup header)",
             default=None,
+        )
+        parser.add_argument(
+            "--yes",
+            "-y",
+            dest="yes",
+            action="store_true",
+            help="Skip confirmation prompt for multi-index rollback",
+            default=False,
+        )
+        parser.add_argument(
+            "--force",
+            dest="force",
+            action="store_true",
+            help="Proceed even if backup phase indicates incomplete dump",
+            default=False,
         )
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
@@ -412,7 +430,7 @@ Commands:
         # Derive backup base paths (strip .header suffix)
         backup_paths = [str(h.with_suffix("")) for h in header_files]
 
-        # Load and filter backups
+        # Load, filter, and validate backups
         backups_to_restore = []
         for bp in backup_paths:
             backup = VectorBackup.load(bp)
@@ -425,25 +443,36 @@ Commands:
                     f"index '{backup.header.index_name}' != '{args.index_name}'"
                 )
                 continue
+            # Gate on backup phase — refuse incomplete backups unless --force
+            if backup.header.phase not in self._SAFE_ROLLBACK_PHASES:
+                if args.force:
+                    print(
+                        f"  Warning: {os.path.basename(bp)} has phase "
+                        f"'{backup.header.phase}' (incomplete dump) — "
+                        f"proceeding due to --force"
+                    )
+                else:
+                    print(
+                        f"  Skipping {os.path.basename(bp)}: backup phase "
+                        f"'{backup.header.phase}' indicates incomplete dump. "
+                        f"Use --force to restore from partial backups."
+                    )
+                    continue
             backups_to_restore.append((bp, backup))
 
         if not backups_to_restore:
             print("Error: no matching backup files found")
             sys.exit(1)
 
-        # Warn if multiple distinct indexes detected without --index filter
+        # Require --index or --yes when multiple distinct indexes detected
         distinct_indexes = {b.header.index_name for _, b in backups_to_restore}
-        if len(distinct_indexes) > 1 and not args.index_name:
+        if len(distinct_indexes) > 1 and not args.index_name and not args.yes:
             print(
-                f"Warning: found backups for {len(distinct_indexes)} distinct indexes: "
+                f"Error: found backups for {len(distinct_indexes)} distinct indexes: "
                 f"{', '.join(sorted(distinct_indexes))}. "
-                f"Use --index to filter, or press Enter to continue."
+                f"Use --index to filter or --yes to restore all."
             )
-            try:
-                input()
-            except (EOFError, KeyboardInterrupt):
-                print("\nAborted.")
-                sys.exit(1)
+            sys.exit(1)
 
         client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         total_restored = 0
