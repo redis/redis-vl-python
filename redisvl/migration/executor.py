@@ -1008,6 +1008,104 @@ class MigrationExecutor:
 
         return report
 
+    # ------------------------------------------------------------------
+    # Two-phase quantization: dump originals → convert from backup
+    # ------------------------------------------------------------------
+
+    def _dump_vectors(
+        self,
+        client: Any,
+        index_name: str,
+        keys: List[str],
+        datatype_changes: Dict[str, Dict[str, Any]],
+        backup_path: str,
+        batch_size: int = 500,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> "VectorBackup":
+        """Phase 1: Pipeline-read original vectors and write to backup file.
+
+        Runs BEFORE index drop — the index is still alive.
+        No Redis state is modified.
+
+        Args:
+            client: Redis client
+            index_name: Name of the source index
+            keys: Pre-enumerated list of document keys
+            datatype_changes: {field_name: {"source", "target", "dims"}}
+            backup_path: Path prefix for backup files
+            batch_size: Keys per pipeline batch
+            progress_callback: Optional callback(docs_done, total_docs)
+
+        Returns:
+            VectorBackup in "ready" phase (dump complete)
+        """
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.migration.quantize import pipeline_read_vectors
+
+        backup = VectorBackup.create(
+            path=backup_path,
+            index_name=index_name,
+            fields=datatype_changes,
+            batch_size=batch_size,
+        )
+
+        total = len(keys)
+        for batch_idx in range(0, total, batch_size):
+            batch_keys = keys[batch_idx : batch_idx + batch_size]
+            originals = pipeline_read_vectors(client, batch_keys, datatype_changes)
+            backup.write_batch(batch_idx // batch_size, batch_keys, originals)
+            if progress_callback:
+                progress_callback(min(batch_idx + batch_size, total), total)
+
+        backup.mark_dump_complete()
+        return backup
+
+    def _quantize_from_backup(
+        self,
+        client: Any,
+        backup: "VectorBackup",
+        datatype_changes: Dict[str, Dict[str, Any]],
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """Phase 2: Read originals from backup file, convert, pipeline-write.
+
+        Runs AFTER index drop. Reads from local disk, not Redis.
+        Tracks progress via backup header for crash-safe resume.
+
+        Args:
+            client: Redis client
+            backup: VectorBackup in "ready" or "active" phase
+            datatype_changes: {field_name: {"source", "target", "dims"}}
+            progress_callback: Optional callback(docs_done, total_docs)
+
+        Returns:
+            Number of documents quantized
+        """
+        from redisvl.migration.quantize import convert_vectors, pipeline_write_vectors
+
+        if backup.header.phase == "ready":
+            backup.start_quantize()
+
+        docs_quantized = 0
+        docs_done = backup.header.quantize_completed_batches * backup.header.batch_size
+
+        for batch_idx, (batch_keys, originals) in enumerate(
+            backup.iter_remaining_batches()
+        ):
+            actual_batch_idx = backup.header.quantize_completed_batches + batch_idx
+            converted = convert_vectors(originals, datatype_changes)
+            if converted:
+                pipeline_write_vectors(client, converted)
+            backup.mark_batch_quantized(actual_batch_idx)
+            docs_quantized += len(batch_keys)
+            docs_done += len(batch_keys)
+            if progress_callback:
+                total = backup.header.dump_completed_batches * backup.header.batch_size
+                progress_callback(docs_done, total)
+
+        backup.mark_complete()
+        return docs_quantized
+
     def _quantize_vectors(
         self,
         source_index: SearchIndex,
