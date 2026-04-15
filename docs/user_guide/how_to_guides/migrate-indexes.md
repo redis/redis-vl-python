@@ -40,6 +40,110 @@ docker run -d --name redis -p 6379:6379 redis:8.0
 
 **Note:** Redis 8.0+ is required for INT8/UINT8 vector datatypes. SVS-VAMANA algorithm requires Redis 8.2+ and Intel AVX-512 hardware.
 
+
+## How It Works
+
+Every migration follows the same three-phase flow: **describe what changed** (the patch),
+**generate a plan** (diffing the patch against the live schema), and **execute the plan**.
+
+### Single-Index Flow: wizard/plan then apply
+
+```
+wizard (interactive)                   plan (non-interactive)
+        |                                    |
+        v                                    v
+  SchemaPatch YAML  <----or---->  SchemaPatch YAML
+        |                                    |
+        +------ planner.create_plan() -------+
+                       |
+                       v
+              MigrationPlan YAML
+                       |
+                       v
+              executor.apply()
+                       |
+                       v
+              MigrationReport YAML
+```
+
+**Phase 1: Build a SchemaPatch.**
+A patch is a small YAML file that declares *what you want to change*, not the full target schema.
+You can build it interactively with `rvl migrate wizard`, or write it by hand. The patch has
+five sections, each optional:
+
+| Patch Section | What it does |
+|---|---|
+| `add_fields` | Adds new field definitions to the index |
+| `remove_fields` | Removes fields from the index (document data is kept, just no longer indexed) |
+| `rename_fields` | Renames fields in both the index schema and all documents (HGET old, HSET new, HDEL old) |
+| `update_fields` | Modifies field attributes: algorithm, datatype, distance metric, sortable, separator, etc. |
+| `index` | Changes the index name or key prefix |
+
+**Phase 2: Generate a MigrationPlan.**
+The planner connects to Redis, snapshots the live index schema and stats,
+then merges the patch into the source schema to produce a `merged_target_schema`.
+It classifies every change as supported or blocked and extracts rename operations.
+
+The plan YAML contains:
+- `source`: frozen snapshot of the live index at planning time (schema, stats, key sample, prefixes)
+- `requested_changes`: the patch that was applied
+- `merged_target_schema`: source + patch = what the index will look like after migration
+- `diff_classification`: whether the migration is supported and any blocked reasons
+- `rename_operations`: extracted index renames, prefix changes, and field renames
+- `warnings`: any important notes (downtime required, lossy quantization, etc.)
+
+The same patch produces different plans per index because each index has a different source schema.
+
+**Phase 3: Apply.**
+The executor reads the plan and runs the migration steps:
+
+1. Enumerate keys (SCAN with source prefix)
+2. Field renames (pipelined HGET/HSET/HDEL)
+3. Dump original vectors to backup file (if quantizing and backup-dir provided)
+4. Drop index (FT.DROPINDEX, documents are preserved)
+5. Key prefix renames (RENAME or DUMP/RESTORE for cluster)
+6. Quantize vectors from backup (pipelined read/convert/write)
+7. Create index (FT.CREATE with merged target schema)
+8. Wait for re-indexing to complete
+9. Validate (doc count, schema match, key sample)
+
+### Batch Flow: wizard/plan then batch-plan then batch-apply
+
+For applying the same change across multiple indexes:
+
+```
+SchemaPatch YAML  (shared, written once)
+        |
+        v
+batch_planner.create_batch_plan()
+  for each index:
+    snapshot live schema
+    merge patch into source
+    if applicable: write per-index MigrationPlan
+    if not: mark skip_reason
+        |
+        v
+BatchPlan YAML
+  shared_patch: { ... }
+  indexes:
+    - name: idx_a, applicable: true, plan_path: plans/idx_a.yaml
+    - name: idx_b, applicable: true, plan_path: plans/idx_b.yaml
+    - name: idx_c, applicable: false, skip_reason: "field not found"
+        |
+        v
+batch_executor.apply()
+  for each applicable index (sequentially):
+    executor.apply(per_index_plan)
+```
+
+The batch planner takes a **single shared patch** and tests it against every target index.
+Indexes where the patch doesn't apply (e.g., it references a field that doesn't exist in that
+index, or the change is blocked) are marked `applicable: false` with a `skip_reason` and skipped
+during apply. Each applicable index gets its own full `MigrationPlan` written to disk.
+
+This means you can review each per-index plan individually before running `batch-apply`.
+
+
 ## Step 1: Discover Available Indexes
 
 ```bash
