@@ -15,7 +15,7 @@ Add a field to your index in 4 commands:
 
 ```bash
 # 1. See what indexes exist
-rvl migrate list --url redis://localhost:6379
+rvl index listall --url redis://localhost:6379
 
 # 2. Use the wizard to build a migration plan
 rvl migrate wizard --index myindex --url redis://localhost:6379
@@ -43,12 +43,12 @@ docker run -d --name redis -p 6379:6379 redis:8.0
 ## Step 1: Discover Available Indexes
 
 ```bash
-rvl migrate list --url redis://localhost:6379
+rvl index listall --url redis://localhost:6379
 ```
 
 **Example output:**
 ```
-Available indexes:
+Indices:
   1. products_idx
   2. users_idx
   3. orders_idx
@@ -568,7 +568,6 @@ rvl migrate validate \
 
 | Command | Description |
 |---------|-------------|
-| `rvl migrate list` | List all indexes |
 | `rvl migrate wizard` | Build a migration interactively |
 | `rvl migrate plan` | Generate a migration plan |
 | `rvl migrate apply` | Execute a migration |
