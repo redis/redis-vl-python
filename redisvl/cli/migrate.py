@@ -36,7 +36,6 @@ class Migrate:
             "rvl migrate <command> [<args>]\n",
             "Commands:",
             "\thelper       Show migration guidance and supported capabilities",
-            "\tlist         List all available indexes",
             "\twizard       Interactively build a migration plan and schema patch",
             "\tplan         Generate a migration plan for a document-preserving drop/recreate migration",
             "\tapply        Execute a reviewed drop/recreate migration plan (use --async for large migrations)",
@@ -101,24 +100,13 @@ Not yet supported:
   - Changing storage type (hash to JSON)
 
 Commands:
-  rvl migrate list                                  List all indexes
   rvl migrate wizard --index <name>                 Guided migration builder
   rvl migrate plan --index <name> --schema-patch <patch.yaml>
   rvl migrate apply --plan <plan.yaml>
-  rvl migrate validate --plan <plan.yaml>"""
-        )
+  rvl migrate validate --plan <plan.yaml>
 
-    def list(self):
-        parser = argparse.ArgumentParser(
-            usage="rvl migrate list [--host <host> --port <port> | --url <redis_url>]"
+  Tip: use 'rvl index listall' to see available indexes."""
         )
-        parser = add_redis_connection_options(parser)
-        args = parser.parse_args(sys.argv[3:])
-        redis_url = create_redis_url(args)
-        indexes = list_indexes(redis_url=redis_url)
-        print("Available indexes:")
-        for position, index_name in enumerate(indexes, start=1):
-            print(f"{position}. {index_name}")
 
     def wizard(self):
         parser = argparse.ArgumentParser(
