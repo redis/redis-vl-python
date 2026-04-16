@@ -15,6 +15,19 @@ SemanticCache
    :inherited-members:
 
 
+LangCacheSemanticCache
+======================
+
+.. _langcache_semantic_cache_api:
+
+.. currentmodule:: redisvl.extensions.cache.llm
+
+.. autoclass:: LangCacheSemanticCache
+   :show-inheritance:
+   :members:
+   :inherited-members:
+
+
 Cache Schema Classes
 ====================
 

@@ -31,7 +31,11 @@ Too strict, and you miss valid cache hits. Too loose, and you return wrong answe
 
 In applications serving multiple users or contexts, you often want separate cache spaces. Filters let you scope cache lookups—for example, caching per-user or per-conversation so one user's cached answers don't leak to another.
 
-**Learn more:** {doc}`/user_guide/03_llmcache` covers semantic caching in detail.
+### Redis vs LangCache managed service
+
+`SemanticCache` stores data in your Redis deployment and uses RedisVL’s search index under the hood—you control sizing, networking, and advanced filtering with {doc}`FilterExpression </api/filter>`.
+
+If you prefer a hosted semantic cache that is operated as a service you can use `LangCacheSemanticCache` (install `redisvl[langcache]`). It uses the LangCache API endpoint instead of Redis directly. While these are similar, they do not share all the same properties. Refer to {doc}`/user_guide/03_llmcache` to see `SemanticCache` in detail, and {doc}`/user_guide/13_langcache_semantic_cache` covers `LangCacheSemanticCache` in detail.
 
 ## Embeddings Cache
 

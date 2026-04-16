@@ -286,8 +286,8 @@ class LangCacheSemanticCache(BaseLLMCache):
             filter_expression (Optional[FilterExpression]): Not supported.
             distance_threshold (Optional[float]): Maximum distance threshold.
                 Converted to similarity_threshold according to distance_scale:
-                  - If "redis": uses norm_cosine_distance(distance_threshold) ([0,2] → [0,1])
-                  - If "normalized": uses (1.0 - distance_threshold) ([0,1] → [0,1])
+                If "redis", uses norm_cosine_distance(distance_threshold) ([0,2] -> [0,1]).
+                If "normalized", uses (1.0 - distance_threshold) ([0,1] -> [0,1]).
             attributes (Optional[Dict[str, Any]]): LangCache attributes to filter by.
                 Note: Attributes must be pre-configured in your LangCache instance.
 
@@ -360,8 +360,8 @@ class LangCacheSemanticCache(BaseLLMCache):
             filter_expression (Optional[FilterExpression]): Not supported.
             distance_threshold (Optional[float]): Maximum distance threshold.
                 Converted to similarity_threshold according to distance_scale:
-                  - If "redis": uses norm_cosine_distance(distance_threshold) ([0,2] 												 -> [0,1])
-                  - If "normalized": uses (1.0 - distance_threshold) ([0,1] -> [0,1])
+                If "redis", uses norm_cosine_distance(distance_threshold) ([0,2] -> [0,1]).
+                If "normalized", uses (1.0 - distance_threshold) ([0,1] -> [0,1]).
             attributes (Optional[Dict[str, Any]]): LangCache attributes to filter by.
                 Note: Attributes must be pre-configured in your LangCache instance.
 

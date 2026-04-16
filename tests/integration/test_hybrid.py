@@ -385,7 +385,11 @@ def test_hybrid_query_word_weights(index, scorer):
 
     unweighted_results = index.query(unweighted_query)
 
-    for weighted, unweighted in zip(weighted_results, unweighted_results):
+    # sort both results by description to ensure proper comparisons below
+    w_results = sorted(weighted_results, key=lambda doc: doc["description"])
+    u_results = sorted(unweighted_results, key=lambda doc: doc["description"])
+
+    for weighted, unweighted in zip(w_results, u_results):
         for word in weights:
             if word in weighted["description"] or word in unweighted["description"]:
                 assert float(weighted["text_score"]) > float(unweighted["text_score"])

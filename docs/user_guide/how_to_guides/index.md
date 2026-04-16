@@ -8,6 +8,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 :::{grid-item-card} 🤖 LLM Extensions
 
 - [Cache LLM Responses](../03_llmcache.ipynb) -- semantic caching to reduce costs and latency
+- [Use LangCache as the LLM cache](../13_langcache_semantic_cache.ipynb) -- managed cache service with LangCache
 - [Manage LLM Message History](../07_message_history.ipynb) -- persistent chat history with relevancy retrieval
 - [Route Queries with SemanticRouter](../08_semantic_router.ipynb) -- classify intents and route queries
 :::
@@ -49,6 +50,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | I want to... | Guide |
 |--------------|-------|
 | Cache LLM responses | [Cache LLM Responses](../03_llmcache.ipynb) |
+| Use LangCache (managed) for LLM caching | [Use LangCache as the LLM cache](../13_langcache_semantic_cache.ipynb) |
 | Store chat history | [Manage LLM Message History](../07_message_history.ipynb) |
 | Route queries by intent | [Route Queries with SemanticRouter](../08_semantic_router.ipynb) |
 | Filter results by multiple criteria | [Query and Filter Data](../02_complex_filtering.ipynb) |
@@ -66,6 +68,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 :hidden:
 
 Cache LLM Responses <../03_llmcache>
+Use LangCache as the LLM cache <../13_langcache_semantic_cache>
 Manage LLM Message History <../07_message_history>
 Route Queries with SemanticRouter <../08_semantic_router>
 Query and Filter Data <../02_complex_filtering>
