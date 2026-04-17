@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 from redis.commands.search.query import Query as RedisQuery
 
@@ -19,7 +19,7 @@ nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 # - str: single field name (ASC by default)
 # - Tuple[str, str]: (field_name, direction)
 # - List: list of field names or tuples
-SortSpec = Union[str, Tuple[str, str], List[Union[str, Tuple[str, str]]]]
+SortSpec = str | tuple[str, str] | list[str | tuple[str, str]]
 
 
 class BaseQuery(RedisQuery):
@@ -37,9 +37,9 @@ class BaseQuery(RedisQuery):
     string is accessed, it is rebuilt.
     """
 
-    _params: Dict[str, Any] = {}
-    _filter_expression: Union[str, FilterExpression] = FilterExpression("*")
-    _built_query_string: Optional[str] = None
+    _params: dict[str, Any] = {}
+    _filter_expression: str | FilterExpression = FilterExpression("*")
+    _built_query_string: str | None = None
 
     def __init__(self, query_string: str = "*"):
         """
@@ -58,7 +58,7 @@ class BaseQuery(RedisQuery):
         self._built_query_string = None
 
         # Initialize skip_decode_fields set
-        self._skip_decode_fields: Set[str] = set()
+        self._skip_decode_fields: set[str] = set()
 
     def __str__(self) -> str:
         """Return the string representation of the query."""
@@ -69,7 +69,7 @@ class BaseQuery(RedisQuery):
         raise NotImplementedError("Must be implemented by subclasses")
 
     @staticmethod
-    def _parse_sort_spec(sort_spec: Optional[SortSpec]) -> List[Tuple[str, bool]]:
+    def _parse_sort_spec(sort_spec: SortSpec | None) -> list[tuple[str, bool]]:
         """Parse sort specification into list of (field, ascending) tuples.
 
         Args:
@@ -96,7 +96,7 @@ class BaseQuery(RedisQuery):
         if sort_spec is None or sort_spec == []:
             return []
 
-        result: List[Tuple[str, bool]] = []
+        result: list[tuple[str, bool]] = []
 
         # Single field as string
         if isinstance(sort_spec, str):
@@ -137,7 +137,7 @@ class BaseQuery(RedisQuery):
         return result
 
     def sort_by(
-        self, sort_spec: Optional[SortSpec] = None, asc: bool = True
+        self, sort_spec: SortSpec | None = None, asc: bool = True
     ) -> "BaseQuery":
         """Set the sort order for query results.
 
@@ -178,7 +178,7 @@ class BaseQuery(RedisQuery):
 
         # Handle backward compatibility: if sort_spec is a string and asc is specified
         # treat it as the old (field, asc) format
-        parsed: List[Tuple[str, bool]]
+        parsed: list[tuple[str, bool]]
         if isinstance(sort_spec, str) and asc is not True:
             # Old API: query.sort_by("field", asc=False)
             parsed = [(sort_spec, asc)]
@@ -206,9 +206,7 @@ class BaseQuery(RedisQuery):
 
         return self
 
-    def set_filter(
-        self, filter_expression: Optional[Union[str, FilterExpression]] = None
-    ):
+    def set_filter(self, filter_expression: str | FilterExpression | None = None):
         """Set the filter expression for the query.
 
         Args:
@@ -232,7 +230,7 @@ class BaseQuery(RedisQuery):
         self._built_query_string = None
 
     @property
-    def filter(self) -> Union[str, FilterExpression]:
+    def filter(self) -> str | FilterExpression:
         """The filter expression for the query."""
         return self._filter_expression
 
@@ -242,7 +240,7 @@ class BaseQuery(RedisQuery):
         return self
 
     @property
-    def params(self) -> Dict[str, Any]:
+    def params(self) -> dict[str, Any]:
         """Return the query parameters."""
         return self._params
 
@@ -254,13 +252,11 @@ class BaseQuery(RedisQuery):
         return self._built_query_string
 
     @_query_string.setter
-    def _query_string(self, value: Optional[str]):
+    def _query_string(self, value: str | None):
         """Setter for _query_string to maintain compatibility with parent class."""
         self._built_query_string = value
 
-    def return_fields(
-        self, *fields, skip_decode: Optional[Union[str, List[str]]] = None
-    ):
+    def return_fields(self, *fields, skip_decode: str | list[str] | None = None):
         """
         Set the fields to return with search results.
 
@@ -314,13 +310,13 @@ class BaseQuery(RedisQuery):
 class FilterQuery(BaseQuery):
     def __init__(
         self,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
-        return_fields: Optional[List[str]] = None,
+        filter_expression: str | FilterExpression | None = None,
+        return_fields: list[str] | None = None,
         num_results: int = 10,
         dialect: int = 2,
-        sort_by: Optional[SortSpec] = None,
+        sort_by: SortSpec | None = None,
         in_order: bool = False,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ):
         """A query for running a filtered search with a filter expression.
 
@@ -375,9 +371,9 @@ class FilterQuery(BaseQuery):
 class CountQuery(BaseQuery):
     def __init__(
         self,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        filter_expression: str | FilterExpression | None = None,
         dialect: int = 2,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ):
         """A query for a simple count operation provided some filter expression.
 
@@ -448,23 +444,23 @@ class HybridPolicy(str, Enum):
 class VectorQuery(BaseVectorQuery, BaseQuery):
     def __init__(
         self,
-        vector: Union[List[float], bytes],
+        vector: list[float] | bytes,
         vector_field_name: str,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        return_fields: list[str] | None = None,
+        filter_expression: str | FilterExpression | None = None,
         dtype: str = "float32",
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
-        sort_by: Optional[SortSpec] = None,
+        sort_by: SortSpec | None = None,
         in_order: bool = False,
-        hybrid_policy: Optional[str] = None,
-        batch_size: Optional[int] = None,
-        ef_runtime: Optional[int] = None,
-        epsilon: Optional[float] = None,
-        search_window_size: Optional[int] = None,
-        use_search_history: Optional[str] = None,
-        search_buffer_capacity: Optional[int] = None,
+        hybrid_policy: str | None = None,
+        batch_size: int | None = None,
+        ef_runtime: int | None = None,
+        epsilon: float | None = None,
+        search_window_size: int | None = None,
+        use_search_history: str | None = None,
+        search_buffer_capacity: int | None = None,
         normalize_vector_distance: bool = False,
     ):
         """A query for running a vector search along with an optional filter
@@ -542,13 +538,13 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._vector_field_name = vector_field_name
         self._dtype = dtype
         self._num_results = num_results
-        self._hybrid_policy: Optional[HybridPolicy] = None
-        self._batch_size: Optional[int] = None
-        self._ef_runtime: Optional[int] = None
-        self._epsilon: Optional[float] = None
-        self._search_window_size: Optional[int] = None
-        self._use_search_history: Optional[str] = None
-        self._search_buffer_capacity: Optional[int] = None
+        self._hybrid_policy: HybridPolicy | None = None
+        self._batch_size: int | None = None
+        self._ef_runtime: int | None = None
+        self._epsilon: float | None = None
+        self._search_window_size: int | None = None
+        self._use_search_history: str | None = None
+        self._search_buffer_capacity: int | None = None
         self._normalize_vector_distance = normalize_vector_distance
         self.set_filter(filter_expression)
 
@@ -786,7 +782,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._built_query_string = None
 
     @property
-    def hybrid_policy(self) -> Optional[str]:
+    def hybrid_policy(self) -> str | None:
         """Return the hybrid policy for the query.
 
         Returns:
@@ -795,7 +791,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._hybrid_policy.value if self._hybrid_policy else None
 
     @property
-    def batch_size(self) -> Optional[int]:
+    def batch_size(self) -> int | None:
         """Return the batch size for the query.
 
         Returns:
@@ -804,7 +800,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._batch_size
 
     @property
-    def ef_runtime(self) -> Optional[int]:
+    def ef_runtime(self) -> int | None:
         """Return the EF_RUNTIME parameter for the query.
 
         Returns:
@@ -813,7 +809,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._ef_runtime
 
     @property
-    def epsilon(self) -> Optional[float]:
+    def epsilon(self) -> float | None:
         """Return the epsilon parameter for the query.
 
         Returns:
@@ -822,7 +818,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._epsilon
 
     @property
-    def search_window_size(self) -> Optional[int]:
+    def search_window_size(self) -> int | None:
         """Return the SEARCH_WINDOW_SIZE parameter for the query.
 
         Returns:
@@ -831,7 +827,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._search_window_size
 
     @property
-    def use_search_history(self) -> Optional[str]:
+    def use_search_history(self) -> str | None:
         """Return the USE_SEARCH_HISTORY parameter for the query.
 
         Returns:
@@ -840,7 +836,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._use_search_history
 
     @property
-    def search_buffer_capacity(self) -> Optional[int]:
+    def search_buffer_capacity(self) -> int | None:
         """Return the SEARCH_BUFFER_CAPACITY parameter for the query.
 
         Returns:
@@ -849,7 +845,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._search_buffer_capacity
 
     @property
-    def params(self) -> Dict[str, Any]:
+    def params(self) -> dict[str, Any]:
         """Return the parameters for the query.
 
         Returns:
@@ -860,7 +856,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         else:
             vector = array_to_buffer(self._vector, dtype=self._dtype)
 
-        params: Dict[str, Any] = {self.VECTOR_PARAM: vector}
+        params: dict[str, Any] = {self.VECTOR_PARAM: vector}
 
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
@@ -893,23 +889,23 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
 
     def __init__(
         self,
-        vector: Union[List[float], bytes],
+        vector: list[float] | bytes,
         vector_field_name: str,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        return_fields: list[str] | None = None,
+        filter_expression: str | FilterExpression | None = None,
         dtype: str = "float32",
         distance_threshold: float = 0.2,
-        epsilon: Optional[float] = None,
-        search_window_size: Optional[int] = None,
-        use_search_history: Optional[str] = None,
-        search_buffer_capacity: Optional[int] = None,
+        epsilon: float | None = None,
+        search_window_size: int | None = None,
+        use_search_history: str | None = None,
+        search_buffer_capacity: int | None = None,
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
-        sort_by: Optional[SortSpec] = None,
+        sort_by: SortSpec | None = None,
         in_order: bool = False,
-        hybrid_policy: Optional[str] = None,
-        batch_size: Optional[int] = None,
+        hybrid_policy: str | None = None,
+        batch_size: int | None = None,
         normalize_vector_distance: bool = False,
     ):
         """A query for running a filtered vector search based on semantic
@@ -989,12 +985,12 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._dtype = dtype
         self._num_results = num_results
         self._distance_threshold: float = 0.2  # Initialize with default
-        self._epsilon: Optional[float] = None
-        self._search_window_size: Optional[int] = None
-        self._use_search_history: Optional[str] = None
-        self._search_buffer_capacity: Optional[int] = None
-        self._hybrid_policy: Optional[HybridPolicy] = None
-        self._batch_size: Optional[int] = None
+        self._epsilon: float | None = None
+        self._search_window_size: int | None = None
+        self._use_search_history: str | None = None
+        self._search_buffer_capacity: int | None = None
+        self._hybrid_policy: HybridPolicy | None = None
+        self._batch_size: int | None = None
         self._normalize_vector_distance = normalize_vector_distance
 
         # Initialize the base query
@@ -1236,7 +1232,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._distance_threshold
 
     @property
-    def epsilon(self) -> Optional[float]:
+    def epsilon(self) -> float | None:
         """Return the epsilon for the query.
 
         Returns:
@@ -1245,7 +1241,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._epsilon
 
     @property
-    def search_window_size(self) -> Optional[int]:
+    def search_window_size(self) -> int | None:
         """Return the SEARCH_WINDOW_SIZE parameter for the query.
 
         Returns:
@@ -1254,7 +1250,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._search_window_size
 
     @property
-    def use_search_history(self) -> Optional[str]:
+    def use_search_history(self) -> str | None:
         """Return the USE_SEARCH_HISTORY parameter for the query.
 
         Returns:
@@ -1263,7 +1259,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._use_search_history
 
     @property
-    def search_buffer_capacity(self) -> Optional[int]:
+    def search_buffer_capacity(self) -> int | None:
         """Return the SEARCH_BUFFER_CAPACITY parameter for the query.
 
         Returns:
@@ -1272,7 +1268,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._search_buffer_capacity
 
     @property
-    def hybrid_policy(self) -> Optional[str]:
+    def hybrid_policy(self) -> str | None:
         """Return the hybrid policy for the query.
 
         Returns:
@@ -1281,7 +1277,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._hybrid_policy.value if self._hybrid_policy else None
 
     @property
-    def batch_size(self) -> Optional[int]:
+    def batch_size(self) -> int | None:
         """Return the batch size for the query.
 
         Returns:
@@ -1290,7 +1286,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         return self._batch_size
 
     @property
-    def params(self) -> Dict[str, Any]:
+    def params(self) -> dict[str, Any]:
         """Return the parameters for the query.
 
         Returns:
@@ -1351,18 +1347,18 @@ class TextQuery(BaseQuery):
     def __init__(
         self,
         text: str,
-        text_field_name: Union[str, Dict[str, float]],
+        text_field_name: str | dict[str, float],
         text_scorer: str = "BM25STD",
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
-        return_fields: Optional[List[str]] = None,
+        filter_expression: str | FilterExpression | None = None,
+        return_fields: list[str] | None = None,
         num_results: int = 10,
         return_score: bool = True,
         dialect: int = 2,
-        sort_by: Optional[SortSpec] = None,
+        sort_by: SortSpec | None = None,
         in_order: bool = False,
-        params: Optional[Dict[str, Any]] = None,
-        stopwords: Optional[Union[str, Set[str]]] = "english",
-        text_weights: Optional[Dict[str, float]] = None,
+        params: dict[str, Any] | None = None,
+        stopwords: str | set[str] | None = "english",
+        text_weights: dict[str, float] | None = None,
     ):
         """A query for running a full text search, along with an optional filter expression.
 
@@ -1445,7 +1441,7 @@ class TextQuery(BaseQuery):
     def stopwords(self):
         return self._stopwords
 
-    def _set_stopwords(self, stopwords: Optional[Union[str, Set[str]]] = "english"):
+    def _set_stopwords(self, stopwords: str | set[str] | None = "english"):
         """Set the stopwords to use in the query.
         Args:
             stopwords (Optional[Union[str, Set[str]]]): The stopwords to use. If a string
@@ -1474,7 +1470,7 @@ class TextQuery(BaseQuery):
                 )
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
-        elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
+        elif isinstance(stopwords, (set, list, tuple)) and all(
             isinstance(word, str) for word in stopwords
         ):
             self._stopwords = set(stopwords)
@@ -1509,8 +1505,8 @@ class TextQuery(BaseQuery):
         return " | ".join(token_list)
 
     def _parse_field_weights(
-        self, field_spec: Union[str, Dict[str, float]]
-    ) -> Dict[str, float]:
+        self, field_spec: str | dict[str, float]
+    ) -> dict[str, float]:
         """Parse the field specification into a weights dictionary.
 
         Args:
@@ -1540,7 +1536,7 @@ class TextQuery(BaseQuery):
                 "text_field_name must be a string or dictionary of field:weight mappings"
             )
 
-    def set_field_weights(self, field_weights: Union[str, Dict[str, float]]):
+    def set_field_weights(self, field_weights: str | dict[str, float]):
         """Set or update the field weights for the query.
 
         Args:
@@ -1551,7 +1547,7 @@ class TextQuery(BaseQuery):
         self._built_query_string = None
 
     @property
-    def field_weights(self) -> Dict[str, float]:
+    def field_weights(self) -> dict[str, float]:
         """Get the field weights for the query.
 
         Returns:
@@ -1560,7 +1556,7 @@ class TextQuery(BaseQuery):
         return self._field_weights.copy()
 
     @property
-    def text_field_name(self) -> Union[str, Dict[str, float]]:
+    def text_field_name(self) -> str | dict[str, float]:
         """Get the text field name(s) - for backward compatibility.
 
         Returns:
@@ -1573,10 +1569,8 @@ class TextQuery(BaseQuery):
                 return field
         return self._field_weights.copy()
 
-    def _parse_text_weights(
-        self, weights: Optional[Dict[str, float]]
-    ) -> Dict[str, float]:
-        parsed_weights: Dict[str, float] = {}
+    def _parse_text_weights(self, weights: dict[str, float] | None) -> dict[str, float]:
+        parsed_weights: dict[str, float] = {}
         if not weights:
             return parsed_weights
         for word, weight in weights.items():
@@ -1595,7 +1589,7 @@ class TextQuery(BaseQuery):
             parsed_weights[word] = weight
         return parsed_weights
 
-    def set_text_weights(self, weights: Dict[str, float]):
+    def set_text_weights(self, weights: dict[str, float]):
         """Set or update the text weights for the query.
 
         Args:
@@ -1605,7 +1599,7 @@ class TextQuery(BaseQuery):
         self._built_query_string = None
 
     @property
-    def text_weights(self) -> Dict[str, float]:
+    def text_weights(self) -> dict[str, float]:
         """Get the text weights.
 
         Returns:

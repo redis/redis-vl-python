@@ -1,6 +1,6 @@
 import asyncio
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import ValidationError
 from redis.exceptions import RedisError
@@ -27,7 +27,7 @@ class RedisVLMCPError(Exception):
         *,
         code: MCPErrorCode,
         retryable: bool,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code

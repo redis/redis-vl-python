@@ -2,7 +2,7 @@ import datetime
 import re
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable
 
 from redisvl.utils.token_escaper import TokenEscaper
 
@@ -39,7 +39,7 @@ class FilterOperator(Enum):
 
 class FilterField:
     escaper: TokenEscaper = TokenEscaper()
-    OPERATORS: Dict[FilterOperator, str] = {}
+    OPERATORS: dict[FilterOperator, str] = {}
 
     def __init__(self, field: str):
         self._field = field
@@ -54,7 +54,7 @@ class FilterField:
     def _set_value(
         self,
         val: Any,
-        val_type: Union[type, Tuple[type, ...]],
+        val_type: type | tuple[type, ...],
         operator: FilterOperator,
     ):
         # check that the operator is supported by this class
@@ -94,7 +94,7 @@ class FilterField:
 
 def check_operator_misuse(func: Callable) -> Callable:
     @wraps(func)
-    def wrapper(instance: Any, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
+    def wrapper(instance: Any, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
         # Extracting 'other' from positional arguments or keyword arguments
         other = kwargs.get("other") if "other" in kwargs else None
         if not other:
@@ -116,13 +116,13 @@ def check_operator_misuse(func: Callable) -> Callable:
 class Tag(FilterField):
     """A Tag filter can be applied to Tag fields"""
 
-    OPERATORS: Dict[FilterOperator, str] = {
+    OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.IN: "==",
         FilterOperator.LIKE: "%",
     }
-    OPERATOR_MAP: Dict[FilterOperator, str] = {
+    OPERATOR_MAP: dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:{%s}",
         FilterOperator.NE: "(-@%s:{%s})",
         FilterOperator.IN: "@%s:{%s}",
@@ -131,7 +131,7 @@ class Tag(FilterField):
     SUPPORTED_VAL_TYPES = (list, set, tuple, str, type(None))
 
     def _set_tag_value(
-        self, other: Union[List[str], Set[str], str], operator: FilterOperator
+        self, other: list[str] | set[str] | str, operator: FilterOperator
     ):
         if isinstance(other, (list, set, tuple)):
             try:
@@ -148,7 +148,7 @@ class Tag(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, operator)
 
     @check_operator_misuse
-    def __eq__(self, other: Union[List[str], str]) -> "FilterExpression":
+    def __eq__(self, other: list[str] | str) -> "FilterExpression":
         """Create a Tag equality filter expression.
 
         Args:
@@ -164,7 +164,7 @@ class Tag(FilterField):
         return FilterExpression(str(self))
 
     @check_operator_misuse
-    def __ne__(self, other: Union[List[str], str]) -> "FilterExpression":
+    def __ne__(self, other: list[str] | str) -> "FilterExpression":
         """Create a Tag inequality filter expression.
 
         Args:
@@ -179,7 +179,7 @@ class Tag(FilterField):
         self._set_tag_value(other, FilterOperator.NE)
         return FilterExpression(str(self))
 
-    def __mod__(self, other: Union[List[str], str]) -> "FilterExpression":
+    def __mod__(self, other: list[str] | str) -> "FilterExpression":
         """Create a Tag wildcard filter expression for pattern matching.
 
         This enables wildcard pattern matching on tag fields using the ``*``
@@ -262,7 +262,7 @@ class GeoRadius(GeoSpec):
         super().__init__(longitude, latitude, unit)
         self._radius = radius
 
-    def get_args(self) -> List[Union[float, int, str]]:
+    def get_args(self) -> list[float | int | str]:
         return [self._longitude, self._latitude, self._radius, self._unit]
 
 
@@ -270,11 +270,11 @@ class Geo(FilterField):
     """A Geo is a FilterField representing a geographic (lat/lon) field in a
     Redis index."""
 
-    OPERATORS: Dict[FilterOperator, str] = {
+    OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
     }
-    OPERATOR_MAP: Dict[FilterOperator, str] = {
+    OPERATOR_MAP: dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:[%s %s %i %s]",
         FilterOperator.NE: "(-@%s:[%s %s %i %s])",
     }
@@ -328,7 +328,7 @@ class Geo(FilterField):
 class Num(FilterField):
     """A Num is a FilterField representing a numeric field in a Redis index."""
 
-    OPERATORS: Dict[FilterOperator, str] = {
+    OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.LT: "<",
@@ -337,7 +337,7 @@ class Num(FilterField):
         FilterOperator.GE: ">=",
         FilterOperator.BETWEEN: "between",
     }
-    OPERATOR_MAP: Dict[FilterOperator, str] = {
+    OPERATOR_MAP: dict[FilterOperator, str] = {
         FilterOperator.EQ: "@%s:[%s %s]",
         FilterOperator.NE: "(-@%s:[%s %s])",
         FilterOperator.GT: "@%s:[(%s +inf]",
@@ -349,7 +349,7 @@ class Num(FilterField):
 
     SUPPORTED_VAL_TYPES = (int, float, tuple, type(None))
 
-    def __eq__(self, other: Union[int, float]) -> "FilterExpression":
+    def __eq__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric equality filter expression.
 
         Args:
@@ -364,7 +364,7 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.EQ)
         return FilterExpression(str(self))
 
-    def __ne__(self, other: Union[int, float]) -> "FilterExpression":
+    def __ne__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric inequality filter expression.
 
         Args:
@@ -380,7 +380,7 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.NE)
         return FilterExpression(str(self))
 
-    def __gt__(self, other: Union[int, float]) -> "FilterExpression":
+    def __gt__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric greater than filter expression.
 
         Args:
@@ -396,7 +396,7 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
 
-    def __lt__(self, other: Union[int, float]) -> "FilterExpression":
+    def __lt__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric less than filter expression.
 
         Args:
@@ -412,7 +412,7 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.LT)
         return FilterExpression(str(self))
 
-    def __ge__(self, other: Union[int, float]) -> "FilterExpression":
+    def __ge__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric greater than or equal to filter expression.
 
         Args:
@@ -428,7 +428,7 @@ class Num(FilterField):
         self._set_value(other, self.SUPPORTED_VAL_TYPES, FilterOperator.GE)
         return FilterExpression(str(self))
 
-    def __le__(self, other: Union[int, float]) -> "FilterExpression":
+    def __le__(self, other: int | float) -> "FilterExpression":
         """Create a Numeric less than or equal to filter expression.
 
         Args:
@@ -502,12 +502,12 @@ class Num(FilterField):
 class Text(FilterField):
     """A Text is a FilterField representing a text field in a Redis index."""
 
-    OPERATORS: Dict[FilterOperator, str] = {
+    OPERATORS: dict[FilterOperator, str] = {
         FilterOperator.EQ: "==",
         FilterOperator.NE: "!=",
         FilterOperator.LIKE: "%",
     }
-    OPERATOR_MAP: Dict[FilterOperator, str] = {
+    OPERATOR_MAP: dict[FilterOperator, str] = {
         FilterOperator.EQ: '@%s:("%s")',
         FilterOperator.NE: '(-@%s:"%s")',
         FilterOperator.LIKE: "@%s:(%s)",
@@ -626,10 +626,10 @@ class FilterExpression:
 
     def __init__(
         self,
-        _filter: Optional[str] = None,
-        operator: Optional[FilterOperator] = None,
-        left: Optional["FilterExpression"] = None,
-        right: Optional["FilterExpression"] = None,
+        _filter: str | None = None,
+        operator: FilterOperator | None = None,
+        left: "FilterExpression | None" = None,
+        right: "FilterExpression | None" = None,
     ):
         self._filter = _filter
         self._operator = operator
@@ -760,7 +760,7 @@ class Timestamp(Num):
         raise TypeError(f"Unsupported type for timestamp conversion: {type(value)}")
 
     def __eq__(
-        self, other: Union[datetime.datetime, datetime.date, str, int, float]
+        self, other: datetime.datetime | datetime.date | str | int | float
     ) -> FilterExpression:
         """
         Filter for timestamps equal to the specified value.
@@ -790,7 +790,7 @@ class Timestamp(Num):
         return FilterExpression(str(self))
 
     def __ne__(
-        self, other: Union[datetime.datetime, datetime.date, str, int, float]
+        self, other: datetime.datetime | datetime.date | str | int | float
     ) -> FilterExpression:
         """
         Filter for timestamps not equal to the specified value.

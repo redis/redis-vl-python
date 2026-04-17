@@ -1,16 +1,5 @@
 import os
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import Any, Sequence, TypeVar, overload
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from warnings import warn
 
@@ -41,10 +30,10 @@ logger = get_logger(__name__)
 
 
 def _split_from_existing_kwargs(
-    kwargs: Dict[str, Any], *, nested_connection_keys: Sequence[str]
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    init_kwargs: Dict[str, Any] = {}
-    connection_kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any], *, nested_connection_keys: Sequence[str]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    init_kwargs: dict[str, Any] = {}
+    connection_kwargs: dict[str, Any] = {}
 
     for key in ("validate_on_load", "lib_name"):
         if key in kwargs:
@@ -65,7 +54,7 @@ def _split_from_existing_kwargs(
 
 def _strip_cluster_from_url_and_kwargs(
     url: str, **kwargs
-) -> Tuple[str, Dict[str, Any]]:
+) -> tuple[str, dict[str, Any]]:
     """Remove 'cluster' parameter from URL query string and kwargs.
 
     AsyncRedisCluster doesn't accept 'cluster' parameter, but it might be
@@ -138,7 +127,7 @@ def is_version_gte(version1: str, version2: str) -> bool:
     return True
 
 
-def unpack_redis_modules(module_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+def unpack_redis_modules(module_list: list[dict[str, Any]]) -> dict[str, Any]:
     """Unpack a list of Redis modules pulled from the MODULES LIST command."""
     return {module["name"]: module["ver"] for module in module_list}
 
@@ -223,7 +212,7 @@ def make_lib_name(*args) -> str:
     return f"redis-py({custom_libs})"
 
 
-def convert_index_info_to_schema(index_info: Dict[str, Any]) -> Dict[str, Any]:
+def convert_index_info_to_schema(index_info: dict[str, Any]) -> dict[str, Any]:
     """Convert the output of FT.INFO into a schema-ready dictionary.
 
     Args:
@@ -484,7 +473,7 @@ class RedisConnectionFactory:
         "connect", "Please use `get_redis_connection` or `get_async_redis_connection`."
     )
     def connect(
-        cls, redis_url: Optional[str] = None, use_async: bool = False, **kwargs
+        cls, redis_url: str | None = None, use_async: bool = False, **kwargs
     ) -> RedisClient:
         """Create a connection to the Redis database based on a URL and some
         connection kwargs.
@@ -512,7 +501,7 @@ class RedisConnectionFactory:
 
     @staticmethod
     def get_redis_connection(
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         **kwargs,
     ) -> SyncRedisClient:
         """Creates and returns a synchronous Redis client.
@@ -552,7 +541,7 @@ class RedisConnectionFactory:
     @staticmethod
     @deprecated_argument("url", "redis_url")
     async def _get_aredis_connection(
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         **kwargs,
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
@@ -611,7 +600,7 @@ class RedisConnectionFactory:
     @staticmethod
     @deprecated_argument("url", "redis_url")
     def get_async_redis_connection(
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         **kwargs,
     ) -> AsyncRedisClient:
         """Creates and returns an asynchronous Redis client.
@@ -658,7 +647,7 @@ class RedisConnectionFactory:
 
     @staticmethod
     def get_redis_cluster_connection(
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         **kwargs,
     ) -> RedisCluster:
         """Creates and returns a synchronous Redis client for a Redis cluster."""
@@ -667,7 +656,7 @@ class RedisConnectionFactory:
 
     @staticmethod
     def get_async_redis_cluster_connection(
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         **kwargs,
     ) -> AsyncRedisCluster:
         """Creates and returns an asynchronous Redis client for a Redis cluster."""
@@ -690,7 +679,7 @@ class RedisConnectionFactory:
         assert isinstance(redis_client, Redis)  # Type narrowing for MyPy
 
         # pick the right connection class
-        connection_class: Type[AsyncAbstractConnection] = (
+        connection_class: type[AsyncAbstractConnection] = (
             AsyncSSLConnection
             if redis_client.connection_pool.connection_class == SSLConnection
             else AsyncConnection
@@ -704,17 +693,17 @@ class RedisConnectionFactory:
         )
 
     @staticmethod
-    def get_modules(client: SyncRedisClient) -> Dict[str, Any]:
+    def get_modules(client: SyncRedisClient) -> dict[str, Any]:
         return unpack_redis_modules(convert_bytes(client.module_list()))
 
     @staticmethod
-    async def get_modules_async(client: AsyncRedisClient) -> Dict[str, Any]:
+    async def get_modules_async(client: AsyncRedisClient) -> dict[str, Any]:
         return unpack_redis_modules(convert_bytes(await client.module_list()))
 
     @staticmethod
     def validate_sync_redis(
         redis_client: SyncRedisClient,
-        lib_name: Optional[str] = None,
+        lib_name: str | None = None,
     ) -> None:
         """Validates the sync Redis client.
 
@@ -741,7 +730,7 @@ class RedisConnectionFactory:
     @staticmethod
     async def validate_async_redis(
         redis_client: AsyncRedisClient,
-        lib_name: Optional[str] = None,
+        lib_name: str | None = None,
     ) -> None:
         """Validates the async Redis client.
 
@@ -777,8 +766,8 @@ class RedisConnectionFactory:
 
     @staticmethod
     def _redis_sentinel_client(
-        redis_url: str, redis_class: Union[type[Redis], type[AsyncRedis]], **kwargs: Any
-    ) -> Union[Redis, AsyncRedis]:
+        redis_url: str, redis_class: type[Redis] | type[AsyncRedis], **kwargs: Any
+    ) -> Redis | AsyncRedis:
         """Create a Redis client connected via Sentinel for high availability.
 
         Parses a Sentinel URL and creates a Redis client connected to the
@@ -805,7 +794,7 @@ class RedisConnectionFactory:
             RedisConnectionFactory._parse_sentinel_url(redis_url)
         )
 
-        sentinel_kwargs: Dict[str, Any] = {}
+        sentinel_kwargs: dict[str, Any] = {}
         if username:
             sentinel_kwargs["username"] = username
             kwargs["username"] = username
@@ -834,7 +823,7 @@ class RedisConnectionFactory:
     @staticmethod
     def _parse_sentinel_url(
         url: str,
-    ) -> Tuple[List[Tuple[str, int]], str, Optional[str], Optional[str], Optional[str]]:
+    ) -> tuple[list[tuple[str, int]], str, str | None, str | None, str | None]:
         """Parse a Redis Sentinel URL into its components.
 
         Args:

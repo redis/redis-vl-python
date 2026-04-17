@@ -1,4 +1,4 @@
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,17 +14,17 @@ class MCPSettings(BaseSettings):
 
     config: str = Field(..., min_length=1)
     read_only: bool = False
-    tool_search_description: Optional[str] = None
-    tool_upsert_description: Optional[str] = None
+    tool_search_description: str | None = None
+    tool_upsert_description: str | None = None
 
     @classmethod
     def from_env(
         cls,
         *,
-        config: Optional[str] = None,
-        read_only: Optional[bool] = None,
-        tool_search_description: Optional[str] = None,
-        tool_upsert_description: Optional[str] = None,
+        config: str | None = None,
+        read_only: bool | None = None,
+        tool_search_description: str | None = None,
+        tool_upsert_description: str | None = None,
     ) -> "MCPSettings":
         """Build settings from explicit overrides plus `REDISVL_MCP_*` env vars."""
         overrides: dict[str, object] = {}

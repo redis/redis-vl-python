@@ -2,7 +2,7 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -81,11 +81,11 @@ class MCPVectorizerConfig(BaseModel):
     model: str = Field(..., min_length=1)
 
     @property
-    def extra_kwargs(self) -> Dict[str, Any]:
+    def extra_kwargs(self) -> dict[str, Any]:
         """Return vectorizer kwargs other than the normalized `class` and `model`."""
         return dict(self.model_extra or {})
 
-    def to_init_kwargs(self) -> Dict[str, Any]:
+    def to_init_kwargs(self) -> dict[str, Any]:
         """Build kwargs suitable for directly instantiating the vectorizer."""
         return {"model": self.model, **self.extra_kwargs}
 
@@ -105,7 +105,7 @@ class MCPIndexSearchConfig(BaseModel):
     """
 
     type: Literal["vector", "fulltext", "hybrid"]
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_params(self) -> "MCPIndexSearchConfig":
@@ -155,7 +155,7 @@ class MCPIndexSearchConfig(BaseModel):
             )
         return self
 
-    def to_query_params(self) -> Dict[str, Any]:
+    def to_query_params(self) -> dict[str, Any]:
         """Return normalized query kwargs exactly as configured."""
         return dict(self.params)
 
@@ -195,8 +195,8 @@ class MCPSchemaOverrideField(BaseModel):
 
     name: str = Field(..., min_length=1)
     type: str = Field(..., min_length=1)
-    path: Optional[str] = None
-    attrs: Dict[str, Any] = Field(default_factory=dict)
+    path: str | None = None
+    attrs: dict[str, Any] = Field(default_factory=dict)
 
 
 class MCPSchemaOverrides(BaseModel):
@@ -219,7 +219,7 @@ class MCPConfig(BaseModel):
     """Validated MCP server configuration loaded from YAML."""
 
     server: MCPServerConfig
-    indexes: Dict[str, MCPIndexBindingConfig]
+    indexes: dict[str, MCPIndexBindingConfig]
 
     @model_validator(mode="after")
     def _validate_bindings(self) -> "MCPConfig":
@@ -265,8 +265,8 @@ class MCPConfig(BaseModel):
         return self.binding.redis_name
 
     def inspected_schema_from_index_info(
-        self, index_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, index_info: dict[str, Any]
+    ) -> dict[str, Any]:
         """Build a schema dict from FT.INFO while preserving discovered field identity.
 
         RedisVL's generic FT.INFO conversion omits vector fields when their attrs are
@@ -301,8 +301,8 @@ class MCPConfig(BaseModel):
         return schema_dict
 
     def merge_schema_overrides(
-        self, inspected_schema: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, inspected_schema: dict[str, Any]
+    ) -> dict[str, Any]:
         """Apply validated schema overrides without allowing identity changes."""
         merged_schema = deepcopy(inspected_schema)
         merged_fields = merged_schema.setdefault("fields", [])
@@ -364,7 +364,7 @@ class MCPConfig(BaseModel):
                 f"runtime.vector_field_name '{self.runtime.vector_field_name}' must reference a vector field"
             )
 
-    def to_index_schema(self, inspected_schema: Dict[str, Any]) -> IndexSchema:
+    def to_index_schema(self, inspected_schema: dict[str, Any]) -> IndexSchema:
         """Apply overrides to an inspected schema and validate the effective result."""
         merged_schema = self.merge_schema_overrides(inspected_schema)
         schema = IndexSchema.model_validate(merged_schema)
@@ -375,7 +375,7 @@ class MCPConfig(BaseModel):
         """Return the effective vector field from a validated schema."""
         return schema.fields[self.runtime.vector_field_name]
 
-    def get_vector_field_dims(self, schema: IndexSchema) -> Optional[int]:
+    def get_vector_field_dims(self, schema: IndexSchema) -> int | None:
         """Return the effective vector dimensions when the field exposes them."""
         attrs = self.get_vector_field(schema).attrs
         return getattr(attrs, "dims", None)

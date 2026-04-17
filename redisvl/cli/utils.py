@@ -1,6 +1,5 @@
 import os
 from argparse import ArgumentParser, Namespace
-from typing import Optional
 from urllib.parse import quote, urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
@@ -22,7 +21,7 @@ def _has_explicit_connection_options(args: Namespace) -> bool:
     )
 
 
-def _get_auth_credentials(args: Namespace) -> tuple[Optional[str], Optional[str]]:
+def _get_auth_credentials(args: Namespace) -> tuple[str | None, str | None]:
     return getattr(args, "user", None) or None, getattr(args, "password", None) or None
 
 

@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Set, Tuple, Union
-
 from redisvl.query.filter import FilterExpression
 from redisvl.utils.token_escaper import TokenEscaper
 from redisvl.utils.utils import lazy_import
@@ -8,8 +6,8 @@ nltk = lazy_import("nltk")
 nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 
-def _parse_text_weights(weights: Optional[Dict[str, float]]) -> Dict[str, float]:
-    parsed_weights: Dict[str, float] = {}
+def _parse_text_weights(weights: dict[str, float] | None) -> dict[str, float]:
+    parsed_weights: dict[str, float] = {}
     if not weights:
         return parsed_weights
     for word, weight in weights.items():
@@ -31,14 +29,14 @@ class FullTextQueryHelper:
 
     def __init__(
         self,
-        stopwords: Optional[Union[str, Set[str]]] = "english",
-        text_weights: Optional[Dict[str, float]] = None,
+        stopwords: str | set[str] | None = "english",
+        text_weights: dict[str, float] | None = None,
     ):
         self._stopwords = self._get_stopwords(stopwords)
         self._text_weights = _parse_text_weights(text_weights)
 
     @property
-    def stopwords(self) -> Set[str]:
+    def stopwords(self) -> set[str]:
         """Return the stopwords used in the query.
         Returns:
             Set[str]: The stopwords used in the query.
@@ -46,7 +44,7 @@ class FullTextQueryHelper:
         return self._stopwords.copy() if self._stopwords else set()
 
     @property
-    def text_weights(self) -> Dict[str, float]:
+    def text_weights(self) -> dict[str, float]:
         """Get the text weights.
 
         Returns:
@@ -58,7 +56,7 @@ class FullTextQueryHelper:
         self,
         text: str,
         text_field_name: str,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        filter_expression: str | FilterExpression | None = None,
     ) -> str:
         """Build the full-text query string for text search with optional filtering."""
         if isinstance(filter_expression, FilterExpression):
@@ -71,9 +69,7 @@ class FullTextQueryHelper:
 
         return query + ")"
 
-    def _get_stopwords(
-        self, stopwords: Optional[Union[str, Set[str]]] = "english"
-    ) -> Set[str]:
+    def _get_stopwords(self, stopwords: str | set[str] | None = "english") -> set[str]:
         """Get the stopwords to use in the query.
 
         Args:
@@ -107,14 +103,14 @@ class FullTextQueryHelper:
                 )
             except Exception as e:
                 raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
-        elif isinstance(stopwords, (Set, List, Tuple)) and all(  # type: ignore
+        elif isinstance(stopwords, (set, list, tuple)) and all(
             isinstance(word, str) for word in stopwords
         ):
             return set(stopwords)
         else:
             raise TypeError("stopwords must be a set, list, or tuple of strings")
 
-    def set_text_weights(self, weights: Dict[str, float]):
+    def set_text_weights(self, weights: dict[str, float]):
         """Set or update the text weights for the query.
 
         Args:

@@ -35,7 +35,7 @@ References:
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.field import Field as RedisField
@@ -101,7 +101,7 @@ class CompressionType(str, Enum):
 
 
 def _normalize_field_modifiers(
-    field: RedisField, canonical_order: List[str], want_unf: bool = False
+    field: RedisField, canonical_order: list[str], want_unf: bool = False
 ) -> None:
     """Normalize field modifier ordering for Redis Search parser.
 
@@ -163,7 +163,7 @@ class TextFieldAttributes(BaseFieldAttributes):
     """Disable stemming on the text field during indexing"""
     withsuffixtrie: bool = Field(default=False)
     """Keep a suffix trie with all terms which match the suffix to optimize certain queries"""
-    phonetic_matcher: Optional[str] = None
+    phonetic_matcher: str | None = None
     """Used to perform phonetic matching during search"""
     index_empty: bool = Field(default=False)
     """Allow indexing and searching for empty strings"""
@@ -208,7 +208,7 @@ class BaseVectorFieldAttributes(BaseModel):
     """The float datatype for the vector embeddings"""
     distance_metric: VectorDistanceMetric = Field(default=VectorDistanceMetric.COSINE)
     """The distance metric used to measure query relevance"""
-    initial_cap: Optional[int] = None
+    initial_cap: int | None = None
     """Initial vector capacity in the index affecting memory allocation size of the index"""
     index_missing: bool = Field(default=False)
     """Allow indexing and searching for missing values (documents without the field)"""
@@ -220,7 +220,7 @@ class BaseVectorFieldAttributes(BaseModel):
         return v.upper()
 
     @property
-    def field_data(self) -> Dict[str, Any]:
+    def field_data(self) -> dict[str, Any]:
         """Select attributes required by the Redis API"""
         field_data = {
             "TYPE": self.datatype,
@@ -240,7 +240,7 @@ class FlatVectorFieldAttributes(BaseVectorFieldAttributes):
     algorithm: Literal[VectorIndexAlgorithm.FLAT] = VectorIndexAlgorithm.FLAT
     """The indexing algorithm (fixed as 'flat')"""
 
-    block_size: Optional[int] = None
+    block_size: int | None = None
     """Block size for processing (optional) - improves batch operation throughput"""
 
 
@@ -284,13 +284,13 @@ class SVSVectorFieldAttributes(BaseVectorFieldAttributes):
     """Range query boundary factor (default: 0.01)"""
 
     # Compression Parameters
-    compression: Optional[CompressionType] = None
+    compression: CompressionType | None = None
     """Vector compression: LVQ4, LVQ8, LeanVec4x8, LeanVec8x8"""
 
-    reduce: Optional[int] = None
+    reduce: int | None = None
     """Dimensionality reduction for LeanVec types (must be < dims)"""
 
-    training_threshold: Optional[int] = None
+    training_threshold: int | None = None
     """Min vectors before compression training (default: 10,240)"""
 
     @model_validator(mode="after")
@@ -361,12 +361,12 @@ class BaseField(BaseModel):
     """Field name"""
     type: str
     """Field type"""
-    path: Optional[str] = None
+    path: str | None = None
     """Field path (within JSON object)"""
-    attrs: Optional[Union[BaseFieldAttributes, BaseVectorFieldAttributes]] = None
+    attrs: BaseFieldAttributes | BaseVectorFieldAttributes | None = None
     """Specified field attributes"""
 
-    def _handle_names(self) -> Tuple[str, Optional[str]]:
+    def _handle_names(self) -> tuple[str, str | None]:
         """Helper to handle field naming with path support"""
         if self.path:
             return self.path, self.name
@@ -386,7 +386,7 @@ class TextField(BaseField):
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
         # Build arguments for RedisTextField
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "weight": self.attrs.weight,  # type: ignore
             "no_stem": self.attrs.no_stem,  # type: ignore
             "sortable": self.attrs.sortable,
@@ -436,7 +436,7 @@ class TagField(BaseField):
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
         # Build arguments for RedisTagField
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "separator": self.attrs.separator,  # type: ignore
             "case_sensitive": self.attrs.case_sensitive,  # type: ignore
             "sortable": self.attrs.sortable,
@@ -481,7 +481,7 @@ class NumericField(BaseField):
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
         # Build arguments for RedisNumericField
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "sortable": self.attrs.sortable,
         }
 
@@ -518,7 +518,7 @@ class GeoField(BaseField):
     def as_redis_field(self) -> RedisField:
         name, as_name = self._handle_names()
         # Build arguments for RedisGeoField
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "sortable": self.attrs.sortable,
         }
 
@@ -626,7 +626,7 @@ class FieldFactory:
     """Factory class to create fields from client data and kwargs."""
 
     @classmethod
-    def pick_vector_field_type(cls, attrs: Dict[str, Any]) -> Type[BaseField]:
+    def pick_vector_field_type(cls, attrs: dict[str, Any]) -> type[BaseField]:
         """Get the vector field type from the field data."""
         if "algorithm" not in attrs:
             raise ValueError("Must provide algorithm param for the vector field.")
@@ -645,8 +645,8 @@ class FieldFactory:
         cls,
         type: str,
         name: str,
-        attrs: Dict[str, Any] = {},
-        path: Optional[str] = None,
+        attrs: dict[str, Any] = {},
+        path: str | None = None,
     ) -> BaseField:
         """Create a field of a given type with provided attributes."""
 

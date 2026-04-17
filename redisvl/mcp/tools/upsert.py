@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.redis.utils import array_to_buffer
@@ -14,9 +14,9 @@ DEFAULT_UPSERT_DESCRIPTION = "Upsert records in the configured Redis index."
 def _validate_request(
     *,
     server: Any,
-    records: List[Dict[str, Any]],
-    id_field: Optional[str],
-    skip_embedding_if_present: Optional[bool],
+    records: list[dict[str, Any]],
+    id_field: str | None,
+    skip_embedding_if_present: bool | None,
 ) -> bool:
     """Validate the public upsert request contract and resolve defaults."""
     runtime = server.config.runtime
@@ -71,7 +71,7 @@ def _validate_request(
 
 
 def _record_needs_embedding(
-    record: Dict[str, Any],
+    record: dict[str, Any],
     *,
     vector_field_name: str,
     skip_embedding_if_present: bool,
@@ -85,12 +85,12 @@ def _record_needs_embedding(
 
 
 def _validate_embed_sources(
-    records: List[Dict[str, Any]],
+    records: list[dict[str, Any]],
     *,
     embed_text_field: str,
     vector_field_name: str,
     skip_embedding_if_present: bool,
-) -> List[str]:
+) -> list[str]:
     """Collect embed sources for records that require embedding."""
     contents = []
     for record in records:
@@ -114,7 +114,7 @@ def _validate_embed_sources(
     return contents
 
 
-async def _embed_one(vectorizer: Any, content: str) -> List[float]:
+async def _embed_one(vectorizer: Any, content: str) -> list[float]:
     """Embed one record, falling back from async to sync implementations."""
     aembed = getattr(vectorizer, "aembed", None)
     if callable(aembed):
@@ -131,7 +131,7 @@ async def _embed_one(vectorizer: Any, content: str) -> List[float]:
     return await asyncio.to_thread(embed, content)
 
 
-async def _embed_many(vectorizer: Any, contents: List[str]) -> List[List[float]]:
+async def _embed_many(vectorizer: Any, contents: list[str]) -> list[list[float]]:
     """Embed multiple records with batch-first fallbacks."""
     if not contents:
         return []
@@ -166,7 +166,7 @@ def _validation_schema_for_record(
     index: Any,
     *,
     vector_field_name: str,
-    record: Dict[str, Any],
+    record: dict[str, Any],
 ) -> Any:
     """Use a JSON-shaped schema when validating list vectors for HASH storage."""
     if index.schema.index.storage_type == StorageType.HASH and isinstance(
@@ -179,7 +179,7 @@ def _validation_schema_for_record(
 
 
 def _validate_record(
-    record: Dict[str, Any], *, index: Any, vector_field_name: str
+    record: dict[str, Any], *, index: Any, vector_field_name: str
 ) -> None:
     """Validate one record against the schema, allowing HASH list vectors."""
     validate_object(
@@ -193,11 +193,11 @@ def _validate_record(
 
 
 def _prepare_record_for_storage(
-    record: Dict[str, Any],
+    record: dict[str, Any],
     *,
     server: Any,
     index: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Validate records before serializing HASH vectors for storage."""
     prepared = dict(record)
     vector_field_name = server.config.runtime.vector_field_name
@@ -217,10 +217,10 @@ def _prepare_record_for_storage(
 async def upsert_records(
     server: Any,
     *,
-    records: List[Dict[str, Any]],
-    id_field: Optional[str] = None,
-    skip_embedding_if_present: Optional[bool] = None,
-) -> Dict[str, Any]:
+    records: list[dict[str, Any]],
+    id_field: str | None = None,
+    skip_embedding_if_present: bool | None = None,
+) -> dict[str, Any]:
     """Execute `upsert-records` against the configured Redis index."""
     try:
         index = await server.get_index()
@@ -295,9 +295,9 @@ def register_upsert_tool(server: Any) -> None:
     )
 
     async def upsert_records_tool(
-        records: List[Dict[str, Any]],
-        id_field: Optional[str] = None,
-        skip_embedding_if_present: Optional[bool] = None,
+        records: list[dict[str, Any]],
+        id_field: str | None = None,
+        skip_embedding_if_present: bool | None = None,
     ):
         """FastMCP wrapper for the `upsert-records` tool."""
         return await upsert_records(
