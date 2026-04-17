@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from typing import Optional
 
 import pytest
 
@@ -93,7 +92,7 @@ def test_parser_leaves_connection_options_unset_by_default(parse_args):
     ],
 )
 def test_create_redis_url_resolves_connection_sources(
-    parse_args, monkeypatch, argv: list[str], env_url: Optional[str], expected: str
+    parse_args, monkeypatch, argv: list[str], env_url: str | None, expected: str
 ):
     """Resolve Redis URLs from CLI args, environment, and local defaults."""
     if env_url is None:

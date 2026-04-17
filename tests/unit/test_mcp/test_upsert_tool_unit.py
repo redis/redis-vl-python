@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from typing import Any, List, Optional
+from typing import Any
 
 import pytest
 from redis.exceptions import RedisError
@@ -73,14 +73,14 @@ class FakeVectorizer:
         self.aembed_calls = []
         self.embed_calls = []
 
-    async def aembed_many(self, contents: List[str], **kwargs):
+    async def aembed_many(self, contents: list[str], **kwargs):
         self.aembed_many_calls.append((contents, kwargs))
         return [
             [float(index), float(index), float(index)]
             for index, _ in enumerate(contents, start=1)
         ]
 
-    def embed_many(self, contents: List[str], **kwargs):
+    def embed_many(self, contents: list[str], **kwargs):
         self.embed_many_calls.append((contents, kwargs))
         return [[9.0, 9.0, 9.0] for _ in contents]
 
@@ -94,7 +94,7 @@ class FakeVectorizer:
 
 
 class FallbackBatchVectorizer(FakeVectorizer):
-    async def aembed_many(self, contents: List[str], **kwargs):
+    async def aembed_many(self, contents: list[str], **kwargs):
         raise NotImplementedError
 
 
@@ -126,7 +126,7 @@ class FakeServer:
         storage_type: str = "hash",
         max_upsert_records: int = 5,
         skip_embedding_if_present: bool = True,
-        vectorizer: Optional[FakeVectorizer] = None,
+        vectorizer: FakeVectorizer | None = None,
     ):
         self.config = _config(
             storage_type,

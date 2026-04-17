@@ -1,6 +1,6 @@
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import pytest
 import yaml
@@ -33,7 +33,7 @@ async def existing_index(async_client, worker_id):
         *,
         index_name: str,
         storage_type: str = "hash",
-        vector_path: Optional[str] = None,
+        vector_path: str | None = None,
     ) -> AsyncSearchIndex:
         fields = [{"name": "content", "type": "text"}]
         vector_field = {
@@ -81,9 +81,9 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
         *,
         redis_name: str,
         vector_dims: int = 3,
-        schema_overrides: Optional[dict] = None,
-        runtime_overrides: Optional[dict] = None,
-        search: Optional[dict] = None,
+        schema_overrides: dict[str, Any] | None = None,
+        runtime_overrides: dict[str, Any] | None = None,
+        search: dict[str, Any] | None = None,
     ) -> str:
         runtime = {
             "text_field_name": "content",

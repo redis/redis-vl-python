@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 import yaml
@@ -17,32 +17,32 @@ class RecordingVectorizer:
         self.model = model
         self.dims = dims
         self.kwargs = kwargs
-        self.aembed_many_inputs: List[List[str]] = []
-        self.embed_many_inputs: List[List[str]] = []
-        self.aembed_inputs: List[str] = []
-        self.embed_inputs: List[str] = []
+        self.aembed_many_inputs: list[list[str]] = []
+        self.embed_many_inputs: list[list[str]] = []
+        self.aembed_inputs: list[str] = []
+        self.embed_inputs: list[str] = []
 
     @staticmethod
-    def _vector_for(text: str) -> List[float]:
+    def _vector_for(text: str) -> list[float]:
         base = float(len(text))
         return [base, base + 0.1, base + 0.2]
 
-    async def aembed(self, content: str = "", **kwargs: Any) -> List[float]:
+    async def aembed(self, content: str = "", **kwargs: Any) -> list[float]:
         del kwargs
         self.aembed_inputs.append(content)
         return self._vector_for(content)
 
-    def embed(self, content: str = "", **kwargs: Any) -> List[float]:
+    def embed(self, content: str = "", **kwargs: Any) -> list[float]:
         del kwargs
         self.embed_inputs.append(content)
         return self._vector_for(content)
 
     async def aembed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         del kwargs
         items = contents or texts or []
         self.aembed_many_inputs.append(list(items))
@@ -50,10 +50,10 @@ class RecordingVectorizer:
 
     def embed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         **kwargs: Any,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         del kwargs
         items = contents or texts or []
         self.embed_many_inputs.append(list(items))
@@ -100,7 +100,7 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
         *,
         redis_name: str,
         read_only: bool = False,
-        runtime_overrides: Optional[Dict[str, Any]] = None,
+        runtime_overrides: dict[str, Any] | None = None,
     ) -> str:
         runtime = {
             "text_field_name": "content",
@@ -145,12 +145,12 @@ async def started_server(monkeypatch, upsertable_index, mcp_config_path):
         lambda class_name: RecordingVectorizer,
     )
 
-    servers: List[RedisVLMCPServer] = []
+    servers: list[RedisVLMCPServer] = []
 
     async def factory(
         *,
         read_only: bool = False,
-        runtime_overrides: Optional[Dict[str, Any]] = None,
+        runtime_overrides: dict[str, Any] | None = None,
     ) -> RedisVLMCPServer:
         server = RedisVLMCPServer(
             MCPSettings(
@@ -299,7 +299,7 @@ async def test_read_only_mode_excludes_upsert_tool(
 
     monkeypatch.setattr(RedisVLMCPServer, "tool", fake_tool, raising=False)
 
-    called: List[bool] = []
+    called: list[bool] = []
 
     def fake_register_upsert_tool(server: Any) -> None:
         called.append(server.mcp_settings.read_only)
