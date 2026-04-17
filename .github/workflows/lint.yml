@@ -15,19 +15,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Only lint on the min and max supported Python versions.
-        # It's extremely unlikely that there's a lint issue on any version in between
-        # that doesn't show up on the min or max versions.
+        # Only lint on the minimum supported Python version and a representative
+        # set of newer releases. Lint issues that differ by minor version are
+        # extremely unlikely to appear only on an untested intermediate version.
         #
         # GitHub rate-limits how many jobs can be running at any one time.
         # Starting new jobs is also relatively slow,
         # so linting on fewer versions makes CI faster.
         python-version:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
           - "3.13"
+          - "3.14"
 
     steps:
     - name: Check out repository

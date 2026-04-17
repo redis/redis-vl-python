@@ -73,7 +73,6 @@ class MCP:
     def _run(self, args):
         """Validate the environment, build the server, and serve stdio requests."""
         try:
-            self._ensure_supported_python()
             settings_cls, server_cls = self._load_mcp_components()
             settings = settings_cls.from_env(
                 config=args.config,
@@ -93,20 +92,6 @@ class MCP:
         except Exception as exc:
             self._print_error(str(exc))
             raise SystemExit(1)
-
-    @staticmethod
-    def _ensure_supported_python():
-        """Fail fast when the current interpreter cannot support MCP extras."""
-        if sys.version_info < (3, 10):
-            version = "%s.%s.%s" % (
-                sys.version_info.major,
-                sys.version_info.minor,
-                sys.version_info.micro,
-            )
-            raise RuntimeError(
-                "RedisVL MCP CLI requires Python 3.10 or newer. "
-                "Current runtime is Python %s." % version
-            )
 
     @staticmethod
     def _load_mcp_components():
