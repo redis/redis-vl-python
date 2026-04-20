@@ -436,10 +436,6 @@ pip install redisvl[mcp]
 
 If the configured vectorizer needs a provider SDK, install that provider extra too.
 
-### Unsupported Python Runtime
-
-RedisVL MCP requires Python 3.10 or newer. Use a compatible interpreter for the MCP server process.
-
 ### Configured Redis Index Does Not Exist
 
 The server only binds to an existing index. Create the index first, then point `indexes.<id>.redis_name` at that index name.
