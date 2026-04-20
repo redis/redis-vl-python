@@ -57,6 +57,7 @@ jobs:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
     needs: service-tests
+    if: ${{ always() && needs.service-tests.result != 'failure' && needs.service-tests.result != 'cancelled' }}
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     strategy:
