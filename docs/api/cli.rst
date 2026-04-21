@@ -479,7 +479,7 @@ Manage document-preserving index migrations. This command group provides subcomm
    * - ``batch-plan``
      - Generate a batch migration plan for multiple indexes
    * - ``batch-apply``
-     - Execute a batch migration plan with checkpointing
+     - Execute a batch migration plan with state tracking
    * - ``batch-resume``
      - Resume an interrupted batch migration
    * - ``batch-status``
@@ -560,17 +560,23 @@ Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migra
      - Description
    * - ``--async``
      - Run migration asynchronously (recommended for large quantization jobs)
+   * - ``--backup-dir``
+     - Directory for vector backup files. Enables crash-safe resume and rollback.
+   * - ``--batch-size``
+     - Keys per pipeline batch (default 500)
+   * - ``--workers``
+     - Number of parallel workers for quantization (default 1). Requires ``--backup-dir``.
+   * - ``--keep-backup``
+     - Keep backup files after successful migration (default: auto-delete)
    * - ``--query-check-file``
      - Path to a YAML file with post-migration query checks
-   * - ``--resume``
-     - Path to a checkpoint file for crash-safe recovery
 
 **Example**
 
 .. code-block:: bash
 
     rvl migrate apply --plan plan.yaml
-    rvl migrate apply --plan plan.yaml --async --resume checkpoint.yaml
+    rvl migrate apply --plan plan.yaml --async --backup-dir /tmp/backups --workers 4
 
 rvl migrate wizard
 ^^^^^^^^^^^^^^^^^^

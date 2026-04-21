@@ -403,12 +403,12 @@ warnings:
 
 | Interruption Point | Documents | Index | Recovery |
 |--------------------|-----------|-------|----------|
-| After drop, before quantize | Unchanged | **None** | Re-run apply (or `--resume` if checkpoint exists) |
-| During quantization | Partially quantized | **None** | Re-run with `--resume` to continue from checkpoint |
+| After drop, before quantize | Unchanged | **None** | Re-run apply (or pass `--backup-dir` to resume from backup) |
+| During quantization | Partially quantized | **None** | Re-run with same `--backup-dir` to resume from last batch |
 | After quantization, before create | Quantized | **None** | Re-run apply (will recreate index) |
 | After create | Correct | Rebuilding | Wait for index ready |
 
-The underlying documents are **never deleted** by `drop_recreate` mode. For large quantization jobs, use `--resume` to enable checkpoint-based recovery. See [Crash-safe resume for quantization](#crash-safe-resume-for-quantization) below.
+The underlying documents are **never deleted** by `drop_recreate` mode. For large quantization jobs, use `--backup-dir` to enable crash-safe recovery. See [Crash-safe resume for quantization](#crash-safe-resume-for-quantization) below.
 
 ## Step 4: Apply the Migration
 
@@ -444,7 +444,7 @@ The migration executor follows this sequence:
   - Writes back the converted vector to the same document
 - Processes documents in batches of 500 using Redis pipelines
 - Skipped for JSON storage (vectors are re-indexed automatically on recreate)
-- **Checkpoint support**: For large datasets, use `--resume` to enable crash-safe recovery
+- **Backup support**: For large datasets, use `--backup-dir` to enable crash-safe recovery and rollback
 
 **STEP 4: Key renames** (if changing key prefix)
 - If the migration changes the key prefix, renames each key from old prefix to new prefix
@@ -495,15 +495,36 @@ See {doc}`/concepts/index-migrations` for detailed async vs sync guidance.
 
 ### Crash-safe resume for quantization
 
-When migrating large datasets with vector quantization (e.g. float32 to float16), the re-encoding step can take minutes or hours. If the process is interrupted (crash, network drop, OOM kill), you don't want to start over. The `--resume` flag enables checkpoint-based recovery.
+When migrating large datasets with vector quantization (e.g. float32 to float16), the re-encoding step can take minutes or hours. If the process is interrupted (crash, network drop, OOM kill), you don't want to start over. The `--backup-dir` flag enables crash-safe recovery.
 
 #### How it works
 
-1. **Pre-flight estimate**: before any mutations, `apply` prints a disk space estimate showing RDB snapshot cost, AOF growth (if enabled), and post-migration memory savings.
-2. **BGSAVE safety snapshot**: the migrator triggers a Redis `BGSAVE` and waits for it to complete before modifying any data. This gives you a point-in-time snapshot to fall back on.
-3. **Checkpoint file**: when `--resume` is provided, the migrator writes a YAML checkpoint after every batch of 500 documents. The checkpoint records how many keys have been processed and the last batch of keys written.
-4. **Batch undo buffer**: if a single batch fails mid-write, original vector values are rolled back via pipeline before the error propagates. Only the current batch is held in memory.
-5. **Idempotent skip**: on resume, vectors that were already converted are detected by byte-width inspection and skipped automatically.
+When you pass `--backup-dir`, the migrator saves original vector bytes to disk before mutating them. Two files are created:
+
+```
+<backup-dir>/
+  migration_backup_<index_name>.header   # JSON: phase, progress counters, field metadata
+  migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
+```
+
+The **header file** is a small JSON file that tracks progress through a state machine:
+
+```
+dump → ready → active → completed
+```
+
+- **dump**: original vectors are being read from Redis and written to the data file, one batch at a time
+- **ready**: all original vectors have been backed up; safe to proceed with quantization
+- **active**: quantization is in progress; the header tracks which batches have been written back to Redis
+- **completed**: all batches have been quantized and the migration finished successfully
+
+The header is atomically updated (temp file + rename) after every batch, so a crash never corrupts it.
+
+The **data file** is append-only binary. Each batch is stored as a 4-byte big-endian length prefix followed by a pickled blob containing the batch's keys and their original vector bytes.
+
+On resume, the executor loads the header, sees how many batches were already quantized (`quantize_completed_batches`), and skips ahead in the data file to continue from the next unfinished batch.
+
+**Disk usage:** approximately `num_docs × dims × bytes_per_element`. For example, 1M docs with 768-dim float32 vectors ≈ 2.9 GB.
 
 #### Step-by-step: using crash-safe resume
 
@@ -533,34 +554,34 @@ If AOF is enabled:
 rvl migrate estimate --plan migration_plan.yaml --aof-enabled
 ```
 
-**2. Apply with checkpoint enabled:**
+**2. Apply with backup enabled:**
 
 ```bash
 rvl migrate apply \
   --plan migration_plan.yaml \
-  --resume quantize_checkpoint.yaml \
+  --backup-dir /tmp/migration_backups \
   --url redis://localhost:6379 \
   --report-out migration_report.yaml
 ```
 
-The `--resume` flag takes a path to a checkpoint file. If the file does not exist, a new checkpoint is created. If it already exists (from a previous interrupted run), the migrator resumes from where it left off.
+The `--backup-dir` flag takes a directory path. If no backup exists there, a new one is created. If one already exists (from a previous interrupted run), the migrator resumes from where it left off.
 
 **3. If the process crashes or is interrupted:**
 
-The checkpoint file (`quantize_checkpoint.yaml`) will contain the progress:
+The header file will contain the progress:
 
-```yaml
-index_name: products_idx
-total_keys: 1000000
-completed_keys: 450000
-completed_batches: 900
-last_batch_keys:
-  - 'products:449501'
-  - 'products:449502'
-  # ...
-status: in_progress
-checkpoint_path: quantize_checkpoint.yaml
+```json
+{
+  "index_name": "products_idx",
+  "fields": {"embedding": {"source": "float32", "target": "float16", "dims": 768}},
+  "batch_size": 500,
+  "phase": "active",
+  "dump_completed_batches": 2000,
+  "quantize_completed_batches": 900
+}
 ```
+
+This tells you: all 2000 batches of original vectors were backed up, and 900 of them have been quantized so far.
 
 **4. Resume the migration:**
 
@@ -569,61 +590,25 @@ Re-run the exact same command:
 ```bash
 rvl migrate apply \
   --plan migration_plan.yaml \
-  --resume quantize_checkpoint.yaml \
+  --backup-dir /tmp/migration_backups \
   --url redis://localhost:6379 \
   --report-out migration_report.yaml
 ```
 
 The migrator will:
-- Detect the existing checkpoint and skip already-processed keys
-- Re-enumerate documents via SCAN (the index was already dropped before the crash)
-- Continue quantizing from where it left off
-- Print progress like `[4/6] Quantize vectors: 450,000/1,000,000 docs`
+- Detect the existing backup and skip already-quantized batches
+- Continue quantizing from batch 901 onward
+- Print progress like `Quantize vectors: 450,000/1,000,000 docs`
 
 **5. On successful completion:**
 
-The checkpoint status is set to `completed`. You can safely delete the checkpoint file.
-
-#### What gets rolled back on batch failure
-
-If a batch of 500 documents fails mid-write (e.g. Redis returns an error), the migrator:
-1. Restores original vector bytes for all documents in that batch using the undo buffer
-2. Saves the checkpoint (so progress up to the last successful batch is preserved)
-3. Raises the error
-
-This means you never end up with partially-written vectors in a single batch.
+The backup phase is set to `completed`. By default, backup files are **automatically deleted** after a successful migration. Pass `--keep-backup` to retain them for post-migration auditing or potential rollback.
 
 #### Limitations
 
-- **Same-width conversions** (float16 to bfloat16, or int8 to uint8) are **not supported** with `--resume`. These conversions cannot be detected by byte-width inspection, so idempotent skip is impossible. The migrator will refuse to proceed and suggest running without `--resume`.
-- **JSON storage** does not need vector re-encoding (Redis re-indexes JSON vectors on `FT.CREATE`). The checkpoint is still created for consistency but no batched writes occur.
-- The checkpoint file must match the migration plan. If you change the plan, delete the old checkpoint and start fresh.
-
-#### Python API with checkpoints
-
-```python
-from redisvl.migration import MigrationExecutor
-
-executor = MigrationExecutor()
-report = executor.apply(
-    plan,
-    redis_url="redis://localhost:6379",
-    checkpoint_path="quantize_checkpoint.yaml",
-)
-```
-
-For async:
-
-```python
-from redisvl.migration import AsyncMigrationExecutor
-
-executor = AsyncMigrationExecutor()
-report = await executor.apply(
-    plan,
-    redis_url="redis://localhost:6379",
-    checkpoint_path="quantize_checkpoint.yaml",
-)
-```
+- **Same-width conversions** (float16 to bfloat16, or int8 to uint8) are **not supported** for resume. These conversions cannot be detected by byte-width inspection, so idempotent skip is impossible.
+- **JSON storage** does not need vector re-encoding (Redis re-indexes JSON vectors on `FT.CREATE`). The backup is still created for consistency but no batched writes occur.
+- The backup must match the migration plan. If you change the plan, delete the old backup directory and start fresh.
 
 ## Step 5: Validate the Result
 
@@ -706,7 +691,7 @@ rvl migrate validate \
 - `--indexes` : Explicit list of index names
 - `--indexes-file` : File containing index names (one per line)
 - `--schema-patch` : Path to shared schema patch YAML
-- `--state` : Path to checkpoint state file
+- `--state` : Path to batch state file for resume
 - `--failure-policy` : `fail_fast` or `continue_on_error`
 - `--accept-data-loss` : Required for quantization (lossy changes)
 - `--retry-failed` : Retry previously failed indexes on resume
@@ -1038,14 +1023,14 @@ rvl migrate batch-apply \
 
 **Flags for batch-apply:**
 - `--accept-data-loss` : Required when quantizing vectors (float32 → float16 is lossy)
-- `--state` : Path to checkpoint file (default: `batch_state.yaml`)
+- `--state` : Path to batch state file (default: `batch_state.yaml`)
 - `--report-dir` : Directory for per-index reports (default: `./reports/`)
 
 **Note:** `--failure-policy` is set during `batch-plan`, not `batch-apply`. The policy is stored in the batch plan file.
 
 ### Resume After Failure
 
-Batch migration automatically checkpoints progress. If interrupted:
+Batch migration automatically tracks progress in the state file. If interrupted:
 
 ```bash
 # Resume from where it left off
@@ -1157,7 +1142,7 @@ print(f"Successful: {report.summary.successful}/{report.summary.total_indexes}")
 
 4. **Review skipped indexes**: The `skip_reason` often indicates schema differences that need attention.
 
-5. **Keep checkpoint files**: The `batch_state.yaml` is essential for resume. Don't delete it until the batch completes successfully.
+5. **Keep state files**: The `batch_state.yaml` is essential for resume. Don't delete it until the batch completes successfully.
 
 ## Performance Tuning
 
