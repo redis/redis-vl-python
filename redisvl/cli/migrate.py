@@ -43,7 +43,7 @@ class Migrate:
             "\trollback     Restore original vectors from a backup directory (undo quantization)",
             "\tvalidate     Validate a completed migration plan against the live index",
             "\tbatch-plan   Generate a batch migration plan for multiple indexes",
-            "\tbatch-apply  Execute a batch migration plan with checkpointing",
+            "\tbatch-apply  Execute a batch migration plan with state tracking",
             "\tbatch-resume Resume an interrupted batch migration",
             "\tbatch-status Show status of an in-progress or completed batch migration",
             "\n",
@@ -238,13 +238,6 @@ Commands:
             help="Keep backup files after successful migration (default: auto-delete).",
             default=False,
         )
-        # Deprecated alias for --backup-dir (was --resume in previous versions)
-        parser.add_argument(
-            "--resume",
-            dest="legacy_resume",
-            help=argparse.SUPPRESS,  # hidden from help
-            default=None,
-        )
         parser.add_argument(
             "--report-out",
             help="Path to write migration_report.yaml",
@@ -266,29 +259,6 @@ Commands:
         # Validate --workers
         if args.num_workers < 1:
             parser.error("--workers must be >= 1")
-
-        # Handle deprecated --resume flag
-        if args.legacy_resume is not None:
-            import warnings
-
-            # Fail fast if the value looks like a checkpoint file (old semantics)
-            if os.path.isfile(args.legacy_resume) or args.legacy_resume.endswith(
-                (".yaml", ".yml")
-            ):
-                parser.error(
-                    "--resume semantics have changed: it now expects a backup "
-                    "directory, not a checkpoint file. Use --backup-dir <dir> instead."
-                )
-
-            warnings.warn(
-                "--resume is deprecated and will be removed in a future version. "
-                "Use --backup-dir instead: the backup directory replaces "
-                "checkpoint files for crash-safe resume and rollback.",
-                DeprecationWarning,
-                stacklevel=1,
-            )
-            if args.backup_dir is None:
-                args.backup_dir = args.legacy_resume
 
         # Validate --workers > 1 requires --backup-dir
         if args.num_workers > 1 and args.backup_dir is None:
@@ -779,7 +749,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         self._print_batch_plan_summary(args.plan_out, batch_plan)
 
     def batch_apply(self):
-        """Execute a batch migration plan with checkpointing."""
+        """Execute a batch migration plan with state tracking."""
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate batch-apply --plan <batch_plan.yaml> "
@@ -794,7 +764,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         )
         parser.add_argument(
             "--state",
-            help="Path to checkpoint state file",
+            help="Path to batch state file for resume",
             default="batch_state.yaml",
         )
         parser.add_argument(
@@ -848,9 +818,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
                 "[--plan <batch_plan.yaml>] [--retry-failed]"
             )
         )
-        parser.add_argument(
-            "--state", help="Path to checkpoint state file", required=True
-        )
+        parser.add_argument("--state", help="Path to batch state file", required=True)
         parser.add_argument(
             "--plan", help="Path to batch_plan.yaml (optional, uses state.plan_path)"
         )
@@ -912,9 +880,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         parser = argparse.ArgumentParser(
             usage="rvl migrate batch-status --state <batch_state.yaml>"
         )
-        parser.add_argument(
-            "--state", help="Path to checkpoint state file", required=True
-        )
+        parser.add_argument("--state", help="Path to batch state file", required=True)
         args = parser.parse_args(sys.argv[3:])
 
         state_path = Path(args.state).resolve()
