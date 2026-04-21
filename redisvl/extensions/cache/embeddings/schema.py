@@ -4,7 +4,7 @@ This module defines the Pydantic models used for embedding cache entries and
 related data structures.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,20 +19,20 @@ class CacheEntry(BaseModel):
 
     entry_id: str
     """Cache entry identifier"""
-    content: Union[bytes, str]
+    content: bytes | str
     """The input that was embedded"""
     model_name: str
     """The name of the embedding model used"""
-    embedding: List[float]
+    embedding: list[float]
     """The embedding vector representation"""
     inserted_at: float = Field(default_factory=current_timestamp)
     """Timestamp of when the entry was added to the cache"""
-    metadata: Optional[Dict[str, Any]] = Field(default=None)
+    metadata: dict[str, Any] | None = Field(default=None)
     """Optional metadata stored on the cache entry"""
 
     @model_validator(mode="before")
     @classmethod
-    def deserialize_cache_entry(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def deserialize_cache_entry(cls, values: dict[str, Any]) -> dict[str, Any]:
         # Deserialize metadata if necessary
         if METADATA_FIELD_NAME in values and isinstance(
             values[METADATA_FIELD_NAME], str
@@ -46,7 +46,7 @@ class CacheEntry(BaseModel):
 
         return values
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the cache entry to a dictionary for storage"""
         data = self.model_dump(exclude_none=True)
         data[EMBEDDING_FIELD_NAME] = serialize(self.embedding)

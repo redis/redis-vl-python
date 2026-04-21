@@ -1,6 +1,6 @@
 """SVS-VAMANA compression configuration utilities."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,14 +19,14 @@ class SVSConfig(BaseModel):
     """
 
     algorithm: Literal["svs-vamana"] = "svs-vamana"
-    datatype: Optional[str] = None
-    compression: Optional[str] = None
-    reduce: Optional[int] = Field(
+    datatype: str | None = None
+    compression: str | None = None
+    reduce: int | None = Field(
         default=None, description="Reduced dimensionality (only for LeanVec)"
     )
-    graph_max_degree: Optional[int] = None
-    construction_window_size: Optional[int] = None
-    search_window_size: Optional[int] = None
+    graph_max_degree: int | None = None
+    construction_window_size: int | None = None
+    search_window_size: int | None = None
 
 
 class CompressionAdvisor:
@@ -71,7 +71,7 @@ class CompressionAdvisor:
     def recommend(
         dims: int,
         priority: Literal["speed", "memory", "balanced"] = "balanced",
-        datatype: Optional[str] = None,
+        datatype: str | None = None,
     ) -> SVSConfig:
         """Recommend compression settings based on dimensions and priorities.
 
@@ -181,7 +181,7 @@ class CompressionAdvisor:
 
     @staticmethod
     def estimate_memory_savings(
-        compression: str, dims: int, reduce: Optional[int] = None
+        compression: str, dims: int, reduce: int | None = None
     ) -> float:
         """Estimate memory savings percentage from compression.
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
 
 from pydantic import PrivateAttr
 
@@ -71,8 +71,8 @@ class HFCrossEncoderReranker(BaseReranker):
         self._client = CrossEncoder(self.model, **kwargs)
 
     def rank(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
+        self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs
+    ) -> tuple[list[dict[str, Any]], list[float]] | list[dict[str, Any]]:
         """
         Rerank documents based on the provided query using the loaded cross-encoder model.
 
@@ -128,8 +128,8 @@ class HFCrossEncoderReranker(BaseReranker):
         return reranked_docs
 
     async def arank(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
+        self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs
+    ) -> tuple[list[dict[str, Any]], list[float]] | list[dict[str, Any]]:
         """
         Asynchronously rerank documents based on the provided query using the loaded cross-encoder model.
 

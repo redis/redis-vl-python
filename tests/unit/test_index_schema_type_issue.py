@@ -6,7 +6,7 @@ This test verifies that the IndexSchema fields type annotation
 matches what the validator actually expects.
 """
 
-from typing import Dict, List
+from typing import get_type_hints
 
 import pytest
 
@@ -52,7 +52,7 @@ class TestIndexSchemaTypeIssue:
             },
         }
 
-        # According to type annotation `fields: Dict[str, BaseField] = {}`
+        # According to type annotation `fields: dict[str, BaseField] = {}`
         # this should work, and now it does after fixing the validator
         schema = IndexSchema.from_dict(schema_dict)
         assert schema is not None
@@ -62,14 +62,11 @@ class TestIndexSchemaTypeIssue:
 
     def test_type_annotation_matches_runtime_behavior(self):
         """Test that the type annotation should match what the code actually accepts."""
-        # Get the type annotation
-        from typing import get_type_hints
-
         hints = get_type_hints(IndexSchema)
         fields_type = hints.get("fields")
 
-        # The annotation says Dict[str, BaseField]
-        assert fields_type == Dict[str, BaseField]
+        # The annotation says dict[str, BaseField]
+        assert fields_type == dict[str, BaseField]
 
         # But the validator expects List and converts to Dict
         # This is the inconsistency reported in issue #361
@@ -106,7 +103,7 @@ class TestIndexSchemaTypeIssue:
 
     def test_direct_instantiation_with_dict_fields(self):
         """Test direct instantiation with dict fields (should work after fix)."""
-        # After processing, fields are stored as Dict[str, BaseField]
+        # After processing, fields are stored as dict[str, BaseField]
         # So direct instantiation with proper dict should work
 
         # Create fields

@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from enum import Enum, auto
 from importlib import import_module
-from typing import Any, Awaitable, Optional, Type
+from typing import Any, Awaitable
 
 from redis import __version__ as redis_py_version
 
@@ -27,7 +27,7 @@ except ImportError:
             self.kwargs = kwargs
 
 
-def resolve_vectorizer_class(class_name: str) -> Type[Any]:
+def resolve_vectorizer_class(class_name: str) -> type[Any]:
     """Resolve a vectorizer class from the public RedisVL vectorizer module."""
     vectorize_module = import_module("redisvl.utils.vectorize")
     try:
@@ -52,11 +52,11 @@ class RedisVLMCPServer(FastMCP):
     def __init__(self, settings: MCPSettings):
         """Create a server shell with lazy config, index, and vectorizer state."""
         self.mcp_settings = settings
-        self.config: Optional[MCPConfig] = None
-        self._index: Optional[AsyncSearchIndex] = None
-        self._vectorizer: Optional[Any] = None
-        self._supports_native_hybrid_search: Optional[bool] = None
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self.config: MCPConfig | None = None
+        self._index: AsyncSearchIndex | None = None
+        self._vectorizer: Any | None = None
+        self._supports_native_hybrid_search: bool | None = None
+        self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
 
         # Lifecycle management
@@ -213,7 +213,7 @@ class RedisVLMCPServer(FastMCP):
         finally:
             await self.shutdown()
 
-    async def _teardown_runtime(self, client: Optional[Any] = None) -> None:
+    async def _teardown_runtime(self, client: Any | None = None) -> None:
         """Release runtime resources and clear terminal state."""
         vectorizer = self._vectorizer
         index = self._index

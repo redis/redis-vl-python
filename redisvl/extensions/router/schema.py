@@ -1,9 +1,8 @@
 import warnings
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from typing_extensions import Annotated
 
 from redisvl.extensions.constants import ROUTE_VECTOR_FIELD_NAME
 from redisvl.schema import IndexSchema
@@ -14,9 +13,9 @@ class Route(BaseModel):
 
     name: str
     """The name of the route."""
-    references: List[str]
+    references: list[str]
     """List of reference phrases for the route."""
-    metadata: Dict[str, Any] = Field(default={})
+    metadata: dict[str, Any] = Field(default={})
     """Metadata associated with the route."""
     distance_threshold: Annotated[float, Field(strict=True, gt=0, le=2)] = 0.5
     """Distance threshold for matching the route."""
@@ -41,9 +40,9 @@ class Route(BaseModel):
 class RouteMatch(BaseModel):
     """Model representing a matched route with distance information."""
 
-    name: Optional[str] = None
+    name: str | None = None
     """The matched route name."""
-    distance: Optional[float] = Field(default=None)
+    distance: float | None = Field(default=None)
     """The vector distance between the statement and the matched route."""
 
 
@@ -72,7 +71,7 @@ class RoutingConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def remove_distance_threshold(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def remove_distance_threshold(cls, values: dict[str, Any]) -> dict[str, Any]:
         if "distance_threshold" in values:
             warnings.warn(
                 "The 'distance_threshold' field is deprecated and will be ignored. Set distance_threshold per Route.",

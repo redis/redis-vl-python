@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -80,9 +80,9 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     def __init__(
         self,
         model: str = "text-embedding-ada-002",
-        api_config: Optional[Dict] = None,
+        api_config: dict[str, Any] | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ):
         """Initialize the AzureOpenAI vectorizer.
@@ -109,14 +109,14 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         # Initialize clients and set up the model
         self._setup(api_config, **kwargs)
 
-    def _setup(self, api_config: Optional[Dict], **kwargs):
+    def _setup(self, api_config: dict[str, Any] | None, **kwargs):
         """Set up the AzureOpenAI clients and determine the embedding dimensions."""
         # Initialize clients
         self._initialize_clients(api_config, **kwargs)
         # Set model dimensions after client initialization
         self.dims = self._set_model_dims()
 
-    def _initialize_clients(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_clients(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the AzureOpenAI clients using the provided API key, API version,
         and Azure endpoint.
@@ -220,7 +220,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """
         Generate a vector embedding for a single text using the AzureOpenAI API.
 
@@ -256,11 +256,11 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     )
     def _embed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Generate vector embeddings for a batch of texts using the AzureOpenAI API.
 
@@ -284,7 +284,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = self._client.embeddings.create(
                     input=batch, model=self.model, **kwargs
@@ -300,7 +300,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
+    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """
         Asynchronously generate a vector embedding for a single text using the AzureOpenAI API.
 
@@ -336,11 +336,11 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
     )
     async def _aembed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Asynchronously generate vector embeddings for a batch of texts using the AzureOpenAI API.
 
@@ -364,7 +364,7 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = await self._aclient.embeddings.create(
                     input=batch, model=self.model, **kwargs

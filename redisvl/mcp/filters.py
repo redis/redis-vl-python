@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Iterable
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.query.filter import FilterExpression, Num, Tag, Text
@@ -6,8 +6,8 @@ from redisvl.schema import IndexSchema
 
 
 def parse_filter(
-    value: Optional[Union[str, Dict[str, Any]]], schema: IndexSchema
-) -> Optional[Union[str, FilterExpression]]:
+    value: str | dict[str, Any] | None, schema: IndexSchema
+) -> str | FilterExpression | None:
     """Parse an MCP filter value into a RedisVL filter representation."""
     if value is None:
         return None
@@ -22,7 +22,7 @@ def parse_filter(
     return _parse_expression(value, schema)
 
 
-def _parse_expression(value: Dict[str, Any], schema: IndexSchema) -> FilterExpression:
+def _parse_expression(value: dict[str, Any], schema: IndexSchema) -> FilterExpression:
     logical_keys = [key for key in ("and", "or", "not") if key in value]
     if logical_keys:
         if len(logical_keys) != 1 or len(value) != 1:
@@ -51,7 +51,7 @@ def _parse_expression(value: Dict[str, Any], schema: IndexSchema) -> FilterExpre
                 retryable=False,
             )
 
-        expressions: List[FilterExpression] = []
+        expressions: list[FilterExpression] = []
         for child in children:
             if not isinstance(child, dict):
                 raise RedisVLMCPError(
@@ -203,7 +203,7 @@ def _require_string(value: Any, field_name: str, op: str) -> str:
     return value
 
 
-def _require_string_list(value: Any, field_name: str, op: str) -> List[str]:
+def _require_string_list(value: Any, field_name: str, op: str) -> list[str]:
     if not isinstance(value, list) or not value:
         raise RedisVLMCPError(
             f"filter value for field '{field_name}' and operator '{op}' must be a non-empty array",
@@ -214,7 +214,7 @@ def _require_string_list(value: Any, field_name: str, op: str) -> List[str]:
     return strings
 
 
-def _require_number(value: Any, field_name: str, op: str) -> Union[int, float]:
+def _require_number(value: Any, field_name: str, op: str) -> int | float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise RedisVLMCPError(
             f"filter value for field '{field_name}' and operator '{op}' must be numeric",
@@ -224,9 +224,7 @@ def _require_number(value: Any, field_name: str, op: str) -> Union[int, float]:
     return value
 
 
-def _require_number_list(
-    value: Any, field_name: str, op: str
-) -> List[Union[int, float]]:
+def _require_number_list(value: Any, field_name: str, op: str) -> list[int | float]:
     if not isinstance(value, list) or not value:
         raise RedisVLMCPError(
             f"filter value for field '{field_name}' and operator '{op}' must be a non-empty array",

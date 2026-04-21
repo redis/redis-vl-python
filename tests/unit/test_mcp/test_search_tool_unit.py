@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from typing import Optional
+from typing import Any
 
 import pytest
 
@@ -43,8 +43,8 @@ def _schema() -> IndexSchema:
 
 def _config_with_search(
     search_type: str,
-    params: Optional[dict] = None,
-    runtime_overrides: Optional[dict] = None,
+    params: dict[str, Any] | None = None,
+    runtime_overrides: dict[str, Any] | None = None,
 ) -> MCPConfig:
     runtime_config = {
         "text_field_name": "content",
@@ -91,8 +91,8 @@ class FakeServer:
         self,
         *,
         search_type: str = "vector",
-        search_params: Optional[dict] = None,
-        runtime_overrides: Optional[dict] = None,
+        search_params: dict[str, Any] | None = None,
+        runtime_overrides: dict[str, Any] | None = None,
     ):
         self.config = _config_with_search(
             search_type,

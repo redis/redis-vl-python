@@ -1,6 +1,6 @@
 """Embeddings cache implementation for RedisVL."""
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Iterable
 
 from redisvl.extensions.cache.base import BaseCache
 from redisvl.extensions.cache.embeddings.schema import CacheEntry
@@ -19,11 +19,11 @@ class EmbeddingsCache(BaseCache):
     def __init__(
         self,
         name: str = "embedcache",
-        ttl: Optional[int] = None,
-        redis_client: Optional[SyncRedisClient] = None,
-        async_redis_client: Optional[AsyncRedisClient] = None,
+        ttl: int | None = None,
+        redis_client: SyncRedisClient | None = None,
+        async_redis_client: AsyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] = {},
     ):
         """Initialize an embeddings cache.
 
@@ -54,7 +54,7 @@ class EmbeddingsCache(BaseCache):
             connection_kwargs=connection_kwargs,
         )
 
-    def _make_entry_id(self, content: Union[bytes, str], model_name: str) -> str:
+    def _make_entry_id(self, content: bytes | str, model_name: str) -> str:
         """Generate a deterministic entry ID for the given content and model name.
 
         Args:
@@ -68,7 +68,7 @@ class EmbeddingsCache(BaseCache):
             content = content.hex()
         return hashify(f"{content}:{model_name}")
 
-    def _make_cache_key(self, content: Union[bytes, str], model_name: str) -> str:
+    def _make_cache_key(self, content: bytes | str, model_name: str) -> str:
         """Generate a full Redis key for the given content and model name.
 
         Args:
@@ -83,11 +83,11 @@ class EmbeddingsCache(BaseCache):
 
     def _prepare_entry_data(
         self,
-        content: Union[bytes, str],
+        content: bytes | str,
         model_name: str,
-        embedding: List[float],
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        embedding: list[float],
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         """Prepare data for storage in Redis
 
         Args:
@@ -111,9 +111,7 @@ class EmbeddingsCache(BaseCache):
         )
         return key, entry.to_dict()
 
-    def _process_cache_data(
-        self, data: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_cache_data(self, data: dict[str, Any] | None) -> dict[str, Any] | None:
         """Process Redis hash data into a cache entry response.
 
         Args:
@@ -138,9 +136,9 @@ class EmbeddingsCache(BaseCache):
 
     def get(
         self,
-        content: Union[bytes, str],
+        content: bytes | str,
         model_name: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Get embedding by content and model name.
 
         Retrieves a cached embedding for the given content and model name.
@@ -163,7 +161,7 @@ class EmbeddingsCache(BaseCache):
         key = self._make_cache_key(content, model_name)
         return self.get_by_key(key)
 
-    def get_by_key(self, key: str) -> Optional[Dict[str, Any]]:
+    def get_by_key(self, key: str) -> dict[str, Any] | None:
         """Get embedding by its full Redis key.
 
         Retrieves a cached embedding for the given Redis key.
@@ -198,7 +196,7 @@ class EmbeddingsCache(BaseCache):
 
         return self._process_cache_data(data)  # type: ignore
 
-    def mget_by_keys(self, keys: List[str]) -> List[Optional[Dict[str, Any]]]:
+    def mget_by_keys(self, keys: list[str]) -> list[dict[str, Any] | None]:
         """Get multiple embeddings by their Redis keys.
 
         Efficiently retrieves multiple cached embeddings in a single network roundtrip.
@@ -248,8 +246,8 @@ class EmbeddingsCache(BaseCache):
         return processed_results
 
     def mget(
-        self, contents: Iterable[Union[bytes, str]], model_name: str
-    ) -> List[Optional[Dict[str, Any]]]:
+        self, contents: Iterable[bytes | str], model_name: str
+    ) -> list[dict[str, Any] | None]:
         """Get multiple embeddings by their content and model name.
 
         Efficiently retrieves multiple cached embeddings in a single operation.
@@ -281,11 +279,11 @@ class EmbeddingsCache(BaseCache):
 
     def set(
         self,
-        content: Union[bytes, str],
+        content: bytes | str,
         model_name: str,
-        embedding: List[float],
-        metadata: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        embedding: list[float],
+        metadata: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Store an embedding with its content and model name.
 
@@ -332,9 +330,9 @@ class EmbeddingsCache(BaseCache):
 
     def mset(
         self,
-        items: List[Dict[str, Any]],
-        ttl: Optional[int] = None,
-    ) -> List[str]:
+        items: list[dict[str, Any]],
+        ttl: int | None = None,
+    ) -> list[str]:
         """Store multiple embeddings in a batch operation.
 
         Each item in the input list should be a dictionary with the following fields:
@@ -398,7 +396,7 @@ class EmbeddingsCache(BaseCache):
 
         return keys
 
-    def exists(self, content: Union[bytes, str], model_name: str) -> bool:
+    def exists(self, content: bytes | str, model_name: str) -> bool:
         """Check if an embedding exists for the given content and model.
 
         Args:
@@ -434,7 +432,7 @@ class EmbeddingsCache(BaseCache):
         client = self._get_redis_client()
         return bool(client.exists(key))
 
-    def mexists_by_keys(self, keys: List[str]) -> List[bool]:
+    def mexists_by_keys(self, keys: list[str]) -> list[bool]:
         """Check if multiple embeddings exist by their Redis keys.
 
         Efficiently checks existence of multiple keys in a single operation.
@@ -465,9 +463,7 @@ class EmbeddingsCache(BaseCache):
         # Convert to boolean values
         return [bool(result) for result in results]
 
-    def mexists(
-        self, contents: Iterable[Union[bytes, str]], model_name: str
-    ) -> List[bool]:
+    def mexists(self, contents: Iterable[bytes | str], model_name: str) -> list[bool]:
         """Check if multiple embeddings exist by their contents and model name.
 
         Efficiently checks existence of multiple embeddings in a single operation.
@@ -496,7 +492,7 @@ class EmbeddingsCache(BaseCache):
         # Use the key-based batch operation
         return self.mexists_by_keys(keys)
 
-    def drop(self, content: Union[bytes, str], model_name: str) -> None:
+    def drop(self, content: bytes | str, model_name: str) -> None:
         """Remove an embedding from the cache.
 
         Args:
@@ -526,7 +522,7 @@ class EmbeddingsCache(BaseCache):
         client = self._get_redis_client()
         client.delete(key)
 
-    def mdrop_by_keys(self, keys: List[str]) -> None:
+    def mdrop_by_keys(self, keys: list[str]) -> None:
         """Remove multiple embeddings from the cache by their Redis keys.
 
         Efficiently removes multiple embeddings in a single operation.
@@ -549,7 +545,7 @@ class EmbeddingsCache(BaseCache):
                 pipeline.delete(key)
             pipeline.execute()
 
-    def mdrop(self, contents: Iterable[Union[bytes, str]], model_name: str) -> None:
+    def mdrop(self, contents: Iterable[bytes | str], model_name: str) -> None:
         """Remove multiple embeddings from the cache by their contents and model name.
 
         Efficiently removes multiple embeddings in a single operation.
@@ -577,9 +573,9 @@ class EmbeddingsCache(BaseCache):
 
     async def aget(
         self,
-        content: Union[bytes, str],
+        content: bytes | str,
         model_name: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Async get embedding by content and model name.
 
         Asynchronously retrieves a cached embedding for the given content and model name.
@@ -602,7 +598,7 @@ class EmbeddingsCache(BaseCache):
         key = self._make_cache_key(content, model_name)
         return await self.aget_by_key(key)
 
-    async def aget_by_key(self, key: str) -> Optional[Dict[str, Any]]:
+    async def aget_by_key(self, key: str) -> dict[str, Any] | None:
         """Async get embedding by its full Redis key.
 
         Asynchronously retrieves a cached embedding for the given Redis key.
@@ -629,7 +625,7 @@ class EmbeddingsCache(BaseCache):
 
         return self._process_cache_data(data)
 
-    async def amget_by_keys(self, keys: List[str]) -> List[Optional[Dict[str, Any]]]:
+    async def amget_by_keys(self, keys: list[str]) -> list[dict[str, Any] | None]:
         """Async get multiple embeddings by their Redis keys.
 
         Asynchronously retrieves multiple cached embeddings in a single network roundtrip.
@@ -672,8 +668,8 @@ class EmbeddingsCache(BaseCache):
         return processed_results
 
     async def amget(
-        self, contents: Iterable[Union[bytes, str]], model_name: str
-    ) -> List[Optional[Dict[str, Any]]]:
+        self, contents: Iterable[bytes | str], model_name: str
+    ) -> list[dict[str, Any] | None]:
         """Async get multiple embeddings by their contents and model name.
 
         Asynchronously retrieves multiple cached embeddings in a single operation.
@@ -705,11 +701,11 @@ class EmbeddingsCache(BaseCache):
 
     async def aset(
         self,
-        content: Union[bytes, str],
+        content: bytes | str,
         model_name: str,
-        embedding: List[float],
-        metadata: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        embedding: list[float],
+        metadata: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Async store an embedding with its content and model name.
 
@@ -750,9 +746,9 @@ class EmbeddingsCache(BaseCache):
 
     async def amset(
         self,
-        items: List[Dict[str, Any]],
-        ttl: Optional[int] = None,
-    ) -> List[str]:
+        items: list[dict[str, Any]],
+        ttl: int | None = None,
+    ) -> list[str]:
         """Async store multiple embeddings in a batch operation.
 
         Each item in the input list should be a dictionary with the following fields:
@@ -808,7 +804,7 @@ class EmbeddingsCache(BaseCache):
 
         return keys
 
-    async def amexists_by_keys(self, keys: List[str]) -> List[bool]:
+    async def amexists_by_keys(self, keys: list[str]) -> list[bool]:
         """Async check if multiple embeddings exist by their Redis keys.
 
         Asynchronously checks existence of multiple keys in a single operation.
@@ -840,8 +836,8 @@ class EmbeddingsCache(BaseCache):
         return [bool(result) for result in results]
 
     async def amexists(
-        self, contents: Iterable[Union[bytes, str]], model_name: str
-    ) -> List[bool]:
+        self, contents: Iterable[bytes | str], model_name: str
+    ) -> list[bool]:
         """Async check if multiple embeddings exist by their contents and model name.
 
         Asynchronously checks existence of multiple embeddings in a single operation.
@@ -870,7 +866,7 @@ class EmbeddingsCache(BaseCache):
         # Use the key-based batch operation
         return await self.amexists_by_keys(keys)
 
-    async def amdrop_by_keys(self, keys: List[str]) -> None:
+    async def amdrop_by_keys(self, keys: list[str]) -> None:
         """Async remove multiple embeddings from the cache by their Redis keys.
 
         Asynchronously removes multiple embeddings in a single operation.
@@ -889,9 +885,7 @@ class EmbeddingsCache(BaseCache):
         client = await self._get_async_redis_client()
         await client.delete(*keys)
 
-    async def amdrop(
-        self, contents: Iterable[Union[bytes, str]], model_name: str
-    ) -> None:
+    async def amdrop(self, contents: Iterable[bytes | str], model_name: str) -> None:
         """Async remove multiple embeddings from the cache by their contents and model name.
 
         Asynchronously removes multiple embeddings in a single operation.
@@ -917,7 +911,7 @@ class EmbeddingsCache(BaseCache):
         # Use the key-based batch operation
         await self.amdrop_by_keys(keys)
 
-    async def aexists(self, content: Union[bytes, str], model_name: str) -> bool:
+    async def aexists(self, content: bytes | str, model_name: str) -> bool:
         """Async check if an embedding exists.
 
         Asynchronously checks if an embedding exists for the given content and model.
@@ -956,7 +950,7 @@ class EmbeddingsCache(BaseCache):
         client = await self._get_async_redis_client()
         return bool(await client.exists(key))
 
-    async def adrop(self, content: Union[bytes, str], model_name: str) -> None:
+    async def adrop(self, content: bytes | str, model_name: str) -> None:
         """Async remove an embedding from the cache.
 
         Asynchronously removes an embedding from the cache.

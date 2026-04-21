@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from pydantic import BaseModel, field_validator
 
 
 class BaseReranker(BaseModel, ABC):
     model: str
-    rank_by: Optional[List[str]] = None
+    rank_by: list[str] | None = None
     limit: int
     return_score: bool
 
@@ -31,8 +31,8 @@ class BaseReranker(BaseModel, ABC):
 
     @abstractmethod
     def rank(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
+        self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs
+    ) -> tuple[list[dict[str, Any]], list[float]] | list[dict[str, Any]]:
         """
         Synchronously rerank the docs based on the provided query.
         """
@@ -40,8 +40,8 @@ class BaseReranker(BaseModel, ABC):
 
     @abstractmethod
     async def arank(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
+        self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs
+    ) -> tuple[list[dict[str, Any]], list[float]] | list[dict[str, Any]]:
         """
         Asynchronously rerank the docs based on the provided query.
         """

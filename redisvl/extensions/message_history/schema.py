@@ -1,6 +1,6 @@
 import warnings
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -32,21 +32,21 @@ class ChatRole(str, Enum):
 class ChatMessage(BaseModel):
     """A single chat message exchanged between a user and an LLM."""
 
-    entry_id: Optional[str] = Field(default=None)
+    entry_id: str | None = Field(default=None)
     """A unique identifier for the message."""
-    role: Union[ChatRole, str]  # str allows deprecated values with warning
+    role: ChatRole | str  # str allows deprecated values with warning
     """The role of the message sender (e.g. 'user' or 'assistant')."""
     content: str
     """The content of the message."""
     session_tag: str
     """Tag associated with the current conversation session."""
-    timestamp: Optional[float] = Field(default=None)
+    timestamp: float | None = Field(default=None)
     """The time the message was sent, in UTC, rounded to milliseconds."""
-    tool_call_id: Optional[str] = Field(default=None)
+    tool_call_id: str | None = Field(default=None)
     """An optional identifier for a tool call associated with the message."""
-    vector_field: Optional[List[float]] = Field(default=None)
+    vector_field: list[float] | None = Field(default=None)
     """The vector representation of the message content."""
-    metadata: Optional[str] = Field(default=None)
+    metadata: str | None = Field(default=None)
     """Optional additional data to store alongside the message"""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -66,7 +66,7 @@ class ChatMessage(BaseModel):
 
     @field_validator("role", mode="before")
     @classmethod
-    def coerce_role(cls, v: Any) -> Union[ChatRole, str]:
+    def coerce_role(cls, v: Any) -> ChatRole | str:
         if isinstance(v, str):
             try:
                 return ChatRole(v)
@@ -78,7 +78,7 @@ class ChatMessage(BaseModel):
                 )
         return v
 
-    def to_dict(self, dtype: Optional[str] = None) -> Dict:
+    def to_dict(self, dtype: str | None = None) -> dict[str, Any]:
         data = self.model_dump(exclude_none=True)
 
         # handle optional fields

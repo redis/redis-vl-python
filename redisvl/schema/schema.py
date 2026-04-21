@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -59,7 +59,7 @@ class IndexInfo(BaseModel):
 
     name: str
     """The unique name of the index."""
-    prefix: Union[str, List[str]] = "rvl"
+    prefix: str | list[str] = "rvl"
     """The prefix used for Redis keys associated with this index.
 
     A list of prefixes is supported for querying across multiple key namespaces,
@@ -69,7 +69,7 @@ class IndexInfo(BaseModel):
     """The separator character used in designing Redis keys."""
     storage_type: StorageType = StorageType.HASH
     """The storage type used in Redis (e.g., 'hash' or 'json')."""
-    stopwords: Optional[List[str]] = None
+    stopwords: list[str] | None = None
     """Index-level stopwords configuration. None (default) uses Redis default stopwords,
     empty list [] disables stopwords (STOPWORDS 0), or provide a custom list of stopwords."""
 
@@ -152,7 +152,7 @@ class IndexSchema(BaseModel):
 
     index: IndexInfo
     """Details of the basic index configurations."""
-    fields: Dict[str, BaseField] = Field(default_factory=dict)
+    fields: dict[str, BaseField] = Field(default_factory=dict)
     """Fields associated with the search index and their properties.
 
     Note: When creating from dict/YAML, provide fields as a list of field definitions.
@@ -182,7 +182,7 @@ class IndexSchema(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_and_create_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_and_create_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
         """
         Validate uniqueness of field names and create valid field instances.
         """
@@ -192,7 +192,7 @@ class IndexSchema(BaseModel):
             index = IndexInfo(**index)
 
         input_fields = values.get("fields", [])
-        prepared_fields: Dict[str, BaseField] = {}
+        prepared_fields: dict[str, BaseField] = {}
 
         # Handle both list and dict formats for fields
         if isinstance(input_fields, Mapping):
@@ -262,7 +262,7 @@ class IndexSchema(BaseModel):
             return cls.model_validate(yaml_data)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "IndexSchema":
+    def from_dict(cls, data: dict[str, Any]) -> "IndexSchema":
         """Create an IndexSchema from a dictionary.
 
         Args:
@@ -301,7 +301,7 @@ class IndexSchema(BaseModel):
         return cls.model_validate(schema_dict)
 
     @property
-    def field_names(self) -> List[str]:
+    def field_names(self) -> list[str]:
         """A list of field names associated with the index schema.
 
         Returns:
@@ -310,7 +310,7 @@ class IndexSchema(BaseModel):
         return list(self.fields.keys())
 
     @property
-    def redis_fields(self) -> List[RedisField]:
+    def redis_fields(self) -> list[RedisField]:
         """A list of core redis-py field definitions based on the
         current schema fields.
 
@@ -321,12 +321,12 @@ class IndexSchema(BaseModel):
         Returns:
             List[RedisField]: A list of redis-py field definitions.
         """
-        redis_fields: List[RedisField] = [
+        redis_fields: list[RedisField] = [
             field.as_redis_field() for _, field in self.fields.items()
         ]
         return redis_fields
 
-    def add_field(self, field_inputs: Dict[str, Any]):
+    def add_field(self, field_inputs: dict[str, Any]):
         """Adds a single field to the index schema based on the specified field
         type and attributes.
 
@@ -366,7 +366,7 @@ class IndexSchema(BaseModel):
         # Add field
         self.fields[field.name] = field
 
-    def add_fields(self, fields: List[Dict[str, Any]]):
+    def add_fields(self, fields: list[dict[str, Any]]):
         """Extends the schema with additional fields.
 
         This method allows dynamically adding new fields to the index schema. It
@@ -414,10 +414,10 @@ class IndexSchema(BaseModel):
 
     def generate_fields(
         self,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         strict: bool = False,
-        ignore_fields: List[str] = [],
-    ) -> List[Dict[str, Any]]:
+        ignore_fields: list[str] = [],
+    ) -> list[dict[str, Any]]:
         """Generates a list of extracted field specs from a sample data point.
 
         This method simplifies the process of creating a schema by inferring
@@ -441,7 +441,7 @@ class IndexSchema(BaseModel):
             - This method employs heuristics and may not always correctly infer
                 field types.
         """
-        fields: List[Dict[str, Any]] = []
+        fields: list[dict[str, Any]] = []
         for field_name, value in data.items():
             if field_name in ignore_fields:
                 continue
@@ -462,7 +462,7 @@ class IndexSchema(BaseModel):
                     )
         return fields
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize the index schema model to a dictionary, handling Enums
         and other special cases properly.
 

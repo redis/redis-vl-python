@@ -1,6 +1,6 @@
 import asyncio
 import inspect
-from typing import Any, Optional, Union
+from typing import Any
 
 from redisvl.mcp.config import reserved_score_metadata_field_names
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
@@ -28,9 +28,9 @@ _FALLBACK_HYBRID_UNSUPPORTED_PARAMS = frozenset(
 def _validate_request(
     *,
     query: str,
-    limit: Optional[int],
+    limit: int | None,
     offset: int,
-    return_fields: Optional[list[str]],
+    return_fields: list[str] | None,
     server: Any,
     index: Any,
 ) -> tuple[int, list[str]]:
@@ -258,7 +258,7 @@ async def _build_query(
     query: str,
     limit: int,
     offset: int,
-    filter_value: Optional[Union[str, dict[str, Any]]],
+    filter_value: str | dict[str, Any] | None,
     return_fields: list[str],
 ) -> tuple[Any, str, str, str]:
     """Build the RedisVL query object from configured search mode and params.
@@ -356,10 +356,10 @@ async def search_records(
     server: Any,
     *,
     query: str,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     offset: int = 0,
-    filter: Optional[Union[str, dict[str, Any]]] = None,
-    return_fields: Optional[list[str]] = None,
+    filter: str | dict[str, Any] | None = None,
+    return_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Execute `search-records` against the configured Redis index binding."""
     try:
@@ -413,10 +413,10 @@ def register_search_tool(server: Any) -> None:
 
     async def search_records_tool(
         query: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         offset: int = 0,
-        filter: Optional[Union[str, dict[str, Any]]] = None,
-        return_fields: Optional[list[str]] = None,
+        filter: str | dict[str, Any] | None = None,
+        return_fields: list[str] | None = None,
     ):
         """FastMCP wrapper for the `search-records` tool."""
         return await search_records(

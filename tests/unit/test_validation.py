@@ -9,7 +9,7 @@ This module tests the core validation functionality:
 """
 
 import re
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 
 import pytest
 
@@ -143,8 +143,8 @@ def validate_field(
     field_name: str,
     value: Any,
     should_pass: bool,
-    error_text: Optional[str] = None,
-) -> Tuple[bool, Optional[str]]:
+    error_text: str | None = None,
+) -> tuple[bool, str | None]:
     """
     Helper function to validate a field value against a schema.
 
@@ -232,14 +232,14 @@ class TestSchemaModelGenerator:
         [
             (FieldTypes.TEXT, StorageType.HASH, str),
             (FieldTypes.TAG, StorageType.HASH, str),
-            (FieldTypes.NUMERIC, StorageType.HASH, Union[int, float]),
+            (FieldTypes.NUMERIC, StorageType.HASH, int | float),
             (FieldTypes.GEO, StorageType.HASH, str),
             (FieldTypes.VECTOR, StorageType.HASH, bytes),
             (FieldTypes.TEXT, StorageType.JSON, str),
             (FieldTypes.TAG, StorageType.JSON, str),
-            (FieldTypes.NUMERIC, StorageType.JSON, Union[int, float]),
+            (FieldTypes.NUMERIC, StorageType.JSON, int | float),
             (FieldTypes.GEO, StorageType.JSON, str),
-            (FieldTypes.VECTOR, StorageType.JSON, List[float]),
+            (FieldTypes.VECTOR, StorageType.JSON, list[float]),
         ],
     )
     def test_type_mapping(self, field_type, storage_type, expected_type):

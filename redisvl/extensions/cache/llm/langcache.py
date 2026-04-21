@@ -4,7 +4,7 @@ This module provides an LLM cache implementation that uses the LangCache
 managed service via the langcache Python SDK.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from urllib.parse import quote, unquote
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
@@ -16,7 +16,7 @@ from redisvl.utils.utils import denorm_cosine_distance, norm_cosine_distance
 logger = get_logger(__name__)
 
 
-def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, Any]:
+def _encode_attributes_for_langcache(attributes: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *attributes* with string values safely encoded.
 
     Only top-level string values are encoded; non-string values are left
@@ -28,7 +28,7 @@ def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, An
         return attributes
 
     changed = False
-    safe_attributes: Dict[str, Any] = dict(attributes)
+    safe_attributes: dict[str, Any] = dict(attributes)
     for key, value in attributes.items():
         if isinstance(value, str):
             # Percent-encode all characters (no ``safe`` set) so punctuation and
@@ -42,7 +42,7 @@ def _encode_attributes_for_langcache(attributes: Dict[str, Any]) -> Dict[str, An
     return safe_attributes if changed else attributes
 
 
-def _decode_attributes_from_langcache(attributes: Dict[str, Any]) -> Dict[str, Any]:
+def _decode_attributes_from_langcache(attributes: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *attributes* with string values safely decoded.
 
     This is the inverse of :func:`_encode_attributes_for_langcache`. Only
@@ -54,7 +54,7 @@ def _decode_attributes_from_langcache(attributes: Dict[str, Any]) -> Dict[str, A
         return attributes
 
     changed = False
-    decoded_attributes: Dict[str, Any] = dict(attributes)
+    decoded_attributes: dict[str, Any] = dict(attributes)
     for key, value in attributes.items():
         if isinstance(value, str):
             decoded = unquote(value)
@@ -100,7 +100,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         server_url: str = "https://aws-us-east-1.langcache.redis.io",
         cache_id: str = "",
         api_key: str = "",
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
         use_exact_search: bool = True,
         use_semantic_search: bool = True,
         distance_scale: Literal["normalized", "redis"] = "normalized",
@@ -177,9 +177,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             api_key=self._api_key,
         )
 
-    def _similarity_threshold(
-        self, distance_threshold: Optional[float]
-    ) -> Optional[float]:
+    def _similarity_threshold(self, distance_threshold: float | None) -> float | None:
         """Convert a distance threshold to a similarity threshold based on scale.
 
         - If distance_scale == "redis": use norm_cosine_distance (0–2 -> 0–1)
@@ -194,9 +192,9 @@ class LangCacheSemanticCache(BaseLLMCache):
     def _build_search_kwargs(
         self,
         prompt: str,
-        similarity_threshold: Optional[float],
-        attributes: Optional[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        similarity_threshold: float | None,
+        attributes: dict[str, Any] | None,
+    ) -> dict[str, Any]:
         from langcache.models import SearchStrategy
 
         # Build enum list lazily here instead of during __init__ to avoid
@@ -207,7 +205,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         ]
         # Filter out Nones to avoid sending invalid enum values
         search_strategies = [s for s in search_strategies if s is not None]
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "prompt": prompt,
             "search_strategies": search_strategies,
             "similarity_threshold": similarity_threshold,
@@ -220,9 +218,9 @@ class LangCacheSemanticCache(BaseLLMCache):
 
     def _hits_from_response(
         self, response: Any, num_results: int
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         results = response.data if hasattr(response, "data") else []
-        hits: List[Dict[str, Any]] = []
+        hits: list[dict[str, Any]] = []
         for result in results[:num_results]:
             if hasattr(result, "model_dump"):
                 result_dict = result.model_dump()
@@ -232,7 +230,7 @@ class LangCacheSemanticCache(BaseLLMCache):
             hits.append(hit.to_dict())
         return hits
 
-    def _convert_to_cache_hit(self, result: Dict[str, Any]) -> CacheHit:
+    def _convert_to_cache_hit(self, result: dict[str, Any]) -> CacheHit:
         """Convert a LangCache result to a CacheHit object.
 
         Args:
@@ -268,14 +266,14 @@ class LangCacheSemanticCache(BaseLLMCache):
 
     def check(
         self,
-        prompt: Optional[str] = None,
-        vector: Optional[List[float]] = None,
+        prompt: str | None = None,
+        vector: list[float] | None = None,
         num_results: int = 1,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        distance_threshold: Optional[float] = None,
-        attributes: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        return_fields: list[str] | None = None,
+        filter_expression: FilterExpression | None = None,
+        distance_threshold: float | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Check the cache for semantically similar prompts.
 
         Args:
@@ -342,14 +340,14 @@ class LangCacheSemanticCache(BaseLLMCache):
 
     async def acheck(
         self,
-        prompt: Optional[str] = None,
-        vector: Optional[List[float]] = None,
+        prompt: str | None = None,
+        vector: list[float] | None = None,
         num_results: int = 1,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        distance_threshold: Optional[float] = None,
-        attributes: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        return_fields: list[str] | None = None,
+        filter_expression: FilterExpression | None = None,
+        distance_threshold: float | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Async check the cache for semantically similar prompts.
 
         Args:
@@ -421,10 +419,10 @@ class LangCacheSemanticCache(BaseLLMCache):
         self,
         prompt: str,
         response: str,
-        vector: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        vector: list[float] | None = None,
+        metadata: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Store a prompt-response pair in the cache.
 
@@ -494,10 +492,10 @@ class LangCacheSemanticCache(BaseLLMCache):
         self,
         prompt: str,
         response: str,
-        vector: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        vector: list[float] | None = None,
+        metadata: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Async store a prompt-response pair in the cache.
 
@@ -643,7 +641,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         """
         await self._client.delete_by_id_async(entry_id=entry_id)
 
-    def delete_by_attributes(self, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    def delete_by_attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """Delete cache entries matching the given attributes.
 
         Args:
@@ -665,7 +663,7 @@ class LangCacheSemanticCache(BaseLLMCache):
         # Convert DeleteQueryResponse to dict
         return result.model_dump() if hasattr(result, "model_dump") else {}
 
-    async def adelete_by_attributes(self, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    async def adelete_by_attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """Async delete cache entries matching the given attributes.
 
         Args:

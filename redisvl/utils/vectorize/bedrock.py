@@ -3,7 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -94,9 +94,9 @@ class BedrockVectorizer(BaseVectorizer):
     def __init__(
         self,
         model: str = "amazon.titan-embed-text-v2:0",
-        api_config: Optional[Dict[str, str]] = None,
+        api_config: dict[str, str] | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ) -> None:
         """Initialize the AWS Bedrock Vectorizer.
@@ -121,18 +121,18 @@ class BedrockVectorizer(BaseVectorizer):
         # Initialize client and set up the model
         self._setup(api_config, **kwargs)
 
-    def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
+    def embed_image(self, image_path: str, **kwargs) -> list[float] | bytes:
         """Embed an image (from its path on disk) using a Bedrock multimodal model."""
         return self.embed(Path(image_path), **kwargs)
 
-    def _setup(self, api_config: Optional[Dict], **kwargs):
+    def _setup(self, api_config: dict[str, Any] | None, **kwargs):
         """Set up the Bedrock client and determine the embedding dimensions."""
         # Initialize client
         self._initialize_client(api_config, **kwargs)
         # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_client(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the Bedrock client using the provided API keys or
         environment variables.
@@ -204,7 +204,7 @@ class BedrockVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, content: Any, **kwargs) -> List[float]:
+    def _embed(self, content: Any, **kwargs) -> list[float]:
         """
         Generate a vector embedding for a single input using the AWS Bedrock API.
 
@@ -243,8 +243,8 @@ class BedrockVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, contents: List[Any], batch_size: int = 10, **kwargs
-    ) -> List[List[float]]:
+        self, contents: list[Any], batch_size: int = 10, **kwargs
+    ) -> list[list[float]]:
         """
         Generate vector embeddings for a batch of inputs using the AWS Bedrock API.
 
@@ -268,7 +268,7 @@ class BedrockVectorizer(BaseVectorizer):
             raise TypeError("`contents` must be a list")
 
         try:
-            embeddings: List[List[float]] = []
+            embeddings: list[list[float]] = []
 
             for batch in self.batchify(contents, batch_size):
                 # Process each text in the batch individually since Bedrock

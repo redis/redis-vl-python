@@ -5,7 +5,7 @@ combines full-text search with vector similarity search using Redis's hybrid
 query capabilities (requires redis>=7.1.0).
 """
 
-from typing import List, Literal
+from typing import Literal
 
 import pytest
 
@@ -41,7 +41,7 @@ bytes_vector = array_to_buffer(sample_vector, "float32")
 sample_text = "the toon squad play basketball against a gang of aliens"
 
 
-def get_query_pieces(query: HybridQuery) -> List[str]:
+def get_query_pieces(query: HybridQuery) -> list[str]:
     """Get all the pieces of the complete hybrid query."""
     # NOTE: Modeled after logic in `redis.commands.search.commands.SearchCommands.hybrid_search`
     pieces = query.query.get_args()

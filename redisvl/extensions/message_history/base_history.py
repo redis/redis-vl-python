@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from redisvl.extensions.constants import (
     CONTENT_FIELD_NAME,
@@ -16,7 +16,7 @@ class BaseMessageHistory:
     def __init__(
         self,
         name: str,
-        session_tag: Optional[str] = None,
+        session_tag: str | None = None,
     ):
         """Initialize message history with index
 
@@ -41,7 +41,7 @@ class BaseMessageHistory:
         """Clear all conversation history and remove any search indices."""
         raise NotImplementedError
 
-    def drop(self, id_field: Optional[str] = None) -> None:
+    def drop(self, id_field: str | None = None) -> None:
         """Remove a specific exchange from the conversation history.
 
         Args:
@@ -50,7 +50,7 @@ class BaseMessageHistory:
         """
         raise NotImplementedError
 
-    def count(self, session_tag: Optional[str] = None) -> int:
+    def count(self, session_tag: str | None = None) -> int:
         """Count the number of messages in the conversation history.
 
         Args:
@@ -60,7 +60,7 @@ class BaseMessageHistory:
         raise NotImplementedError
 
     @property
-    def messages(self) -> Union[List[str], List[Dict[str, str]]]:
+    def messages(self) -> list[str] | list[dict[str, str]]:
         """Returns the full chat history."""
         raise NotImplementedError
 
@@ -69,9 +69,9 @@ class BaseMessageHistory:
         top_k: int = 5,
         as_text: bool = False,
         raw: bool = False,
-        session_tag: Optional[str] = None,
-        role: Optional[Union[str, List[str]]] = None,
-    ) -> Union[List[str], List[Dict[str, str]]]:
+        session_tag: str | None = None,
+        role: str | list[str] | None = None,
+    ) -> list[str] | list[dict[str, str]]:
         """Retrieve the recent conversation history in sequential order.
 
         Args:
@@ -97,9 +97,7 @@ class BaseMessageHistory:
         """
         raise NotImplementedError
 
-    def _validate_roles(
-        self, role: Optional[Union[str, List[str]]]
-    ) -> Optional[List[str]]:
+    def _validate_roles(self, role: str | list[str] | None) -> list[str] | None:
         """Validate and normalize role parameter.
 
         Args:
@@ -151,8 +149,8 @@ class BaseMessageHistory:
         raise ValueError("role must be a string or list of strings")
 
     def _format_context(
-        self, messages: List[Dict[str, Any]], as_text: bool
-    ) -> Union[List[str], List[Dict[str, str]]]:
+        self, messages: list[dict[str, Any]], as_text: bool
+    ) -> list[str] | list[dict[str, str]]:
         """Extracts the prompt and response fields from the Redis hashes and
            formats them as either flat dictionaries or strings.
 
@@ -189,9 +187,7 @@ class BaseMessageHistory:
 
         return context
 
-    def store(
-        self, prompt: str, response: str, session_tag: Optional[str] = None
-    ) -> None:
+    def store(self, prompt: str, response: str, session_tag: str | None = None) -> None:
         """Insert a prompt:response pair into the message history. A timestamp
         is associated with each exchange so that they can be later sorted
         in sequential ordering after retrieval.
@@ -204,7 +200,7 @@ class BaseMessageHistory:
         raise NotImplementedError
 
     def add_messages(
-        self, messages: List[Dict[str, str]], session_tag: Optional[str] = None
+        self, messages: list[dict[str, str]], session_tag: str | None = None
     ) -> None:
         """Insert a list of prompts and responses into the message history.
         A timestamp is associated with each so that they can be later sorted
@@ -217,7 +213,7 @@ class BaseMessageHistory:
         raise NotImplementedError
 
     def add_message(
-        self, message: Dict[str, str], session_tag: Optional[str] = None
+        self, message: dict[str, str], session_tag: str | None = None
     ) -> None:
         """Insert a single prompt or response into the message history.
         A timestamp is associated with it so that it can be later sorted
