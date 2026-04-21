@@ -1,7 +1,9 @@
 """SQL Query class for executing SQL-like queries against Redis."""
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any
+
+from redisvl.redis.connection import RedisConnectionFactory
 
 
 class SQLQuery:
@@ -40,9 +42,9 @@ class SQLQuery:
     def __init__(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         *,
-        sql_redis_options: Optional[Dict[str, Any]] = None,
+        sql_redis_options: dict[str, Any] | None = None,
     ):
         """Initialize a SQLQuery.
 
@@ -69,7 +71,7 @@ class SQLQuery:
         self.params = params or {}
         self.sql_redis_options = dict(sql_redis_options or {})
 
-    def _substitute_params(self, sql: str, params: Dict[str, Any]) -> str:
+    def _substitute_params(self, sql: str, params: dict[str, Any]) -> str:
         """Substitute parameter placeholders in SQL with actual values.
 
         Uses token-based approach: splits SQL on :param patterns, then rebuilds
@@ -120,7 +122,7 @@ class SQLQuery:
 
     def redis_query_string(
         self,
-        redis_client: Optional[Any] = None,
+        redis_client: Any | None = None,
         redis_url: str = "redis://localhost:6379",
     ) -> str:
         """Translate the SQL query to a Redis command string.
@@ -168,9 +170,9 @@ class SQLQuery:
 
         # Get or create Redis client
         if redis_client is None:
-            from redis import Redis
-
-            redis_client = Redis.from_url(redis_url)
+            redis_client = RedisConnectionFactory.get_redis_connection(
+                redis_url=redis_url
+            )
 
         sql_redis_options = {
             "schema_cache_strategy": "lazy",

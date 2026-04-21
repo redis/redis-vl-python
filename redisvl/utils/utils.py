@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
 from time import time
-from typing import Any, Callable, Coroutine, Dict, Optional, Sequence, TypeVar
+from typing import Any, Callable, Coroutine, Sequence, TypeVar
 from warnings import warn
 
 from pydantic import BaseModel
@@ -28,7 +28,7 @@ def current_timestamp() -> float:
     return time()
 
 
-def model_to_dict(model: BaseModel) -> Dict[str, Any]:
+def model_to_dict(model: BaseModel) -> dict[str, Any]:
     """
     Custom serialization function that converts a Pydantic model to a dict,
     serializing Enum fields to their values, and handling nested models and lists.
@@ -75,7 +75,7 @@ def deserialize(data: str) -> Any:
     return json.loads(data)
 
 
-def deprecated_argument(argument: str, replacement: Optional[str] = None) -> Callable:
+def deprecated_argument(argument: str, replacement: str | None = None) -> Callable:
     """
     Decorator to warn if a deprecated argument is passed.
 
@@ -145,7 +145,7 @@ def assert_no_warnings():
         yield
 
 
-def deprecated_function(name: Optional[str] = None, replacement: Optional[str] = None):
+def deprecated_function(name: str | None = None, replacement: str | None = None):
     """
     Decorator to mark a function as deprecated.
 
@@ -172,7 +172,7 @@ def deprecated_function(name: Optional[str] = None, replacement: Optional[str] =
     return decorator
 
 
-def deprecated_class(name: Optional[str] = None, replacement: Optional[str] = None):
+def deprecated_class(name: str | None = None, replacement: str | None = None):
     """
     Decorator to mark a class as deprecated.
 

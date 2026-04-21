@@ -2,10 +2,9 @@ import io
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Annotated, Any, Callable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing_extensions import Annotated
 
 from redisvl.extensions.cache.embeddings import EmbeddingsCache
 from redisvl.redis.utils import array_to_buffer
@@ -47,8 +46,8 @@ class BaseVectorizer(BaseModel):
 
     model: str
     dtype: str = "float32"
-    dims: Annotated[Optional[int], Field(strict=True, gt=0)] = None
-    cache: Optional[EmbeddingsCache] = Field(default=None)
+    dims: Annotated[int | None, Field(strict=True, gt=0)] = None
+    cache: EmbeddingsCache | None = Field(default=None)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @property
@@ -73,11 +72,11 @@ class BaseVectorizer(BaseModel):
         self,
         content: Any = None,
         text: Any = None,
-        preprocess: Optional[Callable] = None,
+        preprocess: Callable | None = None,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
-    ) -> Union[List[float], bytes]:
+    ) -> list[float] | bytes:
         """Generate a vector embedding for content.
 
         Args:
@@ -139,14 +138,14 @@ class BaseVectorizer(BaseModel):
     @deprecated_argument("texts", "contents")
     def embed_many(
         self,
-        contents: Optional[List[Any]] = None,
-        texts: Optional[List[Any]] = None,
-        preprocess: Optional[Callable] = None,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
+        preprocess: Callable | None = None,
         batch_size: int = 10,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
+    ) -> list[list[float]] | list[bytes]:
         """Generate vector embeddings for multiple items efficiently.
 
         Args:
@@ -203,11 +202,11 @@ class BaseVectorizer(BaseModel):
         self,
         content: Any = None,
         text: Any = None,
-        preprocess: Optional[Callable] = None,
+        preprocess: Callable | None = None,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
-    ) -> Union[List[float], bytes]:
+    ) -> list[float] | bytes:
         """Asynchronously generate a vector embedding for an item of content.
 
         Args:
@@ -272,14 +271,14 @@ class BaseVectorizer(BaseModel):
     @deprecated_argument("texts", "contents")
     async def aembed_many(
         self,
-        contents: Optional[List[Any]] = None,
-        texts: Optional[List[Any]] = None,
-        preprocess: Optional[Callable] = None,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
+        preprocess: Callable | None = None,
         batch_size: int = 10,
         as_buffer: bool = False,
         skip_cache: bool = False,
         **kwargs,
-    ) -> Union[List[List[float]], List[bytes]]:
+    ) -> list[list[float]] | list[bytes]:
         """Asynchronously generate vector embeddings for multiple items efficiently.
 
         Args:
@@ -332,23 +331,23 @@ class BaseVectorizer(BaseModel):
         return [self._process_embedding(emb, as_buffer, self.dtype) for emb in results]
 
     @deprecated_argument("text", "content")
-    def _embed(self, text: Any = "", content: Any = "", **kwargs) -> List[float]:
+    def _embed(self, text: Any = "", content: Any = "", **kwargs) -> list[float]:
         """Generate a vector embedding for a single item."""
         raise NotImplementedError
 
     @deprecated_argument("texts", "contents")
     def _embed_many(
         self,
-        contents: Optional[List[Any]] = None,
-        texts: Optional[List[Any]] = None,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """Generate vector embeddings for a batch of items."""
         raise NotImplementedError
 
     @deprecated_argument("text", "content")
-    async def _aembed(self, content: Any = "", text: Any = "", **kwargs) -> List[float]:
+    async def _aembed(self, content: Any = "", text: Any = "", **kwargs) -> list[float]:
         """Asynchronously generate a vector embedding for a single item."""
         logger.warning(
             "This vectorizer has no async embed method. Falling back to sync."
@@ -358,11 +357,11 @@ class BaseVectorizer(BaseModel):
     @deprecated_argument("texts", "contents")
     async def _aembed_many(
         self,
-        contents: Optional[List[Any]] = None,
-        texts: Optional[List[Any]] = None,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """Asynchronously generate vector embeddings for a batch of items."""
         logger.warning(
             "This vectorizer has no async embed_many method. Falling back to sync."
@@ -372,8 +371,8 @@ class BaseVectorizer(BaseModel):
         )
 
     def _get_from_cache_batch(
-        self, contents: List[Any], skip_cache: bool
-    ) -> tuple[List[Optional[List[float]]], List[str], List[int]]:
+        self, contents: list[Any], skip_cache: bool
+    ) -> tuple[list[list[float] | None], list[str], list[int]]:
         """Get vector embeddings from cache and track cache misses.
 
         Args:
@@ -418,8 +417,8 @@ class BaseVectorizer(BaseModel):
         return results, cache_misses, cache_miss_indices  # type: ignore
 
     async def _aget_from_cache_batch(
-        self, contents: List[Any], skip_cache: bool
-    ) -> tuple[List[Optional[List[float]]], List[str], List[int]]:
+        self, contents: list[Any], skip_cache: bool
+    ) -> tuple[list[list[float] | None], list[str], list[int]]:
         """Asynchronously get vector embeddings from cache and track cache misses.
 
         Args:
@@ -467,9 +466,9 @@ class BaseVectorizer(BaseModel):
 
     def _store_in_cache_batch(
         self,
-        contents: List[Any],
-        embeddings: List[List[float]],
-        metadata: Dict,
+        contents: list[Any],
+        embeddings: list[list[float]],
+        metadata: dict[str, Any],
         skip_cache: bool,
     ) -> None:
         """Store a batch of vector embeddings in the cache.
@@ -500,9 +499,9 @@ class BaseVectorizer(BaseModel):
 
     async def _astore_in_cache_batch(
         self,
-        contents: List[Any],
-        embeddings: List[List[float]],
-        metadata: Dict,
+        contents: list[Any],
+        embeddings: list[list[float]],
+        metadata: dict[str, Any],
         skip_cache: bool,
     ) -> None:
         """Asynchronously store a batch of vector embeddings in the cache.
@@ -533,7 +532,7 @@ class BaseVectorizer(BaseModel):
                 f"Error storing batch in embedding cache asynchronously: {str(e)}"
             )
 
-    def batchify(self, seq: list, size: int, preprocess: Optional[Callable] = None):
+    def batchify(self, seq: list, size: int, preprocess: Callable | None = None):
         """Split a sequence into batches of specified size.
 
         Args:
@@ -551,7 +550,7 @@ class BaseVectorizer(BaseModel):
                 yield seq[pos : pos + size]
 
     def _process_embedding(
-        self, embedding: Optional[List[float]], as_buffer: bool, dtype: str
+        self, embedding: list[float] | None, as_buffer: bool, dtype: str
     ):
         """Process the vector embedding format based on the as_buffer flag."""
         if embedding is not None:
@@ -559,7 +558,7 @@ class BaseVectorizer(BaseModel):
                 return array_to_buffer(embedding, dtype)
         return embedding
 
-    def _serialize_for_cache(self, content: Any) -> Union[bytes, str]:
+    def _serialize_for_cache(self, content: Any) -> bytes | str:
         """Convert content to a cacheable format."""
         if isinstance(content, str):
             return content

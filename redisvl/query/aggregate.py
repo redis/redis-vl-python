@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from redis.commands.search.aggregation import AggregateRequest, Desc
@@ -26,7 +26,7 @@ class Vector(BaseModel):
     max_distance: The maximum distance for vector range search (default: 2.0, range: [0.0, 2.0])
     """
 
-    vector: Union[List[float], bytes]
+    vector: list[float] | bytes
     field_name: str
     dtype: str = "float32"
     weight: float = 1.0
@@ -109,17 +109,17 @@ class AggregateHybridQuery(AggregationQuery):
         self,
         text: str,
         text_field_name: str,
-        vector: Union[bytes, List[float]],
+        vector: bytes | list[float],
         vector_field_name: str,
         text_scorer: str = "BM25STD",
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        filter_expression: str | FilterExpression | None = None,
         alpha: float = 0.7,
         dtype: str = "float32",
         num_results: int = 10,
-        return_fields: Optional[List[str]] = None,
-        stopwords: Optional[Union[str, Set[str]]] = "english",
+        return_fields: list[str] | None = None,
+        stopwords: str | set[str] | None = "english",
         dialect: int = 2,
-        text_weights: Optional[Dict[str, float]] = None,
+        text_weights: dict[str, float] | None = None,
     ):
         """
         Instantiates a AggregateHybridQuery object.
@@ -196,7 +196,7 @@ class AggregateHybridQuery(AggregationQuery):
             self.load(*return_fields)  # type: ignore[arg-type]
 
     @property
-    def params(self) -> Dict[str, Any]:
+    def params(self) -> dict[str, Any]:
         """Return the parameters for the aggregation.
 
         Returns:
@@ -207,12 +207,12 @@ class AggregateHybridQuery(AggregationQuery):
         else:
             vector = self._vector
 
-        params: Dict[str, Any] = {self.VECTOR_PARAM: vector}
+        params: dict[str, Any] = {self.VECTOR_PARAM: vector}
 
         return params
 
     @property
-    def stopwords(self) -> Set[str]:
+    def stopwords(self) -> set[str]:
         """Return the stopwords used in the query.
         Returns:
             Set[str]: The stopwords used in the query.
@@ -220,7 +220,7 @@ class AggregateHybridQuery(AggregationQuery):
         return self._ft_helper.stopwords
 
     @property
-    def text_weights(self) -> Dict[str, float]:
+    def text_weights(self) -> dict[str, float]:
         """Get the text weights.
 
         Returns:
@@ -228,7 +228,7 @@ class AggregateHybridQuery(AggregationQuery):
         """
         return self._ft_helper.text_weights
 
-    def set_text_weights(self, weights: Dict[str, float]):
+    def set_text_weights(self, weights: dict[str, float]):
         """Set or update the text weights for the query.
 
         Args:
@@ -305,13 +305,13 @@ class MultiVectorQuery(AggregationQuery):
         results = index.query(query)
     """
 
-    _vectors: List[Vector]
+    _vectors: list[Vector]
 
     def __init__(
         self,
-        vectors: Union[Vector, List[Vector]],
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
+        vectors: Vector | list[Vector],
+        return_fields: list[str] | None = None,
+        filter_expression: str | FilterExpression | None = None,
         num_results: int = 10,
         dialect: int = 2,
     ):
@@ -361,7 +361,7 @@ class MultiVectorQuery(AggregationQuery):
             self.load(*return_fields)  # type: ignore[arg-type]
 
     @property
-    def params(self) -> Dict[str, Any]:
+    def params(self) -> dict[str, Any]:
         """Return the parameters for the aggregation.
 
         Returns:

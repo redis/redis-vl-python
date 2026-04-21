@@ -1,5 +1,5 @@
 import re
-from typing import Optional, Pattern
+from typing import Pattern
 
 
 class TokenEscaper:
@@ -15,7 +15,7 @@ class TokenEscaper:
     # Same as above but excludes * and ? to allow wildcard patterns
     ESCAPED_CHARS_NO_WILDCARD = r"[,.<>{}\[\]\\\"\':;!@#$%^&()\-+=~\/ ]"
 
-    def __init__(self, escape_chars_re: Optional[Pattern] = None):
+    def __init__(self, escape_chars_re: Pattern | None = None):
         if escape_chars_re:
             self.escaped_chars_re = escape_chars_re
         else:

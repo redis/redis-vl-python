@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from redis import Redis
 
@@ -30,13 +30,13 @@ class SemanticMessageHistory(BaseMessageHistory):
     def __init__(
         self,
         name: str,
-        session_tag: Optional[str] = None,
-        prefix: Optional[str] = None,
-        vectorizer: Optional[BaseVectorizer] = None,
+        session_tag: str | None = None,
+        prefix: str | None = None,
+        vectorizer: BaseVectorizer | None = None,
         distance_threshold: float = 0.3,
-        redis_client: Optional[Redis] = None,
+        redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] = {},
         overwrite: bool = False,
         **kwargs,
     ):
@@ -103,7 +103,7 @@ class SemanticMessageHistory(BaseMessageHistory):
             schema=schema,
             redis_client=redis_client,
             redis_url=redis_url,
-            **connection_kwargs,
+            connection_kwargs=connection_kwargs or None,
         )
 
         # Check for existing message history index
@@ -134,7 +134,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         """Clear all message keys and remove the search index."""
         self._index.delete(drop=True)
 
-    def drop(self, id: Optional[str] = None) -> None:
+    def drop(self, id: str | None = None) -> None:
         """Remove a specific exchange from the message history.
 
         Args:
@@ -157,7 +157,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         return self._index.query(query)
 
     @property
-    def messages(self) -> Union[List[str], List[Dict[str, str]]]:
+    def messages(self) -> list[str] | list[dict[str, str]]:
         """Returns the full message history."""
         # TODO raw or as_text?
         # TODO refactor method to use get_recent and support other session tags
@@ -186,11 +186,11 @@ class SemanticMessageHistory(BaseMessageHistory):
         as_text: bool = False,
         top_k: int = 5,
         fall_back: bool = False,
-        session_tag: Optional[str] = None,
+        session_tag: str | None = None,
         raw: bool = False,
-        distance_threshold: Optional[float] = None,
-        role: Optional[Union[str, List[str]]] = None,
-    ) -> Union[List[str], List[Dict[str, str]]]:
+        distance_threshold: float | None = None,
+        role: str | list[str] | None = None,
+    ) -> list[str] | list[dict[str, str]]:
         """Searches the message history for information semantically related to
         the specified prompt.
 
@@ -287,9 +287,9 @@ class SemanticMessageHistory(BaseMessageHistory):
         top_k: int = 5,
         as_text: bool = False,
         raw: bool = False,
-        session_tag: Optional[str] = None,
-        role: Optional[Union[str, List[str]]] = None,
-    ) -> Union[List[str], List[Dict[str, str]]]:
+        session_tag: str | None = None,
+        role: str | list[str] | None = None,
+    ) -> list[str] | list[dict[str, str]]:
         """Retrieve the recent message history in sequential order.
 
         Args:
@@ -367,9 +367,7 @@ class SemanticMessageHistory(BaseMessageHistory):
     def set_distance_threshold(self, threshold):
         self._distance_threshold = threshold
 
-    def store(
-        self, prompt: str, response: str, session_tag: Optional[str] = None
-    ) -> None:
+    def store(self, prompt: str, response: str, session_tag: str | None = None) -> None:
         """Insert a prompt:response pair into the message history. A timestamp
         is associated with each message so that they can be later sorted
         in sequential ordering after retrieval.
@@ -389,7 +387,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         )
 
     def add_messages(
-        self, messages: List[Dict[str, str]], session_tag: Optional[str] = None
+        self, messages: list[dict[str, str]], session_tag: str | None = None
     ) -> None:
         """Insert a list of prompts and responses into the session memory.
         A timestamp is associated with each so that they can be later sorted
@@ -401,7 +399,7 @@ class SemanticMessageHistory(BaseMessageHistory):
                 conversation session. Defaults to instance ULID.
         """
         session_tag = session_tag or self._session_tag
-        chat_messages: List[Dict[str, Any]] = []
+        chat_messages: list[dict[str, Any]] = []
 
         for message in messages:
             content_vector = self._vectorizer.embed(message[CONTENT_FIELD_NAME])
@@ -427,7 +425,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         self._index.load(data=chat_messages, id_field=ID_FIELD_NAME)
 
     def add_message(
-        self, message: Dict[str, str], session_tag: Optional[str] = None
+        self, message: dict[str, str], session_tag: str | None = None
     ) -> None:
         """Insert a single prompt or response into the message history.
         A timestamp is associated with it so that it can be later sorted

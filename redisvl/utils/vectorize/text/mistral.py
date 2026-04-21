@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -71,9 +71,9 @@ class MistralAITextVectorizer(BaseVectorizer):
     def __init__(
         self,
         model: str = "mistral-embed",
-        api_config: Optional[Dict] = None,
+        api_config: dict[str, Any] | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ):
         """Initialize the MistralAI vectorizer.
@@ -98,14 +98,14 @@ class MistralAITextVectorizer(BaseVectorizer):
         # Initialize client and set up the model
         self._setup(api_config, **kwargs)
 
-    def _setup(self, api_config: Optional[Dict], **kwargs):
+    def _setup(self, api_config: dict[str, Any] | None, **kwargs):
         """Set up the MistralAI client and determine the embedding dimensions."""
         # Initialize client
         self._initialize_client(api_config, **kwargs)
         # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_client(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the Mistral client using the provided API key or an
         environment variable.
@@ -169,7 +169,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """
         Generate a vector embedding for a single text using the MistralAI API.
 
@@ -205,11 +205,11 @@ class MistralAITextVectorizer(BaseVectorizer):
     )
     def _embed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Generate vector embeddings for a batch of texts using the MistralAI API.
 
@@ -233,7 +233,7 @@ class MistralAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = self._client.embeddings.create(
                     model=self.model, inputs=batch, **kwargs
@@ -249,7 +249,7 @@ class MistralAITextVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type(TypeError),
     )
-    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
+    async def _aembed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """
         Asynchronously generate a vector embedding for a single text using the MistralAI API.
 
@@ -285,11 +285,11 @@ class MistralAITextVectorizer(BaseVectorizer):
     )
     async def _aembed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Asynchronously generate vector embeddings for a batch of texts using the MistralAI API.
 
@@ -313,7 +313,7 @@ class MistralAITextVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = await self._client.embeddings.create_async(
                     model=self.model, inputs=batch, **kwargs

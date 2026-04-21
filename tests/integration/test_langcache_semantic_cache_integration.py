@@ -14,7 +14,6 @@ Env vars (loaded from .env locally, injected via CI):
 """
 
 import os
-from typing import Dict
 
 import pytest
 from dotenv import load_dotenv
@@ -36,7 +35,7 @@ REQUIRED_NO_ATTRS_VARS = (
 )
 
 
-def _require_env_vars(var_names: tuple[str, ...]) -> Dict[str, str]:
+def _require_env_vars(var_names: tuple[str, ...]) -> dict[str, str]:
     missing = [name for name in var_names if not os.getenv(name)]
     if missing:
         pytest.skip(

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Literal
 
 from redis.commands.search.query import Filter
 
@@ -47,27 +47,27 @@ class HybridQuery:
         self,
         text: str,
         text_field_name: str,
-        vector: Union[bytes, List[float]],
+        vector: bytes | list[float],
         vector_field_name: str,
         vector_param_name: str = "vector",
         text_scorer: str = "BM25STD",
-        yield_text_score_as: Optional[str] = None,
-        vector_search_method: Optional[Literal["KNN", "RANGE"]] = None,
+        yield_text_score_as: str | None = None,
+        vector_search_method: Literal["KNN", "RANGE"] | None = None,
         knn_ef_runtime: int = 10,
-        range_radius: Optional[float] = None,
+        range_radius: float | None = None,
         range_epsilon: float = 0.01,
-        yield_vsim_score_as: Optional[str] = None,
-        filter_expression: Optional[Union[str, FilterExpression]] = None,
-        combination_method: Optional[Literal["RRF", "LINEAR"]] = None,
+        yield_vsim_score_as: str | None = None,
+        filter_expression: str | FilterExpression | None = None,
+        combination_method: Literal["RRF", "LINEAR"] | None = None,
         rrf_window: int = 20,
         rrf_constant: int = 60,
         linear_alpha: float = 0.3,
-        yield_combined_score_as: Optional[str] = None,
+        yield_combined_score_as: str | None = None,
         dtype: str = "float32",
-        num_results: Optional[int] = 10,
-        return_fields: Optional[List[str]] = None,
-        stopwords: Optional[Union[str, Set[str]]] = "english",
-        text_weights: Optional[Dict[str, float]] = None,
+        num_results: int | None = 10,
+        return_fields: list[str] | None = None,
+        stopwords: str | set[str] | None = "english",
+        text_weights: dict[str, float] | None = None,
     ):
         """
         Instantiates a HybridQuery object.
@@ -173,7 +173,7 @@ class HybridQuery:
         )
 
         if combination_method:
-            self.combination_method: Optional[CombineResultsMethod] = (
+            self.combination_method: CombineResultsMethod | None = (
                 build_combination_method(
                     combination_method=combination_method,
                     rrf_window=rrf_window,
@@ -191,14 +191,14 @@ def build_base_query(
     vector_param_name: str,
     vector_field_name: str,
     text_scorer: str = "BM25STD",
-    yield_text_score_as: Optional[str] = None,
-    vector_search_method: Optional[Literal["KNN", "RANGE"]] = None,
-    num_results: Optional[int] = None,
-    knn_ef_runtime: Optional[int] = None,
-    range_radius: Optional[float] = None,
-    range_epsilon: Optional[float] = None,
-    yield_vsim_score_as: Optional[str] = None,
-    filter_expression: Optional[Union[str, FilterExpression]] = None,
+    yield_text_score_as: str | None = None,
+    vector_search_method: Literal["KNN", "RANGE"] | None = None,
+    num_results: int | None = None,
+    knn_ef_runtime: int | None = None,
+    range_radius: float | None = None,
+    range_epsilon: float | None = None,
+    yield_vsim_score_as: str | None = None,
+    filter_expression: str | FilterExpression | None = None,
 ):
     """Build a Redis HybridQuery for performing hybrid search.
 
@@ -251,8 +251,8 @@ def build_base_query(
     )
 
     # Serialize vector similarity search method and params, if specified
-    vsim_search_method: Optional[VectorSearchMethods] = None
-    vsim_search_method_params: Dict[str, Any] = {}
+    vsim_search_method: VectorSearchMethods | None = None
+    vsim_search_method_params: dict[str, Any] = {}
     if vector_search_method == "KNN":
         vsim_search_method = VectorSearchMethods.KNN
         if not num_results:
@@ -302,10 +302,10 @@ def build_base_query(
 
 def build_combination_method(
     combination_method: Literal["RRF", "LINEAR"],
-    rrf_window: Optional[int] = None,
-    rrf_constant: Optional[float] = None,
-    linear_alpha: Optional[float] = None,
-    yield_score_as: Optional[str] = None,
+    rrf_window: int | None = None,
+    rrf_constant: float | None = None,
+    linear_alpha: float | None = None,
+    yield_score_as: str | None = None,
 ):
     """Build a configuration for combining hybrid search scores.
 
@@ -335,7 +335,7 @@ def build_combination_method(
     except (ImportError, ModuleNotFoundError):
         raise ImportError(_IMPORT_ERROR_MESSAGE)
 
-    method_params: Dict[str, Any] = {}
+    method_params: dict[str, Any] = {}
     if combination_method == "RRF":
         method = CombinationMethods.RRF
         if rrf_window:

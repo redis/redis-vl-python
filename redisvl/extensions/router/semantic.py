@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any
 
 import redis.commands.search.reducers as reducers
 import yaml
@@ -18,7 +18,7 @@ from redisvl.extensions.router.schema import (
 from redisvl.index import SearchIndex
 from redisvl.query import FilterQuery, VectorRangeQuery
 from redisvl.query.filter import Tag
-from redisvl.redis.connection import RedisConnectionFactory
+from redisvl.redis.connection import RedisConnectionFactory, _split_from_existing_kwargs
 from redisvl.redis.utils import convert_bytes, hashify, make_dict
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
@@ -34,7 +34,7 @@ class SemanticRouter(BaseModel):
 
     name: str
     """The name of the semantic router."""
-    routes: List[Route]
+    routes: list[Route]
     """List of Route objects."""
     vectorizer: BaseVectorizer = Field(default_factory=HFTextVectorizer)
     """The vectorizer used to embed route references."""
@@ -49,13 +49,13 @@ class SemanticRouter(BaseModel):
     def __init__(
         self,
         name: str,
-        routes: List[Route],
-        vectorizer: Optional[BaseVectorizer] = None,
-        routing_config: Optional[RoutingConfig] = None,
-        redis_client: Optional[SyncRedisClient] = None,
+        routes: list[Route],
+        vectorizer: BaseVectorizer | None = None,
+        routing_config: RoutingConfig | None = None,
+        redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] = {},
         **kwargs,
     ):
         """Initialize the SemanticRouter.
@@ -72,6 +72,7 @@ class SemanticRouter(BaseModel):
                 for the redis client. Defaults to empty {}.
         """
         dtype = kwargs.pop("dtype", None)
+        index_kwargs = kwargs.pop("_index_kwargs", None)
 
         # Validate a provided vectorizer or set the default
         if vectorizer:
@@ -104,7 +105,13 @@ class SemanticRouter(BaseModel):
             redis_client=redis_client,
         )
 
-        self._initialize_index(redis_client, redis_url, overwrite, **connection_kwargs)
+        self._initialize_index(
+            redis_client,
+            redis_url,
+            overwrite,
+            connection_kwargs=connection_kwargs or None,
+            index_kwargs=index_kwargs,
+        )
 
         self._index.client.json().set(f"{self.name}:route_config", f".", self.to_dict())  # type: ignore
 
@@ -112,41 +119,72 @@ class SemanticRouter(BaseModel):
     def from_existing(
         cls,
         name: str,
-        redis_client: Optional[SyncRedisClient] = None,
+        redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         **kwargs,
     ) -> "SemanticRouter":
         """Return SemanticRouter instance from existing index."""
-        if redis_url:
+        init_kwargs, connection_kwargs = _split_from_existing_kwargs(
+            dict(kwargs),
+            nested_connection_keys=("connection_kwargs",),
+        )
+        lib_name = init_kwargs.get("lib_name")
+        index_kwargs: dict[str, Any] = {}
+        created_redis_client = False
+
+        if redis_client:
+            # Just validate client type and set lib name
+            RedisConnectionFactory.validate_sync_redis(redis_client, lib_name)
+            index_kwargs["_client_validated"] = True
+        else:
+            factory_kwargs = {**connection_kwargs}
+            if lib_name is not None:
+                factory_kwargs["lib_name"] = lib_name
             redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=redis_url,
-                **kwargs,
+                **factory_kwargs,
             )
-        elif redis_client:
-            # Just validate client type and set lib name
-            RedisConnectionFactory.validate_sync_redis(redis_client)
-        if redis_client is None:
-            raise ValueError(
-                "Creating Redis client failed. Please check the redis_url and connection_kwargs."
-            )
+            index_kwargs["_client_validated"] = True
+            index_kwargs["_owns_redis_client"] = True
+            if lib_name is not None:
+                index_kwargs["lib_name"] = lib_name
+            created_redis_client = True
 
-        router_dict = redis_client.json().get(f"{name}:route_config")
+        try:
+            router_dict = redis_client.json().get(f"{name}:route_config")
+        except Exception:
+            if created_redis_client and redis_client is not None:
+                redis_client.close()
+            raise
         if not isinstance(router_dict, dict):
+            if created_redis_client and redis_client is not None:
+                redis_client.close()
             raise ValueError(
                 f"No valid router config found for {name}. Received: {router_dict!r}"
             )
-        return cls.from_dict(
-            router_dict, redis_url=redis_url, redis_client=redis_client
-        )
+        resolved_redis_url = redis_url if created_redis_client else None
+        try:
+            return cls.from_dict(
+                router_dict,
+                redis_url=resolved_redis_url,
+                redis_client=redis_client,
+                connection_kwargs=connection_kwargs or None,
+                _index_kwargs={**init_kwargs, **index_kwargs} or None,
+            )
+        except Exception:
+            if created_redis_client and redis_client is not None:
+                redis_client.close()
+            raise
 
     @deprecated_argument("dtype")
     def _initialize_index(
         self,
-        redis_client: Optional[SyncRedisClient] = None,
+        redis_client: SyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
         overwrite: bool = False,
         dtype: str = "float32",
-        **connection_kwargs,
+        connection_kwargs: dict[str, Any] | None = None,
+        index_kwargs: dict[str, Any] | None = None,
     ):
         """Initialize the search index and handle Redis connection."""
 
@@ -158,7 +196,8 @@ class SemanticRouter(BaseModel):
             schema=schema,
             redis_client=redis_client,
             redis_url=redis_url,
-            **connection_kwargs,
+            connection_kwargs=connection_kwargs,
+            **(index_kwargs or {}),
         )
 
         # Check for existing router index
@@ -182,7 +221,7 @@ class SemanticRouter(BaseModel):
         return f"SemanticRouter(name={self.name!r}, routes={len(self.routes)})"
 
     @property
-    def route_names(self) -> List[str]:
+    def route_names(self) -> list[str]:
         """Get the list of route names.
 
         Returns:
@@ -191,7 +230,7 @@ class SemanticRouter(BaseModel):
         return [route.name for route in self.routes]
 
     @property
-    def route_thresholds(self) -> Dict[str, Optional[float]]:
+    def route_thresholds(self) -> dict[str, float | None]:
         """Get the distance thresholds for each route.
 
         Returns:
@@ -207,7 +246,7 @@ class SemanticRouter(BaseModel):
         """
         self.routing_config = routing_config
 
-    def update_route_thresholds(self, route_thresholds: Dict[str, Optional[float]]):
+    def update_route_thresholds(self, route_thresholds: dict[str, float | None]):
         """Update the distance thresholds for each route.
 
         Args:
@@ -239,14 +278,14 @@ class SemanticRouter(BaseModel):
         else:
             return f"{route_name}{sep}*"
 
-    def _add_routes(self, routes: List[Route]):
+    def _add_routes(self, routes: list[Route]):
         """Add routes to the router and index.
 
         Args:
             routes (List[Route]): List of routes to be added.
         """
-        route_references: List[Dict[str, Any]] = []
-        keys: List[str] = []
+        route_references: list[dict[str, Any]] = []
+        keys: list[str] = []
 
         for route in routes:
             # embed route references as a single batch
@@ -274,7 +313,7 @@ class SemanticRouter(BaseModel):
 
         self._index.load(route_references, keys=keys)
 
-    def get(self, route_name: str) -> Optional[Route]:
+    def get(self, route_name: str) -> Route | None:
         """Get a route by its name.
 
         Args:
@@ -285,7 +324,7 @@ class SemanticRouter(BaseModel):
         """
         return next((route for route in self.routes if route.name == route_name), None)
 
-    def _process_route(self, result: Dict[str, Any]) -> RouteMatch:
+    def _process_route(self, result: dict[str, Any]) -> RouteMatch:
         """Process resulting route objects and metadata."""
         route_dict = make_dict(convert_bytes(result))
         return RouteMatch(
@@ -310,7 +349,7 @@ class SemanticRouter(BaseModel):
         max_k: int,
     ) -> AggregateRequest:
         """Build the Redis aggregation request."""
-        aggregation_func: Type[Reducer]
+        aggregation_func: type[Reducer]
 
         if aggregation_method == DistanceAggregationMethod.min:
             aggregation_func = reducers.min
@@ -338,10 +377,10 @@ class SemanticRouter(BaseModel):
 
     def _get_route_matches(
         self,
-        vector: List[float],
+        vector: list[float],
         aggregation_method: DistanceAggregationMethod,
         max_k: int = 1,
-    ) -> List[RouteMatch]:
+    ) -> list[RouteMatch]:
         """Get route response from vector db"""
 
         # what's interesting about this is that we only provide one distance_threshold for a range query not multiple
@@ -377,7 +416,7 @@ class SemanticRouter(BaseModel):
 
     def _classify_route(
         self,
-        vector: List[float],
+        vector: list[float],
         aggregation_method: DistanceAggregationMethod,
     ) -> RouteMatch:
         """Classify to a single route using a vector."""
@@ -400,16 +439,16 @@ class SemanticRouter(BaseModel):
 
     def _classify_multi_route(
         self,
-        vector: List[float],
+        vector: list[float],
         max_k: int,
         aggregation_method: DistanceAggregationMethod,
-    ) -> List[RouteMatch]:
+    ) -> list[RouteMatch]:
         """Classify to multiple routes, up to max_k (int), using a vector."""
 
         route_matches = self._get_route_matches(vector, aggregation_method, max_k=max_k)
 
         # process route matches
-        top_route_matches: List[RouteMatch] = []
+        top_route_matches: list[RouteMatch] = []
         if route_matches:
             for route_match in route_matches:
                 if route_match.name is not None:
@@ -424,10 +463,10 @@ class SemanticRouter(BaseModel):
     @deprecated_argument("distance_threshold")
     def __call__(
         self,
-        statement: Optional[str] = None,
-        vector: Optional[List[float]] = None,
-        aggregation_method: Optional[DistanceAggregationMethod] = None,
-        distance_threshold: Optional[float] = None,
+        statement: str | None = None,
+        vector: list[float] | None = None,
+        aggregation_method: DistanceAggregationMethod | None = None,
+        distance_threshold: float | None = None,
     ) -> RouteMatch:
         """Query the semantic router with a given statement or vector.
 
@@ -456,12 +495,12 @@ class SemanticRouter(BaseModel):
     @deprecated_argument("distance_threshold")
     def route_many(
         self,
-        statement: Optional[str] = None,
-        vector: Optional[List[float]] = None,
-        max_k: Optional[int] = None,
-        distance_threshold: Optional[float] = None,
-        aggregation_method: Optional[DistanceAggregationMethod] = None,
-    ) -> List[RouteMatch]:
+        statement: str | None = None,
+        vector: list[float] | None = None,
+        max_k: int | None = None,
+        distance_threshold: float | None = None,
+        aggregation_method: DistanceAggregationMethod | None = None,
+    ) -> list[RouteMatch]:
         """Query the semantic router with a given statement or vector for multiple matches.
 
         Args:
@@ -521,7 +560,7 @@ class SemanticRouter(BaseModel):
     @classmethod
     def from_dict(
         cls,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         **kwargs,
     ) -> "SemanticRouter":
         """Create a SemanticRouter from a dictionary.
@@ -574,7 +613,7 @@ class SemanticRouter(BaseModel):
             **kwargs,
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the SemanticRouter instance to a dictionary.
 
         Returns:
@@ -666,8 +705,8 @@ class SemanticRouter(BaseModel):
     def add_route_references(
         self,
         route_name: str,
-        references: Union[str, List[str]],
-    ) -> List[str]:
+        references: str | list[str],
+    ) -> list[str]:
         """Add a reference(s) to an existing route.
 
         Args:
@@ -681,8 +720,8 @@ class SemanticRouter(BaseModel):
         if isinstance(references, str):
             references = [references]
 
-        route_references: List[Dict[str, Any]] = []
-        keys: List[str] = []
+        route_references: list[dict[str, Any]] = []
+        keys: list[str] = []
 
         # embed route references as a single batch
         reference_vectors = self.vectorizer.embed_many(references, as_buffer=True)
@@ -711,7 +750,7 @@ class SemanticRouter(BaseModel):
         return keys
 
     @staticmethod
-    def _make_filter_queries(ids: List[str]) -> List[FilterQuery]:
+    def _make_filter_queries(ids: list[str]) -> list[FilterQuery]:
         """Create a filter query for the given ids."""
 
         queries = []
@@ -729,9 +768,9 @@ class SemanticRouter(BaseModel):
     def get_route_references(
         self,
         route_name: str = "",
-        reference_ids: List[str] = [],
-        keys: List[str] = [],
-    ) -> List[Dict[str, Any]]:
+        reference_ids: list[str] = [],
+        keys: list[str] = [],
+    ) -> list[dict[str, Any]]:
         """Get references for an existing route route.
 
         Args:
@@ -765,8 +804,8 @@ class SemanticRouter(BaseModel):
     def delete_route_references(
         self,
         route_name: str = "",
-        reference_ids: List[str] = [],
-        keys: List[str] = [],
+        reference_ids: list[str] = [],
+        keys: list[str] = [],
     ) -> int:
         """Get references for an existing semantic router route.
 

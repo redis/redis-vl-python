@@ -1,7 +1,7 @@
 import hashlib
 import itertools
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from redis import RedisCluster
 from redis import __version__ as redis_version
@@ -45,7 +45,7 @@ np = lazy_import("numpy")
 from redisvl.schema.fields import VectorDataType
 
 
-def make_dict(values: List[Any]) -> Dict[Any, Any]:
+def make_dict(values: list[Any]) -> dict[Any, Any]:
     """Convert a list of objects into a dictionary"""
     i = 0
     di = {}
@@ -71,7 +71,7 @@ def convert_bytes(data: Any) -> Any:
     return data
 
 
-def array_to_buffer(array: List[float], dtype: str) -> bytes:
+def array_to_buffer(array: list[float], dtype: str) -> bytes:
     """Convert a list of floats into a numpy byte string."""
     try:
         VectorDataType(dtype.upper())
@@ -89,7 +89,7 @@ def array_to_buffer(array: List[float], dtype: str) -> bytes:
     return np.array(array, dtype=dtype.lower()).tobytes()
 
 
-def buffer_to_array(buffer: bytes, dtype: str) -> List[Any]:
+def buffer_to_array(buffer: bytes, dtype: str) -> list[Any]:
     """Convert bytes into into a list of numerics."""
     try:
         VectorDataType(dtype.upper())
@@ -108,7 +108,7 @@ def buffer_to_array(buffer: bytes, dtype: str) -> List[Any]:
     return np.frombuffer(buffer, dtype=dtype.lower()).tolist()  # type: ignore[return-value]
 
 
-def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:
+def hashify(content: str, extras: dict[str, Any] | None = None) -> str:
     """Create a secure hash of some arbitrary input text and optional dictionary."""
     if extras:
         extra_string = " ".join([str(k) + str(v) for k, v in sorted(extras.items())])
@@ -119,11 +119,11 @@ def hashify(content: str, extras: Optional[Dict[str, Any]] = None) -> str:
 def cluster_create_index(
     index_name: str,
     client: RedisCluster,
-    fields: List[Field],
+    fields: list[Field],
     no_term_offsets: bool = False,
     no_field_flags: bool = False,
-    stopwords: Optional[List[str]] = None,
-    definition: Optional[IndexDefinition] = None,
+    stopwords: list[str] | None = None,
+    definition: IndexDefinition | None = None,
     max_text_fields=False,
     temporary=None,
     no_highlight: bool = False,
@@ -194,11 +194,11 @@ def cluster_create_index(
 async def async_cluster_create_index(
     index_name: str,
     client: AsyncRedisCluster,
-    fields: List[Field],
+    fields: list[Field],
     no_term_offsets: bool = False,
     no_field_flags: bool = False,
-    stopwords: Optional[List[str]] = None,
-    definition: Optional[IndexDefinition] = None,
+    stopwords: list[str] | None = None,
+    definition: IndexDefinition | None = None,
     max_text_fields=False,
     temporary=None,
     no_highlight: bool = False,
@@ -269,9 +269,9 @@ async def async_cluster_create_index(
 # TODO: The return type is incorrect because 5.x doesn't have "ProfileInformation"
 def cluster_search(
     client: Search,
-    query: Union[str, Query],
-    query_params: Optional[Dict[str, Union[str, int, float, bytes]]] = None,
-) -> Union[Result, Pipeline, Any]:  # type: ignore[type-arg]
+    query: str | Query,
+    query_params: dict[str, str | int | float | bytes] | None = None,
+) -> Result | Pipeline | Any:  # type: ignore[type-arg]
     args, query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
@@ -293,9 +293,9 @@ def cluster_search(
 # TODO: The return type is incorrect because 5.x doesn't have "ProfileInformation"
 async def async_cluster_search(
     client: AsyncSearch,
-    query: Union[str, Query],
-    query_params: Optional[Dict[str, Union[str, int, float, bytes]]] = None,
-) -> Union[Result, Pipeline, Any]:  # type: ignore[type-arg]
+    query: str | Query,
+    query_params: dict[str, str | int | float | bytes] | None = None,
+) -> Result | Pipeline | Any:  # type: ignore[type-arg]
     args, query = client._mk_query_args(query, query_params=query_params)
     st = time.monotonic()
 
@@ -334,7 +334,7 @@ def _extract_hash_tag(key: str) -> str:
     return key[start : end + 1]
 
 
-def _keys_share_hash_tag(keys: List[str]) -> bool:
+def _keys_share_hash_tag(keys: list[str]) -> bool:
     """Check if all keys share the same hash tag for Redis Cluster compatibility.
 
     Args:

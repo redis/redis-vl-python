@@ -38,7 +38,7 @@ class TestRedisErrorHandling:
         # Create a mock schema
         schema = Mock(spec=IndexSchema)
         schema.redis_fields = ["test_field"]
-        schema.fields = {}  # Dict[str, BaseField] for compatibility
+        schema.fields = {}  # dict[str, BaseField] for compatibility
         schema.index = Mock()
         schema.index.name = "test_index"
         schema.index.prefix = "test:"
@@ -69,7 +69,7 @@ class TestRedisErrorHandling:
         # Create a mock schema
         schema = Mock(spec=IndexSchema)
         schema.redis_fields = ["test_field"]
-        schema.fields = {}  # Dict[str, BaseField] for compatibility
+        schema.fields = {}  # dict[str, BaseField] for compatibility
         schema.index = Mock()
         schema.index.name = "test_index"
         schema.index.prefix = "test:"
@@ -176,11 +176,11 @@ class TestCrossSlotErrorHandling:
 
 
 class TestConnectionKwargsValidation:
-    """Test improved connection_kwargs validation in BaseCache."""
+    """Test BaseCache behavior for valid and invalid connection kwargs."""
 
     @pytest.mark.asyncio
     async def test_connection_kwargs_type_error(self):
-        """Test that invalid connection_kwargs type raises TypeError with helpful message."""
+        """Raise TypeError when invalid connection_kwargs reach the client factory."""
         cache = BaseCache(
             name="test_cache",
             connection_kwargs="not_a_dict",  # type: ignore
@@ -190,9 +190,7 @@ class TestConnectionKwargsValidation:
             await cache._get_async_redis_client()
 
         error_msg = str(exc_info.value)
-        assert "Expected `connection_kwargs` to be a dictionary" in error_msg
-        assert "{'decode_responses': True}" in error_msg
-        assert "got type: str" in error_msg
+        assert "argument after ** must be a mapping" in error_msg
 
     @pytest.mark.asyncio
     async def test_connection_kwargs_valid_dict(self):

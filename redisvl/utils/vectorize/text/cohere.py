@@ -1,6 +1,6 @@
 import os
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -80,9 +80,9 @@ class CohereTextVectorizer(BaseVectorizer):
     def __init__(
         self,
         model: str = "embed-english-v3.0",
-        api_config: Optional[Dict] = None,
+        api_config: dict[str, Any] | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ):
         """Initialize the Cohere vectorizer.
@@ -109,14 +109,14 @@ class CohereTextVectorizer(BaseVectorizer):
         # Initialize client and set up the model
         self._setup(api_config, **kwargs)
 
-    def _setup(self, api_config: Optional[Dict], **kwargs):
+    def _setup(self, api_config: dict[str, Any] | None, **kwargs):
         """Set up the Cohere client and determine the embedding dimensions."""
         # Initialize client
         self._initialize_client(api_config, **kwargs)
         # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_client(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the Cohere client using the provided API key or an
         environment variable.
@@ -172,7 +172,7 @@ class CohereTextVectorizer(BaseVectorizer):
             # fall back (TODO get more specific)
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
 
-    def _get_cohere_embedding_type(self, dtype: str) -> List[str]:
+    def _get_cohere_embedding_type(self, dtype: str) -> list[str]:
         """
         Map dtype to appropriate Cohere embedding_types value.
 
@@ -206,9 +206,7 @@ class CohereTextVectorizer(BaseVectorizer):
             )
 
     @deprecated_argument("text", "content")
-    def _embed(
-        self, content: str = "", text: str = "", **kwargs
-    ) -> List[Union[float, int]]:
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float | int]:
         """
         Generate a vector embedding for a single text using the Cohere API.
 
@@ -277,11 +275,11 @@ class CohereTextVectorizer(BaseVectorizer):
     )
     def _embed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[Union[float, int]]]:
+    ) -> list[list[float | int]]:
         """
         Generate vector embeddings for a batch of texts using the Cohere API.
 
@@ -321,7 +319,7 @@ class CohereTextVectorizer(BaseVectorizer):
         # Map dtype to appropriate embedding_type
         embedding_types = self._get_cohere_embedding_type(self.dtype)
 
-        embeddings: List = []
+        embeddings: list[Any] = []
         for batch in self.batchify(contents, batch_size):
             try:
                 response = self._client.embed(

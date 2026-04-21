@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from redis import Redis
 
@@ -40,19 +40,19 @@ class SemanticCache(BaseLLMCache):
     """Semantic Cache for Large Language Models."""
 
     _index: SearchIndex
-    _aindex: Optional[AsyncSearchIndex] = None
+    _aindex: AsyncSearchIndex | None = None
 
     @deprecated_argument("dtype", "vectorizer")
     def __init__(
         self,
         name: str = "llmcache",
         distance_threshold: float = 0.1,
-        ttl: Optional[int] = None,
-        vectorizer: Optional[BaseVectorizer] = None,
-        filterable_fields: Optional[List[Dict[str, Any]]] = None,
-        redis_client: Optional[Redis] = None,
+        ttl: int | None = None,
+        vectorizer: BaseVectorizer | None = None,
+        filterable_fields: list[dict[str, Any]] | None = None,
+        redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] = {},
         overwrite: bool = False,
         **kwargs,
     ):
@@ -141,7 +141,7 @@ class SemanticCache(BaseLLMCache):
             schema=schema,
             redis_client=self._redis_client,
             redis_url=self.redis_kwargs["redis_url"],
-            **self.redis_kwargs["connection_kwargs"],
+            connection_kwargs=self.redis_kwargs["connection_kwargs"] or None,
         )
         self._aindex = None
 
@@ -183,7 +183,7 @@ class SemanticCache(BaseLLMCache):
     def _modify_schema(
         self,
         schema: SemanticCacheIndexSchema,
-        filterable_fields: Optional[List[Dict[str, Any]]] = None,
+        filterable_fields: list[dict[str, Any]] | None = None,
     ) -> SemanticCacheIndexSchema:
         """Modify the base cache schema using the provided filterable fields"""
 
@@ -211,7 +211,7 @@ class SemanticCache(BaseLLMCache):
                 schema=self._index.schema,
                 redis_client=async_client,
                 redis_url=self.redis_kwargs["redis_url"],
-                **self.redis_kwargs["connection_kwargs"],
+                connection_kwargs=self.redis_kwargs["connection_kwargs"] or None,
             )
         return self._aindex
 
@@ -225,7 +225,7 @@ class SemanticCache(BaseLLMCache):
         return self._index
 
     @property
-    def aindex(self) -> Optional[AsyncSearchIndex]:
+    def aindex(self) -> AsyncSearchIndex | None:
         """The underlying AsyncSearchIndex for the cache.
 
         Returns:
@@ -267,9 +267,7 @@ class SemanticCache(BaseLLMCache):
         aindex = await self._get_async_index()
         await aindex.delete(drop=True)
 
-    def drop(
-        self, ids: Optional[List[str]] = None, keys: Optional[List[str]] = None
-    ) -> None:
+    def drop(self, ids: list[str] | None = None, keys: list[str] | None = None) -> None:
         """Drop specific entries from the cache by ID or Redis key.
 
         Args:
@@ -294,7 +292,7 @@ class SemanticCache(BaseLLMCache):
             self._index.drop_keys(keys)
 
     async def adrop(
-        self, ids: Optional[List[str]] = None, keys: Optional[List[str]] = None
+        self, ids: list[str] | None = None, keys: list[str] | None = None
     ) -> None:
         """Async drop specific entries from the cache by ID or Redis key.
 
@@ -321,7 +319,7 @@ class SemanticCache(BaseLLMCache):
         if keys is not None:
             await aindex.drop_keys(keys)
 
-    def _vectorize_prompt(self, prompt: Optional[str]) -> List[float]:
+    def _vectorize_prompt(self, prompt: str | None) -> list[float]:
         """Converts a text prompt to its vector representation using the
         configured vectorizer."""
         if not isinstance(prompt, str):
@@ -330,7 +328,7 @@ class SemanticCache(BaseLLMCache):
         result = self._vectorizer.embed(prompt)
         return result  # type: ignore
 
-    async def _avectorize_prompt(self, prompt: Optional[str]) -> List[float]:
+    async def _avectorize_prompt(self, prompt: str | None) -> list[float]:
         """Converts a text prompt to its vector representation using the
         configured vectorizer."""
         if not isinstance(prompt, str):
@@ -339,7 +337,7 @@ class SemanticCache(BaseLLMCache):
         result = await self._vectorizer.aembed(prompt)
         return result  # type: ignore
 
-    def _check_vector_dims(self, vector: List[float]):
+    def _check_vector_dims(self, vector: list[float]):
         """Checks the size of the provided vector and raises an error if it
         doesn't match the search index vector dimensions."""
         schema_vector_dims = self._index.schema.fields[
@@ -349,13 +347,13 @@ class SemanticCache(BaseLLMCache):
 
     def check(
         self,
-        prompt: Optional[str] = None,
-        vector: Optional[List[float]] = None,
+        prompt: str | None = None,
+        vector: list[float] | None = None,
         num_results: int = 1,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        distance_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        return_fields: list[str] | None = None,
+        filter_expression: FilterExpression | None = None,
+        distance_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Checks the semantic cache for results similar to the specified prompt
         or vector.
 
@@ -440,13 +438,13 @@ class SemanticCache(BaseLLMCache):
 
     async def acheck(
         self,
-        prompt: Optional[str] = None,
-        vector: Optional[List[float]] = None,
+        prompt: str | None = None,
+        vector: list[float] | None = None,
         num_results: int = 1,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        distance_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        return_fields: list[str] | None = None,
+        filter_expression: FilterExpression | None = None,
+        distance_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Async check the semantic cache for results similar to the specified prompt
         or vector.
 
@@ -532,12 +530,12 @@ class SemanticCache(BaseLLMCache):
 
     def _process_cache_results(
         self,
-        cache_search_results: List[Dict[str, Any]],
-        return_fields: Optional[List[str]] = None,
-    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+        cache_search_results: list[dict[str, Any]],
+        return_fields: list[str] | None = None,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
         """Process raw search results into cache hits."""
-        redis_keys: List[str] = []
-        cache_hits: List[Dict[Any, str]] = []
+        redis_keys: list[str] = []
+        cache_hits: list[dict[Any, str]] = []
 
         for cache_search_result in cache_search_results:
             # Pop the redis key from the result
@@ -564,10 +562,10 @@ class SemanticCache(BaseLLMCache):
         self,
         prompt: str,
         response: str,
-        vector: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        vector: list[float] | None = None,
+        metadata: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Stores the specified key-value pair in the cache along with metadata.
 
@@ -632,10 +630,10 @@ class SemanticCache(BaseLLMCache):
         self,
         prompt: str,
         response: str,
-        vector: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        vector: list[float] | None = None,
+        metadata: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Async stores the specified key-value pair in the cache along with metadata.
 
@@ -829,9 +827,7 @@ class SemanticCache(BaseLLMCache):
         # Close the base Redis connections
         await super().adisconnect()
 
-    def _make_entry_id(
-        self, prompt: str, filters: Optional[Dict[str, Any]] = None
-    ) -> str:
+    def _make_entry_id(self, prompt: str, filters: dict[str, Any] | None = None) -> str:
         """Generate a deterministic entry ID for the given prompt and optional filters.
 
         Args:

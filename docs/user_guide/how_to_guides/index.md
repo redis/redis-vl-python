@@ -8,6 +8,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 :::{grid-item-card} 🤖 LLM Extensions
 
 - [Cache LLM Responses](../03_llmcache.ipynb) -- semantic caching to reduce costs and latency
+- [Use LangCache as the LLM cache](../13_langcache_semantic_cache.ipynb) -- managed cache service with LangCache
 - [Manage LLM Message History](../07_message_history.ipynb) -- persistent chat history with relevancy retrieval
 - [Route Queries with SemanticRouter](../08_semantic_router.ipynb) -- classify intents and route queries
 :::
@@ -39,6 +40,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 :::{grid-item-card} 💻 CLI Operations
 
 - [Manage Indices with the CLI](../cli.ipynb) -- create, inspect, and delete indices from your terminal
+- [Run RedisVL MCP](mcp.md) -- expose an existing Redis index to MCP clients
 :::
 
 ::::
@@ -48,6 +50,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | I want to... | Guide |
 |--------------|-------|
 | Cache LLM responses | [Cache LLM Responses](../03_llmcache.ipynb) |
+| Use LangCache (managed) for LLM caching | [Use LangCache as the LLM cache](../13_langcache_semantic_cache.ipynb) |
 | Store chat history | [Manage LLM Message History](../07_message_history.ipynb) |
 | Route queries by intent | [Route Queries with SemanticRouter](../08_semantic_router.ipynb) |
 | Filter results by multiple criteria | [Query and Filter Data](../02_complex_filtering.ipynb) |
@@ -59,11 +62,13 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Optimize index performance | [Optimize Indexes with SVS-VAMANA](../09_svs_vamana.ipynb) |
 | Decide on storage format | [Choose a Storage Type](../05_hash_vs_json.ipynb) |
 | Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
+| Expose an index through MCP | [Run RedisVL MCP](mcp.md) |
 
 ```{toctree}
 :hidden:
 
 Cache LLM Responses <../03_llmcache>
+Use LangCache as the LLM cache <../13_langcache_semantic_cache>
 Manage LLM Message History <../07_message_history>
 Route Queries with SemanticRouter <../08_semantic_router>
 Query and Filter Data <../02_complex_filtering>
@@ -74,4 +79,5 @@ Optimize Indexes with SVS-VAMANA <../09_svs_vamana>
 Cache Embeddings <../10_embeddings_cache>
 Use Advanced Query Types <../11_advanced_queries>
 Write SQL Queries for Redis <../12_sql_to_redis_queries>
+Run RedisVL MCP <mcp>
 ```
