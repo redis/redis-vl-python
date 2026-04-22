@@ -30,29 +30,35 @@ class RedisVlCLI:
         parser.add_argument("command", help="Subcommand to run")
 
         if len(sys.argv) < 2:
-            parser.print_help()
-            exit(0)
+            parser.print_help(sys.stdout)
+            sys.exit(0)
 
         args = parser.parse_args(sys.argv[1:2])
+        
         if not hasattr(self, args.command):
-            parser.print_help()
-            exit(0)
-        getattr(self, args.command)()
+            print(f"Unknown command: {args.command}\n", file=sys.stderr)
+            parser.print_help(sys.stderr)
+            sys.exit(2)
+        
+        try:
+            getattr(self, args.command)()
+        except Exception as e:
+            print(e, file=sys.stderr)
+            sys.exit(1)
 
     def index(self):
         Index()
-        exit(0)
+        sys.exit(0)
 
     def mcp(self):
         from redisvl.cli.mcp import MCP
-
         MCP()
-        exit(0)
+        sys.exit(0)
 
     def version(self):
         Version()
-        exit(0)
+        sys.exit(0)
 
     def stats(self):
         Stats()
-        exit(0)
+        sys.exit(0)
