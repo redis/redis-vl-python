@@ -1,7 +1,13 @@
 import os
+import sys
 from argparse import ArgumentParser, Namespace
 from urllib.parse import quote, urlparse, urlunparse
 
+import yaml
+from pydantic import ValidationError
+
+from redisvl.exceptions import RedisSearchError
+from redisvl.index import SearchIndex
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
 from redisvl.utils.log import get_logger
 
@@ -91,3 +97,36 @@ def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
         default=None,
     )
     return parser
+
+
+# Exceptions commonly raised when loading or validating a schema path (-s).
+SCHEMA_INPUT_ERRORS = (
+    FileNotFoundError,
+    ValueError,
+    yaml.YAMLError,
+    ValidationError,
+)
+
+
+def cli_index_target_name(args: Namespace, index: SearchIndex | None) -> str:
+    if index is not None:
+        return index.schema.index.name
+    return args.index or args.schema or "unknown"
+
+
+def exit_schema_input_error(args: Namespace, exc: BaseException) -> None:
+    if not args.schema:
+        raise exc
+    print(f"Invalid schema file or path ({args.schema!r}): {exc}", file=sys.stderr)
+    sys.exit(2)
+
+
+def exit_redis_search_error(
+    args: Namespace, index: SearchIndex | None, exc: RedisSearchError
+) -> None:
+    name = cli_index_target_name(args, index)
+    print(
+        f"Redis search operation failed for index {name!r}: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(1)

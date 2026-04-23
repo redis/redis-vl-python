@@ -2,7 +2,14 @@ import argparse
 import sys
 from argparse import Namespace
 
-from redisvl.cli.utils import add_index_parsing_options, create_redis_url
+from redisvl.cli.utils import (
+    SCHEMA_INPUT_ERRORS,
+    add_index_parsing_options,
+    create_redis_url,
+    exit_redis_search_error,
+    exit_schema_input_error,
+)
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
@@ -43,11 +50,13 @@ class Stats:
         parser = argparse.ArgumentParser(usage=self.usage)
         parser = add_index_parsing_options(parser)
         args = parser.parse_args(sys.argv[2:])
+        
         try:
             self.stats(args)
         except Exception as e:
-            logger.error(e)
-            exit(0)
+            logger.error(e, exc_info=True)
+            print(str(e), file=sys.stderr)
+            sys.exit(1)
 
     def stats(self, args: Namespace):
         """Obtain stats about an index.
@@ -55,8 +64,14 @@ class Stats:
         Usage:
             rvl stats -i <index_name> | -s <schema_path>
         """
-        index = self._connect_to_index(args)
-        _display_stats(index.info())
+        index: SearchIndex | None = None
+        try:
+            index = self._connect_to_index(args)
+            _display_stats(index.info())
+        except SCHEMA_INPUT_ERRORS as e:
+            exit_schema_input_error(args, e)
+        except RedisSearchError as e:
+            exit_redis_search_error(args, index, e)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
@@ -68,8 +83,8 @@ class Stats:
         elif args.schema:
             index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
         else:
-            logger.error("Index name or schema must be provided")
-            exit(0)
+            print("Index name or schema must be provided", file=sys.stderr)
+            sys.exit(2)
 
         return index
 
