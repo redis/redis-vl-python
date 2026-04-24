@@ -45,6 +45,8 @@ def _config_with_search(
     search_type: str,
     params: dict[str, Any] | None = None,
     runtime_overrides: dict[str, Any] | None = None,
+    *,
+    include_vectorizer: bool = True,
 ) -> MCPConfig:
     runtime_config = {
         "text_field_name": "content",
@@ -56,17 +58,18 @@ def _config_with_search(
     if runtime_overrides:
         runtime_config.update(runtime_overrides)
 
+    binding = {
+        "redis_name": "docs-index",
+        "search": {"type": search_type, "params": params or {}},
+        "runtime": runtime_config,
+    }
+    if include_vectorizer:
+        binding["vectorizer"] = {"class": "FakeVectorizer", "model": "test-model"}
+
     return MCPConfig.model_validate(
         {
             "server": {"redis_url": "redis://localhost:6379"},
-            "indexes": {
-                "knowledge": {
-                    "redis_name": "docs-index",
-                    "vectorizer": {"class": "FakeVectorizer", "model": "test-model"},
-                    "search": {"type": search_type, "params": params or {}},
-                    "runtime": runtime_config,
-                }
-            },
+            "indexes": {"knowledge": binding},
         }
     )
 
@@ -93,15 +96,17 @@ class FakeServer:
         search_type: str = "vector",
         search_params: dict[str, Any] | None = None,
         runtime_overrides: dict[str, Any] | None = None,
+        include_vectorizer: bool = True,
     ):
         self.config = _config_with_search(
             search_type,
             search_params,
             runtime_overrides,
+            include_vectorizer=include_vectorizer,
         )
         self.mcp_settings = SimpleNamespace(tool_search_description=None)
         self.index = FakeIndex()
-        self.vectorizer = FakeVectorizer()
+        self.vectorizer = FakeVectorizer() if include_vectorizer else None
         self.registered_tools = []
         self.native_hybrid_supported = False
 
@@ -109,6 +114,8 @@ class FakeServer:
         return self.index
 
     async def get_vectorizer(self):
+        if self.vectorizer is None:
+            raise RuntimeError("MCP server vectorizer is not configured")
         return self.vectorizer
 
     async def run_guarded(self, operation_name, awaitable):
@@ -327,6 +334,11 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
             "stopwords": None,
             "text_weights": {"medical": 2.5},
         },
+        runtime_overrides={
+            "vector_field_name": None,
+            "default_embed_text_field": None,
+        },
+        include_vectorizer=False,
     )
     built_queries = []
 
@@ -369,6 +381,38 @@ async def test_search_records_builds_fulltext_query(monkeypatch):
     assert response["results"][0]["score_type"] == "text_score"
     assert "score" not in response["results"][0]["record"]
     assert "hybrid_score" not in response["results"][0]["record"]
+
+
+@pytest.mark.asyncio
+async def test_search_records_fulltext_does_not_touch_vectorizer_when_unconfigured(
+    monkeypatch,
+):
+    server = FakeServer(
+        search_type="fulltext",
+        runtime_overrides={
+            "vector_field_name": None,
+            "default_embed_text_field": None,
+        },
+        include_vectorizer=False,
+    )
+    built_queries = []
+
+    class FakeTextQuery(FakeQuery):
+        def __init__(self, **kwargs):
+            built_queries.append(kwargs)
+            super().__init__(**kwargs)
+
+    async def fake_query(query):
+        server.index.query_calls.append(query)
+        return [{"id": "doc:2", "__score": "1.5", "content": "medical science"}]
+
+    monkeypatch.setattr("redisvl.mcp.tools.search.TextQuery", FakeTextQuery)
+    server.index.query = fake_query
+
+    response = await search_records(server, query="medical science")
+
+    assert built_queries[0]["return_fields"] == ["content", "category", "rating"]
+    assert response["results"][0]["record"]["content"] == "medical science"
 
 
 @pytest.mark.asyncio

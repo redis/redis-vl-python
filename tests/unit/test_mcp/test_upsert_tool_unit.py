@@ -11,7 +11,27 @@ from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
 
 
-def _schema(storage_type: str = "hash") -> IndexSchema:
+def _schema(
+    storage_type: str = "hash", *, include_vector_field: bool = True
+) -> IndexSchema:
+    fields: list[dict[str, Any]] = [
+        {"name": "content", "type": "text"},
+        {"name": "category", "type": "tag"},
+    ]
+    if include_vector_field:
+        fields.append(
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "algorithm": "flat",
+                    "dims": 3,
+                    "distance_metric": "cosine",
+                    "datatype": "float32",
+                },
+            }
+        )
+
     return IndexSchema.from_dict(
         {
             "index": {
@@ -19,20 +39,7 @@ def _schema(storage_type: str = "hash") -> IndexSchema:
                 "prefix": "doc",
                 "storage_type": storage_type,
             },
-            "fields": [
-                {"name": "content", "type": "text"},
-                {"name": "category", "type": "tag"},
-                {
-                    "name": "embedding",
-                    "type": "vector",
-                    "attrs": {
-                        "algorithm": "flat",
-                        "dims": 3,
-                        "distance_metric": "cosine",
-                        "datatype": "float32",
-                    },
-                },
-            ],
+            "fields": fields,
         }
     )
 
@@ -40,28 +47,37 @@ def _schema(storage_type: str = "hash") -> IndexSchema:
 def _config(
     storage_type: str = "hash",
     *,
+    search_type: str = "vector",
+    include_vector_field: bool = True,
+    include_vectorizer: bool = True,
+    include_embed_source: bool = True,
     max_upsert_records: int = 5,
     skip_embedding_if_present: bool = True,
 ) -> MCPConfig:
+    runtime = {
+        "text_field_name": "content",
+        "default_limit": 2,
+        "max_limit": 5,
+        "max_upsert_records": max_upsert_records,
+        "skip_embedding_if_present": skip_embedding_if_present,
+    }
+    if include_vector_field:
+        runtime["vector_field_name"] = "embedding"
+    if include_embed_source:
+        runtime["default_embed_text_field"] = "content"
+
+    binding = {
+        "redis_name": "docs-index",
+        "search": {"type": search_type},
+        "runtime": runtime,
+    }
+    if include_vectorizer:
+        binding["vectorizer"] = {"class": "FakeVectorizer", "model": "test-model"}
+
     return MCPConfig.model_validate(
         {
             "server": {"redis_url": "redis://localhost:6379"},
-            "indexes": {
-                "knowledge": {
-                    "redis_name": "docs-index",
-                    "vectorizer": {"class": "FakeVectorizer", "model": "test-model"},
-                    "search": {"type": "vector"},
-                    "runtime": {
-                        "text_field_name": "content",
-                        "vector_field_name": "embedding",
-                        "default_embed_text_field": "content",
-                        "default_limit": 2,
-                        "max_limit": 5,
-                        "max_upsert_records": max_upsert_records,
-                        "skip_embedding_if_present": skip_embedding_if_present,
-                    },
-                }
-            },
+            "indexes": {"knowledge": binding},
         }
     )
 
@@ -99,8 +115,10 @@ class FallbackBatchVectorizer(FakeVectorizer):
 
 
 class FakeIndex:
-    def __init__(self, storage_type: str = "hash"):
-        self.schema = _schema(storage_type)
+    def __init__(
+        self, storage_type: str = "hash", *, include_vector_field: bool = True
+    ):
+        self.schema = _schema(storage_type, include_vector_field=include_vector_field)
         self.load_calls = []
         self.keys_to_return = ["doc:1"]
         self.load_exception = None
@@ -124,24 +142,34 @@ class FakeServer:
         self,
         *,
         storage_type: str = "hash",
+        search_type: str = "vector",
+        include_vector_field: bool = True,
+        include_vectorizer: bool = True,
+        include_embed_source: bool = True,
         max_upsert_records: int = 5,
         skip_embedding_if_present: bool = True,
         vectorizer: FakeVectorizer | None = None,
     ):
         self.config = _config(
             storage_type,
+            search_type=search_type,
+            include_vector_field=include_vector_field,
+            include_vectorizer=include_vectorizer,
+            include_embed_source=include_embed_source,
             max_upsert_records=max_upsert_records,
             skip_embedding_if_present=skip_embedding_if_present,
         )
         self.mcp_settings = SimpleNamespace(tool_upsert_description=None)
-        self.index = FakeIndex(storage_type)
-        self.vectorizer = vectorizer or FakeVectorizer()
+        self.index = FakeIndex(storage_type, include_vector_field=include_vector_field)
+        self.vectorizer = vectorizer or FakeVectorizer() if include_vectorizer else None
         self.registered_tools = []
 
     async def get_index(self):
         return self.index
 
     async def get_vectorizer(self):
+        if self.vectorizer is None:
+            raise RuntimeError("MCP server vectorizer is not configured")
         return self.vectorizer
 
     async def run_guarded(self, operation_name: str, awaitable: Any):
@@ -222,6 +250,78 @@ async def test_upsert_records_deep_copies_nested_values_before_loading():
 
     loaded_record["embedding"][0] = 9.9
     assert records[0]["embedding"] == [0.1, 0.2, 0.3]
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_supports_plain_writes_without_vector_configuration():
+    server = FakeServer(
+        storage_type="hash",
+        search_type="fulltext",
+        include_vector_field=False,
+        include_vectorizer=False,
+        include_embed_source=False,
+    )
+
+    response = await upsert_records(
+        server,
+        records=[{"id": "alpha", "content": "alpha doc", "category": "science"}],
+        id_field="id",
+    )
+
+    assert response["keys_upserted"] == 1
+    assert server.index.load_calls[0]["data"][0] == {
+        "id": "alpha",
+        "content": "alpha doc",
+        "category": "science",
+    }
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_requires_supplied_vectors_without_server_side_embedding():
+    server = FakeServer(
+        storage_type="hash",
+        search_type="fulltext",
+        include_vectorizer=False,
+        include_embed_source=False,
+    )
+
+    with pytest.raises(RedisVLMCPError, match="embedding") as exc_info:
+        await upsert_records(
+            server,
+            records=[{"id": "alpha", "content": "alpha doc"}],
+            id_field="id",
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert server.index.load_calls == []
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_accepts_supplied_vectors_without_server_side_embedding():
+    server = FakeServer(
+        storage_type="hash",
+        search_type="fulltext",
+        include_vectorizer=False,
+        include_embed_source=False,
+    )
+
+    response = await upsert_records(
+        server,
+        records=[
+            {
+                "id": "alpha",
+                "content": "alpha doc",
+                "category": "science",
+                "embedding": [0.1, 0.2, 0.3],
+            }
+        ],
+        id_field="id",
+    )
+
+    assert response["keys_upserted"] == 1
+    loaded_record = server.index.load_calls[0]["data"][0]
+    assert loaded_record["embedding"] == array_to_buffer([0.1, 0.2, 0.3], "float32")
+    assert server.vectorizer is None
 
 
 @pytest.mark.asyncio

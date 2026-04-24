@@ -78,13 +78,17 @@ def _validate_request(
         )
 
     schema_fields = set(index.schema.field_names)
-    vector_field_name = runtime.vector_field_name
+    vector_field_names = {
+        field_name
+        for field_name, field in index.schema.fields.items()
+        if field.type == "vector"
+    }
 
     if return_fields is None:
         fields = [
             field_name
             for field_name in index.schema.field_names
-            if field_name != vector_field_name
+            if field_name not in vector_field_names
         ]
     else:
         if not isinstance(return_fields, list):
@@ -107,9 +111,9 @@ def _validate_request(
                     code=MCPErrorCode.INVALID_REQUEST,
                     retryable=False,
                 )
-            if field_name == vector_field_name:
+            if field_name in vector_field_names:
                 raise RedisVLMCPError(
-                    f"Vector field '{vector_field_name}' cannot be returned",
+                    f"Vector field '{field_name}' cannot be returned",
                     code=MCPErrorCode.INVALID_REQUEST,
                     retryable=False,
                 )
@@ -189,6 +193,9 @@ def _build_native_hybrid_kwargs(
     search_params: dict[str, Any],
 ) -> dict[str, Any]:
     """Build native `HybridQuery` kwargs from MCP config-owned hybrid params."""
+    if runtime.text_field_name is None or runtime.vector_field_name is None:
+        raise RuntimeError("Hybrid search requires configured text and vector fields")
+
     params = dict(search_params)
     combination_method = params.setdefault(
         "combination_method",
@@ -229,6 +236,9 @@ def _build_fallback_hybrid_kwargs(
     search_params: dict[str, Any],
 ) -> dict[str, Any]:
     """Build aggregate fallback kwargs while preserving MCP fusion semantics."""
+    if runtime.text_field_name is None or runtime.vector_field_name is None:
+        raise RuntimeError("Hybrid search requires configured text and vector fields")
+
     params = dict(search_params)
     linear_text_weight = params.pop(
         "linear_text_weight",
@@ -272,6 +282,8 @@ async def _build_query(
     filter_expression = parse_filter(filter_value, index.schema)
 
     if search_type == "vector":
+        if runtime.vector_field_name is None:
+            raise RuntimeError("Vector search requires a configured vector field")
         vectorizer = await server.get_vectorizer()
         embedding = await _embed_query(vectorizer, query)
         vector_kwargs = {
@@ -297,6 +309,8 @@ async def _build_query(
         )
 
     if search_type == "fulltext":
+        if runtime.text_field_name is None:
+            raise RuntimeError("Full-text search requires a configured text field")
         return (
             TextQuery(
                 text=query,
