@@ -289,6 +289,9 @@ async def upsert_records(
 
             if embed_contents:
                 vectorizer = await server.get_vectorizer()
+                # TODO: Avoid re-embedding records that already include vectors.
+                # The current flow can regenerate embeddings for caller-supplied
+                # vectors, which is wasteful and can add external service cost.
                 embeddings = await _embed_many(vectorizer, embed_contents)
                 # Tracks position in the compact embeddings list, which only contains
                 # vectors for records that still need server-side embedding.
