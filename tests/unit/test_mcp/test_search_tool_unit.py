@@ -7,6 +7,7 @@ from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.tools.search import (
     _build_fallback_hybrid_kwargs,
+    _build_search_tool_description,
     _embed_query,
     register_search_tool,
     search_records,
@@ -664,17 +665,75 @@ async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypa
 
 def test_register_search_tool_uses_default_and_override_descriptions():
     default_server = FakeServer()
-    register_search_tool(default_server)
+    register_search_tool(default_server, default_server.index.schema)
 
     assert default_server.registered_tools[0]["name"] == "search-records"
     assert "Search records" in default_server.registered_tools[0]["description"]
+    assert (
+        "Object filter fields: content(text), category(tag), rating(numeric)."
+        in default_server.registered_tools[0]["description"]
+    )
+    assert (
+        "Allowed return_fields: content, category, rating."
+        in default_server.registered_tools[0]["description"]
+    )
     assert "query" in default_server.registered_tools[0]["fn"].__annotations__
     assert "search_type" not in default_server.registered_tools[0]["fn"].__annotations__
 
     custom_server = FakeServer()
     custom_server.mcp_settings.tool_search_description = "Custom search description"
-    register_search_tool(custom_server)
+    register_search_tool(custom_server, custom_server.index.schema)
 
     assert (
-        custom_server.registered_tools[0]["description"] == "Custom search description"
+        custom_server.registered_tools[0]["description"]
+        == (
+            "Custom search description "
+            "Object filter fields: content(text), category(tag), rating(numeric). "
+            "Allowed return_fields: content, category, rating."
+        )
     )
+
+
+def test_build_search_tool_description_preserves_schema_order_and_excludes_vectors():
+    description = _build_search_tool_description(_schema())
+
+    assert (
+        "Object filter fields: content(text), category(tag), rating(numeric)."
+        in description
+    )
+    assert "embedding(vector)" not in description
+    assert "Allowed return_fields: content, category, rating." in description
+    assert "embedding" not in description.split("Allowed return_fields: ", 1)[1]
+
+
+def test_build_search_tool_description_excludes_unsupported_filter_types():
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": "docs-index",
+                "prefix": "doc",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "content", "type": "text"},
+                {"name": "category", "type": "tag"},
+                {"name": "rating", "type": "numeric"},
+                {"name": "location", "type": "geo"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
+    )
+
+    description = _build_search_tool_description(schema)
+
+    assert "location(geo)" not in description
+    assert "Allowed return_fields: content, category, rating, location." in description
