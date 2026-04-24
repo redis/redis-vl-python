@@ -117,7 +117,7 @@ def cli_index_target_name(args: Namespace, index: SearchIndex | None) -> str:
 def exit_schema_input_error(args: Namespace, exc: BaseException) -> None:
     if not args.schema:
         raise exc
-    print(f"Invalid schema file or path ({args.schema!r}): {exc}", file=sys.stderr)
+    print(str(exc), file=sys.stderr)
     sys.exit(2)
 
 
@@ -126,7 +126,7 @@ def exit_redis_search_error(
 ) -> None:
     name = cli_index_target_name(args, index)
     print(
-        f"Redis search operation failed for index {name!r}: {exc}",
+        f"Redis search operation failed for index {name!r}. {exc}",
         file=sys.stderr,
     )
     sys.exit(1)
