@@ -21,9 +21,9 @@ class MCP:
     epilog = (
         "Use this command when wiring RedisVL into an MCP client.\n\n"
         "Examples:\n"
-        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml\n"
-        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml --transport streamable-http --port 8000\n"
-        "  uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml --transport sse --host 0.0.0.0 --port 9000"
+        "  rvl mcp --config /path/to/mcp_config.yaml\n"
+        "  rvl mcp --config /path/to/mcp_config.yaml --transport streamable-http --port 8000\n"
+        "  rvl mcp --config /path/to/mcp_config.yaml --transport sse --host 0.0.0.0 --port 9000"
     )
     usage = "\n".join(
         [

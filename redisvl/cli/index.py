@@ -13,34 +13,127 @@ logger = get_logger("[RedisVL]")
 
 
 class Index:
-    usage = "\n".join(
+    description = (
+        "Create, inspect, list, and delete Redis search indexes.\n\n"
+        "Use `-i/--index` to target an existing Redis index name or "
+        "`-s/--schema` to load a schema YAML file. Shared Redis connection "
+        "options apply to these data-plane commands."
+    )
+    epilog = "\n".join(
         [
-            "rvl index <command> [<args>]\n",
-            "Commands:",
-            "\tinfo        Obtain information about an index",
-            "\tcreate      Create a new index",
-            "\tdelete      Delete an existing index",
-            "\tdestroy     Delete an existing index and all of its data",
-            "\tlistall     List all indexes",
-            "\n",
+            "Examples:",
+            "  rvl index create -s schema.yaml",
+            "  rvl index info -i user_index",
+            "  rvl index listall --url redis://localhost:6379",
         ]
     )
 
     def __init__(self):
-        parser = argparse.ArgumentParser(usage=self.usage)
-
-        parser.add_argument("command", help="Subcommand to run")
-        parser = add_index_parsing_options(parser)
+        parser = self._build_parser()
 
         args = parser.parse_args(sys.argv[2:])
-        if not hasattr(self, args.command):
+        if not getattr(args, "command", None):
             parser.print_help()
             exit(0)
         try:
-            getattr(self, args.command)(args)
+            args.handler(args)
         except Exception as e:
             logger.error(e)
             exit(0)
+
+    def _build_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            prog="rvl index",
+            description=self.description,
+            epilog=self.epilog,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        shared_options = argparse.ArgumentParser(add_help=False)
+        add_index_parsing_options(shared_options)
+
+        subparsers = parser.add_subparsers(dest="command", title="Commands")
+
+        create_parser = subparsers.add_parser(
+            "create",
+            parents=[shared_options],
+            help="Create a new index from a schema file",
+            description="Create a new Redis search index from a schema YAML file.",
+            epilog="\n".join(
+                [
+                    "Examples:",
+                    "  rvl index create -s schema.yaml",
+                    "  rvl index create -s schema.yaml --url redis://localhost:6379",
+                ]
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        create_parser.set_defaults(handler=self.create)
+
+        info_parser = subparsers.add_parser(
+            "info",
+            parents=[shared_options],
+            help="Show details about an index",
+            description="Display schema and storage details for an index.",
+            epilog="\n".join(
+                [
+                    "Examples:",
+                    "  rvl index info -i user_index",
+                    "  rvl index info -s schema.yaml",
+                ]
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        info_parser.set_defaults(handler=self.info)
+
+        listall_parser = subparsers.add_parser(
+            "listall",
+            parents=[shared_options],
+            help="List indexes available on the target Redis deployment",
+            description="List all Redis search indexes available on the target Redis deployment.",
+            epilog="\n".join(
+                [
+                    "Examples:",
+                    "  rvl index listall",
+                    "  rvl index listall --host localhost --port 6379",
+                ]
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        listall_parser.set_defaults(handler=self.listall)
+
+        delete_parser = subparsers.add_parser(
+            "delete",
+            parents=[shared_options],
+            help="Delete an index but leave its data in Redis",
+            description="Delete an existing Redis search index without dropping indexed data.",
+            epilog="\n".join(
+                [
+                    "Examples:",
+                    "  rvl index delete -i user_index",
+                    "  rvl index delete -s schema.yaml",
+                ]
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        delete_parser.set_defaults(handler=self.delete)
+
+        destroy_parser = subparsers.add_parser(
+            "destroy",
+            parents=[shared_options],
+            help="Delete an index and drop its indexed data",
+            description="Delete an existing Redis search index and drop its indexed data.",
+            epilog="\n".join(
+                [
+                    "Examples:",
+                    "  rvl index destroy -i user_index",
+                    "  rvl index destroy -s schema.yaml",
+                ]
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        destroy_parser.set_defaults(handler=self.destroy)
+
+        return parser
 
     def create(self, args: Namespace):
         """Create an index.
