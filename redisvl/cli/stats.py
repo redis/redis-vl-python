@@ -50,7 +50,7 @@ class Stats:
         parser = argparse.ArgumentParser(usage=self.usage)
         parser = add_index_parsing_options(parser)
         args = parser.parse_args(sys.argv[2:])
-        
+
         try:
             self.stats(args)
         except Exception as e:

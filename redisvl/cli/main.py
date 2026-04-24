@@ -34,12 +34,12 @@ class RedisVlCLI:
             sys.exit(0)
 
         args = parser.parse_args(sys.argv[1:2])
-        
+
         if not hasattr(self, args.command):
             print(f"Unknown command: {args.command}\n", file=sys.stderr)
             parser.print_help(sys.stderr)
             sys.exit(2)
-        
+
         try:
             getattr(self, args.command)()
         except Exception as e:
@@ -52,6 +52,7 @@ class RedisVlCLI:
 
     def mcp(self):
         from redisvl.cli.mcp import MCP
+
         MCP()
         sys.exit(0)
 

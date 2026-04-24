@@ -45,7 +45,7 @@ class Index:
             print(f"Unknown command: {args.command}\n", file=sys.stderr)
             parser.print_help(sys.stderr)
             sys.exit(2)
-            
+
         try:
             getattr(self, args.command)(args)
         except Exception as e:
