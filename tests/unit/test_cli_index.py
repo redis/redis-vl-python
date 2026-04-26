@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from redisvl.cli.index import Index
+from redisvl.cli.index import Index, _index_info_for_json
 
 
 class _FakeConn:
@@ -18,14 +18,10 @@ class _FakeConn:
         return self._result
 
 
-def test_index_listall_json_prints_single_object(monkeypatch, capsys):
-    """Mocked successful ``FT._LIST`` in ``--json`` mode.
+def test_listall_json(monkeypatch, capsys):
+    """Tests that ``listall --json`` prints machine-readable output only.
 
-    What: ``listall`` uses ``cli_print_json`` and skips the text banner / loop.
-
-    Expected behavior: exactly one line of parseable JSON on stdout with key
-    ``indices``; values are the ``convert_bytes`` result of the mock list, in
-    order; no ``Indices:`` or partial human output; no extra newlines.
+    Expected behavior: stdout is one JSON line with ``indices`` in order and no table text.
     """
 
     def fake_get(*a, **k):
@@ -43,14 +39,10 @@ def test_index_listall_json_prints_single_object(monkeypatch, capsys):
     assert payload == {"indices": ["idx_a", "idx_b"]}  # same order/encoding as table path would show
 
 
-def test_index_listall_table_prints_banner(monkeypatch, capsys):
-    """Default ``listall`` (no ``--json``) uses the text formatter.
+def test_listall_table(monkeypatch, capsys):
+    """Tests that default ``listall`` keeps the human-readable table output.
 
-    What: non-``--json`` still prints ``Indices:`` and a numbered list from the
-    same mocked ``FT._LIST`` return.
-
-    Expected behavior: stdout splits into a header line plus one ``N. name``
-    line per index, in ``FT._LIST`` order, with no extra lines.
+    Expected behavior: stdout matches header + numbered rows in FT._LIST order.
     """
 
     def fake_get(*a, **k):
@@ -70,12 +62,10 @@ def test_index_listall_table_prints_banner(monkeypatch, capsys):
     ]  # exact table output: header then rows matching mock order and labels
 
 
-def test_index_listall_json_empty_indices(monkeypatch, capsys):
-    """Empty result from ``FT._LIST`` in ``--json`` mode.
+def test_listall_json_empty(monkeypatch, capsys):
+    """Tests that ``listall --json`` handles an empty FT._LIST result.
 
-    What: empty list after ``convert_bytes`` still forms a valid JSON object.
-
-    Expected behavior: one line ``{"indices": []}`` with no error.
+    Expected behavior: stdout is valid JSON with ``{"indices": []}``.
     """
 
     def fake_get(*a, **k):
@@ -90,14 +80,10 @@ def test_index_listall_json_empty_indices(monkeypatch, capsys):
     assert json.loads(out) == {"indices": []}  # empty array is a valid success payload
 
 
-def test_index_listall_execute_error_exits_zero_without_json_stdout(monkeypatch, capsys):
-    """``FT._LIST`` raises: ``Index`` catches, logs, ``exit(0)``; no JSON leak.
+def test_listall_json_error(monkeypatch, capsys):
+    """Tests that ``listall --json`` failure exits cleanly without stdout JSON.
 
-    What: backend failure is handled by the ``Index.__init__`` try/except like
-    other rvl subcommands, even with ``--json`` requested.
-
-    Expected behavior: process exits 0; stdout is empty (no half-written JSON
-    from ``cli_print_json``).
+    Expected behavior: ``SystemExit`` code is 0 and stdout is empty.
     """
 
     def fake_get(*a, **k):
@@ -111,3 +97,131 @@ def test_index_listall_execute_error_exits_zero_without_json_stdout(monkeypatch,
         Index()
     assert excinfo.value.code == 0  # "log and exit(0)" CLI contract
     assert capsys.readouterr().out == ""  # failure before cli_print_json — nothing on stdout
+
+
+def test_info_json_normalize():
+    """Tests that ``_index_info_for_json`` maps FT.INFO lists to structured JSON.
+
+    Expected behavior: input is unchanged and output has ``index_information`` + ``index_fields``.
+    """
+    raw = {
+        "index_name": "test_index",
+        "index_definition": [
+            "key_type",
+            "HASH",
+            "prefixes",
+            ["prefix_a", "prefix_b"],
+        ],
+        "attributes": [
+            [
+                "identifier",
+                "user",
+                "attribute",
+                "user",
+                "type",
+                "TAG",
+            ],
+        ],
+    }
+    before = str(raw)
+    out = _index_info_for_json(raw)
+    assert str(raw) == before  # not mutated
+    assert out == {
+        "index_information": {
+            "index_name": "test_index",
+            "storage_type": "HASH",
+            "prefixes": ["prefix_a", "prefix_b"],
+            "index_options": None,
+            "indexing": None,
+        },
+        "index_fields": [
+            {
+                "name": "user",
+                "attribute": "user",
+                "type": "TAG",
+            }
+        ],
+    }  # exact summary+fields payload, matching what table prints semantically
+
+
+def test_info_json(monkeypatch, capsys):
+    """Tests that ``info --json`` returns normalized table-equivalent JSON.
+
+    Expected behavior: one parseable JSON line with decoded values and no table banners.
+    """
+
+    expected_index_information = {
+        "index_name": "test-idx",
+        "storage_type": "HASH",
+        "prefixes": ["pre"],
+        "index_options": None,
+        "indexing": None,
+    }
+    expected_field = {
+        "name": "u",
+        "attribute": "u",
+        "type": "TAG",
+        "field_options": {"NOSTEM": "1"},
+    }
+
+    class FakeIndex:
+        def __init__(self, *a, **k):
+            pass
+
+        def info(self):
+            return {
+                "index_name": b"test-idx",
+                "index_definition": [
+                    "key_type",
+                    b"HASH",
+                    "prefixes",
+                    [b"pre"],
+                ],
+                "attributes": [
+                    [
+                        b"identifier",
+                        b"u",
+                        b"attribute",
+                        b"u",
+                        b"type",
+                        b"TAG",
+                        b"NOSTEM",
+                        b"1",
+                    ],
+                ],
+            }
+
+    monkeypatch.setattr("redisvl.cli.index.SearchIndex", FakeIndex)
+    monkeypatch.setattr(
+        sys, "argv", ["rvl", "index", "info", "-i", "test-idx", "--json"]
+    )
+    Index()
+    out = capsys.readouterr().out.strip()
+    assert out.count("\n") == 0  # single line for machine consumers
+    payload = json.loads(out)
+    assert "Index Information:" not in out and "Index Fields:" not in out  # --json must not emit table banner text
+    assert list(payload) == ["index_information", "index_fields"]  # top-level sections are stable and ordered
+    assert payload["index_information"] == expected_index_information  # summary section matches table-derived values
+    assert payload["index_fields"] == [expected_field]  # one normalized field row with options
+
+def test_info_json_error(monkeypatch, capsys):
+    """Tests that ``info --json`` errors do not emit partial stdout JSON.
+
+    Expected behavior: command exits with code 0 and stdout is empty.
+    """
+
+    class BoomIndex:
+        def __init__(self, *a, **k):
+            pass
+
+        def info(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("redisvl.cli.index.SearchIndex", BoomIndex)
+    monkeypatch.setattr(
+        sys, "argv", ["rvl", "index", "info", "-i", "test-idx", "--json"]
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        Index()
+    assert excinfo.value.code == 0  # try/except in Index.__init__ + exit(0)
+    assert capsys.readouterr().out == ""  # no partial JSON before the exception
