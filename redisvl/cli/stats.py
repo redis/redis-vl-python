@@ -2,7 +2,12 @@ import argparse
 import sys
 from argparse import Namespace
 
-from redisvl.cli.utils import add_index_parsing_options, create_redis_url
+from redisvl.cli.utils import (
+    add_index_parsing_options,
+    add_json_output_flag,
+    cli_print_json,
+    create_redis_url,
+)
 from redisvl.index import SearchIndex
 from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
@@ -32,6 +37,17 @@ STATS_KEYS = [
 ]
 
 
+def _stats_rows(index_info: dict) -> list[tuple[str, str]]:
+    """Normalize ``index.info()`` for both JSON and table output.
+
+    Returns ordered ``(key, value)`` pairs: keys follow ``STATS_KEYS``, values
+    are strings (``str(index_info.get(key))``; missing keys become ``"None"``).
+    For JSON, wrap the result in ``dict(...)``; the table uses the same list of
+    pairs without conversion.
+    """
+    return [(key, str(index_info.get(key))) for key in STATS_KEYS]
+
+
 class Stats:
     usage = "\n".join(
         [
@@ -42,6 +58,7 @@ class Stats:
     def __init__(self):
         parser = argparse.ArgumentParser(usage=self.usage)
         parser = add_index_parsing_options(parser)
+        parser = add_json_output_flag(parser)
         args = parser.parse_args(sys.argv[2:])
         try:
             self.stats(args)
@@ -56,7 +73,12 @@ class Stats:
             rvl stats -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        _display_stats(index.info())
+        index_info = index.info()
+        rows = _stats_rows(index_info)
+        if args.json:
+            cli_print_json(dict(rows))
+        else:
+            _display_stats(rows)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         # connect to redis
@@ -74,10 +96,7 @@ class Stats:
         return index
 
 
-def _display_stats(index_info):
-    # Extracting the statistics
-    stats_data = [(key, str(index_info.get(key))) for key in STATS_KEYS]
-
+def _display_stats(stats_data: list[tuple[str, str]]) -> None:
     # Display the statistics in tabular format
     print("\nStatistics:")
     max_key_length = max(len(key) for key, _ in stats_data)
