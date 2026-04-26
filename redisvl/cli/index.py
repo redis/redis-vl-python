@@ -22,7 +22,7 @@ class Index:
         [
             "rvl index <command> [<args>]\n",
             "Commands:",
-            "\tinfo        Obtain information about an index",
+            "\tinfo        Obtain information about an index (use --json for machine output)",
             "\tcreate      Create a new index",
             "\tdelete      Delete an existing index",
             "\tdestroy     Delete an existing index and all of its data",
@@ -65,10 +65,14 @@ class Index:
         """Obtain information about an index.
 
         Usage:
-            rvl index info -i <index_name> | -s <schema_path>
+            rvl index info -i <index_name> | -s <schema_path> [--json]
         """
         index = self._connect_to_index(args)
-        _display_in_table(index.info())
+        index_info = index.info()
+        if args.json:
+            cli_print_json(_index_info_for_json(index_info))
+        else:
+            _display_in_table(index_info)
 
     def listall(self, args: Namespace):
         """List all indices.
@@ -118,6 +122,43 @@ class Index:
             exit(1)
 
         return index
+
+
+def _index_info_for_json(index_info: dict) -> dict:
+    """Build the JSON payload from the same fields shown in table mode."""
+    definition = convert_bytes(make_dict(index_info.get("index_definition")))
+    attributes = index_info.get("attributes", [])
+    index_fields = []
+
+    for attrs in attributes:
+        attr = (
+            convert_bytes(make_dict(attrs)) if isinstance(attrs, (list, tuple))
+            else convert_bytes(dict(attrs))
+        )
+        field = {
+            "name": attr.get("identifier"),
+            "attribute": attr.get("attribute"),
+            "type": attr.get("type"),
+        }
+        field_options = {
+            k: v for k, v in attr.items()
+            if k not in {"identifier", "attribute", "type"}
+        }
+        if field_options:
+            field["field_options"] = field_options
+        index_fields.append(field)
+
+    payload = {
+        "index_information": {
+            "index_name": index_info.get("index_name"),
+            "storage_type": definition.get("key_type"),
+            "prefixes": definition.get("prefixes"),
+            "index_options": index_info.get("index_options"),
+            "indexing": index_info.get("indexing"),
+        },
+        "index_fields": index_fields,
+    }
+    return convert_bytes(payload)
 
 
 def _display_in_table(index_info):
