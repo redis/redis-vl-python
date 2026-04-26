@@ -2,7 +2,12 @@ import argparse
 import sys
 from argparse import Namespace
 
-from redisvl.cli.utils import add_index_parsing_options, create_redis_url
+from redisvl.cli.utils import (
+    add_index_parsing_options,
+    add_json_output_flag,
+    cli_print_json,
+    create_redis_url,
+)
 from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, make_dict
@@ -21,7 +26,7 @@ class Index:
             "\tcreate      Create a new index",
             "\tdelete      Delete an existing index",
             "\tdestroy     Delete an existing index and all of its data",
-            "\tlistall     List all indexes",
+            "\tlistall     List all indexes (use --json for machine output)",
             "\n",
         ]
     )
@@ -31,6 +36,7 @@ class Index:
 
         parser.add_argument("command", help="Subcommand to run")
         parser = add_index_parsing_options(parser)
+        parser = add_json_output_flag(parser)
 
         args = parser.parse_args(sys.argv[2:])
         if not hasattr(self, args.command):
@@ -68,14 +74,17 @@ class Index:
         """List all indices.
 
         Usage:
-            rvl index listall
+            rvl index listall [--json]
         """
         redis_url = create_redis_url(args)
         conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
-        print("Indices:")
-        for i, index in enumerate(indices):
-            print(str(i + 1) + ". " + index)
+        if args.json:
+            cli_print_json({"indices": indices})
+        else:
+            print("Indices:")
+            for i, index in enumerate(indices):
+                print(str(i + 1) + ". " + index)
 
     def delete(self, args: Namespace, drop=False):
         """Delete an index.
