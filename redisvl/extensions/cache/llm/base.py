@@ -4,7 +4,7 @@ This module defines the abstract base interface for LLM caches, which store
 prompt-response pairs with semantic retrieval capabilities.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from redisvl.extensions.cache.base import BaseCache
 from redisvl.query.filter import FilterExpression
@@ -17,7 +17,7 @@ class BaseLLMCache(BaseCache):
     with semantic similarity search capabilities.
     """
 
-    def __init__(self, name: str, ttl: Optional[int] = None, **kwargs):
+    def __init__(self, name: str, ttl: int | None = None, **kwargs):
         """Initialize an LLM cache.
 
         Args:
@@ -37,13 +37,13 @@ class BaseLLMCache(BaseCache):
 
     def check(
         self,
-        prompt: Optional[str] = None,
-        vector: Optional[List[float]] = None,
+        prompt: str | None = None,
+        vector: list[float] | None = None,
         num_results: int = 1,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        distance_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        return_fields: list[str] | None = None,
+        filter_expression: FilterExpression | None = None,
+        distance_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Check the cache for semantically similar prompts.
 
         Args:
@@ -61,13 +61,13 @@ class BaseLLMCache(BaseCache):
 
     async def acheck(
         self,
-        prompt: Optional[str] = None,
-        vector: Optional[List[float]] = None,
+        prompt: str | None = None,
+        vector: list[float] | None = None,
         num_results: int = 1,
-        return_fields: Optional[List[str]] = None,
-        filter_expression: Optional[FilterExpression] = None,
-        distance_threshold: Optional[float] = None,
-    ) -> List[Dict[str, Any]]:
+        return_fields: list[str] | None = None,
+        filter_expression: FilterExpression | None = None,
+        distance_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Async check the cache for semantically similar prompts."""
         raise NotImplementedError
 
@@ -75,10 +75,10 @@ class BaseLLMCache(BaseCache):
         self,
         prompt: str,
         response: str,
-        vector: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        vector: list[float] | None = None,
+        metadata: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Store a prompt-response pair in the cache.
 
@@ -99,10 +99,10 @@ class BaseLLMCache(BaseCache):
         self,
         prompt: str,
         response: str,
-        vector: Optional[List[float]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        ttl: Optional[int] = None,
+        vector: list[float] | None = None,
+        metadata: dict[str, Any] | None = None,
+        filters: dict[str, Any] | None = None,
+        ttl: int | None = None,
     ) -> str:
         """Async store a prompt-response pair in the cache."""
         raise NotImplementedError

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -17,21 +17,21 @@ from redisvl.utils.utils import current_timestamp, deserialize, serialize
 class CacheEntry(BaseModel):
     """A single cache entry in Redis"""
 
-    entry_id: Optional[str] = Field(default=None)
+    entry_id: str | None = Field(default=None)
     """Cache entry identifier"""
     prompt: str
     """Input prompt or question cached in Redis"""
     response: str
     """Response or answer to the question, cached in Redis"""
-    prompt_vector: List[float]
+    prompt_vector: list[float]
     """Text embedding representation of the prompt"""
     inserted_at: float = Field(default_factory=current_timestamp)
     """Timestamp of when the entry was added to the cache"""
     updated_at: float = Field(default_factory=current_timestamp)
     """Timestamp of when the entry was updated in the cache"""
-    metadata: Optional[Dict[str, Any]] = Field(default=None)
+    metadata: dict[str, Any] | None = Field(default=None)
     """Optional metadata stored on the cache entry"""
-    filters: Optional[Dict[str, Any]] = Field(default=None)
+    filters: dict[str, Any] | None = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
 
     @model_validator(mode="before")
@@ -49,7 +49,7 @@ class CacheEntry(BaseModel):
             raise TypeError("Metadata must be a dictionary.")
         return v
 
-    def to_dict(self, dtype: str) -> Dict:
+    def to_dict(self, dtype: str) -> dict[str, Any]:
         data = self.model_dump(exclude_none=True)
         data["prompt_vector"] = array_to_buffer(self.prompt_vector, dtype)
         if self.metadata is not None:
@@ -75,9 +75,9 @@ class CacheHit(BaseModel):
     """Timestamp of when the entry was added to the cache"""
     updated_at: float
     """Timestamp of when the entry was updated in the cache"""
-    metadata: Optional[Dict[str, Any]] = Field(default=None)
+    metadata: dict[str, Any] | None = Field(default=None)
     """Optional metadata stored on the cache entry"""
-    filters: Optional[Dict[str, Any]] = Field(default=None)
+    filters: dict[str, Any] | None = Field(default=None)
     """Optional filter data stored on the cache entry for customizing retrieval"""
 
     # Allow extra fields to simplify handling filters
@@ -85,7 +85,7 @@ class CacheHit(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_cache_hit(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_cache_hit(cls, values: dict[str, Any]) -> dict[str, Any]:
         # Deserialize metadata if necessary
         if "metadata" in values and isinstance(values["metadata"], str):
             values["metadata"] = deserialize(values["metadata"])
@@ -101,7 +101,7 @@ class CacheHit(BaseModel):
 
         return values
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert this model to a dictionary, merging filters into the result."""
         data = self.model_dump(exclude_none=True)
         if data.get("filters"):

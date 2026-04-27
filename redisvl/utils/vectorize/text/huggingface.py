@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from pydantic.v1 import PrivateAttr
 
@@ -75,7 +75,7 @@ class HFTextVectorizer(BaseVectorizer):
         self,
         model: str = "sentence-transformers/all-mpnet-base-v2",
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ):
         """Initialize the Hugging Face text vectorizer.
@@ -126,7 +126,7 @@ class HFTextVectorizer(BaseVectorizer):
         return len(embedding)
 
     @deprecated_argument("text", "content")
-    def _embed(self, content: str = "", text: str = "", **kwargs) -> List[float]:
+    def _embed(self, content: str = "", text: str = "", **kwargs) -> list[float]:
         """Generate a vector embedding for a single text using the Hugging Face model.
 
         Args:
@@ -148,11 +148,11 @@ class HFTextVectorizer(BaseVectorizer):
     @deprecated_argument("texts", "contents")
     def _embed_many(
         self,
-        contents: Optional[List[str]] = None,
-        texts: Optional[List[str]] = None,
+        contents: list[str] | None = None,
+        texts: list[str] | None = None,
         batch_size: int = 10,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """Generate vector embeddings for a batch of texts using the Hugging Face model.
 
         Args:
@@ -171,7 +171,7 @@ class HFTextVectorizer(BaseVectorizer):
             # disable annoying tqdm by default
             kwargs["show_progress_bar"] = False
 
-        embeddings: List = []
+        embeddings: list[Any] = []
         for batch in self.batchify(contents, batch_size, None):
             batch_embeddings = self._client.encode(batch, **kwargs)
             embeddings.extend([embedding.tolist() for embedding in batch_embeddings])

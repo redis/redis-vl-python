@@ -54,31 +54,6 @@ def test_cli_dispatches_mcp_command_lazily(monkeypatch):
     assert calls == [["rvl", "mcp", "--config", "/tmp/mcp.yaml"]]
 
 
-def test_mcp_command_rejects_unsupported_python(monkeypatch, capsys):
-    monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
-    monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)
-    monkeypatch.setattr(sys, "version_info", _make_version_info(3, 9, 18))
-    original_import = builtins.__import__
-
-    def missing_mcp_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "redisvl.mcp" or name.startswith("redisvl.mcp."):
-            raise ModuleNotFoundError(name)
-        return original_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", missing_mcp_import)
-
-    module = _import_cli_mcp()
-    monkeypatch.setattr(sys, "argv", ["rvl", "mcp", "--config", "/tmp/mcp.yaml"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        module.MCP()
-
-    out = capsys.readouterr()
-
-    assert exc_info.value.code == 1
-    assert "3.10" in out.err or "3.10" in out.out
-
-
 def test_mcp_command_reports_missing_optional_dependencies(monkeypatch, capsys):
     monkeypatch.delitem(sys.modules, "redisvl.mcp", raising=False)
     monkeypatch.delitem(sys.modules, "redisvl.cli.mcp", raising=False)

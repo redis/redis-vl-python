@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -94,9 +94,9 @@ class VoyageAIVectorizer(BaseVectorizer):
     def __init__(
         self,
         model: str = "voyage-3-large",
-        api_config: Optional[Dict] = None,
+        api_config: dict[str, Any] | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ):
         """Initialize the VoyageAI vectorizer.
@@ -131,7 +131,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         """Whether a multimodal model has been configured."""
         return "multimodal" in self.model
 
-    def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
+    def embed_image(self, image_path: str, **kwargs) -> list[float] | bytes:
         """Embed an image (from its path on disk) using VoyageAI's multimodal API. Requires pillow to be installed."""
         if not self.is_multimodal:
             raise ValueError("Cannot embed image with a non-multimodal model.")
@@ -145,7 +145,7 @@ class VoyageAIVectorizer(BaseVectorizer):
             )
         return self.embed(Image.open(image_path), **kwargs)
 
-    def embed_video(self, video_path: str, **kwargs) -> Union[List[float], bytes]:
+    def embed_video(self, video_path: str, **kwargs) -> list[float] | bytes:
         """Embed a video (from its path on disk) using VoyageAI's multimodal API.
 
         Requires voyageai>=0.3.6 to be installed, as well as ffmpeg to be installed on the system.
@@ -167,7 +167,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         )
         return self.embed(video, **kwargs)
 
-    def _setup(self, api_config: Optional[Dict], **kwargs):
+    def _setup(self, api_config: dict[str, Any] | None, **kwargs):
         """Set up the VoyageAI client and determine the embedding dimensions."""
         # Initialize client
         self._initialize_client(api_config, **kwargs)
@@ -182,7 +182,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_client(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the VoyageAI clients using the provided API key or an
         environment variable.
@@ -257,7 +257,7 @@ class VoyageAIVectorizer(BaseVectorizer):
             return 7  # Default for other models
 
     def _validate_input(
-        self, contents: List[Any], input_type: Optional[str], truncation: Optional[bool]
+        self, contents: list[Any], input_type: str | None, truncation: bool | None
     ):
         """
         Validate the inputs to the embedding methods.
@@ -284,7 +284,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         if truncation is not None and not isinstance(truncation, bool):
             raise TypeError("Truncation (optional) parameter is a bool.")
 
-    def _embed(self, content: Any, **kwargs) -> List[float]:
+    def _embed(self, content: Any, **kwargs) -> list[float]:
         """
         Generate a vector embedding for a single item using the VoyageAI API.
 
@@ -310,8 +310,8 @@ class VoyageAIVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type(TypeError),
     )
     def _embed_many(
-        self, contents: List[Any], batch_size: Optional[int] = None, **kwargs
-    ) -> List[List[float]]:
+        self, contents: list[Any], batch_size: int | None = None, **kwargs
+    ) -> list[list[float]]:
         """
         Generate vector embeddings for a batch of items using the VoyageAI API.
 
@@ -341,7 +341,7 @@ class VoyageAIVectorizer(BaseVectorizer):
             batch_size = self._get_batch_size()
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = self._embed_fn(
                     (
@@ -359,7 +359,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
-    async def _aembed(self, content: Any, **kwargs) -> List[float]:
+    async def _aembed(self, content: Any, **kwargs) -> list[float]:
         """
         Asynchronously generate a vector embedding for a single item using the VoyageAI API.
 
@@ -385,8 +385,8 @@ class VoyageAIVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type(TypeError),
     )
     async def _aembed_many(
-        self, contents: List[Any], batch_size: Optional[int] = None, **kwargs
-    ) -> List[List[float]]:
+        self, contents: list[Any], batch_size: int | None = None, **kwargs
+    ) -> list[list[float]]:
         """
         Asynchronously generate vector embeddings for a batch of items using the VoyageAI API.
 
@@ -416,7 +416,7 @@ class VoyageAIVectorizer(BaseVectorizer):
             batch_size = self._get_batch_size()
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = await self._aembed_fn(
                     (
@@ -434,7 +434,7 @@ class VoyageAIVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
-    def _serialize_for_cache(self, content: Any) -> Union[bytes, str]:
+    def _serialize_for_cache(self, content: Any) -> bytes | str:
         """Convert content to a cacheable format."""
         try:
             from voyageai.video_utils import Video

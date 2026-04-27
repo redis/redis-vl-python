@@ -1,6 +1,6 @@
 import os
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -86,9 +86,9 @@ class VertexAIVectorizer(BaseVectorizer):
     def __init__(
         self,
         model: str = "textembedding-gecko",
-        api_config: Optional[Dict] = None,
+        api_config: dict[str, Any] | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
         **kwargs,
     ):
         """Initialize the VertexAI vectorizer.
@@ -130,7 +130,7 @@ class VertexAIVectorizer(BaseVectorizer):
 
         return TextEmbeddingModel.from_pretrained(self.model)
 
-    def embed_image(self, image_path: str, **kwargs) -> Union[List[float], bytes]:
+    def embed_image(self, image_path: str, **kwargs) -> list[float] | bytes:
         """Embed an image (from its path on disk) using a VertexAI multimodal model."""
         if not self.is_multimodal:
             raise ValueError("Cannot embed image with a non-multimodal model.")
@@ -139,7 +139,7 @@ class VertexAIVectorizer(BaseVectorizer):
 
         return self.embed(Image.load_from_file(image_path), **kwargs)
 
-    def embed_video(self, video_path: str, **kwargs) -> Union[List[float], bytes]:
+    def embed_video(self, video_path: str, **kwargs) -> list[float] | bytes:
         """Embed a video (from its path on disk) using a VertexAI multimodal model."""
         if not self.is_multimodal:
             raise ValueError("Cannot embed video with a non-multimodal model.")
@@ -148,14 +148,14 @@ class VertexAIVectorizer(BaseVectorizer):
 
         return self.embed(Video.load_from_file(video_path), **kwargs)
 
-    def _setup(self, api_config: Optional[Dict], **kwargs):
+    def _setup(self, api_config: dict[str, Any] | None, **kwargs):
         """Set up the VertexAI client and determine the embedding dimensions."""
         # Initialize client
         self._initialize_client(api_config, **kwargs)
         # Set model dimensions after initialization
         self.dims = self._set_model_dims()
 
-    def _initialize_client(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_client(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the VertexAI client using the provided config options or
         environment variables.
@@ -231,7 +231,7 @@ class VertexAIVectorizer(BaseVectorizer):
         stop=stop_after_attempt(6),
         retry=retry_if_not_exception_type((TypeError, ValueError)),
     )
-    def _embed(self, content: Any, **kwargs) -> List[float]:
+    def _embed(self, content: Any, **kwargs) -> list[float]:
         """
         Generate a vector embedding for a single input using the VertexAI API.
 
@@ -291,8 +291,8 @@ class VertexAIVectorizer(BaseVectorizer):
         retry=retry_if_not_exception_type((TypeError, ValueError)),
     )
     def _embed_many(
-        self, contents: List[str], batch_size: int = 10, **kwargs
-    ) -> List[List[float]]:
+        self, contents: list[str], batch_size: int = 10, **kwargs
+    ) -> list[list[float]]:
         """
         Generate vector embeddings for a batch of texts using the VertexAI API.
 
@@ -317,7 +317,7 @@ class VertexAIVectorizer(BaseVectorizer):
             raise TypeError("Must pass in a list of str values to embed.")
 
         try:
-            embeddings: List = []
+            embeddings: list[Any] = []
             for batch in self.batchify(contents, batch_size):
                 response = self._client.get_embeddings(batch, **kwargs)
                 embeddings.extend([r.values for r in response])
@@ -325,7 +325,7 @@ class VertexAIVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding texts failed: {e}")
 
-    def _serialize_for_cache(self, content: Any) -> Union[bytes, str]:
+    def _serialize_for_cache(self, content: Any) -> bytes | str:
         """Convert content to a cacheable format."""
         from vertexai.vision_models import Image, Video
 

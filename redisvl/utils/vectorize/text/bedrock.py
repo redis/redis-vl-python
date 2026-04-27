@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Union
+from typing import Any
 
 from redisvl.utils.utils import deprecated_argument, deprecated_class
 from redisvl.utils.vectorize.bedrock import BedrockVectorizer
@@ -11,9 +11,7 @@ class BedrockTextVectorizer(BedrockVectorizer):
     """A backwards-compatible alias for BedrockVectorizer."""
 
     @deprecated_argument("text", "content")
-    def embed(
-        self, content: Any = "", text: Any = "", **kwargs
-    ) -> Union[List[float], bytes]:
+    def embed(self, content: Any = "", text: Any = "", **kwargs) -> list[float] | bytes:
         """Generate a vector embedding for a single input using the AWS Bedrock API.
 
         Deprecated: Use `BedrockVectorizer.embed` instead.
@@ -24,10 +22,10 @@ class BedrockTextVectorizer(BedrockVectorizer):
     @deprecated_argument("texts", "contents")
     def embed_many(
         self,
-        contents: Optional[List[Any]] = None,
-        texts: Optional[List[Any]] = None,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
         **kwargs,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """Generate vector embeddings for a batch of inputs using the AWS Bedrock API.
 
         Deprecated: Use `BedrockVectorizer.embed_many` instead.

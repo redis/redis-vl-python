@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable
 
 from pydantic import ConfigDict
 
@@ -83,11 +83,11 @@ class CustomVectorizer(BaseVectorizer):
     def __init__(
         self,
         embed: Callable,
-        embed_many: Optional[Callable] = None,
-        aembed: Optional[Callable] = None,
-        aembed_many: Optional[Callable] = None,
+        embed_many: Callable | None = None,
+        aembed: Callable | None = None,
+        aembed_many: Callable | None = None,
         dtype: str = "float32",
-        cache: Optional["EmbeddingsCache"] = None,
+        cache: "EmbeddingsCache | None" = None,
     ):
         """Initialize the Custom vectorizer.
 
@@ -152,7 +152,7 @@ class CustomVectorizer(BaseVectorizer):
             except Exception as e:
                 raise ValueError(f"Invalid embed_many function: {e}")
 
-    def _embed(self, content: Any, **kwargs) -> List[float]:
+    def _embed(self, content: Any, **kwargs) -> list[float]:
         """Generate a vector embedding for a single input using the provided user function.
 
         Args:
@@ -172,8 +172,8 @@ class CustomVectorizer(BaseVectorizer):
             raise ValueError(f"Embedding input failed: {e}")
 
     def _embed_many(
-        self, contents: List[Any], batch_size: int = 10, **kwargs
-    ) -> List[List[float]]:
+        self, contents: list[Any], batch_size: int = 10, **kwargs
+    ) -> list[list[float]]:
         """Generate vector embeddings for a batch of inputs using the provided user function.
 
         Args:
@@ -201,7 +201,7 @@ class CustomVectorizer(BaseVectorizer):
         except Exception as e:
             raise ValueError(f"Embedding inputs failed: {e}")
 
-    async def _aembed(self, content: Any, **kwargs) -> List[float]:
+    async def _aembed(self, content: Any, **kwargs) -> list[float]:
         """Asynchronously generate a vector embedding for a single input.
 
         Args:
@@ -231,8 +231,8 @@ class CustomVectorizer(BaseVectorizer):
             raise ValueError(f"Embedding input failed: {e}")
 
     async def _aembed_many(
-        self, contents: List[Any], batch_size: int = 10, **kwargs
-    ) -> List[List[float]]:
+        self, contents: list[Any], batch_size: int = 10, **kwargs
+    ) -> list[list[float]]:
         """Asynchronously generate vector embeddings for a batch of inputs.
 
         Args:

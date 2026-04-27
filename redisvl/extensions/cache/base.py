@@ -5,7 +5,7 @@ specific cache types such as LLM caches and embedding caches.
 """
 
 from collections.abc import Mapping
-from typing import Any, Dict, Optional, cast
+from typing import Any, cast
 
 from redis import Redis  # For backwards compatibility in type checking
 from redis.cluster import RedisCluster
@@ -21,17 +21,17 @@ class BaseCache:
     including TTL management, connection handling, and basic cache operations.
     """
 
-    _redis_client: Optional[SyncRedisClient]
-    _async_redis_client: Optional[AsyncRedisClient]
+    _redis_client: SyncRedisClient | None
+    _async_redis_client: AsyncRedisClient | None
 
     def __init__(
         self,
         name: str,
-        ttl: Optional[int] = None,
-        redis_client: Optional[SyncRedisClient] = None,
-        async_redis_client: Optional[AsyncRedisClient] = None,
+        ttl: int | None = None,
+        redis_client: SyncRedisClient | None = None,
+        async_redis_client: AsyncRedisClient | None = None,
         redis_url: str = "redis://localhost:6379",
-        connection_kwargs: Dict[str, Any] = {},
+        connection_kwargs: dict[str, Any] = {},
     ):
         """Initialize a base cache.
 
@@ -46,7 +46,7 @@ class BaseCache:
                 for the redis client. Defaults to empty {}.
         """
         self.name = name
-        self._ttl: Optional[int] = None
+        self._ttl: int | None = None
         self.set_ttl(ttl)
 
         self.redis_kwargs = {
@@ -84,11 +84,11 @@ class BaseCache:
         return f"{self._get_prefix()}{entry_id}"
 
     @property
-    def ttl(self) -> Optional[int]:
+    def ttl(self) -> int | None:
         """The default TTL, in seconds, for entries in the cache."""
         return self._ttl
 
-    def set_ttl(self, ttl: Optional[int] = None) -> None:
+    def set_ttl(self, ttl: int | None = None) -> None:
         """Set the default TTL, in seconds, for entries in the cache.
 
         Args:
@@ -113,8 +113,8 @@ class BaseCache:
         """
         if self._redis_client is None:
             # Create new Redis client
-            url = cast(Optional[str], self.redis_kwargs["redis_url"])
-            kwargs = cast(Dict[str, Any], self.redis_kwargs["connection_kwargs"])
+            url = cast(str | None, self.redis_kwargs["redis_url"])
+            kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
             self._redis_client = RedisConnectionFactory.get_redis_connection(
                 redis_url=url,
                 **kwargs,
@@ -135,8 +135,8 @@ class BaseCache:
                     client
                 )
             else:
-                url = cast(Optional[str], self.redis_kwargs["redis_url"])
-                kwargs = cast(Dict[str, Any], self.redis_kwargs["connection_kwargs"])
+                url = cast(str | None, self.redis_kwargs["redis_url"])
+                kwargs = cast(dict[str, Any], self.redis_kwargs["connection_kwargs"])
                 self._async_redis_client = (
                     RedisConnectionFactory.get_async_redis_connection(
                         redis_url=url, **kwargs
@@ -144,7 +144,7 @@ class BaseCache:
                 )
         return self._async_redis_client
 
-    def expire(self, key: str, ttl: Optional[int] = None) -> None:
+    def expire(self, key: str, ttl: int | None = None) -> None:
         """Set or refresh the expiration time for a key in the cache.
 
         Args:
@@ -162,7 +162,7 @@ class BaseCache:
             client = self._get_redis_client()
             client.expire(key, _ttl)
 
-    async def aexpire(self, key: str, ttl: Optional[int] = None) -> None:
+    async def aexpire(self, key: str, ttl: int | None = None) -> None:
         """Asynchronously set or refresh the expiration time for a key in the cache.
 
         Args:

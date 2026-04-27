@@ -10,14 +10,9 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
-    Dict,
     Generator,
     Iterable,
-    List,
-    Optional,
     Sequence,
-    Tuple,
-    Union,
     cast,
 )
 
@@ -113,16 +108,12 @@ REQUIRED_MODULES_FOR_INTROSPECTION = [
     {"name": "searchlight", "ver": 20810},
 ]
 
-SearchParams = Union[
-    Tuple[
-        Union[str, BaseQuery],
-        Union[Dict[str, Union[str, int, float, bytes]], None],
-    ],
-    Union[str, BaseQuery],
-]
+SearchParams = tuple[str | BaseQuery, dict[str, str | int | float | bytes] | None] | (
+    str | BaseQuery
+)
 
 
-def _get_sql_redis_options(sql_query: SQLQuery) -> Dict[str, Any]:
+def _get_sql_redis_options(sql_query: SQLQuery) -> dict[str, Any]:
     """Return normalized sql-redis executor options for a SQLQuery."""
     return {
         "schema_cache_strategy": "lazy",
@@ -130,14 +121,14 @@ def _get_sql_redis_options(sql_query: SQLQuery) -> Dict[str, Any]:
     }
 
 
-def _sql_executor_cache_key(sql_redis_options: Dict[str, Any]) -> str:
+def _sql_executor_cache_key(sql_redis_options: dict[str, Any]) -> str:
     """Build a stable cache key for sql-redis executor reuse."""
     return json.dumps(sql_redis_options, sort_keys=True, default=repr)
 
 
 def process_results(
     results: "Result", query: BaseQuery, schema: IndexSchema
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Convert a list of search Result objects into a list of document
     dictionaries.
 
@@ -180,7 +171,7 @@ def process_results(
         norm_fn = None
 
     # Process records
-    def _process(doc: "Document") -> Dict[str, Any]:
+    def _process(doc: "Document") -> dict[str, Any]:
         doc_dict = doc.__dict__
 
         # Unpack and Project JSON fields properly
@@ -208,7 +199,7 @@ def process_results(
 
 def process_aggregate_results(
     results: "AggregateResult", query: AggregationQuery, storage_type: StorageType
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Convert an aggregate result object into a list of document dictionaries.
 
     This function processes results from Redis, handling different storage
@@ -328,7 +319,7 @@ class BaseSearchIndex:
         return prefix[0] if isinstance(prefix, list) else prefix
 
     @property
-    def prefixes(self) -> List[str]:
+    def prefixes(self) -> list[str]:
         """All key prefixes configured for this index."""
         prefix = self.schema.index.prefix
         return prefix if isinstance(prefix, list) else [prefix]
@@ -365,7 +356,7 @@ class BaseSearchIndex:
         return cls(schema=schema, **kwargs)
 
     @classmethod
-    def from_dict(cls, schema_dict: Dict[str, Any], **kwargs):
+    def from_dict(cls, schema_dict: dict[str, Any], **kwargs):
         """Create a SearchIndex from a dictionary.
 
         Args:
@@ -458,9 +449,9 @@ class SearchIndex(BaseSearchIndex):
     def __init__(
         self,
         schema: IndexSchema,
-        redis_client: Optional[SyncRedisClient] = None,
-        redis_url: Optional[str] = None,
-        connection_kwargs: Optional[Dict[str, Any]] = None,
+        redis_client: SyncRedisClient | None = None,
+        redis_url: str | None = None,
+        connection_kwargs: dict[str, Any] | None = None,
         validate_on_load: bool = False,
         **kwargs,
     ):
@@ -487,14 +478,14 @@ class SearchIndex(BaseSearchIndex):
 
         self.schema = schema
         self._validate_on_load = validate_on_load
-        self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
+        self._lib_name: str | None = kwargs.pop("lib_name", None)
 
         # Store connection parameters
         self.__redis_client = redis_client
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
         self._lock = threading.Lock()
-        self._sql_executors: Dict[str, Any] = {}
+        self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
@@ -515,8 +506,8 @@ class SearchIndex(BaseSearchIndex):
     def from_existing(
         cls,
         name: str,
-        redis_client: Optional[SyncRedisClient] = None,
-        redis_url: Optional[str] = None,
+        redis_client: SyncRedisClient | None = None,
+        redis_url: str | None = None,
         **kwargs,
     ):
         """
@@ -536,7 +527,7 @@ class SearchIndex(BaseSearchIndex):
             dict(kwargs),
             nested_connection_keys=("connection_kwargs", "connection_args"),
         )
-        lib_name = cast(Optional[str], init_kwargs.get("lib_name"))
+        lib_name = cast(str | None, init_kwargs.get("lib_name"))
         created_redis_client = False
 
         if redis_client:
@@ -574,7 +565,7 @@ class SearchIndex(BaseSearchIndex):
         return cls(schema, redis_client=redis_client, **init_kwargs)
 
     @property
-    def client(self) -> Optional[SyncRedisClient]:
+    def client(self) -> SyncRedisClient | None:
         """The underlying redis-py client object."""
         return self.__redis_client
 
@@ -606,7 +597,7 @@ class SearchIndex(BaseSearchIndex):
         return self.__redis_client
 
     @deprecated_function("connect", "Pass connection parameters in __init__.")
-    def connect(self, redis_url: Optional[str] = None, **kwargs):
+    def connect(self, redis_url: str | None = None, **kwargs):
         """Connect to a Redis instance using the provided `redis_url`, falling
         back to the `REDIS_URL` environment variable (if available).
 
@@ -769,7 +760,7 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
-    def _delete_batch(self, batch_keys: List[str]) -> int:
+    def _delete_batch(self, batch_keys: list[str]) -> int:
         """Delete a batch of keys from Redis.
 
         For Redis Cluster, keys are deleted individually due to potential
@@ -832,7 +823,7 @@ class SearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    def drop_keys(self, keys: Union[str, List[str]]) -> int:
+    def drop_keys(self, keys: str | list[str]) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
 
         Args:
@@ -841,12 +832,12 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             int: Count of records deleted from Redis.
         """
-        if isinstance(keys, List):
+        if isinstance(keys, list):
             return self._redis_client.delete(*keys)  # type: ignore
         else:
             return self._redis_client.delete(keys)  # type: ignore
 
-    def drop_documents(self, ids: Union[str, List[str]]) -> int:
+    def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
 
         This method converts document IDs to Redis keys automatically by applying
@@ -878,9 +869,7 @@ class SearchIndex(BaseSearchIndex):
             key = self.key(ids)
             return self._redis_client.delete(key)  # type: ignore
 
-    def expire_keys(
-        self, keys: Union[str, List[str]], ttl: int
-    ) -> Union[int, List[int]]:
+    def expire_keys(self, keys: str | list[str], ttl: int) -> int | list[int]:
         """Set the expiration time for a specific entry or entries in Redis.
 
         Args:
@@ -898,12 +887,12 @@ class SearchIndex(BaseSearchIndex):
     def load(
         self,
         data: Iterable[Any],
-        id_field: Optional[str] = None,
-        keys: Optional[Iterable[str]] = None,
-        ttl: Optional[int] = None,
-        preprocess: Optional[Callable] = None,
-        batch_size: Optional[int] = None,
-    ) -> List[str]:
+        id_field: str | None = None,
+        keys: Iterable[str] | None = None,
+        ttl: int | None = None,
+        preprocess: Callable | None = None,
+        batch_size: int | None = None,
+    ) -> list[str]:
         """Load objects to the Redis database. Returns the list of keys loaded
         to Redis.
 
@@ -953,7 +942,7 @@ class SearchIndex(BaseSearchIndex):
             logger.exception("Error while loading data to Redis")
             raise RedisVLError(f"Failed to load data: {str(exc)}") from exc
 
-    def fetch(self, id: str) -> Optional[Dict[str, Any]]:
+    def fetch(self, id: str) -> dict[str, Any] | None:
         """Fetch an object from Redis by id.
 
         The id is typically either a unique identifier,
@@ -972,7 +961,7 @@ class SearchIndex(BaseSearchIndex):
             return convert_bytes(obj[0])
         return None
 
-    def _aggregate(self, aggregation_query: AggregationQuery) -> List[Dict[str, Any]]:
+    def _aggregate(self, aggregation_query: AggregationQuery) -> list[dict[str, Any]]:
         """Execute an aggregation query and processes the results."""
         results = self.aggregate(
             aggregation_query,
@@ -984,7 +973,7 @@ class SearchIndex(BaseSearchIndex):
             storage_type=self.schema.index.storage_type,
         )
 
-    def _sql_query(self, sql_query: SQLQuery) -> List[Dict[str, Any]]:
+    def _sql_query(self, sql_query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a SQL query and return results.
 
         Args:
@@ -1043,8 +1032,8 @@ class SearchIndex(BaseSearchIndex):
             ) from e
 
     def batch_search(
-        self, queries: List[SearchParams], batch_size: int = 10
-    ) -> List["Result"]:
+        self, queries: list[SearchParams], batch_size: int = 10
+    ) -> list["Result"]:
         """Perform a search against the index for multiple queries.
 
         This method takes a list of queries and optionally query params and
@@ -1141,7 +1130,7 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Unexpected error while searching: {str(e)}") from e
 
-    def _hybrid_search(self, query: HybridQuery, **kwargs) -> List[Dict[str, Any]]:
+    def _hybrid_search(self, query: HybridQuery, **kwargs) -> list[dict[str, Any]]:
         """Perform a hybrid search against the index, combining text and vector search.
 
         Args:
@@ -1194,7 +1183,7 @@ class SearchIndex(BaseSearchIndex):
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
-    ) -> List[List[Dict[str, Any]]]:
+    ) -> list[list[dict[str, Any]]]:
         """Execute a batch of queries and process results."""
         results = self.batch_search(
             [(query.query, query.params) for query in queries], batch_size=batch_size
@@ -1208,7 +1197,7 @@ class SearchIndex(BaseSearchIndex):
             all_parsed.append(parsed)
         return all_parsed
 
-    def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    def _query(self, query: BaseQuery) -> list[dict[str, Any]]:
         """Execute a query and process results."""
         try:
             self._validate_query(query)
@@ -1218,8 +1207,8 @@ class SearchIndex(BaseSearchIndex):
         return process_results(results, query=query, schema=self.schema)
 
     def query(
-        self, query: Union[BaseQuery, AggregationQuery, HybridQuery, SQLQuery]
-    ) -> List[Dict[str, Any]]:
+        self, query: BaseQuery | AggregationQuery | HybridQuery | SQLQuery
+    ) -> list[dict[str, Any]]:
         """Execute a query on the index.
 
         This method takes a BaseQuery, AggregationQuery, or HybridQuery object directly, and
@@ -1305,7 +1294,7 @@ class SearchIndex(BaseSearchIndex):
             # Increment the offset for the next batch of pagination
             offset += page_size
 
-    def listall(self) -> List[str]:
+    def listall(self) -> list[str]:
         """List all search indices in Redis database.
 
         Returns:
@@ -1322,7 +1311,7 @@ class SearchIndex(BaseSearchIndex):
         return self.schema.index.name in self.listall()
 
     @staticmethod
-    def _info(name: str, redis_client: SyncRedisClient) -> Dict[str, Any]:
+    def _info(name: str, redis_client: SyncRedisClient) -> dict[str, Any]:
         """Run FT.INFO to fetch information about the index."""
         try:
             if isinstance(redis_client, SyncRedisCluster):
@@ -1339,7 +1328,7 @@ class SearchIndex(BaseSearchIndex):
                 f"Error while fetching {name} index info: {str(e)}"
             ) from e
 
-    def info(self, name: Optional[str] = None) -> Dict[str, Any]:
+    def info(self, name: str | None = None) -> dict[str, Any]:
         """Get information about the index.
 
         Args:
@@ -1394,9 +1383,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         self,
         schema: IndexSchema,
         *,
-        redis_url: Optional[str] = None,
-        redis_client: Optional[AsyncRedisClient] = None,
-        connection_kwargs: Optional[Dict[str, Any]] = None,
+        redis_url: str | None = None,
+        redis_client: AsyncRedisClient | None = None,
+        connection_kwargs: dict[str, Any] | None = None,
         validate_on_load: bool = False,
         **kwargs,
     ):
@@ -1422,14 +1411,14 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         self.schema = schema
         self._validate_on_load = validate_on_load
-        self._lib_name: Optional[str] = kwargs.pop("lib_name", None)
+        self._lib_name: str | None = kwargs.pop("lib_name", None)
 
         # Store connection parameters
         self._redis_client = redis_client
         self._redis_url = redis_url
         self._connection_kwargs = connection_kwargs or {}
         self._lock = asyncio.Lock()
-        self._sql_executors: Dict[str, Any] = {}
+        self._sql_executors: dict[str, Any] = {}
 
         self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
@@ -1440,8 +1429,8 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def from_existing(
         cls,
         name: str,
-        redis_client: Optional[AsyncRedisClient] = None,
-        redis_url: Optional[str] = None,
+        redis_client: AsyncRedisClient | None = None,
+        redis_url: str | None = None,
         **kwargs,
     ):
         """
@@ -1463,7 +1452,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             dict(kwargs),
             nested_connection_keys=("connection_kwargs", "redis_kwargs"),
         )
-        lib_name = cast(Optional[str], init_kwargs.get("lib_name"))
+        lib_name = cast(str | None, init_kwargs.get("lib_name"))
         created_redis_client = False
 
         if redis_client:
@@ -1504,12 +1493,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         return cls(schema, redis_client=redis_client, **init_kwargs)
 
     @property
-    def client(self) -> Optional[AsyncRedisClient]:
+    def client(self) -> AsyncRedisClient | None:
         """The underlying redis-py client object."""
         return self._redis_client
 
     @deprecated_function("connect", "Pass connection parameters in __init__.")
-    async def connect(self, redis_url: Optional[str] = None, **kwargs):
+    async def connect(self, redis_url: str | None = None, **kwargs):
         """[DEPRECATED] Connect to a Redis instance. Use connection parameters in __init__."""
         warnings.warn(
             "connect() is deprecated; pass connection parameters in __init__",
@@ -1522,7 +1511,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         await self.set_client(client)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
-    async def set_client(self, redis_client: Union[AsyncRedisClient, SyncRedisClient]):
+    async def set_client(self, redis_client: AsyncRedisClient | SyncRedisClient):
         """
         [DEPRECATED] Manually set the Redis client to use with the search index.
         This method is deprecated; please provide connection parameters in __init__.
@@ -1559,7 +1548,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         return self._redis_client
 
     async def _validate_client(
-        self, redis_client: Union[AsyncRedisClient, SyncRedisClient]
+        self, redis_client: AsyncRedisClient | SyncRedisClient
     ) -> AsyncRedisClient:
         # Handle deprecated sync client conversion
         if isinstance(redis_client, (Redis, RedisCluster)):
@@ -1583,7 +1572,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         return redis_client
 
     @staticmethod
-    async def _info(name: str, redis_client: AsyncRedisClient) -> Dict[str, Any]:
+    async def _info(name: str, redis_client: AsyncRedisClient) -> dict[str, Any]:
         try:
             if isinstance(redis_client, AsyncRedisCluster):
                 node = redis_client.get_random_node()
@@ -1722,7 +1711,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
-    async def _delete_batch(self, batch_keys: List[str]) -> int:
+    async def _delete_batch(self, batch_keys: list[str]) -> int:
         """Delete a batch of keys from Redis.
 
         For Redis Cluster, keys are deleted individually due to potential
@@ -1787,7 +1776,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    async def drop_keys(self, keys: Union[str, List[str]]) -> int:
+    async def drop_keys(self, keys: str | list[str]) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
 
         Args:
@@ -1802,7 +1791,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         else:
             return await client.delete(keys)
 
-    async def drop_documents(self, ids: Union[str, List[str]]) -> int:
+    async def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
 
         This method converts document IDs to Redis keys automatically by applying
@@ -1833,9 +1822,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             key = self.key(ids)
             return await client.delete(key)
 
-    async def expire_keys(
-        self, keys: Union[str, List[str]], ttl: int
-    ) -> Union[int, List[int]]:
+    async def expire_keys(self, keys: str | list[str], ttl: int) -> int | list[int]:
         """Set the expiration time for a specific entry or entries in Redis.
 
         Args:
@@ -1855,13 +1842,13 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def load(
         self,
         data: Iterable[Any],
-        id_field: Optional[str] = None,
-        keys: Optional[Iterable[str]] = None,
-        ttl: Optional[int] = None,
-        preprocess: Optional[Callable] = None,
-        concurrency: Optional[int] = None,
-        batch_size: Optional[int] = None,
-    ) -> List[str]:
+        id_field: str | None = None,
+        keys: Iterable[str] | None = None,
+        ttl: int | None = None,
+        preprocess: Callable | None = None,
+        concurrency: int | None = None,
+        batch_size: int | None = None,
+    ) -> list[str]:
         """Asynchronously load objects to Redis. Returns the list of keys loaded
         to Redis.
 
@@ -1932,7 +1919,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             logger.exception("Error while loading data to Redis")
             raise RedisVLError(f"Failed to load data: {str(exc)}") from exc
 
-    async def fetch(self, id: str) -> Optional[Dict[str, Any]]:
+    async def fetch(self, id: str) -> dict[str, Any] | None:
         """Asynchronously etch an object from Redis by id. The id is typically
         either a unique identifier, or derived from some domain-specific
         metadata combination (like a document id or chunk id).
@@ -1952,7 +1939,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
     async def _aggregate(
         self, aggregation_query: AggregationQuery
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Execute an aggregation query and processes the results."""
         results = await self.aggregate(
             aggregation_query,
@@ -1989,8 +1976,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             ) from e
 
     async def batch_search(
-        self, queries: List[SearchParams], batch_size: int = 10
-    ) -> List["Result"]:
+        self, queries: list[SearchParams], batch_size: int = 10
+    ) -> list["Result"]:
         """Asynchronously execute a batch of search queries.
 
         This method takes a list of search queries and executes them in batches
@@ -2098,7 +2085,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
     async def _hybrid_search(
         self, query: HybridQuery, **kwargs
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Perform a hybrid search against the index, combining text and vector search.
 
         Args:
@@ -2147,8 +2134,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
 
     async def batch_query(
-        self, queries: List[BaseQuery], batch_size: int = 10
-    ) -> List[List[Dict[str, Any]]]:
+        self, queries: list[BaseQuery], batch_size: int = 10
+    ) -> list[list[dict[str, Any]]]:
         """Asynchronously execute a batch of queries and process results."""
         results = await self.batch_search(
             [(query.query, query.params) for query in queries], batch_size=batch_size
@@ -2167,7 +2154,7 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         return all_parsed
 
-    async def _query(self, query: BaseQuery) -> List[Dict[str, Any]]:
+    async def _query(self, query: BaseQuery) -> list[dict[str, Any]]:
         """Asynchronously execute a query and process results."""
         try:
             self._validate_query(query)
@@ -2176,7 +2163,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         results = await self.search(query.query, query_params=query.params)
         return process_results(results, query=query, schema=self.schema)
 
-    async def _sql_query(self, sql_query: SQLQuery) -> List[Dict[str, Any]]:
+    async def _sql_query(self, sql_query: SQLQuery) -> list[dict[str, Any]]:
         """Asynchronously execute a SQL query and return results.
 
         Args:
@@ -2220,8 +2207,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         return [convert_bytes(row) for row in result.rows]
 
     async def query(
-        self, query: Union[BaseQuery, AggregationQuery, HybridQuery, SQLQuery]
-    ) -> List[Dict[str, Any]]:
+        self, query: BaseQuery | AggregationQuery | HybridQuery | SQLQuery
+    ) -> list[dict[str, Any]]:
         """Asynchronously execute a query on the index.
 
         This method takes a BaseQuery, AggregationQuery, HybridQuery, or SQLQuery object
@@ -2305,7 +2292,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             yield results
             first += page_size
 
-    async def listall(self) -> List[str]:
+    async def listall(self) -> list[str]:
         """List all search indices in Redis database.
 
         Returns:
@@ -2326,7 +2313,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         return self.schema.index.name in await self.listall()
 
-    async def info(self, name: Optional[str] = None) -> Dict[str, Any]:
+    async def info(self, name: str | None = None) -> dict[str, Any]:
         """Get information about the index.
 
         Args:

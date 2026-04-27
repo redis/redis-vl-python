@@ -6,7 +6,7 @@ using dynamically generated Pydantic models.
 """
 
 import json
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any
 
 from jsonpath_ng import parse as jsonpath_parse
 from pydantic import BaseModel, Field, field_validator
@@ -28,10 +28,10 @@ class SchemaModelGenerator:
     Pydantic models with appropriate field types and validators.
     """
 
-    _model_cache: Dict[str, Type[BaseModel]] = {}
+    _model_cache: dict[str, type[BaseModel]] = {}
 
     @classmethod
-    def get_model_for_schema(cls, schema: IndexSchema) -> Type[BaseModel]:
+    def get_model_for_schema(cls, schema: IndexSchema) -> type[BaseModel]:
         """
         Get or create a Pydantic model for a schema.
 
@@ -52,7 +52,7 @@ class SchemaModelGenerator:
     @classmethod
     def _map_field_to_pydantic_type(
         cls, field: BaseField, storage_type: StorageType
-    ) -> Type[Any]:
+    ) -> Any:
         """
         Map Redis field types to appropriate Pydantic types.
 
@@ -71,7 +71,7 @@ class SchemaModelGenerator:
         elif field.type == FieldTypes.TAG:
             return str
         elif field.type == FieldTypes.NUMERIC:
-            return Union[int, float]  # type: ignore
+            return int | float
         elif field.type == FieldTypes.GEO:
             return str
         elif field.type == FieldTypes.VECTOR:
@@ -82,8 +82,8 @@ class SchemaModelGenerator:
                     VectorDataType.INT8,
                     VectorDataType.UINT8,
                 ):
-                    return List[int]
-                return List[float]
+                    return list[int]
+                return list[float]
             else:
                 return bytes
 
@@ -91,7 +91,7 @@ class SchemaModelGenerator:
         raise ValueError(f"Unsupported field type: {field.type}")
 
     @classmethod
-    def _create_model(cls, schema: IndexSchema) -> Type[BaseModel]:
+    def _create_model(cls, schema: IndexSchema) -> type[BaseModel]:
         """
         Create a Pydantic model from schema definition using type() approach.
 
@@ -105,15 +105,15 @@ class SchemaModelGenerator:
         storage_type = schema.index.storage_type
 
         # Create annotations dictionary for the dynamic model
-        annotations: Dict[str, Any] = {}
-        class_dict: Dict[str, Any] = {}
+        annotations: dict[str, Any] = {}
+        class_dict: dict[str, Any] = {}
 
         # Build annotations and field metadata
         for field_name, field in schema.fields.items():
             field_type = cls._map_field_to_pydantic_type(field, storage_type)
 
             # Make all fields optional in the model
-            annotations[field_name] = Optional[field_type]
+            annotations[field_name] = field_type | None
 
             # Add default=None to make fields truly optional (can be missing from input)
             class_dict[field_name] = Field(default=None)
@@ -210,7 +210,7 @@ class SchemaModelGenerator:
         return type(model_name, (BaseModel,), class_dict)
 
 
-def extract_from_json_path(obj: Dict[str, Any], path: str) -> Any:
+def extract_from_json_path(obj: dict[str, Any], path: str) -> Any:
     """
     Extract a value from a nested JSON object using a JSONPath expression.
 
@@ -240,7 +240,7 @@ def extract_from_json_path(obj: Dict[str, Any], path: str) -> Any:
     return None
 
 
-def validate_object(schema: IndexSchema, obj: Dict[str, Any]) -> Dict[str, Any]:
+def validate_object(schema: IndexSchema, obj: dict[str, Any]) -> dict[str, Any]:
     """
     Validate an object against a schema.
 

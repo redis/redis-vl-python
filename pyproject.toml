@@ -1,10 +1,10 @@
 [project]
 name = "redisvl"
 # NOTE: This version value is automatically incremented by the release workflow - do not manually adjust it.
-version = "0.17.1"
+version = "0.18.0"
 description = "Python client library and CLI for using Redis as a vector database"
 authors = [{ name = "Redis Inc.", email = "applied.ai@redis.com" }]
-requires-python = ">=3.9.2,<3.15"
+requires-python = ">=3.10,<3.15"
 readme = "README.md"
 license = "MIT"
 keywords = [
@@ -15,7 +15,6 @@ keywords = [
     "vector-search",
 ]
 classifiers = [
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -36,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = [
-    "fastmcp>=2.0.0 ; python_version >= '3.10'",
+    "fastmcp>=2.0.0",
     "pydantic-settings>=2.0",
 ]
 mistralai = ["mistralai>=1.0.0"]
@@ -102,7 +101,7 @@ dev = [
     "types-pyyaml",
     "types-pyopenssl",
     "testcontainers>=4.3.1,<5",
-    "cryptography>=44.0.1 ; python_version > '3.9.1'",
+    "cryptography>=44.0.1",
     "codespell>=2.4.1,<3",
     "langcache>=0.9.0",
 ]
@@ -124,7 +123,7 @@ default-groups = [
 ]
 
 [tool.black]
-target-version = ['py39', 'py310', 'py311', 'py312', 'py313']
+target-version = ['py310', 'py311', 'py312', 'py313', 'py314']
 exclude = '''
 (
   | \.egg

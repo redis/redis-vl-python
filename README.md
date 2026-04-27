@@ -45,7 +45,7 @@ Perfect for building **RAG pipelines** with real-time retrieval, **AI agents** w
 
 ## Installation
 
-Install `redisvl` into your Python (>=3.9) environment using `pip`:
+Install `redisvl` into your Python (>=3.10) environment using `pip`:
 
 ```bash
 pip install redisvl
@@ -56,8 +56,6 @@ Install the MCP server extra when you want to expose an existing Redis index thr
 ```bash
 pip install redisvl[mcp]
 ```
-
-The `redisvl[mcp]` extra requires Python 3.10 or newer.
 
 > For more detailed instructions, visit the [installation guide](https://docs.redisvl.com/en/latest/user_guide/installation.html).
 > For MCP concepts and setup, see the [RedisVL MCP docs](https://docs.redisvl.com/en/latest/concepts/mcp.html) and the [MCP how-to guide](https://docs.redisvl.com/en/latest/user_guide/how_to_guides/mcp.html).

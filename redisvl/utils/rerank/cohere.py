@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from pydantic import PrivateAttr
 
@@ -41,10 +41,10 @@ class CohereReranker(BaseReranker):
     def __init__(
         self,
         model: str = "rerank-english-v3.0",
-        rank_by: Optional[List[str]] = None,
+        rank_by: list[str] | None = None,
         limit: int = 5,
         return_score: bool = True,
-        api_config: Optional[Dict] = None,
+        api_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """
@@ -74,7 +74,7 @@ class CohereReranker(BaseReranker):
         )
         self._initialize_clients(api_config, **kwargs)
 
-    def _initialize_clients(self, api_config: Optional[Dict], **kwargs):
+    def _initialize_clients(self, api_config: dict[str, Any] | None, **kwargs):
         """
         Setup the Cohere clients using the provided API key or an
         environment variable.
@@ -100,9 +100,7 @@ class CohereReranker(BaseReranker):
         self._client = Client(api_key=api_key, client_name="redisvl", **kwargs)
         self._aclient = AsyncClient(api_key=api_key, client_name="redisvl", **kwargs)
 
-    def _preprocess(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ):
+    def _preprocess(self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs):
         """
         Prepare and validate reranking config based on provided input and
         optional overrides.
@@ -134,9 +132,9 @@ class CohereReranker(BaseReranker):
 
     @staticmethod
     def _postprocess(
-        docs: Union[List[Dict[str, Any]], List[str]],
-        rankings: List[Any],
-    ) -> Tuple[List[Any], List[float]]:
+        docs: list[dict[str, Any]] | list[str],
+        rankings: list[Any],
+    ) -> tuple[list[Any], list[float]]:
         """
         Post-process the initial list of documents to include ranking scores,
         if specified.
@@ -148,8 +146,8 @@ class CohereReranker(BaseReranker):
         return reranked_docs, scores
 
     def rank(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
+        self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs
+    ) -> tuple[list[dict[str, Any]], list[float]] | list[dict[str, Any]]:
         """
         Rerank documents based on the provided query using the Cohere rerank API.
 
@@ -173,8 +171,8 @@ class CohereReranker(BaseReranker):
         return reranked_docs
 
     async def arank(
-        self, query: str, docs: Union[List[Dict[str, Any]], List[str]], **kwargs
-    ) -> Union[Tuple[List[Dict[str, Any]], List[float]], List[Dict[str, Any]]]:
+        self, query: str, docs: list[dict[str, Any]] | list[str], **kwargs
+    ) -> tuple[list[dict[str, Any]], list[float]] | list[dict[str, Any]]:
         """
         Rerank documents based on the provided query using the Cohere rerank API.
 

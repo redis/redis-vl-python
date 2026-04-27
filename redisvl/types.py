@@ -1,5 +1,3 @@
-from typing import Union
-
 from redis import Redis as SyncRedis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import Pipeline as AsyncPipeline
@@ -9,12 +7,12 @@ from redis.client import Pipeline as SyncPipeline
 from redis.cluster import ClusterPipeline as SyncClusterPipeline
 from redis.cluster import RedisCluster as SyncRedisCluster
 
-SyncRedisClient = Union[SyncRedis, SyncRedisCluster]
-AsyncRedisClient = Union[AsyncRedis, AsyncRedisCluster]
-RedisClient = Union[SyncRedisClient, AsyncRedisClient]
+SyncRedisClient = SyncRedis | SyncRedisCluster
+AsyncRedisClient = AsyncRedis | AsyncRedisCluster
+RedisClient = SyncRedisClient | AsyncRedisClient
 
-SyncRedisPipeline = Union[SyncPipeline, SyncClusterPipeline]
-AsyncRedisPipeline = Union[AsyncPipeline, AsyncClusterPipeline]
+SyncRedisPipeline = SyncPipeline | SyncClusterPipeline
+AsyncRedisPipeline = AsyncPipeline | AsyncClusterPipeline
 
-RedisClientOrPipeline = Union[SyncRedisClient, SyncRedisPipeline]
-AsyncRedisClientOrPipeline = Union[AsyncRedisClient, AsyncRedisPipeline]
+RedisClientOrPipeline = SyncRedisClient | SyncRedisPipeline
+AsyncRedisClientOrPipeline = AsyncRedisClient | AsyncRedisPipeline
