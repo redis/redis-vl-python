@@ -81,7 +81,7 @@ You can also control boot settings through environment variables:
 |----------|---------|
 | `REDISVL_MCP_CONFIG` | Path to the MCP YAML config |
 | `REDISVL_MCP_READ_ONLY` | Disable `upsert-records` when set to `true` |
-| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text; RedisVL still appends schema-derived filter and `return_fields` hints |
+| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text; RedisVL still appends schema-derived typed filter, `exists`, and `return_fields` hints |
 | `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | Override the upsert tool description |
 
 ## Connect a Remote MCP Client
@@ -227,7 +227,7 @@ Notes:
 - when `return_fields` is omitted, RedisVL MCP returns all non-vector fields
 - returning the configured vector field is rejected
 - `filter` accepts either a raw string or a JSON DSL object
-- the `search-records` tool description includes schema-derived hints for JSON DSL filter fields and valid `return_fields`
+- the `search-records` tool description includes schema-derived hints for typed JSON DSL filter fields, object-filter `exists` support, and valid `return_fields`
 - `offset + limit` must stay within `runtime.max_result_window`
 - startup rejects schemas that use MCP-reserved score metadata field names:
   `id`, `__key`, `key`, `score`, `vector_distance`, `__score`, `text_score`, `vector_similarity`, `hybrid_score`

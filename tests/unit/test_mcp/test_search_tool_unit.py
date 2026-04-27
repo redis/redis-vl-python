@@ -674,6 +674,10 @@ def test_register_search_tool_uses_default_and_override_descriptions():
         in default_server.registered_tools[0]["description"]
     )
     assert (
+        "Object filter exists support: content, category, rating, embedding."
+        in default_server.registered_tools[0]["description"]
+    )
+    assert (
         "Allowed return_fields: content, category, rating."
         in default_server.registered_tools[0]["description"]
     )
@@ -684,13 +688,11 @@ def test_register_search_tool_uses_default_and_override_descriptions():
     custom_server.mcp_settings.tool_search_description = "Custom search description"
     register_search_tool(custom_server, custom_server.index.schema)
 
-    assert (
-        custom_server.registered_tools[0]["description"]
-        == (
-            "Custom search description "
-            "Object filter fields: content(text), category(tag), rating(numeric). "
-            "Allowed return_fields: content, category, rating."
-        )
+    assert custom_server.registered_tools[0]["description"] == (
+        "Custom search description "
+        "Object filter fields: content(text), category(tag), rating(numeric). "
+        "Object filter exists support: content, category, rating, embedding. "
+        "Allowed return_fields: content, category, rating."
     )
 
 
@@ -701,12 +703,15 @@ def test_build_search_tool_description_preserves_schema_order_and_excludes_vecto
         "Object filter fields: content(text), category(tag), rating(numeric)."
         in description
     )
-    assert "embedding(vector)" not in description
+    assert (
+        "Object filter exists support: content, category, rating, embedding."
+        in description
+    )
     assert "Allowed return_fields: content, category, rating." in description
     assert "embedding" not in description.split("Allowed return_fields: ", 1)[1]
 
 
-def test_build_search_tool_description_excludes_unsupported_filter_types():
+def test_build_search_tool_description_distinguishes_typed_and_exists_support():
     schema = IndexSchema.from_dict(
         {
             "index": {
@@ -736,4 +741,9 @@ def test_build_search_tool_description_excludes_unsupported_filter_types():
     description = _build_search_tool_description(schema)
 
     assert "location(geo)" not in description
+    assert "embedding(vector)" not in description
+    assert (
+        "Object filter exists support: content, category, rating, location, embedding."
+        in description
+    )
     assert "Allowed return_fields: content, category, rating, location." in description

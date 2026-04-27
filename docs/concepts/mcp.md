@@ -91,7 +91,7 @@ These tools follow a stable contract:
 
 - request validation happens before query or write execution
 - filters support either raw strings or a RedisVL-backed JSON DSL
-- `search-records` describes the inspected schema by advertising JSON DSL filter fields and valid `return_fields`
+- `search-records` describes the inspected schema by advertising typed JSON DSL filter fields, object-filter `exists` support, and valid `return_fields`
 - error codes are mapped into a stable set of MCP-facing categories
 
 ## Why Use MCP Instead of Direct RedisVL Calls

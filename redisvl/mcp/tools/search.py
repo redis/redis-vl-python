@@ -28,7 +28,7 @@ _FALLBACK_HYBRID_UNSUPPORTED_PARAMS = frozenset(
 
 
 def _build_filter_hint(schema: IndexSchema) -> str:
-    """Describe fields supported by the JSON filter DSL."""
+    """Describe fields with typed operator support in the JSON filter DSL."""
     filter_fields = [
         f"{field.name}({getattr(field.type, 'value', field.type)})"
         for field in schema.fields.values()
@@ -54,8 +54,21 @@ def _build_search_tool_description(
 ) -> str:
     """Build the `search-records` description from static text plus schema hints."""
     description = (base_description or DEFAULT_SEARCH_DESCRIPTION).strip()
+
+    # `exists` is currently accepted for any schema field in the MCP object filter.
+    exists_fields = [field.name for field in schema.fields.values()]
+    if exists_fields:
+        exists_hint = "Object filter exists support: " + ", ".join(exists_fields) + "."
+    else:
+        exists_hint = "Object filter exists support: none."
+
     return " ".join(
-        [description, _build_filter_hint(schema), _build_return_fields_hint(schema)]
+        [
+            description,
+            _build_filter_hint(schema),
+            exists_hint,
+            _build_return_fields_hint(schema),
+        ]
     )
 
 
