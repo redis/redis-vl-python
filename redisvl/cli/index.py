@@ -126,16 +126,25 @@ class Index:
 
 def _index_info_for_json(index_info: dict) -> dict:
     """Build the JSON payload from the same fields shown in table mode."""
-    definition = convert_bytes(make_dict(index_info.get("index_definition")))
+    definition_src = index_info.get("index_definition")
+    if isinstance(definition_src, list):
+        definition = convert_bytes(make_dict(definition_src))
+    elif isinstance(definition_src, tuple):
+        definition = convert_bytes(make_dict(list(definition_src)))
+    else:
+        definition = {}
     attributes = index_info.get("attributes", [])
     index_fields = []
 
     for attrs in attributes:
-        attr = (
-            convert_bytes(make_dict(attrs))
-            if isinstance(attrs, (list, tuple))
-            else convert_bytes(dict(attrs))
-        )
+        if isinstance(attrs, list):
+            attr = convert_bytes(make_dict(attrs))
+        elif isinstance(attrs, tuple):
+            attr = convert_bytes(make_dict(list(attrs)))
+        elif isinstance(attrs, dict):
+            attr = convert_bytes(dict(attrs))
+        else:
+            attr = {}
         field = {
             "name": attr.get("identifier"),
             "attribute": attr.get("attribute"),
