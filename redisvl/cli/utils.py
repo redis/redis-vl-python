@@ -116,9 +116,4 @@ def add_json_output_flag(parser: ArgumentParser) -> ArgumentParser:
 
 def cli_print_json(data: Mapping[str, Any]) -> None:
     """Write a single JSON object to stdout (deterministic key order for tests and scripts)."""
-    print(
-        json.dumps(
-            data,
-            default=_cli_json_default
-        )
-    )
+    print(json.dumps(data, default=_cli_json_default))

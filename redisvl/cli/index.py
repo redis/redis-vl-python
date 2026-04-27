@@ -132,7 +132,8 @@ def _index_info_for_json(index_info: dict) -> dict:
 
     for attrs in attributes:
         attr = (
-            convert_bytes(make_dict(attrs)) if isinstance(attrs, (list, tuple))
+            convert_bytes(make_dict(attrs))
+            if isinstance(attrs, (list, tuple))
             else convert_bytes(dict(attrs))
         )
         field = {
@@ -141,7 +142,8 @@ def _index_info_for_json(index_info: dict) -> dict:
             "type": attr.get("type"),
         }
         field_options = {
-            k: v for k, v in attr.items()
+            k: v
+            for k, v in attr.items()
             if k not in {"identifier", "attribute", "type"}
         }
         if field_options:
