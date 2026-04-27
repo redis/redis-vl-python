@@ -10,13 +10,12 @@ def test_stats_rows_includes_all_stable_top_level_keys_in_order():
     """``_stats_rows({})`` returns the full ordered row list for an empty index info.
 
     Expected behavior: produces a complete, ``STATS_KEYS``-ordered set of rows
-    regardless of input; stringifies values at this layer; and represents
-    missing keys as ``"None"`` so the schema stays stable.
+    regardless of input; preserves value types at this layer; and represents
+    missing keys as ``None`` so JSON output remains machine-readable.
     """
     data = dict(_stats_rows({}))
     assert list(data.keys()) == list(STATS_KEYS)  # column order matches STATS_KEYS
-    assert all(isinstance(v, str) for v in data.values())  # every value is a string
-    assert all(data[k] == "None" for k in STATS_KEYS)  # missing index_info keys -> "None"
+    assert all(data[k] is None for k in STATS_KEYS)  # missing index_info keys -> None
 
 
 def test_stats_json_prints_only_json_to_stdout(monkeypatch, capsys):
@@ -26,7 +25,7 @@ def test_stats_json_prints_only_json_to_stdout(monkeypatch, capsys):
 
     Expected behavior: ``--json`` skips ``_display_stats`` and emits one
     single-line JSON document with the full ``STATS_KEYS`` schema and
-    stringified values (e.g. ``num_docs=7`` -> ``"7"``).
+    native values (e.g. ``num_docs=7`` -> ``7``).
 
     Row order is covered by ``test_stats_rows_*``; JSON key order is covered
     by ``test_cli_print_json_preserves_key_order``.
@@ -47,7 +46,8 @@ def test_stats_json_prints_only_json_to_stdout(monkeypatch, capsys):
     assert out.count("\n") == 0  # exactly one JSON object on stdout, no extra lines
     payload = json.loads(out)
     assert set(payload) == set(STATS_KEYS)  # same stat keys as the shared schema list
-    assert payload["num_docs"] == "7"  # str() of num_docs from index.info()
+    assert payload["num_docs"] == 7  # numbers remain numbers for machine consumers
+    assert payload["num_terms"] is None  # missing values become JSON null, not "None"
 
 
 def test_stats_default_prints_table(monkeypatch, capsys):

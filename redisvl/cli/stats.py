@@ -37,15 +37,15 @@ STATS_KEYS = [
 ]
 
 
-def _stats_rows(index_info: dict) -> list[tuple[str, str]]:
+def _stats_rows(index_info: dict) -> list[tuple[str, object]]:
     """Normalize ``index.info()`` for both JSON and table output.
 
     Returns ordered ``(key, value)`` pairs: keys follow ``STATS_KEYS``, values
-    are strings (``str(index_info.get(key))``; missing keys become ``"None"``).
-    For JSON, wrap the result in ``dict(...)``; the table uses the same list of
-    pairs without conversion.
+    preserve native types from ``index_info``. Missing keys remain ``None``.
+    For JSON, wrap the result in ``dict(...)``; the table stringifies values
+    when rendering.
     """
-    return [(key, str(index_info.get(key))) for key in STATS_KEYS]
+    return [(key, index_info.get(key)) for key in STATS_KEYS]
 
 
 class Stats:
@@ -96,7 +96,7 @@ class Stats:
         return index
 
 
-def _display_stats(stats_data: list[tuple[str, str]]) -> None:
+def _display_stats(stats_data: list[tuple[str, object]]) -> None:
     # Display the statistics in tabular format
     print("\nStatistics:")
     max_key_length = max(len(key) for key, _ in stats_data)
@@ -105,5 +105,6 @@ def _display_stats(stats_data: list[tuple[str, str]]) -> None:
     print("│ Stat Key                    │ Value      │")  # header row
     print(f"├{horizontal_line}┼────────────┤")  # separator row
     for key, value in stats_data:
-        print(f"│ {key:<27} │ {value[0:10]:<10} │")  # data rows
+        value_str = str(value)
+        print(f"│ {key:<27} │ {value_str[0:10]:<10} │")  # data rows
     print(f"╰{horizontal_line}┴────────────╯")  # bottom row
