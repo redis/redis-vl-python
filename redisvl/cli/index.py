@@ -131,6 +131,8 @@ def _index_info_for_json(index_info: dict) -> dict:
         definition = convert_bytes(make_dict(definition_src))
     elif isinstance(definition_src, tuple):
         definition = convert_bytes(make_dict(list(definition_src)))
+    elif isinstance(definition_src, dict):
+        definition = convert_bytes(dict(definition_src))
     else:
         definition = {}
     attributes = index_info.get("attributes", [])
