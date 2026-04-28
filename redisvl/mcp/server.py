@@ -192,12 +192,12 @@ class RedisVLMCPServer(FastMCP):
         )
         return self._supports_native_hybrid_search
 
-    def _register_tools(self) -> None:
+    def _register_tools(self, schema: IndexSchema) -> None:
         """Register MCP tools once the server is ready."""
         if self._tools_registered or not hasattr(self, "tool"):
             return
 
-        register_search_tool(self)
+        register_search_tool(self, schema)
         if not self.mcp_settings.read_only:
             register_upsert_tool(self)
         self._tools_registered = True
@@ -304,7 +304,7 @@ class RedisVLMCPServer(FastMCP):
             )
             if self.config.requires_startup_vectorizer:
                 await self._initialize_vectorizer(effective_schema, timeout)
-            self._register_tools()
+            self._register_tools(effective_schema)
             return client
         except Exception:
             if self._index is None:
