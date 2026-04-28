@@ -252,6 +252,98 @@ async def test_startup_failure_after_index_initialization_uses_index_teardown(
 
 
 @pytest.mark.asyncio
+async def test_server_registers_tools_with_effective_schema(monkeypatch):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.FastMCP.__init__", lambda self, *a, **k: None
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.load_mcp_config",
+        lambda path: _startup_config(),
+    )
+
+    class FakeClient:
+        async def aclose(self):
+            return None
+
+    async def fake_connect(self, timeout):
+        return FakeClient()
+
+    async def fake_load_schema(self, client, timeout):
+        return IndexSchema.from_dict(
+            {
+                "index": {
+                    "name": "docs-index",
+                    "prefix": "doc",
+                    "storage_type": "hash",
+                },
+                "fields": [
+                    {"name": "content", "type": "text"},
+                    {"name": "category", "type": "tag"},
+                    {"name": "location", "type": "geo"},
+                    {
+                        "name": "embedding",
+                        "type": "vector",
+                        "attrs": {
+                            "algorithm": "flat",
+                            "dims": 3,
+                            "distance_metric": "cosine",
+                            "datatype": "float32",
+                        },
+                    },
+                ],
+            }
+        )
+
+    async def fake_supports_native_hybrid_search(self):
+        return False
+
+    async def fake_initialize_vectorizer(self, schema, timeout):
+        self._vectorizer = SimpleNamespace(dims=3)
+
+    registered_schemas = []
+
+    def fake_register_search_tool(server, schema):
+        registered_schemas.append(schema)
+
+    async def fake_disconnect(self):
+        return None
+
+    monkeypatch.setattr(RedisVLMCPServer, "_connect_redis_client", fake_connect)
+    monkeypatch.setattr(RedisVLMCPServer, "_load_effective_schema", fake_load_schema)
+    monkeypatch.setattr(
+        RedisVLMCPServer,
+        "supports_native_hybrid_search",
+        fake_supports_native_hybrid_search,
+    )
+    monkeypatch.setattr(
+        RedisVLMCPServer, "_initialize_vectorizer", fake_initialize_vectorizer
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool", fake_register_search_tool
+    )
+    monkeypatch.setattr("redisvl.mcp.server.register_upsert_tool", lambda server: None)
+    monkeypatch.setattr(
+        "redisvl.mcp.server.AsyncSearchIndex.disconnect",
+        fake_disconnect,
+        raising=False,
+    )
+
+    server = RedisVLMCPServer(_dummy_settings())
+
+    await server.startup()
+
+    assert len(registered_schemas) == 1
+    assert list(registered_schemas[0].field_names) == [
+        "content",
+        "category",
+        "location",
+        "embedding",
+    ]
+
+    await server.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_startup_while_running_raises(monkeypatch):
     monkeypatch.setattr(
         "redisvl.mcp.server.FastMCP.__init__", lambda self, *a, **k: None
