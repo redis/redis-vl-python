@@ -2,13 +2,10 @@ import argparse
 import sys
 from argparse import Namespace
 
-from redisvl.cli.utils import (
-    SCHEMA_INPUT_ERRORS,
-    add_index_parsing_options,
-    create_redis_url,
-    exit_redis_search_error,
-    exit_schema_input_error,
-)
+import yaml
+from pydantic import ValidationError
+
+from redisvl.cli.utils import add_index_parsing_options, create_redis_url
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
@@ -17,6 +14,36 @@ from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
 
 logger = get_logger("[RedisVL]")
+
+# Exceptions commonly raised when loading or validating a schema path (-s).
+SCHEMA_INPUT_ERRORS = (
+    FileNotFoundError,
+    ValueError,
+    yaml.YAMLError,
+    ValidationError,
+)
+
+
+def exit_schema_input_error(args: Namespace, exc: BaseException) -> None:
+    if not args.schema:
+        raise exc
+    print(str(exc), file=sys.stderr)
+    sys.exit(2)
+
+
+def exit_redis_search_error(
+    args: Namespace, index: SearchIndex | None, exc: RedisSearchError
+) -> None:
+    name = (
+        index.schema.index.name
+        if index is not None
+        else (args.index or args.schema or "unknown")
+    )
+    print(
+        f"Redis search operation failed for index {name!r}. {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 class Index:
