@@ -87,8 +87,8 @@ class Index:
             cli_print_json({"indices": indices})
         else:
             print("Indices:")
-            for i, index in enumerate(indices):
-                print(str(i + 1) + ". " + index)
+            for i, index in enumerate(indices, start=1):
+                print(str(i) + ". " + index)
 
     def delete(self, args: Namespace, drop=False):
         """Delete an index.
