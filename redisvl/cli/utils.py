@@ -109,7 +109,7 @@ def add_json_output_flag(parser: ArgumentParser) -> ArgumentParser:
         action="store_true",
         dest="json",
         default=False,
-        help="Print success output as JSON to stdout",
+        help="Format output (when successful) as machine-readable JSON",
     )
     return parser
 
