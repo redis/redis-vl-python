@@ -43,6 +43,7 @@ def exit_redis_search_error(
     )
     sys.exit(1)
 
+
 STATS_KEYS = [
     "num_docs",
     "num_terms",
