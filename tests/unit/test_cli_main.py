@@ -25,48 +25,42 @@ def _assert_help_contract(help_text: str) -> None:
 @pytest.mark.parametrize("argv", [["rvl"], ["rvl", "--help"], ["rvl", "-h"]])
 def test_rvl_help(monkeypatch, capsys, argv: list[str]):
     """Help paths (`rvl`, `--help`, `-h`) exit 0 and print to stdout."""
-
-    # Arrange
     monkeypatch.setattr(sys, "argv", argv)
 
-    # Act
     with pytest.raises(SystemExit) as exc_info:
         RedisVlCLI()
     out = capsys.readouterr()
 
-    # Assert: help requests terminate successfully.
+    # Help requests terminate successfully.
     assert exc_info.value.code == 0
 
-    # Assert: successful help output does not leak to stderr.
+    # Successful help output does not leak to stderr.
     assert out.err == ""
 
-    # Assert: stdout contains the expected top-level help contract.
+    # stdout contains the expected top-level help contract.
     _assert_help_contract(out.out)
 
 
 def test_unknown_command(monkeypatch, capsys):
     """Unknown commands exit 2, write error/help to stderr, and keep stdout empty."""
-
-    # Arrange
     monkeypatch.setattr(sys, "argv", ["rvl", "notacommand"])
 
-    # Act
     with pytest.raises(SystemExit) as exc_info:
         RedisVlCLI()
     out = capsys.readouterr()
 
-    # Assert: unknown commands use the CLI usage-error exit code.
+    # Unknown commands use the CLI usage-error exit code.
     assert exc_info.value.code == 2
 
-    # Assert: stdout stays empty on this error path.
+    # stdout stays empty on this error path.
     assert out.out == ""
 
-    # Assert: stderr identifies the rejected command token.
+    # stderr identifies the rejected command token.
     assert "Unknown command: notacommand" in out.err
     for name in _COMMANDS:
-        # Assert: stderr help still lists every valid top-level command.
+        # stderr help still lists every valid top-level command.
         assert name in out.err
-    # Assert: stderr includes the command section header from help.
+    # stderr includes the command section header from help.
     assert "Commands:" in out.err
 
 
