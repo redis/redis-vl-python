@@ -174,6 +174,9 @@ class BaseQuery(RedisQuery):
         if sort_spec is None or sort_spec == []:
             # No sorting
             self._sortby = None
+            if hasattr(self, "_uses_default_vector_distance_sort"):
+                self._uses_default_vector_distance_sort = False
+            self._built_query_string = None
             return self
 
         # Handle backward compatibility: if sort_spec is a string and asc is specified
@@ -203,6 +206,11 @@ class BaseQuery(RedisQuery):
 
         # Call parent's sort_by with the first field
         super().sort_by(first_field, asc=first_asc)
+
+        if hasattr(self, "_uses_default_vector_distance_sort"):
+            self._uses_default_vector_distance_sort = False
+
+        self._built_query_string = None
 
         return self
 
@@ -417,6 +425,7 @@ class CountQuery(BaseQuery):
 class BaseVectorQuery:
     DISTANCE_ID: str = "vector_distance"
     VECTOR_PARAM: str = "vector"
+    _vector_field_name: str
 
     # HNSW runtime parameters
     EF_RUNTIME: str = "EF_RUNTIME"
@@ -546,6 +555,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._use_search_history: str | None = None
         self._search_buffer_capacity: int | None = None
         self._normalize_vector_distance = normalize_vector_distance
+        self._uses_default_vector_distance_sort = False
         self.set_filter(filter_expression)
 
         # Initialize the base query
@@ -565,6 +575,7 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             self.sort_by(sort_by)
         else:
             self.sort_by(self.DISTANCE_ID)
+            self._uses_default_vector_distance_sort = True
 
         if in_order:
             self.in_order()
@@ -992,6 +1003,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
         self._hybrid_policy: HybridPolicy | None = None
         self._batch_size: int | None = None
         self._normalize_vector_distance = normalize_vector_distance
+        self._uses_default_vector_distance_sort = False
 
         # Initialize the base query
         super().__init__("*")
@@ -1031,6 +1043,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             self.sort_by(sort_by)
         else:
             self.sort_by(self.DISTANCE_ID)
+            self._uses_default_vector_distance_sort = True
 
         if in_order:
             self.in_order()

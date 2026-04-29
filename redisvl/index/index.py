@@ -253,6 +253,15 @@ class BaseSearchIndex:
 
     def _validate_query(self, query: BaseQuery) -> None:
         """Validate a query."""
+        if isinstance(query, BaseVectorQuery):
+            field = self.schema.fields[query._vector_field_name]
+            dist_metric = VectorDistanceMetric(field.attrs.distance_metric.upper())  # type: ignore
+            if dist_metric == VectorDistanceMetric.COSINE_SIMILARITY and getattr(
+                query, "_uses_default_vector_distance_sort", False
+            ):
+                query.sort_by(query.DISTANCE_ID, asc=False)
+                query._uses_default_vector_distance_sort = True
+
         if isinstance(query, VectorQuery):
             field = self.schema.fields[query._vector_field_name]
             if query.ef_runtime and field.attrs.algorithm != VectorIndexAlgorithm.HNSW:  # type: ignore
@@ -1185,6 +1194,8 @@ class SearchIndex(BaseSearchIndex):
         self, queries: Sequence[BaseQuery], batch_size: int = 10
     ) -> list[list[dict[str, Any]]]:
         """Execute a batch of queries and process results."""
+        for query in queries:
+            self._validate_query(query)
         results = self.batch_search(
             [(query.query, query.params) for query in queries], batch_size=batch_size
         )
@@ -2137,6 +2148,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         self, queries: list[BaseQuery], batch_size: int = 10
     ) -> list[list[dict[str, Any]]]:
         """Asynchronously execute a batch of queries and process results."""
+        for query in queries:
+            self._validate_query(query)
         results = await self.batch_search(
             [(query.query, query.params) for query in queries], batch_size=batch_size
         )
