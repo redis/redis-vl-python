@@ -2,7 +2,12 @@ import argparse
 import sys
 from argparse import Namespace
 
-from redisvl.cli.utils import add_index_parsing_options, create_redis_url
+from redisvl.cli.utils import (
+    add_index_parsing_options,
+    add_json_output_flag,
+    cli_print_json,
+    create_redis_url,
+)
 from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, make_dict
@@ -17,11 +22,11 @@ class Index:
         [
             "rvl index <command> [<args>]\n",
             "Commands:",
-            "\tinfo        Obtain information about an index",
+            "\tinfo        Obtain information about an index (use --json for machine output)",
             "\tcreate      Create a new index",
             "\tdelete      Delete an existing index",
             "\tdestroy     Delete an existing index and all of its data",
-            "\tlistall     List all indexes",
+            "\tlistall     List all indexes (use --json for machine output)",
             "\n",
         ]
     )
@@ -31,6 +36,7 @@ class Index:
 
         parser.add_argument("command", help="Subcommand to run")
         parser = add_index_parsing_options(parser)
+        parser = add_json_output_flag(parser)
 
         args = parser.parse_args(sys.argv[2:])
         if not hasattr(self, args.command):
@@ -59,23 +65,30 @@ class Index:
         """Obtain information about an index.
 
         Usage:
-            rvl index info -i <index_name> | -s <schema_path>
+            rvl index info -i <index_name> | -s <schema_path> [--json]
         """
         index = self._connect_to_index(args)
-        _display_in_table(index.info())
+        index_info = index.info()
+        if args.json:
+            cli_print_json(_index_info_for_json(index_info))
+        else:
+            _display_in_table(index_info)
 
     def listall(self, args: Namespace):
         """List all indices.
 
         Usage:
-            rvl index listall
+            rvl index listall [--json]
         """
         redis_url = create_redis_url(args)
         conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
         indices = convert_bytes(conn.execute_command("FT._LIST"))
-        print("Indices:")
-        for i, index in enumerate(indices):
-            print(str(i + 1) + ". " + index)
+        if args.json:
+            cli_print_json({"indices": indices})
+        else:
+            print("Indices:")
+            for i, index in enumerate(indices, start=1):
+                print(str(i) + ". " + index)
 
     def delete(self, args: Namespace, drop=False):
         """Delete an index.
@@ -109,6 +122,56 @@ class Index:
             exit(1)
 
         return index
+
+
+def _index_info_for_json(index_info: dict) -> dict:
+    """Build the JSON payload from the same fields shown in table mode."""
+    definition_src = index_info.get("index_definition")
+    if isinstance(definition_src, list):
+        definition = convert_bytes(make_dict(definition_src))
+    elif isinstance(definition_src, tuple):
+        definition = convert_bytes(make_dict(list(definition_src)))
+    elif isinstance(definition_src, dict):
+        definition = convert_bytes(dict(definition_src))
+    else:
+        definition = {}
+    attributes = index_info.get("attributes", [])
+    index_fields = []
+
+    for attrs in attributes:
+        if isinstance(attrs, list):
+            attr = convert_bytes(make_dict(attrs))
+        elif isinstance(attrs, tuple):
+            attr = convert_bytes(make_dict(list(attrs)))
+        elif isinstance(attrs, dict):
+            attr = convert_bytes(dict(attrs))
+        else:
+            attr = {}
+        field = {
+            "name": attr.get("identifier"),
+            "attribute": attr.get("attribute"),
+            "type": attr.get("type"),
+        }
+        field_options = {
+            k: v
+            for k, v in attr.items()
+            if k not in {"identifier", "attribute", "type"}
+        }
+        if field_options:
+            field["field_options"] = field_options
+        index_fields.append(field)
+
+    payload = {
+        "index_information": {
+            "index_name": index_info.get("index_name"),
+            "storage_type": definition.get("key_type"),
+            "prefixes": definition.get("prefixes"),
+            "index_options": index_info.get("index_options"),
+            "indexing": index_info.get("indexing"),
+        },
+        "index_fields": index_fields,
+    }
+    return convert_bytes(payload)
 
 
 def _display_in_table(index_info):
