@@ -63,12 +63,13 @@ class Index:
             print("Schema must be provided to create an index", file=sys.stderr)
             sys.exit(2)
 
-        index: SearchIndex | None = None
+        redis_url = create_redis_url(args)
         try:
-            index = SearchIndex.from_yaml(args.schema, redis_url=create_redis_url(args))
-            index.create()
+            index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
         except SCHEMA_INPUT_ERRORS as e:
             exit_schema_input_error(args, e)
+        try:
+            index.create()
         except RedisSearchError as e:
             exit_redis_search_error(args, index, e)
         print("Index created successfully")
@@ -79,12 +80,9 @@ class Index:
         Usage:
             rvl index info -i <index_name> | -s <schema_path>
         """
-        index: SearchIndex | None = None
+        index = self._connect_to_index(args)
         try:
-            index = self._connect_to_index(args)
             _display_in_table(index.info())
-        except SCHEMA_INPUT_ERRORS as e:
-            exit_schema_input_error(args, e)
         except RedisSearchError as e:
             exit_redis_search_error(args, index, e)
 
@@ -107,12 +105,9 @@ class Index:
         Usage:
             rvl index delete -i <index_name> | -s <schema_path>
         """
-        index: SearchIndex | None = None
+        index = self._connect_to_index(args)
         try:
-            index = self._connect_to_index(args)
             index.delete(drop=drop)
-        except SCHEMA_INPUT_ERRORS as e:
-            exit_schema_input_error(args, e)
         except RedisSearchError as e:
             exit_redis_search_error(args, index, e)
         print("Index deleted successfully")
@@ -126,19 +121,23 @@ class Index:
         self.delete(args, drop=True)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
-        # connect to redis
         redis_url = create_redis_url(args)
 
         if args.index:
-            schema = IndexSchema.from_dict({"index": {"name": args.index}})
-            index = SearchIndex(schema=schema, redis_url=redis_url)
-        elif args.schema:
-            index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
-        else:
-            print("Index name or schema must be provided", file=sys.stderr)
-            sys.exit(2)
+            try:
+                schema = IndexSchema.from_dict({"index": {"name": args.index}})
+                return SearchIndex(schema=schema, redis_url=redis_url)
+            except SCHEMA_INPUT_ERRORS as e:
+                exit_schema_input_error(args, e)
 
-        return index
+        if args.schema:
+            try:
+                return SearchIndex.from_yaml(args.schema, redis_url=redis_url)
+            except SCHEMA_INPUT_ERRORS as e:
+                exit_schema_input_error(args, e)
+
+        print("Index name or schema must be provided", file=sys.stderr)
+        sys.exit(2)
 
 
 def _display_in_table(index_info):
