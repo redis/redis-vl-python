@@ -177,6 +177,31 @@ def test_mcp_config_binding_helpers():
     assert config.redis_name == "docs-index"
 
 
+def test_vector_search_config_can_omit_text_field_name():
+    config = _valid_config()
+    del config["indexes"]["knowledge"]["runtime"]["text_field_name"]
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.search.type == "vector"
+    assert loaded.runtime.text_field_name is None
+
+
+def test_fulltext_config_can_omit_vector_settings_and_vectorizer():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "fulltext"}
+    del config["indexes"]["knowledge"]["vectorizer"]
+    del config["indexes"]["knowledge"]["runtime"]["vector_field_name"]
+    del config["indexes"]["knowledge"]["runtime"]["default_embed_text_field"]
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.search.type == "fulltext"
+    assert loaded.vectorizer is None
+    assert loaded.runtime.vector_field_name is None
+    assert loaded.runtime.default_embed_text_field is None
+
+
 def test_mcp_config_merges_schema_overrides_into_inspection_result():
     config_dict = _valid_config()
     config_dict["indexes"]["knowledge"]["schema_overrides"] = {
@@ -267,6 +292,19 @@ def test_mcp_config_validates_runtime_mapping_against_effective_schema():
         config.to_index_schema(_inspected_schema())
 
 
+def test_fulltext_config_does_not_require_vector_mapping_in_schema():
+    config_dict = _valid_config()
+    config_dict["indexes"]["knowledge"]["search"] = {"type": "fulltext"}
+    del config_dict["indexes"]["knowledge"]["vectorizer"]
+    del config_dict["indexes"]["knowledge"]["runtime"]["vector_field_name"]
+    del config_dict["indexes"]["knowledge"]["runtime"]["default_embed_text_field"]
+    config = MCPConfig.model_validate(config_dict)
+
+    schema = config.to_index_schema(_inspected_schema())
+
+    assert isinstance(schema, IndexSchema)
+
+
 def test_load_mcp_config_requires_exactly_one_binding(tmp_path: Path):
     config_path = tmp_path / "mcp.yaml"
     config_path.write_text(
@@ -302,11 +340,59 @@ def test_mcp_config_requires_search_type():
         MCPConfig.model_validate(config)
 
 
+def test_fulltext_config_requires_text_field_name():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "fulltext"}
+    del config["indexes"]["knowledge"]["runtime"]["text_field_name"]
+    del config["indexes"]["knowledge"]["vectorizer"]
+    del config["indexes"]["knowledge"]["runtime"]["vector_field_name"]
+    del config["indexes"]["knowledge"]["runtime"]["default_embed_text_field"]
+
+    with pytest.raises(ValueError, match="runtime.text_field_name"):
+        MCPConfig.model_validate(config)
+
+
+def test_hybrid_config_requires_vector_field_and_vectorizer():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "hybrid"}
+    del config["indexes"]["knowledge"]["runtime"]["vector_field_name"]
+
+    with pytest.raises(ValueError, match="runtime.vector_field_name"):
+        MCPConfig.model_validate(config)
+
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "hybrid"}
+    del config["indexes"]["knowledge"]["vectorizer"]
+
+    with pytest.raises(ValueError, match="vectorizer"):
+        MCPConfig.model_validate(config)
+
+
 def test_mcp_config_rejects_invalid_search_type():
     config = _valid_config()
     config["indexes"]["knowledge"]["search"] = {"type": "semantic"}
 
     with pytest.raises(ValueError, match="vector|fulltext|hybrid"):
+        MCPConfig.model_validate(config)
+
+
+def test_server_side_embedding_requires_vector_field_and_vectorizer():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "fulltext"}
+    del config["indexes"]["knowledge"]["runtime"]["vector_field_name"]
+
+    with pytest.raises(
+        ValueError, match="default_embed_text_field requires runtime.vector_field_name"
+    ):
+        MCPConfig.model_validate(config)
+
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "fulltext"}
+    del config["indexes"]["knowledge"]["vectorizer"]
+
+    with pytest.raises(
+        ValueError, match="default_embed_text_field requires vectorizer"
+    ):
         MCPConfig.model_validate(config)
 
 

@@ -42,6 +42,7 @@ def _startup_config():
         runtime=SimpleNamespace(max_concurrency=1, startup_timeout_seconds=1),
         server=SimpleNamespace(redis_url="redis://localhost:6379"),
         redis_name="idx",
+        requires_startup_vectorizer=True,
         vectorizer=SimpleNamespace(
             class_name="FakeVectorizer",
             to_init_kwargs=lambda: {},

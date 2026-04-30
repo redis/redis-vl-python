@@ -34,9 +34,9 @@ def reserved_score_metadata_field_names() -> frozenset[str]:
 class MCPRuntimeConfig(BaseModel):
     """Runtime limits and validated field mappings for MCP requests."""
 
-    text_field_name: str = Field(..., min_length=1)
-    vector_field_name: str = Field(..., min_length=1)
-    default_embed_text_field: str = Field(..., min_length=1)
+    text_field_name: str | None = Field(default=None, min_length=1)
+    vector_field_name: str | None = Field(default=None, min_length=1)
+    default_embed_text_field: str | None = Field(default=None, min_length=1)
     default_limit: int = 10
     max_limit: int = 100
     max_result_window: int = 1000
@@ -209,10 +209,75 @@ class MCPIndexBindingConfig(BaseModel):
     """The sole configured v1 index binding."""
 
     redis_name: str = Field(..., min_length=1)
-    vectorizer: MCPVectorizerConfig
+    vectorizer: MCPVectorizerConfig | None = None
     search: MCPIndexSearchConfig
     runtime: MCPRuntimeConfig
     schema_overrides: MCPSchemaOverrides = Field(default_factory=MCPSchemaOverrides)
+
+    @property
+    def uses_text_search(self) -> bool:
+        """Return whether search queries depend on a configured text field."""
+        return self.search.type in {"fulltext", "hybrid"}
+
+    @property
+    def uses_query_embedding(self) -> bool:
+        """Return whether search queries require embedding the user's query."""
+        return self.search.type in {"vector", "hybrid"}
+
+    @property
+    def supports_vector_backed_upsert(self) -> bool:
+        """Return whether upsert should manage a configured vector field."""
+        return self.runtime.vector_field_name is not None
+
+    @property
+    def supports_server_side_embedding(self) -> bool:
+        """Return whether upsert can generate vectors from text fields."""
+        return (
+            self.runtime.vector_field_name is not None
+            and self.runtime.default_embed_text_field is not None
+            and self.vectorizer is not None
+        )
+
+    @property
+    def requires_startup_vectorizer(self) -> bool:
+        """Return whether startup must initialize a configured vectorizer."""
+        return self.uses_query_embedding or self.supports_server_side_embedding
+
+    @model_validator(mode="after")
+    def _validate_capability_requirements(self) -> "MCPIndexBindingConfig":
+        """Require only the config fields needed by enabled capabilities."""
+        if self.uses_text_search and self.runtime.text_field_name is None:
+            raise ValueError(
+                "runtime.text_field_name is required for "
+                f"search.type '{self.search.type}'"
+            )
+
+        if self.uses_query_embedding and self.runtime.vector_field_name is None:
+            raise ValueError(
+                "runtime.vector_field_name is required for "
+                f"search.type '{self.search.type}'"
+            )
+
+        if self.uses_query_embedding and self.vectorizer is None:
+            raise ValueError(
+                f"vectorizer is required for search.type '{self.search.type}'"
+            )
+
+        if (
+            self.runtime.default_embed_text_field is not None
+            and self.runtime.vector_field_name is None
+        ):
+            raise ValueError(
+                "runtime.default_embed_text_field requires runtime.vector_field_name"
+            )
+
+        if (
+            self.runtime.default_embed_text_field is not None
+            and self.vectorizer is None
+        ):
+            raise ValueError("runtime.default_embed_text_field requires vectorizer")
+
+        return self
 
 
 class MCPConfig(BaseModel):
@@ -250,7 +315,7 @@ class MCPConfig(BaseModel):
         return self.binding.runtime
 
     @property
-    def vectorizer(self) -> MCPVectorizerConfig:
+    def vectorizer(self) -> MCPVectorizerConfig | None:
         """Expose the sole binding's vectorizer config for phase 1."""
         return self.binding.vectorizer
 
@@ -258,6 +323,31 @@ class MCPConfig(BaseModel):
     def search(self) -> MCPIndexSearchConfig:
         """Expose the sole binding's configured search behavior."""
         return self.binding.search
+
+    @property
+    def uses_text_search(self) -> bool:
+        """Return whether configured search uses a text field."""
+        return self.binding.uses_text_search
+
+    @property
+    def uses_query_embedding(self) -> bool:
+        """Return whether configured search embeds user queries."""
+        return self.binding.uses_query_embedding
+
+    @property
+    def supports_vector_backed_upsert(self) -> bool:
+        """Return whether configured upserts manage a vector field."""
+        return self.binding.supports_vector_backed_upsert
+
+    @property
+    def supports_server_side_embedding(self) -> bool:
+        """Return whether configured upserts can generate embeddings."""
+        return self.binding.supports_server_side_embedding
+
+    @property
+    def requires_startup_vectorizer(self) -> bool:
+        """Return whether startup must initialize a vectorizer."""
+        return self.binding.requires_startup_vectorizer
 
     @property
     def redis_name(self) -> str:
@@ -343,26 +433,33 @@ class MCPConfig(BaseModel):
         """Ensure runtime mappings point at explicit fields in the effective schema."""
         field_names = set(schema.field_names)
 
-        if self.runtime.text_field_name not in field_names:
+        if self.uses_text_search and self.runtime.text_field_name not in field_names:
             raise ValueError(
                 f"runtime.text_field_name '{self.runtime.text_field_name}' not found in schema"
             )
 
-        if self.runtime.default_embed_text_field not in field_names:
+        if (
+            self.supports_server_side_embedding
+            and self.runtime.default_embed_text_field not in field_names
+        ):
             raise ValueError(
                 "runtime.default_embed_text_field "
                 f"'{self.runtime.default_embed_text_field}' not found in schema"
             )
 
-        vector_field = schema.fields.get(self.runtime.vector_field_name)
-        if vector_field is None:
-            raise ValueError(
-                f"runtime.vector_field_name '{self.runtime.vector_field_name}' not found in schema"
-            )
-        if vector_field.type != "vector":
-            raise ValueError(
-                f"runtime.vector_field_name '{self.runtime.vector_field_name}' must reference a vector field"
-            )
+        if self.uses_query_embedding or self.supports_vector_backed_upsert:
+            vector_field_name = self.runtime.vector_field_name
+            if vector_field_name is None:
+                raise ValueError("runtime.vector_field_name is not configured")
+            vector_field = schema.fields.get(vector_field_name)
+            if vector_field is None:
+                raise ValueError(
+                    f"runtime.vector_field_name '{vector_field_name}' not found in schema"
+                )
+            if vector_field.type != "vector":
+                raise ValueError(
+                    f"runtime.vector_field_name '{vector_field_name}' must reference a vector field"
+                )
 
     def to_index_schema(self, inspected_schema: dict[str, Any]) -> IndexSchema:
         """Apply overrides to an inspected schema and validate the effective result."""
@@ -373,6 +470,8 @@ class MCPConfig(BaseModel):
 
     def get_vector_field(self, schema: IndexSchema) -> BaseField:
         """Return the effective vector field from a validated schema."""
+        if self.runtime.vector_field_name is None:
+            raise ValueError("runtime.vector_field_name is not configured")
         return schema.fields[self.runtime.vector_field_name]
 
     def get_vector_field_dims(self, schema: IndexSchema) -> int | None:

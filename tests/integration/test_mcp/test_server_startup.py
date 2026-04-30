@@ -84,6 +84,7 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
         schema_overrides: dict[str, Any] | None = None,
         runtime_overrides: dict[str, Any] | None = None,
         search: dict[str, Any] | None = None,
+        include_vectorizer: bool = True,
     ) -> str:
         runtime = {
             "text_field_name": "content",
@@ -93,20 +94,21 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
         if runtime_overrides:
             runtime.update(runtime_overrides)
 
+        binding = {
+            "redis_name": redis_name,
+            "search": search or {"type": "vector"},
+            "runtime": runtime,
+        }
+        if include_vectorizer:
+            binding["vectorizer"] = {
+                "class": "FakeVectorizer",
+                "model": "fake-model",
+                "dims": vector_dims,
+            }
+
         config = {
             "server": {"redis_url": redis_url},
-            "indexes": {
-                "knowledge": {
-                    "redis_name": redis_name,
-                    "vectorizer": {
-                        "class": "FakeVectorizer",
-                        "model": "fake-model",
-                        "dims": vector_dims,
-                    },
-                    "search": search or {"type": "vector"},
-                    "runtime": runtime,
-                }
-            },
+            "indexes": {"knowledge": binding},
         }
         if schema_overrides is not None:
             config["indexes"]["knowledge"]["schema_overrides"] = schema_overrides
@@ -137,6 +139,56 @@ async def test_server_startup_success(monkeypatch, existing_index, mcp_config_pa
     assert await started_index.exists() is True
     assert started_index.schema.index.name == index.name
     assert vectorizer.dims == 3
+
+    await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_server_startup_succeeds_for_fulltext_without_vectorizer(
+    monkeypatch, existing_index, mcp_config_path
+):
+    index = await existing_index(
+        index_name="mcp-startup-fulltext",
+        storage_type="hash",
+    )
+    original_build_vectorizer = RedisVLMCPServer._build_vectorizer
+    build_vectorizer_called = False
+
+    def tracked_build_vectorizer(self):
+        nonlocal build_vectorizer_called
+        build_vectorizer_called = True
+        return original_build_vectorizer(self)
+
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    monkeypatch.setattr(
+        RedisVLMCPServer,
+        "_build_vectorizer",
+        tracked_build_vectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=mcp_config_path(
+                redis_name=index.name,
+                search={"type": "fulltext"},
+                runtime_overrides={
+                    "vector_field_name": None,
+                    "default_embed_text_field": None,
+                },
+                include_vectorizer=False,
+            )
+        )
+    )
+
+    await server.startup()
+
+    started_index = await server.get_index()
+    assert await started_index.exists() is True
+    assert build_vectorizer_called is False
+    with pytest.raises(RuntimeError, match="vectorizer is not configured"):
+        await server.get_vectorizer()
 
     await server.shutdown()
 
