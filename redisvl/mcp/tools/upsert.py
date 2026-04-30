@@ -73,10 +73,12 @@ def _validate_request(
 def _record_needs_embedding(
     record: dict[str, Any],
     *,
-    vector_field_name: str,
+    vector_field_name: str | None,
     skip_embedding_if_present: bool,
 ) -> bool:
     """Determine whether a record requires server-side embedding."""
+    if vector_field_name is None:
+        return False
     return (
         not skip_embedding_if_present
         or vector_field_name not in record
@@ -112,6 +114,31 @@ def _validate_embed_sources(
         contents.append(content)
 
     return contents
+
+
+def _validate_supplied_vectors(
+    records: list[dict[str, Any]],
+    *,
+    vector_field_name: str,
+    skip_embedding_if_present: bool,
+) -> None:
+    """Require explicit vectors when embedding support is not configured."""
+    missing_vector_count = 0
+    for record in records:
+        if _record_needs_embedding(
+            record,
+            vector_field_name=vector_field_name,
+            skip_embedding_if_present=skip_embedding_if_present,
+        ):
+            missing_vector_count += 1
+
+    if missing_vector_count:
+        raise RedisVLMCPError(
+            "records requiring vector-backed upsert must include a non-empty "
+            f"'{vector_field_name}' field when server-side embedding is disabled",
+            code=MCPErrorCode.INVALID_REQUEST,
+            retryable=False,
+        )
 
 
 async def _embed_one(vectorizer: Any, content: str) -> list[float]:
@@ -165,12 +192,14 @@ def _vector_dtype(server: Any, index: Any) -> str:
 def _validation_schema_for_record(
     index: Any,
     *,
-    vector_field_name: str,
+    vector_field_name: str | None,
     record: dict[str, Any],
 ) -> Any:
     """Use a JSON-shaped schema when validating list vectors for HASH storage."""
-    if index.schema.index.storage_type == StorageType.HASH and isinstance(
-        record.get(vector_field_name), list
+    if (
+        vector_field_name is not None
+        and index.schema.index.storage_type == StorageType.HASH
+        and isinstance(record.get(vector_field_name), list)
     ):
         schema = index.schema.model_copy(deep=True)
         schema.index.storage_type = StorageType.JSON
@@ -179,7 +208,7 @@ def _validation_schema_for_record(
 
 
 def _validate_record(
-    record: dict[str, Any], *, index: Any, vector_field_name: str
+    record: dict[str, Any], *, index: Any, vector_field_name: str | None
 ) -> None:
     """Validate one record against the schema, allowing HASH list vectors."""
     validate_object(
@@ -202,6 +231,9 @@ def _prepare_record_for_storage(
     prepared = dict(record)
     vector_field_name = server.config.runtime.vector_field_name
     _validate_record(prepared, index=index, vector_field_name=vector_field_name)
+
+    if vector_field_name is None:
+        return prepared
 
     vector_value = prepared.get(vector_field_name)
 
@@ -240,27 +272,50 @@ async def upsert_records(
                 index=index,
                 vector_field_name=runtime.vector_field_name,
             )
-        embed_contents = _validate_embed_sources(
-            prepared_records,
-            embed_text_field=runtime.default_embed_text_field,
-            vector_field_name=runtime.vector_field_name,
-            skip_embedding_if_present=effective_skip_embedding,
-        )
+        if server.config.supports_server_side_embedding:
+            if (
+                runtime.default_embed_text_field is None
+                or runtime.vector_field_name is None
+            ):
+                raise RuntimeError(
+                    "Server-side embedding requires configured text and vector fields"
+                )
+            embed_contents = _validate_embed_sources(
+                prepared_records,
+                embed_text_field=runtime.default_embed_text_field,
+                vector_field_name=runtime.vector_field_name,
+                skip_embedding_if_present=effective_skip_embedding,
+            )
 
-        if embed_contents:
-            vectorizer = await server.get_vectorizer()
-            embeddings = await _embed_many(vectorizer, embed_contents)
-            # Tracks position in the compact embeddings list, which only contains
-            # vectors for records that still need server-side embedding.
-            embedding_index = 0
-            for record in prepared_records:
-                if _record_needs_embedding(
-                    record,
-                    vector_field_name=runtime.vector_field_name,
-                    skip_embedding_if_present=effective_skip_embedding,
-                ):
-                    record[runtime.vector_field_name] = embeddings[embedding_index]
-                    embedding_index += 1
+            if embed_contents:
+                vectorizer = await server.get_vectorizer()
+                # TODO: Avoid re-embedding records that already include vectors.
+                # The current flow can regenerate embeddings for caller-supplied
+                # vectors, which is wasteful and can add external service cost.
+                embeddings = await _embed_many(vectorizer, embed_contents)
+                # Tracks position in the compact embeddings list, which only contains
+                # vectors for records that still need server-side embedding.
+                embedding_index = 0
+                for record in prepared_records:
+                    if _record_needs_embedding(
+                        record,
+                        vector_field_name=runtime.vector_field_name,
+                        skip_embedding_if_present=effective_skip_embedding,
+                    ):
+                        record[runtime.vector_field_name] = embeddings[embedding_index]
+                        embedding_index += 1
+        elif runtime.vector_field_name is not None:
+            if not effective_skip_embedding:
+                raise RedisVLMCPError(
+                    "skip_embedding_if_present=false requires server-side embedding support",
+                    code=MCPErrorCode.INVALID_REQUEST,
+                    retryable=False,
+                )
+            _validate_supplied_vectors(
+                prepared_records,
+                vector_field_name=runtime.vector_field_name,
+                skip_embedding_if_present=effective_skip_embedding,
+            )
 
         loadable_records = [
             _prepare_record_for_storage(record, server=server, index=index)
