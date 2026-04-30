@@ -1,7 +1,7 @@
 import json
 import os
 from argparse import ArgumentParser, Namespace
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 from urllib.parse import quote, urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
