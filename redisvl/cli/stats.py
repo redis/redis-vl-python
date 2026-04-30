@@ -5,7 +5,12 @@ from argparse import Namespace
 import yaml
 from pydantic import ValidationError
 
-from redisvl.cli.utils import add_index_parsing_options, create_redis_url
+from redisvl.cli.utils import (
+    add_index_parsing_options,
+    add_json_output_flag,
+    cli_print_json,
+    create_redis_url,
+)
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.schema.schema import IndexSchema
@@ -67,6 +72,17 @@ STATS_KEYS = [
 ]
 
 
+def _stats_rows(index_info: dict) -> list[tuple[str, object]]:
+    """Normalize ``index.info()`` for both JSON and table output.
+
+    Returns ordered ``(key, value)`` pairs: keys follow ``STATS_KEYS``, values
+    preserve native types from ``index_info``. Missing keys remain ``None``.
+    For JSON, wrap the result in ``dict(...)``; the table stringifies values
+    when rendering.
+    """
+    return [(key, index_info.get(key)) for key in STATS_KEYS]
+
+
 class Stats:
     usage = "\n".join(
         [
@@ -77,6 +93,7 @@ class Stats:
     def __init__(self):
         parser = argparse.ArgumentParser(usage=self.usage)
         parser = add_index_parsing_options(parser)
+        parser = add_json_output_flag(parser)
         args = parser.parse_args(sys.argv[2:])
 
         try:
@@ -93,10 +110,15 @@ class Stats:
             rvl stats -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        try:
-            _display_stats(index.info())
-        except RedisSearchError as e:
-            exit_redis_search_error(args, index, e)
+        index_info = index.info()
+        rows = _stats_rows(index_info)
+        if args.json:
+            cli_print_json(dict(rows))
+        else:
+            try:
+                _display_stats(rows)
+            except RedisSearchError as e:
+                exit_redis_search_error(args, index, e)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         redis_url = create_redis_url(args)
@@ -118,10 +140,7 @@ class Stats:
         sys.exit(2)
 
 
-def _display_stats(index_info):
-    # Extracting the statistics
-    stats_data = [(key, str(index_info.get(key))) for key in STATS_KEYS]
-
+def _display_stats(stats_data: list[tuple[str, object]]) -> None:
     # Display the statistics in tabular format
     print("\nStatistics:")
     max_key_length = max(len(key) for key, _ in stats_data)
@@ -130,5 +149,6 @@ def _display_stats(index_info):
     print("│ Stat Key                    │ Value      │")  # header row
     print(f"├{horizontal_line}┼────────────┤")  # separator row
     for key, value in stats_data:
-        print(f"│ {key:<27} │ {value[0:10]:<10} │")  # data rows
+        value_str = str(value)
+        print(f"│ {key:<27} │ {value_str[0:10]:<10} │")  # data rows
     print(f"╰{horizontal_line}┴────────────╯")  # bottom row
