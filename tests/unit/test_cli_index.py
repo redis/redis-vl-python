@@ -113,7 +113,6 @@ def test_listall_json_error(monkeypatch, capsys):
         SystemExit
     ) as excinfo:  # exit(0) in Index.__init__ is not a plain return
         Index()
-    # assert excinfo.value.code == 0  # "log and exit(0)" CLI contract
     assert (
         capsys.readouterr().out == ""
     )  # failure before cli_print_json — nothing on stdout
@@ -253,5 +252,4 @@ def test_info_json_error(monkeypatch, capsys):
     )
     with pytest.raises(SystemExit) as excinfo:
         Index()
-    # assert excinfo.value.code == 0  # try/except in Index.__init__ + exit(0)
     assert capsys.readouterr().out == ""  # no partial JSON before the exception
