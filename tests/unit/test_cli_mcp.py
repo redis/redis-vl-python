@@ -6,7 +6,7 @@ from collections import namedtuple
 
 import pytest
 
-from redisvl.cli.main import RedisVlCLI, _usage
+from redisvl.cli.main import RedisVlCLI, _command_overview
 
 
 def _import_cli_mcp():
@@ -29,8 +29,8 @@ def _install_fake_redisvl_mcp(monkeypatch, settings_factory, server_factory):
     return fake_module
 
 
-def test_usage_includes_mcp():
-    assert "mcp" in _usage()
+def test_command_overview_includes_mcp():
+    assert "mcp" in _command_overview()
 
 
 def test_cli_dispatches_mcp_command_lazily(monkeypatch):
@@ -94,9 +94,7 @@ def test_mcp_help_includes_description_and_example(monkeypatch, capsys):
     assert exc_info.value.code == 0
     assert "Expose a configured Redis index to MCP clients" in out.out
     assert "Use this command when wiring RedisVL into an MCP client" in out.out
-    assert (
-        "uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp_config.yaml" in out.out
-    )
+    assert "rvl mcp --config /path/to/mcp_config.yaml" in out.out
     assert "--transport" in out.out
     assert "streamable-http" in out.out
     assert "--host" in out.out

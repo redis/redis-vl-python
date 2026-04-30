@@ -36,7 +36,9 @@ def test_listall_json(monkeypatch, capsys):
     assert "Indices:" not in out  # --json must not print the human banner
     assert out.count("\n") == 0  # single machine-readable line, nothing else on stdout
     payload = json.loads(out)
-    assert payload == {"indices": ["idx_a", "idx_b"]}  # same order/encoding as table path would show
+    assert payload == {
+        "indices": ["idx_a", "idx_b"]
+    }  # same order/encoding as table path would show
 
 
 def test_listall_table(monkeypatch, capsys):
@@ -93,10 +95,13 @@ def test_listall_json_error(monkeypatch, capsys):
         "redisvl.cli.index.RedisConnectionFactory.get_redis_connection", fake_get
     )
     monkeypatch.setattr(sys, "argv", ["rvl", "index", "listall", "--json"])
-    with pytest.raises(SystemExit) as excinfo:  # exit(0) in Index.__init__ is not a plain return
+    with pytest.raises(
+        SystemExit
+    ) as excinfo:  # exit(0) in Index.__init__ is not a plain return
         Index()
-    # assert excinfo.value.code == 0  # "log and exit(0)" CLI contract
-    assert capsys.readouterr().out == ""  # failure before cli_print_json — nothing on stdout
+    assert (
+        capsys.readouterr().out == ""
+    )  # failure before cli_print_json — nothing on stdout
 
 
 def test_info_json_normalize():
@@ -199,10 +204,20 @@ def test_info_json(monkeypatch, capsys):
     out = capsys.readouterr().out.strip()
     assert out.count("\n") == 0  # single line for machine consumers
     payload = json.loads(out)
-    assert "Index Information:" not in out and "Index Fields:" not in out  # --json must not emit table banner text
-    assert list(payload) == ["index_information", "index_fields"]  # top-level sections are stable and ordered
-    assert payload["index_information"] == expected_index_information  # summary section matches table-derived values
-    assert payload["index_fields"] == [expected_field]  # one normalized field row with options
+    assert (
+        "Index Information:" not in out and "Index Fields:" not in out
+    )  # --json must not emit table banner text
+    assert list(payload) == [
+        "index_information",
+        "index_fields",
+    ]  # top-level sections are stable and ordered
+    assert (
+        payload["index_information"] == expected_index_information
+    )  # summary section matches table-derived values
+    assert payload["index_fields"] == [
+        expected_field
+    ]  # one normalized field row with options
+
 
 def test_info_json_error(monkeypatch, capsys):
     """Tests that ``info --json`` errors do not emit partial stdout JSON.
@@ -223,5 +238,4 @@ def test_info_json_error(monkeypatch, capsys):
     )
     with pytest.raises(SystemExit) as excinfo:
         Index()
-    # assert excinfo.value.code == 0  # try/except in Index.__init__ + exit(0)
     assert capsys.readouterr().out == ""  # no partial JSON before the exception

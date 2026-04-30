@@ -84,14 +84,28 @@ def _stats_rows(index_info: dict) -> list[tuple[str, object]]:
 
 
 class Stats:
-    usage = "\n".join(
+    description = (
+        "Display statistics for an existing Redis search index.\n\n"
+        "Use `-i/--index` to inspect an existing Redis index by name or "
+        "`-s/--schema` to load the target from a schema YAML file. Shared "
+        "Redis connection options apply to this data-plane command."
+    )
+    epilog = "\n".join(
         [
-            "rvl stats [<args>]\n",
+            "Examples:",
+            "  rvl stats -i user_index",
+            "  rvl stats -s schema.yaml",
+            "  rvl stats -i user_index --host localhost --port 6379",
         ]
     )
 
     def __init__(self):
-        parser = argparse.ArgumentParser(usage=self.usage)
+        parser = argparse.ArgumentParser(
+            prog="rvl stats",
+            description=self.description,
+            epilog=self.epilog,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
         parser = add_index_parsing_options(parser)
         parser = add_json_output_flag(parser)
         args = parser.parse_args(sys.argv[2:])

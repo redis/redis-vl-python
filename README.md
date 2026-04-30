@@ -527,16 +527,26 @@ router("Hi, good morning")
 Create, destroy, and manage Redis index configurations from a purpose-built CLI interface: `rvl`.
 
 ```bash
-$ rvl -h
+$ rvl --help
 
 usage: rvl <command> [<args>]
 
-Commands:
-        index       Index manipulation (create, delete, etc.)
-        mcp         Run the RedisVL MCP server
-        version     Obtain the version of RedisVL
-        stats       Obtain statistics about an index
+Redis Vector Library CLI.
+
+Command groups:
+  index       Create, inspect, list, and delete Redis search indexes
+  stats       Show statistics for an existing Redis search index
+  version     Show the installed RedisVL version
+  mcp         Run the RedisVL MCP server
+
+Examples:
+  rvl index --help
+  rvl index create -s schema.yaml
+  rvl stats -i user_index
+  rvl mcp --config /path/to/mcp.yaml
 ```
+
+Use `rvl index --help` to see documented subcommands such as `create`, `info`, `listall`, `delete`, and `destroy`. Use `rvl stats --help` to see both index-name and schema-path examples plus the shared Redis connection options for data-plane commands.
 
 Run the MCP server over stdio (default):
 

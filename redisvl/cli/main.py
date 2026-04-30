@@ -1,33 +1,48 @@
 import argparse
 import sys
 
-from redisvl.cli.index import Index
-from redisvl.cli.stats import Stats
-from redisvl.cli.version import Version
 from redisvl.utils.log import get_logger
 
 logger = get_logger(__name__)
 
 
 def _usage():
-    usage = [
-        "rvl <command> [<args>]\n",
-        "Commands:",
-        "\tindex       Index manipulation (create, delete, etc.)",
-        "\tmcp         Run the RedisVL MCP server",
-        "\tversion     Obtain the version of RedisVL",
-        "\tstats       Obtain statistics about an index",
+    return "rvl <command> [<args>]"
+
+
+def _command_overview():
+    command_groups = [
+        "Command groups:",
+        "  index       Create, inspect, list, and delete Redis search indexes",
+        "  stats       Show statistics for an existing Redis search index",
+        "  version     Show the installed RedisVL version",
+        "  mcp         Run the RedisVL MCP server",
     ]
-    return "\n".join(usage) + "\n"
+    return "\n".join(command_groups)
+
+
+def _examples():
+    examples = [
+        "Examples:",
+        "  rvl index --help",
+        "  rvl index create -s schema.yaml",
+        "  rvl stats -i user_index",
+        "  rvl mcp --config /path/to/mcp.yaml",
+    ]
+    return "\n".join(examples)
 
 
 class RedisVlCLI:
     def __init__(self):
         parser = argparse.ArgumentParser(
-            description="Redis Vector Library CLI", usage=_usage()
+            prog="rvl",
+            description=f"Redis Vector Library CLI.\n\n{_command_overview()}",
+            usage=_usage(),
+            epilog=_examples(),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
         )
 
-        parser.add_argument("command", help="Subcommand to run")
+        parser.add_argument("command", nargs="?", help="Command group to run")
 
         if len(sys.argv) < 2:
             parser.print_help(sys.stdout)
@@ -35,7 +50,7 @@ class RedisVlCLI:
 
         args = parser.parse_args(sys.argv[1:2])
 
-        if not hasattr(self, args.command):
+        if not args.command or not hasattr(self, args.command):
             print(f"Unknown command: {args.command}\n", file=sys.stderr)
             parser.print_help(sys.stderr)
             sys.exit(2)
@@ -47,6 +62,8 @@ class RedisVlCLI:
             sys.exit(1)
 
     def index(self):
+        from redisvl.cli.index import Index
+
         Index()
         sys.exit(0)
 
@@ -57,9 +74,13 @@ class RedisVlCLI:
         sys.exit(0)
 
     def version(self):
+        from redisvl.cli.version import Version
+
         Version()
         sys.exit(0)
 
     def stats(self):
+        from redisvl.cli.stats import Stats
+
         Stats()
         sys.exit(0)

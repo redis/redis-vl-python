@@ -83,7 +83,7 @@ def test_stats_missing_index_and_schema_exits_zero_without_json(monkeypatch, cap
     monkeypatch.setattr(sys, "argv", ["rvl", "stats", "--json"])
     with pytest.raises(SystemExit) as excinfo:
         Stats()
-    assert excinfo.value.code == 2  
+    assert excinfo.value.code == 2
     assert capsys.readouterr().out == ""  # no JSON object emitted on error
 
 

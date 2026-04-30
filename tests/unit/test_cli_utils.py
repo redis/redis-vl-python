@@ -4,7 +4,12 @@ from typing import Optional
 
 import pytest
 
-from redisvl.cli.utils import add_index_parsing_options, add_json_output_flag, cli_print_json, create_redis_url
+from redisvl.cli.utils import (
+    add_index_parsing_options,
+    add_json_output_flag,
+    cli_print_json,
+    create_redis_url,
+)
 
 
 @pytest.fixture
