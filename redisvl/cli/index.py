@@ -2,7 +2,11 @@ import argparse
 import sys
 from argparse import Namespace
 
+import yaml
+from pydantic import ValidationError
+
 from redisvl.cli.utils import add_index_parsing_options, create_redis_url
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes, make_dict
@@ -10,6 +14,36 @@ from redisvl.schema.schema import IndexSchema
 from redisvl.utils.log import get_logger
 
 logger = get_logger("[RedisVL]")
+
+# Exceptions commonly raised when loading or validating a schema path (-s).
+SCHEMA_INPUT_ERRORS = (
+    FileNotFoundError,
+    ValueError,
+    yaml.YAMLError,
+    ValidationError,
+)
+
+
+def exit_schema_input_error(args: Namespace, exc: BaseException) -> None:
+    if not args.schema:
+        raise exc
+    print(str(exc), file=sys.stderr)
+    sys.exit(2)
+
+
+def exit_redis_search_error(
+    args: Namespace, index: SearchIndex | None, exc: RedisSearchError
+) -> None:
+    name = (
+        index.schema.index.name
+        if index is not None
+        else (args.index or args.schema or "unknown")
+    )
+    print(
+        f"Redis search operation failed for index {name!r}. {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 class Index:
@@ -32,14 +66,18 @@ class Index:
         parser = self._build_parser()
 
         args = parser.parse_args(sys.argv[2:])
-        if not getattr(args, "command", None):
-            parser.print_help()
-            exit(0)
+
+        if not hasattr(self, args.command):
+            print(f"Unknown command: {args.command}\n", file=sys.stderr)
+            parser.print_help(sys.stderr)
+            sys.exit(2)
+
         try:
             args.handler(args)
         except Exception as e:
-            logger.error(e)
-            exit(0)
+            logger.error(e, exc_info=True)
+            print(str(e), file=sys.stderr)
+            sys.exit(1)
 
     def _build_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
@@ -139,13 +177,21 @@ class Index:
         """Create an index.
 
         Usage:
-            rvl index create -i <index_name> | -s <schema_path>
+            rvl index create -s <schema_path>
         """
         if not args.schema:
-            print("Schema must be provided to create an index")
-            exit(1)
-        index = SearchIndex.from_yaml(args.schema, redis_url=create_redis_url(args))
-        index.create()
+            print("Schema must be provided to create an index", file=sys.stderr)
+            sys.exit(2)
+
+        redis_url = create_redis_url(args)
+        try:
+            index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
+        except SCHEMA_INPUT_ERRORS as e:
+            exit_schema_input_error(args, e)
+        try:
+            index.create()
+        except RedisSearchError as e:
+            exit_redis_search_error(args, index, e)
         print("Index created successfully")
 
     def info(self, args: Namespace):
@@ -155,7 +201,10 @@ class Index:
             rvl index info -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        _display_in_table(index.info())
+        try:
+            _display_in_table(index.info())
+        except RedisSearchError as e:
+            exit_redis_search_error(args, index, e)
 
     def listall(self, args: Namespace):
         """List all indices.
@@ -177,7 +226,10 @@ class Index:
             rvl index delete -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        index.delete(drop=drop)
+        try:
+            index.delete(drop=drop)
+        except RedisSearchError as e:
+            exit_redis_search_error(args, index, e)
         print("Index deleted successfully")
 
     def destroy(self, args: Namespace):
@@ -189,19 +241,23 @@ class Index:
         self.delete(args, drop=True)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
-        # connect to redis
         redis_url = create_redis_url(args)
 
         if args.index:
-            schema = IndexSchema.from_dict({"index": {"name": args.index}})
-            index = SearchIndex(schema=schema, redis_url=redis_url)
-        elif args.schema:
-            index = SearchIndex.from_yaml(args.schema, redis_url=redis_url)
-        else:
-            print("Index name or schema must be provided")
-            exit(1)
+            try:
+                schema = IndexSchema.from_dict({"index": {"name": args.index}})
+                return SearchIndex(schema=schema, redis_url=redis_url)
+            except SCHEMA_INPUT_ERRORS as e:
+                exit_schema_input_error(args, e)
 
-        return index
+        if args.schema:
+            try:
+                return SearchIndex.from_yaml(args.schema, redis_url=redis_url)
+            except SCHEMA_INPUT_ERRORS as e:
+                exit_schema_input_error(args, e)
+
+        print("Index name or schema must be provided", file=sys.stderr)
+        sys.exit(2)
 
 
 def _display_in_table(index_info):

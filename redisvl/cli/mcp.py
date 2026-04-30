@@ -7,11 +7,11 @@ import sys
 
 
 class _MCPArgumentParser(argparse.ArgumentParser):
-    """ArgumentParser variant that reports usage errors with exit code 1."""
+    """ArgumentParser variant that reports usage errors with exit code 2."""
 
     def error(self, message):
         self.print_usage(sys.stderr)
-        self.exit(1, "%s: error: %s\n" % (self.prog, message))
+        self.exit(2, "%s: error: %s\n" % (self.prog, message))
 
 
 class MCP:

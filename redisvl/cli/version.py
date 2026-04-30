@@ -3,9 +3,6 @@ import sys
 from argparse import Namespace
 
 from redisvl import __version__
-from redisvl.utils.log import get_logger
-
-logger = get_logger("[RedisVL]")
 
 
 class Version:
@@ -29,4 +26,4 @@ class Version:
         if args.short:
             print(__version__)
         else:
-            logger.info(f"RedisVL version {__version__}")
+            print(f"RedisVL version {__version__}")
