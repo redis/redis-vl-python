@@ -116,7 +116,7 @@ class Stats:
             cli_print_json(dict(rows))
         else:
             try:
-                _display_stats(rows))
+                _display_stats(rows)
             except RedisSearchError as e:
                 exit_redis_search_error(args, index, e)
 
