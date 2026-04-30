@@ -464,7 +464,7 @@ def test_mcp_command_rejects_invalid_transport(monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc_info:
         module.MCP()
 
-    assert exc_info.value.code == 1
+    assert exc_info.value.code == 2
     out = capsys.readouterr()
     assert "invalid choice" in out.err or "invalid choice" in out.out
 
