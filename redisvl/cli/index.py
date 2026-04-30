@@ -76,11 +76,6 @@ class Index:
             parser.print_help(sys.stderr)
             sys.exit(2)
 
-        if not hasattr(self, args.command):
-            print(f"Unknown command: {args.command}\n", file=sys.stderr)
-            parser.print_help(sys.stderr)
-            sys.exit(2)
-
         try:
             args.handler(args)
         except Exception as e:
