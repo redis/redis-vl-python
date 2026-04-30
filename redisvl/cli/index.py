@@ -114,14 +114,15 @@ class Index:
             rvl index info -i <index_name> | -s <schema_path> [--json]
         """
         index = self._connect_to_index(args)
-        index_info = index.info()
+        try:
+            index_info = index.info()
+        except RedisSearchError as e:
+            exit_redis_search_error(args, index, e)
+
         if args.json:
             cli_print_json(_index_info_for_json(index_info))
         else:
-            try:
-                _display_in_table(index_info)
-            except RedisSearchError as e:
-                exit_redis_search_error(args, index, e)
+            _display_in_table(index_info)
 
     def listall(self, args: Namespace):
         """List all indices.
