@@ -41,6 +41,20 @@ def test_listall_json(monkeypatch, capsys):
     }  # same order/encoding as table path would show
 
 
+def test_index_without_subcommand_prints_help(monkeypatch, capsys):
+    """Tests that ``rvl index`` without a subcommand exits with help, not a traceback."""
+
+    monkeypatch.setattr(sys, "argv", ["rvl", "index"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        Index()
+
+    captured = capsys.readouterr()
+    assert excinfo.value.code == 2
+    assert "usage: rvl index" in captured.err
+    assert "attribute name must be string" not in captured.err
+
+
 def test_listall_table(monkeypatch, capsys):
     """Tests that default ``listall`` keeps the human-readable table output.
 

@@ -72,6 +72,10 @@ class Index:
 
         args = parser.parse_args(sys.argv[2:])
 
+        if not args.command:
+            parser.print_help(sys.stderr)
+            sys.exit(2)
+
         if not hasattr(self, args.command):
             print(f"Unknown command: {args.command}\n", file=sys.stderr)
             parser.print_help(sys.stderr)
