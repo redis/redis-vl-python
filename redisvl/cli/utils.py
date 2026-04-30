@@ -1,5 +1,7 @@
+import json
 import os
 from argparse import ArgumentParser, Namespace
+from typing import Any, Mapping
 from urllib.parse import quote, urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
@@ -91,3 +93,27 @@ def add_index_parsing_options(parser: ArgumentParser) -> ArgumentParser:
         default=None,
     )
     return parser
+
+
+def _cli_json_default(obj: object) -> object:
+    """Handle common non-JSON-native types (e.g. bytes from Redis) for cli_print_json."""
+    if isinstance(obj, bytes):
+        return obj.decode("utf-8", errors="replace")
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def add_json_output_flag(parser: ArgumentParser) -> ArgumentParser:
+    """Register ``--json`` for machine-readable stdout (one JSON object on success)."""
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json",
+        default=False,
+        help="Format output (when successful) as machine-readable JSON",
+    )
+    return parser
+
+
+def cli_print_json(data: Mapping[str, Any]) -> None:
+    """Write a single JSON object to stdout (deterministic key order for tests and scripts)."""
+    print(json.dumps(data, default=_cli_json_default))
