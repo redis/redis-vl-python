@@ -110,15 +110,16 @@ class Stats:
             rvl stats -i <index_name> | -s <schema_path>
         """
         index = self._connect_to_index(args)
-        index_info = index.info()
+        try:
+            index_info = index.info()
+        except RedisSearchError as e:
+            exit_redis_search_error(args, index, e)
+
         rows = _stats_rows(index_info)
         if args.json:
             cli_print_json(dict(rows))
         else:
-            try:
-                _display_stats(rows)
-            except RedisSearchError as e:
-                exit_redis_search_error(args, index, e)
+            _display_stats(rows)
 
     def _connect_to_index(self, args: Namespace) -> SearchIndex:
         redis_url = create_redis_url(args)
