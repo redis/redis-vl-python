@@ -7,6 +7,10 @@ myst:
 
 # Migrate an Index
 
+```{warning}
+The index migrator is an **experimental** feature. APIs, CLI commands, and on-disk formats (plans, checkpoints, backups) may change in future releases. Review migration plans carefully before applying to production indexes.
+```
+
 This guide shows how to safely change your index schema using the RedisVL migrator.
 
 ## Quick Start

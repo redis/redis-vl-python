@@ -50,6 +50,13 @@ class Migrate:
         ]
     )
 
+    _EXPERIMENTAL_BANNER = (
+        "NOTE: The index migrator is an experimental feature. "
+        "APIs, CLI commands, and on-disk formats (plans, checkpoints, backups) "
+        "may change in future releases. "
+        "Review migration plans carefully before applying to production indexes."
+    )
+
     def __init__(self):
         parser = argparse.ArgumentParser(usage=self.usage)
         parser.add_argument("command", help="Subcommand to run")
@@ -60,6 +67,8 @@ class Migrate:
             print(f"Unknown subcommand: {args.command}")
             parser.print_help()
             sys.exit(1)
+
+        print(f"\n⚠️  {self._EXPERIMENTAL_BANNER}\n")
 
         try:
             getattr(self, command)()

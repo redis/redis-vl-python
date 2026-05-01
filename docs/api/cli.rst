@@ -446,6 +446,10 @@ The command returns the following metrics:
 rvl migrate
 -----------
 
+.. warning::
+
+   The index migrator is an **experimental** feature. APIs, CLI commands, and on-disk formats (plans, checkpoints, backups) may change in future releases. Review migration plans carefully before applying to production indexes.
+
 Manage document-preserving index migrations. This command group provides subcommands for planning, executing, and validating schema migrations that preserve existing data.
 
 **Syntax**
