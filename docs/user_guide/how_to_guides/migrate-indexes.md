@@ -686,7 +686,7 @@ rvl migrate validate \
 
 **Apply flags (quantization & reliability):**
 - `--backup-dir <dir>` : Directory for vector backup files. Enables crash-safe resume and manual rollback. Required when using `--workers` > 1.
-- `--batch-size <N>` : Keys per pipeline batch (default 500). Values 200–1000 are typical.
+- `--batch-size <N>` : Keys per pipeline batch (default 500). Values 200 to 1000 are typical.
 - `--workers <N>` : Parallel quantization workers (default 1). Each worker opens its own Redis connection. See [Performance](#performance-tuning) for guidance.
 - `--keep-backup` : Retain backup files after a successful migration (default: auto-cleanup).
 
@@ -736,10 +736,10 @@ When you pass `--backup-dir` (or `backup_dir` in the Python API), the
 migration executor saves **original vector bytes** to disk before mutating
 them. This enables two key capabilities:
 
-1. **Crash-safe resume** — if the process dies mid-migration, re-running the
+1. **Crash-safe resume**: if the process dies mid-migration, re-running the
    same command with the same `--backup-dir` automatically detects partial
    progress and resumes from the last completed batch.
-2. **Manual rollback** — the backup files contain the original (pre-quantization)
+2. **Manual rollback**: the backup files contain the original (pre-quantization)
    vector values, which can be restored to undo a migration.
 
 Backup files are written to the specified directory with this layout:
@@ -767,7 +767,7 @@ the exact same command:
 rvl migrate apply --plan plan.yaml --url redis://localhost:6379 \
   --backup-dir /tmp/backups --workers 4
 
-# Just re-run it — progress is resumed automatically
+# Just re-run it. Progress is resumed automatically
 rvl migrate apply --plan plan.yaml --url redis://localhost:6379 \
   --backup-dir /tmp/backups --workers 4
 ```
@@ -1164,7 +1164,7 @@ phase of a datatype migration. Observed throughput on a local Redis instance:
 
 **Guidance:**
 - For **low-dimensional vectors** (≤ 256 dims), use `--workers 1` (the default). Per-vector conversion is so cheap that process-spawning and extra-connection overhead outweigh the parallelism benefit.
-- For **high-dimensional vectors** (≥ 768 dims), `--workers 2-4` may help if the Redis server has available CPU headroom. Diminishing returns above 4–8 workers on a single Redis instance because Redis command processing is single-threaded.
+- For **high-dimensional vectors** (≥ 768 dims), `--workers 2-4` may help if the Redis server has available CPU headroom. Diminishing returns above 4 to 8 workers on a single Redis instance because Redis command processing is single-threaded.
 - The main bottleneck for large migrations is typically **index rebuild time** (the `FT.CREATE` background indexing after vectors are written), not quantization itself.
 
 ### Batch Size
@@ -1188,7 +1188,7 @@ mutation. Approximate size: `num_docs × dims × bytes_per_element`.
 
 ```{note}
 When migrating from **HNSW** to **FLAT**, the target index may report a
-*higher* document count than the source. This is not a bug — it reflects
+*higher* document count than the source. This is not a bug; it reflects
 a fundamental difference in how the two algorithms store vectors.
 
 HNSW maintains a navigable small-world graph with per-node neighbor lists.
