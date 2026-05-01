@@ -267,7 +267,7 @@ Key vector attributes:
 - `dims`: Vector dimensionality (required)
 - `algorithm`: `flat`, `hnsw`, or `svs-vamana`
 - `distance_metric`: `COSINE`, `L2`, or `IP`
-- `datatype`: `float16`, `float32`, `float64`, or `bfloat16`
+- `datatype`: Vector precision (see table below)
 - `index_missing`: Allow searching for documents without vectors
 
 ```yaml
@@ -280,6 +280,48 @@ Key vector attributes:
     datatype: float32
     index_missing: true  # Handle documents without embeddings
 ```
+
+### Vector Datatypes
+
+The `datatype` attribute controls how vector components are stored. Smaller datatypes reduce memory usage but may affect precision.
+
+| Datatype | Bits | Memory (768 dims) | Use Case |
+|----------|------|-------------------|----------|
+| `float32` | 32 | 3 KB | Default. Best precision for most applications. |
+| `float16` | 16 | 1.5 KB | Good balance of memory and precision. Recommended for large-scale deployments. |
+| `bfloat16` | 16 | 1.5 KB | Better dynamic range than float16. Useful when embeddings have large value ranges. |
+| `float64` | 64 | 6 KB | Maximum precision. Rarely needed. |
+| `int8` | 8 | 768 B | Integer quantization. Significant memory savings with some precision loss. |
+| `uint8` | 8 | 768 B | Unsigned integer quantization. For embeddings with non-negative values. |
+
+**Algorithm Compatibility:**
+
+| Datatype | FLAT | HNSW | SVS-VAMANA |
+|----------|------|------|------------|
+| `float32` | Yes | Yes | Yes |
+| `float16` | Yes | Yes | Yes |
+| `bfloat16` | Yes | Yes | No |
+| `float64` | Yes | Yes | No |
+| `int8` | Yes | Yes | No |
+| `uint8` | Yes | Yes | No |
+
+**Choosing a Datatype:**
+
+- **Start with `float32`** unless you have memory constraints
+- **Use `float16`** for production systems with millions of vectors (50% memory savings, minimal precision loss)
+- **Use `int8`/`uint8`** only after benchmarking recall on your specific dataset
+- **SVS-VAMANA users**: Must use `float16` or `float32`
+
+**Quantization with the Migrator:**
+
+You can change vector datatypes on existing indexes using the migration wizard:
+
+```bash
+rvl migrate wizard --index my_index --url redis://localhost:6379
+# Select "Update field" > choose vector field > change datatype
+```
+
+The migrator automatically re-encodes stored vectors to the new precision. See {doc}`/user_guide/how_to_guides/migrate-indexes` for details.
 
 ## Redis-Specific Subtleties
 
@@ -303,6 +345,54 @@ Not all attributes work with all field types:
 | `index_empty` | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `unf` | ✓ | ✗ | ✓ | ✗ | ✗ |
 | `withsuffixtrie` | ✓ | ✓ | ✗ | ✗ | ✗ |
+
+### Migration Support
+
+The migration wizard (`rvl migrate wizard`) supports updating field attributes on existing indexes. The table below shows which attributes can be updated via the wizard vs requiring manual schema patch editing.
+
+**Wizard Prompts:**
+
+| Attribute | Text | Tag | Numeric | Geo | Vector |
+|-----------|------|-----|---------|-----|--------|
+| `sortable` | Wizard | Wizard | Wizard | Wizard | N/A |
+| `index_missing` | Wizard | Wizard | Wizard | Wizard | N/A |
+| `index_empty` | Wizard | Wizard | N/A | N/A | N/A |
+| `no_index` | Wizard | Wizard | Wizard | Wizard | N/A |
+| `unf` | Wizard* | N/A | Wizard* | N/A | N/A |
+| `separator` | N/A | Wizard | N/A | N/A | N/A |
+| `case_sensitive` | N/A | Wizard | N/A | N/A | N/A |
+| `no_stem` | Wizard | N/A | N/A | N/A | N/A |
+| `weight` | Wizard | N/A | N/A | N/A | N/A |
+| `algorithm` | N/A | N/A | N/A | N/A | Wizard |
+| `datatype` | N/A | N/A | N/A | N/A | Wizard |
+| `distance_metric` | N/A | N/A | N/A | N/A | Wizard |
+| `m`, `ef_construction` | N/A | N/A | N/A | N/A | Wizard |
+
+*\* `unf` is only prompted when `sortable` is enabled.*
+
+**Manual Schema Patch Required:**
+
+| Attribute | Notes |
+|-----------|-------|
+| `withsuffixtrie` | Suffix/contains search optimization |
+
+*Note: `phonetic_matcher` is supported by the wizard for text fields.*
+
+**Example manual patch** for adding `index_missing` to a field:
+
+```yaml
+# schema_patch.yaml
+version: 1
+changes:
+  update_fields:
+    - name: category
+      attrs:
+        index_missing: true
+```
+
+```bash
+rvl migrate plan --index my_index --schema-patch schema_patch.yaml
+```
 
 ### JSON Path for Nested Fields
 
