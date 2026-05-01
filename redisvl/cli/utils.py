@@ -1,7 +1,7 @@
 import json
 import os
-from argparse import ArgumentParser, Namespace
-from typing import Any, Mapping
+from argparse import ArgumentParser, Namespace, _ArgumentGroup
+from typing import Any, Mapping, Union
 from urllib.parse import quote, urlparse, urlunparse
 
 from redisvl.redis.constants import REDIS_URL_ENV_VAR
@@ -75,7 +75,9 @@ def create_redis_url(args: Namespace) -> str:
     return _build_redis_url(args)
 
 
-def _add_redis_connection_args(parser_or_group: ArgumentParser) -> None:
+def _add_redis_connection_args(
+    parser_or_group: Union[ArgumentParser, _ArgumentGroup],
+) -> None:
     """Add Redis connection flags to a parser or argument group."""
     parser_or_group.add_argument(
         "-u",
@@ -103,9 +105,7 @@ def _add_redis_connection_args(parser_or_group: ArgumentParser) -> None:
         type=str,
         default=None,
     )
-    parser_or_group.add_argument(
-        "--ssl", help="Use SSL for Redis", action="store_true"
-    )
+    parser_or_group.add_argument("--ssl", help="Use SSL for Redis", action="store_true")
     parser_or_group.add_argument(
         "-a",
         "--password",
