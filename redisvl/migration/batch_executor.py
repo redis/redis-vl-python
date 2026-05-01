@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -221,13 +222,10 @@ class BatchMigrationExecutor:
                 redis_client=redis_client,
             )
 
-            # Sanitize index_name to prevent path traversal and invalid filenames
-            safe_name = (
-                index_name.replace("/", "_")
-                .replace("\\", "_")
-                .replace("..", "_")
-                .replace(":", "_")
-            )
+            # Sanitize index_name: replace any character that isn't
+            # alphanumeric, dot, hyphen, or underscore to avoid path
+            # traversal and filesystem-invalid characters (e.g. : on Windows).
+            safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", index_name)
             report_file = report_dir / f"{safe_name}_report.yaml"
             write_yaml(report.model_dump(exclude_none=True), str(report_file))
 

@@ -128,7 +128,9 @@ def split_keys(keys: List[str], num_workers: int) -> List[List[str]]:
         num_workers: Number of workers
 
     Returns:
-        List of key slices (some may be empty if keys < workers)
+        List of key slices.  May contain fewer than ``num_workers``
+        entries when ``len(keys) < num_workers``; returns an empty
+        list when *keys* is empty.
     """
     if num_workers < 1:
         raise ValueError(f"num_workers must be >= 1, got {num_workers}")
@@ -212,9 +214,6 @@ def _worker_quantize(
             backup.mark_complete()
         elif backup.header.phase == "completed":
             # Already done from previous run
-            docs_quantized = sum(
-                1 for _ in range(0, total, batch_size) for _ in keys[:batch_size]
-            )
             docs_quantized = total
 
         return {"worker_id": worker_id, "docs": docs_quantized}

@@ -1006,3 +1006,126 @@ def test_plan_no_warning_when_stats_missing_failures_key(monkeypatch, tmp_path):
 
     failure_warnings = [w for w in plan.warnings if "hash indexing failure" in w]
     assert len(failure_warnings) == 0
+
+
+# =============================================================================
+# TDD: Validation cluster-safe EXISTS + multi-prefix key translation
+# =============================================================================
+from unittest.mock import MagicMock
+
+from redisvl.migration.models import (
+    DiffClassification,
+    KeyspaceSnapshot,
+    MigrationPlan,
+    MigrationValidation,
+    RenameOperations,
+    SourceSnapshot,
+    ValidationPolicy,
+)
+from redisvl.migration.validation import MigrationValidator
+
+
+def _make_minimal_plan(
+    *,
+    key_sample,
+    prefixes,
+    change_prefix=None,
+    merged_target_schema=None,
+):
+    """Build a minimal MigrationPlan for validator testing."""
+    if merged_target_schema is None:
+        merged_target_schema = {
+            "index": {"name": "target_idx", "prefix": "new:", "storage_type": "hash"},
+            "fields": [{"name": "title", "type": "text"}],
+        }
+
+    return MigrationPlan(
+        source=SourceSnapshot(
+            index_name="src_idx",
+            schema_snapshot={
+                "index": {"name": "src_idx", "prefix": "old:", "storage_type": "hash"},
+                "fields": [{"name": "title", "type": "text"}],
+            },
+            stats_snapshot={"num_docs": 3, "hash_indexing_failures": 0},
+            keyspace=KeyspaceSnapshot(
+                storage_type="hash",
+                prefixes=prefixes,
+                key_separator=":",
+                key_sample=key_sample,
+            ),
+        ),
+        requested_changes={"version": 1, "changes": {}},
+        merged_target_schema=merged_target_schema,
+        diff_classification=DiffClassification(supported=True),
+        rename_operations=RenameOperations(change_prefix=change_prefix),
+    )
+
+
+class TestValidatorClusterSafeExists:
+    """Verify per-key EXISTS calls (not multi-key splat)."""
+
+    def test_exists_called_per_key(self, monkeypatch):
+        """EXISTS should be called once per key, not with *keys_to_check."""
+        plan = _make_minimal_plan(
+            key_sample=["old:1", "old:2", "old:3"],
+            prefixes=["old:"],
+        )
+
+        mock_client = MagicMock()
+        mock_client.exists.return_value = 1  # Each key exists
+
+        mock_index = MagicMock()
+        mock_index.client = mock_client
+        mock_index.info.return_value = {"num_docs": 3, "hash_indexing_failures": 0}
+        mock_index.schema.to_dict.return_value = plan.merged_target_schema
+        mock_index.search.return_value = MagicMock(total=3)
+
+        monkeypatch.setattr(
+            "redisvl.migration.validation.SearchIndex.from_existing",
+            lambda *a, **kw: mock_index,
+        )
+
+        validator = MigrationValidator()
+        validation, _, _ = validator.validate(plan, redis_url="redis://localhost")
+
+        # EXISTS should have been called 3 times (once per key), not once with 3 args
+        assert mock_client.exists.call_count == 3
+        for call in mock_client.exists.call_args_list:
+            # Each call should have exactly 1 positional arg
+            assert len(call.args) == 1
+
+
+class TestValidatorMultiPrefixKeyTranslation:
+    """Verify multi-prefix key translation during prefix change."""
+
+    def test_multi_prefix_keys_translated(self, monkeypatch):
+        """Keys matching different prefixes should all be translated correctly."""
+        plan = _make_minimal_plan(
+            key_sample=["pfx_a:1", "pfx_b:2", "pfx_a:3"],
+            prefixes=["pfx_a:", "pfx_b:"],
+            change_prefix="new:",
+        )
+
+        mock_client = MagicMock()
+        mock_client.exists.return_value = 1
+
+        mock_index = MagicMock()
+        mock_index.client = mock_client
+        mock_index.info.return_value = {"num_docs": 3, "hash_indexing_failures": 0}
+        mock_index.schema.to_dict.return_value = plan.merged_target_schema
+        mock_index.search.return_value = MagicMock(total=3)
+
+        monkeypatch.setattr(
+            "redisvl.migration.validation.SearchIndex.from_existing",
+            lambda *a, **kw: mock_index,
+        )
+
+        validator = MigrationValidator()
+        validation, _, _ = validator.validate(plan, redis_url="redis://localhost")
+
+        # Verify the keys were translated correctly
+        called_keys = [call.args[0] for call in mock_client.exists.call_args_list]
+        assert "new:1" in called_keys
+        assert "new:2" in called_keys
+        assert "new:3" in called_keys
+        assert validation.key_sample_exists is True

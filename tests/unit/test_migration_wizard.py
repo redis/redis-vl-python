@@ -1188,3 +1188,155 @@ class TestWizardAdversarialInputs:
 
         update = patch.changes.update_fields[0]
         assert "graph_max_degree" not in update.attrs
+
+
+# =============================================================================
+# TDD: Wizard rename/remove interaction bug fixes
+# =============================================================================
+
+
+class TestWizardRenameRemoveInteractions:
+    """Tests for rename/remove interaction edge cases in the wizard."""
+
+    def test_rename_then_remove_target_cleans_rename(self, monkeypatch):
+        """Rename a→b, then remove b should cancel the rename and update."""
+        source_schema = {
+            "index": {"name": "idx", "prefix": "t:", "storage_type": "hash"},
+            "fields": [
+                {"name": "a", "type": "text"},
+                {"name": "c", "type": "text"},
+            ],
+        }
+
+        answers = iter(
+            [
+                # Rename a→b
+                "4",
+                "a",
+                "b",
+                # Remove b (which is renamed-from a)
+                "3",
+                "b",
+                # Finish
+                "8",
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+        wizard = MigrationWizard()
+        patch = wizard._build_patch(source_schema)
+
+        # The rename a→b should be cancelled
+        assert len(patch.changes.rename_fields) == 0
+        # b should be in remove_fields (it's the working-name after rename)
+        assert "b" in patch.changes.remove_fields
+
+    def test_chained_rename_collapsed(self, monkeypatch):
+        """Rename a→b then b→c should collapse into a single a→c."""
+        source_schema = {
+            "index": {"name": "idx", "prefix": "t:", "storage_type": "hash"},
+            "fields": [
+                {"name": "a", "type": "text"},
+                {"name": "d", "type": "text"},
+            ],
+        }
+
+        answers = iter(
+            [
+                # Rename a→b
+                "4",
+                "a",
+                "b",
+                # Rename b→c (chained)
+                "4",
+                "b",
+                "c",
+                # Finish
+                "8",
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+        wizard = MigrationWizard()
+        patch = wizard._build_patch(source_schema)
+
+        assert len(patch.changes.rename_fields) == 1
+        assert patch.changes.rename_fields[0].old_name == "a"
+        assert patch.changes.rename_fields[0].new_name == "c"
+
+    def test_rename_to_staged_removal_blocked(self, monkeypatch):
+        """Renaming field to a name that is staged for removal should be blocked."""
+        source_schema = {
+            "index": {"name": "idx", "prefix": "t:", "storage_type": "hash"},
+            "fields": [
+                {"name": "a", "type": "text"},
+                {"name": "b", "type": "text"},
+            ],
+        }
+
+        answers = iter(
+            [
+                # Remove b
+                "3",
+                "b",
+                # Try to rename a→b (should be blocked)
+                "4",
+                "a",
+                "b",
+                # Finish
+                "8",
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+        wizard = MigrationWizard()
+        patch = wizard._build_patch(source_schema)
+
+        # The rename should NOT have been accepted
+        assert len(patch.changes.rename_fields) == 0
+        # b should still be in remove_fields
+        assert "b" in patch.changes.remove_fields
+
+    def test_update_then_rename_then_remove_cleans_update(self, monkeypatch):
+        """Update a, rename a→b, remove b should clean both rename and update."""
+        source_schema = {
+            "index": {"name": "idx", "prefix": "t:", "storage_type": "hash"},
+            "fields": [
+                {"name": "a", "type": "text"},
+                {"name": "c", "type": "text"},
+            ],
+        }
+
+        answers = iter(
+            [
+                # Update a: set sortable=y, then defaults
+                "2",
+                "a",
+                "y",  # sortable
+                "n",  # index_missing
+                "n",  # index_empty
+                "n",  # no_stem
+                "",  # weight
+                "",  # phonetic
+                "n",  # unf
+                "n",  # no_index
+                # Rename a→b
+                "4",
+                "a",
+                "b",
+                # Remove b
+                "3",
+                "b",
+                # Finish
+                "8",
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+        wizard = MigrationWizard()
+        patch = wizard._build_patch(source_schema)
+
+        # Rename cancelled, update for 'a' cleaned
+        assert len(patch.changes.rename_fields) == 0
+        assert len(patch.changes.update_fields) == 0
+        assert "b" in patch.changes.remove_fields

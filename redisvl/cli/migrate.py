@@ -843,7 +843,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         # Load the batch plan to check for quantization safety gate
         executor = BatchMigrationExecutor()
         state = executor._load_state(args.state)
-        plan_path = args.plan or state.plan_path or None
+        plan_path = args.plan or (state.plan_path.strip() if state.plan_path else None)
         if plan_path:
             batch_plan = executor._load_batch_plan(plan_path)
             if batch_plan.requires_quantization and not args.accept_data_loss:

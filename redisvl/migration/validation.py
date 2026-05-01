@@ -67,17 +67,21 @@ class MigrationValidator:
             #   new_key = new_prefix + key[len(old_prefix):]
             keys_to_check = key_sample
             if plan.rename_operations.change_prefix is not None:
-                old_prefix = plan.source.keyspace.prefixes[0]
+                old_prefixes = plan.source.keyspace.prefixes
                 new_prefix = plan.rename_operations.change_prefix
-                # Mirror executor logic exactly:
-                #   new_key = new_prefix + key[len(old_prefix):]
                 keys_to_check = []
                 for k in key_sample:
-                    if k.startswith(old_prefix):
-                        keys_to_check.append(new_prefix + k[len(old_prefix) :])
-                    else:
-                        keys_to_check.append(k)
-            existing_count = target_index.client.exists(*keys_to_check)
+                    translated = k
+                    for old_prefix in old_prefixes:
+                        if k.startswith(old_prefix):
+                            translated = new_prefix + k[len(old_prefix) :]
+                            break
+                    keys_to_check.append(translated)
+            # Check keys one at a time to avoid Redis Cluster cross-slot
+            # errors from multi-key EXISTS commands.
+            existing_count = sum(
+                target_index.client.exists(key) for key in keys_to_check
+            )
             validation.key_sample_exists = existing_count == len(keys_to_check)
 
         # Run automatic functional checks (always).

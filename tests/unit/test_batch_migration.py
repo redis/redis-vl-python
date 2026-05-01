@@ -1364,3 +1364,89 @@ class TestBatchMigrationExecutorReportGeneration:
         assert report.status == "failed"
         assert report.summary.failed == 2
         assert report.summary.successful == 0
+
+
+# =============================================================================
+# TDD: Batch executor/planner hardening fixes
+# =============================================================================
+
+
+class TestBatchFileSanitization:
+    """Test that report filenames are broadly sanitized."""
+
+    def test_special_chars_in_index_name(self, tmp_path):
+        """Colons, spaces, pipes, and other special chars should be sanitized."""
+        import re
+
+        # Simulate the sanitization logic
+        index_name = "my:index/with\\special|chars <>"
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", index_name)
+        report_file = tmp_path / f"{safe_name}_report.yaml"
+
+        # Should not raise
+        report_file.write_text("ok")
+        assert report_file.exists()
+        # No forbidden chars in filename
+        assert ":" not in safe_name
+        assert "/" not in safe_name
+        assert "\\" not in safe_name
+        assert "|" not in safe_name
+        assert "<" not in safe_name
+        assert ">" not in safe_name
+
+
+class TestBatchPlannerDedup:
+    """Test that duplicate index names are deduplicated."""
+
+    def test_explicit_indexes_deduped(self):
+        """Duplicate index names in explicit list should be deduplicated."""
+        planner = BatchMigrationPlanner()
+        result = planner._resolve_index_names(
+            indexes=["idx1", "idx2", "idx1", "idx3", "idx2"],
+            pattern=None,
+            indexes_file=None,
+            redis_client=MockRedisClient(indexes=[]),
+        )
+        assert result == ["idx1", "idx2", "idx3"]
+
+
+class TestBatchFailurePolicyValidation:
+    """Test that invalid failure policies are rejected."""
+
+    def test_invalid_failure_policy_raises(self):
+        """Unknown failure_policy values should raise ValueError."""
+        planner = BatchMigrationPlanner()
+        mock_client = MockRedisClient(indexes=["idx1"])
+
+        with pytest.raises(ValueError, match="Invalid failure_policy"):
+            planner.create_batch_plan(
+                indexes=["idx1"],
+                schema_patch_path="nonexistent.yaml",
+                redis_client=mock_client,
+                failure_policy="invalid_policy",
+            )
+
+
+class TestBatchResumeEmptyPlanPath:
+    """Test that empty-string plan_path doesn't bypass safety gate."""
+
+    def test_empty_plan_path_raises(self):
+        """resume() should raise when plan_path is empty string."""
+        executor = BatchMigrationExecutor()
+
+        state = BatchState(
+            batch_id="test",
+            plan_path="",  # Empty string
+            started_at="2024-01-01T00:00:00Z",
+            updated_at="2024-01-01T00:00:00Z",
+            remaining=["idx1"],
+        )
+
+        # resume calls _load_state which needs a file, but the plan_path
+        # validation happens first. Let's test via the executor's resume method
+        # by mocking _load_state.
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(executor, "_load_state", return_value=state):
+            with pytest.raises(ValueError, match="No batch plan path"):
+                executor.resume("fake_state.yaml")
