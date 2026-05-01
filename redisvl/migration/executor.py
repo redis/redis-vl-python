@@ -648,18 +648,6 @@ class MigrationExecutor:
             )
             existing_backup = VectorBackup.load(backup_path)
 
-            # Fallback: probe for legacy backup filename (pre-hash naming)
-            if existing_backup is None:
-                legacy_path = str(Path(backup_dir) / f"migration_backup_{safe_name}")
-                legacy_backup = VectorBackup.load(legacy_path)
-                if legacy_backup is not None:
-                    logger.info(
-                        "Found legacy backup at %s (pre-hash naming), using it",
-                        legacy_path,
-                    )
-                    existing_backup = legacy_backup
-                    backup_path = legacy_path
-
             if existing_backup is not None:
                 if existing_backup.header.index_name != plan.source.index_name:
                     logger.warning(
