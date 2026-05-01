@@ -295,10 +295,17 @@ class MigrationWizard:
                 field_rename = self._prompt_rename_field(rename_schema)
                 if field_rename:
                     # Check rename target doesn't collide with staged additions
+                    # or staged removals
+                    staged_remove_names = set(changes.remove_fields)
                     if field_rename.new_name in staged_add_names:
                         print(
                             f"Cannot rename to '{field_rename.new_name}': "
                             "a field with that name is already staged for addition."
+                        )
+                    elif field_rename.new_name in staged_remove_names:
+                        print(
+                            f"Cannot rename to '{field_rename.new_name}': "
+                            "a field with that name is staged for removal."
                         )
                     else:
                         # Collapse chained renames: if there's an existing
