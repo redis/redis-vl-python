@@ -289,7 +289,22 @@ class AsyncMigrationExecutor:
                         renamed += 1
                         successfully_renamed.append(batch_key_pairs[j])
                     else:
-                        collisions.append(batch_key_pairs[j][1])
+                        old_key, new_key = batch_key_pairs[j]
+                        # If the source is gone and destination exists, this
+                        # key was already renamed in a prior (crashed) run —
+                        # treat it as a successful no-op for idempotent resume.
+                        src_exists = await client.exists(old_key)
+                        dst_exists = await client.exists(new_key)
+                        if not src_exists and dst_exists:
+                            logger.info(
+                                "Key '%s' already renamed to '%s' (prior run), skipping",
+                                old_key,
+                                new_key,
+                            )
+                            renamed += 1
+                            successfully_renamed.append(batch_key_pairs[j])
+                        else:
+                            collisions.append(new_key)
             except Exception as e:
                 logger.warning(f"Error in rename batch: {e}")
                 raise
@@ -347,18 +362,44 @@ class AsyncMigrationExecutor:
             if not pairs:
                 continue
 
-            # Phase 1: Check destination keys don't exist (batched)
+            # Phase 1: Check destination keys don't exist (batched).
+            # Also check source keys so we can detect already-renamed keys
+            # from a prior crashed run and skip them for idempotent resume.
             check_pipe = client.pipeline(transaction=False)
-            for _, new_key in pairs:
+            for old_key, new_key in pairs:
                 check_pipe.exists(new_key)
-            exists_results = await check_pipe.execute()
-            for (_, new_key), exists in zip(pairs, exists_results):
-                if exists:
-                    raise RuntimeError(
-                        f"Prefix rename aborted after {renamed} successful rename(s): "
-                        f"destination key '{new_key}' already exists. "
-                        f"Remove conflicting keys or choose a different prefix."
-                    )
+                check_pipe.exists(old_key)
+            check_results = await check_pipe.execute()
+
+            live_pairs = []
+            for idx, (old_key, new_key) in enumerate(pairs):
+                dst_exists = check_results[idx * 2]
+                src_exists = check_results[idx * 2 + 1]
+                if dst_exists:
+                    if not src_exists:
+                        # Already renamed in a prior run — count and skip.
+                        logger.info(
+                            "Key '%s' already renamed to '%s' (prior run), skipping",
+                            old_key,
+                            new_key,
+                        )
+                        renamed += 1
+                    else:
+                        raise RuntimeError(
+                            f"Prefix rename aborted after {renamed} successful rename(s): "
+                            f"destination key '{new_key}' already exists. "
+                            f"Remove conflicting keys or choose a different prefix."
+                        )
+                else:
+                    if not src_exists:
+                        logger.warning(
+                            "Key '%s' does not exist and destination '%s' is also missing, skipping",
+                            old_key,
+                            new_key,
+                        )
+                    else:
+                        live_pairs.append((old_key, new_key))
+            pairs = live_pairs
 
             # Phase 2: DUMP + PTTL all source keys (batched — 1 RTT)
             dump_pipe = client.pipeline(transaction=False)

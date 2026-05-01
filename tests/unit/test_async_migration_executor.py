@@ -478,3 +478,184 @@ def test_is_already_quantized_same_width_int8_to_uint8():
         vec, expected_dims=128, source_dtype="int8", target_dtype="uint8"
     )
     assert result is False
+
+
+# =============================================================================
+# Idempotent Resume Rename Tests (sync executor)
+# =============================================================================
+# These tests validate that crash-resume for prefix renames is idempotent:
+# if a key was already renamed in a prior (crashed) run, retrying should
+# skip it instead of aborting with a collision error.
+
+
+class TestIdempotentResumeRenameStandalone:
+    """Test _rename_keys_standalone handles already-renamed keys during resume."""
+
+    def _make_executor(self):
+        return MigrationExecutor()
+
+    def test_already_renamed_keys_skipped_on_resume(self):
+        """Simulate crash-resume: 2 of 3 keys were already renamed.
+
+        Before the fix, RENAMENX returning False would be treated as a
+        collision and raise RuntimeError. After the fix, the executor
+        checks if src is gone + dst exists and counts it as already done.
+        """
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        # Pipeline: RENAMENX returns True for key3 (not yet renamed),
+        # False for key1 and key2 (already renamed in prior run).
+        mock_pipe = MagicMock()
+        mock_pipe.execute.return_value = [False, False, True]
+        mock_client.pipeline.return_value = mock_pipe
+
+        # When executor checks EXISTS for the False results:
+        # key1: src gone, dst exists → already renamed
+        # key2: src gone, dst exists → already renamed
+        def exists_side_effect(key):
+            already_renamed_srcs = {"old:1", "old:2"}
+            already_renamed_dsts = {"new:1", "new:2"}
+            if key in already_renamed_srcs:
+                return 0  # source gone
+            if key in already_renamed_dsts:
+                return 1  # destination exists
+            return 0
+
+        mock_client.exists.side_effect = exists_side_effect
+
+        keys = ["old:1", "old:2", "old:3"]
+        result = executor._rename_keys_standalone(mock_client, keys, "old:", "new:")
+
+        # All 3 should count as renamed (2 skipped + 1 actually renamed)
+        assert result == 3
+
+    def test_true_collision_still_raises(self):
+        """When source AND destination both exist, it's a real collision → RuntimeError."""
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        mock_pipe = MagicMock()
+        mock_pipe.execute.return_value = [False]  # RENAMENX failed
+        mock_client.pipeline.return_value = mock_pipe
+
+        # Both source and destination exist → true collision
+        mock_client.exists.side_effect = lambda key: 1
+
+        keys = ["old:1"]
+        with pytest.raises(RuntimeError, match="destination key.*already exist"):
+            executor._rename_keys_standalone(mock_client, keys, "old:", "new:")
+
+    def test_src_and_dst_both_gone_is_collision(self):
+        """If RENAMENX fails, src is gone, but dst is ALSO gone → collision error.
+
+        This is an anomalous state (key deleted externally?) — we treat it
+        as a collision rather than silently losing data.
+        """
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        mock_pipe = MagicMock()
+        mock_pipe.execute.return_value = [False]
+        mock_client.pipeline.return_value = mock_pipe
+
+        # src gone, dst also gone
+        exists_map = {"old:1": 0, "new:1": 0}
+        mock_client.exists.side_effect = lambda key: exists_map.get(key, 0)
+
+        keys = ["old:1"]
+        with pytest.raises(RuntimeError, match="destination key.*already exist"):
+            executor._rename_keys_standalone(mock_client, keys, "old:", "new:")
+
+    def test_mixed_fresh_and_resumed_keys(self):
+        """Mix of fresh renames and already-renamed keys — all succeed."""
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        mock_pipe = MagicMock()
+        # key1: RENAMENX succeeds
+        # key2: RENAMENX fails — already renamed (src gone, dst exists)
+        mock_pipe.execute.return_value = [True, False]
+        mock_client.pipeline.return_value = mock_pipe
+
+        exists_map = {
+            "old:2": 0,  # source gone
+            "new:2": 1,  # destination exists
+        }
+        mock_client.exists.side_effect = lambda key: exists_map.get(key, 0)
+
+        keys = ["old:1", "old:2"]
+        result = executor._rename_keys_standalone(mock_client, keys, "old:", "new:")
+
+        assert result == 2  # 1 fresh + 1 already-renamed
+
+
+class TestIdempotentResumeRenameCluster:
+    """Test _rename_keys_cluster handles already-renamed keys during resume."""
+
+    def _make_executor(self):
+        return MigrationExecutor()
+
+    def test_already_renamed_keys_skipped_on_resume(self):
+        """Simulate crash-resume on cluster: keys already renamed are skipped."""
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        # Phase 1 check pipeline: exists(new_key), exists(old_key) for each pair
+        check_pipe = MagicMock()
+        # key1: dst exists (1), src gone (0) → already renamed
+        # key2: dst exists (1), src gone (0) → already renamed
+        # key3: dst gone (0), src exists (1) → needs rename
+        check_pipe.execute.return_value = [1, 0, 1, 0, 0, 1]
+
+        # Phase 2 dump pipeline for key3 only
+        dump_pipe = MagicMock()
+        dump_pipe.execute.return_value = [b"\x00\x01\x02", -1]  # dump data, pttl
+
+        # Phase 3 restore pipeline
+        restore_pipe = MagicMock()
+        restore_pipe.execute.return_value = [True, 1]  # RESTORE ok, DEL ok
+
+        mock_client.pipeline.side_effect = [check_pipe, dump_pipe, restore_pipe]
+
+        keys = ["old:1", "old:2", "old:3"]
+        result = executor._rename_keys_cluster(mock_client, keys, "old:", "new:")
+
+        # 2 already-renamed + 1 fresh = 3
+        assert result == 3
+
+    def test_true_collision_raises_on_cluster(self):
+        """When source AND destination both exist on cluster → RuntimeError."""
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        check_pipe = MagicMock()
+        # key1: dst exists (1), src ALSO exists (1) → true collision
+        check_pipe.execute.return_value = [1, 1]
+        mock_client.pipeline.return_value = check_pipe
+
+        keys = ["old:1"]
+        with pytest.raises(RuntimeError, match="destination key.*already exists"):
+            executor._rename_keys_cluster(mock_client, keys, "old:", "new:")
+
+    def test_both_missing_key_skipped_on_cluster(self):
+        """Key where both source and destination are gone — warn and skip."""
+        executor = self._make_executor()
+        mock_client = MagicMock()
+
+        check_pipe = MagicMock()
+        # key1: dst gone (0), src gone (0) → both missing
+        check_pipe.execute.return_value = [0, 0]
+
+        # Even with no live_pairs, the code still creates dump/restore pipelines
+        dump_pipe = MagicMock()
+        dump_pipe.execute.return_value = []
+        restore_pipe = MagicMock()
+
+        mock_client.pipeline.side_effect = [check_pipe, dump_pipe, restore_pipe]
+
+        keys = ["old:1"]
+        result = executor._rename_keys_cluster(mock_client, keys, "old:", "new:")
+
+        # Key skipped, nothing renamed
+        assert result == 0
