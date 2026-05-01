@@ -1,3 +1,14 @@
+"""Experimental index migration module.
+
+.. warning::
+
+    This module is **experimental** and may change or be removed in future
+    releases.  APIs, CLI commands, and on-disk formats (plans, checkpoints,
+    backups) are not yet covered by semantic-versioning guarantees.
+    Review the migration plan carefully before applying it to
+    production indexes.
+"""
+
 from redisvl.migration.async_executor import AsyncMigrationExecutor
 from redisvl.migration.async_planner import AsyncMigrationPlanner
 from redisvl.migration.async_validation import AsyncMigrationValidator
