@@ -12,8 +12,8 @@ _INDEX_SUBCOMMANDS = ("info", "create", "delete", "destroy", "listall")
 
 def _assert_index_help_contract(help_text: str) -> None:
     """Assert key help text users rely on for ``rvl index``: usage, command header, and subcommands."""
-    # Includes the short usage form for the index subcommand router.
-    assert "rvl index <command> [<args>]" in help_text
+    # Includes argparse's auto-generated usage line for the index subcommand router.
+    assert "usage: rvl index" in help_text
     # Includes the command section header that introduces the subcommand list.
     assert "Commands:" in help_text
     for name in _INDEX_SUBCOMMANDS:
@@ -67,10 +67,11 @@ def test_rvl_index_no_subcommand(monkeypatch, capsys, argv: list[str]):
 
 
 def test_rvl_index_unknown_subcommand(monkeypatch, capsys):
-    """Tests that ``rvl index <unknown>`` reports the bad token and prints help.
+    """Tests that ``rvl index <unknown>`` reports the bad token via argparse.
 
     Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    contains ``Unknown command: <token>`` followed by the full help text.
+    contains argparse's ``invalid choice: '<token>'`` error along with the
+    list of valid subcommands.
     """
     monkeypatch.setattr(sys, "argv", ["rvl", "index", "notacommand"])
 
@@ -82,13 +83,11 @@ def test_rvl_index_unknown_subcommand(monkeypatch, capsys):
     assert exc_info.value.code == 2
     # No normal output for the invalid subcommand path.
     assert captured.out == ""
-    # Stderr identifies the rejected subcommand token.
-    assert "Unknown command: notacommand" in captured.err
+    # Stderr identifies the rejected subcommand token via argparse's error.
+    assert "invalid choice: 'notacommand'" in captured.err
     for name in _INDEX_SUBCOMMANDS:
-        # Stderr help still lists every valid index subcommand.
+        # Stderr lists every valid subcommand.
         assert name in captured.err
-    # Stderr help includes the command section header from the help text.
-    assert "Commands:" in captured.err
 
 
 def test_rvl_index_subprocess_help():

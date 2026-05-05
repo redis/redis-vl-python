@@ -14,7 +14,7 @@ def _assert_help_contract(help_text: str) -> None:
     # Includes the CLI description.
     assert "Redis Vector Library CLI" in help_text
     # Includes the command section header.
-    assert "Commands:" in help_text
+    assert "Command groups:" in help_text
     for name in _COMMANDS:
         # Includes each supported top-level command.
         assert re.search(rf"^\s*{re.escape(name)}\s+", help_text, re.MULTILINE)
@@ -61,7 +61,7 @@ def test_unknown_command(monkeypatch, capsys):
         # stderr help still lists every valid top-level command.
         assert name in out.err
     # stderr includes the command section header from help.
-    assert "Commands:" in out.err
+    assert "Command groups:" in out.err
 
 
 def test_subprocess_module_help():
