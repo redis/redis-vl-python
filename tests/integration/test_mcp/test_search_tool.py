@@ -93,28 +93,79 @@ async def searchable_index(async_client, worker_id):
 
 
 @pytest.fixture
+async def fulltext_only_index(async_client, worker_id):
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": f"mcp-fulltext-search-{worker_id}",
+                "prefix": f"mcp-fulltext-search:{worker_id}",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "content", "type": "text"},
+                {"name": "category", "type": "tag"},
+                {"name": "rating", "type": "numeric"},
+            ],
+        }
+    )
+    index = AsyncSearchIndex(schema=schema, redis_client=async_client)
+    await index.create(overwrite=True, drop=True)
+    await index.load(
+        [
+            {
+                "id": f"doc:{worker_id}:1",
+                "content": "science article about planets",
+                "category": "science",
+                "rating": 5,
+            },
+            {
+                "id": f"doc:{worker_id}:2",
+                "content": "medical science and health",
+                "category": "health",
+                "rating": 4,
+            },
+        ]
+    )
+
+    yield index
+
+    await index.delete(drop=True)
+
+
+@pytest.fixture
 def mcp_config_path(tmp_path: Path, redis_url: str):
-    def factory(redis_name: str, search: dict) -> str:
+    def factory(
+        redis_name: str,
+        search: dict,
+        *,
+        runtime_overrides: dict | None = None,
+        include_vectorizer: bool = True,
+    ) -> str:
+        runtime = {
+            "text_field_name": "content",
+            "vector_field_name": "embedding",
+            "default_embed_text_field": "content",
+            "default_limit": 2,
+            "max_limit": 5,
+        }
+        if runtime_overrides:
+            runtime.update(runtime_overrides)
+
+        binding = {
+            "redis_name": redis_name,
+            "search": search,
+            "runtime": runtime,
+        }
+        if include_vectorizer:
+            binding["vectorizer"] = {
+                "class": "FakeVectorizer",
+                "model": "fake-model",
+                "dims": 3,
+            }
+
         config = {
             "server": {"redis_url": redis_url},
-            "indexes": {
-                "knowledge": {
-                    "redis_name": redis_name,
-                    "vectorizer": {
-                        "class": "FakeVectorizer",
-                        "model": "fake-model",
-                        "dims": 3,
-                    },
-                    "search": search,
-                    "runtime": {
-                        "text_field_name": "content",
-                        "vector_field_name": "embedding",
-                        "default_embed_text_field": "content",
-                        "default_limit": 2,
-                        "max_limit": 5,
-                    },
-                }
-            },
+            "indexes": {"knowledge": binding},
         }
         config_path = tmp_path / f"{redis_name}-{search['type']}.yaml"
         config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
@@ -130,10 +181,21 @@ async def started_server(monkeypatch, searchable_index, mcp_config_path):
         lambda class_name: FakeVectorizer,
     )
 
-    async def factory(search: dict) -> RedisVLMCPServer:
+    async def factory(
+        search: dict,
+        *,
+        redis_name: str | None = None,
+        runtime_overrides: dict | None = None,
+        include_vectorizer: bool = True,
+    ) -> RedisVLMCPServer:
         server = RedisVLMCPServer(
             MCPSettings(
-                config=mcp_config_path(searchable_index.schema.index.name, search)
+                config=mcp_config_path(
+                    redis_name or searchable_index.schema.index.name,
+                    search,
+                    runtime_overrides=runtime_overrides,
+                    include_vectorizer=include_vectorizer,
+                )
             )
         )
         await server.startup()
@@ -141,8 +203,8 @@ async def started_server(monkeypatch, searchable_index, mcp_config_path):
 
     servers = []
 
-    async def started(search: dict) -> RedisVLMCPServer:
-        server = await factory(search)
+    async def started(search: dict, **kwargs) -> RedisVLMCPServer:
+        server = await factory(search, **kwargs)
         servers.append(server)
         return server
 
@@ -201,6 +263,32 @@ async def test_search_records_fulltext_success(started_server):
     assert response["results"]
     assert response["results"][0]["score_type"] == "text_score"
     assert response["results"][0]["score"] is not None
+    assert "science" in response["results"][0]["record"]["content"]
+
+
+@pytest.mark.asyncio
+async def test_search_records_fulltext_success_without_vector_configuration(
+    started_server, fulltext_only_index
+):
+    server = await started_server(
+        {"type": "fulltext", "params": {"stopwords": None}},
+        redis_name=fulltext_only_index.schema.index.name,
+        runtime_overrides={
+            "vector_field_name": None,
+            "default_embed_text_field": None,
+        },
+        include_vectorizer=False,
+    )
+
+    response = await search_records(
+        server,
+        query="science",
+        return_fields=["content", "category"],
+    )
+
+    assert response["search_type"] == "fulltext"
+    assert response["results"]
+    assert response["results"][0]["score_type"] == "text_score"
     assert "science" in response["results"][0]["record"]["content"]
 
 

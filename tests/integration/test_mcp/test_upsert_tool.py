@@ -95,12 +95,38 @@ async def upsertable_index(async_client, worker_id):
 
 
 @pytest.fixture
+async def fulltext_only_upsert_index(async_client, worker_id):
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": f"mcp-upsert-fulltext-{worker_id}",
+                "prefix": f"mcp-upsert-fulltext:{worker_id}",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "content", "type": "text"},
+                {"name": "category", "type": "tag"},
+                {"name": "rating", "type": "numeric"},
+            ],
+        }
+    )
+    index = AsyncSearchIndex(schema=schema, redis_client=async_client)
+    await index.create(overwrite=True, drop=True)
+
+    yield index
+
+    await index.delete(drop=True)
+
+
+@pytest.fixture
 def mcp_config_path(tmp_path: Path, redis_url: str):
     def factory(
         *,
         redis_name: str,
         read_only: bool = False,
+        search: dict | None = None,
         runtime_overrides: dict[str, Any] | None = None,
+        include_vectorizer: bool = True,
     ) -> str:
         runtime = {
             "text_field_name": "content",
@@ -114,20 +140,21 @@ def mcp_config_path(tmp_path: Path, redis_url: str):
         if runtime_overrides:
             runtime.update(runtime_overrides)
 
+        binding = {
+            "redis_name": redis_name,
+            "search": search or {"type": "vector"},
+            "runtime": runtime,
+        }
+        if include_vectorizer:
+            binding["vectorizer"] = {
+                "class": "RecordingVectorizer",
+                "model": "fake-model",
+                "dims": 3,
+            }
+
         config = {
             "server": {"redis_url": redis_url},
-            "indexes": {
-                "knowledge": {
-                    "redis_name": redis_name,
-                    "vectorizer": {
-                        "class": "RecordingVectorizer",
-                        "model": "fake-model",
-                        "dims": 3,
-                    },
-                    "search": {"type": "vector"},
-                    "runtime": runtime,
-                }
-            },
+            "indexes": {"knowledge": binding},
         }
         config_path = tmp_path / (
             f"{redis_name}-{'readonly' if read_only else 'readwrite'}.yaml"
@@ -149,15 +176,20 @@ async def started_server(monkeypatch, upsertable_index, mcp_config_path):
 
     async def factory(
         *,
+        redis_name: str | None = None,
         read_only: bool = False,
+        search: dict | None = None,
         runtime_overrides: dict[str, Any] | None = None,
+        include_vectorizer: bool = True,
     ) -> RedisVLMCPServer:
         server = RedisVLMCPServer(
             MCPSettings(
                 config=mcp_config_path(
-                    redis_name=upsertable_index.schema.index.name,
+                    redis_name=redis_name or upsertable_index.schema.index.name,
                     read_only=read_only,
+                    search=search,
                     runtime_overrides=runtime_overrides,
+                    include_vectorizer=include_vectorizer,
                 )
             )
         )
@@ -201,6 +233,54 @@ async def test_upsert_records_inserts_rows_into_hash_index(
     assert stored is not None
     assert stored["content"] == "first upserted document"
     assert stored["category"] == "science"
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_supports_plain_writes_without_vector_configuration(
+    started_server, fulltext_only_upsert_index
+):
+    server = await started_server(
+        redis_name=fulltext_only_upsert_index.schema.index.name,
+        search={"type": "fulltext"},
+        runtime_overrides={
+            "vector_field_name": None,
+            "default_embed_text_field": None,
+        },
+        include_vectorizer=False,
+    )
+
+    response = await upsert_records(
+        server,
+        records=[{"content": "fulltext upsert", "category": "science", "rating": 5}],
+    )
+
+    assert response["status"] == "success"
+    assert response["keys_upserted"] == 1
+    stored = await fulltext_only_upsert_index.fetch(
+        _record_id_from_key(response["keys"][0])
+    )
+    assert stored is not None
+    assert stored["content"] == "fulltext upsert"
+    assert stored["category"] == "science"
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_requires_vectors_when_embedding_is_disabled(
+    started_server,
+):
+    server = await started_server(
+        search={"type": "fulltext"},
+        runtime_overrides={"default_embed_text_field": None},
+        include_vectorizer=False,
+    )
+
+    with pytest.raises(RedisVLMCPError, match="embedding") as exc_info:
+        await upsert_records(
+            server,
+            records=[{"content": "vector missing", "category": "science"}],
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
 
 
 @pytest.mark.asyncio
