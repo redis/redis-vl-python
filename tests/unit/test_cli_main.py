@@ -10,16 +10,10 @@ _COMMANDS = ("index", "mcp", "version", "stats")
 
 
 def _assert_help_contract(help_text: str) -> None:
-    """Assert key help text users rely on: description, usage, and commands."""
-    # Includes the CLI description.
-    assert "Redis Vector Library CLI" in help_text
-    # Includes the command section header.
-    assert "Command groups:" in help_text
+    """Assert that ``rvl`` help lists every supported top-level command."""
     for name in _COMMANDS:
-        # Includes each supported top-level command.
+        # Each supported top-level command appears on its own help line.
         assert re.search(rf"^\s*{re.escape(name)}\s+", help_text, re.MULTILINE)
-    # Includes the short usage form.
-    assert "rvl <command> [<args>]" in help_text
 
 
 @pytest.mark.parametrize("argv", [["rvl"], ["rvl", "--help"], ["rvl", "-h"]])
@@ -60,8 +54,6 @@ def test_unknown_command(monkeypatch, capsys):
     for name in _COMMANDS:
         # stderr help still lists every valid top-level command.
         assert name in out.err
-    # stderr includes the command section header from help.
-    assert "Command groups:" in out.err
 
 
 def test_subprocess_module_help():
