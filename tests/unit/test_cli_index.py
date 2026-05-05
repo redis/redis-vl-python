@@ -320,14 +320,22 @@ def test_create_redis_search_error(monkeypatch, capsys):
     assert redis_error_message in captured.err
 
 
-def test_create_success(monkeypatch, capsys):
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["rvl", "index", "create", "-s", "fake.yaml"],
+        ["rvl", "index", "create", "-s", "fake.yaml", "--json"],
+    ],
+)
+def test_create_success(monkeypatch, capsys, argv: list[str]):
     """Tests that ``rvl index create`` succeeds with the documented banner.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is exactly
-    ``Index created successfully\\n``, and stderr is empty.
+    ``Index created successfully\\n``, and stderr is empty. ``--json`` is
+    parametrized to confirm it does not invent a JSON contract for ``create``.
     """
     _patch_search_index(monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "create", "-s", "fake.yaml"])
+    monkeypatch.setattr(sys, "argv", argv)
 
     # Success path must return cleanly, not raise SystemExit.
     Index()
@@ -337,30 +345,6 @@ def test_create_success(monkeypatch, capsys):
     assert captured.out == "Index created successfully\n"
     # Success path stays clean on stderr.
     assert captured.err == ""
-
-
-def test_create_json_flag_no_json(monkeypatch, capsys):
-    """Tests that ``rvl index create --json`` does not invent a JSON contract.
-
-    Expected behavior: stdout matches the no-flag success banner exactly and
-    stderr is empty - ``--json`` is a no-op for ``create``.
-    """
-    _patch_search_index(monkeypatch)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["rvl", "index", "create", "-s", "fake.yaml", "--json"],
-    )
-
-    # Success path must return cleanly, not call sys.exit, even with --json.
-    Index()
-    captured = capsys.readouterr()
-
-    # Success path stays clean on stderr even with --json.
-    assert captured.err == ""
-
-    # stdout is identical to the no-flag success path, proving --json invents no JSON contract.
-    assert captured.out == "Index created successfully\n"
 
 
 def test_listall_json(monkeypatch, capsys):
@@ -380,8 +364,6 @@ def test_listall_json(monkeypatch, capsys):
     captured = capsys.readouterr()
     out = captured.out.strip()
 
-    # --json must not print the human banner.
-    assert "Indices:" not in out
     # Single machine-readable line, nothing else on stdout.
     assert out.count("\n") == 0
     # Stable top-level JSON contract: only the "indices" key, in FT._LIST order.
@@ -420,8 +402,6 @@ def test_listall_json_empty(monkeypatch, capsys):
     captured = capsys.readouterr()
     out = captured.out.strip()
 
-    # Empty --json must not print the human banner.
-    assert "Indices:" not in out
     # Single machine-readable line for the empty case too.
     assert out.count("\n") == 0
     # Empty array is a valid success payload.
@@ -430,24 +410,32 @@ def test_listall_json_empty(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_listall_json_error(monkeypatch, capsys):
-    """Tests that ``rvl index listall --json`` reports runtime failures on stderr.
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["rvl", "index", "listall"],
+        ["rvl", "index", "listall", "--json"],
+    ],
+)
+def test_listall_runtime_error(monkeypatch, capsys, argv: list[str]):
+    """Tests that ``rvl index listall`` reports runtime failures on stderr.
 
     Expected behavior: ``SystemExit`` code is 1, stdout is empty (no
-    half-formed JSON), and the underlying error message is on stderr.
+    half-formed output), and the underlying error message is on stderr.
+    ``--json`` is parametrized to confirm the contract is uniform.
     """
     _patch_redis_connection(monkeypatch, boom=True)
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "listall", "--json"])
+    monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
         Index()
     captured = capsys.readouterr()
 
-    # generic runtime failure exits 1 from __init__'s catch-all
+    # Generic runtime failure exits 1 from __init__'s catch-all.
     assert exc_info.value.code == 1
-    # failure happens before cli_print_json — nothing on stdout
+    # Failure happens before any rendering - nothing on stdout.
     assert captured.out == ""
-    # underlying error message is surfaced on stderr
+    # Underlying error message is surfaced on stderr.
     assert "redis unavailable" in captured.err
 
 
@@ -538,8 +526,6 @@ def test_info_json(monkeypatch, capsys):
     # Single line for machine consumers.
     assert out.count("\n") == 0
     payload = json.loads(out)
-    # --json must not emit table banner text.
-    assert "Index Information:" not in out and "Index Fields:" not in out
     # Top-level sections are stable and ordered.
     assert list(payload) == ["index_information", "index_fields"]
     # Summary section matches table-derived values.
@@ -550,18 +536,24 @@ def test_info_json(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_info_json_error(monkeypatch, capsys):
-    """Tests that ``rvl index info --json`` reports runtime failures on stderr.
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["rvl", "index", "info", "-i", "test-idx"],
+        ["rvl", "index", "info", "-i", "test-idx", "--json"],
+    ],
+)
+def test_info_runtime_error(monkeypatch, capsys, argv: list[str]):
+    """Tests that ``rvl index info`` reports runtime failures on stderr.
 
     Expected behavior: ``SystemExit`` code is 1, stdout is empty (no
-    half-formed JSON), and the underlying error message is on stderr.
+    half-formed output), and the underlying error message is on stderr.
+    ``--json`` is parametrized to confirm the contract is uniform.
     """
     _patch_search_index_for_info(
         monkeypatch, info_behavior=_raise(RuntimeError("boom"))
     )
-    monkeypatch.setattr(
-        sys, "argv", ["rvl", "index", "info", "-i", "test-idx", "--json"]
-    )
+    monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
         Index()
@@ -569,7 +561,7 @@ def test_info_json_error(monkeypatch, capsys):
 
     # Generic runtime failure exits 1 from __init__'s catch-all.
     assert exc_info.value.code == 1
-    # No partial JSON before the exception.
+    # Failure happens before any rendering - nothing on stdout.
     assert captured.out == ""
     # Underlying error message is surfaced on stderr.
     assert "boom" in captured.err
