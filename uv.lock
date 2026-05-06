@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10, <3.15"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -4288,7 +4288,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.18.0"
+version = "0.18.1"
 source = { editable = "." }
 dependencies = [
     { name = "jsonpath-ng" },
@@ -4418,8 +4418,8 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0,<8.0" },
     { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3.4.0,<4" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
-    { name = "sql-redis", marker = "extra == 'all'", specifier = ">=0.4.0" },
-    { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.4.0" },
+    { name = "sql-redis", marker = "extra == 'all'", specifier = ">=0.5.0" },
+    { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.5.0" },
     { name = "tenacity", specifier = ">=8.2.2" },
     { name = "urllib3", marker = "extra == 'all'", specifier = "<2.2.0" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
@@ -5272,15 +5272,15 @@ wheels = [
 
 [[package]]
 name = "sql-redis"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "redis" },
     { name = "sqlglot" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/70/2f/1a2c8e66af30af2d78375715f813ae62af834277ed806576c43f331b546e/sql_redis-0.4.0.tar.gz", hash = "sha256:c4cae163989a435c1b0b931dbd69f9783fb5593202b2ccdfbd5d62d95ecf425e", size = 158753, upload-time = "2026-04-06T16:26:34.852Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/08/20cbed305b67840599387235f43c0c438241e7dac88d4d2ab34b6c629697/sql_redis-0.5.0.tar.gz", hash = "sha256:c204d9abd23c3fa3644afa657826f80484c13f2dbc12ddaf895dd1aa6fc36b73", size = 166060, upload-time = "2026-05-06T17:03:16.487Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/6d/f0c5f171dae8154afa3e59e5c219a286e18478f8127eb822cc62da94c560/sql_redis-0.4.0-py3-none-any.whl", hash = "sha256:c395c883f5e6e633178a362b0f1a748923c0816e68e10827ae5e44cad4b21654", size = 41689, upload-time = "2026-04-06T16:26:33.943Z" },
+    { url = "https://files.pythonhosted.org/packages/82/22/d76a0aed0df7c081e8149198e7cf219fbc3592e52814661fa31fe52c619c/sql_redis-0.5.0-py3-none-any.whl", hash = "sha256:8822dd8b1a73df70049fbf9a53a5f30a465b8b26032cdba0d8acfeba7cfaac89", size = 44039, upload-time = "2026-05-06T17:03:15.422Z" },
 ]
 
 [[package]]

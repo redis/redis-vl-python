@@ -325,6 +325,144 @@ class TestSQLQueryWhere:
             assert 25 <= price <= 50
 
 
+class TestSQLQueryBooleanLogicRegression:
+    """Regression tests for SQL boolean operator precedence.
+
+    Guards against a sql-redis bug (fixed in 0.5.0) where mixed AND/OR
+    WHERE clauses with parentheses were collapsed into a single flat
+    operator, e.g. ``A AND (B OR C)`` translated to ``@a|@b|@c`` and
+    ``A OR (B AND C)`` translated to ``@a @b @c`` — silently changing
+    query semantics.
+    """
+
+    def test_and_with_or_group_preserves_precedence(self, sql_index):
+        """``A AND (B OR C)`` keeps the OR group parenthesized."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE category = 'electronics' "
+            f"AND (tags = 'sale' OR tags = 'featured')"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert "@category:{electronics}" in cmd
+        assert "(@tags:{sale}|@tags:{featured})" in cmd
+        # Bug pattern: all three predicates flattened into one OR group.
+        assert "@category:{electronics}|@tags:" not in cmd
+
+    def test_or_with_and_group_preserves_precedence(self, sql_index):
+        """``A OR (B AND C)`` wraps the whole expression and keeps inner AND."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE category = 'electronics' "
+            f"OR (tags = 'sale' AND price > 100)"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        # The AND group preserves space-separation inside the surrounding OR.
+        assert "@tags:{sale} @price:[(100 +inf]" in cmd
+        # The category predicate is OR'd with the AND group.
+        assert "@category:{electronics}|@tags:{sale}" in cmd
+        # Bug pattern: tags-AND-price collapsed into the outer OR.
+        assert "@category:{electronics}|@tags:{sale}|@price:" not in cmd
+
+    def test_or_group_first_then_and_preserves_precedence(self, sql_index):
+        """``(B OR C) AND A`` keeps the leading OR group parenthesized."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE (tags = 'sale' OR tags = 'featured') "
+            f"AND category = 'electronics'"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert "(@tags:{sale}|@tags:{featured})" in cmd
+        assert "@category:{electronics}" in cmd
+        # Bug pattern: leading OR group flattened with the trailing AND.
+        assert "@tags:{sale}|@tags:{featured}|@category:" not in cmd
+
+    def test_chained_ands_with_trailing_or_group(self, sql_index):
+        """``A AND B AND C AND (D OR E)`` only parenthesizes the OR group."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE category = 'electronics' "
+            f"AND price > 100 "
+            f"AND rating > 4 "
+            f"AND (tags = 'sale' OR tags = 'featured')"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert "@category:{electronics}" in cmd
+        assert "@price:[(100 +inf]" in cmd
+        assert "@rating:[(4 +inf]" in cmd
+        assert "(@tags:{sale}|@tags:{featured})" in cmd
+        # Bug pattern: all five predicates flattened into a single OR.
+        assert "@category:{electronics}|" not in cmd
+
+    def test_two_or_groups_anded(self, sql_index):
+        """``(A OR B) AND (C OR D)`` keeps both OR groups parenthesized."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE (category = 'electronics' OR category = 'books') "
+            f"AND (tags = 'sale' OR tags = 'featured')"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert "(@category:{electronics}|@category:{books})" in cmd
+        assert "(@tags:{sale}|@tags:{featured})" in cmd
+
+    def test_pure_and_chain_unchanged(self, sql_index):
+        """``A AND B AND C`` still renders as space-joined without parens."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE category = 'electronics' "
+            f"AND price > 100 "
+            f"AND rating > 4"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert "@category:{electronics}" in cmd
+        assert "@price:[(100 +inf]" in cmd
+        assert "@rating:[(4 +inf]" in cmd
+        # No pipe operator should appear between predicates of a pure AND chain.
+        assert "@category:{electronics}|" not in cmd
+        assert "|@rating:" not in cmd
+
+    def test_pure_or_chain_unchanged(self, sql_index):
+        """``A OR B OR C`` still renders as a single pipe-joined OR group."""
+        sql_query = SQLQuery(
+            f"SELECT * FROM {sql_index.name} "
+            f"WHERE category = 'electronics' "
+            f"OR category = 'books' "
+            f"OR category = 'accessories'"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert (
+            "(@category:{electronics}|@category:{books}|@category:{accessories})" in cmd
+        )
+
+    def test_and_with_or_group_executes_correctly(self, sql_index):
+        """End-to-end: results respect ``A AND (B OR C)`` semantics, not the flattened bug.
+
+        13 fixture products: filtering by ``category = 'electronics' AND
+        (tags = 'sale' OR tags = 'featured')`` should return only electronics
+        rows that also carry one of those two tags. The flattened-bug variant
+        (``category|tags|tags``) would return rows from non-electronics
+        categories too.
+        """
+        sql_query = SQLQuery(
+            f"SELECT title, category, tags FROM {sql_index.name} "
+            f"WHERE category = 'electronics' "
+            f"AND (tags = 'sale' OR tags = 'featured')"
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] == "electronics"
+            row_tags = set(r.get("tags", "").split(","))
+            assert row_tags & {"sale", "featured"}
+
+
 class TestSQLQueryTagOperators:
     """Tests for SQL tag field operators."""
 
@@ -937,6 +1075,81 @@ class TestSQLQueryAggregation:
             # Verify it's a non-empty string
             assert isinstance(result["first_title"], str)
             assert len(result["first_title"]) > 0
+
+    def test_count_distinct_translates_to_count_distinct_reducer(self, sql_index):
+        """Regression: ``COUNT(DISTINCT col)`` must emit ``COUNT_DISTINCT``.
+
+        Prior to sql-redis 0.5.0 the ``DISTINCT`` modifier was silently
+        dropped and the query degraded to ``COUNT(*)``.
+        """
+        sql_query = SQLQuery(
+            f"SELECT COUNT(DISTINCT category) AS unique_cats " f"FROM {sql_index.name}"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert cmd.startswith("FT.AGGREGATE")
+        assert "COUNT_DISTINCT" in cmd
+        assert "@category" in cmd
+        assert "unique_cats" in cmd
+
+    def test_count_distinct_global_returns_unique_count(self, sql_index):
+        """End-to-end: ``COUNT(DISTINCT category)`` returns the true unique count.
+
+        The fixture has 4 unique categories: electronics, books,
+        accessories, stationery. The pre-fix bug would have returned
+        13 (the total document count) instead of 4.
+        """
+        sql_query = SQLQuery(
+            f"SELECT COUNT(DISTINCT category) AS unique_cats " f"FROM {sql_index.name}"
+        )
+        results = sql_index.query(sql_query)
+
+        assert len(results) == 1
+        assert int(results[0]["unique_cats"]) == 4
+
+    def test_count_distinct_with_group_by_translates_correctly(self, sql_index):
+        """``COUNT(DISTINCT field)`` with GROUP BY emits COUNT_DISTINCT per group."""
+        sql_query = SQLQuery(
+            f"SELECT category, COUNT(DISTINCT title) AS unique_titles "
+            f"FROM {sql_index.name} GROUP BY category"
+        )
+        cmd = sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert cmd.startswith("FT.AGGREGATE")
+        assert "GROUPBY" in cmd
+        assert "COUNT_DISTINCT" in cmd
+        assert "@title" in cmd
+        assert "unique_titles" in cmd
+
+    def test_count_distinct_equivalent_to_count_distinct_alias(self, sql_index):
+        """``COUNT(DISTINCT x)`` and ``COUNT_DISTINCT(x)`` produce equivalent commands."""
+        sql_distinct = SQLQuery(
+            f"SELECT category, COUNT(DISTINCT title) AS n "
+            f"FROM {sql_index.name} GROUP BY category"
+        )
+        redis_distinct = SQLQuery(
+            f"SELECT category, COUNT_DISTINCT(title) AS n "
+            f"FROM {sql_index.name} GROUP BY category"
+        )
+
+        cmd_a = sql_distinct.redis_query_string(redis_client=sql_index._redis_client)
+        cmd_b = redis_distinct.redis_query_string(redis_client=sql_index._redis_client)
+
+        assert cmd_a == cmd_b
+
+    def test_sum_distinct_raises_value_error(self, sql_index):
+        """``SUM(DISTINCT x)`` is rejected — RediSearch has no SUM_DISTINCT."""
+        sql_query = SQLQuery(f"SELECT SUM(DISTINCT price) FROM {sql_index.name}")
+        with pytest.raises(ValueError, match="DISTINCT"):
+            sql_query.redis_query_string(redis_client=sql_index._redis_client)
+
+    def test_count_distinct_multi_column_raises_value_error(self, sql_index):
+        """``COUNT(DISTINCT a, b)`` is rejected — multi-column DISTINCT unsupported."""
+        sql_query = SQLQuery(
+            f"SELECT COUNT(DISTINCT title, category) FROM {sql_index.name}"
+        )
+        with pytest.raises(ValueError, match="single column"):
+            sql_query.redis_query_string(redis_client=sql_index._redis_client)
 
 
 class TestSQLQueryIntegration:
