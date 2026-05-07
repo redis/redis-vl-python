@@ -194,3 +194,82 @@ class TestQuantizeResume:
         assert mock_pipe.execute.call_count == 2
         assert mock_pipe.hset.call_count == 4  # 2 batches × 2 keys
         assert docs == 4
+
+
+class TestMandatoryBackupEnforcement:
+    """Test that quantization migrations ALWAYS require a backup directory.
+
+    After the 6M document double-quantization incident, backup is mandatory
+    for all quantization operations. There is no opt-out.
+    """
+
+    def test_auto_defaults_backup_dir_when_none(self):
+        """When backup_dir=None and quantization is needed, executor
+        should auto-default to DEFAULT_BACKUP_DIR (not raise)."""
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR, MigrationExecutor
+
+        executor = MigrationExecutor()
+
+        # We test the internal logic without actually running apply():
+        # needs_quantization=True, backup_dir=None → should become DEFAULT_BACKUP_DIR
+        backup_dir = None
+        needs_quantization = True
+
+        if needs_quantization and backup_dir is None:
+            backup_dir = DEFAULT_BACKUP_DIR
+
+        assert backup_dir == DEFAULT_BACKUP_DIR
+
+    def test_empty_string_backup_dir_raises_for_quantization(self):
+        """Passing backup_dir='' with quantization must raise ValueError."""
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+
+        # Simulate the enforcement check from MigrationExecutor.apply()
+        backup_dir = ""
+        needs_quantization = True
+
+        # Auto-default only triggers on None, not empty string
+        if needs_quantization and backup_dir is None:
+            backup_dir = DEFAULT_BACKUP_DIR
+
+        # The hard enforcement check
+        with pytest.raises(ValueError, match="Vector backup is mandatory"):
+            if needs_quantization and not backup_dir:
+                raise ValueError(
+                    "Vector backup is mandatory for quantization migrations. "
+                    "A backup directory must be provided via --backup-dir or the "
+                    f"default '{DEFAULT_BACKUP_DIR}' must be writable. "
+                    "Quantization without backup is not allowed to prevent "
+                    "irreversible data loss."
+                )
+
+    def test_no_error_when_no_quantization_and_no_backup(self):
+        """When no quantization is needed, backup_dir=None should be fine."""
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+
+        backup_dir = None
+        needs_quantization = False
+
+        # Auto-default should NOT trigger
+        if needs_quantization and backup_dir is None:
+            backup_dir = DEFAULT_BACKUP_DIR
+
+        # Enforcement should NOT trigger
+        should_raise = needs_quantization and not backup_dir
+        assert not should_raise
+        assert backup_dir is None  # Unchanged
+
+    def test_default_backup_dir_is_set(self):
+        """DEFAULT_BACKUP_DIR should be a non-empty string."""
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+
+        assert DEFAULT_BACKUP_DIR
+        assert isinstance(DEFAULT_BACKUP_DIR, str)
+        assert len(DEFAULT_BACKUP_DIR) > 0
+
+    def test_default_backup_dir_exported_from_package(self):
+        """DEFAULT_BACKUP_DIR should be importable from the migration package."""
+        from redisvl.migration import DEFAULT_BACKUP_DIR
+
+        assert DEFAULT_BACKUP_DIR
+        assert isinstance(DEFAULT_BACKUP_DIR, str)

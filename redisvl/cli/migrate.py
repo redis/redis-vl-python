@@ -205,6 +205,8 @@ Commands:
         self._print_plan_summary(args.plan_out, plan)
 
     def apply(self):
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate apply --plan <migration_plan.yaml> "
@@ -222,7 +224,11 @@ Commands:
         parser.add_argument(
             "--backup-dir",
             dest="backup_dir",
-            help="Directory for vector backup files. Enables crash-safe resume and rollback.",
+            help=(
+                "Directory for vector backup files. Enables crash-safe resume "
+                "and rollback. Defaults to '{}' when quantization is needed. "
+                "Backup is mandatory for quantization migrations."
+            ).format(DEFAULT_BACKUP_DIR),
             default=None,
         )
         parser.add_argument(
@@ -237,15 +243,8 @@ Commands:
             dest="num_workers",
             type=int,
             help="Number of parallel workers for quantization (default 1). "
-            "Each worker gets its own Redis connection. Requires --backup-dir.",
+            "Each worker gets its own Redis connection.",
             default=1,
-        )
-        parser.add_argument(
-            "--keep-backup",
-            dest="keep_backup",
-            action="store_true",
-            help="Keep backup files after successful migration (default: auto-delete).",
-            default=False,
         )
         parser.add_argument(
             "--report-out",
@@ -268,10 +267,6 @@ Commands:
         # Validate --workers
         if args.num_workers < 1:
             parser.error("--workers must be >= 1")
-
-        # Validate --workers > 1 requires --backup-dir
-        if args.num_workers > 1 and args.backup_dir is None:
-            parser.error("--workers > 1 requires --backup-dir")
 
         redis_url = create_redis_url(args)
         plan = load_migration_plan(args.plan)
@@ -300,7 +295,6 @@ Commands:
                     backup_dir=args.backup_dir,
                     batch_size=args.batch_size,
                     num_workers=args.num_workers,
-                    keep_backup=args.keep_backup,
                 )
             )
         else:
@@ -311,7 +305,6 @@ Commands:
                 backup_dir=args.backup_dir,
                 batch_size=args.batch_size,
                 num_workers=args.num_workers,
-                keep_backup=args.keep_backup,
             )
 
         write_migration_report(report, args.report_out)
@@ -516,7 +509,6 @@ Commands:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
-        keep_backup: bool = False,
     ):
         """Execute migration synchronously."""
         executor = MigrationExecutor()
@@ -531,7 +523,6 @@ Commands:
             backup_dir=backup_dir,
             batch_size=batch_size,
             num_workers=num_workers,
-            keep_backup=keep_backup,
         )
 
         self._print_apply_result(report)
@@ -545,7 +536,6 @@ Commands:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
-        keep_backup: bool = False,
     ):
         """Execute migration asynchronously (non-blocking for large quantization jobs)."""
         executor = AsyncMigrationExecutor()
@@ -560,7 +550,6 @@ Commands:
             backup_dir=backup_dir,
             batch_size=batch_size,
             num_workers=num_workers,
-            keep_backup=keep_backup,
         )
 
         self._print_apply_result(report)
@@ -759,10 +748,13 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
 
     def batch_apply(self):
         """Execute a batch migration plan with state tracking."""
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate batch-apply --plan <batch_plan.yaml> "
-                "[--state <batch_state.yaml>] [--report-dir <./reports>]"
+                "[--state <batch_state.yaml>] [--report-dir <./reports>] "
+                "[--backup-dir <dir>] [--workers N]"
             )
         )
         parser.add_argument("--plan", help="Path to batch_plan.yaml", required=True)
@@ -781,6 +773,30 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             help="Directory for per-index migration reports",
             default="./reports",
         )
+        parser.add_argument(
+            "--backup-dir",
+            dest="backup_dir",
+            help=(
+                "Directory for vector backup files. "
+                f"Defaults to '{DEFAULT_BACKUP_DIR}' when quantization is needed. "
+                "Backup is mandatory for quantization migrations."
+            ),
+            default=None,
+        )
+        parser.add_argument(
+            "--batch-size",
+            dest="batch_size",
+            type=int,
+            help="Keys per pipeline batch (default 500)",
+            default=500,
+        )
+        parser.add_argument(
+            "--workers",
+            dest="num_workers",
+            type=int,
+            help="Number of parallel workers for quantization (default 1).",
+            default=1,
+        )
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
 
@@ -795,8 +811,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
          Vector data will be modified. Original precision cannot be recovered.
          To proceed, add --accept-data-loss flag.
 
-         If you need to preserve original vectors, backup your data first:
-           redis-cli BGSAVE"""
+         Vectors will be automatically backed up before quantization."""
             )
             sys.exit(1)
 
@@ -815,16 +830,22 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             report_dir=args.report_dir,
             redis_url=redis_url,
             progress_callback=progress_callback,
+            backup_dir=args.backup_dir,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
         )
 
         self._print_batch_report_summary(report)
 
     def batch_resume(self):
         """Resume an interrupted batch migration."""
+        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate batch-resume --state <batch_state.yaml> "
-                "[--plan <batch_plan.yaml>] [--retry-failed]"
+                "[--plan <batch_plan.yaml>] [--retry-failed] "
+                "[--backup-dir <dir>]"
             )
         )
         parser.add_argument("--state", help="Path to batch state file", required=True)
@@ -846,6 +867,30 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             help="Directory for per-index migration reports",
             default="./reports",
         )
+        parser.add_argument(
+            "--backup-dir",
+            dest="backup_dir",
+            help=(
+                "Directory for vector backup files. "
+                f"Defaults to '{DEFAULT_BACKUP_DIR}' when quantization is needed. "
+                "Backup is mandatory for quantization migrations."
+            ),
+            default=None,
+        )
+        parser.add_argument(
+            "--batch-size",
+            dest="batch_size",
+            type=int,
+            help="Keys per pipeline batch (default 500)",
+            default=500,
+        )
+        parser.add_argument(
+            "--workers",
+            dest="num_workers",
+            type=int,
+            help="Number of parallel workers for quantization (default 1).",
+            default=1,
+        )
         parser = add_redis_connection_options(parser)
         args = parser.parse_args(sys.argv[3:])
 
@@ -861,8 +906,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
          Vector data will be modified. Original precision cannot be recovered.
          To proceed, add --accept-data-loss flag.
 
-         If you need to preserve original vectors, backup your data first:
-           redis-cli BGSAVE"""
+         Vectors will be automatically backed up before quantization."""
                 )
                 sys.exit(1)
 
@@ -880,6 +924,9 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             report_dir=args.report_dir,
             redis_url=redis_url,
             progress_callback=progress_callback,
+            backup_dir=args.backup_dir,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
         )
 
         self._print_batch_report_summary(report)

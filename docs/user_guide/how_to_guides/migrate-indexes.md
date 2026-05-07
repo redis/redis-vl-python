@@ -606,7 +606,7 @@ The migrator will:
 
 **5. On successful completion:**
 
-The backup phase is set to `completed`. By default, backup files are **automatically deleted** after a successful migration. Pass `--keep-backup` to retain them for post-migration auditing or potential rollback.
+The backup phase is set to `completed`. Backup files are **always retained** on disk for post-migration auditing and rollback. Delete them manually from `--backup-dir` once you have verified the migrated data and no longer need a recovery path.
 
 #### Limitations
 
@@ -688,7 +688,6 @@ rvl migrate validate \
 - `--backup-dir <dir>` : Directory for vector backup files. Enables crash-safe resume and manual rollback. Required when using `--workers` > 1.
 - `--batch-size <N>` : Keys per pipeline batch (default 500). Values 200 to 1000 are typical.
 - `--workers <N>` : Parallel quantization workers (default 1). Each worker opens its own Redis connection. See [Performance](#performance-tuning) for guidance.
-- `--keep-backup` : Retain backup files after a successful migration (default: auto-cleanup).
 
 **Batch-specific flags:**
 - `--pattern` : Glob pattern to match index names (e.g., `*_idx`)
@@ -753,9 +752,10 @@ Backup files are written to the specified directory with this layout:
 **Disk usage:** approximately `num_docs × dims × bytes_per_element`.
 For example, 1M docs with 768-dim float32 vectors ≈ 2.9 GB.
 
-By default, backup files are **automatically deleted** after a successful
-migration. Pass `--keep-backup` to retain them for post-migration auditing
-or potential rollback.
+Backup files are **always retained** on disk after a successful migration
+so they remain available for post-migration auditing and rollback. Delete
+the files manually from the backup directory once you no longer need a
+recovery path.
 
 ### Crash-Safe Resume
 
@@ -808,9 +808,9 @@ rvl index create --schema original_schema.yaml --url redis://localhost:6379
 ```
 
 ```{important}
-Rollback requires that backup files were preserved. Either pass
-`--keep-backup` during migration, or ensure the backup directory was not
-cleaned up. Without backup files, rollback is not possible.
+Rollback requires that the backup directory still contains the original
+backup files. Backups are retained automatically after migration; do not
+delete the directory until you are certain rollback is no longer needed.
 ```
 
 ### Python API for Rollback
@@ -863,7 +863,6 @@ report = executor.apply(
     backup_dir="/tmp/migration_backups",   # enables crash-safe resume
     batch_size=500,                        # keys per pipeline batch
     num_workers=4,                         # parallel quantization workers
-    keep_backup=True,                      # retain backups for rollback
 )
 print(f"Quantized in {report.timings.quantize_duration_seconds}s")
 ```

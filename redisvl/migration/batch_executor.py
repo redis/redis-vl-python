@@ -46,6 +46,9 @@ class BatchMigrationExecutor:
         redis_url: Optional[str] = None,
         redis_client: Optional[Any] = None,
         progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
+        num_workers: int = 1,
     ) -> BatchReport:
         """Execute batch migration with checkpointing.
 
@@ -57,6 +60,11 @@ class BatchMigrationExecutor:
             redis_url: Redis connection URL.
             redis_client: Existing Redis client.
             progress_callback: Optional callback(index_name, position, total, status).
+            backup_dir: Directory for vector backup files. When ``None``
+                (the default), the single-index executor will auto-create
+                ``./migration_backups`` if quantization is needed.
+            batch_size: Keys per pipeline batch (default 500).
+            num_workers: Number of parallel quantization workers (default 1).
 
         Returns:
             BatchReport with results for all indexes.
@@ -122,6 +130,9 @@ class BatchMigrationExecutor:
                 batch_plan=batch_plan,
                 report_dir=report_path,
                 redis_client=client,
+                backup_dir=backup_dir,
+                batch_size=batch_size,
+                num_workers=num_workers,
             )
 
             # Update state
@@ -157,6 +168,9 @@ class BatchMigrationExecutor:
         redis_url: Optional[str] = None,
         redis_client: Optional[Any] = None,
         progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
+        num_workers: int = 1,
     ) -> BatchReport:
         """Resume batch migration from checkpoint.
 
@@ -168,6 +182,9 @@ class BatchMigrationExecutor:
             redis_url: Redis connection URL.
             redis_client: Existing Redis client.
             progress_callback: Optional callback(index_name, position, total, status).
+            backup_dir: Directory for vector backup files.
+            batch_size: Keys per pipeline batch (default 500).
+            num_workers: Number of parallel quantization workers (default 1).
         """
         state = self._load_state(state_path)
         plan_path = batch_plan_path or state.plan_path
@@ -197,6 +214,9 @@ class BatchMigrationExecutor:
             redis_url=redis_url,
             redis_client=redis_client,
             progress_callback=progress_callback,
+            backup_dir=backup_dir,
+            batch_size=batch_size,
+            num_workers=num_workers,
         )
 
     def _migrate_single_index(
@@ -206,6 +226,9 @@ class BatchMigrationExecutor:
         batch_plan: BatchPlan,
         report_dir: Path,
         redis_client: Any,
+        backup_dir: Optional[str] = None,
+        batch_size: int = 500,
+        num_workers: int = 1,
     ) -> BatchIndexState:
         """Execute migration for a single index."""
         try:
@@ -220,6 +243,9 @@ class BatchMigrationExecutor:
             report = self._single_executor.apply(
                 plan,
                 redis_client=redis_client,
+                backup_dir=backup_dir,
+                batch_size=batch_size,
+                num_workers=num_workers,
             )
 
             # Sanitize index_name: replace any character that isn't

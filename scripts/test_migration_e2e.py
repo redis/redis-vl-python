@@ -260,7 +260,7 @@ def run_migration(backup_dir):
     report = executor.apply(
         plan, redis_url=REDIS_URL, progress_callback=progress_cb,
         backup_dir=backup_dir, batch_size=BATCH_SIZE,
-        num_workers=NUM_WORKERS, keep_backup=True,
+        num_workers=NUM_WORKERS,
     )
     elapsed = time.perf_counter() - started
     # Close last phase

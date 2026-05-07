@@ -15,6 +15,7 @@ from redis.exceptions import ResponseError
 from redisvl.index import AsyncSearchIndex
 from redisvl.migration.async_planner import AsyncMigrationPlanner
 from redisvl.migration.async_validation import AsyncMigrationValidator
+from redisvl.migration.executor import DEFAULT_BACKUP_DIR
 from redisvl.migration.models import (
     MigrationBenchmarkSummary,
     MigrationPlan,
@@ -549,7 +550,6 @@ class AsyncMigrationExecutor:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
-        keep_backup: bool = False,
     ) -> MigrationReport:
         """Apply a migration plan asynchronously.
 
@@ -575,8 +575,6 @@ class AsyncMigrationExecutor:
             num_workers: Parallel quantization workers (default 1). For
                 low-dimensional vectors (≤ 256 dims) a single worker is
                 often fastest. Diminishing returns above 4–8 workers.
-            keep_backup: Retain backup files after success (default
-                ``False``).
         """
         started_at = timestamp_utc()
         started = time.perf_counter()
@@ -695,6 +693,28 @@ class AsyncMigrationExecutor:
             is_same_width_dtype_conversion(change["source"], change["target"])
             for change in datatype_changes.values()
         )
+
+        # Auto-default backup_dir when quantization is needed and no dir
+        # was provided.  This ensures vector data is always backed up
+        # before destructive in-place mutations.
+        if needs_quantization and backup_dir is None:
+            backup_dir = DEFAULT_BACKUP_DIR
+            logger.info(
+                "Quantization detected — using default backup directory: %s",
+                backup_dir,
+            )
+
+        # MANDATORY BACKUP ENFORCEMENT: After auto-defaulting, backup_dir
+        # must be set for any quantization migration.  This is a hard safety
+        # check — quantization without backup is never allowed.
+        if needs_quantization and not backup_dir:
+            raise ValueError(
+                "Vector backup is mandatory for quantization migrations. "
+                "A backup directory must be provided via --backup-dir or the "
+                f"default '{DEFAULT_BACKUP_DIR}' must be writable. "
+                "Quantization without backup is not allowed to prevent "
+                "irreversible data loss."
+            )
 
         if backup_dir and has_same_width_quantization:
             report.validation.errors.append(
@@ -1139,10 +1159,6 @@ class AsyncMigrationExecutor:
             )
         finally:
             report.finished_at = timestamp_utc()
-
-        # Auto-cleanup backup files on success
-        if backup_dir and not keep_backup and report.result == "succeeded":
-            self._cleanup_backup_files(backup_dir, plan.source.index_name)
 
         return report
 

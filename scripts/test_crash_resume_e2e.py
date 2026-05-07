@@ -176,7 +176,7 @@ def run_attempt(plan, backup_dir, crash_after=None, attempt_num=0):
             report = executor.apply(
                 plan, redis_url=REDIS_URL, progress_callback=progress_cb,
                 backup_dir=backup_dir, batch_size=BATCH_SIZE,
-                num_workers=1, keep_backup=True,
+                num_workers=1,
             )
         finally:
             quantize_mod.pipeline_write_vectors = original_write
@@ -187,7 +187,7 @@ def run_attempt(plan, backup_dir, crash_after=None, attempt_num=0):
         report = executor.apply(
             plan, redis_url=REDIS_URL, progress_callback=progress_cb,
             backup_dir=backup_dir, batch_size=BATCH_SIZE,
-            num_workers=1, keep_backup=True,
+            num_workers=1,
         )
         return report, events
 

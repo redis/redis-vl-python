@@ -35,6 +35,10 @@ from redisvl.migration.validation import MigrationValidator
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 
+# Default directory for vector backups during quantization migrations.
+# Used automatically when no explicit --backup-dir is provided.
+DEFAULT_BACKUP_DIR = "./migration_backups"
+
 logger = get_logger(__name__)
 
 
@@ -576,7 +580,6 @@ class MigrationExecutor:
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
-        keep_backup: bool = False,
     ) -> MigrationReport:
         """Apply a migration plan.
 
@@ -634,9 +637,6 @@ class MigrationExecutor:
                 per-worker overhead (process spawning, extra connections)
                 outweighs the parallelism benefit. Diminishing returns above
                 4–8 workers on a single Redis instance.
-            keep_backup: If ``True``, retain backup files after a successful
-                migration. Default ``False`` (auto-cleanup on success). Useful
-                for post-migration auditing or manual rollback.
 
         Returns:
             MigrationReport: Outcome including timing breakdown, validation
@@ -790,6 +790,28 @@ class MigrationExecutor:
             is_same_width_dtype_conversion(change["source"], change["target"])
             for change in datatype_changes.values()
         )
+
+        # Auto-default backup_dir when quantization is needed and no dir
+        # was provided.  This ensures vector data is always backed up
+        # before destructive in-place mutations.
+        if needs_quantization and backup_dir is None:
+            backup_dir = DEFAULT_BACKUP_DIR
+            logger.info(
+                "Quantization detected — using default backup directory: %s",
+                backup_dir,
+            )
+
+        # MANDATORY BACKUP ENFORCEMENT: After auto-defaulting, backup_dir
+        # must be set for any quantization migration.  This is a hard safety
+        # check — quantization without backup is never allowed.
+        if needs_quantization and not backup_dir:
+            raise ValueError(
+                "Vector backup is mandatory for quantization migrations. "
+                "A backup directory must be provided via --backup-dir or the "
+                f"default '{DEFAULT_BACKUP_DIR}' must be writable. "
+                "Quantization without backup is not allowed to prevent "
+                "irreversible data loss."
+            )
 
         if backup_dir and has_same_width_quantization:
             report.validation.errors.append(
@@ -1229,10 +1251,6 @@ class MigrationExecutor:
             )
         finally:
             report.finished_at = timestamp_utc()
-
-        # Auto-cleanup backup files on success
-        if backup_dir and not keep_backup and report.result == "succeeded":
-            self._cleanup_backup_files(backup_dir, plan.source.index_name)
 
         return report
 
