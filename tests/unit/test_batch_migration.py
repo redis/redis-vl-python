@@ -1585,3 +1585,21 @@ class TestBatchMigrationPlannerOverlapDetection:
                 schema_patch_path=str(patch_path),
                 redis_client=mock_client,
             )
+
+    def test_overlap_error_matches_documented_format(self):
+        """Guard against drift between the error string and the docs.
+
+        The user-facing docs (docs/user_guide/how_to_guides/migrate-indexes.md
+        troubleshooting section) reproduce this error verbatim, so changes to
+        the format should be intentional.
+        """
+        msg = BatchMigrationPlanner._format_overlap_error(
+            [("products_main", "products_premium", [("product:", "product:premium:")])]
+        )
+        assert "Refusing to create batch plan: overlapping indexes detected." in msg
+        assert "Conflicts:" in msg
+        assert (
+            "products_main <-> products_premium: 'product:' <-> 'product:premium:'"
+            in msg
+        )
+        assert "disjoint prefixes" in msg

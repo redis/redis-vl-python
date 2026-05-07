@@ -103,6 +103,74 @@ Typical reductions:
 
 Quantization time is proportional to document count. Plan for downtime accordingly.
 
+## Vector backups (mandatory for quantization)
+
+Quantization mutates the raw bytes of every vector in place. If the
+migration is interrupted partway through, or if the converted bytes turn
+out to be unacceptable for your application, there is no way to recover
+the original precision from the quantized values. To make these
+migrations safe to run, the migrator **always writes a vector backup
+before mutating any data** when a quantization step is needed.
+
+There is no opt-out. The previous `--keep-backup` flag and any code path
+that allowed quantizing without a backup have been removed.
+
+### Where backups are written
+
+Pass `--backup-dir <dir>` (CLI) or `backup_dir="<dir>"` (Python API) to
+choose the location. If you do not supply one, the migrator auto-defaults
+to `./migration_backups` and logs the chosen path. Passing an empty
+string is treated as an explicit refusal of a backup and raises a
+`ValueError` before any data is touched.
+
+Each migrated index produces two files:
+
+```
+<backup-dir>/
+  migration_backup_<index_name>.header   # JSON: phase, progress counters, field metadata
+  migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
+```
+
+Disk usage is roughly `num_docs × dims × bytes_per_element`. For 1M
+documents with 768-dimensional float32 vectors that is approximately
+2.9 GB.
+
+### What backups enable
+
+1. **Crash-safe resume.** If the executor dies mid-migration (process
+   killed, network drop, OOM), re-running the same command with the same
+   `--backup-dir` reads the header file, detects partial progress, and
+   resumes from the last completed batch instead of re-quantizing the
+   keys that already converted successfully.
+2. **Manual rollback.** The data file contains the original
+   pre-quantization vector bytes. After a migration, you can use the
+   rollback CLI (`rvl migrate rollback`) or the Python API to restore
+   those bytes if you need to back out the change.
+
+### Retention
+
+Backup files are **retained on disk** after a successful migration.
+Cleanup is now a deliberate operator action, performed only after the
+new vectors have been verified and rollback is no longer needed. Delete
+the backup directory manually when you are done.
+
+## Overlapping indexes
+
+Two RediSearch indexes whose key prefixes overlap (one prefix is a
+literal string-prefix of the other, matching `FT.CREATE PREFIX`
+semantics) cover the same Redis keyspace. Running a batch quantization
+migration over them re-reads vectors that an earlier index in the batch
+has already quantized, producing garbage bytes. To prevent this,
+`batch-plan` performs an overlap check across every applicable index and
+**refuses to write a plan** if any pair conflicts. The error names the
+conflicting indexes and the specific prefix pairs that overlap.
+
+The check is plan-time only — no data is mutated when a batch is
+refused. Resolve by splitting the indexes into prefix-disjoint groups
+and creating one batch plan per group. Indexes that are skipped for
+other reasons (e.g. `applicable: false` because a field is missing) do
+not participate in the check.
+
 ## Why some changes are blocked
 
 ### Vector dimension changes
