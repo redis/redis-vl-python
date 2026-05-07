@@ -1450,3 +1450,138 @@ class TestBatchResumeEmptyPlanPath:
         with mock_patch.object(executor, "_load_state", return_value=state):
             with pytest.raises(ValueError, match="No batch plan path"):
                 executor.resume("fake_state.yaml")
+
+
+class TestBatchMigrationPlannerOverlapDetection:
+    """Refuse plans whose applicable indexes share Redis key prefixes."""
+
+    def _patch_from_existing(self, monkeypatch, schemas):
+        def mock_from_existing(name, **kwargs):
+            return make_dummy_index(
+                name, schemas[name], {"num_docs": 10, "indexing": False}
+            )
+
+        monkeypatch.setattr(
+            "redisvl.migration.batch_planner.SearchIndex.from_existing",
+            mock_from_existing,
+        )
+        monkeypatch.setattr(
+            "redisvl.migration.planner.SearchIndex.from_existing", mock_from_existing
+        )
+
+    def test_identical_prefix_blocks_plan(self, monkeypatch, tmp_path):
+        schemas = {
+            "idx_a": make_test_schema("idx_a", prefix="product"),
+            "idx_b": make_test_schema("idx_b", prefix="product"),
+        }
+        self._patch_from_existing(monkeypatch, schemas)
+        mock_client = MockRedisClient(indexes=list(schemas))
+
+        patch_path = tmp_path / "patch.yaml"
+        patch_path.write_text(yaml.safe_dump(make_shared_patch()))
+
+        planner = BatchMigrationPlanner()
+        with pytest.raises(ValueError, match="overlapping indexes detected"):
+            planner.create_batch_plan(
+                indexes=list(schemas),
+                schema_patch_path=str(patch_path),
+                redis_client=mock_client,
+            )
+
+    def test_nested_prefix_blocks_plan(self, monkeypatch, tmp_path):
+        schemas = {
+            "broad": make_test_schema("broad", prefix="product"),
+            "narrow": make_test_schema("narrow", prefix="product:premium"),
+        }
+        self._patch_from_existing(monkeypatch, schemas)
+        mock_client = MockRedisClient(indexes=list(schemas))
+
+        patch_path = tmp_path / "patch.yaml"
+        patch_path.write_text(yaml.safe_dump(make_shared_patch()))
+
+        planner = BatchMigrationPlanner()
+        with pytest.raises(ValueError, match="broad <-> narrow"):
+            planner.create_batch_plan(
+                indexes=list(schemas),
+                schema_patch_path=str(patch_path),
+                redis_client=mock_client,
+            )
+
+    def test_disjoint_prefixes_succeed(self, monkeypatch, tmp_path):
+        schemas = {
+            "idx_a": make_test_schema("idx_a", prefix="p01:"),
+            "idx_b": make_test_schema("idx_b", prefix="p02:"),
+            "idx_c": make_test_schema("idx_c", prefix="p03:"),
+        }
+        self._patch_from_existing(monkeypatch, schemas)
+        mock_client = MockRedisClient(indexes=list(schemas))
+
+        patch_path = tmp_path / "patch.yaml"
+        patch_path.write_text(yaml.safe_dump(make_shared_patch()))
+
+        planner = BatchMigrationPlanner()
+        batch_plan = planner.create_batch_plan(
+            indexes=list(schemas),
+            schema_patch_path=str(patch_path),
+            redis_client=mock_client,
+        )
+        assert batch_plan.applicable_count == 3
+
+    def test_non_applicable_overlap_does_not_block(self, monkeypatch, tmp_path):
+        # idx_b shares a prefix with idx_a but is not applicable (missing field),
+        # so it should not contribute to overlap detection.
+        schemas = {
+            "idx_a": make_test_schema("idx_a", prefix="product"),
+            "idx_b": {
+                "index": {
+                    "name": "idx_b",
+                    "prefix": "product",
+                    "key_separator": ":",
+                    "storage_type": "hash",
+                },
+                "fields": [{"name": "title", "type": "text"}],
+            },
+        }
+        self._patch_from_existing(monkeypatch, schemas)
+        mock_client = MockRedisClient(indexes=list(schemas))
+
+        patch_path = tmp_path / "patch.yaml"
+        patch_path.write_text(
+            yaml.safe_dump(
+                make_shared_patch(
+                    update_fields=[
+                        {"name": "embedding", "attrs": {"datatype": "float16"}}
+                    ]
+                )
+            )
+        )
+
+        planner = BatchMigrationPlanner()
+        batch_plan = planner.create_batch_plan(
+            indexes=list(schemas),
+            schema_patch_path=str(patch_path),
+            redis_client=mock_client,
+        )
+        assert batch_plan.applicable_count == 1
+        assert batch_plan.skipped_count == 1
+
+    def test_empty_prefix_overlaps_everything(self, monkeypatch, tmp_path):
+        wildcard_schema = make_test_schema("wildcard", prefix="x")
+        wildcard_schema["index"]["prefix"] = ""
+        schemas = {
+            "wildcard": wildcard_schema,
+            "narrow": make_test_schema("narrow", prefix="product:"),
+        }
+        self._patch_from_existing(monkeypatch, schemas)
+        mock_client = MockRedisClient(indexes=list(schemas))
+
+        patch_path = tmp_path / "patch.yaml"
+        patch_path.write_text(yaml.safe_dump(make_shared_patch()))
+
+        planner = BatchMigrationPlanner()
+        with pytest.raises(ValueError, match="overlapping indexes detected"):
+            planner.create_batch_plan(
+                indexes=list(schemas),
+                schema_patch_path=str(patch_path),
+                redis_client=mock_client,
+            )

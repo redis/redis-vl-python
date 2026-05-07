@@ -639,16 +639,18 @@ class MigrationPlanner:
                 break
             if prefix == "":
                 match_pattern = "*"
-            elif prefix.endswith(key_separator):
-                match_pattern = f"{prefix}*"
             else:
-                match_pattern = f"{prefix}{key_separator}*"
+                # Use literal prefix + glob, matching Redis Search PREFIX
+                # semantics (pure string-prefix match).  Do NOT insert the
+                # key_separator — a PREFIX of "doc" must match "doc:1",
+                # "doca:1", etc., exactly like FT.CREATE does.
+                match_pattern = f"{prefix}*"
             cursor = 0
             while True:
                 cursor, keys = client.scan(
                     cursor=cursor,
                     match=match_pattern,
-                    count=max(self.key_sample_limit, 10),
+                    count=max(self.key_sample_limit, 1000),
                 )
                 for key in keys:
                     decoded_key = key.decode() if isinstance(key, bytes) else str(key)

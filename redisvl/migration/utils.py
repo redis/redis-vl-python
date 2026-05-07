@@ -100,10 +100,11 @@ def build_scan_match_patterns(prefixes: List[str], key_separator: str) -> List[s
                 "Using '*' which will scan the entire keyspace."
             )
             return ["*"]
-        if key_separator and not prefix.endswith(key_separator):
-            patterns.add(f"{prefix}{key_separator}*")
-        else:
-            patterns.add(f"{prefix}*")
+        # Use literal prefix + glob, matching Redis Search PREFIX semantics
+        # (pure string-prefix match).  Do NOT insert the key_separator — a
+        # PREFIX of "doc" must match "doc:1", "doca:1", etc., exactly like
+        # FT.CREATE does.
+        patterns.add(f"{prefix}*")
     return sorted(patterns)
 
 
@@ -338,6 +339,59 @@ def current_source_matches_snapshot(
 
 def timestamp_utc() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def normalize_prefixes(prefix: Any) -> List[str]:
+    """Normalize an IndexInfo.prefix value to a list of strings."""
+    if prefix is None:
+        return []
+    if isinstance(prefix, str):
+        return [prefix]
+    if isinstance(prefix, (list, tuple)):
+        return [str(p) for p in prefix]
+    return [str(prefix)]
+
+
+def _prefixes_overlap(a: List[str], b: List[str]) -> List[Tuple[str, str]]:
+    """Return concrete (prefix_a, prefix_b) pairs whose keyspaces overlap.
+
+    Two prefixes overlap when one is a literal string-prefix of the other,
+    matching RediSearch FT.CREATE PREFIX semantics. An empty prefix matches
+    every key.
+    """
+    pairs: List[Tuple[str, str]] = []
+    for pa in a:
+        for pb in b:
+            if pa == "" or pb == "" or pa.startswith(pb) or pb.startswith(pa):
+                pairs.append((pa, pb))
+    return pairs
+
+
+def find_overlapping_index_groups(
+    indexes_with_prefixes: List[Tuple[str, List[str]]],
+) -> List[Tuple[str, str, List[Tuple[str, str]]]]:
+    """Find pairs of indexes whose key prefixes overlap.
+
+    Args:
+        indexes_with_prefixes: list of (index_name, prefixes) tuples.
+
+    Returns:
+        A list of (index_a, index_b, overlapping_prefix_pairs) tuples.
+        Empty list when no overlaps exist.
+    """
+    overlaps: List[Tuple[str, str, List[Tuple[str, str]]]] = []
+    for i in range(len(indexes_with_prefixes)):
+        name_a, prefixes_a = indexes_with_prefixes[i]
+        if not prefixes_a:
+            continue
+        for j in range(i + 1, len(indexes_with_prefixes)):
+            name_b, prefixes_b = indexes_with_prefixes[j]
+            if not prefixes_b:
+                continue
+            pairs = _prefixes_overlap(prefixes_a, prefixes_b)
+            if pairs:
+                overlaps.append((name_a, name_b, pairs))
+    return overlaps
 
 
 def estimate_disk_space(

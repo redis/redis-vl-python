@@ -483,3 +483,153 @@ class TestBatchMigrationResumeIntegration:
         for name in index_names:
             idx = SearchIndex.from_existing(name, redis_url=redis_url)
             idx.delete(drop=True)
+
+
+class TestBatchMigrationOverlapDetectionIntegration:
+    """Plan-time refusal of batches whose indexes share key prefixes."""
+
+    def test_identical_prefixes_refused(self, redis_url, worker_id, tmp_path):
+        suffix = f"{worker_id}_{uuid.uuid4().hex[:6]}"
+        shared_prefix = f"overlap_same_{suffix}"
+        names = [f"overlap_a_{suffix}", f"overlap_b_{suffix}"]
+
+        for name in names:
+            idx = create_test_index(name, shared_prefix, redis_url)
+            idx.create(overwrite=True, drop=False)
+            load_test_data(idx)
+
+        try:
+            patch_path = tmp_path / "patch.yaml"
+            patch_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "version": 1,
+                        "changes": {
+                            "update_fields": [
+                                {
+                                    "name": "embedding",
+                                    "attrs": {"datatype": "float16"},
+                                }
+                            ],
+                            "add_fields": [],
+                            "remove_fields": [],
+                            "index": {},
+                        },
+                    }
+                )
+            )
+
+            planner = BatchMigrationPlanner()
+            with pytest.raises(ValueError, match="overlapping indexes detected"):
+                planner.create_batch_plan(
+                    indexes=names,
+                    schema_patch_path=str(patch_path),
+                    redis_url=redis_url,
+                )
+        finally:
+            for name in names:
+                try:
+                    SearchIndex.from_existing(name, redis_url=redis_url).delete(
+                        drop=True
+                    )
+                except Exception:
+                    pass
+
+    def test_nested_prefixes_refused(self, redis_url, worker_id, tmp_path):
+        suffix = f"{worker_id}_{uuid.uuid4().hex[:6]}"
+        broad_name = f"nested_broad_{suffix}"
+        narrow_name = f"nested_narrow_{suffix}"
+        broad_prefix = f"nest_{suffix}"
+        narrow_prefix = f"{broad_prefix}:premium"
+
+        broad = create_test_index(broad_name, broad_prefix, redis_url)
+        broad.create(overwrite=True, drop=False)
+        load_test_data(broad)
+        narrow = create_test_index(narrow_name, narrow_prefix, redis_url)
+        narrow.create(overwrite=True, drop=False)
+        load_test_data(narrow)
+
+        try:
+            patch_path = tmp_path / "patch.yaml"
+            patch_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "version": 1,
+                        "changes": {
+                            "update_fields": [
+                                {
+                                    "name": "embedding",
+                                    "attrs": {"datatype": "float16"},
+                                }
+                            ],
+                            "add_fields": [],
+                            "remove_fields": [],
+                            "index": {},
+                        },
+                    }
+                )
+            )
+
+            planner = BatchMigrationPlanner()
+            with pytest.raises(ValueError, match=f"{broad_name} <-> {narrow_name}"):
+                planner.create_batch_plan(
+                    indexes=[broad_name, narrow_name],
+                    schema_patch_path=str(patch_path),
+                    redis_url=redis_url,
+                )
+        finally:
+            for name in (broad_name, narrow_name):
+                try:
+                    SearchIndex.from_existing(name, redis_url=redis_url).delete(
+                        drop=True
+                    )
+                except Exception:
+                    pass
+
+    def test_disjoint_prefixes_succeed(self, redis_url, worker_id, tmp_path):
+        suffix = f"{worker_id}_{uuid.uuid4().hex[:6]}"
+        names = [f"disjoint_{i}_{suffix}" for i in range(3)]
+        prefixes = [f"disjoint_p{i}_{suffix}" for i in range(3)]
+
+        for name, prefix in zip(names, prefixes):
+            idx = create_test_index(name, prefix, redis_url)
+            idx.create(overwrite=True, drop=False)
+            load_test_data(idx)
+
+        try:
+            patch_path = tmp_path / "patch.yaml"
+            patch_path.write_text(
+                yaml.safe_dump(
+                    {
+                        "version": 1,
+                        "changes": {
+                            "update_fields": [
+                                {
+                                    "name": "embedding",
+                                    "attrs": {"datatype": "float16"},
+                                }
+                            ],
+                            "add_fields": [],
+                            "remove_fields": [],
+                            "index": {},
+                        },
+                    }
+                )
+            )
+
+            planner = BatchMigrationPlanner()
+            batch_plan = planner.create_batch_plan(
+                indexes=names,
+                schema_patch_path=str(patch_path),
+                redis_url=redis_url,
+            )
+            assert batch_plan.applicable_count == 3
+            assert batch_plan.requires_quantization is True
+        finally:
+            for name in names:
+                try:
+                    SearchIndex.from_existing(name, redis_url=redis_url).delete(
+                        drop=True
+                    )
+                except Exception:
+                    pass

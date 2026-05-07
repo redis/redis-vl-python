@@ -13,7 +13,12 @@ import yaml
 from redisvl.index import SearchIndex
 from redisvl.migration.models import BatchIndexEntry, BatchPlan, SchemaPatch
 from redisvl.migration.planner import MigrationPlanner
-from redisvl.migration.utils import list_indexes, timestamp_utc
+from redisvl.migration.utils import (
+    find_overlapping_index_groups,
+    list_indexes,
+    normalize_prefixes,
+    timestamp_utc,
+)
 from redisvl.redis.connection import RedisConnectionFactory
 
 
@@ -83,10 +88,11 @@ class BatchMigrationPlanner:
 
         # Check applicability for each index
         batch_entries: List[BatchIndexEntry] = []
+        applicable_prefixes: List[Tuple[str, List[str]]] = []
         requires_quantization = False
 
         for index_name in index_names:
-            entry, has_quantization = self._check_index_applicability(
+            entry, has_quantization, prefixes = self._check_index_applicability(
                 index_name=index_name,
                 shared_patch=shared_patch,
                 redis_client=client,
@@ -94,6 +100,15 @@ class BatchMigrationPlanner:
             batch_entries.append(entry)
             if has_quantization:
                 requires_quantization = True
+            if entry.applicable:
+                applicable_prefixes.append((index_name, prefixes))
+
+        # Refuse plan creation when applicable indexes share keyspace.
+        # Overlapping indexes cause double-mutation of the same keys during
+        # sequential batch execution (e.g., double-quantization of vectors).
+        overlaps = find_overlapping_index_groups(applicable_prefixes)
+        if overlaps:
+            raise ValueError(self._format_overlap_error(overlaps))
 
         batch_id = f"batch_{uuid.uuid4().hex[:12]}"
 
@@ -156,16 +171,19 @@ class BatchMigrationPlanner:
         index_name: str,
         shared_patch: SchemaPatch,
         redis_client: Any,
-    ) -> Tuple[BatchIndexEntry, bool]:
+    ) -> Tuple[BatchIndexEntry, bool, List[str]]:
         """Check if the shared patch can be applied to a specific index.
 
         Returns:
-            Tuple of (BatchIndexEntry, requires_quantization).
+            Tuple of (BatchIndexEntry, requires_quantization, prefixes).
+            ``prefixes`` is the list of key prefixes the index is bound to,
+            or an empty list when the index could not be loaded.
         """
         try:
             index = SearchIndex.from_existing(index_name, redis_client=redis_client)
             schema_dict = index.schema.to_dict()
             field_names = {f["name"] for f in schema_dict.get("fields", [])}
+            prefixes = normalize_prefixes(schema_dict.get("index", {}).get("prefix"))
 
             # Build a set of field names that includes rename targets so
             # that update_fields referencing the NEW name of a renamed field
@@ -189,6 +207,7 @@ class BatchMigrationPlanner:
                         skip_reason=f"Missing fields: {', '.join(missing_fields)}",
                     ),
                     False,
+                    prefixes,
                 )
 
             # Validate rename targets don't collide with each other or
@@ -212,6 +231,7 @@ class BatchMigrationPlanner:
                             skip_reason=f"Rename targets collide: {', '.join(duplicates)}",
                         ),
                         False,
+                        prefixes,
                     )
                 # Check if any rename target already exists and isn't itself being renamed away
                 collisions = [
@@ -227,6 +247,7 @@ class BatchMigrationPlanner:
                             skip_reason=f"Rename targets already exist: {', '.join(collisions)}",
                         ),
                         False,
+                        prefixes,
                     )
 
             # Check that add_fields don't already exist.
@@ -247,6 +268,7 @@ class BatchMigrationPlanner:
                         skip_reason=f"Fields already exist: {', '.join(existing_adds)}",
                     ),
                     False,
+                    prefixes,
                 )
 
             # Try creating a plan to check for blocked changes
@@ -268,6 +290,7 @@ class BatchMigrationPlanner:
                         ),
                     ),
                     False,
+                    prefixes,
                 )
 
             # Detect quantization from the plan we already created
@@ -279,7 +302,11 @@ class BatchMigrationPlanner:
                 )
             )
 
-            return BatchIndexEntry(name=index_name, applicable=True), has_quantization
+            return (
+                BatchIndexEntry(name=index_name, applicable=True),
+                has_quantization,
+                prefixes,
+            )
 
         except (
             ConnectionError,
@@ -298,7 +325,35 @@ class BatchMigrationPlanner:
                     skip_reason=str(e),
                 ),
                 False,
+                [],
             )
+
+    @staticmethod
+    def _format_overlap_error(
+        overlaps: List[Tuple[str, str, List[Tuple[str, str]]]],
+    ) -> str:
+        """Build a human-readable error for overlapping index prefixes."""
+        lines = [
+            "Refusing to create batch plan: overlapping indexes detected.",
+            "",
+            "Multiple indexes in the batch share Redis key prefixes. Running a",
+            "batch migration over overlapping indexes can mutate the same keys",
+            "more than once (e.g., double-quantization of vectors), corrupting",
+            "the underlying data.",
+            "",
+            "Conflicts:",
+        ]
+        for name_a, name_b, pairs in overlaps:
+            pretty_pairs = ", ".join(f"'{pa}' <-> '{pb}'" for pa, pb in pairs)
+            lines.append(f"  - {name_a} <-> {name_b}: {pretty_pairs}")
+        lines.extend(
+            [
+                "",
+                "Resolve by migrating overlapping indexes one at a time, or by",
+                "narrowing the batch to a set of indexes with disjoint prefixes.",
+            ]
+        )
+        return "\n".join(lines)
 
     def write_batch_plan(self, batch_plan: BatchPlan, path: str) -> None:
         """Write batch plan to YAML file."""
