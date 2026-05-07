@@ -12,9 +12,21 @@ import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from redisvl.redis.utils import array_to_buffer, buffer_to_array
+from redisvl.utils.utils import lazy_import
+
+if TYPE_CHECKING:
+    import numpy as np
+else:
+    np = lazy_import("numpy")
+
+# Integer dtype ranges used for float-to-integer quantization scaling.
+_INTEGER_RANGES: Dict[str, tuple] = {
+    "int8": (-128, 127),
+    "uint8": (0, 255),
+}
 
 
 def pipeline_read_vectors(
@@ -82,11 +94,62 @@ def pipeline_write_vectors(
     pipe.execute()
 
 
+def _quantize_array(arr: "np.ndarray", target_dtype: str) -> "np.ndarray":
+    """Convert a numpy array to a target dtype, applying min-max scaling
+    when converting from float to integer types.
+
+    Float-to-float conversions (e.g. float32 → float16) are a simple cast.
+
+    Float-to-integer conversions (e.g. float32 → int8) require scaling
+    because most embedding models produce values in [-1, 1] or similar
+    narrow ranges. A naive ``astype("int8")`` would truncate everything
+    to zero. Instead, we apply per-vector min-max scaling to fill the
+    full integer range, matching the approach recommended in the Redis
+    vector-search documentation.
+
+    Args:
+        arr: Source vector as a numpy array (any float dtype).
+        target_dtype: Target dtype string (e.g. "float16", "int8", "uint8").
+
+    Returns:
+        Numpy array in the target dtype.
+
+    Raises:
+        ValueError: If the target dtype is an unsupported integer type.
+    """
+    target_lower = target_dtype.lower()
+    int_range = _INTEGER_RANGES.get(target_lower)
+
+    if int_range is None:
+        # Float-to-float: simple precision cast (e.g. float32 → float16).
+        return arr.astype(target_lower)
+
+    # Float-to-integer: per-vector min-max scaling.
+    lo, hi = int_range
+    vec_min = arr.min()
+    vec_max = arr.max()
+    spread = vec_max - vec_min
+
+    if spread == 0:
+        # Constant vector (rare but possible) — map to midpoint.
+        mid = (lo + hi) // 2
+        return np.full_like(arr, mid, dtype=target_lower)
+
+    # Scale [vec_min, vec_max] → [lo, hi] and round to nearest integer.
+    scaled = (arr - vec_min) / spread * (hi - lo) + lo
+    return np.clip(np.round(scaled), lo, hi).astype(target_lower)
+
+
 def convert_vectors(
     originals: Dict[str, Dict[str, bytes]],
     datatype_changes: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Dict[str, bytes]]:
     """Convert vector bytes from source dtype to target dtype.
+
+    For float-to-float conversions, this performs a simple precision cast.
+    For float-to-integer conversions (int8, uint8), this applies per-vector
+    min-max scaling to map the float range into the full integer range
+    before casting. See :func:`_quantize_array` for details.
 
     Args:
         originals: {key: {field_name: original_bytes}}
@@ -102,9 +165,13 @@ def convert_vectors(
             change = datatype_changes.get(field_name)
             if not change:
                 continue
-            array = buffer_to_array(data, change["source"])
-            new_bytes = array_to_buffer(array, change["target"])
-            converted[key][field_name] = new_bytes
+            source_dtype = change["source"].lower()
+            target_dtype = change["target"]
+
+            # Deserialize directly into numpy (avoids Python list round-trip).
+            arr = np.frombuffer(data, dtype=source_dtype).copy()
+            quantized = _quantize_array(arr, target_dtype)
+            converted[key][field_name] = quantized.tobytes()
     return converted
 
 
