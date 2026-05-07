@@ -717,6 +717,35 @@ The index is taking longer to rebuild than expected. This can happen with large 
 
 Documents were added or removed between plan and apply. This is expected if your application is actively writing. Re-run `plan` and `apply` during a quieter period when the document count is stable, or verify the mismatch is due only to normal application traffic.
 
+### batch-plan failed: "overlapping indexes detected"
+
+`batch-plan` refuses to write a plan when two or more applicable indexes
+share a key prefix (one prefix is a literal string-prefix of the other,
+matching `FT.CREATE PREFIX` semantics). Running such a batch would
+double-quantize the shared keys and corrupt vector data. The error lists
+each conflicting index pair under a `Conflicts:` section:
+
+```
+Error: Refusing to create batch plan: overlapping indexes detected.
+
+Multiple indexes in the batch share Redis key prefixes. Running a
+batch migration over overlapping indexes can mutate the same keys
+more than once (e.g., double-quantization of vectors), corrupting
+the underlying data.
+
+Conflicts:
+  - products_main <-> products_premium: 'product:' <-> 'product:premium:'
+
+Resolve by migrating overlapping indexes one at a time, or by
+narrowing the batch to a set of indexes with disjoint prefixes.
+```
+
+Split the selected indexes into prefix-disjoint groups (for example,
+`prod_*` separately from `staging_*`) and run `batch-plan` once per group.
+Indexes that are skipped for other reasons (e.g. `applicable: false`
+because a field is missing) do not participate in this check.
+
+
 ### How to recover from a failed migration
 
 If `apply` fails mid-migration:
@@ -999,6 +1028,16 @@ created_at: "2026-03-20T10:00:00Z"
 **Key fields:**
 - `applicable: true` means the patch applies to this index
 - `skip_reason` explains why an index will be skipped
+
+**Overlap check.** `batch-plan` refuses to write a plan when two applicable
+indexes have key prefixes that overlap — i.e. one prefix is a literal
+string-prefix of the other, matching `FT.CREATE PREFIX` semantics. Migrating
+overlapping indexes in a single batch can corrupt vector data because every
+index after the first reads bytes that an earlier index has already
+quantized. Split the indexes into prefix-disjoint groups and create a batch
+plan per group. See the troubleshooting entry below for the exact error
+message.
+
 
 ### Applying a Batch Plan
 
