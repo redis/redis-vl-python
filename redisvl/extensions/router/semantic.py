@@ -710,7 +710,7 @@ class SemanticRouter(BaseModel):
         """Add a reference(s) to an existing route.
 
         Args:
-            router_name (str): The name of the router.
+            route_name (str): The name of the route.
             references (Union[str, List[str]]): The reference or list of references to add.
 
         Returns:
@@ -774,8 +774,9 @@ class SemanticRouter(BaseModel):
         """Get references for an existing route route.
 
         Args:
-            router_name (str): The name of the router.
-            references (Union[str, List[str]]): The reference or list of references to add.
+            route_name (str): The name of the route.
+            reference_ids (List[str]): The list of reference ids to fetch.
+            keys (List[str]): The list of fully qualified keys to fetch.
 
         Returns:
             List[Dict[str, Any]]]: Reference objects stored
@@ -810,9 +811,9 @@ class SemanticRouter(BaseModel):
         """Get references for an existing semantic router route.
 
         Args:
-            router_name Optional(str): The name of the router.
-            reference_ids Optional(List[str]]): The reference or list of references to delete.
-            keys Optional(List[str]]): List of fully qualified keys (prefix:router:reference_id) to delete.
+            route_name (Optional[str]): The name of the route.
+            reference_ids (Optional[List[str]]): The reference or list of references to delete.
+            keys (Optional[List[str]]): List of fully qualified keys (prefix:router:reference_id) to delete.
 
         Returns:
             int: Number of objects deleted

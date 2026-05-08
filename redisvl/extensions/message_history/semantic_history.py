@@ -202,7 +202,7 @@ class SemanticMessageHistory(BaseMessageHistory):
         Args:
             prompt (str): The message text to search for in message history
             as_text (bool): Whether to return the prompts and responses as text
-            or as JSON.
+                or as JSON.
             top_k (int): The number of previous messages to return. Default is 5.
             session_tag (Optional[str]): Tag of the entries linked to a specific
                 conversation session. Defaults to instance ULID.

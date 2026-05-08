@@ -337,14 +337,14 @@ class BaseSearchIndex:
         return self.schema.index.storage_type
 
     @classmethod
-    def from_yaml(cls, schema_path: str, **kwargs):
+    def from_yaml(cls, schema_path: str, **kwargs) -> "BaseSearchIndex":
         """Create a SearchIndex from a YAML schema file.
 
         Args:
             schema_path (str): Path to the YAML schema file.
 
         Returns:
-            SearchIndex: A RedisVL SearchIndex object.
+            A RedisVL SearchIndex object.
 
         .. code-block:: python
 
@@ -356,14 +356,14 @@ class BaseSearchIndex:
         return cls(schema=schema, **kwargs)
 
     @classmethod
-    def from_dict(cls, schema_dict: dict[str, Any], **kwargs):
+    def from_dict(cls, schema_dict: dict[str, Any], **kwargs) -> "BaseSearchIndex":
         """Create a SearchIndex from a dictionary.
 
         Args:
             schema_dict (Dict[str, Any]): A dictionary containing the schema.
 
         Returns:
-            SearchIndex: A RedisVL SearchIndex object.
+            A RedisVL SearchIndex object.
 
         .. code-block:: python
 

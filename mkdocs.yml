@@ -122,9 +122,6 @@ plugins:
   - redirects:
       redirect_maps: {}
 
-hooks:
-  - scripts/mkdocs_hooks.py
-
 markdown_extensions:
   - abbr
   - admonition

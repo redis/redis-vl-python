@@ -2,7 +2,7 @@ import io
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any, Callable, Generator
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -85,7 +85,7 @@ class BaseVectorizer(BaseModel):
             preprocess: Function to apply to the content before embedding
             as_buffer: Return the embedding as a binary buffer instead of a list
             skip_cache: Bypass the cache for this request
-            **kwargs: Additional model-specific parameters
+            **kwargs (Any): Additional model-specific parameters
 
         Returns:
             The vector embedding as either a list of floats or binary buffer
@@ -155,7 +155,7 @@ class BaseVectorizer(BaseModel):
             batch_size: Number of items to process in each API call
             as_buffer: Return embeddings as binary buffers instead of lists
             skip_cache: Bypass the cache for this request
-            **kwargs: Additional model-specific parameters
+            **kwargs (Any): Additional model-specific parameters
 
         Returns:
             List of vector embeddings in the same order as the inputs
@@ -215,7 +215,7 @@ class BaseVectorizer(BaseModel):
             preprocess: Function to apply to the content before embedding
             as_buffer: Return the embedding as a binary buffer instead of a list
             skip_cache: Bypass the cache for this request
-            **kwargs: Additional model-specific parameters
+            **kwargs (Any): Additional model-specific parameters
 
         Returns:
             The vector embedding as either a list of floats or binary buffer
@@ -288,7 +288,7 @@ class BaseVectorizer(BaseModel):
             batch_size: Number of texts to process in each API call
             as_buffer: Return embeddings as binary buffers instead of lists
             skip_cache: Bypass the cache for this request
-            **kwargs: Additional model-specific parameters
+            **kwargs (Any): Additional model-specific parameters
 
         Returns:
             List of vector embeddings in the same order as the inputs
@@ -532,7 +532,9 @@ class BaseVectorizer(BaseModel):
                 f"Error storing batch in embedding cache asynchronously: {str(e)}"
             )
 
-    def batchify(self, seq: list, size: int, preprocess: Callable | None = None):
+    def batchify(
+        self, seq: list, size: int, preprocess: Callable | None = None
+    ) -> Generator[list, None, None]:
         """Split a sequence into batches of specified size.
 
         Args:
@@ -541,7 +543,7 @@ class BaseVectorizer(BaseModel):
             preprocess: Optional function to preprocess each item
 
         Yields:
-            Batches of the sequence
+            Batches of the sequence.
         """
         for pos in range(0, len(seq), size):
             if preprocess is not None:

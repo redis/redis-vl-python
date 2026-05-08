@@ -372,7 +372,7 @@ class SemanticCache(BaseLLMCache):
             return_fields (Optional[List[str]], optional): The fields to include
                 in each returned result. If None, defaults to all available
                 fields in the cached entry.
-            filter_expression (Optional[FilterExpression]) : Optional filter expression
+            filter_expression (Optional[FilterExpression]): Optional filter expression
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
@@ -463,7 +463,7 @@ class SemanticCache(BaseLLMCache):
             return_fields (Optional[List[str]], optional): The fields to include
                 in each returned result. If None, defaults to all available
                 fields in the cached entry.
-            filter_expression (Optional[FilterExpression]) : Optional filter expression
+            filter_expression (Optional[FilterExpression]): Optional filter expression
                 that can be used to filter cache results. Defaults to None and
                 the full cache will be searched.
             distance_threshold (Optional[float]): The threshold for semantic
@@ -704,8 +704,8 @@ class SemanticCache(BaseLLMCache):
             key (str): the key of the document to update using kwargs.
 
         Raises:
-            ValueError if an incorrect mapping is provided as a kwarg.
-            TypeError if metadata is provided and not of type dict.
+            ValueError: if an incorrect mapping is provided as a kwarg.
+            TypeError: if metadata is provided and not of type dict.
 
         .. code-block:: python
 
@@ -745,8 +745,8 @@ class SemanticCache(BaseLLMCache):
             key (str): the key of the document to update using kwargs.
 
         Raises:
-            ValueError if an incorrect mapping is provided as a kwarg.
-            TypeError if metadata is provided and not of type dict.
+            ValueError: if an incorrect mapping is provided as a kwarg.
+            TypeError: if metadata is provided and not of type dict.
 
         .. code-block:: python
 
