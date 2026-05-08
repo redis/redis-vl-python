@@ -831,8 +831,21 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Raises:
+            ValueError: If the keys list does not share a hash tag when using
+                Redis Cluster.
         """
         if isinstance(keys, list):
+            if not keys:
+                return 0
+            # Check for cluster compatibility
+            if isinstance(
+                self._redis_client, RedisCluster
+            ) and not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
             return self._redis_client.delete(*keys)  # type: ignore
         else:
             return self._redis_client.delete(keys)  # type: ignore
@@ -1784,9 +1797,20 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Raises:
+            ValueError: If the keys list does not share a hash tag when using
+                Redis Cluster.
         """
         client = await self._get_client()
         if isinstance(keys, list):
+            if not keys:
+                return 0
+            # Check for cluster compatibility
+            if isinstance(client, AsyncRedisCluster) and not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
             return await client.delete(*keys)
         else:
             return await client.delete(keys)
