@@ -846,9 +846,9 @@ class SearchIndex(BaseSearchIndex):
                 raise ValueError(
                     "All keys must share a hash tag when using Redis Cluster."
                 )
-            return self._redis_client.delete(*keys)  # type: ignore
+            return self._redis_client.unlink(*keys)  # type: ignore
         else:
-            return self._redis_client.delete(keys)  # type: ignore
+            return self._redis_client.unlink(keys)  # type: ignore
 
     def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
@@ -1811,9 +1811,9 @@ class AsyncSearchIndex(BaseSearchIndex):
                 raise ValueError(
                     "All keys must share a hash tag when using Redis Cluster."
                 )
-            return await client.delete(*keys)
+            return await client.unlink(*keys)
         else:
-            return await client.delete(keys)
+            return await client.unlink(keys)
 
     async def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
