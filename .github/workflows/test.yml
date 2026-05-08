@@ -12,15 +12,67 @@ on:
 
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
 
 jobs:
+  lint:
+    name: Style-check ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}   # sets UV_PYTHON
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --frozen
+
+      - name: check-sort-import
+        run: |
+          make check-sort-imports
+
+      - name: check-black-format
+        run: |
+          make check-format
+
+      - name: check-mypy
+        run: |
+          make check-types
+
   service-tests:
     name: Service Tests
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: lint
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -56,7 +108,7 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }} - redis-py ${{ matrix.redis-py-version }} [${{ matrix.redis-image }}]
     runs-on: ubuntu-latest
-    needs: service-tests
+    needs: lint
     env:
       HF_HOME: ${{ github.workspace }}/hf_cache
     strategy:
@@ -120,7 +172,13 @@ jobs:
             matrix.redis-py-version == '7.x' &&
             matrix.redis-image == 'redis:8.4' &&
             matrix.python-version == '3.11' &&
-            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+            (
+              github.event_name != 'pull_request' ||
+              (
+                github.event.pull_request.head.repo.full_name == github.repository &&
+                github.event.pull_request.user.login != 'dependabot[bot]'
+              )
+            )
           )
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
@@ -130,7 +188,13 @@ jobs:
             matrix.redis-py-version == '7.x' &&
             matrix.redis-image == 'redis:8.4' &&
             matrix.python-version == '3.11' &&
-            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+            (
+              github.event_name != 'pull_request' ||
+              (
+                github.event.pull_request.head.repo.full_name == github.repository &&
+                github.event.pull_request.user.login != 'dependabot[bot]'
+              )
+            )
           )
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -1,4 +1,4 @@
-name: Test Fork PR
+name: Test External PR
 
 on:
   workflow_dispatch:
@@ -7,6 +7,10 @@ on:
         description: 'Pull Request number to test'
         required: true
         type: number
+      expected_head_sha:
+        description: 'Expected PR head SHA to run'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -22,14 +26,22 @@ jobs:
     name: Validate PR
     runs-on: ubuntu-latest
     outputs:
+      pr_number: ${{ steps.pr-info.outputs.pr_number }}
       head_sha: ${{ steps.pr-info.outputs.head_sha }}
       head_repo: ${{ steps.pr-info.outputs.head_repo }}
     steps:
       - name: Get PR information
         id: pr-info
         uses: actions/github-script@v7
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
         with:
           script: |
+            const expectedHeadSha = (process.env.EXPECTED_HEAD_SHA || '').trim();
+            if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha)) {
+              core.setFailed(`Expected head SHA must be a 40-character commit SHA. Received: ${expectedHeadSha}`);
+              return;
+            }
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -41,11 +53,58 @@ jobs:
               return;
             }
 
-            if (pr.data.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`) {
-              core.setFailed(`PR #${{ inputs.pr_number }} is not from a fork. Use the regular workflow.`);
+            if (pr.data.head.sha !== expectedHeadSha) {
+              core.setFailed(
+                `PR #${{ inputs.pr_number }} head SHA changed. Expected ${expectedHeadSha}, found ${pr.data.head.sha}.`
+              );
               return;
             }
 
+            const isForkPr = pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+            const isDependabotPr = pr.data.user.login === 'dependabot[bot]';
+
+            if (!isForkPr && !isDependabotPr) {
+              core.setFailed(
+                `PR #${{ inputs.pr_number }} is neither from a fork nor authored by dependabot[bot]. Use the regular workflow.`
+              );
+              return;
+            }
+
+            if (isDependabotPr) {
+              if (isForkPr || !pr.data.head.ref.startsWith('dependabot/')) {
+                core.setFailed(
+                  `PR #${{ inputs.pr_number }} is not a standard same-repo Dependabot branch.`
+                );
+                return;
+              }
+
+              const allowedDependabotFiles = [
+                /^pyproject\.toml$/,
+                /^uv\.lock$/,
+                /^requirements(?:\/.*|[^/]*)\.txt$/,
+                /^setup\.cfg$/,
+              ];
+              const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: ${{ inputs.pr_number }},
+                per_page: 100,
+              });
+              const disallowedFiles = changedFiles
+                .map((file) => file.filename)
+                .filter(
+                  (filename) => !allowedDependabotFiles.some((pattern) => pattern.test(filename))
+                );
+
+              if (disallowedFiles.length > 0) {
+                core.setFailed(
+                  `PR #${{ inputs.pr_number }} contains non-dependency file changes for a Dependabot run: ${disallowedFiles.slice(0, 10).join(', ')}`
+                );
+                return;
+              }
+            }
+
+            core.setOutput('pr_number', String(pr.data.number));
             core.setOutput('head_sha', pr.data.head.sha);
             core.setOutput('head_repo', pr.data.head.repo.full_name);
 
@@ -57,91 +116,148 @@ jobs:
     name: Service Tests
     runs-on: ubuntu-latest
     needs: setup
+    timeout-minutes: 45
+    concurrency:
+      group: external-pr-service-tests-${{ needs.setup.outputs.pr_number }}
+      cancel-in-progress: true
+    env:
+      HF_HOME: ${{ github.workspace }}/hf_cache
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+      OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      LANGCACHE_WITH_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_API_KEY }}
+      LANGCACHE_WITH_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_CACHE_ID }}
+      LANGCACHE_WITH_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_URL }}
+      LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
+      LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
+      LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
     steps:
       - name: Create check run
         id: check
         uses: actions/github-script@v7
         with:
           script: |
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const check = await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'Fork PR - Service Tests',
+              name: 'External PR - Service Tests',
               head_sha: '${{ needs.setup.outputs.head_sha }}',
               status: 'in_progress',
-              started_at: new Date().toISOString()
+              started_at: new Date().toISOString(),
+              details_url: runUrl,
+              output: {
+                title: 'External PR Service Tests Running',
+                summary: `Service tests are in progress for PR #${{ needs.setup.outputs.pr_number }} at commit ${{ needs.setup.outputs.head_sha }}.`,
+                text: `[View Active Run](${runUrl})\n\nPR: #${{ needs.setup.outputs.pr_number }}\nHead SHA: ${{ needs.setup.outputs.head_sha }}`
+              }
             });
             core.setOutput('check_id', check.data.id);
 
-      - name: Check out fork PR code
+      - name: Check out external PR code
         uses: actions/checkout@v6
         with:
           repository: ${{ needs.setup.outputs.head_repo }}
           ref: ${{ needs.setup.outputs.head_sha }}
+          persist-credentials: false
 
-      - name: Run service tests
-        uses: ./.github/actions/run-service-tests
+      - name: Cache HuggingFace Models
+        uses: actions/cache@v5
+        with:
+          path: hf_cache
+          key: ${{ runner.os }}-hf-cache
+
+      - name: Set HuggingFace token
+        shell: bash
+        run: |
+          mkdir -p ~/.huggingface
+          echo '{"token":"$HF_TOKEN"}' > ~/.huggingface/token
+
+      - name: Install Python
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          uv-version: ${{ env.UV_VERSION }}
-        env:
-          HF_HOME: ${{ github.workspace }}/hf_cache
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
-          OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          LANGCACHE_WITH_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_API_KEY }}
-          LANGCACHE_WITH_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_CACHE_ID }}
-          LANGCACHE_WITH_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_WITH_ATTRIBUTES_URL }}
-          LANGCACHE_NO_ATTRIBUTES_API_KEY: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_API_KEY }}
-          LANGCACHE_NO_ATTRIBUTES_CACHE_ID: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_CACHE_ID }}
-          LANGCACHE_NO_ATTRIBUTES_URL: ${{ secrets.LANGCACHE_NO_ATTRIBUTES_URL }}
 
-      - name: Update check run (success)
-        if: success()
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install required dependencies
+        shell: bash
+        run: |
+          uv sync
+
+      - name: Test module imports
+        shell: bash
+        run: |
+          uv run python -m tests.test_imports redisvl
+
+      - name: Install all dependencies
+        shell: bash
+        run: |
+          uv sync --all-extras
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ env.GOOGLE_CREDENTIALS }}
+
+      - name: Run full test suite
+        shell: bash
+        run: |
+          make test-all
+
+      - name: Finalize check run
+        if: ${{ always() }}
         uses: actions/github-script@v7
         with:
           script: |
+            const status = '${{ job.status }}';
+            const conclusion =
+              status === 'success' ? 'success' :
+              status === 'cancelled' ? 'cancelled' :
+              'failure';
+            const title =
+              conclusion === 'success' ? 'External PR Service Tests Passed' :
+              conclusion === 'cancelled' ? 'External PR Service Tests Cancelled' :
+              'External PR Service Tests Failed';
+            const summary =
+              conclusion === 'success'
+                ? `All service tests passed for PR #${{ needs.setup.outputs.pr_number }}.`
+                : conclusion === 'cancelled'
+                  ? `The external PR service tests were cancelled for PR #${{ needs.setup.outputs.pr_number }}.`
+                  : `The service tests failed for PR #${{ needs.setup.outputs.pr_number }}. Click "Details" to view the full test output and logs.`;
+            const text =
+              `[View Active Run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\nPR: #${{ needs.setup.outputs.pr_number }}\nHead SHA: ${{ needs.setup.outputs.head_sha }}`;
+
             await github.rest.checks.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
               check_run_id: ${{ steps.check.outputs.check_id }},
               status: 'completed',
-              conclusion: 'success',
+              conclusion,
               completed_at: new Date().toISOString(),
               details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               output: {
-                title: 'Service Tests Passed',
-                summary: `All service tests passed for PR #${{ inputs.pr_number }}.`
-              }
-            });
-
-      - name: Update check run (failure)
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: ${{ steps.check.outputs.check_id }},
-              status: 'completed',
-              conclusion: 'failure',
-              completed_at: new Date().toISOString(),
-              details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              output: {
-                title: 'Service Tests Failed',
-                summary: `The service tests failed for PR #${{ inputs.pr_number }}. Click "Details" to view the full test output and logs.`,
-                text: `**Workflow Run:** [View Details](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n\n**PR:** #${{ inputs.pr_number }}\n**Commit:** ${{ needs.setup.outputs.head_sha }}`
+                title,
+                summary,
+                text
               }
             });
