@@ -129,6 +129,7 @@ class BatchMigrationExecutor:
                 index_name=index_name,
                 batch_plan=batch_plan,
                 report_dir=report_path,
+                redis_url=redis_url,
                 redis_client=client,
                 backup_dir=backup_dir,
                 batch_size=batch_size,
@@ -226,6 +227,7 @@ class BatchMigrationExecutor:
         batch_plan: BatchPlan,
         report_dir: Path,
         redis_client: Any,
+        redis_url: Optional[str] = None,
         backup_dir: Optional[str] = None,
         batch_size: int = 500,
         num_workers: int = 1,
@@ -242,6 +244,7 @@ class BatchMigrationExecutor:
             # Execute migration
             report = self._single_executor.apply(
                 plan,
+                redis_url=redis_url,
                 redis_client=redis_client,
                 backup_dir=backup_dir,
                 batch_size=batch_size,
