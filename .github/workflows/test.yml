@@ -12,13 +12,17 @@ on:
 
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.11"
   UV_VERSION: "0.7.13"
 
 jobs:
   lint:
-    name: Lint ${{ matrix.python-version }}
+    name: Style-check ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -168,7 +172,13 @@ jobs:
             matrix.redis-py-version == '7.x' &&
             matrix.redis-image == 'redis:8.4' &&
             matrix.python-version == '3.11' &&
-            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+            (
+              github.event_name != 'pull_request' ||
+              (
+                github.event.pull_request.head.repo.full_name == github.repository &&
+                github.event.pull_request.user.login != 'dependabot[bot]'
+              )
+            )
           )
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
@@ -178,7 +188,13 @@ jobs:
             matrix.redis-py-version == '7.x' &&
             matrix.redis-image == 'redis:8.4' &&
             matrix.python-version == '3.11' &&
-            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+            (
+              github.event_name != 'pull_request' ||
+              (
+                github.event.pull_request.head.repo.full_name == github.repository &&
+                github.event.pull_request.user.login != 'dependabot[bot]'
+              )
+            )
           )
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
