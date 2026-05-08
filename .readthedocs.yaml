@@ -26,10 +26,6 @@ build:
         UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" \
           ~/.local/bin/uv sync --frozen --group docs
 
-# Build documentation in the "docs/" directory with Sphinx
-sphinx:
-  configuration: docs/conf.py
-
-formats:
-  - pdf
-  - epub
+# Build documentation with mkdocs
+mkdocs:
+  configuration: mkdocs.yml

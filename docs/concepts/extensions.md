@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL extensions - semantic caching, embeddings caching, message history, and routing.
----
 
 # Extensions
 
@@ -33,9 +27,9 @@ In applications serving multiple users or contexts, you often want separate cach
 
 ### Redis vs LangCache managed service
 
-`SemanticCache` stores data in your Redis deployment and uses RedisVL’s search index under the hood—you control sizing, networking, and advanced filtering with {doc}`FilterExpression </api/filter>`.
+`SemanticCache` stores data in your Redis deployment and uses RedisVL’s search index under the hood—you control sizing, networking, and advanced filtering with [FilterExpression](../api/filter.md).
 
-If you prefer a hosted semantic cache that is operated as a service you can use `LangCacheSemanticCache` (install `redisvl[langcache]`). It uses the LangCache API endpoint instead of Redis directly. While these are similar, they do not share all the same properties. Refer to {doc}`/user_guide/03_llmcache` to see `SemanticCache` in detail, and {doc}`/user_guide/13_langcache_semantic_cache` covers `LangCacheSemanticCache` in detail.
+If you prefer a hosted semantic cache that is operated as a service you can use `LangCacheSemanticCache` (install `redisvl[langcache]`). It uses the LangCache API endpoint instead of Redis directly. While these are similar, they do not share all the same properties. Refer to [user_guide/03_llmcache](../user_guide/03_llmcache.ipynb) to see `SemanticCache` in detail, and [user_guide/13_langcache_semantic_cache](../user_guide/13_langcache_semantic_cache.ipynb) covers `LangCacheSemanticCache` in detail.
 
 ## Embeddings Cache
 
@@ -49,15 +43,16 @@ This is useful when the same content is embedded multiple times—common in appl
 
 ### Wrapping Vectorizers
 
-The embeddings cache can wrap any {doc}`vectorizer </concepts/utilities>`, adding transparent caching. Calling the wrapped vectorizer checks the cache first. This requires no changes to your embedding code—just wrap the vectorizer and caching happens automatically.
+The embeddings cache can wrap any [vectorizer](utilities.md), adding transparent caching. Calling the wrapped vectorizer checks the cache first. This requires no changes to your embedding code—just wrap the vectorizer and caching happens automatically.
 
 ## Message History
 
 LLMs are stateless. To have a conversation, you must include previous messages in each prompt. Message history manages this context, storing conversation turns and retrieving them when building prompts.
 
-```{note}
-`SessionManager` and `SemanticSessionManager` have been renamed to `MessageHistory` and `SemanticMessageHistory`. The old names are deprecated and will be removed in a future release.
-```
+!!! note
+
+    `SessionManager` and `SemanticSessionManager` have been renamed to `MessageHistory` and `SemanticMessageHistory`. The old names are deprecated and will be removed in a future release.
+
 
 ### Storage Model
 
@@ -73,7 +68,7 @@ Semantic message history adds vector search. Messages are embedded, and you can 
 
 Session tags are critical for multi-user applications. Each user's conversation should be isolated, so retrieving context for User A doesn't include messages from User B. The session tag provides this isolation, and you can structure sessions however makes sense—per-user, per-thread, per-agent, or any other grouping.
 
-**Learn more:** {doc}`/user_guide/07_message_history` explains conversation management in detail.
+**Learn more:** [user_guide/07_message_history](../user_guide/07_message_history.ipynb) explains conversation management in detail.
 
 ## Semantic Router
 
@@ -95,8 +90,8 @@ If no route matches (all distances exceed their thresholds), the router returns 
 
 Semantic routing is useful for intent classification (determining what a user wants), topic detection (categorizing content), guardrails (detecting and blocking certain query types), and agent dispatch (sending queries to specialized sub-agents).
 
-**Learn more:** {doc}`/user_guide/08_semantic_router` walks through routing setup in detail.
+**Learn more:** [user_guide/08_semantic_router](../user_guide/08_semantic_router.ipynb) walks through routing setup in detail.
 
 ---
 
-**Related concepts:** {doc}`queries` explains the query types used internally by extensions. {doc}`utilities` covers vectorizers used for embedding.
+**Related concepts:** [queries](queries.md) explains the query types used internally by extensions. [utilities](utilities.md) covers vectorizers used for embedding.

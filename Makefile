@@ -73,12 +73,11 @@ check: lint test ## Run all checks (lint + test)
 
 docs-build: ## Build documentation
 	@echo "📚 Building documentation"
-	uv run make -C docs html
+	uv run mkdocs build --strict
 
 docs-serve: ## Serve documentation locally
-	@echo "🌐 Serving documentation at http://localhost:8000"
-	@echo "📁 Make sure docs are built first with 'make docs-build'"
-	uv run python -m http.server --directory docs/_build/html
+	@echo "🌐 Serving documentation at http://127.0.0.1:8000"
+	uv run mkdocs serve --dev-addr 127.0.0.1:8000
 
 build: ## Build wheel and source distribution
 	@echo "🏗️ Building distribution packages"

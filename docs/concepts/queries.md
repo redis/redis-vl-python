@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL query types - vector search, filtering, text search, and hybrid queries.
----
 
 # Query Types
 
@@ -132,9 +126,10 @@ results = index.query(query)
 
 Use when neither pure keyword search nor pure semantic search gives good enough results. Common in RAG applications where you want both exact matches and semantic understanding.
 
-```{note}
-HybridQuery requires Redis >= 8.4.0 and redis-py >= 7.1.0.
-```
+!!! note
+
+    HybridQuery requires Redis >= 8.4.0 and redis-py >= 7.1.0.
+
 
 ### AggregateHybridQuery
 
@@ -275,9 +270,10 @@ query = SQLQuery("""
 
 Use when your team is more comfortable with SQL syntax, or when integrating with tools that generate SQL.
 
-```{note}
-SQLQuery requires the optional `sql-redis` package. Install with: `pip install redisvl[sql-redis]`
-```
+!!! note
+
+    SQLQuery requires the optional `sql-redis` package. Install with: `pip install redisvl[sql-redis]`
+
 
 For comprehensive examples including geographic filtering, date functions, and vector search, see the [SQL to Redis Queries guide](../user_guide/12_sql_to_redis_queries.ipynb).
 
@@ -329,5 +325,5 @@ query = HybridQuery(
 )
 ```
 
-**Learn more:** {doc}`/user_guide/11_advanced_queries` demonstrates these query types in detail.
+**Learn more:** [user_guide/11_advanced_queries](../user_guide/11_advanced_queries.ipynb) demonstrates these query types in detail.
 

@@ -1,49 +1,58 @@
+---
+description: Task-oriented recipes for RedisVL. LLM extensions, querying, embeddings, optimization, storage, and CLI operations.
+---
+
 # How-To Guides
 
 How-to guides are **task-oriented** recipes that help you accomplish specific goals. Each guide focuses on solving a particular problem and can be completed independently.
 
-::::{grid} 2
-:gutter: 3
+<div class="grid cards" markdown>
 
-:::{grid-item-card} 🤖 LLM Extensions
+-   :material-robot:{ .lg .middle } **LLM Extensions**
 
-- [Cache LLM Responses](../03_llmcache.ipynb) -- semantic caching to reduce costs and latency
-- [Use LangCache as the LLM cache](../13_langcache_semantic_cache.ipynb) -- managed cache service with LangCache
-- [Manage LLM Message History](../07_message_history.ipynb) -- persistent chat history with relevancy retrieval
-- [Route Queries with SemanticRouter](../08_semantic_router.ipynb) -- classify intents and route queries
-:::
+    ---
 
-:::{grid-item-card} 🔍 Querying
+    - [Cache LLM Responses](../03_llmcache.ipynb) — semantic caching to reduce costs and latency
+    - [Use LangCache as the LLM cache](../13_langcache_semantic_cache.ipynb) — managed cache service with LangCache
+    - [Manage LLM Message History](../07_message_history.ipynb) — persistent chat history with relevancy retrieval
+    - [Route Queries with SemanticRouter](../08_semantic_router.ipynb) — classify intents and route queries
 
-- [Query and Filter Data](../02_complex_filtering.ipynb) -- combine tag, numeric, geo, and text filters
-- [Use Advanced Query Types](../11_advanced_queries.ipynb) -- hybrid, multi-vector, range, and text queries
-- [Write SQL Queries for Redis](../12_sql_to_redis_queries.ipynb) -- translate SQL to Redis query syntax
-:::
+-   :material-magnify:{ .lg .middle } **Querying**
 
-:::{grid-item-card} 🧮 Embeddings
+    ---
 
-- [Create Embeddings with Vectorizers](../04_vectorizers.ipynb) -- OpenAI, Cohere, HuggingFace, and more
-- [Cache Embeddings](../10_embeddings_cache.ipynb) -- reduce costs by caching embedding vectors
-:::
+    - [Query and Filter Data](../02_complex_filtering.ipynb) — combine tag, numeric, geo, and text filters
+    - [Use Advanced Query Types](../11_advanced_queries.ipynb) — hybrid, multi-vector, range, and text queries
+    - [Write SQL Queries for Redis](../12_sql_to_redis_queries.ipynb) — translate SQL to Redis query syntax
 
-:::{grid-item-card} ⚡ Optimization
+-   :material-vector-square:{ .lg .middle } **Embeddings**
 
-- [Rerank Search Results](../06_rerankers.ipynb) -- improve relevance with cross-encoders and rerankers
-- [Optimize Indexes with SVS-VAMANA](../09_svs_vamana.ipynb) -- graph-based vector search with compression
-:::
+    ---
 
-:::{grid-item-card} 💾 Storage
+    - [Create Embeddings with Vectorizers](../04_vectorizers.ipynb) — OpenAI, Cohere, HuggingFace, and more
+    - [Cache Embeddings](../10_embeddings_cache.ipynb) — reduce costs by caching embedding vectors
 
-- [Choose a Storage Type](../05_hash_vs_json.ipynb) -- Hash vs JSON formats and nested data
-:::
+-   :material-flash:{ .lg .middle } **Optimization**
 
-:::{grid-item-card} 💻 CLI Operations
+    ---
 
-- [Manage Indices with the CLI](../cli.ipynb) -- create, inspect, and delete indices from your terminal
-- [Run RedisVL MCP](mcp.md) -- expose an existing Redis index to MCP clients
-:::
+    - [Rerank Search Results](../06_rerankers.ipynb) — improve relevance with cross-encoders and rerankers
+    - [Optimize Indexes with SVS-VAMANA](../09_svs_vamana.ipynb) — graph-based vector search with compression
 
-::::
+-   :material-database:{ .lg .middle } **Storage**
+
+    ---
+
+    - [Choose a Storage Type](../05_hash_vs_json.ipynb) — Hash vs JSON formats and nested data
+
+-   :material-console:{ .lg .middle } **CLI & MCP**
+
+    ---
+
+    - [Manage Indices with the CLI](../cli.ipynb) — create, inspect, and delete indices from your terminal
+    - [Run RedisVL MCP](mcp.md) — expose an existing Redis index to MCP clients
+
+</div>
 
 ## Quick Reference
 
@@ -63,21 +72,3 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Decide on storage format | [Choose a Storage Type](../05_hash_vs_json.ipynb) |
 | Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
 | Expose an index through MCP | [Run RedisVL MCP](mcp.md) |
-
-```{toctree}
-:hidden:
-
-Cache LLM Responses <../03_llmcache>
-Use LangCache as the LLM cache <../13_langcache_semantic_cache>
-Manage LLM Message History <../07_message_history>
-Route Queries with SemanticRouter <../08_semantic_router>
-Query and Filter Data <../02_complex_filtering>
-Create Embeddings with Vectorizers <../04_vectorizers>
-Choose a Storage Type <../05_hash_vs_json>
-Rerank Search Results <../06_rerankers>
-Optimize Indexes with SVS-VAMANA <../09_svs_vamana>
-Cache Embeddings <../10_embeddings_cache>
-Use Advanced Query Types <../11_advanced_queries>
-Write SQL Queries for Redis <../12_sql_to_redis_queries>
-Run RedisVL MCP <mcp>
-```

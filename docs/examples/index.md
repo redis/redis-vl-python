@@ -1,33 +1,21 @@
 ---
-myst:
-  html_meta:
-    "description lang=en": |
-        Examples for RedisVL users
+description: Examples and code recipes for RedisVL. RAG, agents, semantic caching, recommendation systems, and more.
 ---
-
 
 # Example Gallery
 
 Explore community examples of RedisVL in the wild.
 
-```{tip}
-For a comprehensive collection of Redis AI examples, tutorials, and recipes, visit the
-**[Redis AI Resources](https://github.com/redis-developer/redis-ai-resources)** repository.
-It includes notebooks for RAG, agents, semantic caching, recommendation systems, and more.
-```
+!!! tip
 
-## Demo Applications
+    For a comprehensive collection of Redis AI examples, tutorials, and recipes, visit the
+    **[Redis AI Resources](https://github.com/redis-developer/redis-ai-resources)** repository.
+    It includes notebooks for RAG, agents, semantic caching, recommendation systems, and more.
 
-Full-stack applications showcasing RedisVL and Redis vector search capabilities.
+!!! note
 
-```{gallery-grid} ../_static/gallery.yaml
-:grid-columns: "1 1 2 2"
-```
-
-```{note}
-If you are using RedisVL, please consider adding your example to this page by
-opening a Pull Request on [GitHub](https://github.com/redis/redis-vl-python)
-```
+    If you are using RedisVL, please consider adding your example to this page by
+    opening a Pull Request on [GitHub](https://github.com/redis/redis-vl-python).
 
 ---
 
@@ -112,7 +100,6 @@ Reduce costs and latency with caching and routing.
 
 Looking for more examples and tutorials?
 
-- **[Redis AI Resources](https://github.com/redis-developer/redis-ai-resources)** -- Comprehensive collection of code recipes, demos, and tutorials
-- **[Java Recipes](https://github.com/redis-developer/redis-ai-resources/tree/main/java-recipes)** -- Spring AI, Redis OM Spring, and semantic routing examples
-- **[Redis Developer Hub](https://redis.io/developers/)** -- Official Redis developer resources
-
+- **[Redis AI Resources](https://github.com/redis-developer/redis-ai-resources)** — Comprehensive collection of code recipes, demos, and tutorials
+- **[Java Recipes](https://github.com/redis-developer/redis-ai-resources/tree/main/java-recipes)** — Spring AI, Redis OM Spring, and semantic routing examples
+- **[Redis Developer Hub](https://redis.io/developers/)** — Official Redis developer resources

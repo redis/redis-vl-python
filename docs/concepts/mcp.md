@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL MCP concepts: how the RedisVL MCP server exposes an existing Redis index to MCP clients.
----
 
 # RedisVL MCP
 
@@ -107,4 +101,4 @@ RedisVL MCP is a good fit when:
 - you need a read-only or tightly controlled write boundary
 - you want to reuse an existing Redis index without rebuilding retrieval logic in every client
 
-For setup steps, config, commands, and examples, see {doc}`/user_guide/how_to_guides/mcp`.
+For setup steps, config, commands, and examples, see [Run RedisVL MCP](../user_guide/how_to_guides/mcp.md).

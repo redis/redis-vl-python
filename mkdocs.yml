@@ -1,0 +1,220 @@
+site_name: Redis Vector Library
+site_description: The AI-native Redis Python client. Vector search, semantic caching, message history, and more.
+site_url: https://docs.redisvl.com/
+repo_url: https://github.com/redis/redis-vl-python
+repo_name: redis/redis-vl-python
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Redis Inc.
+
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  logo: assets/redis-logo-script.svg
+  favicon: assets/favicon.png
+  font:
+    text: Space Grotesk
+    code: Space Mono
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+    - content.action.view
+    - content.tooltips
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/redis/redis-vl-python
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/redisvl/
+
+extra_css:
+  - stylesheets/redis-brand.css
+
+plugins:
+  - search
+  - autorefs
+  - section-index
+  - git-revision-date-localized:
+      enable_creation_date: false
+      type: timeago
+      fallback_to_build_date: true
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            docstring_section_style: table
+            inherited_members: true
+            filters:
+              - "!^_"
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      ignore_h1_titles: true
+      remove_tag_config:
+        remove_input_tags:
+          - hide_input
+        remove_cell_tags:
+          - hide_cell
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Concepts:
+          - concepts/*.md
+        User Guide:
+          - user_guide/*.md
+          - user_guide/how_to_guides/*.md
+          - user_guide/use_cases/*.md
+        API Reference:
+          - api/*.md
+        For AI Agents:
+          - for-ais-only/*.md
+  - redirects:
+      redirect_maps: {}
+
+hooks:
+  - scripts/mkdocs_hooks.py
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+watch:
+  - redisvl
+  - AGENTS.md
+
+nav:
+  - Home: index.md
+  - Concepts:
+      - concepts/index.md
+      - Architecture: concepts/architecture.md
+      - Search and indexing: concepts/search-and-indexing.md
+      - Field attributes: concepts/field-attributes.md
+      - Query types: concepts/queries.md
+      - Utilities: concepts/utilities.md
+      - MCP: concepts/mcp.md
+      - Extensions: concepts/extensions.md
+  - User Guide:
+      - user_guide/index.md
+      - Installation: user_guide/installation.md
+      - Getting Started: user_guide/01_getting_started.ipynb
+      - How-To Guides:
+          - user_guide/how_to_guides/index.md
+          - Cache LLM Responses: user_guide/03_llmcache.ipynb
+          - Use LangCache: user_guide/13_langcache_semantic_cache.ipynb
+          - Manage LLM Message History: user_guide/07_message_history.ipynb
+          - Route Queries with SemanticRouter: user_guide/08_semantic_router.ipynb
+          - Query and Filter Data: user_guide/02_complex_filtering.ipynb
+          - Use Advanced Query Types: user_guide/11_advanced_queries.ipynb
+          - Write SQL Queries for Redis: user_guide/12_sql_to_redis_queries.ipynb
+          - Create Embeddings with Vectorizers: user_guide/04_vectorizers.ipynb
+          - Cache Embeddings: user_guide/10_embeddings_cache.ipynb
+          - Rerank Search Results: user_guide/06_rerankers.ipynb
+          - Optimize Indexes with SVS-VAMANA: user_guide/09_svs_vamana.ipynb
+          - Choose a Storage Type: user_guide/05_hash_vs_json.ipynb
+          - Manage Indices with the CLI: user_guide/cli.ipynb
+          - Run RedisVL MCP: user_guide/how_to_guides/mcp.md
+      - Use Cases: user_guide/use_cases/index.md
+  - Examples: examples/index.md
+  - API Reference:
+      - api/index.md
+      - Schema: api/schema.md
+      - Search Index: api/searchindex.md
+      - Vector: api/vector.md
+      - Query: api/query.md
+      - Filter: api/filter.md
+      - Vectorizer: api/vectorizer.md
+      - Reranker: api/reranker.md
+      - Cache: api/cache.md
+      - Message History: api/message_history.md
+      - Router: api/router.md
+  - For AI Agents:
+      - for-ais-only/index.md
+      - Repository map: for-ais-only/REPOSITORY_MAP.md
+      - Build and test: for-ais-only/BUILD_AND_TEST.md
+      - Failure modes: for-ais-only/FAILURE_MODES.md
+  - Changelog: https://github.com/redis/redis-vl-python/releases
