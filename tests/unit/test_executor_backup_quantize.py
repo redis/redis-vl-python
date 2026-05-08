@@ -273,3 +273,106 @@ class TestMandatoryBackupEnforcement:
 
         assert DEFAULT_BACKUP_DIR
         assert isinstance(DEFAULT_BACKUP_DIR, str)
+
+
+class TestEnumerateScanFallback:
+    """SCAN-fallback conditions in MigrationExecutor._enumerate_indexed_keys."""
+
+    def _build_executor_with_info(self, info_dict):
+        """Construct an executor and a mock client whose ft().info() returns info_dict."""
+        from redisvl.migration.executor import MigrationExecutor
+
+        executor = MigrationExecutor()
+        mock_client = MagicMock()
+        mock_ft = MagicMock()
+        mock_ft.info.return_value = info_dict
+        mock_client.ft.return_value = mock_ft
+        return executor, mock_client
+
+    def test_falls_back_to_scan_when_percent_indexed_below_one(self):
+        """percent_indexed < 1.0 must trigger SCAN fallback to avoid silent loss."""
+        executor, mock_client = self._build_executor_with_info(
+            {"hash_indexing_failures": 0, "percent_indexed": "0.5"}
+        )
+
+        with (
+            patch.object(
+                executor,
+                "_enumerate_with_scan",
+                return_value=iter(["doc:1", "doc:2"]),
+            ) as scan_mock,
+            patch.object(
+                executor,
+                "_enumerate_with_aggregate",
+                return_value=iter(["should-not-be-used"]),
+            ) as aggregate_mock,
+        ):
+            keys = list(executor._enumerate_indexed_keys(mock_client, "idx"))
+
+        scan_mock.assert_called_once()
+        aggregate_mock.assert_not_called()
+        assert keys == ["doc:1", "doc:2"]
+
+    def test_uses_aggregate_when_fully_indexed(self):
+        """percent_indexed == 1.0 with no failures should use FT.AGGREGATE."""
+        executor, mock_client = self._build_executor_with_info(
+            {"hash_indexing_failures": 0, "percent_indexed": "1"}
+        )
+
+        with (
+            patch.object(
+                executor,
+                "_enumerate_with_scan",
+                return_value=iter(["should-not-be-used"]),
+            ) as scan_mock,
+            patch.object(
+                executor,
+                "_enumerate_with_aggregate",
+                return_value=iter(["doc:1", "doc:2"]),
+            ) as aggregate_mock,
+        ):
+            keys = list(executor._enumerate_indexed_keys(mock_client, "idx"))
+
+        scan_mock.assert_not_called()
+        aggregate_mock.assert_called_once()
+        assert keys == ["doc:1", "doc:2"]
+
+    def test_failures_take_precedence_over_percent_indexed(self):
+        """hash_indexing_failures > 0 always triggers SCAN, regardless of percent_indexed."""
+        executor, mock_client = self._build_executor_with_info(
+            {"hash_indexing_failures": 7, "percent_indexed": "1"}
+        )
+
+        with patch.object(
+            executor,
+            "_enumerate_with_scan",
+            return_value=iter(["doc:1"]),
+        ) as scan_mock:
+            keys = list(executor._enumerate_indexed_keys(mock_client, "idx"))
+
+        scan_mock.assert_called_once()
+        assert keys == ["doc:1"]
+
+    def test_treats_missing_percent_indexed_as_complete(self):
+        """Missing percent_indexed key should default to 1.0 (use FT.AGGREGATE)."""
+        executor, mock_client = self._build_executor_with_info(
+            {"hash_indexing_failures": 0}
+        )
+
+        with (
+            patch.object(
+                executor,
+                "_enumerate_with_scan",
+                return_value=iter(["should-not-be-used"]),
+            ) as scan_mock,
+            patch.object(
+                executor,
+                "_enumerate_with_aggregate",
+                return_value=iter(["doc:1"]),
+            ) as aggregate_mock,
+        ):
+            keys = list(executor._enumerate_indexed_keys(mock_client, "idx"))
+
+        scan_mock.assert_not_called()
+        aggregate_mock.assert_called_once()
+        assert keys == ["doc:1"]

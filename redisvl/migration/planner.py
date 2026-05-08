@@ -164,6 +164,25 @@ class MigrationPlanner:
                 "the pre-migration count. This is expected and validation accounts for it."
             )
 
+        # Warn if source index is still building.  FT.AGGREGATE returns only
+        # fully-indexed docs, so applying a migration before the background
+        # build settles would silently drop the pending tail.  The executor
+        # falls back to SCAN automatically, but surface the condition here
+        # so users running `rvl migrate plan` can wait for indexing to
+        # complete before applying.
+        source_percent_indexed = float(
+            snapshot.stats_snapshot.get("percent_indexed", 1.0) or 1.0
+        )
+        if source_percent_indexed < 1.0:
+            warnings.append(
+                f"Source index is still building "
+                f"(percent_indexed={source_percent_indexed:.4f}). "
+                "Apply will fall back to SCAN enumeration to avoid missing "
+                "documents whose background HNSW indexing has not completed. "
+                "Wait for percent_indexed to reach 1.0 before applying for "
+                "the fastest migration path."
+            )
+
         # Check for SVS-VAMANA in target schema and add appropriate warnings
         svs_warnings = self._check_svs_vamana_requirements(
             merged_target_schema,

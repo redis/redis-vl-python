@@ -78,17 +78,34 @@ class AsyncMigrationExecutor:
         """Async version: Enumerate document keys using FT.AGGREGATE with SCAN fallback.
 
         Uses FT.AGGREGATE WITHCURSOR for efficient enumeration when the index
-        has no indexing failures. Falls back to SCAN if:
+        is fully built and has no indexing failures. Falls back to SCAN if:
         - Index has hash_indexing_failures > 0 (would miss failed docs)
+        - Index has percent_indexed < 1.0 (background HNSW build still in
+          progress; FT.AGGREGATE returns only fully-indexed docs and would
+          silently drop the pending tail)
         - FT.AGGREGATE command fails for any reason
         """
-        # Check for indexing failures - if any, fall back to SCAN
+        # Check for indexing failures or in-progress indexing — either
+        # condition means FT.AGGREGATE would miss documents, so fall
+        # back to SCAN for complete enumeration.
         try:
             info = await client.ft(index_name).info()
             failures = int(info.get("hash_indexing_failures", 0) or 0)
+            percent_indexed = float(info.get("percent_indexed", 1.0) or 1.0)
             if failures > 0:
                 logger.warning(
                     f"Index '{index_name}' has {failures} indexing failures. "
+                    "Using SCAN for complete enumeration."
+                )
+                async for key in self._enumerate_with_scan(
+                    client, index_name, batch_size, key_separator
+                ):
+                    yield key
+                return
+            if percent_indexed < 1.0:
+                logger.warning(
+                    f"Index '{index_name}' is still building "
+                    f"(percent_indexed={percent_indexed:.4f}). "
                     "Using SCAN for complete enumeration."
                 )
                 async for key in self._enumerate_with_scan(
