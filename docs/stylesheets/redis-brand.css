@@ -77,3 +77,15 @@
 [data-md-color-scheme="slate"] .rds-hero__tagline {
   color: var(--rds-mute);
 }
+
+/* Layout: pin the left sidebar to the viewport's left edge and the right
+ * TOC to the viewport's right edge by removing Material's centered grid
+ * cap. Sidebars keep their default 12.1rem widths; the content column
+ * absorbs all remaining space. Header/tabs use the same grid so they
+ * also span full width, keeping the layout consistent.
+ */
+@media screen and (min-width: 76.25em) {
+  .md-grid {
+    max-width: none;
+  }
+}
