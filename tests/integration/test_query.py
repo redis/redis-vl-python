@@ -674,6 +674,23 @@ def test_hybrid_policy_adhoc_bf_mode(index, vector_query):
         assert result["credit_score"] == "high"
 
 
+def test_vector_query_rejects_epsilon(index):
+    """Integration test: VectorQuery must reject epsilon at construction.
+
+    EPSILON is a VECTOR_RANGE-only attribute. When previously emitted inside a KNN
+    bracket, Redis responded with: 'Error parsing vector similarity parameters:
+    range query attributes were sent for a non-range query'. Construction-time
+    rejection prevents that failure ever reaching the server. Use VectorRangeQuery
+    when an epsilon is required.
+    """
+    with pytest.raises(TypeError, match="epsilon"):
+        VectorQuery(  # type: ignore[call-arg]
+            vector=[0.1, 0.1, 0.5],
+            vector_field_name="user_embedding",
+            epsilon=0.05,
+        )
+
+
 def test_range_query_with_epsilon(index):
     """Integration test: Execute range query with epsilon parameter against Redis."""
     # Create a range query with epsilon
