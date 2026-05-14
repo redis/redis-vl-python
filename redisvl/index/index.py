@@ -826,6 +826,11 @@ class SearchIndex(BaseSearchIndex):
     def drop_keys(self, keys: str | list[str]) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
 
+        Uses ``UNLINK`` rather than ``DEL`` so memory reclamation runs on a
+        background thread. This avoids blocking the main thread when a large
+        number of keys are dropped at once (for example, scope-targeted
+        ``SemanticCache`` invalidation). The returned count is unchanged.
+
         Args:
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
 
@@ -833,9 +838,9 @@ class SearchIndex(BaseSearchIndex):
             int: Count of records deleted from Redis.
         """
         if isinstance(keys, list):
-            return self._redis_client.delete(*keys)  # type: ignore
+            return self._redis_client.unlink(*keys)  # type: ignore
         else:
-            return self._redis_client.delete(keys)  # type: ignore
+            return self._redis_client.unlink(keys)  # type: ignore
 
     def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
@@ -1779,6 +1784,11 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def drop_keys(self, keys: str | list[str]) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
 
+        Uses ``UNLINK`` rather than ``DEL`` so memory reclamation runs on a
+        background thread. This avoids blocking the main thread when a large
+        number of keys are dropped at once (for example, scope-targeted
+        ``SemanticCache`` invalidation). The returned count is unchanged.
+
         Args:
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
 
@@ -1787,9 +1797,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self._get_client()
         if isinstance(keys, list):
-            return await client.delete(*keys)
+            return await client.unlink(*keys)
         else:
-            return await client.delete(keys)
+            return await client.unlink(keys)
 
     async def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
