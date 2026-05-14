@@ -833,9 +833,9 @@ class SearchIndex(BaseSearchIndex):
             int: Count of records deleted from Redis.
         """
         if isinstance(keys, list):
-            return self._redis_client.delete(*keys)  # type: ignore
+            return self._redis_client.unlink(*keys)  # type: ignore
         else:
-            return self._redis_client.delete(keys)  # type: ignore
+            return self._redis_client.unlink(keys)  # type: ignore
 
     def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
@@ -1787,9 +1787,9 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         client = await self._get_client()
         if isinstance(keys, list):
-            return await client.delete(*keys)
+            return await client.unlink(*keys)
         else:
-            return await client.delete(keys)
+            return await client.unlink(keys)
 
     async def drop_documents(self, ids: str | list[str]) -> int:
         """Remove documents from the index by their document IDs.
