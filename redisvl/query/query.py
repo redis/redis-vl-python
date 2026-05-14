@@ -421,7 +421,6 @@ class BaseVectorQuery:
     # HNSW runtime parameters
     EF_RUNTIME: str = "EF_RUNTIME"
     EF_RUNTIME_PARAM: str = "EF"
-    EPSILON_PARAM: str = "EPSILON"
 
     # SVS-VAMANA runtime parameters
     SEARCH_WINDOW_SIZE: str = "SEARCH_WINDOW_SIZE"
