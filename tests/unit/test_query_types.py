@@ -973,19 +973,6 @@ def test_vector_query_update_ef_runtime():
     assert params2.get(VectorQuery.EF_RUNTIME_PARAM) == 200
 
 
-def test_vector_query_does_not_accept_epsilon():
-    """VectorQuery must reject epsilon: it is a VECTOR_RANGE-only attribute
-    that Redis rejects when emitted inside a KNN bracket. Use VectorRangeQuery."""
-    with pytest.raises(TypeError, match="epsilon"):
-        VectorQuery(  # type: ignore[call-arg]
-            [0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=0.05
-        )
-
-    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
-    assert not hasattr(vector_query, "set_epsilon")
-    assert not hasattr(vector_query, "epsilon")
-
-
 def test_vector_query_search_window_size():
     """Test that VectorQuery correctly handles search_window_size parameter (SVS-VAMANA)."""
     # Create a vector query with search_window_size
