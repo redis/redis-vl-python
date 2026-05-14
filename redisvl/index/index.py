@@ -833,6 +833,13 @@ class SearchIndex(BaseSearchIndex):
             int: Count of records deleted from Redis.
         """
         if isinstance(keys, list):
+            # Check for cluster compatibility
+            if isinstance(
+                self._redis_client, RedisCluster
+            ) and not _keys_share_hash_tag(keys):
+                raise ValueError(
+                    "All keys must share a hash tag when using Redis Cluster."
+                )
             return self._redis_client.delete(*keys)  # type: ignore
         else:
             return self._redis_client.delete(keys)  # type: ignore
