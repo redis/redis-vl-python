@@ -512,6 +512,8 @@ class EmbeddingsCache(BaseCache):
     def drop_by_key(self, key: str) -> None:
         """Remove an embedding from the cache by its Redis key.
 
+        Uses UNLINK instead of DELETE for better performance by freeing memory asynchronously.
+
         Args:
             key (str): The full Redis key for the embedding.
 
@@ -520,7 +522,7 @@ class EmbeddingsCache(BaseCache):
             cache.drop_by_key("embedcache:1234567890abcdef")
         """
         client = self._get_redis_client()
-        client.delete(key)
+        client.unlink(key)
 
     def mdrop_by_keys(self, keys: list[str]) -> None:
         """Remove multiple embeddings from the cache by their Redis keys.
@@ -542,7 +544,7 @@ class EmbeddingsCache(BaseCache):
 
         with client.pipeline(transaction=False) as pipeline:
             for key in keys:
-                pipeline.delete(key)
+                pipeline.unlink(key)
             pipeline.execute()
 
     def mdrop(self, contents: Iterable[bytes | str], model_name: str) -> None:
@@ -883,7 +885,7 @@ class EmbeddingsCache(BaseCache):
             return
 
         client = await self._get_async_redis_client()
-        await client.delete(*keys)
+        await client.unlink(*keys)
 
     async def amdrop(self, contents: Iterable[bytes | str], model_name: str) -> None:
         """Async remove multiple embeddings from the cache by their contents and model name.
@@ -982,4 +984,4 @@ class EmbeddingsCache(BaseCache):
             await cache.adrop_by_key("embedcache:1234567890abcdef")
         """
         client = await self._get_async_redis_client()
-        await client.delete(key)
+        await client.unlink(key)
