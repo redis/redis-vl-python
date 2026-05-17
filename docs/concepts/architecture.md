@@ -1,19 +1,9 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL architecture - how the library structures vector search on Redis.
----
 
 # Architecture
 
 RedisVL sits between your application and Redis, providing a structured way to define, populate, and query vector search indexes.
 
-```{image} /_static/redisvl-architecture.svg
-:alt: RedisVL Architecture
-:align: center
-:width: 100%
-```
+![RedisVL Architecture](../assets/redisvl-architecture.svg)
 
 ## The Core Pattern
 
@@ -67,7 +57,7 @@ Each extension manages its own Redis index internally. You interact with a clean
 
 ---
 
-**Related concepts:** {doc}`search-and-indexing` covers schemas and field types in detail. {doc}`queries` explains the different query types available.
+**Related concepts:** [search-and-indexing](search-and-indexing.md) covers schemas and field types in detail. [queries](queries.md) explains the different query types available.
 
-**Learn more:** {doc}`/user_guide/01_getting_started` covers the core workflow. {doc}`extensions` explains each extension pattern in detail.
+**Learn more:** the [Getting Started](../user_guide/01_getting_started.ipynb) notebook covers the core workflow. [Extensions](extensions.md) explains each extension pattern in detail.
 

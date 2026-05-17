@@ -105,8 +105,8 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
+# mkdocs build cache
+.cache/
 
 # PyBuilder
 .pybuilder/

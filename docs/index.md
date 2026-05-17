@@ -1,21 +1,17 @@
 ---
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL documentation - the AI-native Python client for Redis.
-html_theme.sidebar_secondary.remove: false
+description: RedisVL documentation. The AI-native Redis Python client for vector search, semantic caching, message history, and more.
 ---
 
-```{image} _static/Redis_Logo_Red_RGB.svg
-:alt: Redis
-:width: 240px
-:align: center
-```
+<div class="rds-hero" markdown>
 
-<h1 style="text-align: center; margin-top: 0.5rem; margin-bottom: 0;">Redis Vector Library</h1>
-<p style="text-align: center; font-size: 1.25rem; color: #8b949e; margin-top: 0.5rem; margin-bottom: 2rem;">The AI-native Redis Python client</p>
+![Redis](assets/redis-logo-script-red.svg){ .rds-hero__logo }
 
----
+# Redis Vector Library
+
+The AI-native Redis Python client
+{ .rds-hero__tagline }
+
+</div>
 
 ## Quick Start
 
@@ -29,56 +25,45 @@ docker run -d --name redis -p 6379:6379 redis:8.4
 
 Or connect to [Redis Cloud](https://redis.io/cloud) for a managed experience.
 
-→ *{doc}`/user_guide/01_getting_started`*
+→ *[Getting Started](user_guide/01_getting_started.ipynb)*
 
 ---
 
 ## Explore the Docs
 
-::::{grid} 2
-:gutter: 4
+<div class="grid cards" markdown>
 
-:::{grid-item-card} 📖 Concepts
-:link: concepts/index
-:link-type: doc
-:class-card: sd-shadow-sm
+-   :material-book-open-variant:{ .lg .middle } **[Concepts](concepts/index.md)**
 
-Understand how RedisVL works. Architecture, search fundamentals, and extension patterns.
-:::
+    ---
 
-:::{grid-item-card} 🚀 User Guides
-:link: user_guide/index
-:link-type: doc
-:class-card: sd-shadow-sm
+    Understand how RedisVL works. Architecture, search fundamentals, field attributes, query types, and extension patterns.
 
-Step-by-step tutorials. Installation, getting started, and deep dives on every feature.
-:::
+-   :material-rocket-launch:{ .lg .middle } **[User Guide](user_guide/index.md)**
 
-:::{grid-item-card} 💡 Examples
-:link: examples/index
-:link-type: doc
-:class-card: sd-shadow-sm
+    ---
 
-Real-world applications. RAG pipelines, chatbots, recommendation systems, and more.
-:::
+    Step by step. Installation, getting started, and task-oriented recipes for every feature.
 
-:::{grid-item-card} 📚 API Reference
-:link: api/index
-:link-type: doc
-:class-card: sd-shadow-sm
+-   :material-lightbulb-on:{ .lg .middle } **[Examples](examples/index.md)**
 
-Complete API documentation. Classes, methods, parameters, and examples.
-:::
+    ---
 
-::::
+    Real-world applications. RAG pipelines, chatbots, recommendation systems, and more.
 
-```{toctree}
-:maxdepth: 2
-:hidden:
+-   :material-api:{ .lg .middle } **[API Reference](api/index.md)**
 
-Concepts <concepts/index>
-User Guides <user_guide/index>
-Examples <examples/index>
-API <api/index>
-Changelog <https://github.com/redis/redis-vl-python/releases>
-```
+    ---
+
+    Every public class, method, and parameter, generated from docstrings.
+
+</div>
+
+## For AI agents
+
+If you are an AI agent reading these docs, start with
+[`AGENTS.md`](https://github.com/redis/redis-vl-python/blob/main/AGENTS.md)
+at the repo root for a usage-oriented quick reference, or
+[For AI Agents](for-ais-only/index.md) for an internal map of the source tree. A
+flat [`llms.txt`](https://docs.redisvl.com/llms.txt) index of every doc page is
+also auto-generated at build time.

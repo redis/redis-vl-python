@@ -256,17 +256,19 @@ class BaseQuery(RedisQuery):
         """Setter for _query_string to maintain compatibility with parent class."""
         self._built_query_string = value
 
-    def return_fields(self, *fields, skip_decode: str | list[str] | None = None):
+    def return_fields(
+        self, *fields, skip_decode: str | list[str] | None = None
+    ) -> "BaseQuery":
         """
         Set the fields to return with search results.
 
         Args:
-            *fields: Variable number of field names to return.
+            *fields (str): Variable number of field names to return.
             skip_decode: Optional field name or list of field names that should not be
                 decoded. Useful for binary data like embeddings.
 
         Returns:
-            self: Returns the query object for method chaining.
+            The query object for method chaining.
 
         Raises:
             TypeError: If skip_decode is not a string, list, or None.
@@ -1544,7 +1546,7 @@ class TextQuery(BaseQuery):
         """Set or update the text weights for the query.
 
         Args:
-            text_weights: Dictionary of word:weight mappings
+            weights: Dictionary of word:weight mappings
         """
         self._text_weights = self._parse_text_weights(weights)
         self._built_query_string = None

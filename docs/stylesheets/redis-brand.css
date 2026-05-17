@@ -1,0 +1,91 @@
+/* Redis brand tokens and Material theme overrides for the redisvl docs.
+ * Mirrors the redis-docs tailwind palette (Redis red #FF4438, Redis ink
+ * #091A23) and self-hosts the Space Grotesk + Space Mono pairing used on
+ * redis.io.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+
+:root {
+  /* Mirrors redis-docs tailwind.config.js. */
+  --rds-red: #FF4438;          /* redis-red-500: primary brand red */
+  --rds-red-hover: #D52D1F;    /* redis-red-600: hover/pressed */
+  --rds-red-bright: #E4291E;   /* redis-red-700 */
+  --rds-midnight: #091A23;     /* redis-ink-900 */
+  --rds-ink: #161F31;          /* midnight-700 */
+  --rds-slate: #2D4754;        /* redis-pen-700 */
+  --rds-mute: #B9C2C6;         /* redis-pen-300 */
+  --rds-line: #E8EBEC;         /* redis-pen-200 */
+  --rds-bg: #FFFFFF;
+}
+
+/* Wire the Redis red into Material's primary/accent slots so the top bar,
+ * search bar, links, and active nav items pick it up. */
+:root,
+[data-md-color-scheme="default"],
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        var(--rds-red);
+  --md-primary-fg-color--light: #FF6B5F;
+  --md-primary-fg-color--dark:  var(--rds-red-hover);
+  --md-accent-fg-color:         var(--rds-red);
+  --md-accent-fg-color--transparent: rgba(255, 68, 56, 0.1);
+}
+
+/* Bold every top-level entry in the left sidebar. With navigation.sections,
+ * group labels (Concepts, User Guide, ...) get the section-title treatment,
+ * but single-page top-level items like Home stay regular weight. This rule
+ * gives them the same visual weight as the section headers. */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__link {
+  font-weight: 700;
+}
+
+/* Landing-page hero: Redis script logo stacked over the wordmark and tagline.
+ * Mirrors the marketing card used on docs.redisvl.com hand-offs. */
+.rds-hero {
+  text-align: center;
+  margin: 1.5rem auto 2.5rem;
+  padding: 0 1rem;
+}
+
+.rds-hero__logo {
+  display: block;
+  margin: 0 auto 0.75rem;
+  width: clamp(180px, 32vw, 280px);
+  aspect-ratio: 85 / 27;
+  height: auto;
+}
+
+.rds-hero h1 {
+  margin: 0;
+  font-weight: 700;
+  font-size: clamp(1.5rem, 3.2vw, 2.125rem);
+  line-height: 1.15;
+  color: var(--rds-midnight);
+  letter-spacing: -0.01em;
+}
+
+[data-md-color-scheme="slate"] .rds-hero h1 {
+  color: #F2F4F5;
+}
+
+.rds-hero__tagline {
+  margin: 0.5rem 0 0;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--rds-slate);
+  font-weight: 400;
+}
+
+[data-md-color-scheme="slate"] .rds-hero__tagline {
+  color: var(--rds-mute);
+}
+
+/* Layout: pin the left sidebar to the viewport's left edge and the right
+ * TOC to the viewport's right edge by removing Material's centered grid
+ * cap. Sidebars keep their default 12.1rem widths; the content column
+ * absorbs all remaining space. Header/tabs use the same grid so they
+ * also span full width, keeping the layout consistent.
+ */
+@media screen and (min-width: 76.25em) {
+  .md-grid {
+    max-width: none;
+  }
+}

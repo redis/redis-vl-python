@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL search and indexing - schemas, field types, storage, and query patterns.
----
 
 # Search & Indexing
 
@@ -108,7 +102,7 @@ Planning your schema carefully upfront reduces the need for migrations, but the 
 
 ---
 
-**Related concepts:** {doc}`field-attributes` explains how to configure field options like `sortable` and `index_missing`. {doc}`queries` covers the different query types available.
+**Related concepts:** [field-attributes](field-attributes.md) explains how to configure field options like `sortable` and `index_missing`. [queries](queries.md) covers the different query types available.
 
-**Learn more:** {doc}`/user_guide/01_getting_started` walks through building your first index. {doc}`/user_guide/05_hash_vs_json` compares storage options in depth. {doc}`/user_guide/02_complex_filtering` covers query composition.
+**Learn more:** [user_guide/01_getting_started](../user_guide/01_getting_started.ipynb) walks through building your first index. [user_guide/05_hash_vs_json](../user_guide/05_hash_vs_json.ipynb) compares storage options in depth. [user_guide/02_complex_filtering](../user_guide/02_complex_filtering.ipynb) covers query composition.
 

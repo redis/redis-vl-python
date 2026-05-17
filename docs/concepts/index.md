@@ -1,77 +1,53 @@
 ---
-myst:
-  html_meta:
-    "description lang=en": |
-      Core concepts for RedisVL - architecture, search, indexing, and AI extensions.
+description: Core concepts for RedisVL. Architecture, search and indexing, field attributes, query types, utilities, MCP, and extensions.
 ---
 
 # Concepts
 
-Foundational knowledge for building AI applications with RedisVL. These concepts are language-agnostic and apply across all RedisVL implementations.
+Foundational knowledge for building AI applications with RedisVL. These concepts apply across every RedisVL implementation and explain why the library is shaped the way it is.
 
-::::{grid} 2
-:gutter: 3
+<div class="grid cards" markdown>
 
-:::{grid-item-card} 🏗️ Architecture
-:link: architecture
-:link-type: doc
+-   :material-sitemap:{ .lg .middle } **[Architecture](architecture.md)**
 
-How RedisVL components connect: schemas, indexes, queries, and extensions.
-:::
+    ---
 
-:::{grid-item-card} 🔍 Search & Indexing
-:link: search-and-indexing
-:link-type: doc
+    How RedisVL components connect: schemas, indexes, queries, and extensions.
 
-Schemas, fields, documents, storage types, and query patterns.
-:::
+-   :material-database-search:{ .lg .middle } **[Search and indexing](search-and-indexing.md)**
 
-:::{grid-item-card} 🏷️ Field Attributes
-:link: field-attributes
-:link-type: doc
+    ---
 
-Configure sortable, no_index, index_missing, and other field options.
-:::
+    Schemas, fields, documents, storage types, and query patterns.
 
-:::{grid-item-card} 🔎 Query Types
-:link: queries
-:link-type: doc
+-   :material-tag-multiple:{ .lg .middle } **[Field attributes](field-attributes.md)**
 
-Vector, filter, text, hybrid, and multi-vector query options.
-:::
+    ---
 
-:::{grid-item-card} 🔧 Utilities
-:link: utilities
-:link-type: doc
+    Configure sortable, no_index, index_missing, and other per-field options.
 
-Vectorizers for embeddings and rerankers for result optimization.
-:::
+-   :material-magnify:{ .lg .middle } **[Query types](queries.md)**
 
-:::{grid-item-card} 🧠 MCP
-:link: mcp
-:link-type: doc
+    ---
 
-How RedisVL exposes an existing Redis index to MCP clients through a stable tool contract.
-:::
+    Vector, filter, text, hybrid, and multi-vector query options.
 
-:::{grid-item-card} 🧩 Extensions
-:link: extensions
-:link-type: doc
+-   :material-tools:{ .lg .middle } **[Utilities](utilities.md)**
 
-Pre-built patterns: caching, message history, and semantic routing.
-:::
+    ---
 
-::::
+    Vectorizers for embeddings and rerankers for result optimization.
 
-```{toctree}
-:maxdepth: 2
-:hidden:
+-   :material-robot:{ .lg .middle } **[MCP](mcp.md)**
 
-architecture
-search-and-indexing
-field-attributes
-queries
-utilities
-mcp
-extensions
-```
+    ---
+
+    How RedisVL exposes an existing Redis index to MCP clients through a stable tool contract.
+
+-   :material-puzzle:{ .lg .middle } **[Extensions](extensions.md)**
+
+    ---
+
+    Pre-built patterns: caching, message history, and semantic routing.
+
+</div>

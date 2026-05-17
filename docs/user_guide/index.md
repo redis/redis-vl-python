@@ -1,85 +1,59 @@
 ---
-myst:
-  html_meta:
-    "description lang=en": |
-      User guides for RedisVL - Learn how to build AI applications with Redis as your vector database
+description: RedisVL user guide. Installation, getting started, how-to guides, CLI reference, and use cases.
 ---
 
-# Guides
+# User Guide
 
-Welcome to the RedisVL guides! Whether you're just getting started or building advanced AI applications, these guides will help you make the most of Redis as your vector database.
+RedisVL guides cover everything from installation to advanced AI patterns. Whether you're just getting started or building production workloads, these guides will help you make the most of Redis as your vector database.
 
-::::{grid} 2
-:gutter: 3
+<div class="grid cards" markdown>
 
-:::{grid-item-card} 📦 Installation
-:link: installation
-:link-type: doc
+-   :material-package-variant:{ .lg .middle } **[Installation](installation.md)**
 
-**Set up RedisVL.** Install the library and configure your Redis instance for vector search.
+    ---
 
-+++
-pip install • Redis Cloud • Docker
-:::
+    Set up RedisVL. Install the library and configure your Redis instance for vector search.
 
-:::{grid-item-card} 🚀 Getting Started
-:link: 01_getting_started
-:link-type: doc
+    pip install · Redis Cloud · Docker
 
-**New to RedisVL?** Start here to learn the basics and build your first vector search application in minutes.
+-   :material-rocket-launch:{ .lg .middle } **[Getting Started](01_getting_started.ipynb)**
 
-+++
-Schema → Index → Load → Query
-:::
+    ---
 
-:::{grid-item-card} 🛠️ How-To Guides
-:link: how_to_guides/index
-:link-type: doc
+    New to RedisVL? Start here to learn the basics and build your first vector search application in minutes.
 
-**Solve specific problems.** Task-oriented recipes for LLM extensions, querying, embeddings, optimization, and storage.
+    Schema → Index → Load → Query
 
-+++
-LLM Caching • Filtering • MCP • Reranking
-:::
+-   :material-tools:{ .lg .middle } **[How-To Guides](how_to_guides/index.md)**
 
-:::{grid-item-card} 🧠 MCP Setup
-:link: how_to_guides/mcp
-:link-type: doc
+    ---
 
-**Expose Redis through MCP.** Run the RedisVL MCP server, configure one existing index, and use search or optional upsert tools.
+    Solve specific problems. Task-oriented recipes for LLM extensions, querying, embeddings, optimization, and storage.
 
-+++
-stdio, HTTP, SSE • One index • Search and upsert
-:::
+    LLM Caching · Filtering · MCP · Reranking
 
-:::{grid-item-card} 💻 CLI Reference
-:link: cli
-:link-type: doc
+-   :material-robot:{ .lg .middle } **[MCP Setup](how_to_guides/mcp.md)**
 
-**Command-line tools.** Manage indices, inspect stats, and work with schemas using the `rvl` CLI.
+    ---
 
-+++
-rvl index • rvl stats • Schema YAML
-:::
+    Expose Redis through MCP. Run the RedisVL MCP server, configure one existing index, and use search or optional upsert tools.
 
-:::{grid-item-card} 💡 Use Cases
-:link: use_cases/index
-:link-type: doc
+    stdio · HTTP · SSE
 
-**Apply RedisVL to real-world problems.** See which guides map to your use case.
+-   :material-console:{ .lg .middle } **[CLI Reference](cli.ipynb)**
 
-+++
-Agent Context • Agent Optimization • Search • RecSys
-:::
+    ---
 
-::::
+    Command-line tools. Manage indices, inspect stats, and work with schemas using the `rvl` CLI.
 
-```{toctree}
-:maxdepth: 2
+    rvl index · rvl stats · Schema YAML
 
-Installation <installation>
-Getting Started <01_getting_started>
-how_to_guides/index
-CLI Reference <cli>
-use_cases/index
-```
+-   :material-lightbulb-on:{ .lg .middle } **[Use Cases](use_cases/index.md)**
+
+    ---
+
+    Apply RedisVL to real-world problems. See which guides map to your use case.
+
+    Agent Context · Agent Optimization · Search · RecSys
+
+</div>

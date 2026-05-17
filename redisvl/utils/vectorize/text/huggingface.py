@@ -89,7 +89,7 @@ class HFTextVectorizer(BaseVectorizer):
                 Defaults to 'float32'.
             cache (Optional[EmbeddingsCache]): Optional EmbeddingsCache instance to cache embeddings for
                 better performance with repeated texts. Defaults to None.
-            **kwargs: Additional parameters to pass to the SentenceTransformer
+            **kwargs (Any): Additional parameters to pass to the SentenceTransformer
                 constructor.
 
         Raises:

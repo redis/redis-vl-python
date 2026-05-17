@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL field attributes - configuring sortable, no_index, index_missing, and other field options.
----
 
 # Field Attributes
 
@@ -261,7 +255,7 @@ Geo fields support the common attributes (`sortable`, `no_index`, `index_missing
 
 ## Vector Field Attributes
 
-Vector fields have a different attribute structure. See {doc}`/api/schema` for complete vector field documentation.
+Vector fields have a different attribute structure. See [api/schema](../api/schema.md) for complete vector field documentation.
 
 Key vector attributes:
 - `dims`: Vector dimensionality (required)
@@ -374,5 +368,5 @@ fields:
     path: $.location
 ```
 
-**Learn more:** {doc}`/api/schema` provides the complete API reference for all field types and attributes.
+**Learn more:** [api/schema](../api/schema.md) provides the complete API reference for all field types and attributes.
 

@@ -569,7 +569,7 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             key (str): The key of the document to update.
-            **kwargs: Field-value pairs to update.
+            **kwargs (Any): Field-value pairs to update.
 
         Raises:
             NotImplementedError: LangCache does not support entry updates.
@@ -587,7 +587,7 @@ class LangCacheSemanticCache(BaseLLMCache):
 
         Args:
             key (str): The key of the document to update.
-            **kwargs: Field-value pairs to update.
+            **kwargs (Any): Field-value pairs to update.
 
         Raises:
             NotImplementedError: LangCache does not support entry updates.

@@ -1,10 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      Installation instructions for RedisVL
----
-
 # Install RedisVL
 
 There are a few ways to install RedisVL. The easiest way is to use pip.
@@ -14,7 +7,7 @@ There are a few ways to install RedisVL. The easiest way is to use pip.
 Install `redisvl` into your Python (>=3.10) environment using `pip`:
 
 ```bash
-$ pip install -U redisvl
+pip install -U redisvl
 ```
 
 RedisVL comes with a few dependencies that are automatically installed, however, several optional
@@ -22,36 +15,36 @@ dependencies can be installed separately based on your needs:
 
 ```bash
 # Vectorizer providers
-$ pip install redisvl[openai]              # OpenAI embeddings
-$ pip install redisvl[cohere]              # Cohere embeddings and reranking
-$ pip install redisvl[mistralai]           # Mistral AI embeddings
-$ pip install redisvl[voyageai]            # Voyage AI embeddings and reranking
-$ pip install redisvl[sentence-transformers]  # HuggingFace local embeddings
-$ pip install redisvl[vertexai]            # Google Vertex AI embeddings
-$ pip install redisvl[bedrock]             # AWS Bedrock embeddings
+pip install redisvl[openai]                  # OpenAI embeddings
+pip install redisvl[cohere]                  # Cohere embeddings and reranking
+pip install redisvl[mistralai]               # Mistral AI embeddings
+pip install redisvl[voyageai]                # Voyage AI embeddings and reranking
+pip install redisvl[sentence-transformers]   # HuggingFace local embeddings
+pip install redisvl[vertexai]                # Google Vertex AI embeddings
+pip install redisvl[bedrock]                 # AWS Bedrock embeddings
 
 # Other optional features
-$ pip install redisvl[mcp]                 # RedisVL MCP server support (Python 3.10+)
-$ pip install redisvl[langcache]           # LangCache managed service integration
-$ pip install redisvl[sql-redis]           # SQL query support
+pip install redisvl[mcp]                     # RedisVL MCP server support (Python 3.10+)
+pip install redisvl[langcache]               # LangCache managed service integration
+pip install redisvl[sql-redis]               # SQL query support
 ```
 
 If you use ZSH, remember to escape the brackets:
 
 ```bash
-$ pip install redisvl\[openai\]
+pip install redisvl\[openai\]
 ```
 
 You can install multiple optional dependencies at once:
 
 ```bash
-$ pip install redisvl[mcp,openai,cohere,sentence-transformers]
+pip install redisvl[mcp,openai,cohere,sentence-transformers]
 ```
 
 To install **all** optional dependencies at once:
 
 ```bash
-$ pip install redisvl[all]
+pip install redisvl[all]
 ```
 
 ## Install RedisVL from Source
@@ -59,11 +52,11 @@ $ pip install redisvl[all]
 To install RedisVL from source, clone the repository and install the package using `pip`:
 
 ```bash
-$ git clone https://github.com/redis/redis-vl-python.git && cd redis-vl-python
-$ pip install .
+git clone https://github.com/redis/redis-vl-python.git && cd redis-vl-python
+pip install .
 
 # or for an editable installation (for developers of RedisVL)
-$ pip install -e .
+pip install -e .
 ```
 
 ## Development Installation
@@ -72,16 +65,16 @@ For contributors who want to develop RedisVL, we recommend using [uv](https://do
 
 ```bash
 # Clone the repository
-$ git clone https://github.com/redis/redis-vl-python.git && cd redis-vl-python
+git clone https://github.com/redis/redis-vl-python.git && cd redis-vl-python
 
 # Install uv if you don't have it
-$ pip install uv
+pip install uv
 
 # Install all dependencies (including dev and docs)
-$ uv sync
+uv sync
 
 # Or use make
-$ make install
+make install
 ```
 
 This installs the package in editable mode along with all development dependencies (testing, linting, type checking) and documentation dependencies.
@@ -90,19 +83,19 @@ This installs the package in editable mode along with all development dependenci
 
 ```bash
 # Run tests (no external APIs required)
-$ make test
+make test
 
 # Run all tests (includes API-dependent tests)
-$ make test-all
+make test-all
 
 # Format code
-$ make format
+make format
 
 # Run type checking
-$ make check-types
+make check-types
 
 # Run full check (lint + test)
-$ make check
+make check
 ```
 
 ### Pre-commit Hooks
@@ -110,27 +103,26 @@ $ make check
 We use pre-commit hooks to ensure code quality. Install them with:
 
 ```bash
-$ pre-commit install
+pre-commit install
 ```
 
 Run hooks manually on all files:
 
 ```bash
-$ pre-commit run --all-files
+pre-commit run --all-files
 ```
 
 ## Installing Redis
 
 RedisVL requires Redis with [Redis Search](https://redis.io/docs/latest/develop/ai/search-and-query/) available. There are several options:
 
-1. [Redis Cloud](https://redis.io/cloud), a fully managed cloud offering with a free tier
-2. [Redis 8+ (Docker)](https://redis.io/downloads/), for local development and testing
-3. [Redis Enterprise](https://redis.com/redis-enterprise/), a commercial self-hosted option
+1. [Redis Cloud](https://redis.io/cloud) — a fully managed cloud offering with a free tier
+2. [Redis 8+ (Docker)](https://redis.io/downloads/) — for local development and testing
+3. [Redis Enterprise](https://redis.com/redis-enterprise/) — a commercial self-hosted option
 
 ### Redis Cloud
 
-Redis Cloud is the easiest way to get started with RedisVL. You can sign up for a free account [here](https://redis.io/cloud). Make sure to have `Redis Search`
-enabled when creating your database.
+Redis Cloud is the easiest way to get started with RedisVL. You can sign up for a free account [here](https://redis.io/cloud). Make sure to have **Redis Search** enabled when creating your database.
 
 ### Redis 8+ (local development)
 
@@ -141,6 +133,7 @@ docker run -d --name redis -p 6379:6379 redis:8.4
 ```
 
 Redis 8 includes Redis Search and built-in vector search capabilities.
+
 
 ### Redis Enterprise (self-hosted)
 
@@ -159,19 +152,19 @@ from redisvl.index import SearchIndex, AsyncSearchIndex
 # Format: redis+sentinel://[username:password@]host1:port1,host2:port2/service_name[/db]
 index = SearchIndex.from_yaml(
     "schema.yaml",
-    redis_url="redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster"
+    redis_url="redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster",
 )
 
 # Async connection via Sentinel
 async_index = AsyncSearchIndex.from_yaml(
     "schema.yaml",
-    redis_url="redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster"
+    redis_url="redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster",
 )
 
 # With authentication and database selection
 index = SearchIndex.from_yaml(
     "schema.yaml",
-    redis_url="redis+sentinel://user:pass@sentinel1:26379,sentinel2:26379/mymaster/0"
+    redis_url="redis+sentinel://user:pass@sentinel1:26379,sentinel2:26379/mymaster/0",
 )
 ```
 

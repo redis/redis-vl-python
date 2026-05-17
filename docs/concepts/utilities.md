@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    "description lang=en": |
-      RedisVL utilities - vectorizers for embeddings and rerankers for result optimization.
----
 
 # Utilities
 
@@ -35,7 +29,7 @@ Vectorizers handle batching internally, breaking large batches into provider-app
 
 ### Supported Providers
 
-RedisVL includes vectorizers for OpenAI, Azure OpenAI, Cohere, HuggingFace (local), Mistral, Google Vertex AI, AWS Bedrock, VoyageAI, and others. See the {doc}`/api/vectorizer` for the complete list. You can also create custom vectorizers that wrap any embedding function.
+RedisVL includes vectorizers for OpenAI, Azure OpenAI, Cohere, HuggingFace (local), Mistral, Google Vertex AI, AWS Bedrock, VoyageAI, and others. See the [api/vectorizer](../api/vectorizer.md) for the complete list. You can also create custom vectorizers that wrap any embedding function.
 
 ## Rerankers
 
@@ -69,7 +63,7 @@ This pattern separates recall (finding everything potentially relevant) from pre
 
 ---
 
-**Related concepts:** {doc}`queries` explains how to use embeddings in vector search queries. {doc}`search-and-indexing` covers schema configuration for vector fields.
+**Related concepts:** [queries](queries.md) explains how to use embeddings in vector search queries. [search-and-indexing](search-and-indexing.md) covers schema configuration for vector fields.
 
-**Learn more:** {doc}`/user_guide/04_vectorizers` covers embedding providers. {doc}`/user_guide/06_rerankers` explains reranking in practice.
+**Learn more:** [user_guide/04_vectorizers](../user_guide/04_vectorizers.ipynb) covers embedding providers. [user_guide/06_rerankers](../user_guide/06_rerankers.ipynb) explains reranking in practice.
 
