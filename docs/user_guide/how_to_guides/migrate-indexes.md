@@ -1188,23 +1188,6 @@ print(f"Successful: {report.summary.successful}/{report.summary.total_indexes}")
 
 ## Performance Tuning
 
-### Quantization Throughput
-
-Vector quantization (e.g. float32 → float16) is the most time-consuming
-phase of a datatype migration. Observed throughput on a local Redis instance:
-
-| Workers | Dims | Throughput | Notes |
-|---------|------|------------|-------|
-| 1       | 256  | ~70K docs/sec | Single worker is fastest for low dims |
-| 4       | 256  | ~62K docs/sec | Worker overhead exceeds parallelism benefit |
-| 1       | 1536 | ~15K docs/sec | Higher dims = more conversion work |
-| 4       | 1536 | ~15K docs/sec | I/O-bound; Redis is the bottleneck |
-
-**Guidance:**
-- For **low-dimensional vectors** (≤ 256 dims), use `--workers 1` (the default). Per-vector conversion is so cheap that process-spawning and extra-connection overhead outweigh the parallelism benefit.
-- For **high-dimensional vectors** (≥ 768 dims), `--workers 2-4` may help if the Redis server has available CPU headroom. Diminishing returns above 4 to 8 workers on a single Redis instance because Redis command processing is single-threaded.
-- The main bottleneck for large migrations is typically **index rebuild time** (the `FT.CREATE` background indexing after vectors are written), not quantization itself.
-
 ### Batch Size
 
 The `--batch-size` flag controls how many keys are read/written per Redis
