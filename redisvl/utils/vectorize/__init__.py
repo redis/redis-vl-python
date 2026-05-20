@@ -8,6 +8,7 @@ from redisvl.utils.vectorize.text.cohere import CohereTextVectorizer
 from redisvl.utils.vectorize.text.custom import CustomTextVectorizer
 from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 from redisvl.utils.vectorize.text.mistral import MistralAITextVectorizer
+from redisvl.utils.vectorize.text.ollama import OllamaTextVectorizer
 from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
 from redisvl.utils.vectorize.text.vertexai import VertexAITextVectorizer
 from redisvl.utils.vectorize.text.voyageai import VoyageAITextVectorizer
@@ -23,6 +24,7 @@ __all__ = [
     "VertexAITextVectorizer",
     "AzureOpenAITextVectorizer",
     "MistralAITextVectorizer",
+    "OllamaTextVectorizer",
     "CustomVectorizer",
     "CustomTextVectorizer",
     "BedrockVectorizer",
@@ -55,6 +57,8 @@ def vectorizer_from_dict(
         return HFTextVectorizer(**args)
     elif vectorizer_type == Vectorizers.mistral:
         return MistralAITextVectorizer(**args)
+    elif vectorizer_type == Vectorizers.ollama:
+        return OllamaTextVectorizer(**args)
     elif vectorizer_type == Vectorizers.vertexai:
         return VertexAIVectorizer(**args)
     elif vectorizer_type == Vectorizers.voyageai:

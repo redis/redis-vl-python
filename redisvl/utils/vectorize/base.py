@@ -26,6 +26,7 @@ class Vectorizers(Enum):
     openai = "openai"
     cohere = "cohere"
     mistral = "mistral"
+    ollama = "ollama"
     vertexai = "vertexai"
     hf = "hf"
     voyageai = "voyageai"
