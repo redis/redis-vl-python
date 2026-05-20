@@ -148,11 +148,28 @@ def test_rejects_invalid_single_content(fake_ollama_module):
 def test_rejects_invalid_many_contents(fake_ollama_module):
     vectorizer = OllamaTextVectorizer(model="nomic-embed-text")
 
+    with pytest.raises(TypeError, match="list of strings"):
+        vectorizer.embed_many(42)
+
     with pytest.raises(TypeError):
         vectorizer.embed_many("not a list")
 
     with pytest.raises(TypeError):
         vectorizer.embed_many(["valid", 42])
+
+
+@pytest.mark.asyncio
+async def test_arejects_invalid_many_contents(fake_ollama_module):
+    vectorizer = OllamaTextVectorizer(model="nomic-embed-text")
+
+    with pytest.raises(TypeError, match="list of strings"):
+        await vectorizer.aembed_many(42)
+
+    with pytest.raises(TypeError):
+        await vectorizer.aembed_many("not a list")
+
+    with pytest.raises(TypeError):
+        await vectorizer.aembed_many(["valid", 42])
 
 
 def test_missing_ollama_dependency_raises_import_error(monkeypatch):
@@ -170,11 +187,16 @@ def test_missing_ollama_dependency_raises_import_error(monkeypatch):
         OllamaTextVectorizer(model="nomic-embed-text")
 
 
-def test_connection_error_surfaces_during_dimension_check(fake_ollama_module):
+def test_connection_error_surfaces_during_dimension_check(
+    fake_ollama_module, monkeypatch
+):
     fake_ollama_module.Client.raise_connection_error = True
+    monkeypatch.setattr(OllamaTextVectorizer._embed.retry, "sleep", lambda _: None)
 
     with pytest.raises(ConnectionError, match="ollama serve|daemon"):
         OllamaTextVectorizer(model="nomic-embed-text", host="http://localhost:9999")
+
+    assert len(fake_ollama_module.Client.instances[0].embed_calls) == 6
 
 
 def test_invalid_dtype_uses_base_validation(fake_ollama_module):

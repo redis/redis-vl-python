@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from pydantic import ConfigDict
 from tenacity import (
@@ -8,7 +8,7 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
+from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 if TYPE_CHECKING:
@@ -157,10 +157,70 @@ class OllamaTextVectorizer(BaseVectorizer):
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
 
+    @staticmethod
+    def _validate_many_contents(contents: list[str]) -> None:
+        """Validate batch embedding input without masking the validation error."""
+        if not isinstance(contents, list):
+            raise TypeError(
+                f"Input contents must be a list of strings to embed, got {type(contents)}"
+            )
+        if not all(isinstance(c, str) for c in contents):
+            element_types = [type(c) for c in contents]
+            raise TypeError(
+                f"Input contents must be a list of strings to embed, got elements of types {element_types}"
+            )
+
+    @deprecated_argument("texts", "contents")
+    def embed_many(
+        self,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
+        preprocess: Callable | None = None,
+        batch_size: int = 10,
+        as_buffer: bool = False,
+        skip_cache: bool = False,
+        **kwargs,
+    ) -> list[list[float]] | list[bytes]:
+        contents = contents if contents is not None else texts
+        if contents is not None and not isinstance(contents, list):
+            self._validate_many_contents(contents)
+        return super().embed_many(
+            contents=contents,
+            preprocess=preprocess,
+            batch_size=batch_size,
+            as_buffer=as_buffer,
+            skip_cache=skip_cache,
+            **kwargs,
+        )
+
+    @deprecated_argument("texts", "contents")
+    async def aembed_many(
+        self,
+        contents: list[Any] | None = None,
+        texts: list[Any] | None = None,
+        preprocess: Callable | None = None,
+        batch_size: int = 10,
+        as_buffer: bool = False,
+        skip_cache: bool = False,
+        **kwargs,
+    ) -> list[list[float]] | list[bytes]:
+        contents = contents if contents is not None else texts
+        if contents is not None and not isinstance(contents, list):
+            self._validate_many_contents(contents)
+        return await super().aembed_many(
+            contents=contents,
+            preprocess=preprocess,
+            batch_size=batch_size,
+            as_buffer=as_buffer,
+            skip_cache=skip_cache,
+            **kwargs,
+        )
+
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type((TypeError, ConnectionError)),
+        retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     def _embed(self, content: str, **kwargs) -> list[float]:
         """Generate a vector embedding for a single text using the Ollama API.
@@ -192,7 +252,8 @@ class OllamaTextVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type((TypeError, ConnectionError)),
+        retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     def _embed_many(
         self, contents: list[str], batch_size: int = 10, **kwargs
@@ -213,12 +274,7 @@ class OllamaTextVectorizer(BaseVectorizer):
             ValueError: If embedding fails
         """
 
-        if not isinstance(contents, list) or not all(
-            isinstance(c, str) for c in contents
-        ):
-            raise TypeError(
-                f"Input contents must be a list of strings to embed, got {type(contents)} with elements of types {[type(c) for c in contents]}"
-            )
+        self._validate_many_contents(contents)
 
         embeddings: list[list[float]] = []
 
@@ -236,7 +292,8 @@ class OllamaTextVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type((TypeError, ConnectionError)),
+        retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     async def _aembed(self, content: str, **kwargs) -> list[float]:
         """Asynchronously generate a vector embedding for a single text using the Ollama API.
@@ -271,7 +328,8 @@ class OllamaTextVectorizer(BaseVectorizer):
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(6),
-        retry=retry_if_not_exception_type((TypeError, ConnectionError)),
+        retry=retry_if_not_exception_type(TypeError),
+        reraise=True,
     )
     async def _aembed_many(
         self, contents: list[str], batch_size: int = 10, **kwargs
@@ -291,12 +349,7 @@ class OllamaTextVectorizer(BaseVectorizer):
             ConnectionError: If the Ollama server cannot be reached
             ValueError: If embedding fails
         """
-        if not isinstance(contents, list) or not all(
-            isinstance(c, str) for c in contents
-        ):
-            raise TypeError(
-                f"Input contents must be a list of strings to embed, got {type(contents)} with elements of types {[type(c) for c in contents]}"
-            )
+        self._validate_many_contents(contents)
 
         embeddings: list[list[float]] = []
 
