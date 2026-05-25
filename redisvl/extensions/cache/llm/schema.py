@@ -113,7 +113,34 @@ class CacheHit(BaseModel):
 class SemanticCacheIndexSchema(IndexSchema):
 
     @classmethod
-    def from_params(cls, name: str, prefix: str, vector_dims: int, dtype: str):
+    def from_params(
+        cls,
+        name: str,
+        prefix: str,
+        vector_dims: int,
+        dtype: str,
+        vector_index_config: dict[str, Any] | None = None,
+    ):
+        protected_attrs = set()
+        if vector_index_config:
+            protected_attrs = {"dims", "datatype", "distance_metric"}.intersection(
+                vector_index_config
+            )
+        if protected_attrs:
+            invalid_attrs = ", ".join(sorted(protected_attrs))
+            raise ValueError(
+                "SemanticCache derives vector index "
+                f"{invalid_attrs} from its vectorizer and cache distance settings."
+            )
+
+        vector_attrs = {
+            "dims": vector_dims,
+            "datatype": dtype,
+            "distance_metric": "cosine",
+            "algorithm": "flat",
+            **(vector_index_config or {}),
+        }
+
         return cls(
             index={"name": name, "prefix": prefix},  # type: ignore
             fields=[  # type: ignore
@@ -124,12 +151,7 @@ class SemanticCacheIndexSchema(IndexSchema):
                 {
                     "name": CACHE_VECTOR_FIELD_NAME,
                     "type": "vector",
-                    "attrs": {
-                        "dims": vector_dims,
-                        "datatype": dtype,
-                        "distance_metric": "cosine",
-                        "algorithm": "flat",
-                    },
+                    "attrs": vector_attrs,
                 },
             ],
         )
