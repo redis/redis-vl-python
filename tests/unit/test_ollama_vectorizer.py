@@ -4,6 +4,7 @@ import types
 
 import pytest
 
+from redisvl.utils.vectorize.base import BaseVectorizer
 from redisvl.utils.vectorize.text.ollama import OllamaTextVectorizer
 
 
@@ -148,7 +149,7 @@ def test_rejects_invalid_single_content(fake_ollama_module):
 def test_rejects_invalid_many_contents(fake_ollama_module):
     vectorizer = OllamaTextVectorizer(model="nomic-embed-text")
 
-    with pytest.raises(TypeError, match="list of strings"):
+    with pytest.raises(TypeError):
         vectorizer.embed_many(42)
 
     with pytest.raises(TypeError):
@@ -162,7 +163,7 @@ def test_rejects_invalid_many_contents(fake_ollama_module):
 async def test_arejects_invalid_many_contents(fake_ollama_module):
     vectorizer = OllamaTextVectorizer(model="nomic-embed-text")
 
-    with pytest.raises(TypeError, match="list of strings"):
+    with pytest.raises(TypeError):
         await vectorizer.aembed_many(42)
 
     with pytest.raises(TypeError):
@@ -202,6 +203,11 @@ def test_connection_error_surfaces_during_dimension_check(
 def test_invalid_dtype_uses_base_validation(fake_ollama_module):
     with pytest.raises(ValueError, match="Invalid data type"):
         OllamaTextVectorizer(model="nomic-embed-text", dtype="float25")
+
+
+def test_uses_base_public_batch_embedding_methods():
+    assert OllamaTextVectorizer.embed_many is BaseVectorizer.embed_many
+    assert OllamaTextVectorizer.aembed_many is BaseVectorizer.aembed_many
 
 
 def test_public_vectorize_exports_ollama_vectorizer():

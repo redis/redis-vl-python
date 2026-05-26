@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict
 from tenacity import (
@@ -8,7 +8,6 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from redisvl.utils.utils import deprecated_argument
 from redisvl.utils.vectorize.base import BaseVectorizer
 
 if TYPE_CHECKING:
@@ -169,52 +168,6 @@ class OllamaTextVectorizer(BaseVectorizer):
             raise TypeError(
                 f"Input contents must be a list of strings to embed, got elements of types {element_types}"
             )
-
-    @deprecated_argument("texts", "contents")
-    def embed_many(
-        self,
-        contents: list[Any] | None = None,
-        texts: list[Any] | None = None,
-        preprocess: Callable | None = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        skip_cache: bool = False,
-        **kwargs,
-    ) -> list[list[float]] | list[bytes]:
-        contents = contents if contents is not None else texts
-        if contents is not None and not isinstance(contents, list):
-            self._validate_many_contents(contents)
-        return super().embed_many(
-            contents=contents,
-            preprocess=preprocess,
-            batch_size=batch_size,
-            as_buffer=as_buffer,
-            skip_cache=skip_cache,
-            **kwargs,
-        )
-
-    @deprecated_argument("texts", "contents")
-    async def aembed_many(
-        self,
-        contents: list[Any] | None = None,
-        texts: list[Any] | None = None,
-        preprocess: Callable | None = None,
-        batch_size: int = 10,
-        as_buffer: bool = False,
-        skip_cache: bool = False,
-        **kwargs,
-    ) -> list[list[float]] | list[bytes]:
-        contents = contents if contents is not None else texts
-        if contents is not None and not isinstance(contents, list):
-            self._validate_many_contents(contents)
-        return await super().aembed_many(
-            contents=contents,
-            preprocess=preprocess,
-            batch_size=batch_size,
-            as_buffer=as_buffer,
-            skip_cache=skip_cache,
-            **kwargs,
-        )
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
