@@ -73,6 +73,10 @@ all = [
     "urllib3<2.2.0",
     "pillow>=11.3.0",
     "sql-redis>=0.5.0",
+    "ollama>=0.5.4",
+]
+ollama = [
+    "ollama>=0.5.4",
 ]
 
 [project.urls]
