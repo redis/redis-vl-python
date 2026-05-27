@@ -145,8 +145,6 @@ class OllamaTextVectorizer(BaseVectorizer):
         try:
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the Ollama API: {str(ke)}")
         except ConnectionError as e:
             raise ConnectionError(
                 f"Could not reach Ollama at the configured host. "
