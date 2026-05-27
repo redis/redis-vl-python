@@ -545,7 +545,6 @@ class TestSQLQueryNumericOperators:
         for result in results:
             assert float(result["price"]) != 45
 
-    @pytest.mark.xfail(reason="Numeric IN operator not yet supported in sql-redis")
     def test_numeric_in(self, sql_index):
         """Test numeric IN operator."""
         sql_query = SQLQuery(
