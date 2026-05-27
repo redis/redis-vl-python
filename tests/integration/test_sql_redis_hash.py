@@ -462,7 +462,6 @@ class TestSQLQueryNumericOperators:
         for result in results:
             assert float(result["price"]) != 45
 
-    @pytest.mark.xfail(reason="Numeric IN operator not yet supported in sql-redis")
     def test_numeric_in(self, sql_index):
         """Test numeric IN operator."""
         sql_query = SQLQuery(
@@ -1585,3 +1584,177 @@ class TestSQLQueryDateFunctions:
         counts = {str(r["year"]): int(r["count"]) for r in results}
         assert counts.get("2023") == 1
         assert counts.get("2024") == 4
+
+
+class TestSQLRedis060Regression:
+    """Regression tests for the 10 trial-user findings fixed in sql-redis 0.6.0.
+
+    Each test exercises one of the defects end-to-end through SQLQuery +
+    SearchIndex. Assertions are behavior-only (result-set membership or
+    ValueError on inputs that previously emitted garbage queries) so they
+    do not depend on the exact RediSearch query-string formatting.
+    """
+
+    def test_not_in_tag_excludes_listed_values(self, sql_index):
+        """Case 1: NOT IN on TAG must exclude the listed values, not match them."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, category FROM {sql_index.name} "
+                f"WHERE category NOT IN ('electronics', 'books')"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] not in ("electronics", "books")
+
+    def test_not_between_numeric_excludes_range(self, sql_index):
+        """Case 2: NOT BETWEEN on NUMERIC must exclude the range."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, price FROM {sql_index.name} "
+                f"WHERE price NOT BETWEEN 40 AND 60"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            price = float(r["price"])
+            assert price < 40 or price > 60
+
+    def test_not_comparison_numeric_is_negated(self, sql_index):
+        """Case 3: NOT price > 100 must return only prices <= 100."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, price FROM {sql_index.name} " f"WHERE NOT price > 100"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert float(r["price"]) <= 100
+
+    def test_not_equals_on_tag_is_negated(self, sql_index):
+        """Case 3 (TAG side): NOT category = 'electronics' must exclude electronics."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, category FROM {sql_index.name} "
+                f"WHERE NOT category = 'electronics'"
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] != "electronics"
+
+    def test_literal_pipe_in_tag_value_is_not_a_separator(self, sql_index):
+        """Case 4: a literal '|' inside a TAG value must not split the value.
+
+        No product has the literal tag 'bestseller|featured'. Pre-0.6.0 the
+        pipe was read as the IN-list separator, so this matched every row
+        tagged 'bestseller' OR 'featured'. Post-fix it matches nothing.
+        """
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title FROM {sql_index.name} "
+                f"WHERE tags = 'bestseller|featured'"
+            )
+        )
+
+        assert results == []
+
+    def test_numeric_in_does_not_crash(self, sql_index):
+        """Case 5: IN on NUMERIC used to crash with TypeError: float([...])."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, price FROM {sql_index.name} "
+                f"WHERE price IN (45, 55, 65)"
+            )
+        )
+
+        assert sorted(float(r["price"]) for r in results) == [45.0, 55.0, 65.0]
+
+    def test_empty_like_raises_value_error(self, sql_index):
+        """Case 6: LIKE '' is rejected with a clear ValueError."""
+        sql_query = SQLQuery(f"SELECT title FROM {sql_index.name} WHERE title LIKE ''")
+
+        with pytest.raises(ValueError):
+            sql_index.query(sql_query)
+
+    def test_between_on_tag_raises_value_error(self, sql_index):
+        """Case 7: BETWEEN on TAG is rejected with a clear ValueError."""
+        sql_query = SQLQuery(
+            f"SELECT title FROM {sql_index.name} " f"WHERE category BETWEEN 'a' AND 'z'"
+        )
+
+        with pytest.raises(ValueError):
+            sql_index.query(sql_query)
+
+    def test_double_quoted_value_treated_as_literal(self, sql_index):
+        """Case 8: `category = "books"` must be a value match, not @category:{None}."""
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, category FROM {sql_index.name} "
+                f'WHERE category = "books"'
+            )
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r["category"] == "books"
+
+    def test_double_quoted_numeric_value_does_not_crash(self, sql_index):
+        """Case 8 (NUMERIC side): `price = "45"` used to crash with float(None)."""
+        results = sql_index.query(
+            SQLQuery(f'SELECT title, price FROM {sql_index.name} WHERE price = "45"')
+        )
+
+        assert len(results) >= 1
+        for r in results:
+            assert float(r["price"]) == 45.0
+
+    def test_select_distinct_returns_unique_rows(self, sql_index):
+        """Case 9: SELECT DISTINCT must deduplicate; was previously ignored."""
+        results = sql_index.query(
+            SQLQuery(f"SELECT DISTINCT category FROM {sql_index.name}")
+        )
+
+        categories = [r["category"] for r in results]
+        assert sorted(categories) == sorted(set(categories))
+        assert set(categories) == {
+            "electronics",
+            "books",
+            "accessories",
+            "stationery",
+        }
+
+    def test_select_distinct_star_raises_value_error(self, sql_index):
+        """Case 9: DISTINCT * has no clean RediSearch mapping; must raise."""
+        sql_query = SQLQuery(f"SELECT DISTINCT * FROM {sql_index.name}")
+
+        with pytest.raises(ValueError):
+            sql_index.query(sql_query)
+
+    def test_multi_key_order_by_breaks_ties_with_secondary_key(self, sql_index):
+        """Case 10: pre-0.6.0 silently dropped every ORDER BY key after the first.
+
+        Two rows tie at rating 4.7 (Python Programming $45, Laptop and Keyboard
+        Bundle $999) and two at rating 4.6 (Redis in Action $55, Mechanical
+        Keyboard $149). With the fix the secondary `price ASC` key breaks the
+        tie deterministically.
+        """
+        results = sql_index.query(
+            SQLQuery(
+                f"SELECT title, rating, price FROM {sql_index.name} "
+                f"WHERE rating IN (4.7, 4.6) "
+                f"ORDER BY rating DESC, price ASC"
+            )
+        )
+
+        titles = [r["title"] for r in results]
+        assert titles == [
+            "Python Programming",
+            "Laptop and Keyboard Bundle",
+            "Redis in Action",
+            "Mechanical Keyboard",
+        ]
