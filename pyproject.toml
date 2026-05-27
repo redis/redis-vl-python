@@ -38,7 +38,7 @@ mcp = [
     "fastmcp>=2.0.0",
     "pydantic-settings>=2.0",
 ]
-mistralai = ["mistralai>=1.0.0"]
+mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
 nltk = ["nltk>=3.8.1,<4"]
 cohere = ["cohere>=4.44"]
@@ -60,7 +60,7 @@ sql-redis = [
     "sql-redis>=0.6.0",
 ]
 all = [
-    "mistralai>=1.0.0",
+    "mistralai>=1.0.0,<2",
     "openai>=1.1.0",
     "nltk>=3.8.1,<4",
     "cohere>=4.44",
