@@ -204,9 +204,19 @@ class RedisVLMCPServer(FastMCP):
 
     @staticmethod
     def _is_missing_index_error(exc: RedisSearchError) -> bool:
-        """Detect the Redis search errors that mean the configured index is absent."""
+        """Detect the Redis search errors that mean the configured index is absent.
+
+        Different RediSearch versions phrase the error differently
+        (``unknown index name``, ``no such index``, or ``SEARCH_INDEX_NOT_FOUND
+        Index not found``), so check for each known wording.
+        """
         message = str(exc).lower()
-        return "unknown index name" in message or "no such index" in message
+        return (
+            "unknown index name" in message
+            or "no such index" in message
+            or "search_index_not_found" in message
+            or "index not found" in message
+        )
 
     @asynccontextmanager
     async def _server_lifespan(self, _server: Any):
