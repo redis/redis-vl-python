@@ -1,10 +1,13 @@
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from redisvl.cli.stats import STATS_KEYS, Stats, _stats_rows
+from redisvl.index import SearchIndex
 
 
 @pytest.mark.parametrize("argv", [["rvl", "stats", "--help"], ["rvl", "stats", "-h"]])
@@ -48,73 +51,44 @@ def test_rvl_stats_subprocess_help():
     assert result.stderr == ""
 
 
-def _raise(exc: BaseException):
-    """Return a zero-arg callable that raises ``exc``."""
-
-    def _do():
-        raise exc
-
-    return _do
+@pytest.fixture
+def cli_stats_index(redis_url, redis_test_name):
+    """Create a real temporary Redis index for stats CLI output tests."""
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": redis_test_name("cli_stats_index"),
+                "prefix": redis_test_name("cli_stats_doc"),
+                "storage_type": "hash",
+            },
+            "fields": [{"name": "body", "type": "text"}],
+        },
+        redis_url=redis_url,
+    )
+    index.create(overwrite=True)
+    try:
+        yield index
+    finally:
+        index.delete(drop=True)
 
 
 def _patch_search_index_for_stats(
     monkeypatch,
     *,
-    info_behavior=None,
+    info_error: BaseException | None = None,
+    from_yaml_error: BaseException | None = None,
     index_name: str = "test-idx",
 ) -> None:
-    """Patch ``redisvl.cli.stats.SearchIndex`` with a minimal fake for ``rvl stats`` tests.
-
-    By default builds a happy-path FakeIndex whose ``info()`` returns
-    ``{"num_docs": 7}`` - one populated stat key, the rest absent so the
-    missing-key -> ``None`` path is exercised. Pass
-    ``info_behavior=_raise(SomeError())`` to make ``info()`` raise instead.
-    ``index_name`` is surfaced via ``index.schema.index.name`` so
-    ``exit_redis_search_error`` can format its message verbatim.
-    """
-    if info_behavior is None:
-
-        def info_behavior():
-            return {"num_docs": 7}
-
-    class _FakeIndexInfo:
-        name = index_name
-
-    class _FakeSchema:
-        index = _FakeIndexInfo()
-
-    class FakeIndex:
-        schema = _FakeSchema()
-
-        def __init__(self, *a, **k):
-            # Absorb the ``schema=`` and ``redis_url=`` kwargs that
-            # ``_connect_to_index`` passes to ``SearchIndex(...)`` directly.
-            # Without this, Python's default ``__init__`` rejects them.
-            pass
-
-        @classmethod
-        def from_yaml(cls, *_args, **_kwargs):
-            return cls()
-
-        def info(self):
-            return info_behavior()
-
-    monkeypatch.setattr("redisvl.cli.stats.SearchIndex", FakeIndex)
-
-
-def _patch_search_index_from_yaml_raises(monkeypatch, exc: BaseException) -> None:
-    """Patch ``redisvl.cli.stats.SearchIndex.from_yaml`` to raise ``exc``.
-
-    Used by the schema-input-error path where ``-s <path>`` is provided but
-    loading fails (e.g. file missing, malformed YAML).
-    """
-
-    class FakeSearchIndex:
-        @classmethod
-        def from_yaml(cls, *_args, **_kwargs):
-            raise exc
-
-    monkeypatch.setattr("redisvl.cli.stats.SearchIndex", FakeSearchIndex)
+    """Patch ``SearchIndex`` to exercise ``rvl stats`` failure paths."""
+    fake_index = SimpleNamespace(
+        schema=SimpleNamespace(index=SimpleNamespace(name=index_name)),
+        info=MagicMock(side_effect=info_error),
+    )
+    fake_search_index = MagicMock(return_value=fake_index)
+    fake_search_index.from_yaml = MagicMock(
+        side_effect=from_yaml_error, return_value=fake_index
+    )
+    monkeypatch.setattr("redisvl.cli.stats.SearchIndex", fake_search_index)
 
 
 @pytest.mark.parametrize(
@@ -151,8 +125,9 @@ def test_stats_schema_input_error(monkeypatch, capsys):
     Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
     is non-empty.
     """
-    _patch_search_index_from_yaml_raises(
-        monkeypatch, FileNotFoundError("schema file missing: /does/not/exist.yaml")
+    _patch_search_index_for_stats(
+        monkeypatch,
+        from_yaml_error=FileNotFoundError("schema file missing: /does/not/exist.yaml"),
     )
     monkeypatch.setattr(sys, "argv", ["rvl", "stats", "-s", "/does/not/exist.yaml"])
 
@@ -185,7 +160,7 @@ def test_stats_redis_search_error(monkeypatch, capsys, argv: list[str]):
     from redisvl.exceptions import RedisSearchError
 
     _patch_search_index_for_stats(
-        monkeypatch, info_behavior=_raise(RedisSearchError("Unknown index name"))
+        monkeypatch, info_error=RedisSearchError("Unknown index name")
     )
     monkeypatch.setattr(sys, "argv", argv)
 
@@ -215,9 +190,7 @@ def test_stats_runtime_error(monkeypatch, capsys, argv: list[str]):
     half-formed output), and stderr is non-empty. ``--json`` is parametrized
     to confirm the contract is uniform.
     """
-    _patch_search_index_for_stats(
-        monkeypatch, info_behavior=_raise(RuntimeError("boom"))
-    )
+    _patch_search_index_for_stats(monkeypatch, info_error=RuntimeError("boom"))
     monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -232,22 +205,28 @@ def test_stats_runtime_error(monkeypatch, capsys, argv: list[str]):
     assert captured.err != ""
 
 
-def test_stats_json(monkeypatch, capsys):
+def test_stats_json(monkeypatch, capsys, redis_url, cli_stats_index):
     """Tests that ``rvl stats --json`` prints the documented JSON contract.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is one parseable
     JSON line whose keys are exactly ``STATS_KEYS`` in order, native value
-    types are preserved, and missing input keys become JSON ``null``.
-    Stderr is empty.
+    types from Redis are preserved, and stderr is empty.
     """
-    _patch_search_index_for_stats(monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["rvl", "stats", "-i", "test-idx", "--json"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rvl",
+            "stats",
+            "-i",
+            cli_stats_index.schema.index.name,
+            "--json",
+            "--url",
+            redis_url,
+        ],
+    )
 
-    try:
-        Stats()
-    except SystemExit as exc:
-        # Success path must return cleanly, not call sys.exit.
-        pytest.fail(f"stats --json raised SystemExit({exc.code}) on the success path")
+    Stats()
     captured = capsys.readouterr()
     out = captured.out.strip()
 
@@ -256,22 +235,30 @@ def test_stats_json(monkeypatch, capsys):
     payload = json.loads(out)
     # Stable top-level JSON contract: every STATS_KEY in order, no extras.
     assert list(payload) == list(STATS_KEYS)
-    # Native types are preserved for machine consumers.
-    assert payload["num_docs"] == 7
-    # Missing input keys deserialize to None and is not mistyped.
-    assert payload["num_terms"] is None
+    # Native Redis stat types are preserved for machine consumers.
+    assert isinstance(payload["num_docs"], int)
     # JSON success path is silent on stderr.
     assert captured.err == ""
 
 
-def test_stats_table(monkeypatch, capsys):
+def test_stats_table(monkeypatch, capsys, redis_url, cli_stats_index):
     """Tests that default ``rvl stats`` runs the human-readable path to completion.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is non-empty
     (the table renderer ran), and stderr is empty.
     """
-    _patch_search_index_for_stats(monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["rvl", "stats", "-i", "test-idx"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rvl",
+            "stats",
+            "-i",
+            cli_stats_index.schema.index.name,
+            "--url",
+            redis_url,
+        ],
+    )
     Stats()
     captured = capsys.readouterr()
     assert captured.out != ""

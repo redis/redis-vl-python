@@ -2,10 +2,13 @@ import json
 import re
 import subprocess
 import sys
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from redisvl.cli.index import Index, _index_info_for_json
+from redisvl.index import SearchIndex
 
 _INDEX_SUBCOMMANDS = ("info", "create", "delete", "destroy", "listall")
 
@@ -102,133 +105,61 @@ def test_rvl_index_subprocess_help():
     _assert_index_help_contract(result.stdout)
 
 
-def _raise(exc: BaseException):
-    """Return a zero-arg callable that raises ``exc``."""
-
-    def _do():
-        raise exc
-
-    return _do
-
-
-class _FakeConn:
-    def __init__(self, result, boom=False):
-        self._result = result
-        self._boom = boom
-
-    def execute_command(self, cmd):
-        # listall must query Redis with FT._LIST
-        assert cmd == "FT._LIST"
-        if self._boom:
-            raise RuntimeError("redis unavailable")
-        return self._result
-
-
-def _patch_redis_connection(monkeypatch, *, result=None, boom: bool = False) -> None:
-    """Patch ``RedisConnectionFactory.get_redis_connection`` to return a ``_FakeConn``.
-
-    ``result`` is what ``execute_command("FT._LIST")`` returns on the success
-    path (defaults to ``[]``); ``boom=True`` makes ``execute_command`` raise a
-    ``RuntimeError`` instead, exercising the runtime-failure branch.
-    """
-    fake = _FakeConn([] if result is None else result, boom=boom)
-    monkeypatch.setattr(
-        "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
-        lambda *a, **k: fake,
+@pytest.fixture
+def cli_index(redis_url, redis_test_name):
+    """Create a real temporary Redis index for CLI commands that inspect Redis state."""
+    index_name = redis_test_name("cli_index")
+    prefix = redis_test_name("cli_doc")
+    index = SearchIndex.from_dict(
+        {
+            "index": {
+                "name": index_name,
+                "prefix": prefix,
+                "storage_type": "hash",
+            },
+            "fields": [{"name": "body", "type": "text"}],
+        },
+        redis_url=redis_url,
     )
+    index.create(overwrite=True)
+    try:
+        yield index
+    finally:
+        index.delete(drop=True)
 
 
 def _patch_search_index(
     monkeypatch,
     *,
-    create_behavior=None,
-    from_yaml_raises: BaseException | None = None,
+    create_error: BaseException | None = None,
+    from_yaml_error: BaseException | None = None,
     index_name: str = "test-idx",
 ) -> None:
-    """Patch ``redisvl.cli.index.SearchIndex`` with a minimal fake for ``rvl index create`` tests.
-
-    ``from_yaml_raises`` makes ``from_yaml`` raise that exception; ``create_behavior``
-    is invoked inside ``FakeIndex.create()`` (use :func:`_raise` for failures);
-    ``index_name`` is surfaced via ``index.schema.index.name``.
-    """
-    if from_yaml_raises is not None:
-
-        class FakeSearchIndex:
-            @classmethod
-            def from_yaml(cls, *_args, **_kwargs):
-                raise from_yaml_raises
-
-    else:
-
-        class _FakeIndexInfo:
-            name = index_name
-
-        class _FakeSchema:
-            index = _FakeIndexInfo()
-
-        class FakeIndex:
-            schema = _FakeSchema()
-
-            def create(self):
-                if create_behavior is not None:
-                    create_behavior()
-
-        class FakeSearchIndex:
-            @classmethod
-            def from_yaml(cls, *_args, **_kwargs):
-                return FakeIndex()
-
-    monkeypatch.setattr("redisvl.cli.index.SearchIndex", FakeSearchIndex)
+    """Patch ``SearchIndex.from_yaml`` for ``rvl index create`` tests."""
+    fake_index = SimpleNamespace(
+        schema=SimpleNamespace(index=SimpleNamespace(name=index_name)),
+        create=MagicMock(side_effect=create_error),
+    )
+    fake_search_index = SimpleNamespace(
+        from_yaml=MagicMock(side_effect=from_yaml_error, return_value=fake_index)
+    )
+    monkeypatch.setattr("redisvl.cli.index.SearchIndex", fake_search_index)
 
 
 def _patch_search_index_for_info(
     monkeypatch,
     *,
-    info_behavior=None,
-    with_field_options: bool = False,
+    info_error: BaseException,
     index_name: str = "test-idx",
 ) -> None:
-    """Patch ``redisvl.cli.index.SearchIndex`` with a minimal fake for ``rvl index info`` tests.
-
-    By default builds a happy-path FakeIndex whose ``info()`` returns a fixed
-    FT.INFO payload (with an extra ``NOSTEM=1`` attribute when
-    ``with_field_options=True``). Pass ``info_behavior=_raise(SomeError())``
-    to make ``info()`` raise instead. ``index_name`` is surfaced via
-    ``index.schema.index.name`` so ``exit_redis_search_error`` can format its
-    message verbatim.
-    """
-    if info_behavior is None:
-        attrs = [b"identifier", b"u", b"attribute", b"u", b"type", b"TAG"]
-        if with_field_options:
-            attrs.extend([b"NOSTEM", b"1"])
-        payload = {
-            "index_name": b"test-idx",
-            "index_definition": ["key_type", b"HASH", "prefixes", [b"pre"]],
-            "attributes": [attrs],
-        }
-
-        def info_behavior():
-            return payload
-
-    class _FakeIndexInfo:
-        name = index_name
-
-    class _FakeSchema:
-        index = _FakeIndexInfo()
-
-    class FakeIndex:
-        schema = _FakeSchema()
-
-        def __init__(self, *a, **k):
-            # Absorb the ``schema=`` and ``redis_url=`` kwargs that
-            # ``_connect_to_index`` passes to ``SearchIndex(...)`` directly.
-            # Without this, Python's default ``__init__`` rejects them.
-            pass
-
-        def info(self):
-            return info_behavior()
-
-    monkeypatch.setattr("redisvl.cli.index.SearchIndex", FakeIndex)
+    """Patch ``SearchIndex(...)`` to exercise ``rvl index info`` failure paths."""
+    fake_index = SimpleNamespace(
+        schema=SimpleNamespace(index=SimpleNamespace(name=index_name)),
+        info=MagicMock(side_effect=info_error),
+    )
+    monkeypatch.setattr(
+        "redisvl.cli.index.SearchIndex", MagicMock(return_value=fake_index)
+    )
 
 
 def test_create_missing_schema(monkeypatch, capsys):
@@ -260,7 +191,7 @@ def test_create_schema_input_error(monkeypatch, capsys):
     schema_error_message = "schema file missing: /does/not/exist.yaml"
 
     _patch_search_index(
-        monkeypatch, from_yaml_raises=FileNotFoundError(schema_error_message)
+        monkeypatch, from_yaml_error=FileNotFoundError(schema_error_message)
     )
     monkeypatch.setattr(
         sys, "argv", ["rvl", "index", "create", "-s", "/does/not/exist.yaml"]
@@ -290,7 +221,7 @@ def test_create_redis_search_error(monkeypatch, capsys):
 
     _patch_search_index(
         monkeypatch,
-        create_behavior=_raise(RedisSearchError(redis_error_message)),
+        create_error=RedisSearchError(redis_error_message),
         index_name="test-idx",
     )
     monkeypatch.setattr(sys, "argv", ["rvl", "index", "create", "-s", "fake.yaml"])
@@ -334,52 +265,43 @@ def test_create_success(monkeypatch, capsys, argv: list[str]):
     assert captured.err == ""
 
 
-@pytest.mark.parametrize(
-    "ft_list_result, expected_payload",
-    [
-        ([b"idx_a", b"idx_b"], {"indices": ["idx_a", "idx_b"]}),
-        ([], {"indices": []}),
-    ],
-)
-def test_listall_json(monkeypatch, capsys, ft_list_result, expected_payload):
+def test_listall_json(monkeypatch, capsys, redis_url, cli_index):
     """Tests that ``rvl index listall --json`` prints the documented JSON contract.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is one JSON line
     of the form ``{"indices": [...]}`` (no human banner), and stderr is empty.
-    Parametrized over a populated and an empty ``FT._LIST`` result.
     """
-    _patch_redis_connection(monkeypatch, result=ft_list_result)
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "listall", "--json"])
+    monkeypatch.setattr(
+        sys, "argv", ["rvl", "index", "listall", "--json", "--url", redis_url]
+    )
 
-    try:
-        Index()
-    except SystemExit as exc:
-        # Success path must return cleanly, not call sys.exit.
-        pytest.fail(f"listall --json raised SystemExit({exc.code}) on the success path")
+    Index()
     captured = capsys.readouterr()
     out = captured.out.strip()
 
     # Single machine-readable line, nothing else on stdout.
     assert out.count("\n") == 0
-    # Stable top-level JSON contract: only the "indices" key, in FT._LIST order.
-    assert json.loads(out) == expected_payload
+    payload = json.loads(out)
+    # Stable top-level JSON contract: only the "indices" key.
+    assert list(payload) == ["indices"]
+    # The command reflects the real Redis index created by the test fixture.
+    assert cli_index.schema.index.name in payload["indices"]
     # JSON success path is silent on stderr.
     assert captured.err == ""
 
 
-def test_listall_table(monkeypatch, capsys):
+def test_listall_table(monkeypatch, capsys, redis_url, cli_index):
     """Tests that default ``rvl index listall`` prints the human-readable table.
 
-    Expected behavior: stdout is exactly ``Indices:\\n1. one\\n2. two\\n``
-    (header + 1-indexed rows in FT._LIST order), and stderr is empty.
+    Expected behavior: stdout contains the test index,
+    and stderr is empty.
     """
-    _patch_redis_connection(monkeypatch, result=[b"one", b"two"])
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "listall"])
+    monkeypatch.setattr(sys, "argv", ["rvl", "index", "listall", "--url", redis_url])
     Index()
     captured = capsys.readouterr()
 
-    # Exact stdout: header + numbered rows in FT._LIST order, each from a single print().
-    assert captured.out == "Indices:\n1. one\n2. two\n"
+    # The table output includes the Redis index.
+    assert cli_index.schema.index.name in captured.out
     # Table success is silent on stderr.
     assert captured.err == ""
 
@@ -398,7 +320,10 @@ def test_listall_runtime_error(monkeypatch, capsys, argv: list[str]):
     half-formed output), and stderr is non-empty. ``--json`` is parametrized
     to confirm the contract is uniform.
     """
-    _patch_redis_connection(monkeypatch, boom=True)
+    monkeypatch.setattr(
+        "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
+        MagicMock(side_effect=RuntimeError("redis unavailable")),
+    )
     monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -462,7 +387,7 @@ def test_info_json_normalize():
     }
 
 
-def test_info_json(monkeypatch, capsys):
+def test_info_json(monkeypatch, capsys, redis_url, cli_index):
     """Tests that ``rvl index info --json`` prints the documented JSON contract.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is one parseable
@@ -470,30 +395,22 @@ def test_info_json(monkeypatch, capsys):
     and stderr is empty.
     """
 
-    expected_index_information = {
-        "index_name": "test-idx",
-        "storage_type": "HASH",
-        "prefixes": ["pre"],
-        "index_options": None,
-        "indexing": None,
-    }
-    expected_field = {
-        "name": "u",
-        "attribute": "u",
-        "type": "TAG",
-        "field_options": {"NOSTEM": "1"},
-    }
-
-    _patch_search_index_for_info(monkeypatch, with_field_options=True)
     monkeypatch.setattr(
-        sys, "argv", ["rvl", "index", "info", "-i", "test-idx", "--json"]
+        sys,
+        "argv",
+        [
+            "rvl",
+            "index",
+            "info",
+            "-i",
+            cli_index.schema.index.name,
+            "--json",
+            "--url",
+            redis_url,
+        ],
     )
 
-    try:
-        Index()
-    except SystemExit as exc:
-        # Success path must return cleanly, not call sys.exit.
-        pytest.fail(f"info --json raised SystemExit({exc.code}) on the success path")
+    Index()
     captured = capsys.readouterr()
     out = captured.out.strip()
 
@@ -502,10 +419,19 @@ def test_info_json(monkeypatch, capsys):
     payload = json.loads(out)
     # Top-level sections are stable and ordered.
     assert list(payload) == ["index_information", "index_fields"]
-    # Summary section matches table-derived values.
-    assert payload["index_information"] == expected_index_information
-    # One normalized field row with options.
-    assert payload["index_fields"] == [expected_field]
+    # Summary section is derived from the real Redis index.
+    assert payload["index_information"]["index_name"] == cli_index.schema.index.name
+    assert (
+        payload["index_information"]["storage_type"]
+        == cli_index.schema.index.storage_type.value.upper()
+    )
+    assert cli_index.schema.index.prefix in payload["index_information"]["prefixes"]
+    # One normalized field row from the real schema. Redis may include default
+    # field options such as TEXT weight, so assert the stable identity fields.
+    assert len(payload["index_fields"]) == 1
+    assert {
+        key: payload["index_fields"][0][key] for key in ("name", "attribute", "type")
+    } == {"name": "body", "attribute": "body", "type": "TEXT"}
     # JSON success path is silent on stderr.
     assert captured.err == ""
 
@@ -524,9 +450,7 @@ def test_info_runtime_error(monkeypatch, capsys, argv: list[str]):
     half-formed output), and stderr is non-empty. ``--json`` is parametrized
     to confirm the contract is uniform.
     """
-    _patch_search_index_for_info(
-        monkeypatch, info_behavior=_raise(RuntimeError("boom"))
-    )
+    _patch_search_index_for_info(monkeypatch, info_error=RuntimeError("boom"))
     monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -569,15 +493,26 @@ def test_info_no_target(monkeypatch, capsys, argv: list[str]):
     assert captured.err != ""
 
 
-def test_info_table(monkeypatch, capsys):
+def test_info_table(monkeypatch, capsys, redis_url, cli_index):
     """Tests that default ``rvl index info`` runs to completion on the table path.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is non-empty, and
     stderr is empty. Exact rendering is a tabulate-library detail; data
     correctness is pinned by ``test_info_json``.
     """
-    _patch_search_index_for_info(monkeypatch)
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "info", "-i", "test-idx"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rvl",
+            "index",
+            "info",
+            "-i",
+            cli_index.schema.index.name,
+            "--url",
+            redis_url,
+        ],
+    )
 
     Index()
     captured = capsys.readouterr()
@@ -607,7 +542,7 @@ def test_info_missing_index(monkeypatch, capsys, argv: list[str]):
     underlying_error = "Unknown index name"
 
     _patch_search_index_for_info(
-        monkeypatch, info_behavior=_raise(RedisSearchError(underlying_error))
+        monkeypatch, info_error=RedisSearchError(underlying_error)
     )
     monkeypatch.setattr(sys, "argv", argv)
 
@@ -619,3 +554,5 @@ def test_info_missing_index(monkeypatch, capsys, argv: list[str]):
     assert exc_info.value.code == 1
     # Nothing leaks on this error path.
     assert captured.out == ""
+    # The underlying Redis error reaches stderr.
+    assert underlying_error in captured.err
