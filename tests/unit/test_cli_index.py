@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from redisvl.cli.index import Index, _index_info_for_json
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 
 _INDEX_SUBCOMMANDS = ("info", "create", "delete", "destroy", "listall")
@@ -41,51 +42,8 @@ def test_rvl_index_help(monkeypatch, capsys, argv: list[str]):
     _assert_index_help_contract(captured.out)
 
 
-@pytest.mark.parametrize("argv", [["rvl", "index"], ["rvl", "index", "--json"]])
-def test_rvl_index_no_subcommand(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl index`` without a subcommand fails with a usage error.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    is non-empty. The ``--json`` case is parametrized so machine consumers
-    never see partial JSON when the subcommand is missing.
-    """
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # Argparse usage-error exit code for missing required positional.
-    assert exc_info.value.code == 2
-    # No stdout output - critical so --json consumers do not see partial JSON either.
-    assert captured.out == ""
-    # Argparse emits a usage error on stderr
-    assert captured.err != ""
-
-
-def test_rvl_index_unknown_subcommand(monkeypatch, capsys):
-    """Tests that ``rvl index <unknown>`` reports the bad token via argparse.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    lists every valid subcommands.
-    """
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "notacommand"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # Documented usage-error exit for an unknown subcommand.
-    assert exc_info.value.code == 2
-    # No normal output for the invalid subcommand path.
-    assert captured.out == ""
-    for name in _INDEX_SUBCOMMANDS:
-        # Stderr lists every valid subcommand.
-        assert name in captured.err
-
-
 def test_rvl_index_subprocess_help():
-    """End-to-end smoke test of ``rvl index --help`` via the runner module.
+    """Tests that ``rvl index --help`` works via the runner module.
 
     Expected behavior: the subprocess exits 0, stdout matches the same help
     contract as the in-process test, and stderr is empty - confirming the
@@ -162,82 +120,6 @@ def _patch_search_index_for_info(
     )
 
 
-def test_create_missing_schema(monkeypatch, capsys):
-    """Tests that ``rvl index create`` without ``-s`` exits with a usage error.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    is non-empty.
-    """
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "create"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # Documented usage-error exit when -s is not provided.
-    assert exc_info.value.code == 2
-    # Nothing leaks on this error path.
-    assert captured.out == ""
-    # Some explanatory message reaches stderr.
-    assert captured.err != ""
-
-
-def test_create_schema_input_error(monkeypatch, capsys):
-    """Tests that ``rvl index create`` reports schema-load failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    is exactly the raised exception's message followed by a newline.
-    """
-    schema_error_message = "schema file missing: /does/not/exist.yaml"
-
-    _patch_search_index(
-        monkeypatch, from_yaml_error=FileNotFoundError(schema_error_message)
-    )
-    monkeypatch.setattr(
-        sys, "argv", ["rvl", "index", "create", "-s", "/does/not/exist.yaml"]
-    )
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # exit_schema_input_error uses exit code 2 when -s was provided.
-    assert exc_info.value.code == 2
-    # Nothing on stdout when schema input fails.
-    assert captured.out == ""
-    # Exact stderr contract: exit_schema_input_error does print(str(exc), file=sys.stderr).
-    assert captured.err == f"{schema_error_message}\n"
-
-
-def test_create_redis_search_error(monkeypatch, capsys):
-    """Tests that ``rvl index create`` reports Redis-side failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 1, stdout is empty, and the
-    underlying error message reaches stderr.
-    """
-    from redisvl.exceptions import RedisSearchError
-
-    redis_error_message = "create failed"
-
-    _patch_search_index(
-        monkeypatch,
-        create_error=RedisSearchError(redis_error_message),
-        index_name="test-idx",
-    )
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "create", "-s", "fake.yaml"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # Documented Redis-failure exit code from exit_redis_search_error.
-    assert exc_info.value.code == 1
-    # No partial output before the failure.
-    assert captured.out == ""
-    # The underlying error message reaches stderr so the user knows what failed.
-    assert redis_error_message in captured.err
-
-
 @pytest.mark.parametrize(
     "argv",
     [
@@ -288,54 +170,6 @@ def test_listall_json(monkeypatch, capsys, redis_url, cli_index):
     assert cli_index.schema.index.name in payload["indices"]
     # JSON success path is silent on stderr.
     assert captured.err == ""
-
-
-def test_listall_table(monkeypatch, capsys, redis_url, cli_index):
-    """Tests that default ``rvl index listall`` prints the human-readable table.
-
-    Expected behavior: stdout contains the test index,
-    and stderr is empty.
-    """
-    monkeypatch.setattr(sys, "argv", ["rvl", "index", "listall", "--url", redis_url])
-    Index()
-    captured = capsys.readouterr()
-
-    # The table output includes the Redis index.
-    assert cli_index.schema.index.name in captured.out
-    # Table success is silent on stderr.
-    assert captured.err == ""
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["rvl", "index", "listall"],
-        ["rvl", "index", "listall", "--json"],
-    ],
-)
-def test_listall_runtime_error(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl index listall`` reports runtime failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 1, stdout is empty (no
-    half-formed output), and stderr is non-empty. ``--json`` is parametrized
-    to confirm the contract is uniform.
-    """
-    monkeypatch.setattr(
-        "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
-        MagicMock(side_effect=RuntimeError("redis unavailable")),
-    )
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # Generic runtime failure exits 1 from __init__'s catch-all.
-    assert exc_info.value.code == 1
-    # Failure happens before any rendering - nothing on stdout.
-    assert captured.out == ""
-    # The failure is surfaced on stderr.
-    assert captured.err != ""
 
 
 def test_info_json_normalize():
@@ -436,74 +270,17 @@ def test_info_json(monkeypatch, capsys, redis_url, cli_index):
     assert captured.err == ""
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["rvl", "index", "info", "-i", "test-idx"],
-        ["rvl", "index", "info", "-i", "test-idx", "--json"],
-    ],
-)
-def test_info_runtime_error(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl index info`` reports runtime failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 1, stdout is empty (no
-    half-formed output), and stderr is non-empty. ``--json`` is parametrized
-    to confirm the contract is uniform.
-    """
-    _patch_search_index_for_info(monkeypatch, info_error=RuntimeError("boom"))
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # Generic runtime failure exits 1 from __init__'s catch-all.
-    assert exc_info.value.code == 1
-    # Failure happens before any rendering - nothing on stdout.
-    assert captured.out == ""
-    # The failure is surfaced on stderr.
-    assert captured.err != ""
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["rvl", "index", "info"],
-        ["rvl", "index", "info", "--json"],
-    ],
-)
-def test_info_no_target(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl index info`` without ``-i`` or ``-s`` exits with a usage error.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    is non-empty. ``--json`` is parametrized to confirm no JSON contract is
-    invented for usage errors.
-    """
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Index()
-    captured = capsys.readouterr()
-
-    # _connect_to_index uses argparse-style usage exit code
-    assert exc_info.value.code == 2
-    # Usage errors must not pollute stdout, even with --json.
-    assert captured.out == ""
-    # Some explanatory message reaches stderr; exact wording is not part of the contract.
-    assert captured.err != ""
-
-
-def test_info_table(monkeypatch, capsys, redis_url, cli_index):
-    """Tests that default ``rvl index info`` runs to completion on the table path.
+@pytest.mark.parametrize("command", ["listall", "info"])
+def test_index_human_output(monkeypatch, capsys, redis_url, cli_index, command: str):
+    """Tests that human-output index commands print content.
 
     Expected behavior: no ``SystemExit`` is raised, stdout is non-empty, and
-    stderr is empty. Exact rendering is a tabulate-library detail; data
-    correctness is pinned by ``test_info_json``.
+    stderr is empty.
     """
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
+    if command == "listall":
+        argv = ["rvl", "index", "listall", "--url", redis_url]
+    else:
+        argv = [
             "rvl",
             "index",
             "info",
@@ -511,48 +288,147 @@ def test_info_table(monkeypatch, capsys, redis_url, cli_index):
             cli_index.schema.index.name,
             "--url",
             redis_url,
-        ],
-    )
+        ]
+    monkeypatch.setattr(sys, "argv", argv)
 
     Index()
     captured = capsys.readouterr()
 
-    # Table path produces some output - the renderer ran and printed cells.
     assert captured.out != ""
-    # Table success is silent on stderr.
     assert captured.err == ""
 
 
 @pytest.mark.parametrize(
-    "argv",
+    ("argv", "expected_stderr_fragments"),
     [
-        ["rvl", "index", "info", "-i", "test-idx"],
-        ["rvl", "index", "info", "-i", "test-idx", "--json"],
+        # Base ``rvl index`` usage errors.
+        pytest.param(["rvl", "index"], (), id="missing-subcommand"),
+        pytest.param(["rvl", "index", "--json"], (), id="missing-subcommand-json"),
+        pytest.param(
+            ["rvl", "index", "notacommand"],
+            _INDEX_SUBCOMMANDS,
+            id="unknown-subcommand",
+        ),
+        # ``create`` input errors.
+        pytest.param(["rvl", "index", "create"], (), id="create-missing-schema"),
+        pytest.param(
+            ["rvl", "index", "create", "-s", "/does/not/exist.yaml"],
+            (),
+            id="create-schema-input-error",
+        ),
+        # ``info`` target selection errors.
+        pytest.param(["rvl", "index", "info"], (), id="info-missing-target"),
+        pytest.param(
+            ["rvl", "index", "info", "--json"], (), id="info-missing-target-json"
+        ),
     ],
 )
-def test_info_missing_index(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl index info -i <missing>`` reports the failure on stderr.
+def test_index_usage_errors(
+    monkeypatch,
+    capsys,
+    argv: list[str],
+    expected_stderr_fragments: tuple[str, ...],
+):
+    """Tests that usage/input errors are reported consistently.
 
-    Expected behavior: ``SystemExit`` code is 1, stdout is empty, and the
-    underlying error message reaches stderr. ``--json`` is parametrized to
-    confirm the contract does not change.
+    Expected behavior: ``SystemExit`` code is 2, stdout is empty, stderr is
+    non-empty, and selected cases include expected help fragments.
     """
-    from redisvl.exceptions import RedisSearchError
-
-    underlying_error = "Unknown index name"
-
-    _patch_search_index_for_info(
-        monkeypatch, info_error=RedisSearchError(underlying_error)
-    )
     monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
         Index()
     captured = capsys.readouterr()
 
-    # Documented exit code for a Redis search-side failure.
-    assert exc_info.value.code == 1
-    # Nothing leaks on this error path.
+    assert exc_info.value.code == 2
     assert captured.out == ""
-    # The underlying Redis error reaches stderr.
-    assert underlying_error in captured.err
+    assert captured.err != ""
+    for fragment in expected_stderr_fragments:
+        assert fragment in captured.err
+
+
+@pytest.mark.parametrize(
+    ("argv", "patch_target", "error"),
+    [
+        # ``create`` Redis failures.
+        pytest.param(
+            ["rvl", "index", "create", "-s", "fake.yaml"],
+            "create",
+            RedisSearchError("create failed"),
+            id="create-redis-search-error",
+        ),
+        # ``listall`` generic runtime failures.
+        pytest.param(
+            ["rvl", "index", "listall"],
+            "listall",
+            RuntimeError("redis unavailable"),
+            id="listall",
+        ),
+        pytest.param(
+            ["rvl", "index", "listall", "--json"],
+            "listall",
+            RuntimeError("redis unavailable"),
+            id="listall-json",
+        ),
+        # ``info`` generic runtime failures.
+        pytest.param(
+            ["rvl", "index", "info", "-i", "test-idx"],
+            "info",
+            RuntimeError("boom"),
+            id="info-runtime",
+        ),
+        pytest.param(
+            ["rvl", "index", "info", "-i", "test-idx", "--json"],
+            "info",
+            RuntimeError("boom"),
+            id="info-runtime-json",
+        ),
+        # ``info`` Redis search failures.
+        pytest.param(
+            ["rvl", "index", "info", "-i", "test-idx"],
+            "info",
+            RedisSearchError("Unknown index name"),
+            id="info-missing-index",
+        ),
+        pytest.param(
+            ["rvl", "index", "info", "-i", "test-idx", "--json"],
+            "info",
+            RedisSearchError("Unknown index name"),
+            id="info-missing-index-json",
+        ),
+    ],
+)
+def test_index_runtime_errors(
+    monkeypatch,
+    capsys,
+    argv: list[str],
+    patch_target: str,
+    error: BaseException,
+):
+    """Tests that runtime/Redis failures are reported consistently.
+
+    Expected behavior: ``SystemExit`` code is 1, stdout is empty, and stderr
+    is non-empty.
+    """
+    if patch_target == "create":
+        _patch_search_index(
+            monkeypatch,
+            create_error=error,
+            index_name="test-idx",
+        )
+    elif patch_target == "listall":
+        monkeypatch.setattr(
+            "redisvl.cli.index.RedisConnectionFactory.get_redis_connection",
+            MagicMock(side_effect=error),
+        )
+    elif patch_target == "info":
+        _patch_search_index_for_info(monkeypatch, info_error=error)
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc_info:
+        Index()
+    captured = capsys.readouterr()
+
+    assert exc_info.value.code == 1
+    assert captured.out == ""
+    assert captured.err != ""

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from redisvl.cli.stats import STATS_KEYS, Stats, _stats_rows
+from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
 
 
@@ -32,7 +33,7 @@ def test_rvl_stats_help(monkeypatch, capsys, argv: list[str]):
 
 
 def test_rvl_stats_subprocess_help():
-    """End-to-end smoke test of ``rvl stats --help`` via the runner module.
+    """Tests that ``rvl stats --help`` works via the runner module.
 
     Expected behavior: the subprocess exits 0, stdout is non-empty, and
     stderr is empty.
@@ -89,120 +90,6 @@ def _patch_search_index_for_stats(
         side_effect=from_yaml_error, return_value=fake_index
     )
     monkeypatch.setattr("redisvl.cli.stats.SearchIndex", fake_search_index)
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["rvl", "stats"],
-        ["rvl", "stats", "--json"],
-    ],
-)
-def test_stats_no_target(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl stats`` without ``-i`` or ``-s`` exits with a usage error.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    is non-empty. ``--json`` is parametrized to confirm no JSON contract is
-    invented for usage errors.
-    """
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Stats()
-    captured = capsys.readouterr()
-
-    # _connect_to_index uses argparse-style usage-error exit code.
-    assert exc_info.value.code == 2
-    # Usage errors must not pollute stdout, even with --json.
-    assert captured.out == ""
-    # Some explanatory message reaches stderr; exact wording is not part of the contract.
-    assert captured.err != ""
-
-
-def test_stats_schema_input_error(monkeypatch, capsys):
-    """Tests that ``rvl stats -s <bad>`` reports schema-load failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
-    is non-empty.
-    """
-    _patch_search_index_for_stats(
-        monkeypatch,
-        from_yaml_error=FileNotFoundError("schema file missing: /does/not/exist.yaml"),
-    )
-    monkeypatch.setattr(sys, "argv", ["rvl", "stats", "-s", "/does/not/exist.yaml"])
-
-    with pytest.raises(SystemExit) as exc_info:
-        Stats()
-    captured = capsys.readouterr()
-
-    # exit_schema_input_error uses exit code 2 when -s was provided.
-    assert exc_info.value.code == 2
-    # Nothing on stdout when schema input fails.
-    assert captured.out == ""
-    # The failure is surfaced on stderr.
-    assert captured.err != ""
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["rvl", "stats", "-i", "test-idx"],
-        ["rvl", "stats", "-i", "test-idx", "--json"],
-    ],
-)
-def test_stats_redis_search_error(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl stats`` reports Redis-side failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 1, stdout is empty, and stderr
-    is non-empty. ``--json`` is parametrized to confirm the contract is
-    uniform.
-    """
-    from redisvl.exceptions import RedisSearchError
-
-    _patch_search_index_for_stats(
-        monkeypatch, info_error=RedisSearchError("Unknown index name")
-    )
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Stats()
-    captured = capsys.readouterr()
-
-    # Documented Redis-failure exit code from exit_redis_search_error.
-    assert exc_info.value.code == 1
-    # No partial output before the failure.
-    assert captured.out == ""
-    # The failure is surfaced on stderr.
-    assert captured.err != ""
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["rvl", "stats", "-i", "test-idx"],
-        ["rvl", "stats", "-i", "test-idx", "--json"],
-    ],
-)
-def test_stats_runtime_error(monkeypatch, capsys, argv: list[str]):
-    """Tests that ``rvl stats`` reports runtime failures on stderr.
-
-    Expected behavior: ``SystemExit`` code is 1, stdout is empty (no
-    half-formed output), and stderr is non-empty. ``--json`` is parametrized
-    to confirm the contract is uniform.
-    """
-    _patch_search_index_for_stats(monkeypatch, info_error=RuntimeError("boom"))
-    monkeypatch.setattr(sys, "argv", argv)
-
-    with pytest.raises(SystemExit) as exc_info:
-        Stats()
-    captured = capsys.readouterr()
-
-    # Generic runtime failure exits 1 from __init__'s catch-all.
-    assert exc_info.value.code == 1
-    # Failure happens before any rendering - nothing on stdout.
-    assert captured.out == ""
-    # The failure is surfaced on stderr; exact wording is not part of the contract.
-    assert captured.err != ""
 
 
 def test_stats_json(monkeypatch, capsys, redis_url, cli_stats_index):
@@ -279,3 +166,90 @@ def test_stats_rows_shape():
     assert list(data.keys()) == list(STATS_KEYS)
     # Missing input keys become None at this layer (serialized as JSON null).
     assert all(data[k] is None for k in STATS_KEYS)
+
+
+@pytest.mark.parametrize(
+    ("argv", "error_path"),
+    [
+        # Missing target selection.
+        pytest.param(["rvl", "stats"], None, id="missing-target"),
+        pytest.param(["rvl", "stats", "--json"], None, id="missing-target-json"),
+        # Schema input errors.
+        pytest.param(
+            ["rvl", "stats", "-s", "/does/not/exist.yaml"],
+            "schema",
+            id="schema-input-error",
+        ),
+    ],
+)
+def test_stats_usage_errors(
+    monkeypatch, capsys, argv: list[str], error_path: str | None
+):
+    """Tests that stats usage/input errors are reported consistently.
+
+    Expected behavior: ``SystemExit`` code is 2, stdout is empty, and stderr
+    is non-empty.
+    """
+    if error_path == "schema":
+        _patch_search_index_for_stats(
+            monkeypatch,
+            from_yaml_error=FileNotFoundError(
+                "schema file missing: /does/not/exist.yaml"
+            ),
+        )
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc_info:
+        Stats()
+    captured = capsys.readouterr()
+
+    assert exc_info.value.code == 2
+    assert captured.out == ""
+    assert captured.err != ""
+
+
+@pytest.mark.parametrize(
+    ("argv", "info_error"),
+    [
+        # Redis-side failures.
+        pytest.param(
+            ["rvl", "stats", "-i", "test-idx"],
+            RedisSearchError("Unknown index name"),
+            id="redis-search-error",
+        ),
+        pytest.param(
+            ["rvl", "stats", "-i", "test-idx", "--json"],
+            RedisSearchError("Unknown index name"),
+            id="redis-search-error-json",
+        ),
+        # Generic runtime failures.
+        pytest.param(
+            ["rvl", "stats", "-i", "test-idx"],
+            RuntimeError("boom"),
+            id="runtime-error",
+        ),
+        pytest.param(
+            ["rvl", "stats", "-i", "test-idx", "--json"],
+            RuntimeError("boom"),
+            id="runtime-error-json",
+        ),
+    ],
+)
+def test_stats_runtime_errors(
+    monkeypatch, capsys, argv: list[str], info_error: BaseException
+):
+    """Tests that stats runtime/Redis failures are reported consistently.
+
+    Expected behavior: ``SystemExit`` code is 1, stdout is empty, and stderr
+    is non-empty.
+    """
+    _patch_search_index_for_stats(monkeypatch, info_error=info_error)
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc_info:
+        Stats()
+    captured = capsys.readouterr()
+
+    assert exc_info.value.code == 1
+    assert captured.out == ""
+    assert captured.err != ""

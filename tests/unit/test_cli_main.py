@@ -16,9 +16,44 @@ def _assert_help_contract(help_text: str) -> None:
         assert re.search(rf"^\s*{re.escape(name)}\s+", help_text, re.MULTILINE)
 
 
-@pytest.mark.parametrize("argv", [["rvl"], ["rvl", "--help"], ["rvl", "-h"]])
-def test_rvl_help(monkeypatch, capsys, argv: list[str]):
-    """Help paths (`rvl`, `--help`, `-h`) exit 0 and print to stdout."""
+@pytest.mark.parametrize(
+    ("argv", "subprocess_args"),
+    [
+        # In-process help paths.
+        pytest.param(["rvl"], None, id="default-help"),
+        pytest.param(["rvl", "--help"], None, id="long-help"),
+        pytest.param(["rvl", "-h"], None, id="short-help"),
+        # End-to-end runner path.
+        pytest.param(
+            None,
+            [sys.executable, "-m", "redisvl.cli.runner", "--help"],
+            id="subprocess-module-help",
+        ),
+    ],
+)
+def test_rvl_help(
+    monkeypatch,
+    capsys,
+    argv: list[str] | None,
+    subprocess_args: list[str] | None,
+):
+    """Tests that top-level help paths print the documented help contract.
+
+    Expected behavior: the command exits 0, stdout contains the top-level help
+    contract, and stderr is empty.
+    """
+    if subprocess_args is not None:
+        result = subprocess.run(
+            subprocess_args,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stderr == ""
+        _assert_help_contract(result.stdout)
+        return
+
     monkeypatch.setattr(sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -54,22 +89,3 @@ def test_unknown_command(monkeypatch, capsys):
     for name in _COMMANDS:
         # stderr help still lists every valid top-level command.
         assert name in out.err
-
-
-def test_subprocess_module_help():
-    """Run ``python -m redisvl.cli.runner --help`` and verify it exits 0 with help on stdout.
-
-    Acts as an end-to-end check that the installed CLI entrypoint actually works.
-    """
-    result = subprocess.run(
-        [sys.executable, "-m", "redisvl.cli.runner", "--help"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    # Help subprocess exits successfully.
-    assert result.returncode == 0
-    # No stderr output for help.
-    assert result.stderr == ""
-    # Stdout includes the same help contract as in-process tests.
-    _assert_help_contract(result.stdout)
