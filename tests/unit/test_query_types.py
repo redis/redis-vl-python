@@ -973,43 +973,6 @@ def test_vector_query_update_ef_runtime():
     assert params2.get(VectorQuery.EF_RUNTIME_PARAM) == 200
 
 
-def test_vector_query_epsilon():
-    """Test that VectorQuery correctly handles epsilon parameter."""
-    # Create a vector query with epsilon
-    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=0.05)
-
-    # Check properties
-    assert vector_query.epsilon == 0.05
-
-    # Check query string
-    query_string = str(vector_query)
-    assert f"EPSILON ${VectorQuery.EPSILON_PARAM}" in query_string
-
-    # Check params dictionary
-    assert vector_query.params.get(VectorQuery.EPSILON_PARAM) == 0.05
-
-
-def test_vector_query_invalid_epsilon():
-    """Test error handling for invalid epsilon values in VectorQuery."""
-    # Test with invalid epsilon type
-    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
-        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon="0.05")
-
-    # Test with negative epsilon
-    with pytest.raises(ValueError, match="epsilon must be non-negative"):
-        VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field", epsilon=-0.05)
-
-    # Create a valid vector query
-    vector_query = VectorQuery([0.1, 0.2, 0.3, 0.4], "vector_field")
-
-    # Test with invalid epsilon via setter
-    with pytest.raises(TypeError, match="epsilon must be of type float or int"):
-        vector_query.set_epsilon("0.05")
-
-    with pytest.raises(ValueError, match="epsilon must be non-negative"):
-        vector_query.set_epsilon(-0.05)
-
-
 def test_vector_query_search_window_size():
     """Test that VectorQuery correctly handles search_window_size parameter (SVS-VAMANA)."""
     # Create a vector query with search_window_size
@@ -1153,7 +1116,6 @@ def test_vector_query_all_runtime_params():
         [0.1, 0.2, 0.3, 0.4],
         "vector_field",
         ef_runtime=100,
-        epsilon=0.05,
         search_window_size=40,
         use_search_history="ON",
         search_buffer_capacity=50,
@@ -1161,7 +1123,6 @@ def test_vector_query_all_runtime_params():
 
     # Check all properties
     assert vector_query.ef_runtime == 100
-    assert vector_query.epsilon == 0.05
     assert vector_query.search_window_size == 40
     assert vector_query.use_search_history == "ON"
     assert vector_query.search_buffer_capacity == 50
@@ -1169,7 +1130,6 @@ def test_vector_query_all_runtime_params():
     # Check query string contains all parameters
     query_string = str(vector_query)
     assert "EF_RUNTIME $EF" in query_string
-    assert "EPSILON $EPSILON" in query_string
     assert "SEARCH_WINDOW_SIZE $SEARCH_WINDOW_SIZE" in query_string
     assert "USE_SEARCH_HISTORY $USE_SEARCH_HISTORY" in query_string
     assert "SEARCH_BUFFER_CAPACITY $SEARCH_BUFFER_CAPACITY" in query_string
@@ -1177,7 +1137,6 @@ def test_vector_query_all_runtime_params():
     # Check params dictionary contains all parameters
     params = vector_query.params
     assert params["EF"] == 100
-    assert params["EPSILON"] == 0.05
     assert params["SEARCH_WINDOW_SIZE"] == 40
     assert params["USE_SEARCH_HISTORY"] == "ON"
     assert params["SEARCH_BUFFER_CAPACITY"] == 50

@@ -421,7 +421,6 @@ class BaseVectorQuery:
     # HNSW runtime parameters
     EF_RUNTIME: str = "EF_RUNTIME"
     EF_RUNTIME_PARAM: str = "EF"
-    EPSILON_PARAM: str = "EPSILON"
 
     # SVS-VAMANA runtime parameters
     SEARCH_WINDOW_SIZE: str = "SEARCH_WINDOW_SIZE"
@@ -457,7 +456,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         hybrid_policy: str | None = None,
         batch_size: int | None = None,
         ef_runtime: int | None = None,
-        epsilon: float | None = None,
         search_window_size: int | None = None,
         use_search_history: str | None = None,
         search_buffer_capacity: int | None = None,
@@ -505,10 +503,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
             ef_runtime (Optional[int]): Controls the size of the dynamic candidate list for HNSW
                 algorithm at query time. Higher values improve recall at the expense of
                 slower search performance. Defaults to None, which uses the index-defined value.
-            epsilon (Optional[float]): The range search approximation factor for HNSW and SVS-VAMANA
-                indexes. Sets boundaries for candidates within radius * (1 + epsilon). Higher values
-                allow more extensive search and more accurate results at the expense of run time.
-                Defaults to None, which uses the index-defined value (typically 0.01).
             search_window_size (Optional[int]): The size of the search window for SVS-VAMANA KNN searches.
                 Increasing this value generally yields more accurate but slower search results.
                 Defaults to None, which uses the index-defined value (typically 10).
@@ -541,7 +535,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         self._hybrid_policy: HybridPolicy | None = None
         self._batch_size: int | None = None
         self._ef_runtime: int | None = None
-        self._epsilon: float | None = None
         self._search_window_size: int | None = None
         self._use_search_history: str | None = None
         self._search_buffer_capacity: int | None = None
@@ -578,9 +571,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if ef_runtime is not None:
             self.set_ef_runtime(ef_runtime)
 
-        if epsilon is not None:
-            self.set_epsilon(epsilon)
-
         if search_window_size is not None:
             self.set_search_window_size(search_window_size)
 
@@ -612,10 +602,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime:
             knn_query += f" {self.EF_RUNTIME} ${self.EF_RUNTIME_PARAM}"
-
-        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
-        if self._epsilon is not None:
-            knn_query += f" EPSILON ${self.EPSILON_PARAM}"
 
         # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
         if self._search_window_size is not None:
@@ -691,28 +677,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         if ef_runtime <= 0:
             raise ValueError("ef_runtime must be positive")
         self._ef_runtime = ef_runtime
-
-        # Invalidate the query string
-        self._built_query_string = None
-
-    def set_epsilon(self, epsilon: float):
-        """Set the epsilon parameter for the query.
-
-        Args:
-            epsilon (float): The range search approximation factor for HNSW and SVS-VAMANA
-                indexes. Sets boundaries for candidates within radius * (1 + epsilon).
-                Higher values allow more extensive search and more accurate results at the
-                expense of run time.
-
-        Raises:
-            TypeError: If epsilon is not a float or int
-            ValueError: If epsilon is negative
-        """
-        if not isinstance(epsilon, (float, int)):
-            raise TypeError("epsilon must be of type float or int")
-        if epsilon < 0:
-            raise ValueError("epsilon must be non-negative")
-        self._epsilon = epsilon
 
         # Invalidate the query string
         self._built_query_string = None
@@ -809,15 +773,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         return self._ef_runtime
 
     @property
-    def epsilon(self) -> float | None:
-        """Return the epsilon parameter for the query.
-
-        Returns:
-            Optional[float]: The epsilon value for the query.
-        """
-        return self._epsilon
-
-    @property
     def search_window_size(self) -> int | None:
         """Return the SEARCH_WINDOW_SIZE parameter for the query.
 
@@ -861,10 +816,6 @@ class VectorQuery(BaseVectorQuery, BaseQuery):
         # Add EF_RUNTIME parameter if specified (HNSW)
         if self._ef_runtime is not None:
             params[self.EF_RUNTIME_PARAM] = self._ef_runtime
-
-        # Add EPSILON parameter if specified (HNSW and SVS-VAMANA)
-        if self._epsilon is not None:
-            params[self.EPSILON_PARAM] = self._epsilon
 
         # Add SEARCH_WINDOW_SIZE parameter if specified (SVS-VAMANA)
         if self._search_window_size is not None:
