@@ -466,8 +466,7 @@ async def _async_worker_quantize(
                 if converted:
                     pipe = client.pipeline(transaction=False)
                     for key, fields in converted.items():
-                        for field_name, data in fields.items():
-                            pipe.hset(key, field_name, data)
+                        pipe.hset(key, mapping=fields)  # type: ignore[arg-type]
                     await pipe.execute()
                 backup.mark_batch_quantized(batch_idx)
                 docs_quantized += len(batch_keys)
