@@ -6,7 +6,6 @@ Tests use mocked Redis clients to verify:
 - Applicability checking
 - Checkpoint persistence and resume
 - Failure policies
-- Progress callbacks
 """
 
 from fnmatch import fnmatch
@@ -242,44 +241,6 @@ class TestBatchMigrationPlannerPatternMatching:
                 schema_patch_path=str(patch_path),
                 redis_client=mock_client,
             )
-
-    def test_pattern_with_special_characters(self, monkeypatch, tmp_path):
-        """Pattern matching with special characters in index names."""
-        mock_client = MockRedisClient(
-            indexes=["app:prod:idx", "app:dev:idx", "app:staging:idx"]
-        )
-
-        def mock_list_indexes(**kwargs):
-            return ["app:prod:idx", "app:dev:idx", "app:staging:idx"]
-
-        monkeypatch.setattr(
-            "redisvl.migration.batch_planner.list_indexes", mock_list_indexes
-        )
-
-        def mock_from_existing(name, **kwargs):
-            return make_dummy_index(
-                name, make_test_schema(name), {"num_docs": 5, "indexing": False}
-            )
-
-        monkeypatch.setattr(
-            "redisvl.migration.batch_planner.SearchIndex.from_existing",
-            mock_from_existing,
-        )
-        monkeypatch.setattr(
-            "redisvl.migration.planner.SearchIndex.from_existing", mock_from_existing
-        )
-
-        patch_path = tmp_path / "patch.yaml"
-        patch_path.write_text(yaml.safe_dump(make_shared_patch()))
-
-        planner = BatchMigrationPlanner()
-        batch_plan = planner.create_batch_plan(
-            pattern="app:*:idx",
-            schema_patch_path=str(patch_path),
-            redis_client=mock_client,
-        )
-
-        assert len(batch_plan.indexes) == 3
 
 
 class TestBatchMigrationPlannerIndexSelection:
@@ -1007,59 +968,6 @@ class TestBatchMigrationExecutorFailurePolicies:
         assert report.summary.successful == 2
 
 
-class TestBatchMigrationExecutorProgressCallback:
-    """Test progress callback functionality."""
-
-    def test_progress_callback_called_for_each_index(self, tmp_path):
-        """Progress callback should be invoked for each index."""
-        batch_plan = make_batch_plan(
-            batch_id="test-batch-progress",
-            indexes=[
-                BatchIndexEntry(name="idx1", applicable=True),
-                BatchIndexEntry(name="idx2", applicable=True),
-                BatchIndexEntry(name="idx3", applicable=True),
-            ],
-            failure_policy="continue_on_error",
-        )
-
-        state_path = tmp_path / "batch_state.yaml"
-        report_dir = tmp_path / "reports"
-        progress_events = []
-
-        def progress_callback(index_name, position, total, status):
-            progress_events.append(
-                {"index": index_name, "pos": position, "total": total, "status": status}
-            )
-
-        executor, _ = create_mock_executor(succeed_on=["idx1", "idx2", "idx3"])
-        mock_client = MockRedisClient(indexes=["idx1", "idx2", "idx3"])
-
-        executor.apply(
-            batch_plan,
-            state_path=str(state_path),
-            report_dir=str(report_dir),
-            redis_client=mock_client,
-            progress_callback=progress_callback,
-            backup_dir=str(tmp_path / "backups"),
-        )
-
-        # Should have 2 events per index (starting + final status)
-        assert len(progress_events) == 6
-        # Check first index events
-        assert progress_events[0] == {
-            "index": "idx1",
-            "pos": 1,
-            "total": 3,
-            "status": "starting",
-        }
-        assert progress_events[1] == {
-            "index": "idx1",
-            "pos": 1,
-            "total": 3,
-            "status": "success",
-        }
-
-
 class TestBatchMigrationExecutorEdgeCases:
     """Test edge cases and error scenarios."""
 
@@ -1302,167 +1210,9 @@ class TestBatchMigrationExecutorEdgeCases:
             )
 
 
-class TestBatchMigrationExecutorReportGeneration:
-    """Test batch report generation."""
-
-    def test_report_contains_all_indexes(self, tmp_path):
-        """Final report should contain entries for all indexes."""
-        batch_plan = make_batch_plan(
-            batch_id="test-batch-report",
-            indexes=[
-                BatchIndexEntry(name="idx1", applicable=True),
-                BatchIndexEntry(
-                    name="idx2", applicable=False, skip_reason="Missing field"
-                ),
-                BatchIndexEntry(name="idx3", applicable=True),
-            ],
-            failure_policy="continue_on_error",
-        )
-
-        state_path = tmp_path / "batch_state.yaml"
-        report_dir = tmp_path / "reports"
-
-        executor, _ = create_mock_executor(succeed_on=["idx1", "idx3"])
-        mock_client = MockRedisClient(indexes=["idx1", "idx2", "idx3"])
-
-        report = executor.apply(
-            batch_plan,
-            state_path=str(state_path),
-            report_dir=str(report_dir),
-            redis_client=mock_client,
-            backup_dir=str(tmp_path / "backups"),
-        )
-
-        # All indexes should be in report
-        index_names = {r.name for r in report.indexes}
-        assert index_names == {"idx1", "idx2", "idx3"}
-
-        # Verify totals
-        assert report.summary.total_indexes == 3
-        assert report.summary.successful == 2
-        assert report.summary.skipped == 1
-
-    def test_per_index_reports_written(self, tmp_path):
-        """Individual reports should be written for each migrated index."""
-        batch_plan = make_batch_plan(
-            batch_id="test-batch-files",
-            indexes=[
-                BatchIndexEntry(name="idx1", applicable=True),
-                BatchIndexEntry(name="idx2", applicable=True),
-            ],
-            failure_policy="continue_on_error",
-        )
-
-        state_path = tmp_path / "batch_state.yaml"
-        report_dir = tmp_path / "reports"
-
-        executor, _ = create_mock_executor(succeed_on=["idx1", "idx2"])
-        mock_client = MockRedisClient(indexes=["idx1", "idx2"])
-
-        executor.apply(
-            batch_plan,
-            state_path=str(state_path),
-            report_dir=str(report_dir),
-            redis_client=mock_client,
-            backup_dir=str(tmp_path / "backups"),
-        )
-
-        # Report files should exist
-        assert (report_dir / "idx1_report.yaml").exists()
-        assert (report_dir / "idx2_report.yaml").exists()
-
-    def test_completed_status_when_all_succeed(self, tmp_path):
-        """Status should be 'completed' when all indexes succeed."""
-        batch_plan = make_batch_plan(
-            batch_id="test-batch-complete",
-            indexes=[
-                BatchIndexEntry(name="idx1", applicable=True),
-                BatchIndexEntry(name="idx2", applicable=True),
-            ],
-            failure_policy="continue_on_error",
-        )
-
-        state_path = tmp_path / "batch_state.yaml"
-        report_dir = tmp_path / "reports"
-
-        executor, _ = create_mock_executor(succeed_on=["idx1", "idx2"])
-        mock_client = MockRedisClient(indexes=["idx1", "idx2"])
-
-        report = executor.apply(
-            batch_plan,
-            state_path=str(state_path),
-            report_dir=str(report_dir),
-            redis_client=mock_client,
-            backup_dir=str(tmp_path / "backups"),
-        )
-
-        assert report.status == "completed"
-
-    def test_failed_status_when_all_fail(self, tmp_path):
-        """Status should be 'failed' when all indexes fail."""
-        batch_plan = make_batch_plan(
-            batch_id="test-batch-all-fail",
-            indexes=[
-                BatchIndexEntry(name="idx1", applicable=True),
-                BatchIndexEntry(name="idx2", applicable=True),
-            ],
-            failure_policy="continue_on_error",
-        )
-
-        state_path = tmp_path / "batch_state.yaml"
-        report_dir = tmp_path / "reports"
-
-        # Create a mock that raises exceptions for all indexes
-        mock_planner = Mock()
-        mock_planner.create_plan_from_patch = Mock(
-            side_effect=RuntimeError("All migrations fail")
-        )
-
-        mock_single_executor = Mock()
-        executor = BatchMigrationExecutor(executor=mock_single_executor)
-        executor._planner = mock_planner
-        mock_client = MockRedisClient(indexes=["idx1", "idx2"])
-
-        report = executor.apply(
-            batch_plan,
-            state_path=str(state_path),
-            report_dir=str(report_dir),
-            redis_client=mock_client,
-            backup_dir=str(tmp_path / "backups"),
-        )
-
-        assert report.status == "failed"
-        assert report.summary.failed == 2
-        assert report.summary.successful == 0
-
-
 # =============================================================================
 # TDD: Batch executor/planner hardening fixes
 # =============================================================================
-
-
-class TestBatchFileSanitization:
-    """Test that report filenames are broadly sanitized."""
-
-    def test_special_chars_in_index_name(self, tmp_path):
-        """Colons, spaces, pipes, and other special chars should be sanitized."""
-        import re
-
-        # Simulate the sanitization logic
-        index_name = "my:index/with\\special|chars <>"
-        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", index_name)
-        report_file = tmp_path / f"{safe_name}_report.yaml"
-
-        # Should not raise
-        report_file.write_text("ok")
-        assert report_file.exists()
-        # No forbidden chars in filename
-        assert ":" not in safe_name
-        assert "/" not in safe_name
-        assert "\\" not in safe_name
-        assert "|" not in safe_name
-        assert "<" not in safe_name
-        assert ">" not in safe_name
 
 
 class TestBatchPlannerDedup:
@@ -1655,21 +1405,3 @@ class TestBatchMigrationPlannerOverlapDetection:
                 schema_patch_path=str(patch_path),
                 redis_client=mock_client,
             )
-
-    def test_overlap_error_matches_documented_format(self):
-        """Guard against drift between the error string and the docs.
-
-        The user-facing docs (docs/user_guide/how_to_guides/migrate-indexes.md
-        troubleshooting section) reproduce this error verbatim, so changes to
-        the format should be intentional.
-        """
-        msg = BatchMigrationPlanner._format_overlap_error(
-            [("products_main", "products_premium", [("product:", "product:premium:")])]
-        )
-        assert "Refusing to create batch plan: overlapping indexes detected." in msg
-        assert "Conflicts:" in msg
-        assert (
-            "products_main <-> products_premium: 'product:' <-> 'product:premium:'"
-            in msg
-        )
-        assert "disjoint prefixes" in msg

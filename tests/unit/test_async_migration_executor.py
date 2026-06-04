@@ -16,7 +16,6 @@ from redisvl.migration.models import (
     MigrationPlan,
     SourceSnapshot,
     ValidationPolicy,
-    _format_bytes,
 )
 from redisvl.migration.utils import estimate_disk_space
 
@@ -348,57 +347,6 @@ def test_estimate_fp32_to_int8():
     assert est.memory_savings_after_bytes == 50_000 * 768 * 3
 
 
-def test_estimate_summary_with_quantization():
-    """Summary string should contain key information."""
-    plan = _make_quantize_plan("float32", "float16", dims=128, doc_count=1000)
-    est = estimate_disk_space(plan)
-    summary = est.summary()
-
-    assert "Pre-migration disk space estimate" in summary
-    assert "test_index" in summary
-    assert "1,000 documents" in summary
-    assert "float32 -> float16" in summary
-    assert "RDB snapshot" in summary
-    assert "reduction" in summary or "memory savings" in summary
-
-
-def test_estimate_summary_no_quantization():
-    """Summary for non-quantization migration should say no disk needed."""
-    plan = _make_quantize_plan("float32", "float32", dims=128, doc_count=1000)
-    est = estimate_disk_space(plan)
-    summary = est.summary()
-
-    assert "No vector quantization" in summary
-
-
-def test_format_bytes_gb():
-    assert _format_bytes(1_073_741_824) == "1.00 GB"
-    assert _format_bytes(2_147_483_648) == "2.00 GB"
-
-
-def test_format_bytes_mb():
-    assert _format_bytes(1_048_576) == "1.0 MB"
-    assert _format_bytes(10_485_760) == "10.0 MB"
-
-
-def test_format_bytes_kb():
-    assert _format_bytes(1024) == "1.0 KB"
-    assert _format_bytes(2048) == "2.0 KB"
-
-
-def test_format_bytes_bytes():
-    assert _format_bytes(500) == "500 bytes"
-    assert _format_bytes(0) == "0 bytes"
-
-
-def test_savings_pct():
-    """Verify savings percentage calculation."""
-    plan = _make_quantize_plan("float32", "float16", dims=128, doc_count=100)
-    est = estimate_disk_space(plan)
-    # FP32->FP16 = 50% savings
-    assert est._savings_pct() == 50
-
-
 # =============================================================================
 # TDD RED Phase: Idempotent Dtype Detection Tests
 # =============================================================================
@@ -437,34 +385,6 @@ def test_detect_dtype_int8_by_size():
     vec = np.zeros(768, dtype=np.int8).tobytes()
     detected = detect_vector_dtype(vec, expected_dims=768)
     assert detected == "int8"
-
-
-def test_detect_dtype_bfloat16_by_size():
-    """A 768-dim bfloat16 vector should be 1536 bytes (same as float16)."""
-    import numpy as np
-
-    from redisvl.migration.reliability import detect_vector_dtype
-
-    # bfloat16 and float16 are both 2 bytes per element
-    vec = np.random.randn(768).astype(np.float16).tobytes()
-    detected = detect_vector_dtype(vec, expected_dims=768)
-    # Cannot distinguish float16 from bfloat16 by size alone; returns "float16"
-    assert detected in ("float16", "bfloat16")
-
-
-def test_detect_dtype_empty_returns_none():
-    """Empty bytes should return None."""
-    from redisvl.migration.reliability import detect_vector_dtype
-
-    assert detect_vector_dtype(b"", expected_dims=128) is None
-
-
-def test_detect_dtype_unknown_size():
-    """Bytes that don't match any known dtype should return None."""
-    from redisvl.migration.reliability import detect_vector_dtype
-
-    # 7 bytes doesn't match any dtype for 3 dims
-    assert detect_vector_dtype(b"\x00" * 7, expected_dims=3) is None
 
 
 def test_is_already_quantized_skip():

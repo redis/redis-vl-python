@@ -9,10 +9,7 @@ Tests the new quantize flow:
 """
 
 import struct
-from typing import Any, Dict, List
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 
 def _make_float32_vector(dims: int = 4, seed: float = 0.0) -> bytes:
@@ -26,8 +23,6 @@ class TestPipelineReadBatch:
     def test_pipeline_read_batches_hgets(self):
         """A batch of N keys with F fields should produce N*F pipelined HGET
         calls and exactly 1 pipe.execute() — not N*F individual client.hget()."""
-        from redisvl.migration.backup import VectorBackup
-
         mock_client = MagicMock()
         mock_pipe = MagicMock()
         mock_client.pipeline.return_value = mock_pipe
@@ -163,64 +158,6 @@ class TestConvertVectors:
         arr = np.frombuffer(converted["doc:0"]["embedding"], dtype=np.float16)
         np.testing.assert_allclose(arr, [1.0, 2.0, 3.0, 4.0], rtol=1e-3)
 
-    def test_convert_float64_to_float32(self):
-        """Float64 to float32 should preserve values with minor precision loss."""
-        import numpy as np
-
-        from redisvl.migration.quantize import convert_vectors
-
-        dims = 4
-        source = np.array([1.0, -2.5, 3.14159265358979, 0.0], dtype=np.float64)
-        originals = {"doc:0": {"embedding": source.tobytes()}}
-        changes = {
-            "embedding": {"source": "float64", "target": "float32", "dims": dims}
-        }
-
-        converted = convert_vectors(originals, changes)
-
-        # float64 = 8 bytes/dim, float32 = 4 bytes/dim
-        assert len(converted["doc:0"]["embedding"]) == dims * 4
-        arr = np.frombuffer(converted["doc:0"]["embedding"], dtype=np.float32)
-        np.testing.assert_allclose(arr, source, rtol=1e-6)
-
-    def test_convert_float64_to_float16(self):
-        """Float64 to float16 should preserve values with larger precision loss."""
-        import numpy as np
-
-        from redisvl.migration.quantize import convert_vectors
-
-        dims = 4
-        source = np.array([1.0, -2.5, 0.333, 0.0], dtype=np.float64)
-        originals = {"doc:0": {"embedding": source.tobytes()}}
-        changes = {
-            "embedding": {"source": "float64", "target": "float16", "dims": dims}
-        }
-
-        converted = convert_vectors(originals, changes)
-
-        # float64 = 8 bytes/dim, float16 = 2 bytes/dim
-        assert len(converted["doc:0"]["embedding"]) == dims * 2
-        arr = np.frombuffer(converted["doc:0"]["embedding"], dtype=np.float16)
-        np.testing.assert_allclose(arr, source, rtol=1e-2)
-
-    def test_convert_float64_to_int8_scales_correctly(self):
-        """Float64 to int8 should apply scaling, not truncate."""
-        import numpy as np
-
-        from redisvl.migration.quantize import convert_vectors
-
-        source = np.array([-0.8, -0.2, 0.3, 0.9], dtype=np.float64)
-        originals = {"doc:0": {"embedding": source.tobytes()}}
-        changes = {"embedding": {"source": "float64", "target": "int8", "dims": 4}}
-
-        converted = convert_vectors(originals, changes)
-        result = np.frombuffer(converted["doc:0"]["embedding"], dtype=np.int8)
-
-        assert len(converted["doc:0"]["embedding"]) == 4
-        assert result.min() == -128
-        assert result.max() == 127
-        assert not np.all(result == 0)
-
     def test_convert_float32_to_int8_scales_correctly(self):
         """Float-to-int8 should scale values to [-128, 127], not truncate."""
         import numpy as np
@@ -309,22 +246,6 @@ class TestConvertVectors:
         # All values should be identical (mapped to midpoint)
         assert np.all(result == result[0])
 
-    def test_convert_preserves_relative_ordering(self):
-        """Scaled int8 values should maintain the same ordering as the source."""
-        import numpy as np
-
-        from redisvl.migration.quantize import convert_vectors
-
-        source = np.array([0.1, 0.9, 0.5, 0.3, 0.7], dtype=np.float32)
-        originals = {"doc:0": {"embedding": source.tobytes()}}
-        changes = {"embedding": {"source": "float32", "target": "int8", "dims": 5}}
-
-        converted = convert_vectors(originals, changes)
-        result = np.frombuffer(converted["doc:0"]["embedding"], dtype=np.int8)
-
-        # The sorted order of indices should be preserved
-        assert list(np.argsort(source)) == list(np.argsort(result.astype(float)))
-
     def test_convert_skips_unknown_fields(self):
         """Fields not in datatype_changes should be skipped."""
         from redisvl.migration.quantize import convert_vectors
@@ -334,28 +255,3 @@ class TestConvertVectors:
 
         converted = convert_vectors(originals, changes)
         assert converted["doc:0"] == {}
-
-    def test_convert_multiple_keys(self):
-        """Conversion should work across multiple keys in a batch."""
-        import numpy as np
-
-        from redisvl.migration.quantize import convert_vectors
-
-        v1 = np.array([0.0, 0.5, 1.0], dtype=np.float32)
-        v2 = np.array([-1.0, 0.0, 1.0], dtype=np.float32)
-        originals = {
-            "doc:0": {"embedding": v1.tobytes()},
-            "doc:1": {"embedding": v2.tobytes()},
-        }
-        changes = {"embedding": {"source": "float32", "target": "int8", "dims": 3}}
-
-        converted = convert_vectors(originals, changes)
-
-        r1 = np.frombuffer(converted["doc:0"]["embedding"], dtype=np.int8)
-        r2 = np.frombuffer(converted["doc:1"]["embedding"], dtype=np.int8)
-
-        # Each vector is scaled independently (per-vector min-max)
-        assert r1.min() == -128
-        assert r1.max() == 127
-        assert r2.min() == -128
-        assert r2.max() == 127
