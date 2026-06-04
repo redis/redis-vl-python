@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-from redis import Redis
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import SearchIndex
@@ -11,13 +10,13 @@ from redisvl.schema import IndexSchema
 
 
 @pytest.fixture
-def sample_schema():
+def sample_schema(redis_test_name):
     """Create a sample schema with various field types."""
     return IndexSchema.from_dict(
         {
             "index": {
-                "name": "test_skip_decode",
-                "prefix": "doc",
+                "name": redis_test_name("test_skip_decode"),
+                "prefix": redis_test_name("skip_decode_doc"),
                 "storage_type": "hash",
             },
             "fields": [
