@@ -1615,9 +1615,13 @@ class MigrationExecutor:
             _notify("validate", f"done ({validation_duration}s)")
             report.validation = validation
             if not validation.errors:
-                if backup_checkpoint is not None and backup_checkpoint.header.phase in (
-                    "completed",
-                    "target_created",
+                if (
+                    backup_checkpoint is not None
+                    and backup_checkpoint.header.phase
+                    in (
+                        "completed",
+                        "target_created",
+                    )
                 ):
                     backup_checkpoint.mark_validated()
                 if manifest_checkpoint is not None and manifest_checkpoint.phase in (
