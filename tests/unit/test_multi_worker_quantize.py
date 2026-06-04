@@ -10,7 +10,6 @@ Tests:
 """
 
 import struct
-from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -169,6 +168,44 @@ class TestMultiWorkerSync:
         assert result.total_docs_quantized == 4
         assert result.num_workers == 1
 
+    def test_reports_actual_backup_paths_when_keys_fewer_than_workers(self, tmp_path):
+        """Reported backup paths should match actual worker shards, not requested workers."""
+        from redisvl.migration.quantize import multi_worker_quantize
+
+        dims = 4
+        vec = _make_float32_vector(dims)
+        keys = ["doc:0", "doc:1"]
+
+        def make_mock_client():
+            mock = MagicMock()
+            mock_pipe = MagicMock()
+            mock.pipeline.return_value = mock_pipe
+            mock_pipe.execute.return_value = [vec]
+            return mock
+
+        datatype_changes = {
+            "embedding": {"source": "float32", "target": "float16", "dims": dims}
+        }
+
+        with patch(
+            "redisvl.redis.connection.RedisConnectionFactory.get_redis_connection"
+        ) as mock_get_conn:
+            mock_get_conn.side_effect = lambda **kwargs: make_mock_client()
+
+            result = multi_worker_quantize(
+                redis_url="redis://localhost:6379",
+                keys=keys,
+                datatype_changes=datatype_changes,
+                backup_dir=str(tmp_path),
+                index_name="myindex",
+                num_workers=8,
+                batch_size=1,
+            )
+
+        assert result.num_workers == 2
+        assert len(result.backup_paths) == 2
+        assert len(list(tmp_path.glob("*.header"))) == 2
+
 
 class TestMultiWorkerResult:
     """Test the result object from multi-worker quantization."""
@@ -251,6 +288,41 @@ class TestWorkerResume:
         assert backup.header.phase == "dump"
         assert backup.header.dump_completed_batches == 1
         # Worker should start from batch 1, not 0
+
+    def test_sync_worker_resume_uses_backup_batch_size(self, tmp_path):
+        """Worker dump resume must use the shard header batch_size, not retry args."""
+        from redisvl.migration.quantize import _worker_quantize
+
+        bp, dt_changes = self._make_partial_backup(
+            tmp_path, phase="dump", dump_batches=1
+        )
+        read_calls = []
+
+        def fake_read(_client, keys, _datatype_changes):
+            read_calls.append(list(keys))
+            return {key: {"embedding": _make_float32_vector(4)} for key in keys}
+
+        keys = [f"doc:{i}" for i in range(5)]
+        with (
+            patch(
+                "redisvl.redis.connection.RedisConnectionFactory.get_redis_connection",
+                return_value=MagicMock(),
+            ),
+            patch("redisvl.migration.quantize.pipeline_read_vectors", fake_read),
+            patch("redisvl.migration.quantize.pipeline_write_vectors"),
+        ):
+            result = _worker_quantize(
+                worker_id=0,
+                redis_url="redis://localhost:6379",
+                keys=keys,
+                datatype_changes=dt_changes,
+                backup_path=bp,
+                index_name="testidx",
+                batch_size=500,
+            )
+
+        assert read_calls == [["doc:2", "doc:3"], ["doc:4"]]
+        assert result["docs"] == 5
 
     def test_sync_worker_skips_completed_backup(self, tmp_path):
         """Completed backup should be detected and skipped."""

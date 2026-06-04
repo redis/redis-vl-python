@@ -100,6 +100,7 @@ def test_drop_recreate_plan_apply_validate_flow(redis_url, worker_id, tmp_path):
         load_migration_plan(str(plan_path)),
         redis_url=redis_url,
         query_check_file=str(query_check_path),
+        backup_dir=str(tmp_path / "backups"),
     )
 
     try:

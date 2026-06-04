@@ -130,6 +130,13 @@ class MigrationBenchmarkSummary(BaseModel):
     index_size_delta_mb: Optional[float] = None
 
 
+class MigrationBackupInfo(BaseModel):
+    """Backup location metadata for a migration run."""
+
+    backup_dir: str
+    backup_paths: List[str] = Field(default_factory=list)
+
+
 class MigrationReport(BaseModel):
     version: int = 1
     mode: str = "drop_recreate"
@@ -144,6 +151,7 @@ class MigrationReport(BaseModel):
         default_factory=MigrationBenchmarkSummary
     )
     disk_space_estimate: Optional["DiskSpaceEstimate"] = None
+    backup: Optional[MigrationBackupInfo] = None
     warnings: List[str] = Field(default_factory=list)
     manual_actions: List[str] = Field(default_factory=list)
 
@@ -324,6 +332,7 @@ class BatchState(BaseModel):
 
     batch_id: str
     plan_path: str
+    backup_dir: Optional[str] = None
     started_at: str
     updated_at: str
     completed: List[BatchIndexState] = Field(default_factory=list)
@@ -374,6 +383,7 @@ class BatchReport(BaseModel):
     version: int = 1
     batch_id: str
     status: str  # completed, partial_failure, failed
+    backup_dir: Optional[str] = None
     summary: BatchReportSummary = Field(default_factory=BatchReportSummary)
     indexes: List[BatchIndexReport] = Field(default_factory=list)
     started_at: str

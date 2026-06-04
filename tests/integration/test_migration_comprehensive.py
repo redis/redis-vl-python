@@ -27,6 +27,8 @@ Run: pytest tests/integration/test_migration_comprehensive.py -v
 Spec: local_docs/index_migrator/32_integration_test_spec.md
 """
 
+import glob
+import os
 import uuid
 from typing import Any, Dict, List
 
@@ -35,7 +37,7 @@ import yaml
 
 from redisvl.index import SearchIndex
 from redisvl.migration import MigrationExecutor, MigrationPlanner
-from redisvl.migration.utils import load_migration_plan, schemas_equal
+from redisvl.migration.utils import load_migration_plan
 from redisvl.redis.utils import array_to_buffer
 
 # ==============================================================================
@@ -137,9 +139,11 @@ def run_migration(
     planner.write_plan(plan, str(plan_path))
 
     executor = MigrationExecutor()
+    backup_dir = tmp_path / "migration_backups"
     report = executor.apply(
         load_migration_plan(str(plan_path)),
         redis_url=redis_url,
+        backup_dir=str(backup_dir),
     )
 
     return {
@@ -1305,7 +1309,7 @@ class TestJsonStorageType:
 
         # Load JSON docs directly
         for i, doc in enumerate(json_sample_docs):
-            key = f"{unique_ids['prefix']}:{i+1}"
+            key = f"{unique_ids['prefix']}:{i + 1}"
             client.json().set(key, "$", json_sample_docs[i])
 
         try:
@@ -1343,7 +1347,7 @@ class TestJsonStorageType:
 
         # Load JSON docs
         for i, doc in enumerate(json_sample_docs):
-            key = f"{unique_ids['prefix']}:{i+1}"
+            key = f"{unique_ids['prefix']}:{i + 1}"
             client.json().set(key, "$", doc)
 
         try:
@@ -1687,3 +1691,240 @@ class TestHashIndexingFailuresValidation:
         except Exception:
             cleanup_index(index)
             raise
+
+
+# ==============================================================================
+# 11. Backup Directory Creation
+# ==============================================================================
+
+
+def _build_plan(redis_url, tmp_path, index_name, patch):
+    """Build and persist a migration plan, returning the loaded plan."""
+    patch_path = tmp_path / "patch.yaml"
+    patch_path.write_text(yaml.safe_dump(patch, sort_keys=False))
+    plan_path = tmp_path / "plan.yaml"
+    planner = MigrationPlanner()
+    plan = planner.create_plan(
+        index_name, redis_url=redis_url, schema_patch_path=str(patch_path)
+    )
+    planner.write_plan(plan, str(plan_path))
+    return load_migration_plan(str(plan_path))
+
+
+QUANTIZE_PATCH = {
+    "version": 1,
+    "changes": {
+        "update_fields": [{"name": "embedding", "attrs": {"datatype": "float16"}}]
+    },
+}
+
+ADD_FIELD_PATCH = {
+    "version": 1,
+    "changes": {"add_fields": [{"name": "new_tag", "type": "tag"}]},
+}
+
+
+class TestBackupDirectoryCreation:
+    """The executor must create the backup directory before migrating, for any
+    migration mode, and fail fast with a clear error when it cannot."""
+
+    def test_quantization_creates_missing_backup_dir(
+        self, redis_url, tmp_path, base_schema, sample_docs
+    ):
+        """A quantization migration creates a missing (nested) backup dir and
+        writes the backup files there."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+        backup_dir = tmp_path / "nested" / "backups"
+        assert not backup_dir.exists()
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], QUANTIZE_PATCH
+            )
+            report = MigrationExecutor().apply(
+                plan, redis_url=redis_url, backup_dir=str(backup_dir)
+            )
+
+            assert report.result == "succeeded", report.validation.errors
+            assert report.backup is not None
+            assert report.backup.backup_dir == str(backup_dir.resolve())
+            assert report.backup.backup_paths
+            assert backup_dir.is_dir()
+            assert glob.glob(os.path.join(str(backup_dir), "*.header"))
+            assert glob.glob(os.path.join(str(backup_dir), "*.data"))
+        finally:
+            cleanup_index(index)
+
+    def test_stale_completed_backup_restarts_when_live_index_is_source_schema(
+        self, redis_url, tmp_path, base_schema, sample_docs
+    ):
+        """A retained completed backup must not skip a fresh source index.
+
+        This can happen after rollback/recovery: the backup header says the
+        previous migration completed, but the live index has been restored to
+        the original source schema. Applying the same plan with the same
+        backup_dir must restart the migration instead of treating the stale
+        backup as a no-op resume.
+        """
+        index = setup_index(redis_url, base_schema, sample_docs)
+        backup_dir = tmp_path / "backups"
+
+        def embedding_dtype() -> str:
+            live = SearchIndex.from_existing(
+                base_schema["index"]["name"], redis_url=redis_url
+            )
+            field = next(
+                f for f in live.schema.to_dict()["fields"] if f["name"] == "embedding"
+            )
+            return field["attrs"]["datatype"]
+
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], QUANTIZE_PATCH
+            )
+            first_report = MigrationExecutor().apply(
+                plan, redis_url=redis_url, backup_dir=str(backup_dir)
+            )
+            assert first_report.result == "succeeded", first_report.validation.errors
+            assert embedding_dtype() == "float16"
+
+            # Simulate rollback/recovery while retaining the completed backup.
+            migrated = SearchIndex.from_existing(
+                base_schema["index"]["name"], redis_url=redis_url
+            )
+            migrated.delete(drop=True)
+            index = setup_index(redis_url, base_schema, sample_docs)
+            assert embedding_dtype() == "float32"
+            assert glob.glob(os.path.join(str(backup_dir), "*.header"))
+
+            second_report = MigrationExecutor().apply(
+                plan, redis_url=redis_url, backup_dir=str(backup_dir)
+            )
+
+            assert second_report.result == "succeeded", second_report.validation.errors
+            assert second_report.validation.schema_match is True
+            assert embedding_dtype() == "float16"
+        finally:
+            cleanup_index(index)
+
+    def test_non_quantization_creates_missing_backup_dir(
+        self, redis_url, tmp_path, base_schema, sample_docs
+    ):
+        """A non-quantization migration still creates a missing backup dir when
+        one is provided (no backup files are written)."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+        backup_dir = tmp_path / "nested" / "no_quant"
+        assert not backup_dir.exists()
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], ADD_FIELD_PATCH
+            )
+            report = MigrationExecutor().apply(
+                plan, redis_url=redis_url, backup_dir=str(backup_dir)
+            )
+
+            assert report.result == "succeeded", report.validation.errors
+            assert report.backup is not None
+            assert report.backup.backup_dir == str(backup_dir.resolve())
+            assert report.backup.backup_paths == []
+            assert backup_dir.is_dir()
+            assert not glob.glob(os.path.join(str(backup_dir), "*.header"))
+        finally:
+            cleanup_index(index)
+
+    def test_non_quantization_without_backup_dir_raises_before_migrating(
+        self, redis_url, tmp_path, base_schema, sample_docs, monkeypatch
+    ):
+        """A non-quantization migration without backup_dir fails before the
+        index is touched."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+        monkeypatch.chdir(tmp_path)
+        implied_dir = tmp_path / "migration_backups"
+        assert not implied_dir.exists()
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], ADD_FIELD_PATCH
+            )
+            with pytest.raises(ValueError, match="backup directory is required"):
+                MigrationExecutor().apply(plan, redis_url=redis_url)
+
+            assert not implied_dir.exists()
+            live = SearchIndex.from_existing(
+                base_schema["index"]["name"], redis_url=redis_url
+            )
+            assert live.info()["num_docs"] == len(sample_docs)
+        finally:
+            cleanup_index(index)
+
+    def test_quantization_without_backup_dir_raises_before_migrating(
+        self, redis_url, tmp_path, base_schema, sample_docs, monkeypatch
+    ):
+        """A quantization migration without backup_dir fails before the index
+        is touched."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+        monkeypatch.chdir(tmp_path)
+        implied_dir = tmp_path / "migration_backups"
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], QUANTIZE_PATCH
+            )
+            with pytest.raises(ValueError, match="backup directory is required"):
+                MigrationExecutor().apply(plan, redis_url=redis_url)
+
+            assert not implied_dir.exists()
+            live = SearchIndex.from_existing(
+                base_schema["index"]["name"], redis_url=redis_url
+            )
+            assert live.info()["num_docs"] == len(sample_docs)
+        finally:
+            cleanup_index(index)
+
+    def test_quantization_unwritable_backup_dir_raises_clear_error(
+        self, redis_url, tmp_path, base_schema, sample_docs
+    ):
+        """A quantization migration with an un-createable backup dir fails fast
+        with a clear ValueError before the index is touched."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+        blocker = tmp_path / "blocker"
+        blocker.write_text("not a directory")
+        backup_dir = blocker / "sub"
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], QUANTIZE_PATCH
+            )
+            with pytest.raises(ValueError, match="backup directory"):
+                MigrationExecutor().apply(
+                    plan, redis_url=redis_url, backup_dir=str(backup_dir)
+                )
+
+            live = SearchIndex.from_existing(
+                base_schema["index"]["name"], redis_url=redis_url
+            )
+            assert live.info()["num_docs"] == len(sample_docs)
+        finally:
+            cleanup_index(index)
+
+    def test_unwritable_backup_dir_raises_clear_error(
+        self, redis_url, tmp_path, base_schema, sample_docs
+    ):
+        """An un-createable backup dir fails fast with a clear ValueError before
+        the index is touched."""
+        index = setup_index(redis_url, base_schema, sample_docs)
+        blocker = tmp_path / "blocker"
+        blocker.write_text("not a directory")
+        backup_dir = blocker / "sub"
+        try:
+            plan = _build_plan(
+                redis_url, tmp_path, base_schema["index"]["name"], ADD_FIELD_PATCH
+            )
+            with pytest.raises(ValueError, match="backup directory"):
+                MigrationExecutor().apply(
+                    plan, redis_url=redis_url, backup_dir=str(backup_dir)
+                )
+
+            # Index must be untouched (fail-fast before any mutation).
+            live = SearchIndex.from_existing(
+                base_schema["index"]["name"], redis_url=redis_url
+            )
+            assert live.info()["num_docs"] == len(sample_docs)
+        finally:
+            cleanup_index(index)

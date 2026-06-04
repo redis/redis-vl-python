@@ -206,12 +206,10 @@ Commands:
         self._print_plan_summary(args.plan_out, plan)
 
     def apply(self):
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
-
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate apply --plan <migration_plan.yaml> "
-                "[--async] [--backup-dir <dir>] [--workers N] "
+                "[--async] --backup-dir <dir> [--workers N] "
                 "[--report-out <migration_report.yaml>]"
             )
         )
@@ -227,10 +225,9 @@ Commands:
             dest="backup_dir",
             help=(
                 "Directory for vector backup files. Enables crash-safe resume "
-                "and rollback. Defaults to '{}' when quantization is needed. "
-                "Backup is mandatory for quantization migrations."
-            ).format(DEFAULT_BACKUP_DIR),
-            default=None,
+                "and rollback. Required for all migrations."
+            ),
+            required=True,
         )
         parser.add_argument(
             "--batch-size",
@@ -331,7 +328,16 @@ Commands:
         print(disk_estimate.summary())
 
     # Phases that indicate a safe/complete backup for rollback
-    _SAFE_ROLLBACK_PHASES = frozenset({"ready", "active", "completed"})
+    _SAFE_ROLLBACK_PHASES = frozenset(
+        {
+            "ready",
+            "index_dropped",
+            "active",
+            "completed",
+            "target_created",
+            "validated",
+        }
+    )
 
     def rollback(self):
         """Restore original vectors from a backup directory (undo quantization)."""
@@ -452,8 +458,9 @@ Commands:
                     batch_restored = 0
                     for key in keys:
                         if key in originals:
+                            restore_key = backup.map_key(key)
                             for field_name, original_bytes in originals[key].items():
-                                pipe.hset(key, field_name, original_bytes)
+                                pipe.hset(restore_key, field_name, original_bytes)
                             batch_restored += 1
                     pipe.execute()
                     batch_count += 1
@@ -692,6 +699,12 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             print("Manual actions:")
             for action in report.manual_actions:
                 print(f"- {action}")
+        if report.backup:
+            print(f"Backup directory: {report.backup.backup_dir}")
+            if report.backup.backup_paths:
+                print("Backup file prefixes:")
+                for backup_path in report.backup.backup_paths:
+                    print(f"- {backup_path}")
         if benchmark_out:
             print(f"Benchmark report written to {benchmark_out}")
 
@@ -749,13 +762,11 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
 
     def batch_apply(self):
         """Execute a batch migration plan with state tracking."""
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
-
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate batch-apply --plan <batch_plan.yaml> "
                 "[--state <batch_state.yaml>] [--report-dir <./reports>] "
-                "[--backup-dir <dir>] [--workers N]"
+                "--backup-dir <dir> [--workers N]"
             )
         )
         parser.add_argument("--plan", help="Path to batch_plan.yaml", required=True)
@@ -777,12 +788,8 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         parser.add_argument(
             "--backup-dir",
             dest="backup_dir",
-            help=(
-                "Directory for vector backup files. "
-                f"Defaults to '{DEFAULT_BACKUP_DIR}' when quantization is needed. "
-                "Backup is mandatory for quantization migrations."
-            ),
-            default=None,
+            help=("Directory for vector backup files. Required for all migrations."),
+            required=True,
         )
         parser.add_argument(
             "--batch-size",
@@ -840,8 +847,6 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
 
     def batch_resume(self):
         """Resume an interrupted batch migration."""
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
-
         parser = argparse.ArgumentParser(
             usage=(
                 "rvl migrate batch-resume --state <batch_state.yaml> "
@@ -872,9 +877,8 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             "--backup-dir",
             dest="backup_dir",
             help=(
-                "Directory for vector backup files. "
-                f"Defaults to '{DEFAULT_BACKUP_DIR}' when quantization is needed. "
-                "Backup is mandatory for quantization migrations."
+                "Directory for vector backup files. If omitted, uses backup_dir "
+                "stored in the checkpoint state."
             ),
             default=None,
         )
@@ -954,7 +958,8 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
             f"""Batch ID: {state.batch_id}
 Started at: {state.started_at}
 Updated at: {state.updated_at}
-Current index: {state.current_index or '(none)'}
+Backup directory: {state.backup_dir or "(none)"}
+Current index: {state.current_index or "(none)"}
 Remaining: {len(state.remaining)}
 Completed: {len(state.completed)}
   - Succeeded: {state.success_count}

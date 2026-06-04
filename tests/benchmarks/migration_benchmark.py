@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import json
 import random
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -325,11 +326,13 @@ def run_migration(
             print(f"    [{step}] {detail}")
 
     try:
-        report = executor.apply(
-            plan,
-            redis_url=redis_url,
-            progress_callback=progress,
-        )
+        with tempfile.TemporaryDirectory() as backup_dir:
+            report = executor.apply(
+                plan,
+                redis_url=redis_url,
+                progress_callback=progress,
+                backup_dir=backup_dir,
+            )
     finally:
         _orig_logger.removeHandler(handler)
         _orig_logger.setLevel(_orig_level)
@@ -385,11 +388,13 @@ async def async_run_migration(
             print(f"    [{step}] {detail}")
 
     try:
-        report = await executor.apply(
-            plan,
-            redis_url=redis_url,
-            progress_callback=progress,
-        )
+        with tempfile.TemporaryDirectory() as backup_dir:
+            report = await executor.apply(
+                plan,
+                redis_url=redis_url,
+                progress_callback=progress,
+                backup_dir=backup_dir,
+            )
     finally:
         _orig_logger.removeHandler(handler)
         _orig_logger.setLevel(_orig_level)
@@ -423,11 +428,11 @@ def run_benchmark(
     for size in sizes:
         target_algo = "HNSW" if size >= 1_000_000 else "FLAT"
         index_name = f"bench_migration_{size}"
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(
             f"Size: {size:,} | Migration: HNSW FP32 -> {target_algo} FP16 | Executor: {executor_label}"
         )
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         size_result = {
             "size": size,
@@ -546,7 +551,7 @@ def run_benchmark(
     reindex    = {index_s:.1f}s
     downtime   = {down_s:.1f}s
     vec memory = {source_mem_mb:.1f}MB -> {target_mem_mb:.1f}MB ({vec_savings_pct:.1f}% saved)
-    passed     = {trial_result['validation_passed']}"""
+    passed     = {trial_result["validation_passed"]}"""
             )
 
             size_result["trials"].append(trial_result)

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional
@@ -13,6 +16,7 @@ from redis.exceptions import ResponseError
 
 from redisvl.index import SearchIndex
 from redisvl.migration.models import (
+    MigrationBackupInfo,
     MigrationBenchmarkSummary,
     MigrationPlan,
     MigrationReport,
@@ -23,6 +27,7 @@ from redisvl.migration.planner import MigrationPlanner
 from redisvl.migration.reliability import is_same_width_dtype_conversion
 from redisvl.migration.utils import (
     build_scan_match_patterns,
+    canonicalize_schema,
     current_source_matches_snapshot,
     detect_aof_enabled,
     estimate_disk_space,
@@ -35,11 +40,146 @@ from redisvl.migration.validation import MigrationValidator
 from redisvl.types import SyncRedisClient
 from redisvl.utils.log import get_logger
 
-# Default directory for vector backups during quantization migrations.
-# Used automatically when no explicit --backup-dir is provided.
-DEFAULT_BACKUP_DIR = "./migration_backups"
-
 logger = get_logger(__name__)
+
+
+def _resolve_backup_path(backup_dir: str, index_name: str) -> str:
+    """Build the canonical backup file path prefix for an index.
+
+    Sanitizes the index name for the filesystem and appends a short hash of
+    the original name to avoid collisions between distinct names that
+    sanitize identically (e.g., "a/b" and "a:b" both become "a_b").
+    """
+    safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
+    return str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}")
+
+
+def _delete_backup_prefix(backup_path: str) -> None:
+    """Remove the files owned by a backup path prefix."""
+    Path(backup_path + ".header").unlink(missing_ok=True)
+    Path(backup_path + ".data").unlink(missing_ok=True)
+
+
+def _delete_multi_worker_backup_prefix(
+    backup_path: str,
+    worker_backup_paths: Optional[List[str]] = None,
+) -> None:
+    """Remove files owned by a multi-worker backup manifest and shards."""
+    Path(backup_path + ".manifest").unlink(missing_ok=True)
+    for worker_path in worker_backup_paths or []:
+        _delete_backup_prefix(worker_path)
+
+
+def _ensure_backup_dir(backup_dir: str) -> None:
+    """Create the backup directory, raising a clear error on failure.
+
+    Called for any migration that is given a backup directory, before the
+    index is touched, so a missing or unwritable directory fails fast with an
+    actionable message instead of surfacing a cryptic error mid-migration.
+    """
+    try:
+        path = Path(backup_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        fd, probe_path = tempfile.mkstemp(
+            dir=str(path), prefix=".redisvl_backup_probe_", suffix=".tmp"
+        )
+        os.close(fd)
+        Path(probe_path).unlink(missing_ok=True)
+    except OSError as exc:
+        raise ValueError(
+            f"Could not create or access backup directory '{backup_dir}': {exc}. "
+            "A writable backup directory is required to safely migrate."
+        ) from exc
+
+
+def _require_backup_dir(backup_dir: Optional[str]) -> str:
+    """Require and prepare a backup directory before applying a migration."""
+    if not backup_dir:
+        raise ValueError(
+            "A backup directory is required to apply migrations. "
+            "Provide --backup-dir or backup_dir=...; migrations are not started "
+            "without a backup directory."
+        )
+    _ensure_backup_dir(backup_dir)
+    return str(Path(backup_dir).resolve())
+
+
+_BACKUP_QUANTIZE_PHASES = {"ready", "index_dropped", "active"}
+_BACKUP_QUANTIZED_PHASES = {"completed", "target_created", "validated"}
+_CHECKPOINT_IDENTITY_FIELDS = (
+    "source_schema_hash",
+    "target_schema_hash",
+    "datatype_changes_hash",
+    "plan_hash",
+)
+
+
+def _key_prefix_map(
+    old_prefix: str,
+    new_prefix: Optional[str],
+) -> Optional[Dict[str, str]]:
+    if new_prefix is None:
+        return None
+    return {"source": old_prefix, "target": new_prefix}
+
+
+def _map_key_prefix(key: str, key_prefix: Optional[Dict[str, str]]) -> str:
+    if not key_prefix:
+        return key
+    old_prefix = key_prefix.get("source")
+    new_prefix = key_prefix.get("target")
+    if old_prefix is None or new_prefix is None:
+        return key
+    if key.startswith(old_prefix):
+        return new_prefix + key[len(old_prefix) :]
+    return key
+
+
+def _map_keys_prefix(
+    keys: List[str], key_prefix: Optional[Dict[str, str]]
+) -> List[str]:
+    return [_map_key_prefix(key, key_prefix) for key in keys]
+
+
+def _stable_hash(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _checkpoint_identity(
+    plan: MigrationPlan,
+    datatype_changes: Dict[str, Dict[str, Any]],
+) -> Dict[str, str]:
+    """Build a deterministic identity for a migration checkpoint."""
+    source_schema = canonicalize_schema(plan.source.schema_snapshot)
+    target_schema = canonicalize_schema(plan.merged_target_schema)
+    plan_payload = {
+        "version": plan.version,
+        "mode": plan.mode,
+        "source_index": plan.source.index_name,
+        "source_schema": source_schema,
+        "target_schema": target_schema,
+        "requested_changes": plan.requested_changes,
+        "rename_operations": plan.rename_operations.model_dump(),
+        "datatype_changes": datatype_changes,
+    }
+    return {
+        "source_schema_hash": _stable_hash(source_schema),
+        "target_schema_hash": _stable_hash(target_schema),
+        "datatype_changes_hash": _stable_hash(datatype_changes),
+        "plan_hash": _stable_hash(plan_payload),
+    }
+
+
+def _checkpoint_identity_matches(
+    checkpoint: Any,
+    expected_identity: Dict[str, str],
+) -> bool:
+    return all(
+        getattr(checkpoint, field, None) == expected_identity[field]
+        for field in _CHECKPOINT_IDENTITY_FIELDS
+    )
 
 
 class MigrationExecutor:
@@ -634,10 +774,10 @@ class MigrationExecutor:
                   ``"quantize"``, ``"create"``, ``"index"``, ``"validate"``)
                 * *detail*: human-readable progress string
                   (e.g. ``"1000/5000 docs"``) or ``None``
-            backup_dir: Directory for vector backup files. When provided,
-                original vectors are saved to disk before mutation, enabling
+            backup_dir: Required directory for vector backup files. Original
+                vectors are saved to disk before vector mutation, enabling
                 crash-safe resume (re-run the same command) and manual rollback.
-                Required when *num_workers* > 1.  Disk usage is approximately
+                Disk usage is approximately
                 ``num_docs × dims × bytes_per_element`` (e.g. ~2.9 GB for 1 M
                 768-dim float32 vectors).
             batch_size: Number of keys per Redis pipeline batch (default 500).
@@ -670,6 +810,10 @@ class MigrationExecutor:
             warnings=list(plan.warnings),
         )
 
+        backup_dir = _require_backup_dir(backup_dir)
+        backup_path = _resolve_backup_path(backup_dir, plan.source.index_name)
+        report.backup = MigrationBackupInfo(backup_dir=backup_dir)
+
         if not plan.diff_classification.supported:
             report.validation.errors.extend(plan.diff_classification.blocked_reasons)
             report.manual_actions.append(
@@ -678,76 +822,210 @@ class MigrationExecutor:
             report.finished_at = timestamp_utc()
             return report
 
-        # Check if we are resuming from a backup file (post-crash).
-        # New migration order: enumerate → field-renames → DUMP → DROP
-        # → key-renames → QUANTIZE → CREATE.
-        # The backup file stores original vectors and tracks progress.
-        # If a backup file exists, we can determine exactly where the
-        # previous run stopped and resume from there.
-        from redisvl.migration.backup import VectorBackup
+        if batch_size < 1:
+            report.validation.errors.append(
+                f"batch_size must be >= 1, got {batch_size}."
+            )
+            report.finished_at = timestamp_utc()
+            return report
+
+        if num_workers < 1:
+            report.validation.errors.append(
+                f"num_workers must be >= 1, got {num_workers}."
+            )
+            report.finished_at = timestamp_utc()
+            return report
+
+        if num_workers > 1 and redis_url is None:
+            report.validation.errors.append(
+                "redis_url is required when using num_workers > 1. "
+                "Pass redis_url so each worker can open its own Redis connection."
+            )
+            report.finished_at = timestamp_utc()
+            return report
+
+        datatype_changes = MigrationPlanner.get_vector_datatype_changes(
+            plan.source.schema_snapshot,
+            plan.merged_target_schema,
+            rename_operations=plan.rename_operations,
+        )
+        checkpoint_identity = _checkpoint_identity(plan, datatype_changes)
+
+        # Check if we are resuming from a backup/checkpoint (post-crash).
+        # Resume decisions must combine checkpoint phase with live Redis state:
+        # a dump-complete backup does not prove that the source index was
+        # dropped, and a quantized backup does not prove that the target was
+        # created.
+        from redisvl.migration.backup import MultiWorkerBackupManifest, VectorBackup
 
         resuming_from_backup = False
-        existing_backup: Optional[VectorBackup] = None
-        backup_path: Optional[str] = None
+        resuming_from_manifest = False
+        existing_backup: Optional[VectorBackup] = VectorBackup.load(backup_path)
+        existing_manifest: Optional[MultiWorkerBackupManifest] = (
+            MultiWorkerBackupManifest.load(backup_path)
+        )
 
-        if backup_dir:
-            # Sanitize index name for filesystem with hash suffix to avoid
-            # collisions between distinct names that sanitize identically
-            # (e.g., "a/b" and "a:b" both become "a_b").
-            safe_name = (
-                plan.source.index_name.replace("/", "_")
-                .replace("\\", "_")
-                .replace(":", "_")
-            )
-            name_hash = hashlib.sha256(plan.source.index_name.encode()).hexdigest()[:8]
-            backup_path = str(
-                Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}"
-            )
-            existing_backup = VectorBackup.load(backup_path)
+        source_matches_snapshot = current_source_matches_snapshot(
+            plan.source.index_name,
+            plan.source.schema_snapshot,
+            redis_url=redis_url,
+            redis_client=redis_client,
+        )
+        target_matches_snapshot = current_source_matches_snapshot(
+            plan.merged_target_schema["index"]["name"],
+            plan.merged_target_schema,
+            redis_url=redis_url,
+            redis_client=redis_client,
+            strip_excluded=True,
+        )
 
-            if existing_backup is not None:
-                if existing_backup.header.index_name != plan.source.index_name:
-                    logger.warning(
-                        "Backup index '%s' does not match plan index '%s', ignoring",
-                        existing_backup.header.index_name,
-                        plan.source.index_name,
-                    )
-                    existing_backup = None
-                elif existing_backup.header.phase == "completed":
-                    # Previous run completed quantization. Index may need recreating.
-                    resuming_from_backup = True
+        if existing_backup is not None:
+            if existing_backup.header.index_name != plan.source.index_name:
+                logger.warning(
+                    "Backup index '%s' does not match plan index '%s', ignoring",
+                    existing_backup.header.index_name,
+                    plan.source.index_name,
+                )
+                existing_backup = None
+            elif not _checkpoint_identity_matches(
+                existing_backup.header, checkpoint_identity
+            ):
+                if source_matches_snapshot:
                     logger.info(
-                        "Backup at %s is completed; skipping to index creation",
+                        "Backup at %s does not match the current migration plan; "
+                        "restarting migration from the live source",
                         backup_path,
                     )
-                elif existing_backup.header.phase in ("active", "ready"):
-                    # Crash after dump (possibly after drop). Resume.
+                    _delete_backup_prefix(backup_path)
+                    existing_backup = None
+                else:
+                    report.validation.errors.append(
+                        "Existing vector backup does not match this migration plan."
+                    )
+                    report.manual_actions.append(
+                        "Resume with the original migration plan for this backup, "
+                        "or restore the source index before starting a new plan."
+                    )
+                    report.finished_at = timestamp_utc()
+                    return report
+            elif existing_backup.header.phase == "dump":
+                if source_matches_snapshot:
+                    logger.info(
+                        "Partial dump found at %s; restarting dump", backup_path
+                    )
+                    _delete_backup_prefix(backup_path)
+                    existing_backup = None
+                else:
+                    report.validation.errors.append(
+                        "Found an incomplete vector backup, but the live source "
+                        "index no longer matches the migration plan."
+                    )
+                    report.manual_actions.append(
+                        "Restore the source index or restore vectors from a complete "
+                        "backup before retrying."
+                    )
+                    report.finished_at = timestamp_utc()
+                    return report
+            elif existing_backup.header.phase in _BACKUP_QUANTIZE_PHASES:
+                resuming_from_backup = True
+                logger.info(
+                    "Backup at %s found (phase=%s), resuming migration",
+                    backup_path,
+                    existing_backup.header.phase,
+                )
+            elif existing_backup.header.phase in _BACKUP_QUANTIZED_PHASES:
+                if source_matches_snapshot and not target_matches_snapshot:
+                    logger.info(
+                        "Completed backup at %s is stale for the live source; "
+                        "restarting migration",
+                        backup_path,
+                    )
+                    _delete_backup_prefix(backup_path)
+                    existing_backup = None
+                else:
                     resuming_from_backup = True
                     logger.info(
                         "Backup at %s found (phase=%s), resuming migration",
                         backup_path,
                         existing_backup.header.phase,
                     )
-                elif existing_backup.header.phase == "dump":
-                    # Crash during dump — index should still be alive.
-                    # For simplicity, remove partial backup and restart.
+
+        if existing_backup is None and existing_manifest is not None:
+            if existing_manifest.index_name != plan.source.index_name:
+                logger.warning(
+                    "Backup manifest index '%s' does not match plan index '%s', ignoring",
+                    existing_manifest.index_name,
+                    plan.source.index_name,
+                )
+                existing_manifest = None
+            elif not _checkpoint_identity_matches(
+                existing_manifest, checkpoint_identity
+            ):
+                if source_matches_snapshot:
                     logger.info(
-                        "Partial dump found at %s, restarting dump",
+                        "Backup manifest at %s does not match the current migration "
+                        "plan; restarting migration from the live source",
                         backup_path,
                     )
-                    Path(backup_path + ".header").unlink(missing_ok=True)
-                    Path(backup_path + ".data").unlink(missing_ok=True)
-                    existing_backup = None
+                    _delete_multi_worker_backup_prefix(
+                        backup_path, existing_manifest.worker_backup_paths
+                    )
+                    existing_manifest = None
+                else:
+                    report.validation.errors.append(
+                        "Existing multi-worker backup manifest does not match this "
+                        "migration plan."
+                    )
+                    report.manual_actions.append(
+                        "Resume with the original migration plan for this manifest, "
+                        "or restore the source index before starting a new plan."
+                    )
+                    report.finished_at = timestamp_utc()
+                    return report
+            elif existing_manifest.phase in (
+                "quantized",
+                "target_created",
+                "validated",
+            ):
+                if source_matches_snapshot and not target_matches_snapshot:
+                    logger.info(
+                        "Completed multi-worker manifest at %s is stale for the live "
+                        "source; restarting migration",
+                        backup_path,
+                    )
+                    _delete_multi_worker_backup_prefix(
+                        backup_path, existing_manifest.worker_backup_paths
+                    )
+                    existing_manifest = None
+                else:
+                    resuming_from_manifest = True
+            elif existing_manifest.phase in (
+                "prepared",
+                "index_dropped",
+                "keys_renamed",
+                "quantizing",
+            ):
+                resuming_from_manifest = True
 
-        resuming = resuming_from_backup
+        if (
+            resuming_from_manifest
+            and existing_manifest is not None
+            and existing_manifest.phase
+            not in ("quantized", "target_created", "validated")
+            and existing_manifest.requested_workers > 1
+            and redis_url is None
+        ):
+            report.validation.errors.append(
+                "redis_url is required to resume a multi-worker migration manifest. "
+                "Pass redis_url so each worker can open its own Redis connection."
+            )
+            report.finished_at = timestamp_utc()
+            return report
+
+        resuming = resuming_from_backup or resuming_from_manifest
 
         if not resuming:
-            if not current_source_matches_snapshot(
-                plan.source.index_name,
-                plan.source.schema_snapshot,
-                redis_url=redis_url,
-                redis_client=redis_client,
-            ):
+            if not source_matches_snapshot:
                 report.validation.errors.append(
                     "The current live source schema no longer matches the saved source snapshot."
                 )
@@ -762,9 +1040,15 @@ class MigrationExecutor:
                 redis_url=redis_url,
                 redis_client=redis_client,
             )
+        elif source_matches_snapshot:
+            source_index = SearchIndex.from_existing(
+                plan.source.index_name,
+                redis_url=redis_url,
+                redis_client=redis_client,
+            )
         else:
-            # Source index was dropped before crash; reconstruct from snapshot
-            # to get a valid SearchIndex with a Redis client attached.
+            # Source index may already be dropped. Reconstruct from snapshot to
+            # get a valid SearchIndex with a Redis client attached.
             source_index = SearchIndex.from_dict(
                 plan.source.schema_snapshot,
                 redis_url=redis_url,
@@ -789,13 +1073,6 @@ class MigrationExecutor:
         keys_to_process: List[str] = []
         storage_type = plan.source.keyspace.storage_type
 
-        # Check if we need to re-encode vectors for datatype changes
-        datatype_changes = MigrationPlanner.get_vector_datatype_changes(
-            plan.source.schema_snapshot,
-            plan.merged_target_schema,
-            rename_operations=plan.rename_operations,
-        )
-
         # Check for rename operations
         rename_ops = plan.rename_operations
         has_prefix_change = rename_ops.change_prefix is not None
@@ -806,37 +1083,13 @@ class MigrationExecutor:
             is_same_width_dtype_conversion(change["source"], change["target"])
             for change in datatype_changes.values()
         )
-
-        # Auto-default backup_dir when quantization is needed and no dir
-        # was provided.  This ensures vector data is always backed up
-        # before destructive in-place mutations.
-        if needs_quantization and backup_dir is None:
-            backup_dir = DEFAULT_BACKUP_DIR
-            logger.info(
-                "Quantization detected — using default backup directory: %s",
-                backup_dir,
-            )
-
-        # MANDATORY BACKUP ENFORCEMENT: After auto-defaulting, backup_dir
-        # must be set for any quantization migration.  This is a hard safety
-        # check — quantization without backup is never allowed.
-        if needs_quantization and not backup_dir:
-            raise ValueError(
-                "Vector backup is mandatory for quantization migrations. "
-                "A backup directory must be provided via --backup-dir or the "
-                f"default '{DEFAULT_BACKUP_DIR}' must be writable. "
-                "Quantization without backup is not allowed to prevent "
-                "irreversible data loss."
-            )
-
-        if backup_dir and has_same_width_quantization:
+        if needs_quantization and has_same_width_quantization:
             report.validation.errors.append(
                 "Crash-safe resume is not supported for same-width datatype "
                 "changes (float16<->bfloat16 or int8<->uint8)."
             )
             report.manual_actions.append(
-                "Re-run without --backup-dir for same-width vector conversions, or "
-                "split the migration to avoid same-width datatype changes."
+                "Split the migration to avoid same-width datatype changes."
             )
             report.finished_at = timestamp_utc()
             return report
@@ -844,6 +1097,17 @@ class MigrationExecutor:
         def _notify(step: str, detail: Optional[str] = None) -> None:
             if progress_callback:
                 progress_callback(step, detail)
+
+        key_prefix = (
+            _key_prefix_map(plan.source.keyspace.prefixes[0], rename_ops.change_prefix)
+            if has_prefix_change
+            else None
+        )
+        key_transform = (
+            (lambda key: _map_key_prefix(key, key_prefix))
+            if key_prefix is not None
+            else None
+        )
 
         try:
             client = source_index._redis_client
@@ -857,52 +1121,32 @@ class MigrationExecutor:
                     disk_estimate.total_new_disk_bytes,
                 )
             report.disk_space_estimate = disk_estimate
+            active_backup = None
+            active_manifest = None
 
             if resuming_from_backup and existing_backup is not None:
-                # Resume from backup file. The backup has the key list
-                # and original vectors — no enumeration or SCAN needed.
-                if existing_backup.header.phase == "completed":
-                    # Quantize already done, skip to CREATE
-                    _notify("enumerate", "skipped (resume from backup)")
+                _notify("enumerate", "skipped (resume from backup)")
+                if report.backup is not None:
+                    report.backup.backup_paths = [backup_path]
+
+                if (
+                    existing_backup.header.phase in _BACKUP_QUANTIZE_PHASES
+                    and source_matches_snapshot
+                ):
+                    _notify("drop", "Dropping index definition (resume)...")
+                    drop_started = time.perf_counter()
+                    source_index.delete(drop=False)
+                    drop_duration = round(time.perf_counter() - drop_started, 3)
+                    existing_backup.mark_index_dropped()
+                    source_matches_snapshot = False
+                    _notify("drop", f"done ({drop_duration}s)")
+                else:
                     _notify("drop", "skipped (already dropped)")
-                    _notify("quantize", "skipped (already completed)")
-                elif existing_backup.header.phase in ("active", "ready"):
-                    _notify("enumerate", "skipped (resume from backup)")
-                    _notify("drop", "skipped (already dropped)")
 
-                    # Remap datatype_changes if field renames happened
-                    effective_changes = datatype_changes
-                    if has_field_renames:
-                        field_rename_map = {
-                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
-                        }
-                        effective_changes = {
-                            field_rename_map.get(k, k): v
-                            for k, v in datatype_changes.items()
-                        }
-
-                    _notify("quantize", "Resuming vector re-encoding from backup...")
-                    quantize_started = time.perf_counter()
-                    docs_quantized = self._quantize_from_backup(
-                        client=client,
-                        backup=existing_backup,
-                        datatype_changes=effective_changes,
-                        progress_callback=lambda done, total: _notify(
-                            "quantize", f"{done:,}/{total:,} docs"
-                        ),
-                    )
-                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
-                    _notify(
-                        "quantize",
-                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
-                    )
-
-                # Key prefix renames may not have happened before the crash
-                # (they run after index drop in the normal path). Re-apply
-                # idempotently — RENAME is a no-op if old == new or key
-                # was already renamed.
-                if has_prefix_change:
-                    # Collect keys from backup to know what to rename
+                if (
+                    has_prefix_change
+                    and existing_backup.header.phase in _BACKUP_QUANTIZE_PHASES
+                ):
                     resume_keys = []
                     for batch_keys, _ in existing_backup.iter_batches():
                         resume_keys.extend(batch_keys)
@@ -928,6 +1172,125 @@ class MigrationExecutor:
                             "key_rename",
                             f"done ({renamed_count:,} keys in {key_rename_duration}s)",
                         )
+
+                if existing_backup.header.phase in _BACKUP_QUANTIZED_PHASES:
+                    _notify("quantize", "skipped (already completed)")
+                elif existing_backup.header.phase in _BACKUP_QUANTIZE_PHASES:
+                    effective_changes = datatype_changes
+                    if has_field_renames:
+                        field_rename_map = {
+                            fr.old_name: fr.new_name for fr in rename_ops.rename_fields
+                        }
+                        effective_changes = {
+                            field_rename_map.get(k, k): v
+                            for k, v in datatype_changes.items()
+                        }
+
+                    _notify("quantize", "Resuming vector re-encoding from backup...")
+                    quantize_started = time.perf_counter()
+                    docs_quantized = self._quantize_from_backup(
+                        client=client,
+                        backup=existing_backup,
+                        datatype_changes=effective_changes,
+                        key_transform=key_transform,
+                        progress_callback=lambda done, total: _notify(
+                            "quantize", f"{done:,}/{total:,} docs"
+                        ),
+                    )
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
+            elif resuming_from_manifest and existing_manifest is not None:
+                _notify("enumerate", "skipped (resume from multi-worker manifest)")
+
+                if existing_manifest.phase == "prepared" and source_matches_snapshot:
+                    _notify("drop", "Dropping index definition (resume)...")
+                    drop_started = time.perf_counter()
+                    source_index.delete(drop=False)
+                    drop_duration = round(time.perf_counter() - drop_started, 3)
+                    existing_manifest.mark_index_dropped()
+                    source_matches_snapshot = False
+                    _notify("drop", f"done ({drop_duration}s)")
+                elif existing_manifest.phase == "prepared":
+                    existing_manifest.mark_index_dropped()
+                    _notify("drop", "skipped (already dropped)")
+                else:
+                    _notify("drop", "skipped (already dropped)")
+
+                if (
+                    has_prefix_change
+                    and existing_manifest.phase == "index_dropped"
+                    and existing_manifest.keys
+                ):
+                    old_prefix = plan.source.keyspace.prefixes[0]
+                    new_prefix = rename_ops.change_prefix
+                    assert new_prefix is not None
+                    _notify("key_rename", "Renaming keys (resume)...")
+                    key_rename_started = time.perf_counter()
+                    renamed_count = self._rename_keys(
+                        client,
+                        existing_manifest.keys,
+                        old_prefix,
+                        new_prefix,
+                        progress_callback=lambda done, total: _notify(
+                            "key_rename", f"{done:,}/{total:,} keys"
+                        ),
+                    )
+                    key_rename_duration = round(
+                        time.perf_counter() - key_rename_started, 3
+                    )
+                    remapped_keys = _map_keys_prefix(existing_manifest.keys, key_prefix)
+                    from redisvl.migration.quantize import split_keys
+
+                    existing_manifest.update_key_slices(
+                        split_keys(remapped_keys, existing_manifest.requested_workers)
+                    )
+                    existing_manifest.mark_keys_renamed()
+                    _notify(
+                        "key_rename",
+                        f"done ({renamed_count:,} keys in {key_rename_duration}s)",
+                    )
+
+                if existing_manifest.phase in (
+                    "quantized",
+                    "target_created",
+                    "validated",
+                ):
+                    _notify("quantize", "skipped (already completed)")
+                    if report.backup is not None:
+                        report.backup.backup_paths = (
+                            existing_manifest.worker_backup_paths
+                        )
+                else:
+                    from redisvl.migration.quantize import multi_worker_quantize
+
+                    _notify(
+                        "quantize",
+                        f"Re-encoding vectors ({existing_manifest.actual_workers} workers)...",
+                    )
+                    existing_manifest.mark_quantizing()
+                    quantize_started = time.perf_counter()
+                    mw_result = multi_worker_quantize(
+                        redis_url=redis_url or "",
+                        keys=existing_manifest.keys,
+                        datatype_changes=datatype_changes,
+                        backup_dir=backup_dir,
+                        index_name=plan.source.index_name,
+                        num_workers=existing_manifest.requested_workers,
+                        batch_size=existing_manifest.batch_size,
+                        worker_backup_paths=existing_manifest.worker_backup_paths,
+                    )
+                    docs_quantized = mw_result.total_docs_quantized
+                    existing_manifest.mark_quantized()
+                    if report.backup is not None:
+                        report.backup.backup_paths = mw_result.backup_paths
+                    quantize_duration = round(time.perf_counter() - quantize_started, 3)
+                    _notify(
+                        "quantize",
+                        f"done ({docs_quantized:,} docs in {quantize_duration}s)",
+                    )
             else:
                 # Normal (non-resume) path
                 # STEP 1: Enumerate keys BEFORE any modifications
@@ -995,8 +1358,7 @@ class MigrationExecutor:
                 # For multi-worker, dump happens inside multi_worker_quantize
                 # after the drop, so we skip the separate dump step.
                 dump_duration = 0.0
-                active_backup = None
-                use_multi_worker = num_workers > 1 and backup_dir is not None
+                use_multi_worker = num_workers > 1
                 if (
                     needs_quantization
                     and keys_to_process
@@ -1022,18 +1384,47 @@ class MigrationExecutor:
                         datatype_changes=effective_changes,
                         backup_path=backup_path,
                         batch_size=batch_size,
+                        key_prefix=key_prefix,
+                        checkpoint_identity=checkpoint_identity,
                         progress_callback=lambda done, total: _notify(
                             "dump", f"{done:,}/{total:,} docs"
                         ),
                     )
+                    if report.backup is not None:
+                        report.backup.backup_paths = [backup_path]
                     dump_duration = round(time.perf_counter() - dump_started, 3)
                     _notify("dump", f"done ({dump_duration}s)")
+                elif needs_quantization and keys_to_process and use_multi_worker:
+                    from redisvl.migration.backup import MultiWorkerBackupManifest
+                    from redisvl.migration.quantize import (
+                        build_worker_backup_paths,
+                        split_keys,
+                    )
+
+                    manifest_key_slices = split_keys(keys_to_process, num_workers)
+                    worker_backup_paths = build_worker_backup_paths(
+                        backup_dir, plan.source.index_name, len(manifest_key_slices)
+                    )
+                    active_manifest = MultiWorkerBackupManifest.create(
+                        backup_path,
+                        index_name=plan.source.index_name,
+                        batch_size=batch_size,
+                        requested_workers=num_workers,
+                        key_slices=manifest_key_slices,
+                        worker_backup_paths=worker_backup_paths,
+                        key_prefix=key_prefix,
+                        **checkpoint_identity,
+                    )
 
                 # STEP 4: Drop the index
                 _notify("drop", "Dropping index definition...")
                 drop_started = time.perf_counter()
                 source_index.delete(drop=False)
                 drop_duration = round(time.perf_counter() - drop_started, 3)
+                if active_backup is not None:
+                    active_backup.mark_index_dropped()
+                if active_manifest is not None:
+                    active_manifest.mark_index_dropped()
                 _notify("drop", f"done ({drop_duration}s)")
 
                 # STEP 5: Key renames (after drop, before recreate)
@@ -1059,6 +1450,14 @@ class MigrationExecutor:
                         "key_rename",
                         f"done ({renamed_count:,} keys in {key_rename_duration}s)",
                     )
+                    if active_manifest is not None:
+                        from redisvl.migration.quantize import split_keys
+
+                        remapped_keys = _map_keys_prefix(keys_to_process, key_prefix)
+                        active_manifest.update_key_slices(
+                            split_keys(remapped_keys, num_workers)
+                        )
+                        active_manifest.mark_keys_renamed()
 
                 # STEP 6: Quantize vectors
                 if needs_quantization and keys_to_process:
@@ -1074,44 +1473,38 @@ class MigrationExecutor:
 
                     # Update key references if prefix changed
                     if has_prefix_change and rename_ops.change_prefix:
-                        old_prefix = plan.source.keyspace.prefixes[0]
-                        new_prefix = rename_ops.change_prefix
-                        keys_to_process = [
-                            (
-                                new_prefix + k[len(old_prefix) :]
-                                if k.startswith(old_prefix)
-                                else k
-                            )
-                            for k in keys_to_process
-                        ]
+                        keys_to_process = _map_keys_prefix(keys_to_process, key_prefix)
 
                     if use_multi_worker:
                         # Multi-worker path: dump + quantize in parallel
                         from redisvl.migration.quantize import multi_worker_quantize
 
-                        if backup_dir is None:
-                            raise ValueError(
-                                "--backup-dir is required when using --workers > 1"
-                            )
-                        if redis_url is None:
-                            raise ValueError(
-                                "redis_url is required when using num_workers > 1"
-                            )
                         _notify(
                             "quantize",
                             f"Re-encoding vectors ({num_workers} workers)...",
                         )
+                        if active_manifest is not None:
+                            active_manifest.mark_quantizing()
                         quantize_started = time.perf_counter()
                         mw_result = multi_worker_quantize(
-                            redis_url=redis_url,
+                            redis_url=redis_url or "",
                             keys=keys_to_process,
                             datatype_changes=effective_changes,
                             backup_dir=backup_dir,
                             index_name=plan.source.index_name,
                             num_workers=num_workers,
                             batch_size=batch_size,
+                            worker_backup_paths=(
+                                active_manifest.worker_backup_paths
+                                if active_manifest is not None
+                                else None
+                            ),
                         )
                         docs_quantized = mw_result.total_docs_quantized
+                        if active_manifest is not None:
+                            active_manifest.mark_quantized()
+                        if report.backup is not None:
+                            report.backup.backup_paths = mw_result.backup_paths
                     elif active_backup:
                         # Single-worker backup path
                         _notify("quantize", "Re-encoding vectors from backup...")
@@ -1120,12 +1513,14 @@ class MigrationExecutor:
                             client=client,
                             backup=active_backup,
                             datatype_changes=effective_changes,
+                            key_transform=key_transform,
                             progress_callback=lambda done, total: _notify(
                                 "quantize", f"{done:,}/{total:,} docs"
                             ),
                         )
                     else:
-                        # No backup dir — direct pipeline read + write
+                        # Fallback direct pipeline path; normal hash
+                        # quantization uses the backup path above.
                         from redisvl.migration.quantize import (
                             convert_vectors,
                             pipeline_read_vectors,
@@ -1166,21 +1561,49 @@ class MigrationExecutor:
                         "quantize", "skipped (JSON vectors are re-indexed on recreate)"
                     )
 
-            _notify("create", "Creating index with new schema...")
-            recreate_started = time.perf_counter()
-            target_index.create()
-            recreate_duration = round(time.perf_counter() - recreate_started, 3)
-            _notify("create", f"done ({recreate_duration}s)")
-
-            _notify("index", "Waiting for re-indexing...")
-
-            def _index_progress(indexed: int, total: int, pct: float) -> None:
-                _notify("index", f"{indexed:,}/{total:,} docs ({pct:.0f}%)")
-
-            target_info, indexing_duration = wait_for_index_ready(
-                target_index, progress_callback=_index_progress
+            backup_checkpoint = existing_backup or active_backup
+            manifest_checkpoint = existing_manifest or active_manifest
+            target_already_live = target_matches_snapshot and (
+                (
+                    backup_checkpoint is not None
+                    and backup_checkpoint.header.phase in _BACKUP_QUANTIZED_PHASES
+                )
+                or (
+                    manifest_checkpoint is not None
+                    and manifest_checkpoint.phase
+                    in ("quantized", "target_created", "validated")
+                )
             )
-            _notify("index", f"done ({indexing_duration}s)")
+
+            if target_already_live:
+                _notify("create", "skipped (target schema already live)")
+                _notify("index", "skipped (target schema already live)")
+            else:
+                _notify("create", "Creating index with new schema...")
+                recreate_started = time.perf_counter()
+                target_index.create()
+                recreate_duration = round(time.perf_counter() - recreate_started, 3)
+                if (
+                    backup_checkpoint is not None
+                    and backup_checkpoint.header.phase == "completed"
+                ):
+                    backup_checkpoint.mark_target_created()
+                if (
+                    manifest_checkpoint is not None
+                    and manifest_checkpoint.phase == "quantized"
+                ):
+                    manifest_checkpoint.mark_target_created()
+                _notify("create", f"done ({recreate_duration}s)")
+
+                _notify("index", "Waiting for re-indexing...")
+
+                def _index_progress(indexed: int, total: int, pct: float) -> None:
+                    _notify("index", f"{indexed:,}/{total:,} docs ({pct:.0f}%)")
+
+                target_info, indexing_duration = wait_for_index_ready(
+                    target_index, progress_callback=_index_progress
+                )
+                _notify("index", f"done ({indexing_duration}s)")
 
             _notify("validate", "Validating migration...")
             validation, target_info, validation_duration = self.validator.validate(
@@ -1191,6 +1614,21 @@ class MigrationExecutor:
             )
             _notify("validate", f"done ({validation_duration}s)")
             report.validation = validation
+            if not validation.errors:
+                if (
+                    backup_checkpoint is not None
+                    and backup_checkpoint.header.phase
+                    in (
+                        "completed",
+                        "target_created",
+                    )
+                ):
+                    backup_checkpoint.mark_validated()
+                if manifest_checkpoint is not None and manifest_checkpoint.phase in (
+                    "quantized",
+                    "target_created",
+                ):
+                    manifest_checkpoint.mark_validated()
             total_duration = round(time.perf_counter() - started, 3)
             report.timings = MigrationTimings(
                 total_migration_duration_seconds=total_duration,
@@ -1319,6 +1757,8 @@ class MigrationExecutor:
         datatype_changes: Dict[str, Dict[str, Any]],
         backup_path: str,
         batch_size: int = 500,
+        key_prefix: Optional[Dict[str, str]] = None,
+        checkpoint_identity: Optional[Dict[str, str]] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> "VectorBackup":
         """Phase 1: Pipeline-read original vectors and write to backup file.
@@ -1333,6 +1773,8 @@ class MigrationExecutor:
             datatype_changes: {field_name: {"source", "target", "dims"}}
             backup_path: Path prefix for backup files
             batch_size: Keys per pipeline batch
+            key_prefix: Optional source/target key prefix mapping
+            checkpoint_identity: Optional source/target schema and plan hashes
             progress_callback: Optional callback(docs_done, total_docs)
 
         Returns:
@@ -1346,6 +1788,8 @@ class MigrationExecutor:
             index_name=index_name,
             fields=datatype_changes,
             batch_size=batch_size,
+            key_prefix=key_prefix,
+            **(checkpoint_identity or {}),
         )
 
         total = len(keys)
@@ -1364,6 +1808,7 @@ class MigrationExecutor:
         client: Any,
         backup: "VectorBackup",
         datatype_changes: Dict[str, Dict[str, Any]],
+        key_transform: Optional[Callable[[str], str]] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> int:
         """Phase 2: Read originals from backup file, convert, pipeline-write.
@@ -1375,6 +1820,7 @@ class MigrationExecutor:
             client: Redis client
             backup: VectorBackup in "ready" or "active" phase
             datatype_changes: {field_name: {"source", "target", "dims"}}
+            key_transform: Optional mapping from backup keys to live keys
             progress_callback: Optional callback(docs_done, total_docs)
 
         Returns:
@@ -1382,7 +1828,7 @@ class MigrationExecutor:
         """
         from redisvl.migration.quantize import convert_vectors, pipeline_write_vectors
 
-        if backup.header.phase == "ready":
+        if backup.header.phase in ("ready", "index_dropped"):
             backup.start_quantize()
 
         docs_quantized = 0
@@ -1394,6 +1840,10 @@ class MigrationExecutor:
         ):
             actual_batch_idx = start_batch + batch_idx
             converted = convert_vectors(originals, datatype_changes)
+            if key_transform is not None:
+                converted = {
+                    key_transform(key): fields for key, fields in converted.items()
+                }
             if converted:
                 pipeline_write_vectors(client, converted)
             backup.mark_batch_quantized(actual_batch_idx)

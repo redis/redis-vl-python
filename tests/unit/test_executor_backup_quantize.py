@@ -8,15 +8,100 @@ Verifies:
 """
 
 import struct
-from typing import Any, Dict, List
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
+
+from redisvl.migration.models import (
+    DiffClassification,
+    KeyspaceSnapshot,
+    MigrationPlan,
+    MigrationValidation,
+    RenameOperations,
+    SourceSnapshot,
+)
 
 
 def _make_float32_vector(dims: int = 4, seed: float = 0.0) -> bytes:
     return struct.pack(f"<{dims}f", *[seed + i for i in range(dims)])
+
+
+def _make_migration_plan(
+    *,
+    storage_type: str = "hash",
+    source_dtype: str = "float32",
+    target_dtype: str = "float16",
+    change_prefix: str | None = None,
+) -> MigrationPlan:
+    source_prefix = "doc:"
+    target_prefix = change_prefix or source_prefix
+    source_schema = {
+        "index": {
+            "name": "idx",
+            "prefix": source_prefix,
+            "storage_type": storage_type,
+        },
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "algorithm": "flat",
+                    "dims": 4,
+                    "distance_metric": "cosine",
+                    "datatype": source_dtype,
+                },
+            }
+        ],
+    }
+    target_schema = {
+        "index": {
+            "name": "idx",
+            "prefix": target_prefix,
+            "storage_type": storage_type,
+        },
+        "fields": [
+            {
+                "name": "embedding",
+                "type": "vector",
+                "attrs": {
+                    "algorithm": "flat",
+                    "dims": 4,
+                    "distance_metric": "cosine",
+                    "datatype": target_dtype,
+                },
+            }
+        ],
+    }
+    return MigrationPlan(
+        source=SourceSnapshot(
+            index_name="idx",
+            schema_snapshot=source_schema,
+            stats_snapshot={"num_docs": 2},
+            keyspace=KeyspaceSnapshot(
+                storage_type=storage_type,
+                prefixes=[source_prefix],
+                key_separator=":",
+                key_sample=["doc:1"],
+            ),
+        ),
+        requested_changes={},
+        merged_target_schema=target_schema,
+        diff_classification=DiffClassification(supported=True),
+        rename_operations=RenameOperations(change_prefix=change_prefix),
+    )
+
+
+def _successful_validation():
+    return (
+        MigrationValidation(
+            schema_match=True,
+            doc_count_match=True,
+            key_sample_exists=True,
+        ),
+        {"num_docs": 2, "vector_index_sz_mb": 1},
+        0.01,
+    )
 
 
 class TestDumpVectors:
@@ -149,6 +234,33 @@ class TestQuantizeFromBackup:
         for key, fields in written_data.items():
             assert len(fields["embedding"]) == 4 * 2  # dims * sizeof(float16)
 
+    def test_quantize_maps_backup_keys_to_live_prefix(self, tmp_path):
+        from redisvl.migration.executor import MigrationExecutor
+
+        executor = MigrationExecutor()
+        backup = self._create_dumped_backup(tmp_path, num_keys=2, batch_size=2)
+
+        written_keys = []
+        mock_client = MagicMock()
+        mock_pipe = MagicMock()
+        mock_client.pipeline.return_value = mock_pipe
+
+        def capture_hset(key, field, value):
+            written_keys.append(key)
+
+        mock_pipe.hset.side_effect = capture_hset
+
+        executor._quantize_from_backup(
+            client=mock_client,
+            backup=backup,
+            datatype_changes={
+                "embedding": {"source": "float32", "target": "float16", "dims": 4}
+            },
+            key_transform=lambda key: key.replace("doc:", "new:", 1),
+        )
+
+        assert written_keys == ["new:0", "new:1"]
+
 
 class TestQuantizeResume:
     """Test resume after crash during quantize phase."""
@@ -167,7 +279,7 @@ class TestQuantizeResume:
         )
         vec = _make_float32_vector(4)
         for batch_idx in range(4):
-            keys = [f"doc:{batch_idx*2}", f"doc:{batch_idx*2+1}"]
+            keys = [f"doc:{batch_idx * 2}", f"doc:{batch_idx * 2 + 1}"]
             backup.write_batch(batch_idx, keys, {k: {"embedding": vec} for k in keys})
         backup.mark_dump_complete()
         backup.start_quantize()
@@ -196,83 +308,539 @@ class TestQuantizeResume:
         assert docs == 4
 
 
+class TestBackupKeyMapping:
+    def test_key_prefix_mapping_persists_in_header(self, tmp_path):
+        from redisvl.migration.backup import VectorBackup
+
+        backup_path = str(tmp_path / "test_backup")
+        VectorBackup.create(
+            path=backup_path,
+            index_name="idx",
+            fields={"embedding": {"source": "float32", "target": "float16"}},
+            batch_size=2,
+            key_prefix={"source": "old:", "target": "new:"},
+        )
+
+        loaded = VectorBackup.load(backup_path)
+
+        assert loaded is not None
+        assert loaded.map_key("old:1") == "new:1"
+        assert loaded.map_key("other:1") == "other:1"
+
+
 class TestMandatoryBackupEnforcement:
-    """Test that quantization migrations ALWAYS require a backup directory.
+    """Test that every migration apply requires a backup directory."""
 
-    After the 6M document double-quantization incident, backup is mandatory
-    for all quantization operations. There is no opt-out.
-    """
+    def test_none_backup_dir_raises(self):
+        """Passing backup_dir=None must raise before migration starts."""
+        from redisvl.migration.executor import _require_backup_dir
 
-    def test_auto_defaults_backup_dir_when_none(self):
-        """When backup_dir=None and quantization is needed, executor
-        should auto-default to DEFAULT_BACKUP_DIR (not raise)."""
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR, MigrationExecutor
+        with pytest.raises(ValueError, match="backup directory is required"):
+            _require_backup_dir(None)
+
+    def test_empty_string_backup_dir_raises(self):
+        """Passing backup_dir='' must raise before migration starts."""
+        from redisvl.migration.executor import _require_backup_dir
+
+        with pytest.raises(ValueError, match="backup directory is required"):
+            _require_backup_dir("")
+
+    def test_valid_backup_dir_is_created(self, tmp_path):
+        """A valid missing backup directory is created up front."""
+        from redisvl.migration.executor import _require_backup_dir
+
+        backup_dir = tmp_path / "nested" / "backups"
+        assert not backup_dir.exists()
+
+        resolved = _require_backup_dir(str(backup_dir))
+
+        assert resolved == str(backup_dir)
+        assert backup_dir.is_dir()
+
+    def test_unwritable_existing_backup_dir_raises(self, tmp_path):
+        """An existing directory that cannot be written fails the preflight."""
+        from redisvl.migration.executor import _require_backup_dir
+
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+
+        with patch(
+            "redisvl.migration.executor.tempfile.mkstemp",
+            side_effect=PermissionError("permission denied"),
+        ):
+            with pytest.raises(ValueError, match="backup directory"):
+                _require_backup_dir(str(backup_dir))
+
+
+class TestApplyCrashResume:
+    def _mock_source_and_target(self):
+        mock_client = MagicMock()
+        mock_client.info.return_value = {}
+        mock_client.config_get.return_value = {}
+        mock_pipe = MagicMock()
+        mock_client.pipeline.return_value = mock_pipe
+
+        source_index = MagicMock()
+        source_index._redis_client = mock_client
+        source_index.delete = MagicMock()
+
+        target_index = MagicMock()
+        target_index.create = MagicMock()
+        return mock_client, source_index, target_index
+
+    def _create_ready_backup(self, backup_path, plan=None):
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.migration.executor import _checkpoint_identity
+
+        plan = plan or _make_migration_plan()
+        datatype_changes = {
+            "embedding": {"source": "float32", "target": "float16", "dims": 4}
+        }
+        backup = VectorBackup.create(
+            path=backup_path,
+            index_name="idx",
+            fields=datatype_changes,
+            batch_size=1,
+            **_checkpoint_identity(plan, datatype_changes),
+        )
+        vec = _make_float32_vector(4)
+        backup.write_batch(0, ["doc:1"], {"doc:1": {"embedding": vec}})
+        backup.mark_dump_complete()
+        return backup
+
+    def test_ready_backup_with_live_source_drops_before_resume(self, tmp_path):
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.migration.executor import MigrationExecutor, _resolve_backup_path
+
+        plan = _make_migration_plan()
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        backup_path = _resolve_backup_path(str(backup_dir), "idx")
+        self._create_ready_backup(backup_path, plan)
+
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = self._mock_source_and_target()
+
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[True, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_existing",
+                return_value=source_index,
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                return_value=target_index,
+            ),
+            patch(
+                "redisvl.migration.executor.wait_for_index_ready",
+                return_value=({"num_docs": 2, "vector_index_sz_mb": 1}, 0.01),
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(backup_dir),
+            )
+
+        source_index.delete.assert_called_once_with(drop=False)
+        target_index.create.assert_called_once()
+        assert report.result == "succeeded"
+        reloaded = VectorBackup.load(backup_path)
+        assert reloaded is not None
+        assert reloaded.header.phase == "validated"
+
+    def test_completed_backup_without_target_creates_target(self, tmp_path):
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.migration.executor import MigrationExecutor, _resolve_backup_path
+
+        plan = _make_migration_plan()
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        backup_path = _resolve_backup_path(str(backup_dir), "idx")
+        backup = self._create_ready_backup(backup_path, plan)
+        backup.start_quantize()
+        backup.mark_batch_quantized(0)
+        backup.mark_complete()
+
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = self._mock_source_and_target()
+
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[False, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                side_effect=[source_index, target_index],
+            ),
+            patch(
+                "redisvl.migration.executor.wait_for_index_ready",
+                return_value=({"num_docs": 2, "vector_index_sz_mb": 1}, 0.01),
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(backup_dir),
+            )
+
+        source_index.delete.assert_not_called()
+        target_index.create.assert_called_once()
+        assert report.result == "succeeded"
+        reloaded = VectorBackup.load(backup_path)
+        assert reloaded is not None
+        assert reloaded.header.phase == "validated"
+
+    def test_completed_backup_with_live_target_skips_create(self, tmp_path):
+        from redisvl.migration.backup import VectorBackup
+        from redisvl.migration.executor import MigrationExecutor, _resolve_backup_path
+
+        plan = _make_migration_plan()
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        backup_path = _resolve_backup_path(str(backup_dir), "idx")
+        backup = self._create_ready_backup(backup_path, plan)
+        backup.start_quantize()
+        backup.mark_batch_quantized(0)
+        backup.mark_complete()
+
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = self._mock_source_and_target()
+
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[False, True],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                side_effect=[source_index, target_index],
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(backup_dir),
+            )
+
+        target_index.create.assert_not_called()
+        assert report.result == "succeeded"
+        reloaded = VectorBackup.load(backup_path)
+        assert reloaded is not None
+        assert reloaded.header.phase == "validated"
+
+    def test_multi_worker_requires_redis_url_before_loading_index(self, tmp_path):
+        from redisvl.migration.executor import MigrationExecutor
+
+        executor = MigrationExecutor()
+        plan = _make_migration_plan()
+
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot"
+            ) as matches_mock,
+            patch("redisvl.migration.executor.SearchIndex.from_existing") as from_mock,
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(tmp_path / "backups"),
+                num_workers=2,
+            )
+
+        matches_mock.assert_not_called()
+        from_mock.assert_not_called()
+        assert report.result == "failed"
+        assert "redis_url is required" in report.validation.errors[0]
+
+    def test_multi_worker_manifest_resumes_after_source_drop(self, tmp_path):
+        from redisvl.migration.backup import MultiWorkerBackupManifest
+        from redisvl.migration.executor import (
+            MigrationExecutor,
+            _checkpoint_identity,
+            _resolve_backup_path,
+        )
+        from redisvl.migration.quantize import MultiWorkerResult
+
+        plan = _make_migration_plan()
+        datatype_changes = {
+            "embedding": {"source": "float32", "target": "float16", "dims": 4}
+        }
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        backup_path = _resolve_backup_path(str(backup_dir), "idx")
+        worker_paths = [
+            str(backup_dir / "migration_backup_idx_worker0"),
+            str(backup_dir / "migration_backup_idx_worker1"),
+        ]
+        manifest = MultiWorkerBackupManifest.create(
+            backup_path,
+            index_name="idx",
+            batch_size=1,
+            requested_workers=2,
+            key_slices=[["doc:1"], ["doc:2"]],
+            worker_backup_paths=worker_paths,
+            **_checkpoint_identity(plan, datatype_changes),
+        )
+        manifest.mark_index_dropped()
+
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = self._mock_source_and_target()
+
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[False, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                side_effect=[source_index, target_index],
+            ),
+            patch(
+                "redisvl.migration.quantize.multi_worker_quantize",
+                return_value=MultiWorkerResult(
+                    total_docs_quantized=2,
+                    num_workers=2,
+                    backup_paths=worker_paths,
+                ),
+            ) as quantize_mock,
+            patch(
+                "redisvl.migration.executor.wait_for_index_ready",
+                return_value=({"num_docs": 2, "vector_index_sz_mb": 1}, 0.01),
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_url="redis://localhost:6379",
+                backup_dir=str(backup_dir),
+                num_workers=2,
+            )
+
+        source_index.delete.assert_not_called()
+        quantize_mock.assert_called_once()
+        target_index.create.assert_called_once()
+        assert report.result == "succeeded"
+        reloaded = MultiWorkerBackupManifest.load(backup_path)
+        assert reloaded is not None
+        assert reloaded.phase == "validated"
+
+    def test_multi_worker_manifest_resumes_without_num_workers_arg(self, tmp_path):
+        from redisvl.migration.backup import MultiWorkerBackupManifest
+        from redisvl.migration.executor import (
+            MigrationExecutor,
+            _checkpoint_identity,
+            _resolve_backup_path,
+        )
+        from redisvl.migration.quantize import MultiWorkerResult
+
+        plan = _make_migration_plan()
+        datatype_changes = {
+            "embedding": {"source": "float32", "target": "float16", "dims": 4}
+        }
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        backup_path = _resolve_backup_path(str(backup_dir), "idx")
+        worker_paths = [
+            str(backup_dir / "migration_backup_idx_worker0"),
+            str(backup_dir / "migration_backup_idx_worker1"),
+        ]
+        manifest = MultiWorkerBackupManifest.create(
+            backup_path,
+            index_name="idx",
+            batch_size=7,
+            requested_workers=2,
+            key_slices=[["doc:1"], ["doc:2"]],
+            worker_backup_paths=worker_paths,
+            **_checkpoint_identity(plan, datatype_changes),
+        )
+        manifest.mark_index_dropped()
+
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = self._mock_source_and_target()
+
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[False, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                side_effect=[source_index, target_index],
+            ),
+            patch(
+                "redisvl.migration.quantize.multi_worker_quantize",
+                return_value=MultiWorkerResult(
+                    total_docs_quantized=2,
+                    num_workers=2,
+                    backup_paths=worker_paths,
+                ),
+            ) as quantize_mock,
+            patch(
+                "redisvl.migration.executor.wait_for_index_ready",
+                return_value=({"num_docs": 2, "vector_index_sz_mb": 1}, 0.01),
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_url="redis://localhost:6379",
+                backup_dir=str(backup_dir),
+            )
+
+        assert report.result == "succeeded"
+        quantize_mock.assert_called_once()
+        assert quantize_mock.call_args.kwargs["num_workers"] == 2
+        assert quantize_mock.call_args.kwargs["batch_size"] == 7
+
+    def test_checkpoint_plan_mismatch_with_missing_source_fails_before_create(
+        self, tmp_path
+    ):
+        from redisvl.migration.executor import MigrationExecutor, _resolve_backup_path
+
+        original_plan = _make_migration_plan(target_dtype="float16")
+        retry_plan = _make_migration_plan(target_dtype="int8")
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        backup_path = _resolve_backup_path(str(backup_dir), "idx")
+        backup = self._create_ready_backup(backup_path, original_plan)
+        backup.start_quantize()
+        backup.mark_batch_quantized(0)
+        backup.mark_complete()
 
         executor = MigrationExecutor()
 
-        # We test the internal logic without actually running apply():
-        # needs_quantization=True, backup_dir=None → should become DEFAULT_BACKUP_DIR
-        backup_dir = None
-        needs_quantization = True
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[False, False],
+            ),
+            patch("redisvl.migration.executor.SearchIndex.from_dict") as from_dict,
+        ):
+            report = executor.apply(
+                retry_plan,
+                redis_client=MagicMock(),
+                backup_dir=str(backup_dir),
+            )
 
-        if needs_quantization and backup_dir is None:
-            backup_dir = DEFAULT_BACKUP_DIR
+        from_dict.assert_not_called()
+        assert report.result == "failed"
+        assert "does not match this migration plan" in report.validation.errors[0]
 
-        assert backup_dir == DEFAULT_BACKUP_DIR
+    def test_empty_quantization_reports_no_backup_path(self, tmp_path):
+        from redisvl.migration.executor import MigrationExecutor
 
-    def test_empty_string_backup_dir_raises_for_quantization(self):
-        """Passing backup_dir='' with quantization must raise ValueError."""
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+        plan = _make_migration_plan()
+        plan.source.stats_snapshot["num_docs"] = 0
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = self._mock_source_and_target()
 
-        # Simulate the enforcement check from MigrationExecutor.apply()
-        backup_dir = ""
-        needs_quantization = True
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[True, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_existing",
+                return_value=source_index,
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                return_value=target_index,
+            ),
+            patch.object(executor, "_enumerate_indexed_keys", return_value=iter(())),
+            patch(
+                "redisvl.migration.executor.wait_for_index_ready",
+                return_value=({"num_docs": 0, "vector_index_sz_mb": 0}, 0.01),
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(tmp_path / "backups"),
+            )
 
-        # Auto-default only triggers on None, not empty string
-        if needs_quantization and backup_dir is None:
-            backup_dir = DEFAULT_BACKUP_DIR
+        assert report.result == "succeeded"
+        assert report.backup is not None
+        assert report.backup.backup_paths == []
 
-        # The hard enforcement check
-        with pytest.raises(ValueError, match="Vector backup is mandatory"):
-            if needs_quantization and not backup_dir:
-                raise ValueError(
-                    "Vector backup is mandatory for quantization migrations. "
-                    "A backup directory must be provided via --backup-dir or the "
-                    f"default '{DEFAULT_BACKUP_DIR}' must be writable. "
-                    "Quantization without backup is not allowed to prevent "
-                    "irreversible data loss."
-                )
 
-    def test_no_error_when_no_quantization_and_no_backup(self):
-        """When no quantization is needed, backup_dir=None should be fine."""
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+class TestSameWidthGuard:
+    def test_hash_same_width_returns_before_drop(self, tmp_path):
+        from redisvl.migration.executor import MigrationExecutor
 
-        backup_dir = None
-        needs_quantization = False
+        plan = _make_migration_plan(source_dtype="float16", target_dtype="bfloat16")
+        executor = MigrationExecutor()
+        _, source_index, target_index = TestApplyCrashResume()._mock_source_and_target()
 
-        # Auto-default should NOT trigger
-        if needs_quantization and backup_dir is None:
-            backup_dir = DEFAULT_BACKUP_DIR
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[True, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_existing",
+                return_value=source_index,
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                return_value=target_index,
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(tmp_path / "backups"),
+            )
 
-        # Enforcement should NOT trigger
-        should_raise = needs_quantization and not backup_dir
-        assert not should_raise
-        assert backup_dir is None  # Unchanged
+        source_index.delete.assert_not_called()
+        target_index.create.assert_not_called()
+        assert "same-width datatype" in report.validation.errors[0]
 
-    def test_default_backup_dir_is_set(self):
-        """DEFAULT_BACKUP_DIR should be a non-empty string."""
-        from redisvl.migration.executor import DEFAULT_BACKUP_DIR
+    def test_json_same_width_is_not_blocked_by_hash_byte_guard(self, tmp_path):
+        from redisvl.migration.executor import MigrationExecutor
 
-        assert DEFAULT_BACKUP_DIR
-        assert isinstance(DEFAULT_BACKUP_DIR, str)
-        assert len(DEFAULT_BACKUP_DIR) > 0
+        plan = _make_migration_plan(
+            storage_type="json", source_dtype="float16", target_dtype="bfloat16"
+        )
+        executor = MigrationExecutor()
+        executor.validator.validate = MagicMock(return_value=_successful_validation())
+        _, source_index, target_index = TestApplyCrashResume()._mock_source_and_target()
 
-    def test_default_backup_dir_exported_from_package(self):
-        """DEFAULT_BACKUP_DIR should be importable from the migration package."""
-        from redisvl.migration import DEFAULT_BACKUP_DIR
+        with (
+            patch(
+                "redisvl.migration.executor.current_source_matches_snapshot",
+                side_effect=[True, False],
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_existing",
+                return_value=source_index,
+            ),
+            patch(
+                "redisvl.migration.executor.SearchIndex.from_dict",
+                return_value=target_index,
+            ),
+            patch(
+                "redisvl.migration.executor.wait_for_index_ready",
+                return_value=({"num_docs": 2, "vector_index_sz_mb": 1}, 0.01),
+            ),
+        ):
+            report = executor.apply(
+                plan,
+                redis_client=MagicMock(),
+                backup_dir=str(tmp_path / "backups"),
+            )
 
-        assert DEFAULT_BACKUP_DIR
-        assert isinstance(DEFAULT_BACKUP_DIR, str)
+        assert report.result == "succeeded"
+        target_index.create.assert_called_once()
 
 
 class TestEnumerateScanFallback:

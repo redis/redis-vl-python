@@ -4,8 +4,8 @@ These tests mirror the sync MigrationExecutor patterns but use async/await.
 Also includes pure-calculation tests for estimate_disk_space().
 """
 
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+import struct
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,11 +18,7 @@ from redisvl.migration.models import (
     ValidationPolicy,
     _format_bytes,
 )
-from redisvl.migration.utils import (
-    build_scan_match_patterns,
-    estimate_disk_space,
-    normalize_keys,
-)
+from redisvl.migration.utils import estimate_disk_space
 
 
 def _make_basic_plan():
@@ -108,7 +104,81 @@ def test_async_executor_with_validator():
 
 
 @pytest.mark.asyncio
-async def test_async_executor_handles_unsupported_plan():
+async def test_async_multi_worker_requires_redis_url_before_loading_index(tmp_path):
+    """num_workers > 1 with redis_client only must fail before source lookup."""
+    executor = AsyncMigrationExecutor()
+    plan = _make_quantize_plan()
+
+    with (
+        patch.object(
+            executor, "_async_current_source_matches_snapshot", new_callable=AsyncMock
+        ) as matches_mock,
+        patch(
+            "redisvl.migration.async_executor.AsyncSearchIndex.from_existing"
+        ) as from_mock,
+    ):
+        report = await executor.apply(
+            plan,
+            redis_client=MagicMock(),
+            backup_dir=str(tmp_path / "backups"),
+            num_workers=2,
+        )
+
+    matches_mock.assert_not_called()
+    from_mock.assert_not_called()
+    assert report.result == "failed"
+    assert "redis_url is required" in report.validation.errors[0]
+
+
+@pytest.mark.asyncio
+async def test_async_quantize_from_backup_maps_keys_to_live_prefix(tmp_path):
+    """Async backup quantization should write converted vectors to mapped keys."""
+    from redisvl.migration.backup import VectorBackup
+
+    executor = AsyncMigrationExecutor()
+    backup_path = str(tmp_path / "test_backup")
+    backup = VectorBackup.create(
+        path=backup_path,
+        index_name="idx",
+        fields={"embedding": {"source": "float32", "target": "float16", "dims": 4}},
+        batch_size=2,
+    )
+    vec = struct.pack("<4f", 1.0, 2.0, 3.0, 4.0)
+    backup.write_batch(
+        0,
+        ["old:1", "old:2"],
+        {
+            "old:1": {"embedding": vec},
+            "old:2": {"embedding": vec},
+        },
+    )
+    backup.mark_dump_complete()
+
+    written_keys = []
+    mock_client = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.execute = AsyncMock(return_value=[])
+    mock_client.pipeline.return_value = mock_pipe
+
+    def capture_hset(key, field, value):
+        written_keys.append(key)
+
+    mock_pipe.hset.side_effect = capture_hset
+
+    await executor._quantize_from_backup(
+        client=mock_client,
+        backup=backup,
+        datatype_changes={
+            "embedding": {"source": "float32", "target": "float16", "dims": 4}
+        },
+        key_transform=lambda key: key.replace("old:", "new:", 1),
+    )
+
+    assert written_keys == ["new:1", "new:2"]
+
+
+@pytest.mark.asyncio
+async def test_async_executor_handles_unsupported_plan(tmp_path):
     """Test executor returns error report for unsupported plan."""
     plan = _make_basic_plan()
     plan.diff_classification.supported = False
@@ -117,7 +187,11 @@ async def test_async_executor_handles_unsupported_plan():
     executor = AsyncMigrationExecutor()
 
     # The executor doesn't raise an error - it returns a report with errors
-    report = await executor.apply(plan, redis_url="redis://localhost:6379")
+    report = await executor.apply(
+        plan,
+        redis_url="redis://localhost:6379",
+        backup_dir=str(tmp_path / "backups"),
+    )
     assert report.result == "failed"
     assert "Test blocked reason" in report.validation.errors
 
@@ -125,7 +199,6 @@ async def test_async_executor_handles_unsupported_plan():
 @pytest.mark.asyncio
 async def test_async_executor_validates_redis_url():
     """Test executor requires redis_url or redis_client."""
-    plan = _make_basic_plan()
     executor = AsyncMigrationExecutor()
 
     # The executor should raise an error internally when trying to connect

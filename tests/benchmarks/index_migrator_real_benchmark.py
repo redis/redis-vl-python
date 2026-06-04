@@ -355,7 +355,11 @@ def run_quantization_migration(
         # Execute migration
         executor = MigrationExecutor()
         migrate_start = time.perf_counter()
-        report = executor.apply(plan, redis_client=client)
+        report = executor.apply(
+            plan,
+            redis_client=client,
+            backup_dir=str(Path(tmpdir) / "backups"),
+        )
         migrate_duration = time.perf_counter() - migrate_start
 
         if report.result != "succeeded":

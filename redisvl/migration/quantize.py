@@ -14,7 +14,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from redisvl.redis.utils import array_to_buffer, buffer_to_array
 from redisvl.utils.utils import lazy_import
 
 if TYPE_CHECKING:
@@ -185,6 +184,23 @@ class MultiWorkerResult:
     total_docs_quantized: int
     num_workers: int
     worker_results: List[Dict[str, Any]] = field(default_factory=list)
+    backup_paths: List[str] = field(default_factory=list)
+
+
+def build_worker_backup_paths(
+    backup_dir: str,
+    index_name: str,
+    actual_workers: int,
+) -> List[str]:
+    """Build deterministic backup shard paths for multi-worker quantization."""
+    from pathlib import Path
+
+    safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
+    return [
+        str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}_worker{i}")
+        for i in range(actual_workers)
+    ]
 
 
 def split_keys(keys: List[str], num_workers: int) -> List[List[str]]:
@@ -247,22 +263,31 @@ def _worker_quantize(
             )
 
         total = len(keys)
+        resume_batch_size = backup.header.batch_size
 
         # Phase 1: Dump originals to backup shard (skip if already complete)
         if backup.header.phase == "dump":
             start_batch = backup.header.dump_completed_batches
-            for batch_start in range(start_batch * batch_size, total, batch_size):
-                batch_keys = keys[batch_start : batch_start + batch_size]
+            for batch_start in range(
+                start_batch * resume_batch_size,
+                total,
+                resume_batch_size,
+            ):
+                batch_keys = keys[batch_start : batch_start + resume_batch_size]
                 originals = pipeline_read_vectors(client, batch_keys, datatype_changes)
-                backup.write_batch(batch_start // batch_size, batch_keys, originals)
+                backup.write_batch(
+                    batch_start // resume_batch_size, batch_keys, originals
+                )
                 if progress_callback:
                     progress_callback(
-                        "dump", worker_id, min(batch_start + batch_size, total)
+                        "dump",
+                        worker_id,
+                        min(batch_start + resume_batch_size, total),
                     )
             backup.mark_dump_complete()
 
         # Phase 2: Convert + write from backup (skip completed batches)
-        if backup.header.phase in ("ready", "active"):
+        if backup.header.phase in ("ready", "index_dropped", "active"):
             backup.start_quantize()
             docs_quantized = 0
 
@@ -279,11 +304,15 @@ def _worker_quantize(
                     progress_callback("quantize", worker_id, docs_quantized)
 
             backup.mark_complete()
-        elif backup.header.phase == "completed":
+        elif backup.header.phase in ("completed", "target_created", "validated"):
             # Already done from previous run
             docs_quantized = total
 
-        return {"worker_id": worker_id, "docs": docs_quantized}
+        return {
+            "worker_id": worker_id,
+            "docs": docs_quantized,
+            "backup_path": backup_path,
+        }
     finally:
         try:
             client.close()
@@ -300,6 +329,7 @@ def multi_worker_quantize(
     num_workers: int = 1,
     batch_size: int = 500,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    worker_backup_paths: Optional[List[str]] = None,
 ) -> MultiWorkerResult:
     """Orchestrate multi-worker quantization.
 
@@ -319,8 +349,6 @@ def multi_worker_quantize(
     Returns:
         MultiWorkerResult with total docs quantized and per-worker results
     """
-    from pathlib import Path
-
     slices = split_keys(keys, num_workers)
     actual_workers = len(slices)
 
@@ -329,13 +357,15 @@ def multi_worker_quantize(
             total_docs_quantized=0, num_workers=0, worker_results=[]
         )
 
-    # Generate backup paths per worker
-    safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
-    worker_backup_paths = [
-        str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}_worker{i}")
-        for i in range(actual_workers)
-    ]
+    if worker_backup_paths is None:
+        worker_backup_paths = build_worker_backup_paths(
+            backup_dir, index_name, actual_workers
+        )
+    elif len(worker_backup_paths) != actual_workers:
+        raise ValueError(
+            "worker_backup_paths length must match the actual worker shard count "
+            f"({len(worker_backup_paths)} != {actual_workers})"
+        )
 
     if actual_workers == 1:
         # Single worker — run directly, no ThreadPoolExecutor overhead
@@ -353,6 +383,7 @@ def multi_worker_quantize(
             total_docs_quantized=result["docs"],
             num_workers=1,
             worker_results=[result],
+            backup_paths=worker_backup_paths,
         )
 
     # Multi-worker — ThreadPoolExecutor
@@ -382,6 +413,7 @@ def multi_worker_quantize(
         total_docs_quantized=total_docs,
         num_workers=actual_workers,
         worker_results=worker_results,
+        backup_paths=worker_backup_paths,
     )
 
 
@@ -422,13 +454,18 @@ async def _async_worker_quantize(
             )
 
         total = len(keys)
+        resume_batch_size = backup.header.batch_size
         field_names = list(datatype_changes.keys())
 
         # Phase 1: Dump originals (skip if already complete)
         if backup.header.phase == "dump":
             start_batch = backup.header.dump_completed_batches
-            for batch_start in range(start_batch * batch_size, total, batch_size):
-                batch_keys = keys[batch_start : batch_start + batch_size]
+            for batch_start in range(
+                start_batch * resume_batch_size,
+                total,
+                resume_batch_size,
+            ):
+                batch_keys = keys[batch_start : batch_start + resume_batch_size]
                 pipe = client.pipeline(transaction=False)
                 call_order: List[tuple] = []
                 for key in batch_keys:
@@ -444,15 +481,19 @@ async def _async_worker_quantize(
                             originals[key] = {}
                         originals[key][field_name] = value
 
-                backup.write_batch(batch_start // batch_size, batch_keys, originals)
+                backup.write_batch(
+                    batch_start // resume_batch_size, batch_keys, originals
+                )
                 if progress_callback:
                     progress_callback(
-                        "dump", worker_id, min(batch_start + batch_size, total)
+                        "dump",
+                        worker_id,
+                        min(batch_start + resume_batch_size, total),
                     )
             backup.mark_dump_complete()
 
         # Phase 2: Convert + write from backup (skip completed batches)
-        if backup.header.phase in ("ready", "active"):
+        if backup.header.phase in ("ready", "index_dropped", "active"):
             backup.start_quantize()
             docs_quantized = 0
 
@@ -474,10 +515,14 @@ async def _async_worker_quantize(
                     progress_callback("quantize", worker_id, docs_quantized)
 
             backup.mark_complete()
-        elif backup.header.phase == "completed":
+        elif backup.header.phase in ("completed", "target_created", "validated"):
             docs_quantized = total
 
-        return {"worker_id": worker_id, "docs": docs_quantized}
+        return {
+            "worker_id": worker_id,
+            "docs": docs_quantized,
+            "backup_path": backup_path,
+        }
     finally:
         await client.aclose()
 
@@ -491,13 +536,13 @@ async def async_multi_worker_quantize(
     num_workers: int = 1,
     batch_size: int = 500,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    worker_backup_paths: Optional[List[str]] = None,
 ) -> MultiWorkerResult:
     """Orchestrate async multi-worker quantization via asyncio.gather.
 
     Each worker gets its own async Redis connection and backup file shard.
     """
     import asyncio
-    from pathlib import Path
 
     slices = split_keys(keys, num_workers)
     actual_workers = len(slices)
@@ -507,12 +552,15 @@ async def async_multi_worker_quantize(
             total_docs_quantized=0, num_workers=0, worker_results=[]
         )
 
-    safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
-    worker_backup_paths = [
-        str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}_worker{i}")
-        for i in range(actual_workers)
-    ]
+    if worker_backup_paths is None:
+        worker_backup_paths = build_worker_backup_paths(
+            backup_dir, index_name, actual_workers
+        )
+    elif len(worker_backup_paths) != actual_workers:
+        raise ValueError(
+            "worker_backup_paths length must match the actual worker shard count "
+            f"({len(worker_backup_paths)} != {actual_workers})"
+        )
 
     coroutines = [
         _async_worker_quantize(
@@ -536,4 +584,5 @@ async def async_multi_worker_quantize(
         total_docs_quantized=total_docs,
         num_workers=actual_workers,
         worker_results=worker_results,
+        backup_paths=worker_backup_paths,
     )

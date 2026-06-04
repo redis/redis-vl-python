@@ -755,12 +755,14 @@ class TestBatchMigrationExecutorCheckpointing:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Verify checkpoint file was created
         assert state_path.exists()
         state_data = yaml.safe_load(state_path.read_text())
         assert state_data["batch_id"] == "test-batch-001"
+        assert state_data["backup_dir"] == str((tmp_path / "backups").resolve())
 
     def test_checkpoint_updated_after_each_index(self, monkeypatch, tmp_path):
         """Checkpoint should be updated after each index is processed."""
@@ -797,6 +799,7 @@ class TestBatchMigrationExecutorCheckpointing:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Verify checkpoints were written progressively
@@ -826,6 +829,7 @@ class TestBatchMigrationExecutorCheckpointing:
         checkpoint_state = BatchState(
             batch_id="test-batch-003",
             plan_path=str(plan_path),
+            backup_dir=str((tmp_path / "backups").resolve()),
             started_at="2026-03-20T10:00:00Z",
             updated_at="2026-03-20T10:05:00Z",
             remaining=["idx2", "idx3"],
@@ -864,6 +868,7 @@ class TestBatchMigrationExecutorCheckpointing:
         assert migrated_indexes == ["idx2", "idx3"]
         # Report should show all 3 as succeeded
         assert report.summary.successful == 3
+        assert report.backup_dir == str((tmp_path / "backups").resolve())
 
 
 class TestBatchMigrationExecutorFailurePolicies:
@@ -895,6 +900,7 @@ class TestBatchMigrationExecutorFailurePolicies:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # idx3 should NOT have been attempted due to fail_fast
@@ -932,6 +938,7 @@ class TestBatchMigrationExecutorFailurePolicies:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # ALL indexes should have been attempted
@@ -991,6 +998,7 @@ class TestBatchMigrationExecutorFailurePolicies:
             retry_failed=True,
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # idx1 should be retried, idx2 should not (already succeeded)
@@ -1032,6 +1040,7 @@ class TestBatchMigrationExecutorProgressCallback:
             report_dir=str(report_dir),
             redis_client=mock_client,
             progress_callback=progress_callback,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Should have 2 events per index (starting + final status)
@@ -1098,6 +1107,7 @@ class TestBatchMigrationExecutorEdgeCases:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Both should have been attempted
@@ -1137,6 +1147,7 @@ class TestBatchMigrationExecutorEdgeCases:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # idx2 should NOT be migrated
@@ -1170,11 +1181,65 @@ class TestBatchMigrationExecutorEdgeCases:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         assert report.status == "completed"
+        assert report.backup_dir == str((tmp_path / "backups").resolve())
         assert report.summary.total_indexes == 0
         assert report.summary.successful == 0
+
+    def test_missing_backup_dir_error(self, tmp_path):
+        """Should error before checkpointing when backup_dir is missing."""
+        batch_plan = make_batch_plan(
+            batch_id="test-batch-no-backup",
+            indexes=[BatchIndexEntry(name="idx1", applicable=True)],
+            failure_policy="fail_fast",
+        )
+
+        state_path = tmp_path / "batch_state.yaml"
+        report_dir = tmp_path / "reports"
+
+        executor = BatchMigrationExecutor()
+        mock_client = MockRedisClient(indexes=["idx1"])
+
+        with pytest.raises(ValueError, match="backup directory is required"):
+            executor.apply(
+                batch_plan,
+                state_path=str(state_path),
+                report_dir=str(report_dir),
+                redis_client=mock_client,
+            )
+
+        assert not state_path.exists()
+        assert not report_dir.exists()
+
+    def test_multi_worker_without_redis_url_errors_before_checkpoint(self, tmp_path):
+        """num_workers > 1 with redis_client only must fail before checkpointing."""
+        batch_plan = make_batch_plan(
+            batch_id="test-batch-workers-no-url",
+            indexes=[BatchIndexEntry(name="idx1", applicable=True)],
+            failure_policy="fail_fast",
+        )
+
+        state_path = tmp_path / "batch_state.yaml"
+        report_dir = tmp_path / "reports"
+
+        executor = BatchMigrationExecutor()
+        mock_client = MockRedisClient(indexes=["idx1"])
+
+        with pytest.raises(ValueError, match="redis_url is required"):
+            executor.apply(
+                batch_plan,
+                state_path=str(state_path),
+                report_dir=str(report_dir),
+                redis_client=mock_client,
+                backup_dir=str(tmp_path / "backups"),
+                num_workers=2,
+            )
+
+        assert not state_path.exists()
+        assert not report_dir.exists()
 
     def test_missing_redis_connection_error(self, tmp_path):
         """Should error when no Redis connection is provided."""
@@ -1194,6 +1259,7 @@ class TestBatchMigrationExecutorEdgeCases:
                 batch_plan,
                 state_path=str(state_path),
                 report_dir=str(report_dir),
+                backup_dir=str(tmp_path / "backups"),
                 # No redis_url or redis_client provided
             )
 
@@ -1264,6 +1330,7 @@ class TestBatchMigrationExecutorReportGeneration:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # All indexes should be in report
@@ -1297,6 +1364,7 @@ class TestBatchMigrationExecutorReportGeneration:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Report files should exist
@@ -1325,6 +1393,7 @@ class TestBatchMigrationExecutorReportGeneration:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         assert report.status == "completed"
@@ -1359,6 +1428,7 @@ class TestBatchMigrationExecutorReportGeneration:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_client=mock_client,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         assert report.status == "failed"

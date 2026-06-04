@@ -220,10 +220,12 @@ class TestBatchMigrationApplyIntegration:
             state_path=str(state_path),
             report_dir=str(report_dir),
             redis_url=redis_url,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Verify report
         assert report.status == "completed"
+        assert report.backup_dir == str((tmp_path / "backups").resolve())
         assert report.summary.total_indexes == 3
         assert report.summary.successful == 3
         assert report.summary.failed == 0
@@ -313,6 +315,7 @@ class TestBatchMigrationApplyIntegration:
             state_path=str(tmp_path / "state.yaml"),
             report_dir=str(tmp_path / "reports"),
             redis_url=redis_url,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         assert report.summary.successful == 1
@@ -397,6 +400,7 @@ class TestBatchMigrationResumeIntegration:
             batch_plan_path=str(plan_path),
             report_dir=str(tmp_path / "reports"),
             redis_url=redis_url,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Should complete remaining 2 indexes
@@ -471,6 +475,7 @@ class TestBatchMigrationResumeIntegration:
             report_dir=str(tmp_path / "reports"),
             redis_url=redis_url,
             progress_callback=progress_cb,
+            backup_dir=str(tmp_path / "backups"),
         )
 
         # Verify progress was reported for each index

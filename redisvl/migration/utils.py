@@ -324,6 +324,7 @@ def current_source_matches_snapshot(
     *,
     redis_url: Optional[str] = None,
     redis_client: Optional[Any] = None,
+    strip_excluded: bool = False,
 ) -> bool:
     try:
         current_index = SearchIndex.from_existing(
@@ -334,7 +335,11 @@ def current_source_matches_snapshot(
     except Exception:
         # Index no longer exists (e.g. already dropped during migration)
         return False
-    return schemas_equal(current_index.schema.to_dict(), expected_schema)
+    return schemas_equal(
+        current_index.schema.to_dict(),
+        expected_schema,
+        strip_excluded=strip_excluded,
+    )
 
 
 def timestamp_utc() -> str:

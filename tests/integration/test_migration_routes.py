@@ -6,6 +6,7 @@ Requires Redis 8.0+ for INT8/UINT8 datatype tests.
 """
 
 import uuid
+from tempfile import TemporaryDirectory
 
 import pytest
 from redis import Redis
@@ -68,7 +69,8 @@ def run_migration(redis_url, index_name, patch_attrs):
     )
 
     executor = MigrationExecutor()
-    report = executor.apply(plan, redis_url=redis_url)
+    with TemporaryDirectory() as backup_dir:
+        report = executor.apply(plan, redis_url=redis_url, backup_dir=backup_dir)
     return report, plan
 
 

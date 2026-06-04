@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional
 
 import yaml
 
-from redisvl.migration.executor import MigrationExecutor
+from redisvl.migration.executor import MigrationExecutor, _require_backup_dir
 from redisvl.migration.models import (
     BatchIndexReport,
     BatchIndexState,
@@ -60,15 +60,20 @@ class BatchMigrationExecutor:
             redis_url: Redis connection URL.
             redis_client: Existing Redis client.
             progress_callback: Optional callback(index_name, position, total, status).
-            backup_dir: Directory for vector backup files. When ``None``
-                (the default), the single-index executor will auto-create
-                ``./migration_backups`` if quantization is needed.
+            backup_dir: Required directory for vector backup files.
             batch_size: Keys per pipeline batch (default 500).
             num_workers: Number of parallel quantization workers (default 1).
 
         Returns:
             BatchReport with results for all indexes.
         """
+        backup_dir = _require_backup_dir(backup_dir)
+        if num_workers > 1 and redis_url is None:
+            raise ValueError(
+                "redis_url is required when using num_workers > 1. "
+                "Pass redis_url so each worker can open its own Redis connection."
+            )
+
         # Get Redis client
         client = redis_client
         if client is None:
@@ -81,7 +86,9 @@ class BatchMigrationExecutor:
         report_path.mkdir(parents=True, exist_ok=True)
 
         # Initialize or load state
-        state = self._init_or_load_state(batch_plan, state_path, batch_plan_path)
+        state = self._init_or_load_state(
+            batch_plan, state_path, batch_plan_path, backup_dir=backup_dir
+        )
         started_at = state.started_at
         batch_start_time = time.perf_counter()
 
@@ -183,7 +190,7 @@ class BatchMigrationExecutor:
             redis_url: Redis connection URL.
             redis_client: Existing Redis client.
             progress_callback: Optional callback(index_name, position, total, status).
-            backup_dir: Directory for vector backup files.
+            backup_dir: Required directory for vector backup files.
             batch_size: Keys per pipeline batch (default 500).
             num_workers: Number of parallel quantization workers (default 1).
         """
@@ -195,6 +202,7 @@ class BatchMigrationExecutor:
                 "or ensure the checkpoint state contains a valid plan_path."
             )
         batch_plan = self._load_batch_plan(plan_path)
+        backup_dir = backup_dir or state.backup_dir
 
         # Optionally retry failed indexes
         if retry_failed:
@@ -279,6 +287,7 @@ class BatchMigrationExecutor:
         batch_plan: BatchPlan,
         state_path: str,
         batch_plan_path: Optional[str] = None,
+        backup_dir: Optional[str] = None,
     ) -> BatchState:
         """Initialize new state or load existing checkpoint."""
         path = Path(state_path).resolve()
@@ -295,6 +304,17 @@ class BatchMigrationExecutor:
             # the original path was empty or pointed to a deleted temp dir).
             if batch_plan_path:
                 loaded.plan_path = str(Path(batch_plan_path).resolve())
+            if loaded.backup_dir and backup_dir:
+                loaded_backup_dir = str(Path(loaded.backup_dir).resolve())
+                current_backup_dir = str(Path(backup_dir).resolve())
+                if loaded_backup_dir != current_backup_dir:
+                    raise ValueError(
+                        f"Checkpoint state backup_dir '{loaded.backup_dir}' does not "
+                        f"match current backup_dir '{backup_dir}'. Resume with the "
+                        "same backup directory or use a different state_path."
+                    )
+            elif backup_dir:
+                loaded.backup_dir = backup_dir
             return loaded
 
         # Create new state with plan_path for resume support
@@ -302,6 +322,7 @@ class BatchMigrationExecutor:
         return BatchState(
             batch_id=batch_plan.batch_id,
             plan_path=str(Path(batch_plan_path).resolve()) if batch_plan_path else "",
+            backup_dir=backup_dir,
             started_at=timestamp_utc(),
             updated_at=timestamp_utc(),
             remaining=applicable_names,
@@ -404,6 +425,7 @@ class BatchMigrationExecutor:
         return BatchReport(
             batch_id=batch_plan.batch_id,
             status=status,
+            backup_dir=state.backup_dir,
             started_at=started_at,
             completed_at=timestamp_utc(),
             summary=BatchReportSummary(
