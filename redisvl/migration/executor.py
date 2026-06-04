@@ -142,6 +142,40 @@ def _map_keys_prefix(
     return [_map_key_prefix(key, key_prefix) for key in keys]
 
 
+def _extract_prefixes_from_info(info: Any) -> List[str]:
+    """Extract Redis Search index prefixes from dict or list FT.INFO shapes."""
+
+    def _prefixes_from_definition(definition: Any) -> Any:
+        if isinstance(definition, dict):
+            return definition.get("prefixes", [])
+        if isinstance(definition, (list, tuple)):
+            for idx, item in enumerate(definition):
+                if item in (b"prefixes", "prefixes") and idx + 1 < len(definition):
+                    return definition[idx + 1]
+        return []
+
+    if isinstance(info, dict):
+        raw_prefixes = _prefixes_from_definition(info.get("index_definition", {}))
+    else:
+        raw_prefixes = []
+        for idx, item in enumerate(info):
+            if item in (b"index_definition", "index_definition") and idx + 1 < len(
+                info
+            ):
+                raw_prefixes = _prefixes_from_definition(info[idx + 1])
+                break
+
+    if isinstance(raw_prefixes, (bytes, str)):
+        raw_prefixes = [raw_prefixes]
+    elif raw_prefixes is None:
+        raw_prefixes = []
+
+    return [
+        prefix.decode() if isinstance(prefix, bytes) else str(prefix)
+        for prefix in raw_prefixes
+    ]
+
+
 def _stable_hash(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -343,25 +377,7 @@ class MigrationExecutor:
         # Get prefix from index info
         try:
             info = client.ft(index_name).info()
-            # Handle both dict and list formats from FT.INFO
-            if isinstance(info, dict):
-                prefixes = info.get("index_definition", {}).get("prefixes", [])
-            else:
-                # List format - find index_definition
-                prefixes = []
-                for i, item in enumerate(info):
-                    if item == b"index_definition" or item == "index_definition":
-                        defn = info[i + 1]
-                        if isinstance(defn, dict):
-                            prefixes = defn.get("prefixes", [])
-                        elif isinstance(defn, list):
-                            for j, d in enumerate(defn):
-                                if d in (b"prefixes", "prefixes") and j + 1 < len(defn):
-                                    prefixes = defn[j + 1]
-                        break
-            normalized_prefixes = [
-                p.decode() if isinstance(p, bytes) else str(p) for p in prefixes
-            ]
+            normalized_prefixes = _extract_prefixes_from_info(info)
         except Exception as e:
             logger.warning(f"Failed to get prefix from index info: {e}")
             normalized_prefixes = []
@@ -1071,6 +1087,7 @@ class MigrationExecutor:
         target_info: Dict[str, Any] = {}
         docs_quantized = 0
         keys_to_process: List[str] = []
+        expected_source_count: Optional[int] = None
         storage_type = plan.source.keyspace.storage_type
 
         # Check for rename operations
@@ -1078,7 +1095,19 @@ class MigrationExecutor:
         has_prefix_change = rename_ops.change_prefix is not None
         has_field_renames = bool(rename_ops.rename_fields)
         needs_quantization = bool(datatype_changes) and storage_type != "json"
-        needs_enumeration = needs_quantization or has_prefix_change or has_field_renames
+        source_failures = int(
+            plan.source.stats_snapshot.get("hash_indexing_failures", 0) or 0
+        )
+        source_percent_indexed = float(
+            plan.source.stats_snapshot.get("percent_indexed", 1.0) or 1.0
+        )
+        needs_exact_count = source_failures > 0 or source_percent_indexed < 1.0
+        needs_enumeration = (
+            needs_quantization
+            or has_prefix_change
+            or has_field_renames
+            or needs_exact_count
+        )
         has_same_width_quantization = any(
             is_same_width_dtype_conversion(change["source"], change["target"])
             for change in datatype_changes.values()
@@ -1126,6 +1155,9 @@ class MigrationExecutor:
 
             if resuming_from_backup and existing_backup is not None:
                 _notify("enumerate", "skipped (resume from backup)")
+                expected_source_count = sum(
+                    len(batch_keys) for batch_keys, _ in existing_backup.iter_batches()
+                )
                 if report.backup is not None:
                     report.backup.backup_paths = [backup_path]
 
@@ -1204,6 +1236,7 @@ class MigrationExecutor:
                     )
             elif resuming_from_manifest and existing_manifest is not None:
                 _notify("enumerate", "skipped (resume from multi-worker manifest)")
+                expected_source_count = len(existing_manifest.keys)
 
                 if existing_manifest.phase == "prepared" and source_matches_snapshot:
                     _notify("drop", "Dropping index definition (resume)...")
@@ -1306,6 +1339,7 @@ class MigrationExecutor:
                         )
                     )
                     keys_to_process = normalize_keys(keys_to_process)
+                    expected_source_count = len(keys_to_process)
                     enumerate_duration = round(
                         time.perf_counter() - enumerate_started, 3
                     )
@@ -1611,6 +1645,7 @@ class MigrationExecutor:
                 redis_url=redis_url,
                 redis_client=redis_client,
                 query_check_file=query_check_file,
+                expected_source_count=expected_source_count,
             )
             _notify("validate", f"done ({validation_duration}s)")
             report.validation = validation

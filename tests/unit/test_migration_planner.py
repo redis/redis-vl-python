@@ -1,8 +1,18 @@
 from fnmatch import fnmatch
+from unittest.mock import MagicMock
 
 import yaml
 
 from redisvl.migration import MigrationPlanner
+from redisvl.migration.executor import _extract_prefixes_from_info
+from redisvl.migration.models import (
+    DiffClassification,
+    KeyspaceSnapshot,
+    MigrationPlan,
+    RenameOperations,
+    SourceSnapshot,
+)
+from redisvl.migration.validation import MigrationValidator
 from redisvl.schema.schema import IndexSchema
 
 
@@ -1129,18 +1139,6 @@ def test_plan_no_warning_when_percent_indexed_missing(monkeypatch, tmp_path):
 # =============================================================================
 # TDD: Validation cluster-safe EXISTS + multi-prefix key translation
 # =============================================================================
-from unittest.mock import MagicMock
-
-from redisvl.migration.models import (
-    DiffClassification,
-    KeyspaceSnapshot,
-    MigrationPlan,
-    MigrationValidation,
-    RenameOperations,
-    SourceSnapshot,
-    ValidationPolicy,
-)
-from redisvl.migration.validation import MigrationValidator
 
 
 def _make_minimal_plan(
@@ -1177,6 +1175,22 @@ def _make_minimal_plan(
         diff_classification=DiffClassification(supported=True),
         rename_operations=RenameOperations(change_prefix=change_prefix),
     )
+
+
+def test_extract_prefixes_from_dict_with_list_index_definition():
+    """FT.INFO may return a dict whose index_definition value is a list."""
+    info = {
+        "index_definition": [
+            "key_type",
+            "HASH",
+            "prefixes",
+            [b"docs:", "articles:"],
+            "default_score",
+            "1",
+        ]
+    }
+
+    assert _extract_prefixes_from_info(info) == ["docs:", "articles:"]
 
 
 class TestValidatorClusterSafeExists:
@@ -1247,3 +1261,50 @@ class TestValidatorMultiPrefixKeyTranslation:
         assert "new:2" in called_keys
         assert "new:3" in called_keys
         assert validation.key_sample_exists is True
+
+
+class TestValidatorExactSourceCounts:
+    """Verify executor-supplied key counts override failure event counters."""
+
+    def test_expected_source_count_uses_scanned_target_keys(self, monkeypatch):
+        """Failure event overcounts should not fail exact key validation."""
+        target_schema = {
+            "index": {
+                "name": "target_idx",
+                "prefix": "target:",
+                "storage_type": "hash",
+            },
+            "fields": [{"name": "title", "type": "text"}],
+        }
+        plan = _make_minimal_plan(
+            key_sample=[],
+            prefixes=["old:"],
+            merged_target_schema=target_schema,
+        )
+        plan.source.stats_snapshot = {
+            "num_docs": 3,
+            "hash_indexing_failures": 4,
+        }
+
+        mock_index = MagicMock()
+        mock_index.client = DummyClient(
+            [b"target:1", b"target:2", b"target:3", b"target:4", b"target:5"]
+        )
+        mock_index.info.return_value = {"num_docs": 5, "hash_indexing_failures": 0}
+        mock_index.schema = IndexSchema.from_dict(target_schema)
+        mock_index.search.return_value = MagicMock(total=5)
+
+        monkeypatch.setattr(
+            "redisvl.migration.validation.SearchIndex.from_existing",
+            lambda *a, **kw: mock_index,
+        )
+
+        validator = MigrationValidator()
+        validation, _, _ = validator.validate(
+            plan,
+            redis_url="redis://localhost",
+            expected_source_count=5,
+        )
+
+        assert validation.doc_count_match is True
+        assert validation.errors == []

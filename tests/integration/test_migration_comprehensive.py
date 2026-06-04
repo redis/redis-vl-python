@@ -29,6 +29,7 @@ Spec: local_docs/index_migrator/32_integration_test_spec.md
 
 import glob
 import os
+import time
 import uuid
 from typing import Any, Dict, List
 
@@ -173,6 +174,26 @@ def cleanup_index(index: SearchIndex):
         index.delete(drop=True)
     except Exception:
         pass
+
+
+def wait_for_indexing_state(
+    index: SearchIndex,
+    expected_docs: int,
+    min_failures: int = 0,
+    timeout_seconds: float = 5.0,
+) -> tuple[int, int]:
+    """Wait until RediSearch reports the expected docs and failure floor."""
+    deadline = time.monotonic() + timeout_seconds
+    num_docs = 0
+    failures = 0
+    while time.monotonic() < deadline:
+        info = index.info()
+        num_docs = int(info.get("num_docs", 0))
+        failures = int(info.get("hash_indexing_failures", 0))
+        if num_docs == expected_docs and failures >= min_failures:
+            return num_docs, failures
+        time.sleep(0.1)
+    return num_docs, failures
 
 
 # ==============================================================================
@@ -1383,8 +1404,8 @@ class TestHashIndexingFailuresValidation:
 
     These tests verify that the migrator correctly handles indexes where some
     documents fail to index (e.g., due to wrong vector dimensions). The
-    validation logic should compare total keys (num_docs + failures) instead
-    of just num_docs, so that resolved failures don't trigger false negatives.
+    executor should pass exact enumerated key counts into validation when
+    failures exist, so that resolved failures don't trigger false negatives.
     """
 
     def test_migration_with_indexing_failures_passes_validation(
@@ -1395,7 +1416,7 @@ class TestHashIndexingFailuresValidation:
         Scenario: Create index with dims=4, load 3 correct docs + 2 docs with
         wrong-dimension vectors. The 2 bad docs cause hash_indexing_failures.
         Run a simple migration (add a text field). After migration, validation
-        should pass because total keys (num_docs + failures) are conserved.
+        should pass because exact source keys are conserved.
         """
         schema = {
             "index": {
@@ -1455,17 +1476,14 @@ class TestHashIndexingFailuresValidation:
                 mapping={"title": "Bad doc two", "embedding": bad_vec},
             )
 
-            # Wait briefly for indexing to settle
-            import time
-
-            time.sleep(0.5)
-
             # Verify we have indexing failures
-            info = index.info()
-            num_docs = int(info.get("num_docs", 0))
-            failures = int(info.get("hash_indexing_failures", 0))
+            num_docs, failures = wait_for_indexing_state(
+                index, expected_docs=3, min_failures=2
+            )
             assert num_docs == 3, f"Expected 3 indexed docs, got {num_docs}"
-            assert failures == 2, f"Expected 2 indexing failures, got {failures}"
+            assert (
+                failures >= 2
+            ), f"Expected at least 2 indexing failures, got {failures}"
 
             # Run migration: add a text field (simple, non-destructive)
             result = run_migration(
@@ -1561,16 +1579,14 @@ class TestHashIndexingFailuresValidation:
                 mapping={"title": "Float16 doc two", "embedding": f16_vec},
             )
 
-            import time
-
-            time.sleep(0.5)
-
-            # Verify initial state: 3 indexed + 2 failures
-            info = index.info()
-            num_docs = int(info.get("num_docs", 0))
-            failures = int(info.get("hash_indexing_failures", 0))
+            # Verify initial state: 3 indexed docs plus failed vector events.
+            num_docs, failures = wait_for_indexing_state(
+                index, expected_docs=3, min_failures=2
+            )
             assert num_docs == 3, f"Expected 3 indexed docs, got {num_docs}"
-            assert failures == 2, f"Expected 2 indexing failures, got {failures}"
+            assert (
+                failures >= 2
+            ), f"Expected at least 2 indexing failures, got {failures}"
 
             # Run quantization migration: float32 -> float16
             # The executor re-encodes the 3 float32 docs to float16.

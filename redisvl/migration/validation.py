@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from redis.commands.search.query import Query
 
@@ -11,7 +11,8 @@ from redisvl.migration.models import (
     MigrationValidation,
     QueryCheckResult,
 )
-from redisvl.migration.utils import load_yaml, schemas_equal
+from redisvl.migration.utils import build_scan_match_patterns, load_yaml, schemas_equal
+from redisvl.types import SyncRedisClient
 
 
 class MigrationValidator:
@@ -22,6 +23,7 @@ class MigrationValidator:
         redis_url: Optional[str] = None,
         redis_client: Optional[Any] = None,
         query_check_file: Optional[str] = None,
+        expected_source_count: Optional[int] = None,
     ) -> tuple[MigrationValidation, Dict[str, Any], float]:
         started = time.perf_counter()
         target_index = SearchIndex.from_existing(
@@ -49,13 +51,20 @@ class MigrationValidator:
         target_failures = int(target_info.get("hash_indexing_failures", 0) or 0)
         validation.indexing_failures_delta = target_failures - source_failures
 
-        # Compare total keys (num_docs + hash_indexing_failures) instead of
-        # just num_docs. Migrations can resolve indexing failures (e.g. a
-        # vector datatype change may fix documents that previously failed to
-        # index), shifting counts between the two buckets while the total
-        # number of keys under the prefix stays the same.
-        source_total = source_num_docs + source_failures
-        target_total = target_num_docs + target_failures
+        source_counter_total = source_num_docs + source_failures
+        if expected_source_count is None:
+            # Backward-compatible standalone validation path. RediSearch exposes
+            # failure events, not a guaranteed unique failed-key count, so the
+            # executor passes an exact enumeration count when one is available.
+            source_total = source_counter_total
+            target_total = target_num_docs + target_failures
+            count_source = "stats"
+            count_target = "stats"
+        else:
+            source_total = expected_source_count
+            target_total = self._count_index_keys(target_index)
+            count_source = "enumerated keys"
+            count_target = "scanned keys"
         validation.doc_count_match = source_total == target_total
 
         key_sample = plan.source.keyspace.key_sample
@@ -100,9 +109,11 @@ class MigrationValidator:
         if not validation.doc_count_match and plan.validation.require_doc_count_match:
             validation.errors.append(
                 f"Total key count mismatch: source had {source_total} "
-                f"(num_docs={source_num_docs}, failures={source_failures}), "
+                f"({count_source}; num_docs={source_num_docs}, "
+                f"failures={source_failures}), "
                 f"target has {target_total} "
-                f"(num_docs={target_num_docs}, failures={target_failures})."
+                f"({count_target}; num_docs={target_num_docs}, "
+                f"failures={target_failures})."
             )
         if validation.indexing_failures_delta > 0:
             validation.errors.append("Indexing failures increased during migration.")
@@ -114,6 +125,31 @@ class MigrationValidator:
             validation.errors.append("One or more query checks failed.")
 
         return validation, target_info, round(time.perf_counter() - started, 3)
+
+    def _count_index_keys(self, index: SearchIndex) -> int:
+        """Count keys matching the target index prefixes with SCAN."""
+        raw_client = index.client
+        if raw_client is None:
+            raise ValueError("Redis client is required to count index keys")
+        client = cast(SyncRedisClient, raw_client)
+
+        prefixes = index.schema.index.prefix
+        prefix_list = prefixes if isinstance(prefixes, list) else [prefixes]
+        key_separator = index.schema.index.key_separator
+        seen_keys: set[str] = set()
+        for match_pattern in build_scan_match_patterns(prefix_list, key_separator):
+            cursor = 0
+            while True:
+                cursor, keys = cast(
+                    tuple[int, list[Any]],
+                    client.scan(cursor=cursor, match=match_pattern),
+                )
+                for key in keys:
+                    key_str = key.decode() if isinstance(key, bytes) else str(key)
+                    seen_keys.add(key_str)
+                if cursor == 0:
+                    break
+        return len(seen_keys)
 
     def _run_query_checks(
         self,
