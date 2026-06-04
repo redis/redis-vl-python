@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import timedelta
 
@@ -25,6 +24,19 @@ from redisvl.query.filter import (
 )
 from redisvl.redis.utils import array_to_buffer
 from tests.conftest import skip_if_redis_version_below
+
+
+def _decode_redis_value(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return value
+
+
+def _result_or_hash_field(index: SearchIndex, result: dict, field: str):
+    if field in result:
+        return _decode_redis_value(result[field])
+    assert index.client is not None
+    return _decode_redis_value(index.client.hget(result["id"], field))
 
 
 @pytest.fixture
@@ -841,13 +853,17 @@ def test_text_query_with_filter(index):
         text_scorer=scorer,
         filter_expression=filter_expression,
         return_fields=return_fields,
+        stopwords=None,
     )
     results = index.query(text_query)
     assert len(results) == 2
     for result in results:
-        assert any(word in result[text_field] for word in text.split())
-        assert result["credit_score"] == "high"
-        assert int(result["age"]) > 30
+        description = _result_or_hash_field(index, result, text_field)
+        credit_score = _result_or_hash_field(index, result, "credit_score")
+        age = _result_or_hash_field(index, result, "age")
+        assert any(word in description for word in text.split())
+        assert credit_score == "high"
+        assert int(age) > 30
 
 
 # test that text queries worked with text filter expressions on the same text field

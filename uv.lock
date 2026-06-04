@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <3.15"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -4869,7 +4869,7 @@ wheels = [
 
 [[package]]
 name = "redisvl"
-version = "0.18.2"
+version = "0.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonpath-ng" },

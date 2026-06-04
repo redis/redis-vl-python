@@ -1,0 +1,588 @@
+"""Pipelined vector quantization helpers.
+
+Provides pipeline-read, convert, and pipeline-write functions that replace
+the per-key HGET loop with batched pipeline operations.
+
+Also provides multi-worker orchestration for parallel quantization
+using ThreadPoolExecutor (sync) or asyncio.gather (async).
+"""
+
+import hashlib
+import logging
+import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+from redisvl.utils.utils import lazy_import
+
+if TYPE_CHECKING:
+    import numpy as np
+else:
+    np = lazy_import("numpy")
+
+# Integer dtype ranges used for float-to-integer quantization scaling.
+_INTEGER_RANGES: Dict[str, tuple] = {
+    "int8": (-128, 127),
+    "uint8": (0, 255),
+}
+
+
+def pipeline_read_vectors(
+    client: Any,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, bytes]]:
+    """Pipeline-read vector fields from Redis for a batch of keys.
+
+    Instead of N individual HGET calls (N round trips), uses a single
+    pipeline with N*F HGET calls (1 round trip).
+
+    Args:
+        client: Redis client
+        keys: List of Redis keys to read
+        datatype_changes: {field_name: {"source", "target", "dims"}}
+
+    Returns:
+        {key: {field_name: original_bytes}} — only includes keys/fields
+        that returned non-None data.
+    """
+    if not keys:
+        return {}
+
+    pipe = client.pipeline(transaction=False)
+    # Track the order of pipelined calls: (key, field_name)
+    call_order: List[tuple] = []
+    field_names = list(datatype_changes.keys())
+
+    for key in keys:
+        for field_name in field_names:
+            pipe.hget(key, field_name)
+            call_order.append((key, field_name))
+
+    results = pipe.execute()
+
+    # Reassemble into {key: {field: bytes}}
+    output: Dict[str, Dict[str, bytes]] = {}
+    for (key, field_name), value in zip(call_order, results):
+        if value is not None:
+            if key not in output:
+                output[key] = {}
+            output[key][field_name] = value
+
+    return output
+
+
+def pipeline_write_vectors(
+    client: Any,
+    converted: Dict[str, Dict[str, bytes]],
+) -> None:
+    """Pipeline-write converted vectors to Redis.
+
+    Args:
+        client: Redis client
+        converted: {key: {field_name: new_bytes}}
+    """
+    if not converted:
+        return
+
+    pipe = client.pipeline(transaction=False)
+    for key, fields in converted.items():
+        for field_name, data in fields.items():
+            pipe.hset(key, field_name, data)
+    pipe.execute()
+
+
+def _quantize_array(arr: "np.ndarray", target_dtype: str) -> "np.ndarray":
+    """Convert a numpy array to a target dtype, applying min-max scaling
+    when converting from float to integer types.
+
+    Float-to-float conversions (e.g. float32 → float16) are a simple cast.
+
+    Float-to-integer conversions (e.g. float32 → int8) require scaling
+    because most embedding models produce values in [-1, 1] or similar
+    narrow ranges. A naive ``astype("int8")`` would truncate everything
+    to zero. Instead, we apply per-vector min-max scaling to fill the
+    full integer range, matching the approach recommended in the Redis
+    vector-search documentation.
+
+    Args:
+        arr: Source vector as a numpy array (any float dtype).
+        target_dtype: Target dtype string (e.g. "float16", "int8", "uint8").
+
+    Returns:
+        Numpy array in the target dtype.
+
+    Raises:
+        ValueError: If the target dtype is an unsupported integer type.
+    """
+    target_lower = target_dtype.lower()
+    int_range = _INTEGER_RANGES.get(target_lower)
+
+    if int_range is None:
+        # Float-to-float: simple precision cast (e.g. float32 → float16).
+        return arr.astype(target_lower)
+
+    # Float-to-integer: per-vector min-max scaling.
+    lo, hi = int_range
+    vec_min = arr.min()
+    vec_max = arr.max()
+    spread = vec_max - vec_min
+
+    if spread == 0:
+        # Constant vector (rare but possible) — map to midpoint.
+        mid = (lo + hi) // 2
+        return np.full_like(arr, mid, dtype=target_lower)
+
+    # Scale [vec_min, vec_max] → [lo, hi] and round to nearest integer.
+    scaled = (arr - vec_min) / spread * (hi - lo) + lo
+    return np.clip(np.round(scaled), lo, hi).astype(target_lower)
+
+
+def convert_vectors(
+    originals: Dict[str, Dict[str, bytes]],
+    datatype_changes: Dict[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, bytes]]:
+    """Convert vector bytes from source dtype to target dtype.
+
+    For float-to-float conversions, this performs a simple precision cast.
+    For float-to-integer conversions (int8, uint8), this applies per-vector
+    min-max scaling to map the float range into the full integer range
+    before casting. See :func:`_quantize_array` for details.
+
+    Args:
+        originals: {key: {field_name: original_bytes}}
+        datatype_changes: {field_name: {"source", "target", "dims"}}
+
+    Returns:
+        {key: {field_name: converted_bytes}}
+    """
+    converted: Dict[str, Dict[str, bytes]] = {}
+    for key, fields in originals.items():
+        converted[key] = {}
+        for field_name, data in fields.items():
+            change = datatype_changes.get(field_name)
+            if not change:
+                continue
+            source_dtype = change["source"].lower()
+            target_dtype = change["target"]
+
+            # Deserialize directly into numpy (avoids Python list round-trip).
+            arr = np.frombuffer(data, dtype=source_dtype).copy()
+            quantized = _quantize_array(arr, target_dtype)
+            converted[key][field_name] = quantized.tobytes()
+    return converted
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MultiWorkerResult:
+    """Result from multi-worker quantization."""
+
+    total_docs_quantized: int
+    num_workers: int
+    worker_results: List[Dict[str, Any]] = field(default_factory=list)
+    backup_paths: List[str] = field(default_factory=list)
+
+
+def build_worker_backup_paths(
+    backup_dir: str,
+    index_name: str,
+    actual_workers: int,
+) -> List[str]:
+    """Build deterministic backup shard paths for multi-worker quantization."""
+    from pathlib import Path
+
+    safe_name = index_name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    name_hash = hashlib.sha256(index_name.encode()).hexdigest()[:8]
+    return [
+        str(Path(backup_dir) / f"migration_backup_{safe_name}_{name_hash}_worker{i}")
+        for i in range(actual_workers)
+    ]
+
+
+def split_keys(keys: List[str], num_workers: int) -> List[List[str]]:
+    """Split keys into N contiguous slices for parallel processing.
+
+    Args:
+        keys: Full list of Redis keys
+        num_workers: Number of workers
+
+    Returns:
+        List of key slices.  May contain fewer than ``num_workers``
+        entries when ``len(keys) < num_workers``; returns an empty
+        list when *keys* is empty.
+    """
+    if num_workers < 1:
+        raise ValueError(f"num_workers must be >= 1, got {num_workers}")
+    if not keys:
+        return []
+    n = len(keys)
+    chunk_size = math.ceil(n / num_workers)
+    return [keys[i : i + chunk_size] for i in range(0, n, chunk_size)]
+
+
+def _worker_quantize(
+    worker_id: int,
+    redis_url: str,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+    backup_path: str,
+    index_name: str,
+    batch_size: int,
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+) -> Dict[str, Any]:
+    """Single worker: dump originals + convert + write back.
+
+    Each worker gets its own Redis connection and backup file shard.
+    """
+    from redisvl.migration.backup import VectorBackup
+    from redisvl.redis.connection import RedisConnectionFactory
+
+    client = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
+    try:
+        # Try to resume from existing backup shard first
+        backup = VectorBackup.load(backup_path)
+        if backup is not None:
+            logger.info(
+                "Worker %d: resuming from existing backup (phase=%s, "
+                "dump_batches=%d, quantize_batches=%d)",
+                worker_id,
+                backup.header.phase,
+                backup.header.dump_completed_batches,
+                backup.header.quantize_completed_batches,
+            )
+        else:
+            backup = VectorBackup.create(
+                path=backup_path,
+                index_name=index_name,
+                fields=datatype_changes,
+                batch_size=batch_size,
+            )
+
+        total = len(keys)
+        resume_batch_size = backup.header.batch_size
+
+        # Phase 1: Dump originals to backup shard (skip if already complete)
+        if backup.header.phase == "dump":
+            start_batch = backup.header.dump_completed_batches
+            for batch_start in range(
+                start_batch * resume_batch_size,
+                total,
+                resume_batch_size,
+            ):
+                batch_keys = keys[batch_start : batch_start + resume_batch_size]
+                originals = pipeline_read_vectors(client, batch_keys, datatype_changes)
+                backup.write_batch(
+                    batch_start // resume_batch_size, batch_keys, originals
+                )
+                if progress_callback:
+                    progress_callback(
+                        "dump",
+                        worker_id,
+                        min(batch_start + resume_batch_size, total),
+                    )
+            backup.mark_dump_complete()
+
+        # Phase 2: Convert + write from backup (skip completed batches)
+        if backup.header.phase in ("ready", "index_dropped", "active"):
+            backup.start_quantize()
+            docs_quantized = 0
+
+            for batch_idx, (batch_keys, originals) in enumerate(backup.iter_batches()):
+                if batch_idx < backup.header.quantize_completed_batches:
+                    docs_quantized += len(batch_keys)
+                    continue
+                converted = convert_vectors(originals, datatype_changes)
+                if converted:
+                    pipeline_write_vectors(client, converted)
+                backup.mark_batch_quantized(batch_idx)
+                docs_quantized += len(batch_keys)
+                if progress_callback:
+                    progress_callback("quantize", worker_id, docs_quantized)
+
+            backup.mark_complete()
+        elif backup.header.phase in ("completed", "target_created", "validated"):
+            # Already done from previous run
+            docs_quantized = total
+
+        return {
+            "worker_id": worker_id,
+            "docs": docs_quantized,
+            "backup_path": backup_path,
+        }
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def multi_worker_quantize(
+    redis_url: str,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+    backup_dir: str,
+    index_name: str,
+    num_workers: int = 1,
+    batch_size: int = 500,
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    worker_backup_paths: Optional[List[str]] = None,
+) -> MultiWorkerResult:
+    """Orchestrate multi-worker quantization.
+
+    Splits keys across N workers, each with its own Redis connection
+    and backup file shard. Uses ThreadPoolExecutor for parallelism.
+
+    Args:
+        redis_url: Redis connection URL
+        keys: Full list of document keys to quantize
+        datatype_changes: {field_name: {"source", "target", "dims"}}
+        backup_dir: Directory for backup file shards
+        index_name: Source index name
+        num_workers: Number of parallel workers (default 1)
+        batch_size: Keys per pipeline batch
+        progress_callback: Optional callback(phase, worker_id, docs_done)
+
+    Returns:
+        MultiWorkerResult with total docs quantized and per-worker results
+    """
+    slices = split_keys(keys, num_workers)
+    actual_workers = len(slices)
+
+    if actual_workers == 0:
+        return MultiWorkerResult(
+            total_docs_quantized=0, num_workers=0, worker_results=[]
+        )
+
+    if worker_backup_paths is None:
+        worker_backup_paths = build_worker_backup_paths(
+            backup_dir, index_name, actual_workers
+        )
+    elif len(worker_backup_paths) != actual_workers:
+        raise ValueError(
+            "worker_backup_paths length must match the actual worker shard count "
+            f"({len(worker_backup_paths)} != {actual_workers})"
+        )
+
+    if actual_workers == 1:
+        # Single worker — run directly, no ThreadPoolExecutor overhead
+        result = _worker_quantize(
+            worker_id=0,
+            redis_url=redis_url,
+            keys=slices[0],
+            datatype_changes=datatype_changes,
+            backup_path=worker_backup_paths[0],
+            index_name=index_name,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+        )
+        return MultiWorkerResult(
+            total_docs_quantized=result["docs"],
+            num_workers=1,
+            worker_results=[result],
+            backup_paths=worker_backup_paths,
+        )
+
+    # Multi-worker — ThreadPoolExecutor
+    worker_results: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=actual_workers) as executor:
+        futures = {}
+        for i, key_slice in enumerate(slices):
+            future = executor.submit(
+                _worker_quantize,
+                worker_id=i,
+                redis_url=redis_url,
+                keys=key_slice,
+                datatype_changes=datatype_changes,
+                backup_path=worker_backup_paths[i],
+                index_name=index_name,
+                batch_size=batch_size,
+                progress_callback=progress_callback,
+            )
+            futures[future] = i
+
+        for future in as_completed(futures):
+            result = future.result()  # raises if worker failed
+            worker_results.append(result)
+
+    total_docs = sum(r["docs"] for r in worker_results)
+    return MultiWorkerResult(
+        total_docs_quantized=total_docs,
+        num_workers=actual_workers,
+        worker_results=worker_results,
+        backup_paths=worker_backup_paths,
+    )
+
+
+async def _async_worker_quantize(
+    worker_id: int,
+    redis_url: str,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+    backup_path: str,
+    index_name: str,
+    batch_size: int,
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+) -> Dict[str, Any]:
+    """Async single worker: dump originals + convert + write back."""
+    import redis.asyncio as aioredis
+
+    from redisvl.migration.backup import VectorBackup
+
+    client = aioredis.from_url(redis_url)
+    try:
+        # Try to resume from existing backup shard first
+        backup = VectorBackup.load(backup_path)
+        if backup is not None:
+            logger.info(
+                "Async worker %d: resuming from existing backup (phase=%s, "
+                "dump_batches=%d, quantize_batches=%d)",
+                worker_id,
+                backup.header.phase,
+                backup.header.dump_completed_batches,
+                backup.header.quantize_completed_batches,
+            )
+        else:
+            backup = VectorBackup.create(
+                path=backup_path,
+                index_name=index_name,
+                fields=datatype_changes,
+                batch_size=batch_size,
+            )
+
+        total = len(keys)
+        resume_batch_size = backup.header.batch_size
+        field_names = list(datatype_changes.keys())
+
+        # Phase 1: Dump originals (skip if already complete)
+        if backup.header.phase == "dump":
+            start_batch = backup.header.dump_completed_batches
+            for batch_start in range(
+                start_batch * resume_batch_size,
+                total,
+                resume_batch_size,
+            ):
+                batch_keys = keys[batch_start : batch_start + resume_batch_size]
+                pipe = client.pipeline(transaction=False)
+                call_order: List[tuple] = []
+                for key in batch_keys:
+                    for field_name in field_names:
+                        pipe.hget(key, field_name)
+                        call_order.append((key, field_name))
+                results = await pipe.execute()
+
+                originals: Dict[str, Dict[str, bytes]] = {}
+                for (key, field_name), value in zip(call_order, results):
+                    if value is not None:
+                        if key not in originals:
+                            originals[key] = {}
+                        originals[key][field_name] = value
+
+                backup.write_batch(
+                    batch_start // resume_batch_size, batch_keys, originals
+                )
+                if progress_callback:
+                    progress_callback(
+                        "dump",
+                        worker_id,
+                        min(batch_start + resume_batch_size, total),
+                    )
+            backup.mark_dump_complete()
+
+        # Phase 2: Convert + write from backup (skip completed batches)
+        if backup.header.phase in ("ready", "index_dropped", "active"):
+            backup.start_quantize()
+            docs_quantized = 0
+
+            for batch_idx, (batch_keys, batch_originals) in enumerate(
+                backup.iter_batches()
+            ):
+                if batch_idx < backup.header.quantize_completed_batches:
+                    docs_quantized += len(batch_keys)
+                    continue
+                converted = convert_vectors(batch_originals, datatype_changes)
+                if converted:
+                    pipe = client.pipeline(transaction=False)
+                    for key, fields in converted.items():
+                        pipe.hset(key, mapping=fields)  # type: ignore[arg-type]
+                    await pipe.execute()
+                backup.mark_batch_quantized(batch_idx)
+                docs_quantized += len(batch_keys)
+                if progress_callback:
+                    progress_callback("quantize", worker_id, docs_quantized)
+
+            backup.mark_complete()
+        elif backup.header.phase in ("completed", "target_created", "validated"):
+            docs_quantized = total
+
+        return {
+            "worker_id": worker_id,
+            "docs": docs_quantized,
+            "backup_path": backup_path,
+        }
+    finally:
+        await client.aclose()
+
+
+async def async_multi_worker_quantize(
+    redis_url: str,
+    keys: List[str],
+    datatype_changes: Dict[str, Dict[str, Any]],
+    backup_dir: str,
+    index_name: str,
+    num_workers: int = 1,
+    batch_size: int = 500,
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    worker_backup_paths: Optional[List[str]] = None,
+) -> MultiWorkerResult:
+    """Orchestrate async multi-worker quantization via asyncio.gather.
+
+    Each worker gets its own async Redis connection and backup file shard.
+    """
+    import asyncio
+
+    slices = split_keys(keys, num_workers)
+    actual_workers = len(slices)
+
+    if actual_workers == 0:
+        return MultiWorkerResult(
+            total_docs_quantized=0, num_workers=0, worker_results=[]
+        )
+
+    if worker_backup_paths is None:
+        worker_backup_paths = build_worker_backup_paths(
+            backup_dir, index_name, actual_workers
+        )
+    elif len(worker_backup_paths) != actual_workers:
+        raise ValueError(
+            "worker_backup_paths length must match the actual worker shard count "
+            f"({len(worker_backup_paths)} != {actual_workers})"
+        )
+
+    coroutines = [
+        _async_worker_quantize(
+            worker_id=i,
+            redis_url=redis_url,
+            keys=slices[i],
+            datatype_changes=datatype_changes,
+            backup_path=worker_backup_paths[i],
+            index_name=index_name,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+        )
+        for i in range(actual_workers)
+    ]
+
+    results = await asyncio.gather(*coroutines)
+    worker_results = list(results)
+    total_docs = sum(r["docs"] for r in worker_results)
+
+    return MultiWorkerResult(
+        total_docs_quantized=total_docs,
+        num_workers=actual_workers,
+        worker_results=worker_results,
+        backup_paths=worker_backup_paths,
+    )
