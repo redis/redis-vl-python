@@ -468,16 +468,16 @@ Manage document-preserving index migrations. This command group provides subcomm
      - Description
    * - ``helper``
      - Show migration guidance and supported capabilities
-   * - ``list``
-     - List all available indexes
-   * - ``plan``
-     - Generate a migration plan from a schema patch or target schema
    * - ``wizard``
      - Interactively build a migration plan and schema patch
+   * - ``plan``
+     - Generate a migration plan from a schema patch or target schema
    * - ``apply``
      - Execute a reviewed drop/recreate migration plan
    * - ``estimate``
      - Estimate disk space required for a migration (dry-run)
+   * - ``rollback``
+     - Restore original vectors from a backup directory
    * - ``validate``
      - Validate a completed migration against the live index
    * - ``batch-plan``
@@ -537,11 +537,20 @@ rvl migrate apply
 
 Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migrations involving vector quantization.
 
+.. warning::
+
+   Hash vector quantization is unsupported when the same Redis keys are also
+   indexed by another live RediSearch index that expects the old vector
+   datatype. Quantization rewrites vector bytes in the document key itself, so
+   other indexes covering the same key may drop the document or fail to index
+   it. Use an application-level migration with new keys or fields when
+   documents are shared across indexes.
+
 **Syntax**
 
 .. code-block:: bash
 
-    rvl migrate apply --plan <migration_plan.yaml> [OPTIONS]
+    rvl migrate apply --plan <migration_plan.yaml> --backup-dir <dir> [OPTIONS]
 
 **Required Options**
 
@@ -553,6 +562,8 @@ Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migra
      - Description
    * - ``--plan``
      - Path to the migration plan YAML file
+   * - ``--backup-dir``
+     - Required migration backup directory. Vector backup files are written when hash vector bytes are mutated; index-only and JSON migrations validate and record the directory without writing vector backup files.
 
 **Optional Options**
 
@@ -564,14 +575,10 @@ Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migra
      - Description
    * - ``--async``
      - Run migration asynchronously (recommended for large quantization jobs)
-   * - ``--backup-dir``
-     - Directory for vector backup files. Enables crash-safe resume and rollback.
    * - ``--batch-size``
      - Keys per pipeline batch (default 500)
    * - ``--workers``
-     - Number of parallel workers for quantization (default 1). Requires ``--backup-dir``.
-   * - ``--keep-backup``
-     - Keep backup files after successful migration (default: auto-delete)
+     - Number of parallel workers for quantization (default 1).
    * - ``--query-check-file``
      - Path to a YAML file with post-migration query checks
 
@@ -579,7 +586,7 @@ Execute a reviewed drop/recreate migration plan. Use ``--async`` for large migra
 
 .. code-block:: bash
 
-    rvl migrate apply --plan plan.yaml
+    rvl migrate apply --plan plan.yaml --backup-dir /tmp/backups
     rvl migrate apply --plan plan.yaml --async --backup-dir /tmp/backups --workers 4
 
 rvl migrate wizard
@@ -598,6 +605,99 @@ Interactively build a schema patch and migration plan through a guided wizard.
 .. code-block:: bash
 
     rvl migrate wizard -i my_index --plan-out plan.yaml
+
+rvl migrate rollback
+^^^^^^^^^^^^^^^^^^^^
+
+Restore original vector bytes from a retained backup directory. Rollback restores data only; recreate the original index schema separately if the index definition was changed.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate rollback --backup-dir <dir> [--index <name>] [OPTIONS]
+
+**Required Options**
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--backup-dir``
+     - Directory containing vector backup files from a prior migration
+
+**Example**
+
+.. code-block:: bash
+
+    rvl migrate rollback --backup-dir /tmp/backups --index my_index
+
+rvl migrate batch-plan
+^^^^^^^^^^^^^^^^^^^^^^
+
+Generate a batch plan that applies one shared schema patch to multiple indexes.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate batch-plan --schema-patch <patch.yaml> (--pattern <glob> | --indexes <name1,name2> | --indexes-file <file>) [OPTIONS]
+
+rvl migrate batch-apply
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Execute a batch migration plan and write checkpoint state for resume.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate batch-apply --plan <batch_plan.yaml> --backup-dir <dir> [OPTIONS]
+
+**Required Options**
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``--plan``
+     - Path to the batch plan YAML file
+   * - ``--backup-dir``
+     - Required per-index migration backup directory. Stored in checkpoint state and used for vector backup files when hash vector bytes are mutated.
+
+**Example**
+
+.. code-block:: bash
+
+    rvl migrate batch-apply --plan batch_plan.yaml --backup-dir /tmp/backups
+
+rvl migrate batch-resume
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Resume an interrupted batch migration from its checkpoint state.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate batch-resume --state <batch_state.yaml> [--plan <batch_plan.yaml>] [--retry-failed] [--backup-dir <dir>]
+
+If ``--backup-dir`` is omitted, resume uses the backup directory stored in ``batch_state.yaml``. Passing a different backup directory for the same checkpoint is rejected.
+
+rvl migrate batch-status
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Show status for an in-progress or completed batch migration.
+
+**Syntax**
+
+.. code-block:: bash
+
+    rvl migrate batch-status --state <batch_state.yaml>
 
 Exit Codes
 ==========
@@ -621,4 +721,3 @@ Related Resources
 - :doc:`/user_guide/cli` for a tutorial-style walkthrough
 - :doc:`schema` for YAML schema format details
 - :doc:`searchindex` for the Python ``SearchIndex`` API
-

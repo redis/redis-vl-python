@@ -36,6 +36,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 
 - [Choose a Storage Type](../05_hash_vs_json.ipynb): Hash vs JSON formats and nested data
 - [Migrate an Index](migrate-indexes.md): use the migrator helper, wizard, plan, apply, and validate workflow
+- [Migrate an Index: Quantization, Resume, Backup, Wizard](../14_index_migration.ipynb): hands-on notebook for vector quantization with crash-safe resume, rollback, and wizard flow
 :::
 
 :::{grid-item-card} 💻 CLI Operations
@@ -65,6 +66,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
 | Expose an index through MCP | [Run RedisVL MCP](mcp.md) |
 | Plan and run a supported index migration | [Migrate an Index](migrate-indexes.md) |
+| Quantize vectors with resume, rollback, and the wizard | [Migrate an Index: Quantization, Resume, Backup, Wizard](../14_index_migration.ipynb) |
 
 ```{toctree}
 :hidden:
@@ -83,4 +85,5 @@ Use Advanced Query Types <../11_advanced_queries>
 Write SQL Queries for Redis <../12_sql_to_redis_queries>
 Run RedisVL MCP <mcp>
 Migrate an Index <migrate-indexes>
+Migrate an Index: Quantization, Resume, Backup, Wizard <../14_index_migration>
 ```

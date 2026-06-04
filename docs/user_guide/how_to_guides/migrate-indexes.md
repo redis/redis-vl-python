@@ -25,7 +25,7 @@ rvl index listall --url redis://localhost:6379
 rvl migrate wizard --index myindex --url redis://localhost:6379
 
 # 3. Apply the migration
-rvl migrate apply --plan migration_plan.yaml --url redis://localhost:6379
+rvl migrate apply --plan migration_plan.yaml --backup-dir ./migration_backups --url redis://localhost:6379
 
 # 4. Verify the result
 rvl migrate validate --plan migration_plan.yaml --url redis://localhost:6379
@@ -103,13 +103,30 @@ The executor reads the plan and runs the migration steps:
 
 1. Enumerate keys (SCAN with source prefix)
 2. Field renames (pipelined HGET/HSET/HDEL)
-3. Dump original vectors to backup file (if quantizing and backup-dir provided)
+3. Prepare vector backups, if hash vector bytes will be quantized
 4. Drop index (FT.DROPINDEX, documents are preserved)
 5. Key prefix renames (RENAME or DUMP/RESTORE for cluster)
 6. Quantize vectors from backup (pipelined read/convert/write)
 7. Create index (FT.CREATE with merged target schema)
 8. Wait for re-indexing to complete
 9. Validate (doc count, schema match, key sample)
+
+`--backup-dir` / `backup_dir` is required before any apply starts. For
+quantization, the directory stores original vector bytes for resume and
+rollback. For index-only migrations, the directory is still validated and
+recorded in the report, but no vector backup files are written.
+
+```{warning}
+Hash vector quantization is supported only when the Redis keys being
+quantized are not also indexed by another live RediSearch index that
+expects the old vector datatype. Quantization rewrites vector bytes in
+the document itself; any other index that covers the same key sees those
+new bytes and may silently drop the document or fail to index it. If the
+same documents are intentionally shared across multiple indexes, do not
+use the migrator for that quantization change. Use an application-level
+migration that creates new keys or fields and coordinates every affected
+index schema.
+```
 
 ### Batch Flow: wizard/plan then batch-plan then batch-apply
 
@@ -186,10 +203,13 @@ Current schema:
 
 Choose an action:
 1. Add field        (text, tag, numeric, geo)
-2. Update field     (sortable, weight, separator)
+2. Update field     (sortable, weight, separator, vector config)
 3. Remove field
-4. Preview patch    (show pending changes as YAML)
-5. Finish
+4. Rename field     (rename field in all documents)
+5. Rename index     (change index name)
+6. Change prefix    (rename all keys)
+7. Preview patch    (show pending changes as YAML)
+8. Finish
 Enter a number: 1
 
 Field name: category
@@ -202,11 +222,14 @@ Separator [leave blank to keep existing/default]: |
 
 Choose an action:
 1. Add field        (text, tag, numeric, geo)
-2. Update field     (sortable, weight, separator)
+2. Update field     (sortable, weight, separator, vector config)
 3. Remove field
-4. Preview patch    (show pending changes as YAML)
-5. Finish
-Enter a number: 5
+4. Rename field     (rename field in all documents)
+5. Rename index     (change index name)
+6. Change prefix    (rename all keys)
+7. Preview patch    (show pending changes as YAML)
+8. Finish
+Enter a number: 8
 
 Migration plan written to /path/to/migration_plan.yaml
 Mode: drop_recreate
@@ -220,10 +243,13 @@ Warnings:
 ```text
 Choose an action:
 1. Add field        (text, tag, numeric, geo)
-2. Update field     (sortable, weight, separator)
+2. Update field     (sortable, weight, separator, vector config)
 3. Remove field
-4. Preview patch    (show pending changes as YAML)
-5. Finish
+4. Rename field     (rename field in all documents)
+5. Rename index     (change index name)
+6. Change prefix    (rename all keys)
+7. Preview patch    (show pending changes as YAML)
+8. Finish
 Enter a number: 2
 
 Updatable fields:
@@ -254,8 +280,8 @@ EF_CONSTRUCTION [current: 200]:
 
 Choose an action:
 ...
-5. Finish
-Enter a number: 5
+8. Finish
+Enter a number: 8
 
 Migration plan written to /path/to/migration_plan.yaml
 Mode: drop_recreate
@@ -407,12 +433,12 @@ warnings:
 
 | Interruption Point | Documents | Index | Recovery |
 |--------------------|-----------|-------|----------|
-| After drop, before quantize | Unchanged | **None** | Re-run apply (or pass `--backup-dir` to resume from backup) |
+| After drop, before quantize | Unchanged | **None** | Re-run apply with the same `--backup-dir` |
 | During quantization | Partially quantized | **None** | Re-run with same `--backup-dir` to resume from last batch |
 | After quantization, before create | Quantized | **None** | Re-run apply (will recreate index) |
 | After create | Correct | Rebuilding | Wait for index ready |
 
-The underlying documents are **never deleted** by `drop_recreate` mode. For large quantization jobs, use `--backup-dir` to enable crash-safe recovery. See [Crash-safe resume for quantization](#crash-safe-resume-for-quantization) below.
+The underlying documents are **never deleted** by `drop_recreate` mode. `--backup-dir` is required for apply and enables crash-safe recovery for vector quantization. See [Crash-safe resume for quantization](#crash-safe-resume-for-quantization) below.
 
 ## Step 4: Apply the Migration
 
@@ -422,6 +448,7 @@ The `apply` command executes the migration. The index will be temporarily unavai
 rvl migrate apply \
   --plan migration_plan.yaml \
   --url redis://localhost:6379 \
+  --backup-dir ./migration_backups \
   --report-out migration_report.yaml \
   --benchmark-out benchmark_report.yaml
 ```
@@ -436,29 +463,41 @@ The migration executor follows this sequence:
 - Falls back to `SCAN` if the index has indexing failures
 - Keys are stored in memory for quantization or rename operations
 
-**STEP 2: Drop source index**
+**STEP 2: Field renames** (if renaming fields)
+- Renames document fields before the source index is dropped
+- Uses pipelined `HGET`/`HSET`/`HDEL` for Hash storage or JSON path updates for JSON storage
+- Skipped if the plan has no field rename operations
+
+**STEP 3: Back up original vectors** (if hash vector bytes will be quantized)
+- Single-worker hash quantization writes original vector bytes to `<backup-dir>` before the index is dropped
+- Multi-worker hash quantization writes per-worker backup shards during the quantization phase after the drop
+- JSON datatype changes and index-only migrations validate and record `--backup-dir` but do not write vector backup files
+
+**STEP 4: Drop source index**
 - Issues `FT.DROPINDEX` to remove the index structure
 - **The underlying documents remain in Redis** - only the index metadata is deleted
-- After this point, the index is unavailable until step 6 completes
+- After this point, the index is unavailable until the target index is recreated and ready
 
-**STEP 3: Quantize vectors** (if changing vector datatype)
+**STEP 5: Key renames** (if changing key prefix)
+- If the migration changes the key prefix, renames each key from old prefix to new prefix
+- Skipped if no prefix change
+
+**STEP 6: Quantize vectors** (if changing hash vector datatype)
 - For each document in the enumerated key list:
   - Reads the document (including the old vector)
   - Converts the vector to the new datatype (e.g., float32 → float16)
   - Writes back the converted vector to the same document
 - Processes documents in batches of 500 using Redis pipelines
 - Skipped for JSON storage (vectors are re-indexed automatically on recreate)
-- **Backup support**: For large datasets, use `--backup-dir` to enable crash-safe recovery and rollback
+- **Backup support**: `--backup-dir` is required and enables crash-safe recovery and rollback for vector quantization
+- **Shared-key limitation**: unsupported if the same Redis keys are also
+  indexed by another live index that expects the old vector datatype
 
-**STEP 4: Key renames** (if changing key prefix)
-- If the migration changes the key prefix, renames each key from old prefix to new prefix
-- Skipped if no prefix change
-
-**STEP 5: Create target index**
+**STEP 7: Create target index**
 - Issues `FT.CREATE` with the merged target schema
 - Redis begins background indexing of existing documents
 
-**STEP 6: Wait for re-indexing**
+**STEP 8: Wait for re-indexing**
 - Polls `FT.INFO` until indexing completes
 - The index becomes available for queries when this completes
 
@@ -472,6 +511,7 @@ For large migrations (especially those involving vector quantization), use the `
 rvl migrate apply \
   --plan migration_plan.yaml \
   --async \
+  --backup-dir ./migration_backups \
   --url redis://localhost:6379
 ```
 
@@ -503,7 +543,7 @@ When migrating large datasets with vector quantization (e.g. float32 to float16)
 
 #### How it works
 
-When you pass `--backup-dir`, the migrator saves original vector bytes to disk before mutating them. Two files are created:
+For hash vector datatype changes, the migrator saves original vector bytes to disk before mutating them. Single-worker migrations create two files:
 
 ```
 <backup-dir>/
@@ -511,16 +551,23 @@ When you pass `--backup-dir`, the migrator saves original vector bytes to disk b
   migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
 ```
 
+Multi-worker migrations also create a `.manifest` file at the canonical
+backup path. The manifest records worker shard paths and key slices so a
+retry can resume even if the source index was already dropped.
+
 The **header file** is a small JSON file that tracks progress through a state machine:
 
 ```
-dump → ready → active → completed
+dump → ready → index_dropped → active → completed → target_created → validated
 ```
 
 - **dump**: original vectors are being read from Redis and written to the data file, one batch at a time
-- **ready**: all original vectors have been backed up; safe to proceed with quantization
+- **ready**: all original vectors have been backed up; the source index may still be live
+- **index_dropped**: the source index definition has been dropped, but vectors have not all been rewritten
 - **active**: quantization is in progress; the header tracks which batches have been written back to Redis
-- **completed**: all batches have been quantized and the migration finished successfully
+- **completed**: all batches have been quantized; target index creation may still be pending
+- **target_created**: the target index was recreated and Redis is re-indexing or ready for validation
+- **validated**: post-migration validation passed
 
 The header is atomically updated (temp file + rename) after every batch, so a crash never corrupts it.
 
@@ -568,7 +615,7 @@ rvl migrate apply \
   --report-out migration_report.yaml
 ```
 
-The `--backup-dir` flag takes a directory path. If no backup exists there, a new one is created. If one already exists (from a previous interrupted run), the migrator resumes from where it left off.
+The `--backup-dir` flag takes a directory path. If no backup exists there, a new one is created. If one already exists (from a previous interrupted run), the migrator resumes from where it left off. A `completed` backup is treated as a no-op resume only when the live index already matches the target schema; after rollback, the live index matches the source schema, so the old completed backup is treated as stale and a fresh backup is written.
 
 **3. If the process crashes or is interrupted:**
 
@@ -611,7 +658,12 @@ The backup phase is set to `completed`. Backup files are **always retained** on 
 #### Limitations
 
 - **Same-width conversions** (float16 to bfloat16, or int8 to uint8) are **not supported** for resume. These conversions cannot be detected by byte-width inspection, so idempotent skip is impossible.
-- **JSON storage** does not need vector re-encoding (Redis re-indexes JSON vectors on `FT.CREATE`). The backup is still created for consistency but no batched writes occur.
+- **Shared keys across indexes** are **not supported** for hash vector
+  quantization. The migrator mutates vector bytes in the Redis document
+  key; if another index also covers that key and still expects the old
+  datatype, the document may be dropped from that index or fail to
+  re-index.
+- **JSON storage** does not need vector re-encoding (Redis re-indexes JSON vectors on `FT.CREATE`). The backup directory is still required, validated, and recorded, but no vector backup files are written.
 - The backup must match the migration plan. If you change the plan, delete the old backup directory and start fresh.
 
 ## Step 5: Validate the Result
@@ -645,7 +697,7 @@ rvl migrate validate \
 | Change vector algorithm (FLAT ↔ HNSW ↔ SVS-VAMANA) | ✅ | Index-only |
 | Change distance metric (COSINE ↔ L2 ↔ IP) | ✅ | Index-only |
 | Tune HNSW parameters (M, EF_CONSTRUCTION) | ✅ | Index-only |
-| Quantize vectors (float32 → float16/bfloat16/int8/uint8) | ✅ | Auto re-encode |
+| Quantize vectors (float32 → float16/bfloat16/int8/uint8) | ✅ | Auto re-encode; unsupported when the same Redis keys are indexed by another live index expecting the old datatype |
 
 ## What's Blocked
 
@@ -685,7 +737,7 @@ rvl migrate validate \
 - `--benchmark-out` : Path for performance metrics
 
 **Apply flags (quantization & reliability):**
-- `--backup-dir <dir>` : Directory for vector backup files. Enables crash-safe resume and manual rollback. Required when using `--workers` > 1.
+- `--backup-dir <dir>` : Required migration backup directory. Hash vector datatype changes write vector backup files there for resume and rollback; index-only and JSON migrations validate and record the directory without writing vector backup files.
 - `--batch-size <N>` : Keys per pipeline batch (default 500). Values 200 to 1000 are typical.
 - `--workers <N>` : Parallel quantization workers (default 1). Each worker opens its own Redis connection. See [Performance](#performance-tuning) for guidance.
 
@@ -716,6 +768,18 @@ The index is taking longer to rebuild than expected. This can happen with large 
 ### Validation failed: "document count mismatch"
 
 Documents were added or removed between plan and apply. This is expected if your application is actively writing. Re-run `plan` and `apply` during a quieter period when the document count is stable, or verify the mismatch is due only to normal application traffic.
+
+### Quantized documents disappeared from another index
+
+This topology is unsupported. Hash vector quantization rewrites vector
+bytes in the Redis document key. If another live RediSearch index also
+covers that key and still expects the old vector datatype, Redis may drop
+that document from the other index or report indexing failures for it.
+
+Recover by rolling back the vector bytes from the migration backup, then
+recreate any affected index schemas. To perform the change safely, use an
+application-level migration that writes new physical keys or new vector
+fields and coordinates all affected indexes before switching traffic.
 
 ### batch-plan failed: "overlapping indexes detected"
 
@@ -760,9 +824,14 @@ The underlying documents are never deleted by `drop_recreate`.
 
 ### How Backups Work
 
-When you pass `--backup-dir` (or `backup_dir` in the Python API), the
-migration executor saves **original vector bytes** to disk before mutating
-them. This enables two key capabilities:
+`--backup-dir` / `backup_dir` is required for all migrations. If it is omitted
+or empty, the executor raises `ValueError` before any migration starts.
+Migration reports include the resolved backup directory and backup file
+prefixes. Batch checkpoint state also stores the backup directory used by the
+run, and resume refuses a different directory for the same checkpoint.
+
+For hash vector datatype changes, the migration executor saves **original
+vector bytes** to disk before mutating them. This enables two key capabilities:
 
 1. **Crash-safe resume**: if the process dies mid-migration, re-running the
    same command with the same `--backup-dir` automatically detects partial
@@ -770,12 +839,17 @@ them. This enables two key capabilities:
 2. **Manual rollback**: the backup files contain the original (pre-quantization)
    vector values, which can be restored to undo a migration.
 
+For index-only migrations and JSON datatype changes, the directory is still
+validated and recorded, but no `.header` or `.data` vector backup files are
+written.
+
 Backup files are written to the specified directory with this layout:
 
 ```
 <backup-dir>/
   migration_backup_<index_name>.header   # JSON: phase, progress counters, field metadata
   migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
+  migration_backup_<index_name>.manifest # JSON: multi-worker shard resume metadata, when workers > 1
 ```
 
 **Disk usage:** approximately `num_docs × dims × bytes_per_element`.
@@ -803,7 +877,9 @@ rvl migrate apply --plan plan.yaml --url redis://localhost:6379 \
 
 The executor detects the existing backup header, reads how many batches were
 completed, and resumes from the next unfinished batch. No data is duplicated
-or lost.
+or lost. If a retained completed backup is found after rollback, the executor
+does not skip the migration unless the live index already matches the target
+schema; it treats the completed backup as stale and starts a fresh backup.
 
 ```{note}
 **Single-worker vs multi-worker resume:** In single-worker mode, the full
@@ -879,7 +955,11 @@ plan = planner.create_plan(
 )
 
 executor = MigrationExecutor()
-report = executor.apply(plan, redis_url="redis://localhost:6379")
+report = executor.apply(
+    plan,
+    redis_url="redis://localhost:6379",
+    backup_dir="/tmp/migration_backups",
+)
 print(f"Migration result: {report.result}")
 ```
 
@@ -953,6 +1033,7 @@ rvl migrate batch-plan \
 # 3. Apply the batch plan
 rvl migrate batch-apply \
   --plan batch_plan.yaml \
+  --backup-dir ./migration_backups \
   --accept-data-loss \
   --url redis://localhost:6379
 
@@ -1045,6 +1126,7 @@ message.
 # Apply with fail-fast (default: stop on first error)
 rvl migrate batch-apply \
   --plan batch_plan.yaml \
+  --backup-dir ./migration_backups \
   --accept-data-loss \
   --url redis://localhost:6379
 
@@ -1059,12 +1141,14 @@ rvl migrate batch-plan \
 
 rvl migrate batch-apply \
   --plan batch_plan.yaml \
+  --backup-dir ./migration_backups \
   --accept-data-loss \
   --url redis://localhost:6379
 ```
 
 **Flags for batch-apply:**
 - `--accept-data-loss` : Required when quantizing vectors (float32 → float16 is lossy)
+- `--backup-dir` : Required directory for per-index backup metadata and vector backup files when hash vector bytes are mutated
 - `--state` : Path to batch state file (default: `batch_state.yaml`)
 - `--report-dir` : Directory for per-index reports (default: `./reports/`)
 
@@ -1088,6 +1172,10 @@ rvl migrate batch-resume \
   --accept-data-loss \
   --url redis://localhost:6379
 ```
+
+`batch-resume` uses the `backup_dir` stored in `batch_state.yaml` unless you
+pass `--backup-dir` explicitly. If you pass a different directory for the same
+checkpoint, resume is rejected.
 
 **Note:** If the batch plan involves quantization (e.g., `float32` → `float16`), you must pass `--accept-data-loss` to `batch-resume`, just as with `batch-apply`. Omit `--accept-data-loss` if the batch plan does not involve quantization.
 
@@ -1167,6 +1255,7 @@ report = executor.apply(
     redis_url="redis://localhost:6379",
     state_path="batch_state.yaml",
     report_dir="./reports/",
+    backup_dir="/tmp/migration_backups",
     progress_callback=lambda name, pos, total, status: print(f"[{pos}/{total}] {name}: {status}"),
 )
 
@@ -1196,8 +1285,8 @@ pipeline round-trip. The default of 500 is a good balance. Larger batches
 
 ### Backup Disk Space
 
-When `--backup-dir` is provided, original vectors are saved to disk before
-mutation. Approximate size: `num_docs × dims × bytes_per_element`.
+For quantization migrations, original vectors are saved to `--backup-dir`
+before mutation. Approximate size: `num_docs × dims × bytes_per_element`.
 
 | Docs   | Dims | Source dtype | Backup size |
 |--------|------|-------------|-------------|

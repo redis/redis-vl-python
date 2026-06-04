@@ -322,6 +322,7 @@ rvl migrate wizard --index my_index --url redis://localhost:6379
 ```
 
 The migrator automatically re-encodes stored vectors to the new precision. See {doc}`/user_guide/how_to_guides/migrate-indexes` for details.
+When you apply the resulting migration plan, pass `--backup-dir`; the backup directory is required before any migration starts and stores original vector bytes for resume and rollback.
 
 ## Redis-Specific Subtleties
 
@@ -465,4 +466,3 @@ fields:
 ```
 
 **Learn more:** {doc}`/api/schema` provides the complete API reference for all field types and attributes.
-

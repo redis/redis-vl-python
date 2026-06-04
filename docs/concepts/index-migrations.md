@@ -118,18 +118,29 @@ that allowed quantizing without a backup have been removed.
 ### Where backups are written
 
 Pass `--backup-dir <dir>` (CLI) or `backup_dir="<dir>"` (Python API) to
-choose the location. If you do not supply one, the migrator auto-defaults
-to `./migration_backups` and logs the chosen path. Passing an empty
-string is treated as an explicit refusal of a backup and raises a
-`ValueError` before any data is touched.
+choose the location. If you do not supply one, or if you pass an empty
+string, the migrator raises a `ValueError` before any data is touched.
+This argument is required for every migration apply. Quantization
+migrations write `.header` and `.data` backup files there; multi-worker
+quantization also writes a `.manifest` file that lets the executor resume
+from worker shards after the source index has been dropped. Index-only
+migrations record the resolved directory in the report but do not write
+vector backup files.
 
-Each migrated index produces two files:
+Each hash index that mutates vector bytes produces backup files like:
 
 ```
 <backup-dir>/
   migration_backup_<index_name>.header   # JSON: phase, progress counters, field metadata
   migration_backup_<index_name>.data     # Binary: length-prefixed batches of original vectors
+  migration_backup_<index_name>.manifest # JSON: multi-worker shard resume metadata, when workers > 1
 ```
+
+The migration report records the resolved `backup_dir` and any backup file
+prefixes used for the run. For index-only migrations and JSON datatype
+changes, the directory is still validated and recorded, but no vector backup
+files are written. Batch checkpoint state also records `backup_dir` so
+`batch-resume` can verify it is using the same recovery location.
 
 Disk usage is roughly `num_docs × dims × bytes_per_element`. For 1M
 documents with 768-dimensional float32 vectors that is approximately
@@ -141,7 +152,11 @@ documents with 768-dimensional float32 vectors that is approximately
    killed, network drop, OOM), re-running the same command with the same
    `--backup-dir` reads the header file, detects partial progress, and
    resumes from the last completed batch instead of re-quantizing the
-   keys that already converted successfully.
+   keys that already converted successfully. If the header is already
+   `completed`, the executor only treats it as a no-op resume when the live
+   index already matches the target schema. If the live index has been
+   rolled back to the source schema, the completed backup is stale for the
+   new run and the executor creates a fresh backup.
 2. **Manual rollback.** The data file contains the original
    pre-quantization vector bytes. After a migration, you can use the
    rollback CLI (`rvl migrate rollback`) or the Python API to restore
@@ -154,22 +169,40 @@ Cleanup is now a deliberate operator action, performed only after the
 new vectors have been verified and rollback is no longer needed. Delete
 the backup directory manually when you are done.
 
-## Overlapping indexes
+## Shared keys and overlapping indexes
 
-Two RediSearch indexes whose key prefixes overlap (one prefix is a
-literal string-prefix of the other, matching `FT.CREATE PREFIX`
-semantics) cover the same Redis keyspace. Running a batch quantization
-migration over them re-reads vectors that an earlier index in the batch
-has already quantized, producing garbage bytes. To prevent this,
-`batch-plan` performs an overlap check across every applicable index and
-**refuses to write a plan** if any pair conflicts. The error names the
-conflicting indexes and the specific prefix pairs that overlap.
+Hash vector quantization rewrites the vector bytes stored in the Redis
+document key. It is supported only when the documents being quantized are
+not also indexed by another live RediSearch index that still expects the
+old vector datatype.
 
-The check is plan-time only — no data is mutated when a batch is
-refused. Resolve by splitting the indexes into prefix-disjoint groups
-and creating one batch plan per group. Indexes that are skipped for
-other reasons (e.g. `applicable: false` because a field is missing) do
-not participate in the check.
+If the same Redis key is covered by multiple indexes, quantizing it for
+one index mutates the bytes seen by all other indexes. Those other
+indexes are not migrated at the same time, so the document can disappear
+from those indexes or fail to re-index because the stored vector bytes no
+longer match their schemas. The migrator does not support this topology
+for hash vector datatype changes.
+
+Before applying a quantization migration, verify that the migrating
+index's keyspace is exclusive for the vector field being changed. If
+documents must be searchable through multiple indexes, use a coordinated
+application-level migration instead: create new physical keys or new
+vector fields, migrate every affected index schema together, and then
+switch traffic after validation.
+
+For batch migrations, `batch-plan` performs a conservative prefix overlap
+check across every applicable index. Two indexes whose key prefixes
+overlap (one prefix is a literal string-prefix of the other, matching
+`FT.CREATE PREFIX` semantics) are refused because a batch quantization
+migration could re-read vectors that an earlier index in the batch has
+already quantized. The error names the conflicting indexes and the
+specific prefix pairs that overlap.
+
+The batch overlap check is plan-time only — no data is mutated when a
+batch is refused. Resolve by splitting the indexes into prefix-disjoint
+groups and creating one batch plan per group. Indexes that are skipped
+for other reasons (e.g. `applicable: false` because a field is missing)
+do not participate in the check.
 
 ## Why some changes are blocked
 
@@ -271,7 +304,11 @@ async def migrate():
     plan = await planner.create_plan("myindex", redis_url="redis://localhost:6379")
 
     executor = AsyncMigrationExecutor()
-    report = await executor.apply(plan, redis_url="redis://localhost:6379")
+    report = await executor.apply(
+        plan,
+        redis_url="redis://localhost:6379",
+        backup_dir="/tmp/migration_backups",
+    )
 
 asyncio.run(migrate())
 ```
