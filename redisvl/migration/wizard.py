@@ -851,7 +851,7 @@ class MigrationWizard:
                         print(
                             f"    Recommended: {recommended} (dims/2 for balanced performance)"
                         )
-                    reduce_input = input(f"REDUCE [leave blank to skip]: ").strip()
+                    reduce_input = input("REDUCE [leave blank to skip]: ").strip()
                     if reduce_input and reduce_input.isdigit():
                         reduce_val = int(reduce_input)
                         if reduce_val > 0 and reduce_val < dims:

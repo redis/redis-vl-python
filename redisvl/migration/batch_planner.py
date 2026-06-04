@@ -313,7 +313,7 @@ class BatchMigrationPlanner:
             OSError,
             TimeoutError,
             redis.exceptions.ConnectionError,
-        ) as e:
+        ):
             # Infrastructure failures should propagate, not be silently
             # treated as "not applicable".
             raise
