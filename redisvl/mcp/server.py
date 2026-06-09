@@ -8,6 +8,7 @@ from redis import __version__ as redis_py_version
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
+from redisvl.mcp.auth import build_auth_provider, resolve_auth_config
 from redisvl.mcp.config import MCPConfig, load_mcp_config
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.search import register_search_tool
@@ -70,7 +71,15 @@ class RedisVLMCPServer(FastMCP):
         self._active_requests_drained.set()
         self._fastmcp_lifespan = self._server_lifespan  # FastMCP startup/shutdown hook
 
-        super().__init__("redisvl", lifespan=self._fastmcp_lifespan)
+        # Auth is resolved at construction time (FastMCP needs the provider in
+        # its constructor), reading env vars and peeking the YAML server.auth
+        # block without running full startup. Applies only to HTTP transports.
+        auth_config = resolve_auth_config(settings, settings.config)
+        auth_provider = build_auth_provider(auth_config)
+        self.auth_config = auth_config
+        self._auth_enabled = auth_provider is not None
+
+        super().__init__("redisvl", lifespan=self._fastmcp_lifespan, auth=auth_provider)
 
     async def startup(self) -> None:
         """Load config, inspect the configured index, and initialize dependencies."""
