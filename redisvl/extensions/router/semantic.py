@@ -530,6 +530,33 @@ class SemanticRouter(BaseModel):
 
         return top_route_matches
 
+    def add_route(self, route: Route) -> str:
+        """Add a new route to the SemanticRouter.
+
+        Embeds the route's references, writes them to the Redis index,
+        appends the route to ``self.routes``, and persists the updated router
+        config so the route survives :meth:`SemanticRouter.from_existing`.
+
+        Args:
+            route (Route): A fully-formed Route (name, references,
+                distance_threshold, optional metadata).
+
+        Returns:
+            str: The added route's name.
+
+        Raises:
+            ValueError: If a route with this name already exists on the router.
+                Use :meth:`add_route_references` to extend an existing route.
+        """
+        if self.get(route.name) is not None:
+            raise ValueError(
+                f"Route {route.name!r} already exists on router {self.name!r}; "
+                f"use add_route_references() to add references to it"
+            )
+        self._add_routes([route])
+        self._update_router_state()
+        return route.name
+
     def remove_route(self, route_name: str) -> None:
         """Remove a route and all references from the semantic router.
 
@@ -547,6 +574,7 @@ class SemanticRouter(BaseModel):
                 ]
             )
             self.routes = [route for route in self.routes if route.name != route_name]
+            self._update_router_state()
 
     def delete(self) -> None:
         """Delete the semantic router index."""

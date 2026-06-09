@@ -170,12 +170,127 @@ def test_add_route(semantic_router):
         assert match.name == "politics"
 
 
+def test_add_route_public(semantic_router):
+    new_route = Route(
+        name="politics",
+        references=[
+            "are you liberal or conservative?",
+            "who will you vote for?",
+            "political speech",
+        ],
+        metadata={"type": "politics"},
+        distance_threshold=0.3,
+    )
+    added_name = semantic_router.add_route(new_route)
+    assert added_name == "politics"
+
+    route = semantic_router.get("politics")
+    assert route is not None
+    assert route.name == "politics"
+    assert "political speech" in route.references
+
+    redis_version = semantic_router._index.client.info()["redis_version"]
+    if is_version_gte(redis_version, "7.0.0"):
+        match = semantic_router("political speech")
+        assert match is not None
+        assert match.name == "politics"
+
+
+def test_add_route_survives_from_existing(
+    client, redis_url, routes, redis_test_name, hf_vectorizer
+):
+    skip_if_no_redis_search(client)
+    skip_if_redis_version_below(client, "7.0.0")
+
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_add_route_persist"),
+            routes=routes,
+            routing_config=RoutingConfig(max_k=2),
+            redis_client=client,
+            overwrite=True,
+            vectorizer=hf_vectorizer,
+        )
+
+        new_route = Route(
+            name="politics",
+            references=["political speech", "who will you vote for?"],
+            metadata={"type": "politics"},
+            distance_threshold=0.3,
+        )
+        router.add_route(new_route)
+
+        reloaded = SemanticRouter.from_existing(
+            name=router.name,
+            redis_client=client,
+        )
+        reloaded_route = reloaded.get("politics")
+        assert reloaded_route is not None
+        assert "political speech" in reloaded_route.references
+        assert {r.name for r in reloaded.routes} == {
+            "greeting",
+            "farewell",
+            "politics",
+        }
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
+
+
+def test_add_route_duplicate_raises(semantic_router):
+    duplicate = Route(
+        name="greeting",
+        references=["howdy"],
+        distance_threshold=0.3,
+    )
+    with pytest.raises(ValueError):
+        semantic_router.add_route(duplicate)
+
+
 def test_remove_routes(semantic_router):
     semantic_router.remove_route("greeting")
     assert semantic_router.get("greeting") is None
 
     semantic_router.remove_route("unknown_route")
     assert semantic_router.get("unknown_route") is None
+
+
+def test_remove_route_survives_from_existing(
+    client, redis_url, routes, redis_test_name, hf_vectorizer
+):
+    skip_if_no_redis_search(client)
+    skip_if_redis_version_below(client, "7.0.0")
+
+    router = None
+    try:
+        router = SemanticRouter(
+            name=redis_test_name("test_remove_route_persist"),
+            routes=routes,
+            routing_config=RoutingConfig(max_k=2),
+            redis_client=client,
+            overwrite=True,
+            vectorizer=hf_vectorizer,
+        )
+
+        router.remove_route("greeting")
+        assert router.get("greeting") is None
+
+        reloaded = SemanticRouter.from_existing(
+            name=router.name,
+            redis_client=client,
+        )
+        assert reloaded.get("greeting") is None
+        assert {r.name for r in reloaded.routes} == {"farewell"}
+    finally:
+        if router is not None:
+            with suppress(Exception):
+                router.clear()
+            with suppress(Exception):
+                router.delete()
 
 
 def test_to_dict(semantic_router):
