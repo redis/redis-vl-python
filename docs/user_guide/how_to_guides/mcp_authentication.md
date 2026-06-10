@@ -38,6 +38,36 @@ whether it may read or write. It does **not** map token claims to a Redis ACL
 user, a per-tenant index, or query filters. See [The Authorization Boundary](#the-authorization-boundary).
 ```
 
+## OAuth: Which Part RedisVL Handles
+
+In OAuth terms, RedisVL MCP is a **resource server**: it validates access
+tokens that your identity provider issued. It does not run an OAuth login flow
+and does not issue tokens.
+
+```mermaid
+flowchart LR
+    Client -->|1 - OAuth login flow| IdP[Identity Provider]
+    IdP -->|2 - issues JWT access token| Client
+    Client -->|3 - Bearer JWT| MCP[RedisVL MCP]
+    MCP -->|validates token| Redis[(Redis)]
+```
+
+Steps 1 and 2 (obtaining the token) are handled by your client and IdP. RedisVL
+only performs the validation in step 3. As a result:
+
+- It works with any OAuth 2.0 / OIDC provider (for example Auth0, Okta, Azure AD
+  / Entra, Cognito, Keycloak): point `jwks_uri` at the provider and validate its
+  tokens.
+- RedisVL does not broker interactive "log in with..." flows and does not mint
+  tokens.
+
+You would only need more than token validation when you want the server itself
+to drive an interactive browser login (an OAuth proxy), or to act as its own
+authorization server that issues tokens. Both are out of scope today. If
+interactive login is ever needed, a single generic `oauth-proxy` option can be
+added behind the `auth.type` switch. For enterprise and agent deployments where
+the caller already holds a token, JWT validation is sufficient.
+
 ## Request Flow
 
 ```mermaid
