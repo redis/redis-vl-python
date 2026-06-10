@@ -13,6 +13,7 @@ class MCPErrorCode(str, Enum):
 
     INVALID_REQUEST = "invalid_request"
     INVALID_FILTER = "invalid_filter"
+    FORBIDDEN = "forbidden"
     DEPENDENCY_MISSING = "dependency_missing"
     BACKEND_UNAVAILABLE = "backend_unavailable"
     INTERNAL_ERROR = "internal_error"

@@ -110,9 +110,13 @@ class MCPAuthConfig(BaseModel):
     required_scopes: list[str] = Field(default_factory=list)
     base_url: str | None = Field(default=None, min_length=1)
 
-    # Coarse read/write scope gating (enforced at tool registration).
+    # Coarse read/write scope gating (enforced per tool call).
     read_scope: str | None = Field(default=None, min_length=1)
     write_scope: str | None = Field(default=None, min_length=1)
+    # Token claim that carries authorization values. Standard OAuth uses
+    # ``scp``/``scope``; some IdPs (for example Azure AD / Entra) carry app
+    # roles in a ``roles`` claim instead.
+    authorization_claim: str = Field(default="scp", min_length=1)
 
     @model_validator(mode="after")
     def _validate_jwt(self) -> "MCPAuthConfig":

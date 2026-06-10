@@ -29,6 +29,7 @@ class MCPSettings(BaseSettings):
     auth_required_scopes: str | None = None
     auth_read_scope: str | None = None
     auth_write_scope: str | None = None
+    auth_authorization_claim: str | None = None
     auth_base_url: str | None = None
 
     @classmethod
@@ -69,6 +70,7 @@ class MCPSettings(BaseSettings):
             "algorithm": self.auth_algorithm,
             "read_scope": self.auth_read_scope,
             "write_scope": self.auth_write_scope,
+            "authorization_claim": self.auth_authorization_claim,
             "base_url": self.auth_base_url,
         }
         overrides: dict[str, Any] = {
