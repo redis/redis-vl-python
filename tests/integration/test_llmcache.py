@@ -480,7 +480,7 @@ async def test_async_check_can_skip_ttl_refresh(cache_with_ttl, vectorizer):
             check_result = await cache_with_ttl.acheck(vector=vector, refresh_ttl=False)
 
     assert len(check_result) == 1
-    aexpire.assert_not_called()
+    aexpire.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -497,7 +497,7 @@ async def test_async_check_refresh_ttl_override(cache_with_ttl, vectorizer):
             check_result = await cache_with_ttl.acheck(vector=vector, refresh_ttl=True)
 
     assert len(check_result) == 1
-    aexpire.assert_called_once()
+    aexpire.assert_awaited_once()
 
 
 # Test manual expiration of single document
