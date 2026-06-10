@@ -50,11 +50,11 @@ class SemanticCache(BaseLLMCache):
         ttl: int | None = None,
         vectorizer: BaseVectorizer | None = None,
         filterable_fields: list[dict[str, Any]] | None = None,
-        vector_index_config: dict[str, Any] | None = None,
         redis_client: Redis | None = None,
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: dict[str, Any] = {},
         overwrite: bool = False,
+        vector_index_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -71,10 +71,6 @@ class SemanticCache(BaseLLMCache):
                 Defaults to HFTextVectorizer.
             filterable_fields (Optional[List[Dict[str, Any]]]): An optional list of RedisVL fields
                 that can be used to customize cache retrieval with filters.
-            vector_index_config (Optional[Dict[str, Any]]): Optional vector index
-                attributes for the semantic cache vector field. Defaults to a
-                FLAT index. Algorithm-specific options like HNSW `m`,
-                `ef_construction`, and `ef_runtime` can be provided here.
             redis_client(Optional[Redis], optional): A redis client connection instance.
                 Defaults to None.
             redis_url (str, optional): The redis url. Defaults to redis://localhost:6379.
@@ -82,6 +78,10 @@ class SemanticCache(BaseLLMCache):
                 for the redis client. Defaults to empty {}.
             overwrite (bool): Whether or not to force overwrite the schema for
                 the semantic cache index. Defaults to false.
+            vector_index_config (Optional[Dict[str, Any]]): Optional vector index
+                attributes for the semantic cache vector field. Defaults to a
+                FLAT index. Algorithm-specific options like HNSW `m`,
+                `ef_construction`, and `ef_runtime` can be provided here.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
