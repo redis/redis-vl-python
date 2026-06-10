@@ -69,6 +69,25 @@ def test_jwt_requires_audience():
         )
 
 
+def test_jwt_requires_issuer():
+    with pytest.raises(ValidationError, match="issuer"):
+        MCPAuthConfig(
+            type="jwt",
+            jwks_uri="https://auth.redis.example/keys",
+            audience="api://redisvl-mcp",
+        )
+
+
+def test_none_type_with_jwt_fields_is_rejected():
+    # A JWT-looking block that forgot type: jwt must fail loudly, not silently
+    # run unauthenticated.
+    with pytest.raises(ValidationError, match="type is not 'jwt'"):
+        MCPAuthConfig(
+            jwks_uri="https://auth.redis.example/keys",
+            audience="api://redisvl-mcp",
+        )
+
+
 def test_unknown_auth_type_is_rejected():
     with pytest.raises(ValidationError):
         MCPAuthConfig(type="kerberos")

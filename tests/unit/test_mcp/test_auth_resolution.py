@@ -64,6 +64,7 @@ def test_env_overrides_yaml(tmp_path, monkeypatch):
         auth_block={
             "type": "jwt",
             "jwks_uri": "https://auth.redis.example/keys",
+            "issuer": "https://auth.redis.example/abc123/v2.0",
             "audience": "api://from-yaml",
         },
     )

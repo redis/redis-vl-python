@@ -120,8 +120,26 @@ class MCPAuthConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_jwt(self) -> "MCPAuthConfig":
-        """Enforce the JWT key-source and audience requirements."""
+        """Enforce the JWT key-source, issuer, and audience requirements."""
+        jwt_fields_set = any(
+            (
+                self.jwks_uri,
+                self.public_key,
+                self.issuer,
+                self.audience,
+                self.required_scopes,
+                self.read_scope,
+                self.write_scope,
+            )
+        )
         if self.type != "jwt":
+            # Fail loudly rather than silently running unauthenticated when an
+            # auth block looks like JWT but forgot to set the type.
+            if jwt_fields_set:
+                raise ValueError(
+                    "auth has JWT settings but type is not 'jwt'; set type: jwt "
+                    "to enable authentication"
+                )
             return self
 
         has_jwks = self.jwks_uri is not None
@@ -129,6 +147,11 @@ class MCPAuthConfig(BaseModel):
         if has_jwks == has_key:
             raise ValueError(
                 "auth.type 'jwt' requires exactly one of jwks_uri or public_key"
+            )
+        if self.issuer is None:
+            raise ValueError(
+                "auth.type 'jwt' requires issuer; without it the verifier would "
+                "accept tokens from any issuer"
             )
         if self.audience is None:
             raise ValueError(
