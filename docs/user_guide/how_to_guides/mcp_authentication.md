@@ -129,7 +129,7 @@ server:
 A token like the following would then pass the read gate, because
 `kb.search.read` is present in `roles`:
 
-```jsonc
+```json
 {
   "iss":   "https://your-idp.example/{tenant}/v2.0",
   "aud":   "api://redisvl-mcp",

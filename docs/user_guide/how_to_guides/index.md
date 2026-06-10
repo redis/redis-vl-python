@@ -43,6 +43,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 
 - [Manage Indices with the CLI](../cli.ipynb): create, inspect, and delete indices from your terminal
 - [Run RedisVL MCP](mcp.md): expose an existing Redis index to MCP clients
+- [Authenticate RedisVL MCP](mcp_authentication.md): require JWT bearer tokens and gate read vs write
 :::
 
 ::::
@@ -65,6 +66,7 @@ How-to guides are **task-oriented** recipes that help you accomplish specific go
 | Decide on storage format | [Choose a Storage Type](../05_hash_vs_json.ipynb) |
 | Manage indices from terminal | [Manage Indices with the CLI](../cli.ipynb) |
 | Expose an index through MCP | [Run RedisVL MCP](mcp.md) |
+| Authenticate the MCP server | [Authenticate RedisVL MCP](mcp_authentication.md) |
 | Plan and run a supported index migration | [Migrate an Index](migrate-indexes.md) |
 | Quantize vectors with resume, rollback, and the wizard | [Migrate an Index: Quantization, Resume, Backup, Wizard](../14_index_migration.ipynb) |
 
@@ -84,6 +86,7 @@ Cache Embeddings <../10_embeddings_cache>
 Use Advanced Query Types <../11_advanced_queries>
 Write SQL Queries for Redis <../12_sql_to_redis_queries>
 Run RedisVL MCP <mcp>
+Authenticate RedisVL MCP <mcp_authentication>
 Migrate an Index <migrate-indexes>
 Migrate an Index: Quantization, Resume, Backup, Wizard <../14_index_migration>
 ```

@@ -54,7 +54,7 @@ uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --hos
 ```
 
 ```{warning}
-Streamable HTTP and SSE endpoints are **unauthenticated by default**. Only bind to public interfaces (`--host 0.0.0.0`) on trusted networks or behind an authenticating reverse proxy. When not using `--read-only`, the `upsert-records` tool is also exposed to any client that can reach the server.
+Streamable HTTP and SSE endpoints are **unauthenticated by default**. Either enable JWT authentication (see {doc}`mcp_authentication`) or only bind to public interfaces (`--host 0.0.0.0`) on trusted networks or behind an authenticating reverse proxy. When not using `--read-only`, the `upsert-records` tool is also exposed to any client that can reach the server.
 ```
 
 Run it in read-only mode to expose search without upsert:
