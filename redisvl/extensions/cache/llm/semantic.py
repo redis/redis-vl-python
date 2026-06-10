@@ -54,6 +54,7 @@ class SemanticCache(BaseLLMCache):
         redis_url: str = "redis://localhost:6379",
         connection_kwargs: dict[str, Any] = {},
         overwrite: bool = False,
+        vector_index_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """Semantic Cache for Large Language Models.
@@ -77,6 +78,10 @@ class SemanticCache(BaseLLMCache):
                 for the redis client. Defaults to empty {}.
             overwrite (bool): Whether or not to force overwrite the schema for
                 the semantic cache index. Defaults to false.
+            vector_index_config (Optional[Dict[str, Any]]): Optional vector index
+                attributes for the semantic cache vector field. Defaults to a
+                FLAT index. Algorithm-specific options like HNSW `m`,
+                `ef_construction`, and `ef_runtime` can be provided here.
 
         Raises:
             TypeError: If an invalid vectorizer is provided.
@@ -132,7 +137,11 @@ class SemanticCache(BaseLLMCache):
 
         # Create semantic cache schema and index
         schema = SemanticCacheIndexSchema.from_params(
-            name, name, self._vectorizer.dims, self._vectorizer.dtype  # type: ignore
+            name,
+            name,
+            self._vectorizer.dims,  # type: ignore
+            self._vectorizer.dtype,
+            vector_index_config,
         )
         schema = self._modify_schema(schema, filterable_fields)
 
