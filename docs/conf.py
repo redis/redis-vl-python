@@ -48,7 +48,8 @@ extensions = [
     "sphinx_copybutton",
     "_extension.gallery_directive",
     "myst_nb",
-    "sphinx_favicon"
+    "sphinx_favicon",
+    "sphinxcontrib.mermaid",
 ]
 
 
@@ -90,6 +91,10 @@ html_context = {
 # This allows us to use ::: to denote directives, useful for admonitions
 myst_enable_extensions = ["colon_fence"]
 myst_heading_anchors = 3
+
+# Route ```mermaid fenced blocks to the sphinxcontrib.mermaid directive so they
+# render as diagrams on the docs site (they already render natively on GitHub).
+myst_fence_as_directive = ["mermaid"]
 
 # Sphinx Book Theme options
 html_theme_options = {
