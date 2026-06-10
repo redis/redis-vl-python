@@ -2,6 +2,10 @@
 
 import pytest
 
+# These tests monkeypatch fastmcp.server.dependencies.get_access_token, which
+# imports fastmcp; skip the module when the optional extra is absent.
+pytest.importorskip("fastmcp", reason="fastmcp not installed (install redisvl[mcp])")
+
 from redisvl.mcp.auth import authorization_values, ensure_tool_scope, token_has_scope
 from redisvl.mcp.config import MCPAuthConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
