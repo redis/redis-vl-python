@@ -9,7 +9,11 @@ fastmcp = pytest.importorskip(
 )
 from fastmcp.server.auth.providers.jwt import JWTVerifier, RSAKeyPair
 
-from redisvl.mcp.auth import build_auth_provider, token_has_scope
+from redisvl.mcp.auth import (
+    build_auth_provider,
+    missing_required_claims,
+    token_has_scope,
+)
 
 
 def test_build_returns_none_for_none_type():
@@ -43,3 +47,11 @@ def test_token_has_scope_helper():
     assert not token_has_scope(_AccessToken(["kb.search.read"]), "kb.search.write")
     # No required scope configured means the gate is open.
     assert token_has_scope(_AccessToken([]), None)
+
+
+def test_missing_required_claims():
+    assert missing_required_claims({"exp": 1, "iat": 1}, ["exp", "iat"]) == []
+    assert missing_required_claims({"iat": 1}, ["exp", "iat"]) == ["exp"]
+    assert missing_required_claims({}, ["exp"]) == ["exp"]
+    assert missing_required_claims(None, ["exp"]) == ["exp"]
+    assert missing_required_claims({"exp": 1}, []) == []

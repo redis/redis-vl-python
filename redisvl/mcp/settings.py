@@ -27,6 +27,7 @@ class MCPSettings(BaseSettings):
     auth_audience: str | None = None
     auth_algorithm: str | None = None
     auth_required_scopes: str | None = None
+    auth_required_claims: str | None = None
     auth_read_scope: str | None = None
     auth_write_scope: str | None = None
     auth_authorization_claim: str | None = None
@@ -76,10 +77,12 @@ class MCPSettings(BaseSettings):
         overrides: dict[str, Any] = {
             key: value for key, value in mapping.items() if value is not None
         }
-        if self.auth_required_scopes is not None:
-            overrides["required_scopes"] = [
-                scope.strip()
-                for scope in self.auth_required_scopes.split(",")
-                if scope.strip()
-            ]
+        for env_value, field in (
+            (self.auth_required_scopes, "required_scopes"),
+            (self.auth_required_claims, "required_claims"),
+        ):
+            if env_value is not None:
+                overrides[field] = [
+                    item.strip() for item in env_value.split(",") if item.strip()
+                ]
         return overrides

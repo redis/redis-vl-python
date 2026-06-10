@@ -51,9 +51,13 @@ def resolve_auth_config(
     Returns ``None`` when no auth is configured or the resolved type is
     ``none``.
     """
-    yaml_auth = peek_yaml_auth(config_path) or {}
     env_auth = settings.auth_overrides()
 
+    # An explicit env type=none disables auth, overriding any YAML auth block.
+    if env_auth.get("type") == "none":
+        return None
+
+    yaml_auth = peek_yaml_auth(config_path) or {}
     merged: dict[str, Any] = {**yaml_auth, **env_auth}
     if not merged:
         return None
@@ -62,6 +66,12 @@ def resolve_auth_config(
     if config.type == "none":
         return None
     return config
+
+
+def missing_required_claims(claims: Any, required_claims: Any) -> list:
+    """Return the configured claims absent from a token's claims mapping."""
+    claims = claims or {}
+    return [claim for claim in (required_claims or ()) if claim not in claims]
 
 
 def build_auth_provider(auth_config: MCPAuthConfig | None) -> Any | None:
@@ -83,7 +93,27 @@ def build_auth_provider(auth_config: MCPAuthConfig | None) -> Any | None:
                 "Install them with `pip install redisvl[mcp]`."
             ) from exc
 
-        return JWTVerifier(
+        required_claims = tuple(auth_config.required_claims or ())
+
+        class _StrictClaimsJWTVerifier(
+            JWTVerifier
+        ):  # pylint: disable=too-few-public-methods
+            """JWTVerifier that also requires specific claims to be present.
+
+            FastMCP's verifier only rejects an ``exp`` that is present and past,
+            so a token without ``exp`` would never expire. Requiring ``exp``
+            (and ``iat``) closes that gap.
+            """
+
+            async def load_access_token(self, token: str):
+                access = await super().load_access_token(token)
+                if access is None:
+                    return None
+                if missing_required_claims(access.claims, required_claims):
+                    return None
+                return access
+
+        return _StrictClaimsJWTVerifier(
             public_key=auth_config.public_key,
             jwks_uri=auth_config.jwks_uri,
             issuer=auth_config.issuer,

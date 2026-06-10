@@ -10,11 +10,14 @@ organization-specific values replaced by dummies (subject ``nitin``, org
 the server in phase 1; they would drive a gateway binding table.
 """
 
+import time
+
 import pytest
 
 fastmcp = pytest.importorskip(
     "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
 )
+from authlib.jose import jwt as jose_jwt
 from fastmcp.server.auth.providers.jwt import RSAKeyPair
 
 from redisvl.mcp.auth import build_auth_provider, token_has_scope
@@ -111,3 +114,34 @@ async def test_missing_required_scope_is_rejected(verifier, key):
 
 async def test_garbage_token_is_rejected(verifier):
     assert await verifier.verify_token("not-a-jwt") is None
+
+
+def _mint_raw(key, claims):
+    """Sign a token with arbitrary claims (used to omit exp/iat)."""
+    token = jose_jwt.encode(
+        {"alg": "RS256"}, claims, key.private_key.get_secret_value()
+    )
+    return token.decode() if isinstance(token, bytes) else token
+
+
+async def test_token_without_exp_is_rejected(verifier, key):
+    # A token with no exp would never expire; it must be rejected.
+    claims = {
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "sub": "nitin",
+        "scope": READ_SCOPE,
+        "iat": int(time.time()),
+    }
+    assert await verifier.verify_token(_mint_raw(key, claims)) is None
+
+
+async def test_token_without_iat_is_rejected(verifier, key):
+    claims = {
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "sub": "nitin",
+        "scope": READ_SCOPE,
+        "exp": int(time.time()) + 3600,
+    }
+    assert await verifier.verify_token(_mint_raw(key, claims)) is None

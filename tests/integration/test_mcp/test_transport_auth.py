@@ -17,6 +17,9 @@ import yaml
 fastmcp = pytest.importorskip(
     "fastmcp", reason="fastmcp not installed (install redisvl[mcp])"
 )
+import time
+
+from authlib.jose import jwt as jose_jwt
 from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
 from fastmcp.exceptions import ToolError
@@ -270,6 +273,47 @@ async def test_http_transport_gates_by_roles_claim(
                 await client.call_tool(
                     "upsert-records", {"records": [{"content": "blocked"}]}
                 )
+    finally:
+        server_task.cancel()
+        try:
+            await server_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def test_http_transport_rejects_token_without_exp(auth_index, auth_config_path):
+    """A non-expiring (no exp) token must be rejected over the live HTTP path."""
+    key = RSAKeyPair.generate()
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=auth_config_path(auth_index.schema.index.name, key.public_key)
+        )
+    )
+    port = _find_free_port()
+    url = f"http://127.0.0.1:{port}/mcp"
+    server_task = asyncio.create_task(
+        server.run_async(transport="streamable-http", host="127.0.0.1", port=port)
+    )
+    try:
+        await _wait_for_port("127.0.0.1", port)
+
+        # Properly signed and scoped, but no exp claim. authlib signs it; the
+        # server must still reject it because exp is required.
+        no_exp = jose_jwt.encode(
+            {"alg": "RS256"},
+            {
+                "iss": ISSUER,
+                "aud": AUDIENCE,
+                "sub": "nitin",
+                "scope": READ_SCOPE,
+                "iat": int(time.time()),
+            },
+            key.private_key.get_secret_value(),
+        )
+        if isinstance(no_exp, bytes):
+            no_exp = no_exp.decode()
+
+        await _assert_unauthorized(url, BearerAuth(no_exp))
     finally:
         server_task.cancel()
         try:

@@ -98,3 +98,8 @@ def test_none_type_ignores_jwt_fields():
     cfg = MCPAuthConfig(type="none")
     assert cfg.audience is None
     assert cfg.jwks_uri is None
+
+
+def test_required_claims_default_to_exp_and_iat():
+    # A token without exp would never expire, so exp (and iat) are required.
+    assert MCPAuthConfig().required_claims == ["exp", "iat"]

@@ -75,3 +75,19 @@ def test_env_overrides_yaml(tmp_path, monkeypatch):
     cfg = resolve_auth_config(settings, path)
     assert cfg is not None
     assert cfg.audience == "api://from-env"
+
+
+def test_env_type_none_disables_yaml_auth(tmp_path, monkeypatch):
+    # Explicit env type=none must turn auth off even when YAML defines a jwt block.
+    path = _write_config(
+        tmp_path,
+        auth_block={
+            "type": "jwt",
+            "jwks_uri": "https://auth.redis.example/keys",
+            "issuer": "https://auth.redis.example/abc123/v2.0",
+            "audience": "api://redisvl-mcp",
+        },
+    )
+    monkeypatch.setenv("REDISVL_MCP_AUTH_TYPE", "none")
+    settings = MCPSettings.from_env(config=path)
+    assert resolve_auth_config(settings, path) is None

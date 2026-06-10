@@ -108,6 +108,9 @@ class MCPAuthConfig(BaseModel):
     audience: str | None = Field(default=None, min_length=1)
     algorithm: str | None = Field(default=None, min_length=1)
     required_scopes: list[str] = Field(default_factory=list)
+    # Claims that must be present on every token. Defaults to exp and iat so a
+    # token without an expiration (which would never expire) is rejected.
+    required_claims: list[str] = Field(default_factory=lambda: ["exp", "iat"])
     base_url: str | None = Field(default=None, min_length=1)
 
     # Coarse read/write scope gating (enforced per tool call).

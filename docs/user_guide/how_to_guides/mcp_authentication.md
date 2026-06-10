@@ -29,6 +29,9 @@ On each request it checks:
 - **Issuer** (`iss`), so only tokens from your IdP are accepted.
 - **Audience** (`aud`), so a token minted for a different service cannot be
   replayed against this server (RFC 8707).
+- **Expiration**: a present `exp` in the past is rejected, and tokens are
+  required to carry `exp` and `iat` (configurable via `required_claims`), so a
+  token with no expiration, which would never expire, is rejected.
 - **Required scopes** to connect, and (optionally) a **read scope** to call
   `search-records` and a **write scope** to call `upsert-records`.
 
@@ -110,6 +113,7 @@ server:
     issuer: ${MCP_ISSUER}
     audience: api://redisvl-mcp
     required_scopes: [kb.read]         # required to connect
+    required_claims: [exp, iat]        # claims every token must carry (default)
     read_scope: kb.search.read         # required for search-records
     write_scope: kb.search.write       # required for upsert-records
 
