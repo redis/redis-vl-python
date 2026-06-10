@@ -3,6 +3,7 @@ import inspect
 from copy import deepcopy
 from typing import Any
 
+from redisvl.mcp.auth import ensure_tool_scope
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError, map_exception
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.schema import StorageType
@@ -355,6 +356,8 @@ def register_upsert_tool(server: Any) -> None:
         skip_embedding_if_present: bool | None = None,
     ):
         """FastMCP wrapper for the `upsert-records` tool."""
+        write_scope = getattr(getattr(server, "auth_config", None), "write_scope", None)
+        ensure_tool_scope(server, write_scope)
         return await upsert_records(
             server,
             records=records,
