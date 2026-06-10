@@ -80,6 +80,12 @@ RedisVL MCP always registers `search-records`.
 
 Use read-only mode when Redis is serving approved content to assistants and another system owns ingestion.
 
+## Authentication and Authorization
+
+The HTTP transports can require a JWT bearer token issued by an existing identity provider. The server validates the token signature, issuer, and audience, and can gate read vs write by scope or role claim. This is coarse, per-tool authorization; it does not map token claims to Redis ACL users or per-tenant filters, which remain a gateway concern. The `stdio` transport is local and is never authenticated.
+
+For configuration and the gateway boundary, see {doc}`/user_guide/how_to_guides/mcp_authentication`.
+
 ## Tool Surface
 
 RedisVL MCP exposes two tools:

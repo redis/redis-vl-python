@@ -90,10 +90,86 @@ class MCPVectorizerConfig(BaseModel):
         return {"model": self.model, **self.extra_kwargs}
 
 
+class MCPAuthConfig(BaseModel):
+    """Authentication configuration for the MCP server's HTTP transports.
+
+    Auth is optional and defaults to ``none``. When ``type`` is ``jwt`` the
+    server validates incoming bearer tokens against either a JWKS endpoint or a
+    static public key, checking issuer, audience, and required scopes. ``stdio``
+    is a local subprocess and is never authenticated regardless of this config.
+    """
+
+    type: Literal["none", "jwt"] = "none"
+
+    # JWT validation
+    jwks_uri: str | None = Field(default=None, min_length=1)
+    public_key: str | None = Field(default=None, min_length=1)
+    issuer: str | None = Field(default=None, min_length=1)
+    audience: str | None = Field(default=None, min_length=1)
+    algorithm: str | None = Field(default=None, min_length=1)
+    required_scopes: list[str] = Field(default_factory=list)
+    # Claims that must be present on every token. Defaults to exp and iat so a
+    # token without an expiration (which would never expire) is rejected.
+    required_claims: list[str] = Field(default_factory=lambda: ["exp", "iat"])
+    base_url: str | None = Field(default=None, min_length=1)
+
+    # Coarse read/write scope gating (enforced per tool call).
+    read_scope: str | None = Field(default=None, min_length=1)
+    write_scope: str | None = Field(default=None, min_length=1)
+    # Token claim that carries authorization values. Standard OAuth uses
+    # ``scp``/``scope``; some IdPs (for example Azure AD / Entra) carry app
+    # roles in a ``roles`` claim instead.
+    authorization_claim: str = Field(default="scp", min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_jwt(self) -> "MCPAuthConfig":
+        """Enforce the JWT key-source, issuer, and audience requirements."""
+        jwt_fields_set = any(
+            (
+                self.jwks_uri,
+                self.public_key,
+                self.issuer,
+                self.audience,
+                self.required_scopes,
+                self.read_scope,
+                self.write_scope,
+            )
+        )
+        if self.type != "jwt":
+            # Fail loudly rather than silently running unauthenticated when an
+            # auth block looks like JWT but forgot to set the type.
+            if jwt_fields_set:
+                raise ValueError(
+                    "auth has JWT settings but type is not 'jwt'; set type: jwt "
+                    "to enable authentication"
+                )
+            return self
+
+        has_jwks = self.jwks_uri is not None
+        has_key = self.public_key is not None
+        if has_jwks == has_key:
+            raise ValueError(
+                "auth.type 'jwt' requires exactly one of jwks_uri or public_key"
+            )
+        if self.issuer is None:
+            raise ValueError(
+                "auth.type 'jwt' requires issuer; without it the verifier would "
+                "accept tokens from any issuer"
+            )
+        if self.audience is None:
+            raise ValueError(
+                "auth.type 'jwt' requires audience to bind tokens to this server "
+                "(RFC 8707); an unbounded audience would accept tokens minted for "
+                "other services"
+            )
+        return self
+
+
 class MCPServerConfig(BaseModel):
     """Server-level bootstrap configuration."""
 
     redis_url: str = Field(..., min_length=1)
+    auth: MCPAuthConfig | None = None
 
 
 class MCPIndexSearchConfig(BaseModel):

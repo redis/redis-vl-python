@@ -2,12 +2,14 @@ import asyncio
 from contextlib import asynccontextmanager
 from enum import Enum, auto
 from importlib import import_module
+from pathlib import Path
 from typing import Any, Awaitable
 
 from redis import __version__ as redis_py_version
 
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
+from redisvl.mcp.auth import build_auth_provider, resolve_auth_config
 from redisvl.mcp.config import MCPConfig, load_mcp_config
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.search import register_search_tool
@@ -70,7 +72,19 @@ class RedisVLMCPServer(FastMCP):
         self._active_requests_drained.set()
         self._fastmcp_lifespan = self._server_lifespan  # FastMCP startup/shutdown hook
 
-        super().__init__("redisvl", lifespan=self._fastmcp_lifespan)
+        # Resolve the config path to an absolute path so a later working-directory
+        # change cannot make the construction-time and startup-time reads diverge.
+        self._config_path = str(Path(settings.config).expanduser().resolve())
+
+        # Auth is resolved at construction time (FastMCP needs the provider in
+        # its constructor), reading env vars and peeking the YAML server.auth
+        # block without running full startup. Applies only to HTTP transports.
+        auth_config = resolve_auth_config(settings, self._config_path)
+        auth_provider = build_auth_provider(auth_config)
+        self.auth_config = auth_config
+        self._auth_enabled = auth_provider is not None
+
+        super().__init__("redisvl", lifespan=self._fastmcp_lifespan, auth=auth_provider)
 
     async def startup(self) -> None:
         """Load config, inspect the configured index, and initialize dependencies."""
@@ -297,9 +311,28 @@ class RedisVLMCPServer(FastMCP):
         """Wait for already-admitted guarded requests to finish."""
         await self._active_requests_drained.wait()
 
+    def _verify_auth_not_stale(self) -> None:
+        """Fail closed if startup-time auth disagrees with what was wired.
+
+        The auth provider must be passed to FastMCP at construction, before the
+        full config is loaded. If the config file was unreadable then (for
+        example created after construction), auth could be silently disabled
+        while the loaded config enables it. Refuse to serve rather than expose
+        an unauthenticated HTTP transport.
+        """
+        expected = resolve_auth_config(self.mcp_settings, self._config_path)
+        if (expected is not None) != self._auth_enabled:
+            raise RuntimeError(
+                "MCP auth configuration changed between server construction and "
+                "startup, so the wired auth state is stale. Refusing to start to "
+                "avoid serving unauthenticated. Use an absolute config path and "
+                "ensure the config file exists before constructing the server."
+            )
+
     async def _initialize_runtime_resources(self) -> Any:
         """Load config and initialize the Redis-backed runtime dependencies."""
-        self.config = load_mcp_config(self.mcp_settings.config)
+        self.config = load_mcp_config(self._config_path)
+        self._verify_auth_not_stale()
         self._semaphore = asyncio.Semaphore(self.config.runtime.max_concurrency)
         self._supports_native_hybrid_search = None
         timeout = self.config.runtime.startup_timeout_seconds
