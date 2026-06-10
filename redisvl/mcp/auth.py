@@ -14,6 +14,7 @@ from typing import Any
 import yaml
 
 from redisvl.mcp.config import MCPAuthConfig, _substitute_env
+from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.settings import MCPSettings
 
 
@@ -95,12 +96,60 @@ def build_auth_provider(auth_config: MCPAuthConfig | None) -> Any | None:
     raise ValueError(f"Unsupported auth type: {auth_config.type}")
 
 
-def token_has_scope(access_token: Any, scope: str | None) -> bool:
+def authorization_values(access_token: Any, authorization_claim: str = "scp") -> list:
+    """Return the authorization values a token carries for the given claim.
+
+    Standard OAuth scopes (``scp``/``scope``) are read from the verifier-parsed
+    ``access_token.scopes``. Any other claim (for example ``roles``) is read
+    from ``access_token.claims`` and normalized to a list, accepting either a
+    list or a space-delimited string.
+    """
+    if authorization_claim in ("scp", "scope"):
+        return list(getattr(access_token, "scopes", None) or [])
+
+    claims = getattr(access_token, "claims", None) or {}
+    raw = claims.get(authorization_claim)
+    if isinstance(raw, str):
+        return raw.split()
+    if isinstance(raw, (list, tuple)):
+        return [str(value) for value in raw]
+    return []
+
+
+def token_has_scope(
+    access_token: Any, scope: str | None, authorization_claim: str = "scp"
+) -> bool:
     """Return whether an access token carries the given scope.
 
     A ``None`` scope means no gate is configured, so access is allowed.
     """
     if scope is None:
         return True
-    scopes = getattr(access_token, "scopes", None) or []
-    return scope in scopes
+    return scope in authorization_values(access_token, authorization_claim)
+
+
+def ensure_tool_scope(server: Any, required_scope: str | None) -> None:
+    """Raise if the current request's token lacks the required tool scope.
+
+    No-ops when auth is disabled or no scope is configured. Otherwise reads the
+    current access token and checks the configured authorization claim, raising
+    a ``forbidden`` MCP error when the scope is absent.
+    """
+    auth_config = getattr(server, "auth_config", None)
+    if (
+        not getattr(server, "_auth_enabled", False)
+        or auth_config is None
+        or required_scope is None
+    ):
+        return
+
+    from fastmcp.server.dependencies import get_access_token
+
+    access_token = get_access_token()
+    claim = getattr(auth_config, "authorization_claim", "scp")
+    if not token_has_scope(access_token, required_scope, claim):
+        raise RedisVLMCPError(
+            f"Token is missing the required scope '{required_scope}'",
+            code=MCPErrorCode.FORBIDDEN,
+            retryable=False,
+        )
