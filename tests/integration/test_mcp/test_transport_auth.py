@@ -166,3 +166,110 @@ async def test_http_transport_enforces_jwt_auth(auth_index, auth_config_path):
             await server_task
         except asyncio.CancelledError:
             pass
+
+
+async def test_http_transport_gates_write_by_scope(auth_index, auth_config_path):
+    key = RSAKeyPair.generate()
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=auth_config_path(auth_index.schema.index.name, key.public_key)
+        )
+    )
+    port = _find_free_port()
+    url = f"http://127.0.0.1:{port}/mcp"
+    server_task = asyncio.create_task(
+        server.run_async(transport="streamable-http", host="127.0.0.1", port=port)
+    )
+    try:
+        await _wait_for_port("127.0.0.1", port)
+
+        # A read-only token can search but cannot upsert.
+        read_token = key.create_token(
+            subject="nitin", issuer=ISSUER, audience=AUDIENCE, scopes=[READ_SCOPE]
+        )
+        async with Client(url, auth=BearerAuth(read_token)) as client:
+            await client.call_tool("search-records", {"query": "science", "limit": 1})
+            with pytest.raises(Exception):
+                await client.call_tool(
+                    "upsert-records", {"records": [{"content": "blocked"}]}
+                )
+
+        # A read+write token can upsert.
+        rw_token = key.create_token(
+            subject="nitin",
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            scopes=[READ_SCOPE, WRITE_SCOPE],
+        )
+        async with Client(url, auth=BearerAuth(rw_token)) as client:
+            result = await client.call_tool(
+                "upsert-records", {"records": [{"content": "written by rw token"}]}
+            )
+            assert result is not None
+    finally:
+        server_task.cancel()
+        try:
+            await server_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def test_http_transport_gates_by_roles_claim(
+    auth_index, tmp_path: Path, redis_url: str
+):
+    """Authorization carried in a ``roles`` claim (as Azure AD / Entra does)."""
+    key = RSAKeyPair.generate()
+    config = {
+        "server": {
+            "redis_url": redis_url,
+            "auth": {
+                "type": "jwt",
+                "public_key": key.public_key,
+                "issuer": ISSUER,
+                "audience": AUDIENCE,
+                "required_scopes": ["kb.read"],  # connect gate on scp
+                "read_scope": READ_SCOPE,
+                "write_scope": WRITE_SCOPE,
+                "authorization_claim": "roles",
+            },
+        },
+        "indexes": {
+            "knowledge": {
+                "redis_name": auth_index.schema.index.name,
+                "search": {"type": "fulltext"},
+                "runtime": {"text_field_name": "content"},
+            }
+        },
+    }
+    config_path = tmp_path / "roles.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    server = RedisVLMCPServer(MCPSettings(config=str(config_path)))
+    port = _find_free_port()
+    url = f"http://127.0.0.1:{port}/mcp"
+    server_task = asyncio.create_task(
+        server.run_async(transport="streamable-http", host="127.0.0.1", port=port)
+    )
+    try:
+        await _wait_for_port("127.0.0.1", port)
+
+        # scp grants connect; roles grants only read, so search works, upsert blocked.
+        token = key.create_token(
+            subject="nitin",
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            scopes=["kb.read"],
+            additional_claims={"roles": [READ_SCOPE], "tid": "tenant-guid"},
+        )
+        async with Client(url, auth=BearerAuth(token)) as client:
+            await client.call_tool("search-records", {"query": "science", "limit": 1})
+            with pytest.raises(Exception):
+                await client.call_tool(
+                    "upsert-records", {"records": [{"content": "blocked"}]}
+                )
+    finally:
+        server_task.cancel()
+        try:
+            await server_task
+        except asyncio.CancelledError:
+            pass
