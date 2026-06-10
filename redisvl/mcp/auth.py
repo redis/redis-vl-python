@@ -146,6 +146,13 @@ def ensure_tool_scope(server: Any, required_scope: str | None) -> None:
     from fastmcp.server.dependencies import get_access_token
 
     access_token = get_access_token()
+    if access_token is None:
+        # No authenticated request context (for example the local stdio
+        # transport, which FastMCP never authenticates). Authenticated HTTP
+        # transports reject tokenless requests before the tool runs, so a
+        # missing token here means the scope gate does not apply.
+        return
+
     claim = getattr(auth_config, "authorization_claim", "scp")
     if not token_has_scope(access_token, required_scope, claim):
         raise RedisVLMCPError(

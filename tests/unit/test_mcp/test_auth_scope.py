@@ -106,10 +106,11 @@ def test_ensure_tool_scope_forbids_when_scope_missing(monkeypatch):
     assert exc.value.retryable is False
 
 
-def test_ensure_tool_scope_forbids_when_no_token(monkeypatch):
+def test_ensure_tool_scope_noop_when_no_token(monkeypatch):
+    # No token means no authenticated request context (for example stdio).
+    # Authenticated HTTP transports reject tokenless requests before the tool
+    # runs, so the gate must not fire here.
     monkeypatch.setattr(
         "fastmcp.server.dependencies.get_access_token", lambda: None, raising=False
     )
-    with pytest.raises(RedisVLMCPError) as exc:
-        ensure_tool_scope(_Server(), "kb.search.read")
-    assert exc.value.code == MCPErrorCode.FORBIDDEN
+    ensure_tool_scope(_Server(), "kb.search.read")
