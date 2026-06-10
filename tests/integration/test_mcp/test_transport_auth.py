@@ -19,6 +19,7 @@ fastmcp = pytest.importorskip(
 )
 from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
+from fastmcp.exceptions import ToolError
 from fastmcp.server.auth.providers.jwt import RSAKeyPair
 
 from redisvl.index import AsyncSearchIndex
@@ -38,8 +39,16 @@ def _find_free_port() -> int:
         return sock.getsockname()[1]
 
 
+async def _assert_unauthorized(url, auth=None) -> None:
+    """Assert a request is rejected at the transport with HTTP 401."""
+    with pytest.raises(Exception) as exc_info:
+        async with Client(url, auth=auth) as client:
+            await client.list_tools()
+    assert "401" in str(exc_info.value), f"expected 401, got {exc_info.value!r}"
+
+
 async def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> None:
-    deadline = asyncio.get_event_loop().time() + timeout
+    deadline = asyncio.get_running_loop().time() + timeout
     while True:
         try:
             _, writer = await asyncio.open_connection(host, port)
@@ -47,7 +56,7 @@ async def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> None:
             await writer.wait_closed()
             return
         except OSError:
-            if asyncio.get_event_loop().time() >= deadline:
+            if asyncio.get_running_loop().time() >= deadline:
                 raise TimeoutError(f"server on {host}:{port} not ready")
             await asyncio.sleep(0.05)
 
@@ -125,14 +134,10 @@ async def test_http_transport_enforces_jwt_auth(auth_index, auth_config_path):
         await _wait_for_port("127.0.0.1", port)
 
         # No token is rejected.
-        with pytest.raises(Exception):
-            async with Client(url) as client:
-                await client.list_tools()
+        await _assert_unauthorized(url)
 
         # Garbage token is rejected.
-        with pytest.raises(Exception):
-            async with Client(url, auth=BearerAuth("garbage")) as client:
-                await client.list_tools()
+        await _assert_unauthorized(url, BearerAuth("garbage"))
 
         # Wrong audience is rejected.
         bad_aud = key.create_token(
@@ -141,9 +146,7 @@ async def test_http_transport_enforces_jwt_auth(auth_index, auth_config_path):
             audience="api://some-other-service",
             scopes=[READ_SCOPE],
         )
-        with pytest.raises(Exception):
-            async with Client(url, auth=BearerAuth(bad_aud)) as client:
-                await client.list_tools()
+        await _assert_unauthorized(url, BearerAuth(bad_aud))
 
         # Valid scoped token is accepted and can search.
         good = key.create_token(
@@ -189,7 +192,7 @@ async def test_http_transport_gates_write_by_scope(auth_index, auth_config_path)
         )
         async with Client(url, auth=BearerAuth(read_token)) as client:
             await client.call_tool("search-records", {"query": "science", "limit": 1})
-            with pytest.raises(Exception):
+            with pytest.raises(ToolError):
                 await client.call_tool(
                     "upsert-records", {"records": [{"content": "blocked"}]}
                 )
@@ -263,7 +266,7 @@ async def test_http_transport_gates_by_roles_claim(
         )
         async with Client(url, auth=BearerAuth(token)) as client:
             await client.call_tool("search-records", {"query": "science", "limit": 1})
-            with pytest.raises(Exception):
+            with pytest.raises(ToolError):
                 await client.call_tool(
                     "upsert-records", {"records": [{"content": "blocked"}]}
                 )
