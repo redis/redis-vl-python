@@ -18,7 +18,7 @@ Common Vector Field Attributes (all algorithms):
     - algorithm: Indexing algorithm ('flat', 'hnsw', or 'svs-vamana')
     - datatype: Float precision ('float16', 'float32', 'float64', 'bfloat16')
         Note: SVS-VAMANA only supports 'float16' and 'float32'
-    - distance_metric: Similarity metric ('COSINE', 'L2', 'IP')
+    - distance_metric: Similarity metric ('COSINE', 'COSINE_SIMILARITY', 'L2', 'IP')
     - initial_cap: Initial capacity hint for memory allocation (optional)
     - index_missing: Allow searching for documents without this field (optional)
 
@@ -52,6 +52,7 @@ logger = get_logger(__name__)
 
 VECTOR_NORM_MAP = {
     "COSINE": norm_cosine_distance,
+    "COSINE_SIMILARITY": None,  # already returned as a normalized similarity score
     "L2": norm_l2_distance,
     "IP": None,  # normalized inner product is cosine similarity by definition
 }
@@ -67,6 +68,7 @@ class FieldTypes(str, Enum):
 
 class VectorDistanceMetric(str, Enum):
     COSINE = "COSINE"
+    COSINE_SIMILARITY = "COSINE_SIMILARITY"
     L2 = "L2"
     IP = "IP"
 
