@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
+from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.server import RedisVLMCPServer
 
 
@@ -29,14 +31,82 @@ class FakeIndex:
 
 
 @pytest.mark.asyncio
-async def test_supports_native_hybrid_search_caches_runtime_probe(monkeypatch):
+async def test_probe_native_hybrid_search_detects_support(monkeypatch):
     client = FakeClient()
-    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
-    server._index = FakeIndex(client)
-    server._supports_native_hybrid_search = None
+    index = FakeIndex(client)
 
     monkeypatch.setattr("redisvl.mcp.server.redis_py_version", "7.1.0")
 
-    assert await server.supports_native_hybrid_search() is True
-    assert await server.supports_native_hybrid_search() is True
+    assert await RedisVLMCPServer._probe_native_hybrid_search(index) is True
     assert client.info_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_probe_native_hybrid_search_false_for_old_redis_py(monkeypatch):
+    client = FakeClient()
+    index = FakeIndex(client)
+
+    monkeypatch.setattr("redisvl.mcp.server.redis_py_version", "7.0.0")
+
+    assert await RedisVLMCPServer._probe_native_hybrid_search(index) is False
+    # Old redis-py short-circuits before querying the server.
+    assert client.info_calls == 0
+
+
+def _binding_runtime(binding_id: str) -> BindingRuntime:
+    return BindingRuntime(
+        binding_id=binding_id,
+        binding=SimpleNamespace(),
+        index=SimpleNamespace(),
+        schema=SimpleNamespace(),
+        vectorizer=None,
+        supports_native_hybrid_search=False,
+        effective_read_only=False,
+    )
+
+
+def _server_with_bindings(*binding_ids: str) -> RedisVLMCPServer:
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {bid: _binding_runtime(bid) for bid in binding_ids}
+    return server
+
+
+def test_resolve_binding_before_startup_raises():
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = {}
+
+    with pytest.raises(RuntimeError, match="not been started"):
+        server.resolve_binding(None)
+
+
+def test_resolve_binding_defaults_to_sole_binding():
+    server = _server_with_bindings("knowledge")
+
+    assert server.resolve_binding(None).binding_id == "knowledge"
+
+
+def test_resolve_binding_requires_index_when_multiple_configured():
+    server = _server_with_bindings("knowledge", "tickets")
+
+    with pytest.raises(RedisVLMCPError) as excinfo:
+        server.resolve_binding(None)
+
+    assert excinfo.value.code == MCPErrorCode.INVALID_REQUEST
+    assert "knowledge" in str(excinfo.value)
+    assert "tickets" in str(excinfo.value)
+
+
+def test_resolve_binding_routes_to_named_index():
+    server = _server_with_bindings("knowledge", "tickets")
+
+    assert server.resolve_binding("tickets").binding_id == "tickets"
+
+
+def test_resolve_binding_rejects_unknown_index():
+    server = _server_with_bindings("knowledge", "tickets")
+
+    with pytest.raises(RedisVLMCPError) as excinfo:
+        server.resolve_binding("missing")
+
+    assert excinfo.value.code == MCPErrorCode.INVALID_REQUEST
+    assert "missing" in str(excinfo.value)

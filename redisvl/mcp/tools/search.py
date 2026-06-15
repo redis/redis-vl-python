@@ -51,10 +51,17 @@ def _build_return_fields_hint(schema: IndexSchema) -> str:
 
 
 def _build_search_tool_description(
-    schema: IndexSchema, base_description: str | None = None
+    schema: IndexSchema | None, base_description: str | None = None
 ) -> str:
-    """Build the `search-records` description from static text plus schema hints."""
+    """Build the `search-records` description from static text plus schema hints.
+
+    With multiple bindings configured the schema is ambiguous (the caller picks
+    an index per call via `list-indexes`), so `schema` is None and only the
+    base description is returned.
+    """
     description = (base_description or DEFAULT_SEARCH_DESCRIPTION).strip()
+    if schema is None:
+        return description
 
     # `exists` is currently accepted for any schema field in the MCP object filter.
     exists_fields = [field.name for field in schema.fields.values()]
@@ -79,17 +86,15 @@ def _validate_request(
     limit: int | None,
     offset: int,
     return_fields: list[str] | None,
-    server: Any,
-    index: Any,
+    runtime: Any,
+    schema: Any,
 ) -> tuple[int, list[str]]:
     """Validate a `search-records` request and resolve default projection.
 
     The MCP caller can only supply query text, pagination, filters, and return
-    fields. Search mode and tuning are sourced from config, so this validation
-    step focuses only on the public request contract.
+    fields. Search mode and tuning are sourced from the selected binding's
+    config, so this validation step focuses only on the public request contract.
     """
-
-    runtime = server.config.runtime
 
     if not isinstance(query, str) or not query.strip():
         raise RedisVLMCPError(
@@ -125,17 +130,17 @@ def _validate_request(
             retryable=False,
         )
 
-    schema_fields = set(index.schema.field_names)
+    schema_fields = set(schema.field_names)
     vector_field_names = {
         field_name
-        for field_name, field in index.schema.fields.items()
+        for field_name, field in schema.fields.items()
         if field.type == "vector"
     }
 
     if return_fields is None:
         fields = [
             field_name
-            for field_name in index.schema.field_names
+            for field_name in schema.field_names
             if field_name not in vector_field_names
         ]
     else:
@@ -224,10 +229,17 @@ async def _embed_query(vectorizer: Any, query: str) -> Any:
     return await asyncio.to_thread(embed, query)
 
 
-def _get_configured_search(server: Any) -> tuple[str, dict[str, Any]]:
-    """Return the configured search mode and normalized query params."""
-    search_config = server.config.search
+def _get_configured_search(rt: Any) -> tuple[str, dict[str, Any]]:
+    """Return the binding's configured search mode and normalized query params."""
+    search_config = rt.binding.search
     return search_config.type, search_config.to_query_params()
+
+
+def _require_vectorizer(rt: Any) -> Any:
+    """Return the binding's vectorizer or fail when it is not configured."""
+    if rt.vectorizer is None:
+        raise RuntimeError("MCP server vectorizer is not configured")
+    return rt.vectorizer
 
 
 def _build_native_hybrid_kwargs(
@@ -311,29 +323,27 @@ def _build_fallback_hybrid_kwargs(
 
 async def _build_query(
     *,
-    server: Any,
-    index: Any,
+    rt: Any,
     query: str,
     limit: int,
     offset: int,
     filter_value: str | dict[str, Any] | None,
     return_fields: list[str],
 ) -> tuple[Any, str, str, str]:
-    """Build the RedisVL query object from configured search mode and params.
+    """Build the RedisVL query object from the binding's search mode and params.
 
     Returns the query instance, the raw score field to read from RedisVL
     results, the public MCP `score_type`, and the configured `search_type`.
     """
-    runtime = server.config.runtime
-    search_type, search_params = _get_configured_search(server)
+    runtime = rt.binding.runtime
+    search_type, search_params = _get_configured_search(rt)
     num_results = limit + offset
-    filter_expression = parse_filter(filter_value, index.schema)
+    filter_expression = parse_filter(filter_value, rt.schema)
 
     if search_type == "vector":
         if runtime.vector_field_name is None:
             raise RuntimeError("Vector search requires a configured vector field")
-        vectorizer = await server.get_vectorizer()
-        embedding = await _embed_query(vectorizer, query)
+        embedding = await _embed_query(_require_vectorizer(rt), query)
         vector_kwargs = {
             "vector": embedding,
             "vector_field_name": runtime.vector_field_name,
@@ -373,9 +383,8 @@ async def _build_query(
             search_type,
         )
 
-    vectorizer = await server.get_vectorizer()
-    embedding = await _embed_query(vectorizer, query)
-    if await server.supports_native_hybrid_search():
+    embedding = await _embed_query(_require_vectorizer(rt), query)
+    if rt.supports_native_hybrid_search:
         native_query = HybridQuery(
             **_build_native_hybrid_kwargs(
                 query=query,
@@ -423,20 +432,19 @@ async def search_records(
     filter: str | dict[str, Any] | None = None,
     return_fields: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Execute `search-records` against the configured Redis index binding."""
+    """Execute `search-records` against the selected Redis index binding."""
     try:
-        index = await server.get_index()
+        rt = server.resolve_binding(None)
         effective_limit, effective_return_fields = _validate_request(
             query=query,
             limit=limit,
             offset=offset,
             return_fields=return_fields,
-            server=server,
-            index=index,
+            runtime=rt.binding.runtime,
+            schema=rt.schema,
         )
         built_query, score_field, score_type, search_type = await _build_query(
-            server=server,
-            index=index,
+            rt=rt,
             query=query.strip(),
             limit=effective_limit,
             offset=offset,
@@ -445,7 +453,8 @@ async def search_records(
         )
         raw_results = await server.run_guarded(
             "search-records",
-            index.query(built_query),
+            rt.index.query(built_query),
+            timeout_seconds=rt.binding.runtime.request_timeout_seconds,
         )
         sliced_results = raw_results[offset : offset + effective_limit]
         return {
@@ -467,7 +476,7 @@ async def search_records(
         raise map_exception(exc) from exc
 
 
-def register_search_tool(server: Any, schema: IndexSchema) -> None:
+def register_search_tool(server: Any, schema: IndexSchema | None) -> None:
     """Register the MCP `search-records` tool with its config-owned contract."""
     description = _build_search_tool_description(
         schema=schema,

@@ -282,9 +282,16 @@ class MCPSchemaOverrides(BaseModel):
 
 
 class MCPIndexBindingConfig(BaseModel):
-    """The sole configured v1 index binding."""
+    """A single configured logical index binding.
+
+    A server can configure one or many of these under ``indexes.<id>``. Each
+    binding inspects and serves one existing Redis index independently, and
+    owns its own schema inspection, runtime mapping, and search validation.
+    """
 
     redis_name: str = Field(..., min_length=1)
+    description: str | None = Field(default=None, min_length=1)
+    read_only: bool = False
     vectorizer: MCPVectorizerConfig | None = None
     search: MCPIndexSearchConfig
     runtime: MCPRuntimeConfig
@@ -355,83 +362,9 @@ class MCPIndexBindingConfig(BaseModel):
 
         return self
 
-
-class MCPConfig(BaseModel):
-    """Validated MCP server configuration loaded from YAML."""
-
-    server: MCPServerConfig
-    indexes: dict[str, MCPIndexBindingConfig]
-
-    @model_validator(mode="after")
-    def _validate_bindings(self) -> "MCPConfig":
-        """Validate that there is exactly one configured logical binding."""
-        if len(self.indexes) != 1:
-            raise ValueError(
-                "indexes must contain exactly one configured index binding"
-            )
-
-        binding_id = next(iter(self.indexes))
-        if not binding_id.strip():
-            raise ValueError("indexes binding id must be non-blank")
-        return self
-
-    @property
-    def binding_id(self) -> str:
-        """Return the single logical binding identifier configured for v1."""
-        return next(iter(self.indexes))
-
-    @property
-    def binding(self) -> MCPIndexBindingConfig:
-        """Return the sole configured binding."""
-        return self.indexes[self.binding_id]
-
-    @property
-    def runtime(self) -> MCPRuntimeConfig:
-        """Expose the sole binding's runtime config for phase 1."""
-        return self.binding.runtime
-
-    @property
-    def vectorizer(self) -> MCPVectorizerConfig | None:
-        """Expose the sole binding's vectorizer config for phase 1."""
-        return self.binding.vectorizer
-
-    @property
-    def search(self) -> MCPIndexSearchConfig:
-        """Expose the sole binding's configured search behavior."""
-        return self.binding.search
-
-    @property
-    def uses_text_search(self) -> bool:
-        """Return whether configured search uses a text field."""
-        return self.binding.uses_text_search
-
-    @property
-    def uses_query_embedding(self) -> bool:
-        """Return whether configured search embeds user queries."""
-        return self.binding.uses_query_embedding
-
-    @property
-    def supports_vector_backed_upsert(self) -> bool:
-        """Return whether configured upserts manage a vector field."""
-        return self.binding.supports_vector_backed_upsert
-
-    @property
-    def supports_server_side_embedding(self) -> bool:
-        """Return whether configured upserts can generate embeddings."""
-        return self.binding.supports_server_side_embedding
-
-    @property
-    def requires_startup_vectorizer(self) -> bool:
-        """Return whether startup must initialize a vectorizer."""
-        return self.binding.requires_startup_vectorizer
-
-    @property
-    def redis_name(self) -> str:
-        """Return the existing Redis index name that must be inspected at startup."""
-        return self.binding.redis_name
-
+    @staticmethod
     def inspected_schema_from_index_info(
-        self, index_info: dict[str, Any]
+        index_info: dict[str, Any],
     ) -> dict[str, Any]:
         """Build a schema dict from FT.INFO while preserving discovered field identity.
 
@@ -478,7 +411,7 @@ class MCPConfig(BaseModel):
             if isinstance(field, dict) and "name" in field
         }
 
-        for override in self.binding.schema_overrides.fields:
+        for override in self.schema_overrides.fields:
             discovered = discovered_fields.get(override.name)
             if discovered is None:
                 raise ValueError(
@@ -573,6 +506,29 @@ class MCPConfig(BaseModel):
                 "Schema fields conflict with MCP-reserved score metadata names "
                 f"for search.type '{self.search.type}': {', '.join(conflicting_fields)}"
             )
+
+
+class MCPConfig(BaseModel):
+    """Validated MCP server configuration loaded from YAML.
+
+    ``indexes`` is the canonical multi-binding map: a server may configure one
+    or many logical bindings. Single-index configs remain valid and unchanged;
+    each binding owns its own inspection, runtime mapping, and search behavior.
+    """
+
+    server: MCPServerConfig
+    indexes: dict[str, MCPIndexBindingConfig]
+
+    @model_validator(mode="after")
+    def _validate_bindings(self) -> "MCPConfig":
+        """Require at least one binding and reject blank logical ids."""
+        if not self.indexes:
+            raise ValueError("indexes must contain at least one configured binding")
+
+        for binding_id in self.indexes:
+            if not binding_id.strip():
+                raise ValueError("indexes binding id must be non-blank")
+        return self
 
 
 def _substitute_env(value: Any) -> Any:

@@ -5,6 +5,7 @@ import pytest
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
+from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.tools.search import (
     _build_fallback_hybrid_kwargs,
     _build_search_tool_description,
@@ -111,6 +112,17 @@ class FakeServer:
         self.registered_tools = []
         self.native_hybrid_supported = False
 
+    def resolve_binding(self, index_id=None):
+        return BindingRuntime(
+            binding_id="knowledge",
+            binding=self.config.indexes["knowledge"],
+            index=self.index,
+            schema=self.index.schema,
+            vectorizer=self.vectorizer,
+            supports_native_hybrid_search=self.native_hybrid_supported,
+            effective_read_only=False,
+        )
+
     async def get_index(self):
         return self.index
 
@@ -119,7 +131,7 @@ class FakeServer:
             raise RuntimeError("MCP server vectorizer is not configured")
         return self.vectorizer
 
-    async def run_guarded(self, operation_name, awaitable):
+    async def run_guarded(self, operation_name, awaitable, *, timeout_seconds=None):
         return await awaitable
 
     async def supports_native_hybrid_search(self):
@@ -652,7 +664,7 @@ async def test_validate_search_rejects_reserved_score_metadata_field_names(
     )
 
     with pytest.raises(ValueError, match="MCP-reserved score metadata names"):
-        config.validate_search(
+        config.indexes["knowledge"].validate_search(
             schema=schema,
             supports_native_hybrid_search=supports_native,
         )
@@ -701,7 +713,7 @@ async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypa
     )
 
     with pytest.raises(ValueError, match="native hybrid search support"):
-        server.config.validate_search(
+        server.config.indexes["knowledge"].validate_search(
             schema=_schema(),
             supports_native_hybrid_search=False,
         )

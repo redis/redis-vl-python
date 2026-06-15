@@ -10,7 +10,9 @@ from redis import __version__ as redis_py_version
 from redisvl.exceptions import RedisSearchError
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.auth import build_auth_provider, resolve_auth_config
-from redisvl.mcp.config import MCPConfig, load_mcp_config
+from redisvl.mcp.config import MCPConfig, MCPIndexBindingConfig, load_mcp_config
+from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
+from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
@@ -47,17 +49,15 @@ class _LifecycleState(Enum):
 
 
 class RedisVLMCPServer(FastMCP):
-    """MCP server exposing RedisVL capabilities for one existing Redis index."""
+    """MCP server exposing RedisVL capabilities for one or many existing indexes."""
 
     _LifecycleState = _LifecycleState
 
     def __init__(self, settings: MCPSettings):
-        """Create a server shell with lazy config, index, and vectorizer state."""
+        """Create a server shell with lazy config and per-binding runtime state."""
         self.mcp_settings = settings
         self.config: MCPConfig | None = None
-        self._index: AsyncSearchIndex | None = None
-        self._vectorizer: Any | None = None
-        self._supports_native_hybrid_search: bool | None = None
+        self._bindings: dict[str, BindingRuntime] = {}
         self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
 
@@ -90,12 +90,10 @@ class RedisVLMCPServer(FastMCP):
         """Load config, inspect the configured index, and initialize dependencies."""
         async with self._transition_lock:
             await self._begin_startup()
-            client = None
             try:
-                client = await self._initialize_runtime_resources()
+                await self._initialize_runtime_resources()
                 await self._mark_running()
             except Exception:
-                await self._teardown_runtime(client)
                 await self._mark_stopped()
                 raise
 
@@ -112,22 +110,64 @@ class RedisVLMCPServer(FastMCP):
             finally:
                 await self._mark_stopped()
 
-    async def get_index(self) -> AsyncSearchIndex:
-        """Return the initialized async index or fail if startup has not run."""
-        if self._index is None:
-            raise RuntimeError("MCP server has not been started")
-        return self._index
+    def resolve_binding(self, index_id: str | None) -> BindingRuntime:
+        """Resolve the runtime for a logical index id, honoring single-index defaults.
 
-    async def get_vectorizer(self) -> Any:
-        """Return the initialized vectorizer or fail if startup has not run."""
-        if self.config is None:
+        - ``None`` with exactly one configured binding returns that binding,
+          preserving backward-compatible single-index behavior.
+        - ``None`` with multiple bindings is an ``invalid_request``; the caller
+          must name an index.
+        - An unknown id is an ``invalid_request``.
+
+        Write-availability is not enforced here; that is the upsert tool's job.
+        """
+        if not self._bindings:
             raise RuntimeError("MCP server has not been started")
-        if self._vectorizer is None:
+
+        if index_id is None:
+            if len(self._bindings) == 1:
+                return next(iter(self._bindings.values()))
+            available = ", ".join(sorted(self._bindings))
+            raise RedisVLMCPError(
+                "index is required when multiple indexes are configured; "
+                f"available: {available}",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
+
+        runtime = self._bindings.get(index_id)
+        if runtime is None:
+            available = ", ".join(sorted(self._bindings))
+            raise RedisVLMCPError(
+                f"Unknown index '{index_id}'; available: {available}",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
+        return runtime
+
+    async def get_index(self, index_id: str | None = None) -> AsyncSearchIndex:
+        """Return an initialized async index, defaulting to the sole binding."""
+        return self.resolve_binding(index_id).index
+
+    async def get_vectorizer(self, index_id: str | None = None) -> Any:
+        """Return an initialized vectorizer, defaulting to the sole binding."""
+        runtime = self.resolve_binding(index_id)
+        if runtime.vectorizer is None:
             raise RuntimeError("MCP server vectorizer is not configured")
-        return self._vectorizer
+        return runtime.vectorizer
 
-    async def run_guarded(self, operation_name: str, awaitable: Awaitable[Any]) -> Any:
-        """Run a coroutine under the configured concurrency and timeout limits."""
+    async def run_guarded(
+        self,
+        operation_name: str,
+        awaitable: Awaitable[Any],
+        *,
+        timeout_seconds: float,
+    ) -> Any:
+        """Run a coroutine under the global concurrency cap and a request timeout.
+
+        The timeout is sourced per-binding by the caller; the concurrency
+        semaphore is a single process-wide ceiling shared across all bindings.
+        """
         del operation_name
         semaphore = self._semaphore
         if semaphore is None:
@@ -140,8 +180,7 @@ class RedisVLMCPServer(FastMCP):
                     self._close_awaitable(awaitable)
                     raise RuntimeError("MCP server is not running")
 
-                config = self.config
-                if config is None:
+                if self.config is None:
                     self._close_awaitable(awaitable)
                     raise RuntimeError("MCP server is not running")
 
@@ -149,33 +188,32 @@ class RedisVLMCPServer(FastMCP):
                 self._active_requests_drained.clear()
 
             try:
-                return await asyncio.wait_for(
-                    awaitable,
-                    timeout=config.runtime.request_timeout_seconds,
-                )
+                return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
             finally:
                 async with self._request_state_lock:
                     self._active_requests -= 1
                     if self._active_requests == 0:
                         self._active_requests_drained.set()
 
-    def _build_vectorizer(self) -> Any:
-        """Instantiate the configured vectorizer class from validated config."""
-        if self.config is None:
-            raise RuntimeError("MCP server config not loaded")
-        if self.config.vectorizer is None:
+    @staticmethod
+    def _build_vectorizer(binding: MCPIndexBindingConfig) -> Any:
+        """Instantiate a binding's configured vectorizer class from its config."""
+        if binding.vectorizer is None:
             raise RuntimeError("MCP server vectorizer is not configured")
 
-        vectorizer_class = resolve_vectorizer_class(self.config.vectorizer.class_name)
-        return vectorizer_class(**self.config.vectorizer.to_init_kwargs())
+        vectorizer_class = resolve_vectorizer_class(binding.vectorizer.class_name)
+        return vectorizer_class(**binding.vectorizer.to_init_kwargs())
 
-    def _validate_vectorizer_dims(self, schema: IndexSchema) -> None:
+    @staticmethod
+    def _validate_vectorizer_dims(
+        binding: MCPIndexBindingConfig, vectorizer: Any, schema: IndexSchema
+    ) -> None:
         """Fail startup when vectorizer dimensions disagree with schema dimensions."""
-        if self.config is None or self._vectorizer is None:
+        if vectorizer is None:
             return
 
-        configured_dims = self.config.get_vector_field_dims(schema)
-        actual_dims = getattr(self._vectorizer, "dims", None)
+        configured_dims = binding.get_vector_field_dims(schema)
+        actual_dims = getattr(vectorizer, "dims", None)
         if (
             configured_dims is not None
             and actual_dims is not None
@@ -185,33 +223,32 @@ class RedisVLMCPServer(FastMCP):
                 f"Vectorizer dims {actual_dims} do not match configured vector field dims {configured_dims}"
             )
 
-    async def supports_native_hybrid_search(self) -> bool:
-        """Return whether the current runtime supports Redis native hybrid search."""
-        if self._supports_native_hybrid_search is not None:
-            return self._supports_native_hybrid_search
-        if self._index is None:
-            raise RuntimeError("MCP server has not been started")
+    @staticmethod
+    async def _probe_native_hybrid_search(index: AsyncSearchIndex) -> bool:
+        """Probe whether a connected index supports Redis native hybrid search."""
         if not is_version_gte(redis_py_version, "7.1.0"):
-            self._supports_native_hybrid_search = False
             return False
 
-        client = await self._index._get_client()
+        client = await index._get_client()
         info = await client.info("server")
         if not is_version_gte(info.get("redis_version", "0.0.0"), "8.4.0"):
-            self._supports_native_hybrid_search = False
             return False
 
-        self._supports_native_hybrid_search = hasattr(
-            client.ft(self._index.schema.index.name), "hybrid_search"
-        )
-        return self._supports_native_hybrid_search
+        return hasattr(client.ft(index.schema.index.name), "hybrid_search")
 
-    def _register_tools(self, schema: IndexSchema) -> None:
-        """Register MCP tools once the server is ready."""
+    def _register_tools(self) -> None:
+        """Register MCP tools once every binding is ready."""
         if self._tools_registered or not hasattr(self, "tool"):
             return
 
-        register_search_tool(self, schema)
+        # The search description advertises schema-specific filter hints, which
+        # are only unambiguous for a single binding. With multiple bindings the
+        # caller selects an index per call, so fall back to the base description.
+        search_schema: IndexSchema | None = None
+        if len(self._bindings) == 1:
+            search_schema = next(iter(self._bindings.values())).schema
+
+        register_search_tool(self, search_schema)
         if not self.mcp_settings.read_only:
             register_upsert_tool(self)
         self._tools_registered = True
@@ -241,15 +278,15 @@ class RedisVLMCPServer(FastMCP):
         finally:
             await self.shutdown()
 
-    async def _teardown_runtime(self, client: Any | None = None) -> None:
-        """Release runtime resources and clear terminal state."""
-        vectorizer = self._vectorizer
-        index = self._index
-        self._vectorizer = None
-        self._index = None
-        self.config = None
-        self._semaphore = None
+    @staticmethod
+    async def _close_resources(
+        *, index: Any | None, vectorizer: Any | None, client: Any | None = None
+    ) -> None:
+        """Close one binding's vectorizer and Redis connection.
 
+        A fully built binding owns its client through ``index``; a binding that
+        failed mid-startup may have a bare ``client`` and no index yet.
+        """
         try:
             if vectorizer is not None:
                 aclose = getattr(vectorizer, "aclose", None)
@@ -259,11 +296,22 @@ class RedisVLMCPServer(FastMCP):
                 elif callable(close):
                     close()
         finally:
-            self._supports_native_hybrid_search = None
             if index is not None:
                 await index.disconnect()
             elif client is not None:
                 await client.aclose()
+
+    async def _teardown_runtime(self) -> None:
+        """Release every binding's runtime resources and clear terminal state."""
+        bindings = list(self._bindings.values())
+        self._bindings = {}
+        self.config = None
+        self._semaphore = None
+
+        for runtime in bindings:
+            await self._close_resources(
+                index=runtime.index, vectorizer=runtime.vectorizer
+            )
 
     @staticmethod
     def _close_awaitable(awaitable: Awaitable[Any]) -> None:
@@ -296,6 +344,7 @@ class RedisVLMCPServer(FastMCP):
             ):
                 self.config = None
                 self._semaphore = None
+                self._bindings = {}
                 self._lifecycle_state = _LifecycleState.STOPPED
                 return True
 
@@ -329,29 +378,63 @@ class RedisVLMCPServer(FastMCP):
                 "ensure the config file exists before constructing the server."
             )
 
-    async def _initialize_runtime_resources(self) -> Any:
-        """Load config and initialize the Redis-backed runtime dependencies."""
+    async def _initialize_runtime_resources(self) -> None:
+        """Load config and initialize every configured binding independently."""
         self.config = load_mcp_config(self._config_path)
         self._verify_auth_not_stale()
-        self._semaphore = asyncio.Semaphore(self.config.runtime.max_concurrency)
-        self._supports_native_hybrid_search = None
-        timeout = self.config.runtime.startup_timeout_seconds
-
-        client = await self._connect_redis_client(timeout)
-        try:
-            effective_schema = await self._load_effective_schema(client, timeout)
-            self._initialize_index(effective_schema, client)
-            self.config.validate_search(
-                schema=effective_schema,
-                supports_native_hybrid_search=await self.supports_native_hybrid_search(),
+        # The semaphore is a single process-wide concurrency ceiling shared by
+        # all bindings; take the max configured limit across bindings.
+        self._semaphore = asyncio.Semaphore(
+            max(
+                binding.runtime.max_concurrency
+                for binding in self.config.indexes.values()
             )
-            if self.config.requires_startup_vectorizer:
-                await self._initialize_vectorizer(effective_schema, timeout)
-            self._register_tools(effective_schema)
-            return client
+        )
+        self._bindings = {}
+
+        try:
+            for binding_id, binding in self.config.indexes.items():
+                self._bindings[binding_id] = await self._initialize_binding(
+                    binding_id, binding
+                )
+            self._register_tools()
         except Exception:
-            if self._index is None:
-                await client.aclose()
+            # Tear down any bindings already built before re-raising so startup
+            # fails closed without leaking connections.
+            await self._teardown_runtime()
+            raise
+
+    async def _initialize_binding(
+        self, binding_id: str, binding: MCPIndexBindingConfig
+    ) -> BindingRuntime:
+        """Inspect, validate, and initialize a single configured binding."""
+        timeout = binding.runtime.startup_timeout_seconds
+        client = await self._connect_redis_client(timeout)
+        index: AsyncSearchIndex | None = None
+        vectorizer: Any | None = None
+        try:
+            schema = await self._load_effective_schema(binding, client, timeout)
+            index = self._make_index(schema, client)
+            supports_native_hybrid = await self._probe_native_hybrid_search(index)
+            binding.validate_search(
+                schema=schema,
+                supports_native_hybrid_search=supports_native_hybrid,
+            )
+            if binding.requires_startup_vectorizer:
+                vectorizer = await self._initialize_vectorizer(binding, schema, timeout)
+            return BindingRuntime(
+                binding_id=binding_id,
+                binding=binding,
+                index=index,
+                schema=schema,
+                vectorizer=vectorizer,
+                supports_native_hybrid_search=supports_native_hybrid,
+                effective_read_only=self.mcp_settings.read_only or binding.read_only,
+            )
+        except Exception:
+            await self._close_resources(
+                index=index, vectorizer=vectorizer, client=client
+            )
             raise
 
     async def _connect_redis_client(self, timeout: int) -> Any:
@@ -368,37 +451,41 @@ class RedisVLMCPServer(FastMCP):
         await asyncio.wait_for(client.info("server"), timeout=timeout)
         return client
 
-    async def _load_effective_schema(self, client: Any, timeout: int) -> IndexSchema:
-        """Inspect the configured Redis index and build the effective schema."""
-        if self.config is None:
-            raise RuntimeError("MCP server config not loaded")
-
+    async def _load_effective_schema(
+        self, binding: MCPIndexBindingConfig, client: Any, timeout: int
+    ) -> IndexSchema:
+        """Inspect a binding's Redis index and build its effective schema."""
         try:
             index_info = await asyncio.wait_for(
-                AsyncSearchIndex._info(self.config.redis_name, client),
+                AsyncSearchIndex._info(binding.redis_name, client),
                 timeout=timeout,
             )
         except RedisSearchError as exc:
             if self._is_missing_index_error(exc):
                 raise ValueError(
-                    f"Configured Redis index '{self.config.redis_name}' does not exist"
+                    f"Configured Redis index '{binding.redis_name}' does not exist"
                 ) from exc
             raise
 
-        inspected_schema = self.config.inspected_schema_from_index_info(index_info)
-        return self.config.to_index_schema(inspected_schema)
+        inspected_schema = binding.inspected_schema_from_index_info(index_info)
+        return binding.to_index_schema(inspected_schema)
 
-    def _initialize_index(self, schema: IndexSchema, client: Any) -> None:
-        """Bind the inspected schema and Redis client into an async index."""
-        self._index = AsyncSearchIndex(schema=schema, redis_client=client)
+    @staticmethod
+    def _make_index(schema: IndexSchema, client: Any) -> AsyncSearchIndex:
+        """Bind an inspected schema and Redis client into an async index."""
+        index = AsyncSearchIndex(schema=schema, redis_client=client)
         # The server acquired this client explicitly during startup, so hand
         # ownership to the index for a single shutdown path.
-        self._index._owns_redis_client = True
+        index._owns_redis_client = True
+        return index
 
-    async def _initialize_vectorizer(self, schema: IndexSchema, timeout: int) -> None:
-        """Build the configured vectorizer and validate it against the schema."""
-        self._vectorizer = await asyncio.wait_for(
-            asyncio.to_thread(self._build_vectorizer),
+    async def _initialize_vectorizer(
+        self, binding: MCPIndexBindingConfig, schema: IndexSchema, timeout: int
+    ) -> Any:
+        """Build a binding's vectorizer and validate it against the schema."""
+        vectorizer = await asyncio.wait_for(
+            asyncio.to_thread(self._build_vectorizer, binding),
             timeout=timeout,
         )
-        self._validate_vectorizer_dims(schema)
+        self._validate_vectorizer_dims(binding, vectorizer, schema)
+        return vectorizer
