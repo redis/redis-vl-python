@@ -357,6 +357,130 @@ async def test_upsert_records_rejects_invalid_records_before_write(
     assert called is False
 
 
+@pytest.fixture
+async def multi_index_upsert_server(
+    monkeypatch, upsertable_index, fulltext_only_upsert_index, tmp_path, redis_url
+):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: RecordingVectorizer,
+    )
+
+    config = {
+        "server": {"redis_url": redis_url},
+        "indexes": {
+            "knowledge": {
+                "redis_name": upsertable_index.schema.index.name,
+                "search": {"type": "vector"},
+                "vectorizer": {
+                    "class": "RecordingVectorizer",
+                    "model": "fake-model",
+                    "dims": 3,
+                },
+                "runtime": {
+                    "text_field_name": "content",
+                    "vector_field_name": "embedding",
+                    "default_embed_text_field": "content",
+                    "default_limit": 2,
+                    "max_limit": 5,
+                    "max_upsert_records": 64,
+                    "skip_embedding_if_present": True,
+                },
+            },
+            "tickets": {
+                "redis_name": fulltext_only_upsert_index.schema.index.name,
+                "read_only": True,
+                "search": {"type": "fulltext", "params": {"stopwords": None}},
+                "runtime": {
+                    "text_field_name": "content",
+                    "vector_field_name": None,
+                    "default_embed_text_field": None,
+                    "default_limit": 2,
+                    "max_limit": 5,
+                    "max_upsert_records": 64,
+                },
+            },
+        },
+    }
+    config_path = tmp_path / "multi-index-upsert.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    server = RedisVLMCPServer(MCPSettings(config=str(config_path)))
+    await server.startup()
+    try:
+        yield server
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_routes_to_named_writable_binding(
+    multi_index_upsert_server,
+):
+    response = await upsert_records(
+        multi_index_upsert_server,
+        index="knowledge",
+        records=[{"content": "routed document", "category": "science", "rating": 5}],
+    )
+
+    assert response["index"] == "knowledge"
+    assert response["status"] == "success"
+    assert response["keys_upserted"] == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_requires_index_when_multiple_bindings(
+    multi_index_upsert_server,
+):
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await upsert_records(
+            multi_index_upsert_server,
+            records=[{"content": "no index", "category": "science"}],
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_rejects_unknown_index_on_multi_binding(
+    multi_index_upsert_server,
+):
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await upsert_records(
+            multi_index_upsert_server,
+            index="missing",
+            records=[{"content": "doc", "category": "science"}],
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_rejects_writes_to_read_only_binding(
+    multi_index_upsert_server,
+):
+    with pytest.raises(RedisVLMCPError, match="read-only") as exc_info:
+        await upsert_records(
+            multi_index_upsert_server,
+            index="tickets",
+            records=[{"content": "doc", "category": "operations"}],
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_single_binding_echoes_index_when_omitted(started_server):
+    server = await started_server()
+
+    response = await upsert_records(
+        server,
+        records=[{"content": "solo document", "category": "science", "rating": 5}],
+    )
+
+    assert response["index"] == "knowledge"
+
+
 @pytest.mark.asyncio
 async def test_read_only_mode_excludes_upsert_tool(
     monkeypatch, upsertable_index, mcp_config_path

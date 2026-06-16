@@ -166,8 +166,16 @@ class FakeServer:
         self.vectorizer = vectorizer or FakeVectorizer() if include_vectorizer else None
         self.registered_tools = []
         self.effective_read_only = effective_read_only
+        self.resolved_index_ids: list[str | None] = []
 
     def resolve_binding(self, index_id=None):
+        self.resolved_index_ids.append(index_id)
+        if index_id is not None and index_id != "knowledge":
+            raise RedisVLMCPError(
+                f"Unknown index '{index_id}'; available: knowledge",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
         return BindingRuntime(
             binding_id="knowledge",
             binding=self.config.indexes["knowledge"],
@@ -212,6 +220,7 @@ async def test_upsert_records_generates_missing_vectors_and_serializes_hash_vect
     )
 
     assert response == {
+        "index": "knowledge",
         "status": "success",
         "keys_upserted": 2,
         "keys": ["doc:alpha", "doc:beta"],
@@ -458,15 +467,60 @@ async def test_upsert_records_surfaces_partial_write_possible_on_backend_failure
 
 
 @pytest.mark.asyncio
+async def test_upsert_records_defaults_to_sole_binding_when_index_omitted():
+    server = FakeServer()
+
+    response = await upsert_records(server, records=[{"content": "alpha doc"}])
+
+    assert server.resolved_index_ids == [None]
+    assert response["index"] == "knowledge"
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_routes_to_named_index():
+    server = FakeServer()
+
+    response = await upsert_records(
+        server, records=[{"content": "alpha doc"}], index="knowledge"
+    )
+
+    assert server.resolved_index_ids == ["knowledge"]
+    assert response["index"] == "knowledge"
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_rejects_unknown_index():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await upsert_records(
+            server, records=[{"content": "alpha doc"}], index="missing"
+        )
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert server.resolved_index_ids == ["missing"]
+    assert server.index.load_calls == []
+
+
+@pytest.mark.asyncio
 async def test_upsert_records_rejects_writes_to_read_only_binding():
     server = FakeServer(effective_read_only=True)
 
-    with pytest.raises(RedisVLMCPError) as exc_info:
+    with pytest.raises(RedisVLMCPError, match="read-only") as exc_info:
         await upsert_records(server, records=[{"content": "alpha doc"}])
 
-    assert exc_info.value.code == MCPErrorCode.FORBIDDEN
-    # The write is rejected before any backend load is attempted.
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    # Write policy is enforced before any embedding or backend write.
     assert server.index.load_calls == []
+    assert server.vectorizer.aembed_many_calls == []
+
+
+def test_register_upsert_tool_wrapper_exposes_index_param():
+    server = FakeServer()
+    register_upsert_tool(server)
+
+    annotations = server.registered_tools[0]["fn"].__annotations__
+    assert "index" in annotations
 
 
 def test_register_upsert_tool_uses_default_and_override_descriptions():
