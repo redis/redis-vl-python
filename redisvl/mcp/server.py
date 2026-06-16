@@ -252,7 +252,11 @@ class RedisVLMCPServer(FastMCP):
         # Discovery is always available so clients can enumerate indexes.
         register_list_indexes_tool(self)
         register_search_tool(self, search_schema)
-        if not self.mcp_settings.read_only:
+        # Expose upsert only when at least one binding is writable. A binding is
+        # read-only under global read-only mode or its own read_only policy, both
+        # of which are folded into effective_read_only; the per-call write check
+        # in the tool then rejects writes to any individual read-only binding.
+        if any(not rt.effective_read_only for rt in self._bindings.values()):
             register_upsert_tool(self)
         self._tools_registered = True
 

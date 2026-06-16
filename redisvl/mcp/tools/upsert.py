@@ -249,13 +249,27 @@ async def upsert_records(
     server: Any,
     *,
     records: list[dict[str, Any]],
+    index: str | None = None,
     id_field: str | None = None,
     skip_embedding_if_present: bool | None = None,
 ) -> dict[str, Any]:
-    """Execute `upsert-records` against the selected Redis index binding."""
+    """Execute `upsert-records` against the selected Redis index binding.
+
+    ``index`` names the logical binding to write to. It is optional when exactly
+    one binding is configured and required when multiple exist. Writes to a
+    read-only binding (whether from global read-only mode or the binding's own
+    ``read_only`` policy) are rejected with ``invalid_request``. The resolved
+    logical id is echoed back in the response.
+    """
     try:
-        rt = server.resolve_binding(None)
-        index = rt.index
+        rt = server.resolve_binding(index)
+        if rt.effective_read_only:
+            raise RedisVLMCPError(
+                f"index '{rt.binding_id}' is read-only",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
+        index_obj = rt.index
         runtime = rt.binding.runtime
         effective_skip_embedding = _validate_request(
             runtime=runtime,
@@ -269,7 +283,7 @@ async def upsert_records(
         for record in prepared_records:
             _validate_record(
                 record,
-                index=index,
+                index=index_obj,
                 vector_field_name=runtime.vector_field_name,
             )
         if rt.binding.supports_server_side_embedding:
@@ -326,7 +340,7 @@ async def upsert_records(
         try:
             keys = await server.run_guarded(
                 "upsert-records",
-                index.load(loadable_records, id_field=id_field),
+                index_obj.load(loadable_records, id_field=id_field),
                 timeout_seconds=runtime.request_timeout_seconds,
             )
         except Exception as exc:
@@ -335,6 +349,7 @@ async def upsert_records(
             raise mapped from exc
 
         return {
+            "index": rt.binding_id,
             "status": "success",
             "keys_upserted": len(keys),
             "keys": keys,
@@ -353,6 +368,7 @@ def register_upsert_tool(server: Any) -> None:
 
     async def upsert_records_tool(
         records: list[dict[str, Any]],
+        index: str | None = None,
         id_field: str | None = None,
         skip_embedding_if_present: bool | None = None,
     ):
@@ -362,6 +378,7 @@ def register_upsert_tool(server: Any) -> None:
         return await upsert_records(
             server,
             records=records,
+            index=index,
             id_field=id_field,
             skip_embedding_if_present=skip_embedding_if_present,
         )
