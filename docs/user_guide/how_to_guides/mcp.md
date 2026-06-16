@@ -71,7 +71,7 @@ uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --read-only
 | `--transport` | `stdio` | Transport protocol: `stdio`, `sse`, or `streamable-http` |
 | `--host` | `127.0.0.1` | Bind address (only used with `sse` and `streamable-http`) |
 | `--port` | `8000` | Bind port (only used with `sse` and `streamable-http`) |
-| `--read-only` | off | Disable the `upsert-records` tool |
+| `--read-only` | off | Disable writes across every index (global read-only) |
 
 ### Environment Variables
 
@@ -81,7 +81,7 @@ You can also control boot settings through environment variables:
 |----------|---------|
 | `REDISVL_MCP_CONFIG` | Path to the MCP YAML config |
 | `REDISVL_MCP_READ_ONLY` | Disable `upsert-records` when set to `true` |
-| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text; RedisVL still appends schema-derived typed filter, `exists`, and `return_fields` hints |
+| `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text. On a single-index server RedisVL appends schema-derived typed filter, `exists`, and `return_fields` hints; on a multi-index server it appends a note directing clients to call `list-indexes` and pass `index` |
 | `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | Override the upsert tool description |
 
 ## Connect a Remote MCP Client
@@ -108,7 +108,7 @@ For example, to configure a remote MCP client to connect to a Streamable HTTP se
 
 ## Example Config
 
-This example binds one logical MCP server to one existing Redis index called `knowledge`.
+This example binds one logical MCP server to one existing Redis index called `knowledge`. A single configured index is the simplest deployment, and callers never need to name it. See [Multiple Indexes](#multiple-indexes) below to expose several indexes from the same server.
 
 The config uses `${REDIS_URL}` and `${OPENAI_API_KEY}` as environment-variable placeholders. These values are resolved when the server starts. You can also use `${VAR:-default}` to provide a fallback value.
 
@@ -198,14 +198,117 @@ indexes:
       max_concurrency: 16
 ```
 
+### Multiple Indexes
+
+The `indexes` mapping can hold more than one binding. Each entry is keyed by a logical id, points at its own existing Redis index through `redis_name`, and carries its own `search`, `runtime`, and optional `vectorizer`. The example below exposes a writable vector index `knowledge` alongside a read-only fulltext index `tickets` from the same server:
+
+```yaml
+server:
+  redis_url: ${REDIS_URL}
+
+indexes:
+  knowledge:
+    redis_name: knowledge
+    description: Internal runbooks and operational guidance.
+
+    vectorizer:
+      class: OpenAITextVectorizer
+      model: text-embedding-3-small
+      api_config:
+        api_key: ${OPENAI_API_KEY}
+
+    search:
+      type: vector
+
+    runtime:
+      text_field_name: content
+      vector_field_name: embedding
+      default_embed_text_field: content
+      default_limit: 10
+      max_limit: 25
+
+  tickets:
+    redis_name: support-tickets
+    description: Read-only mirror of resolved support tickets.
+    read_only: true
+
+    search:
+      type: fulltext
+      params:
+        text_scorer: BM25STD
+        stopwords: english
+
+    runtime:
+      text_field_name: body
+      default_limit: 10
+      max_limit: 50
+```
+
+Notes:
+
+- Each binding is inspected and validated independently at startup. Startup is all-or-nothing: if any binding fails, the server does not start.
+- The optional per-index `description` and `read_only` flags are surfaced through `list-indexes`.
+- `read_only: true` makes that binding reject writes even though the server as a whole is not in global read-only mode. Because `knowledge` is still writable, the `upsert-records` tool is registered; an upsert targeting `tickets` is rejected with `invalid_request`.
+- A single-index config keeps working unchanged — adding bindings does not change how the sole-binding case behaves.
+
+### Index Selection
+
+On a multi-index server, `search-records` and `upsert-records` take an optional `index` argument naming the logical id to target:
+
+- With exactly one index configured, `index` may be omitted and resolves to that binding.
+- With multiple indexes configured, omitting `index` returns `invalid_request`; an unknown id also returns `invalid_request`.
+- Clients should call [`list-indexes`](#list-indexes) first to discover the available ids and their filterable fields.
+
 ## Tool Contracts
 
 RedisVL MCP exposes a small, implementation-owned contract.
+
+### `list-indexes`
+
+`list-indexes` is always available and takes no arguments. Call it first on a multi-index server to discover which logical ids exist and how to filter each one.
+
+Example response payload:
+
+```json
+{
+  "indexes": [
+    {
+      "id": "knowledge",
+      "description": "Internal runbooks and operational guidance.",
+      "upsert_available": true,
+      "fields": [
+        { "name": "title", "type": "text" },
+        { "name": "category", "type": "tag" },
+        { "name": "rating", "type": "numeric" }
+      ],
+      "limits": { "max_limit": 25 }
+    },
+    {
+      "id": "tickets",
+      "description": "Read-only mirror of resolved support tickets.",
+      "upsert_available": false,
+      "fields": [
+        { "name": "category", "type": "tag" }
+      ],
+      "limits": { "max_limit": 50 }
+    }
+  ]
+}
+```
+
+Notes:
+
+- `upsert_available` reflects the binding's effective write availability (global read-only **or** the per-index `read_only` flag)
+- `fields` lists the filterable fields discovered from the index; the vector field and the configured embed-source text field are intentionally omitted
+- `limits` includes only runtime limits that were explicitly configured (such as `max_limit` or `max_upsert_records`); defaults are not echoed
+- the underlying Redis index name (`redis_name`) is never exposed
+- `description` appears only when configured for that binding
 
 ### `search-records`
 
 Arguments:
 
+- `index` (optional; required when multiple indexes are configured)
 - `query`
 - `limit`
 - `offset`
@@ -216,6 +319,7 @@ Example request payload:
 
 ```json
 {
+  "index": "knowledge",
   "query": "incident response runbook",
   "limit": 2,
   "offset": 0,
@@ -233,6 +337,7 @@ Example response payload:
 
 ```json
 {
+  "index": "knowledge",
   "search_type": "hybrid",
   "offset": 0,
   "limit": 2,
@@ -254,6 +359,7 @@ Example response payload:
 
 Notes:
 
+- `index` selects the logical binding; omit it only on a single-index server. The resolved id is echoed back in the response
 - `search_type` is response metadata, not a request argument
 - when `return_fields` is omitted, RedisVL MCP returns all non-vector fields
 - returning the configured vector field is rejected
@@ -267,6 +373,7 @@ Notes:
 
 Arguments:
 
+- `index` (optional; required when multiple indexes are configured)
 - `records`
 - `id_field`
 - `skip_embedding_if_present`
@@ -275,6 +382,7 @@ Example request payload:
 
 ```json
 {
+  "index": "knowledge",
   "records": [
     {
       "doc_id": "doc-42",
@@ -291,6 +399,7 @@ Example response payload:
 
 ```json
 {
+  "index": "knowledge",
   "status": "success",
   "keys_upserted": 1,
   "keys": ["knowledge:doc-42"]
@@ -299,12 +408,41 @@ Example response payload:
 
 Notes:
 
-- this tool is not registered in read-only mode
+- `index` selects the logical binding; omit it only on a single-index server. The resolved id is echoed back in the response
+- this tool is not registered when every binding is read-only (global read-only mode or every binding setting `read_only: true`)
+- a write targeting a read-only binding is rejected with `invalid_request` before any data is changed, even when the tool is registered because other bindings are writable
 - when server-side embedding is configured, records that need embedding must contain `runtime.default_embed_text_field`
 - when `skip_embedding_if_present` is `true`, records that already contain the configured vector field can skip re-embedding
 - when a vector field is configured but server-side embedding is disabled, callers must supply vectors explicitly
 
 ## Search Examples
+
+### Discovery-First Multi-Index Flow
+
+On a multi-index server, call `list-indexes` first, pick a logical id from the response, then pass it as `index`:
+
+```json
+{
+  "index": "knowledge",
+  "query": "cache invalidation incident",
+  "limit": 3,
+  "return_fields": ["title", "content", "category"]
+}
+```
+
+The same `index` argument routes an `upsert-records` write to a specific binding:
+
+```json
+{
+  "index": "knowledge",
+  "records": [
+    { "doc_id": "doc-7", "content": "New runbook entry", "category": "operations" }
+  ],
+  "id_field": "doc_id"
+}
+```
+
+On a single-index server you can omit `index` entirely; the examples below show that backward-compatible shape.
 
 ### Read-Only Vector Search
 
