@@ -53,7 +53,9 @@ async def test_probe_native_hybrid_search_false_for_old_redis_py(monkeypatch):
     assert client.info_calls == 0
 
 
-def _binding_runtime(binding_id: str) -> BindingRuntime:
+def _binding_runtime(
+    binding_id: str, *, effective_read_only: bool = False
+) -> BindingRuntime:
     return BindingRuntime(
         binding_id=binding_id,
         binding=SimpleNamespace(),
@@ -61,7 +63,7 @@ def _binding_runtime(binding_id: str) -> BindingRuntime:
         schema=SimpleNamespace(),
         vectorizer=None,
         supports_native_hybrid_search=False,
-        effective_read_only=False,
+        effective_read_only=effective_read_only,
     )
 
 
@@ -110,3 +112,58 @@ def test_resolve_binding_rejects_unknown_index():
 
     assert excinfo.value.code == MCPErrorCode.INVALID_REQUEST
     assert "missing" in str(excinfo.value)
+
+
+def _register_tools_with(monkeypatch, bindings: dict) -> list[str]:
+    """Run _register_tools against the given bindings, returning registered names."""
+    registered: list[str] = []
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_list_indexes_tool",
+        lambda server: registered.append("list-indexes"),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_search_tool",
+        lambda server, schema: registered.append("search-records"),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.server.register_upsert_tool",
+        lambda server: registered.append("upsert-records"),
+    )
+
+    server = RedisVLMCPServer.__new__(RedisVLMCPServer)
+    server._bindings = bindings
+    server._tools_registered = False
+    server.tool = object()
+    server.mcp_settings = SimpleNamespace(read_only=False)
+
+    server._register_tools()
+    return registered
+
+
+def test_register_tools_exposes_upsert_when_a_binding_is_writable(monkeypatch):
+    registered = _register_tools_with(
+        monkeypatch,
+        {
+            "knowledge": _binding_runtime("knowledge", effective_read_only=False),
+            "tickets": _binding_runtime("tickets", effective_read_only=True),
+        },
+    )
+
+    assert "upsert-records" in registered
+    assert "list-indexes" in registered
+    assert "search-records" in registered
+
+
+def test_register_tools_hides_upsert_when_every_binding_is_read_only(monkeypatch):
+    registered = _register_tools_with(
+        monkeypatch,
+        {
+            "knowledge": _binding_runtime("knowledge", effective_read_only=True),
+            "tickets": _binding_runtime("tickets", effective_read_only=True),
+        },
+    )
+
+    assert "upsert-records" not in registered
+    # Read paths stay available even when writes are globally disabled.
+    assert "list-indexes" in registered
+    assert "search-records" in registered
