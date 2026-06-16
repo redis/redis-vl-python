@@ -9,6 +9,7 @@ from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
+from redisvl.mcp.tools.list_indexes import list_indexes
 from redisvl.redis.connection import is_version_gte
 from redisvl.schema import IndexSchema
 from tests.conftest import get_redis_version_async
@@ -723,3 +724,78 @@ async def test_server_startup_fails_when_one_binding_is_invalid(
 
     assert server._lifecycle_state.name == "STOPPED"
     assert server._bindings == {}
+
+
+@pytest.mark.asyncio
+async def test_list_indexes_derives_fields_from_inspected_schema(
+    monkeypatch, existing_index, multi_index_config_path
+):
+    knowledge = await existing_index(index_name="mcp-list-knowledge")
+    tickets = await existing_index(index_name="mcp-list-tickets")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=multi_index_config_path(
+                {
+                    # Vector binding: content is the embed source.
+                    "knowledge": {
+                        "redis_name": knowledge.name,
+                        "description": "Product docs",
+                        "vectorizer": {
+                            "class": "FakeVectorizer",
+                            "model": "fake-model",
+                            "dims": 3,
+                        },
+                        "search": {"type": "vector"},
+                        "runtime": {
+                            "text_field_name": "content",
+                            "vector_field_name": "embedding",
+                            "default_embed_text_field": "content",
+                            "max_limit": 25,
+                        },
+                    },
+                    # Fulltext binding: no embed source, read-only.
+                    "tickets": {
+                        "redis_name": tickets.name,
+                        "read_only": True,
+                        "search": {"type": "fulltext"},
+                        "runtime": {"text_field_name": "content"},
+                    },
+                }
+            )
+        )
+    )
+
+    await server.startup()
+
+    try:
+        result = list_indexes(server)
+        indexes = {entry["id"]: entry for entry in result["indexes"]}
+
+        # Both bindings are discoverable; redis_name is never leaked.
+        assert set(indexes) == {"knowledge", "tickets"}
+        for entry in indexes.values():
+            assert "redis_name" not in entry
+            assert knowledge.name not in entry.values()
+            assert tickets.name not in entry.values()
+
+        # Fields come from the inspected schema. The vector field is always
+        # omitted; the embed-source field is omitted only where configured.
+        knowledge_fields = {f["name"] for f in indexes["knowledge"]["fields"]}
+        tickets_fields = {f["name"] for f in indexes["tickets"]["fields"]}
+        assert "embedding" not in knowledge_fields
+        assert "embedding" not in tickets_fields
+        assert "content" not in knowledge_fields  # embed source omitted
+        assert "content" in tickets_fields  # no embed source configured
+
+        # Per-index write policy and explicit limits are reflected.
+        assert indexes["knowledge"]["upsert_available"] is True
+        assert indexes["tickets"]["upsert_available"] is False
+        assert indexes["knowledge"]["limits"] == {"max_limit": 25}
+        assert "limits" not in indexes["tickets"]
+        assert indexes["knowledge"]["description"] == "Product docs"
+    finally:
+        await server.shutdown()
