@@ -15,6 +15,7 @@ from redisvl.mcp.config import MCPConfig, MCPIndexBindingConfig, load_mcp_config
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.settings import MCPSettings
+from redisvl.mcp.tools.list_indexes import register_list_indexes_tool
 from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
@@ -246,6 +247,8 @@ class RedisVLMCPServer(FastMCP):
         if len(self._bindings) == 1:
             search_schema = next(iter(self._bindings.values())).schema
 
+        # Discovery is always available so clients can enumerate indexes.
+        register_list_indexes_tool(self)
         register_search_tool(self, search_schema)
         if not self.mcp_settings.read_only:
             register_upsert_tool(self)
