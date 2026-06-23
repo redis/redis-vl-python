@@ -685,6 +685,34 @@ def test_from_existing(client, redis_url, routes, redis_test_name):
                 router.delete()
 
 
+def test_delete_removes_route_config_key(
+    client, routes, hf_vectorizer, redis_test_name
+):
+    """delete() must remove the persisted {name}:route_config key (issue #634)."""
+    skip_if_no_redis_search(client)
+
+    router = SemanticRouter(
+        name=redis_test_name("test_router_delete"),
+        routes=routes,
+        routing_config=RoutingConfig(max_k=2),
+        redis_client=client,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    config_key = f"{router.name}:route_config"
+
+    # The config key is written when the router is constructed.
+    assert client.exists(config_key)
+
+    router.delete()
+
+    # delete() must drop the index AND remove the standalone config key, so a
+    # subsequent from_existing() finds no stale config to load.
+    assert not client.exists(config_key)
+    with pytest.raises(ValueError):
+        SemanticRouter.from_existing(name=router.name, redis_client=client)
+
+
 def test_get_route_references(semantic_router):
     # Get references for a specific route
     refs = semantic_router.get_route_references(route_name="greeting")
