@@ -99,21 +99,26 @@ class TestKeySeparatorHandling:
             overwrite=True,
         )
 
-        # Modify the index schema to use custom separator
-        router._index.schema.index.key_separator = "|"
-        router._index.schema.index.prefix = "router"
+        try:
+            # Modify the index schema to use custom separator
+            router._index.schema.index.key_separator = "|"
+            router._index.schema.index.prefix = "router"
 
-        # Check that route reference keys use the custom separator
-        route_key = router._route_ref_key(router._index, "test_route", "ref123")
+            # Check that route reference keys use the custom separator
+            route_key = router._route_ref_key(router._index, "test_route", "ref123")
 
-        # Should use custom separator
-        assert "|" in route_key, f"Route key doesn't use custom separator: {route_key}"
-        assert (
-            route_key.count(":") == 0
-        ), f"Route key uses default separator: {route_key}"
-        assert (
-            route_key == "router|test_route|ref123"
-        ), f"Unexpected route key: {route_key}"
+            # Should use custom separator
+            assert (
+                "|" in route_key
+            ), f"Route key doesn't use custom separator: {route_key}"
+            assert (
+                route_key.count(":") == 0
+            ), f"Route key uses default separator: {route_key}"
+            assert (
+                route_key == "router|test_route|ref123"
+            ), f"Unexpected route key: {route_key}"
+        finally:
+            router.delete()
 
     def test_prefix_with_separator_and_custom_separator(self):
         """Test handling when prefix contains old separator and we use a new one."""
@@ -204,19 +209,22 @@ class TestSemanticRouterKeyConstruction:
             overwrite=True,
         )
 
-        # Test with different separators
-        for separator in [":", "-", "_", "|"]:
-            router._index.schema.index.key_separator = separator
-            router._index.schema.index.prefix = "routes"
+        try:
+            # Test with different separators
+            for separator in [":", "-", "_", "|"]:
+                router._index.schema.index.key_separator = separator
+                router._index.schema.index.prefix = "routes"
 
-            # Test internal key generation
-            route_key = router._route_ref_key(router._index, "route1", "ref1")
+                # Test internal key generation
+                route_key = router._route_ref_key(router._index, "route1", "ref1")
 
-            # Should use the configured separator
-            expected = f"routes{separator}route1{separator}ref1"
-            assert (
-                route_key == expected
-            ), f"For sep '{separator}': Expected '{expected}' but got '{route_key}'"
+                # Should use the configured separator
+                expected = f"routes{separator}route1{separator}ref1"
+                assert (
+                    route_key == expected
+                ), f"For sep '{separator}': Expected '{expected}' but got '{route_key}'"
+        finally:
+            router.delete()
 
     def test_router_with_prefix_ending_in_separator(self, redis_url):
         """Test SemanticRouter when prefix ends with separator."""
@@ -231,16 +239,21 @@ class TestSemanticRouterKeyConstruction:
             overwrite=True,
         )
 
-        # Modify to have prefix ending with separator
-        router._index.schema.index.prefix = "routes:"
-        router._index.schema.index.key_separator = ":"
+        try:
+            # Modify to have prefix ending with separator
+            router._index.schema.index.prefix = "routes:"
+            router._index.schema.index.key_separator = ":"
 
-        # Generate a route key
-        route_key = router._route_ref_key(router._index, "route1", "ref1")
+            # Generate a route key
+            route_key = router._route_ref_key(router._index, "route1", "ref1")
 
-        # Should not have double separator
-        assert "::" not in route_key, f"Route key has double separator: {route_key}"
-        assert route_key == "routes:route1:ref1", f"Unexpected route key: {route_key}"
+            # Should not have double separator
+            assert "::" not in route_key, f"Route key has double separator: {route_key}"
+            assert (
+                route_key == "routes:route1:ref1"
+            ), f"Unexpected route key: {route_key}"
+        finally:
+            router.delete()
 
 
 class TestSearchIndexKeyConstruction:

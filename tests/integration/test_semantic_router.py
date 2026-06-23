@@ -241,6 +241,36 @@ def test_add_route_survives_from_existing(
                 router.delete()
 
 
+def test_delete_removes_route_config_key(
+    client, redis_url, routes, redis_test_name, hf_vectorizer
+):
+    """router.delete() must also remove the {name}:route_config JSON key,
+    not just drop the search index (see issue #634)."""
+    skip_if_no_redis_search(client)
+
+    router = SemanticRouter(
+        name=redis_test_name("test_delete_config"),
+        routes=routes,
+        routing_config=RoutingConfig(max_k=2),
+        redis_client=client,
+        overwrite=True,
+        vectorizer=hf_vectorizer,
+    )
+    config_key = f"{router.name}:route_config"
+
+    # Config key is persisted on init.
+    assert client.exists(config_key) == 1
+
+    router.delete()
+
+    # After delete(), no orphaned config key remains.
+    assert client.exists(config_key) == 0
+
+    # from_existing() on a deleted router must not read stale config.
+    with pytest.raises(Exception):
+        SemanticRouter.from_existing(name=router.name, redis_client=client)
+
+
 def test_add_route_duplicate_raises(semantic_router):
     duplicate = Route(
         name="greeting",
