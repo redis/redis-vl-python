@@ -19,12 +19,12 @@ SKIP_REASON = "Requires Redis >= 8.4.0 and redis-py>=7.1.0"
 
 
 @pytest.fixture
-def index_schema(worker_id):
+def index_schema(redis_test_name):
     return IndexSchema.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": redis_test_name("user_index"),
+                "prefix": redis_test_name("v1"),
                 "storage_type": "hash",
             },
             "fields": [
@@ -74,7 +74,7 @@ def index(index_schema, multi_vector_data, redis_url):
     index = SearchIndex(schema=index_schema, redis_url=redis_url)
 
     # create the index (no data yet)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     # prepare and load the data
     def hash_preprocess(item: dict) -> dict:
@@ -97,7 +97,7 @@ def index(index_schema, multi_vector_data, redis_url):
 @pytest.fixture
 async def async_index(index_schema, multi_vector_data, async_client):
     index = AsyncSearchIndex(schema=index_schema, redis_client=async_client)
-    await index.create(overwrite=True)
+    await index.create(overwrite=True, drop=True)
 
     def hash_preprocess(item: dict) -> dict:
         return {
