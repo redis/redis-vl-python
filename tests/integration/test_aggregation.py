@@ -8,13 +8,13 @@ from tests.conftest import skip_if_redis_version_below
 
 
 @pytest.fixture
-def index(multi_vector_data, redis_url, worker_id):
+def index(multi_vector_data, redis_url, redis_test_name):
 
     index = SearchIndex.from_dict(
         {
             "index": {
-                "name": f"user_index_{worker_id}",
-                "prefix": f"v1_{worker_id}",
+                "name": redis_test_name("user_index"),
+                "prefix": redis_test_name("v1"),
                 "storage_type": "hash",
             },
             "fields": [
@@ -59,8 +59,9 @@ def index(multi_vector_data, redis_url, worker_id):
         redis_url=redis_url,
     )
 
-    # create the index (no data yet)
-    index.create(overwrite=True)
+    # create the index (no data yet); drop any stale docs left by an
+    # interrupted earlier run sharing this worker's Redis database
+    index.create(overwrite=True, drop=True)
 
     # prepare and load the data
     def hash_preprocess(item: dict) -> dict:

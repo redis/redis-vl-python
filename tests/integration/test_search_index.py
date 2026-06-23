@@ -114,11 +114,11 @@ def test_search_index_from_existing_url(redis_url, index):
     assert index2.schema == index.schema
 
 
-def test_search_index_from_existing_complex(client):
+def test_search_index_from_existing_complex(client, redis_test_name):
     schema = {
         "index": {
-            "name": "test",
-            "prefix": "test",
+            "name": redis_test_name("complex_index"),
+            "prefix": redis_test_name("complex"),
             "storage_type": "json",
         },
         "fields": [
@@ -144,29 +144,32 @@ def test_search_index_from_existing_complex(client):
         ],
     }
     index = SearchIndex.from_dict(schema, redis_client=client)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     try:
-        index2 = SearchIndex.from_existing(index.name, redis_client=client)
-    except Exception as e:
-        pytest.skip(str(e))
+        try:
+            index2 = SearchIndex.from_existing(index.name, redis_client=client)
+        except Exception as e:
+            pytest.skip(str(e))
 
-    # Verify index metadata matches
-    assert index2.schema.index.name == index.schema.index.name
-    assert index2.schema.index.prefix == index.schema.index.prefix
-    assert index2.schema.index.storage_type == index.schema.index.storage_type
+        # Verify index metadata matches
+        assert index2.schema.index.name == index.schema.index.name
+        assert index2.schema.index.prefix == index.schema.index.prefix
+        assert index2.schema.index.storage_type == index.schema.index.storage_type
 
-    # Verify non-vector fields are present
-    for field_name in ["user", "credit_score", "job", "age"]:
-        assert field_name in index2.schema.fields
-        assert (
-            index2.schema.fields[field_name].type
-            == index.schema.fields[field_name].type
-        )
+        # Verify non-vector fields are present
+        for field_name in ["user", "credit_score", "job", "age"]:
+            assert field_name in index2.schema.fields
+            assert (
+                index2.schema.fields[field_name].type
+                == index.schema.fields[field_name].type
+            )
 
-    # Vector field may not be present on older Redis versions
-    if "user_embedding" in index2.schema.fields:
-        assert index2.schema.fields["user_embedding"].type == "vector"
+        # Vector field may not be present on older Redis versions
+        if "user_embedding" in index2.schema.fields:
+            assert index2.schema.fields["user_embedding"].type == "vector"
+    finally:
+        index.delete(drop=True)
 
 
 def test_search_index_from_existing_multiple_prefixes(client, redis_test_name):
@@ -510,7 +513,7 @@ def test_search_index_that_owns_client_disconnect(index_schema, redis_url):
     assert index.client is None
 
 
-def test_search_index_no_proactive_module_validation(redis_url):
+def test_search_index_no_proactive_module_validation(redis_url, redis_test_name):
     """
     Updated test for issue #370: SearchIndex should not validate modules proactively.
     Operations should fail naturally if modules are missing.
@@ -522,7 +525,7 @@ def test_search_index_no_proactive_module_validation(redis_url):
         # Create index - validation should only set lib name, not check modules
         index = SearchIndex(
             schema=IndexSchema.from_dict(
-                {"index": {"name": "my_index"}, "fields": fields}
+                {"index": {"name": redis_test_name("my_index")}, "fields": fields}
             ),
             redis_client=client,
         )
@@ -534,8 +537,11 @@ def test_search_index_no_proactive_module_validation(redis_url):
         # The actual operation (create) will succeed if modules are present
         index.create(overwrite=True, drop=True)
 
-        # Verify index was created successfully (modules are present in test env)
-        assert index.exists()
+        try:
+            # Verify index was created successfully (modules are present in test env)
+            assert index.exists()
+        finally:
+            index.delete(drop=True)
 
 
 def test_batch_search(index):

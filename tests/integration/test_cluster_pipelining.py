@@ -33,13 +33,20 @@ def test_real_cluster_pipeline_get_protocol_version(redis_cluster_url):
 
 
 @pytest.mark.requires_cluster
-def test_real_searchindex_with_cluster_batch_operations(redis_cluster_url):
+def test_real_searchindex_with_cluster_batch_operations(
+    redis_cluster_url, redis_test_name
+):
     """
     Test SearchIndex.load() with Redis Cluster.
     """
     # Create schema like the user had
+    index_prefix = redis_test_name("doc")
     schema_dict = {
-        "index": {"name": "test-real-365", "prefix": "doc", "storage_type": "hash"},
+        "index": {
+            "name": redis_test_name("test-real-365"),
+            "prefix": index_prefix,
+            "storage_type": "hash",
+        },
         "fields": [
             {"name": "id", "type": "tag"},
             {"name": "text", "type": "text"},
@@ -52,7 +59,7 @@ def test_real_searchindex_with_cluster_batch_operations(redis_cluster_url):
     index = SearchIndex(schema, redis_url=redis_cluster_url)
 
     # Create the index
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     try:
         # Test data like user had
@@ -67,11 +74,11 @@ def test_real_searchindex_with_cluster_batch_operations(redis_cluster_url):
         )
 
         assert len(keys) == 10
-        assert all(k.startswith("doc:") for k in keys)
+        assert all(k.startswith(f"{index_prefix}:") for k in keys)
 
     finally:
         # Clean up
-        index.delete()
+        index.delete(drop=True)
 
 
 @pytest.mark.requires_cluster
@@ -114,14 +121,18 @@ def test_cluster_pipeline_protocol_version_directly():
 
 
 @pytest.mark.requires_cluster
-def test_batch_search_with_real_cluster(redis_cluster_url):
+def test_batch_search_with_real_cluster(redis_cluster_url, redis_test_name):
     """
     Test batch_search which uses get_protocol_version internally.
     """
     from redisvl.query import FilterQuery
 
     schema_dict = {
-        "index": {"name": "test-batch-365", "prefix": "batch", "storage_type": "json"},
+        "index": {
+            "name": redis_test_name("test-batch-365"),
+            "prefix": redis_test_name("batch"),
+            "storage_type": "json",
+        },
         "fields": [
             {"name": "id", "type": "tag"},
             {"name": "category", "type": "tag"},
@@ -131,7 +142,7 @@ def test_batch_search_with_real_cluster(redis_cluster_url):
     schema = IndexSchema.from_dict(schema_dict)
     index = SearchIndex(schema, redis_url=redis_cluster_url)
 
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     try:
         # Load test data
@@ -151,17 +162,21 @@ def test_batch_search_with_real_cluster(redis_cluster_url):
         assert len(results) == 3
 
     finally:
-        index.delete()
+        index.delete(drop=True)
 
 
 @pytest.mark.requires_cluster
 @pytest.mark.parametrize("ttl", [None, 30])
-def test_cluster_load_with_ttl(redis_cluster_url, ttl):
+def test_cluster_load_with_ttl(redis_cluster_url, ttl, redis_test_name):
     """
     Test that TTL is correctly set on keys when using load() with ttl parameter on cluster.
     """
     schema_dict = {
-        "index": {"name": "test-ttl-cluster", "prefix": "ttl", "storage_type": "hash"},
+        "index": {
+            "name": redis_test_name("test-ttl-cluster"),
+            "prefix": redis_test_name("ttl"),
+            "storage_type": "hash",
+        },
         "fields": [
             {"name": "id", "type": "tag"},
             {"name": "text", "type": "text"},
@@ -171,7 +186,7 @@ def test_cluster_load_with_ttl(redis_cluster_url, ttl):
     schema = IndexSchema.from_dict(schema_dict)
     index = SearchIndex(schema, redis_url=redis_cluster_url)
 
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     try:
         # Load test data with TTL parameter
@@ -190,4 +205,4 @@ def test_cluster_load_with_ttl(redis_cluster_url, ttl):
             assert abs(key_ttl - ttl) <= 5
 
     finally:
-        index.delete()
+        index.delete(drop=True)

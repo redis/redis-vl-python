@@ -16,7 +16,7 @@ def filter_query():
 
 
 @pytest.fixture
-def index(sample_data, redis_url, worker_id):
+def index(sample_data, redis_url, redis_test_name):
     fields_spec = [
         {"name": "credit_score", "type": "tag"},
         {"name": "user", "type": "tag"},
@@ -36,8 +36,8 @@ def index(sample_data, redis_url, worker_id):
 
     json_schema = {
         "index": {
-            "name": f"user_index_json_{worker_id}",
-            "prefix": f"users_json_{worker_id}",
+            "name": redis_test_name("user_index_json"),
+            "prefix": redis_test_name("users_json"),
             "storage_type": "json",
         },
         "fields": fields_spec,
@@ -46,8 +46,9 @@ def index(sample_data, redis_url, worker_id):
     # construct a search index from the schema
     index = SearchIndex.from_dict(json_schema, redis_url=redis_url)
 
-    # create the index (no data yet)
-    index.create(overwrite=True)
+    # create the index (no data yet); drop any stale docs left by an
+    # interrupted earlier run sharing this worker's Redis database
+    index.create(overwrite=True, drop=True)
 
     # Prepare and load the data
     index.load(sample_data)
