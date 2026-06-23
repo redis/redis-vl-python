@@ -6,6 +6,7 @@ from redis.exceptions import RedisError
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
+from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.tools.upsert import register_upsert_tool, upsert_records
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema import IndexSchema
@@ -164,6 +165,17 @@ class FakeServer:
         self.vectorizer = vectorizer or FakeVectorizer() if include_vectorizer else None
         self.registered_tools = []
 
+    def resolve_binding(self, index_id=None):
+        return BindingRuntime(
+            binding_id="knowledge",
+            binding=self.config.indexes["knowledge"],
+            index=self.index,
+            schema=self.index.schema,
+            vectorizer=self.vectorizer,
+            supports_native_hybrid_search=False,
+            effective_read_only=False,
+        )
+
     async def get_index(self):
         return self.index
 
@@ -172,7 +184,9 @@ class FakeServer:
             raise RuntimeError("MCP server vectorizer is not configured")
         return self.vectorizer
 
-    async def run_guarded(self, operation_name: str, awaitable: Any):
+    async def run_guarded(
+        self, operation_name: str, awaitable: Any, *, timeout_seconds=None
+    ):
         return await awaitable
 
     def tool(self, name=None, description=None, **kwargs):
