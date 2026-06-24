@@ -125,7 +125,7 @@ RedisVL requires Redis with [Redis Search](https://redis.io/docs/latest/develop/
 
 1. [Redis Cloud](https://redis.io/cloud), a fully managed cloud offering with a free tier
 2. [Redis 8+ (Docker)](https://redis.io/downloads/), for local development and testing
-3. [Redis Enterprise](https://redis.com/redis-enterprise/), a commercial self-hosted option
+3. [Redis Enterprise](https://redis.io/software/), a commercial self-hosted option
 
 ### Redis Cloud
 
