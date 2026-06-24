@@ -48,12 +48,15 @@ async def test_sync_to_async_conversion_rejects_cluster_client(redis_cluster_url
 
 
 @pytest.mark.requires_cluster
-def test_search_index_cluster_client(redis_cluster_url):
+def test_search_index_cluster_client(redis_cluster_url, redis_test_name):
     """Test that SearchIndex correctly accepts RedisCluster clients."""
     # Create a simple schema
     schema = IndexSchema.from_dict(
         {
-            "index": {"name": "test_cluster_index", "prefix": "test_cluster"},
+            "index": {
+                "name": redis_test_name("test_cluster_index"),
+                "prefix": redis_test_name("test_cluster"),
+            },
             "fields": [
                 {"name": "name", "type": "text"},
                 {"name": "age", "type": "numeric"},
@@ -63,50 +66,54 @@ def test_search_index_cluster_client(redis_cluster_url):
 
     cluster_client = RedisCluster.from_url(redis_cluster_url)
     index = SearchIndex(schema=schema, redis_client=cluster_client)
-    index.create(overwrite=True)
-    index.load([{"name": "test1", "age": 30}])
-    results = index.query(TextQuery("test1", "name"))
-    assert results[0]["name"] == "test1"
-    index.delete(drop=True)
+    try:
+        index.create(overwrite=True, drop=True)
+        index.load([{"name": "test1", "age": 30}])
+        results = index.query(TextQuery("test1", "name"))
+        assert results[0]["name"] == "test1"
+    finally:
+        index.delete(drop=True)
 
 
 @pytest.mark.requires_cluster
-def test_search_index_cluster_info(redis_cluster_url):
+def test_search_index_cluster_info(redis_cluster_url, redis_test_name):
     """Test .info() method on SearchIndex with RedisCluster client."""
+    index_name = redis_test_name("test_cluster_info")
     schema = IndexSchema.from_dict(
         {
-            "index": {"name": "test_cluster_info", "prefix": "test_info"},
+            "index": {"name": index_name, "prefix": redis_test_name("test_info")},
             "fields": [{"name": "name", "type": "text"}],
         }
     )
     client = RedisCluster.from_url(redis_cluster_url)
     index = SearchIndex(schema=schema, redis_client=client)
     try:
-        index.create(overwrite=True)
+        index.create(overwrite=True, drop=True)
         info = index.info()
         assert isinstance(info, dict)
-        assert info.get("index_name", None) == "test_cluster_info"
+        assert info.get("index_name", None) == index_name
     finally:
         index.delete(drop=True)
 
 
 @pytest.mark.requires_cluster
 @pytest.mark.asyncio
-async def test_async_search_index_cluster_info(redis_cluster_url):
+async def test_async_search_index_cluster_info(redis_cluster_url, redis_test_name):
     """Test .info() method on AsyncSearchIndex with AsyncRedisCluster client."""
+    index_name = redis_test_name("async_cluster_info")
     schema = IndexSchema.from_dict(
         {
-            "index": {"name": "async_cluster_info", "prefix": "async_info"},
+            "index": {"name": index_name, "prefix": redis_test_name("async_info")},
             "fields": [{"name": "name", "type": "text"}],
         }
     )
     client = AsyncRedisCluster.from_url(redis_cluster_url)
     index = AsyncSearchIndex(schema=schema, redis_client=client)
     try:
-        await index.create(overwrite=True)
+        await index.create(overwrite=True, drop=True)
         info = await index.info()
         assert isinstance(info, dict)
-        assert info.get("index_name", None) == "async_cluster_info"
+        assert info.get("index_name", None) == index_name
     finally:
         await index.delete(drop=True)
         await client.aclose()
@@ -114,12 +121,15 @@ async def test_async_search_index_cluster_info(redis_cluster_url):
 
 @pytest.mark.requires_cluster
 @pytest.mark.asyncio
-async def test_async_search_index_client(redis_cluster_url):
+async def test_async_search_index_client(redis_cluster_url, redis_test_name):
     """Test that AsyncSearchIndex correctly handles AsyncRedis clients."""
     # Create a simple schema
     schema = IndexSchema.from_dict(
         {
-            "index": {"name": "async_test_index", "prefix": "async_test"},
+            "index": {
+                "name": redis_test_name("async_test_index"),
+                "prefix": redis_test_name("async_test"),
+            },
             "fields": [
                 {"name": "name", "type": "text"},
                 {"name": "age", "type": "numeric"},
@@ -131,7 +141,7 @@ async def test_async_search_index_client(redis_cluster_url):
     cluster_client = AsyncRedisCluster.from_url(redis_cluster_url)
     index = AsyncSearchIndex(schema=schema, redis_client=cluster_client)
     try:
-        await index.create(overwrite=True)
+        await index.create(overwrite=True, drop=True)
         await index.load([{"name": "async_test", "age": 25}])
         results = await index.query(TextQuery("async_test", "name"))
         assert results[0]["name"] == "async_test"
@@ -143,12 +153,14 @@ async def test_async_search_index_client(redis_cluster_url):
 
 @pytest.mark.requires_cluster
 @pytest.mark.asyncio
-async def test_embeddings_cache_cluster_async(redis_cluster_url):
+async def test_embeddings_cache_cluster_async(redis_cluster_url, redis_test_name):
     """Test that EmbeddingsCache correctly handles AsyncRedisCluster clients."""
     cluster_client = RedisConnectionFactory.get_async_redis_cluster_connection(
         redis_cluster_url
     )
-    cache = EmbeddingsCache(async_redis_client=cluster_client)
+    cache = EmbeddingsCache(
+        name=redis_test_name("embedcache"), async_redis_client=cluster_client
+    )
 
     try:
         await cache.aset(
@@ -166,10 +178,12 @@ async def test_embeddings_cache_cluster_async(redis_cluster_url):
 
 
 @pytest.mark.requires_cluster
-def test_embeddings_cache_cluster_sync(redis_cluster_url):
+def test_embeddings_cache_cluster_sync(redis_cluster_url, redis_test_name):
     """Test that EmbeddingsCache correctly handles RedisCluster clients."""
     cluster_client = RedisCluster.from_url(redis_cluster_url)
-    cache = EmbeddingsCache(redis_client=cluster_client)
+    cache = EmbeddingsCache(
+        name=redis_test_name("embedcache"), redis_client=cluster_client
+    )
 
     for i in range(100):
         cache.set(
@@ -197,7 +211,9 @@ def test_embeddings_cache_cluster_sync(redis_cluster_url):
 
 
 @pytest.mark.requires_cluster
-def test_semantic_router_cluster_client(redis_cluster_url, hf_vectorizer):
+def test_semantic_router_cluster_client(
+    redis_cluster_url, hf_vectorizer, redis_test_name
+):
     """Test that SemanticRouter works correctly with RedisCluster clients."""
     routes = [
         Route(
@@ -214,7 +230,7 @@ def test_semantic_router_cluster_client(redis_cluster_url, hf_vectorizer):
     ]
     client = RedisCluster.from_url(redis_cluster_url)
 
-    router_name = "test_cluster_router"
+    router_name = redis_test_name("test_cluster_router")
     router = SemanticRouter(
         name=router_name,
         routes=routes,

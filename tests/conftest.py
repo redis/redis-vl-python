@@ -518,7 +518,7 @@ def flat_index(sample_data, redis_url, redis_test_name):
     )
 
     # create the index (no data yet)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     # Prepare and load the data
     def hash_preprocess(item: dict) -> dict:
@@ -575,7 +575,7 @@ async def async_flat_index(sample_data, redis_url, redis_test_name):
     )
 
     # create the index (no data yet)
-    await index.create(overwrite=True)
+    await index.create(overwrite=True, drop=True)
 
     # Prepare and load the data
     def hash_preprocess(item: dict) -> dict:
@@ -631,7 +631,7 @@ async def async_hnsw_index(sample_data, redis_url, redis_test_name):
     )
 
     # create the index (no data yet)
-    await index.create(overwrite=True)
+    await index.create(overwrite=True, drop=True)
 
     # Prepare and load the data
     def hash_preprocess(item: dict) -> dict:
@@ -687,7 +687,7 @@ def hnsw_index(sample_data, redis_url, redis_test_name):
     )
 
     # create the index (no data yet)
-    index.create(overwrite=True)
+    index.create(overwrite=True, drop=True)
 
     # Prepare and load the data
     def hash_preprocess(item: dict) -> dict:

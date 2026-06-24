@@ -2,6 +2,7 @@ import asyncio
 import sys
 import warnings
 from collections import namedtuple
+from contextlib import suppress
 from time import sleep, time
 
 import pytest
@@ -963,27 +964,32 @@ def test_no_key_collision_on_identical_prompts(redis_url, worker_id, hf_vectoriz
     assert len(filtered_results) == 2
 
 
-def test_create_cache_with_different_vector_types(client, worker_id, redis_url):
+def test_create_cache_with_different_vector_types(client, redis_test_name, redis_url):
     skip_if_no_redis_search(client)
+    caches = []
     try:
         bfloat_cache = SemanticCache(
-            name=f"bfloat_cache_{worker_id}", dtype="bfloat16", redis_url=redis_url
+            name=redis_test_name("bfloat_cache"), dtype="bfloat16", redis_url=redis_url
         )
+        caches.append(bfloat_cache)
         bfloat_cache.store("bfloat16 prompt", "bfloat16 response")
 
         float16_cache = SemanticCache(
-            name=f"float16_cache_{worker_id}", dtype="float16", redis_url=redis_url
+            name=redis_test_name("float16_cache"), dtype="float16", redis_url=redis_url
         )
+        caches.append(float16_cache)
         float16_cache.store("float16 prompt", "float16 response")
 
         float32_cache = SemanticCache(
-            name=f"float32_cache_{worker_id}", dtype="float32", redis_url=redis_url
+            name=redis_test_name("float32_cache"), dtype="float32", redis_url=redis_url
         )
+        caches.append(float32_cache)
         float32_cache.store("float32 prompt", "float32 response")
 
         float64_cache = SemanticCache(
-            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
+            name=redis_test_name("float64_cache"), dtype="float64", redis_url=redis_url
         )
+        caches.append(float64_cache)
         float64_cache.store("float64 prompt", "float64 response")
 
         for cache in [bfloat_cache, float16_cache, float32_cache, float64_cache]:
@@ -991,9 +997,13 @@ def test_create_cache_with_different_vector_types(client, worker_id, redis_url):
             assert len(cache.check("float prompt", num_results=5)) == 1
     except:
         pytest.skip("Required Redis modules not available or version too low")
+    finally:
+        for cache in caches:
+            with suppress(Exception):
+                cache.delete()
 
 
-def test_bad_dtype_connecting_to_existing_cache(client, redis_url, worker_id):
+def test_bad_dtype_connecting_to_existing_cache(client, redis_url, redis_test_name):
     skip_if_no_redis_search(client)
     # Skip this test for Redis 6.2.x as FT.INFO doesn't return dims properly
     redis_version = client.info()["redis_version"]
@@ -1002,24 +1012,26 @@ def test_bad_dtype_connecting_to_existing_cache(client, redis_url, worker_id):
             "Redis 6.2.x FT.INFO doesn't properly return vector dims for reconnection"
         )
 
+    cache_name = redis_test_name("float64_cache")
+
     def create_cache():
-        return SemanticCache(
-            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
-        )
+        return SemanticCache(name=cache_name, dtype="float64", redis_url=redis_url)
 
     def create_same_type():
-        return SemanticCache(
-            name=f"float64_cache_{worker_id}", dtype="float64", redis_url=redis_url
-        )
+        return SemanticCache(name=cache_name, dtype="float64", redis_url=redis_url)
 
     cache = create_cache()
-    same_type = create_same_type()
-    # under the hood uses from_existing
+    try:
+        same_type = create_same_type()
+        # under the hood uses from_existing
 
-    with pytest.raises(ValueError):
-        bad_type = SemanticCache(
-            name=f"float64_cache_{worker_id}", dtype="float16", redis_url=redis_url
-        )
+        with pytest.raises(ValueError):
+            bad_type = SemanticCache(
+                name=cache_name, dtype="float16", redis_url=redis_url
+            )
+    finally:
+        with suppress(Exception):
+            cache.delete()
 
 
 def test_vectorizer_dtype_mismatch(redis_url, hf_vectorizer_float16, worker_id):

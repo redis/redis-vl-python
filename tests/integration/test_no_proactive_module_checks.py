@@ -28,11 +28,15 @@ from tests.conftest import (
 
 
 @pytest.fixture
-def sample_schema():
+def sample_schema(redis_test_name):
     """Create a sample index schema for testing."""
     return IndexSchema.from_dict(
         {
-            "index": {"name": "test-index", "prefix": "doc", "storage_type": "hash"},
+            "index": {
+                "name": redis_test_name("test-index"),
+                "prefix": redis_test_name("doc"),
+                "storage_type": "hash",
+            },
             "fields": [
                 {"name": "text", "type": "text"},
                 {
@@ -146,11 +150,12 @@ class TestNoProactiveModuleChecks:
             # MODULE LIST should NOT have been called
             mock_module_list.assert_not_called()
 
-        # Verify index exists
-        assert index.exists()
-
-        # Clean up
-        index.delete()
+        try:
+            # Verify index exists
+            assert index.exists()
+        finally:
+            # Clean up
+            index.delete(drop=True)
 
     async def test_async_search_index_create_with_modules(
         self, async_client, sample_schema, worker_id
@@ -174,11 +179,12 @@ class TestNoProactiveModuleChecks:
             # MODULE LIST should NOT have been called
             mock_module_list.assert_not_called()
 
-        # Verify index exists
-        assert await index.exists()
-
-        # Clean up
-        await index.delete()
+        try:
+            # Verify index exists
+            assert await index.exists()
+        finally:
+            # Clean up
+            await index.delete(drop=True)
 
     def test_search_operations_fail_gracefully_without_modules(self):
         """Test that operations fail with clear errors when modules are missing."""
@@ -326,22 +332,24 @@ class TestEdgeCases:
         for client in clients:
             await client.aclose()
 
-    def test_from_existing_index_no_validation(self, client, worker_id):
+    def test_from_existing_index_no_validation(self, client, redis_test_name):
         """Test that SearchIndex.from_existing doesn't validate modules."""
         # Skip if Redis Search is not available
         skip_if_no_redis_search(client)
 
+        index_name = redis_test_name("existing-index")
+
         # First create an index normally
         schema = IndexSchema.from_dict(
             {
-                "index": {"name": f"existing-index-{worker_id}", "prefix": "doc"},
+                "index": {"name": index_name, "prefix": redis_test_name("doc")},
                 "fields": [{"name": "text", "type": "text"}],
             }
         )
         index = SearchIndex(schema, redis_client=client)
 
         try:
-            index.create(overwrite=True)
+            index.create(overwrite=True, drop=True)
         except ResponseError as e:
             if "unknown command" in str(e).lower():
                 pytest.skip("Redis Search module not available")
@@ -352,16 +360,16 @@ class TestEdgeCases:
             with patch.object(client, "module_list") as mock_module_list:
                 # Load from existing should work without MODULE LIST
                 existing_index = SearchIndex.from_existing(
-                    f"existing-index-{worker_id}", redis_client=client
+                    index_name, redis_client=client
                 )
 
                 # MODULE LIST should NOT have been called
                 mock_module_list.assert_not_called()
 
-                assert existing_index.name == f"existing-index-{worker_id}"
+                assert existing_index.name == index_name
         finally:
             # Clean up
             try:
-                index.delete()
+                index.delete(drop=True)
             except:
                 pass  # Ignore cleanup errors
