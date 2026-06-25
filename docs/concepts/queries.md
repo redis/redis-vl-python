@@ -273,6 +273,27 @@ query = SQLQuery("""
 """, params={"vec": embedding_bytes})
 ```
 
+**Hybrid search (FT.HYBRID)** fuses a text query and a vector query server-side
+with `hybrid_vector_search()`, composing `cosine_distance()` (vector leg) and
+`fulltext()` (text leg) with `rrf()` or `linear()` fusion. This is the SQL
+front-end to the native `HybridQuery` (above):
+
+```python
+query = SQLQuery("""
+    SELECT title,
+           hybrid_vector_search(
+               cosine_distance(embedding, :vec),
+               fulltext(description, 'gaming laptop'),
+               rrf()
+           ) AS hybrid_score
+    FROM products
+    ORDER BY hybrid_score DESC
+    LIMIT 5
+""", params={"vec": embedding_bytes})
+```
+
+Requires Redis 8.4+ and `redis-py >= 7.1.0`.
+
 Use when your team is more comfortable with SQL syntax, or when integrating with tools that generate SQL.
 
 ```{note}
