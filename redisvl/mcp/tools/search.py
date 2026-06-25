@@ -56,12 +56,15 @@ def _build_search_tool_description(
     """Build the `search-records` description from static text plus schema hints.
 
     With multiple bindings configured the schema is ambiguous (the caller picks
-    an index per call via `list-indexes`), so `schema` is None and only the
-    base description is returned.
+    an index per call via `list-indexes`), so per-field hints are omitted and a
+    routing note is appended instead.
     """
     description = (base_description or DEFAULT_SEARCH_DESCRIPTION).strip()
     if schema is None:
-        return description
+        return (
+            description + " Multiple indexes are configured: call list-indexes "
+            "first, then pass the chosen index id as the `index` argument."
+        )
 
     # `exists` is currently accepted for any schema field in the MCP object filter.
     exists_fields = [field.name for field in schema.fields.values()]
@@ -427,14 +430,21 @@ async def search_records(
     server: Any,
     *,
     query: str,
+    index: str | None = None,
     limit: int | None = None,
     offset: int = 0,
     filter: str | dict[str, Any] | None = None,
     return_fields: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Execute `search-records` against the selected Redis index binding."""
+    """Execute `search-records` against the selected Redis index binding.
+
+    ``index`` names the logical binding to query. It is optional when exactly
+    one binding is configured (preserving single-index behavior) and required
+    when multiple bindings exist. The resolved logical id is echoed back in the
+    response so multi-index clients can confirm routing.
+    """
     try:
-        rt = server.resolve_binding(None)
+        rt = server.resolve_binding(index)
         effective_limit, effective_return_fields = _validate_request(
             query=query,
             limit=limit,
@@ -458,6 +468,7 @@ async def search_records(
         )
         sliced_results = raw_results[offset : offset + effective_limit]
         return {
+            "index": rt.binding_id,
             "search_type": search_type,
             "offset": offset,
             "limit": effective_limit,
@@ -485,6 +496,7 @@ def register_search_tool(server: Any, schema: IndexSchema | None) -> None:
 
     async def search_records_tool(
         query: str,
+        index: str | None = None,
         limit: int | None = None,
         offset: int = 0,
         filter: str | dict[str, Any] | None = None,
@@ -496,6 +508,7 @@ def register_search_tool(server: Any, schema: IndexSchema | None) -> None:
         return await search_records(
             server,
             query=query,
+            index=index,
             limit=limit,
             offset=offset,
             filter=filter,
