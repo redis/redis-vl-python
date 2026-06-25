@@ -5008,8 +5008,8 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0,<8.0" },
     { name = "sentence-transformers", marker = "extra == 'all'", specifier = ">=3.4.0,<4" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4.0,<4" },
-    { name = "sql-redis", marker = "extra == 'all'", specifier = ">=0.7.0" },
-    { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.7.0" },
+    { name = "sql-redis", marker = "extra == 'all'", specifier = ">=0.7.1" },
+    { name = "sql-redis", marker = "extra == 'sql-redis'", specifier = ">=0.7.1" },
     { name = "tenacity", specifier = ">=8.2.2" },
     { name = "urllib3", marker = "extra == 'all'", specifier = "<2.2.0" },
     { name = "urllib3", marker = "extra == 'bedrock'", specifier = "<2.2.0" },
@@ -5867,15 +5867,15 @@ wheels = [
 
 [[package]]
 name = "sql-redis"
-version = "0.7.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "redis" },
     { name = "sqlglot" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/67/8d9efb38fbccd136cbefb336ce22929d25341c2ab3d1a90308adddac54fd/sql_redis-0.7.0.tar.gz", hash = "sha256:471f996ef7e6c09dbe73b80dfa55b81ae6f7fefb2b8ee7799f2ca5d96f603476", size = 239540, upload-time = "2026-06-24T17:47:31.46Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/8a/7fec9f4ff891dfeb271fe18cf67ac2de2e758ee2a473f9ca6f87c43fa100/sql_redis-0.7.1.tar.gz", hash = "sha256:be0e510afe75c5f023eedfc08b388db809fd5448ee322fb4e2b1ab7604a563c6", size = 240738, upload-time = "2026-06-25T15:30:36.28Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/61/45fed7130aef5489bfb9ea53f8cfd2ffadb74a412b9ab49fcfd9de810f26/sql_redis-0.7.0-py3-none-any.whl", hash = "sha256:282768c1ba7f713704b092ac70614d8428753794052d98bd3550bf25b5342b18", size = 52535, upload-time = "2026-06-24T17:47:30.097Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/03/0333cd203c68295fdee7f15120c50b84c23cc278e4c8a5a12e07c52cf8bc/sql_redis-0.7.1-py3-none-any.whl", hash = "sha256:2d42c116711f73d977d195948dcf03aecd8ee6b993905ab8a9139338d116a5a9", size = 52613, upload-time = "2026-06-25T15:30:35.278Z" },
 ]
 
 [[package]]
