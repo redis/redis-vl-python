@@ -263,8 +263,7 @@ SQLQuery
      running many SQL queries across many indexes.
 
 .. note::
-   SQLQuery supports hybrid search via ``hybrid_vector_search(cosine_distance(...),
-   fulltext(...), rrf())``, which translates to a native Redis ``FT.HYBRID`` command
+   SQLQuery supports hybrid search via ``hybrid_vector_search(cosine_distance(...), fulltext(...), rrf())``, which translates to a native Redis ``FT.HYBRID`` command
    fusing a text and a vector query server-side. This is the SQL front-end to
    :class:`HybridQuery` and requires ``sql-redis >= 0.7.0``, Redis 8.4+, and
    redis-py >= 7.1.0.

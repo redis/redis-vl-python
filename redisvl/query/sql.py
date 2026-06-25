@@ -23,8 +23,7 @@ class SQLQuery:
 
     - ``vector_distance(field, :vec)`` / ``cosine_distance(field, :vec)`` perform
       KNN vector similarity search (pass the query vector via ``params``)
-    - ``hybrid_vector_search(cosine_distance(field, :vec), fulltext(field, 'query'),
-      rrf())`` fuses a text and a vector query server-side via Redis ``FT.HYBRID``
+    - ``hybrid_vector_search(cosine_distance(field, :vec), fulltext(field, 'query'), rrf())`` fuses a text and a vector query server-side via Redis ``FT.HYBRID``
       (requires ``sql-redis >= 0.7.0``, Redis 8.4+, and redis-py >= 7.1.0). Use
       ``rrf()`` or ``linear()`` to select the fusion method
 
