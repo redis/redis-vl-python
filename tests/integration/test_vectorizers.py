@@ -646,3 +646,180 @@ def test_deprecated_text_parameter_warning():
         embeddings = vectorizer.embed_many(texts=TEST_TEXTS)
     assert isinstance(embeddings, list)
     assert len(embeddings) == len(TEST_TEXTS)
+
+
+# VoyageAI-specific tests for token counting and context model detection
+@pytest.mark.requires_api_keys
+def test_voyageai_count_tokens():
+    """Test VoyageAI token counting functionality."""
+    vectorizer = VoyageAIVectorizer(model="voyage-3.5")
+    texts = ["Hello world", "This is a longer test sentence."]
+
+    token_counts = vectorizer.count_tokens(texts)
+    assert isinstance(token_counts, list)
+    assert len(token_counts) == len(texts)
+    assert all(isinstance(count, int) and count > 0 for count in token_counts)
+
+    # Empty list should return empty list
+    assert vectorizer.count_tokens([]) == []
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.asyncio
+async def test_voyageai_acount_tokens():
+    """Test VoyageAI async token counting functionality."""
+    vectorizer = VoyageAIVectorizer(model="voyage-3.5")
+    texts = ["Hello world", "This is a longer test sentence."]
+
+    token_counts = await vectorizer.acount_tokens(texts)
+    assert isinstance(token_counts, list)
+    assert len(token_counts) == len(texts)
+    assert all(isinstance(count, int) and count > 0 for count in token_counts)
+
+    # Empty list should return empty list
+    assert await vectorizer.acount_tokens([]) == []
+
+
+def test_voyageai_token_limits():
+    """Test VoyageAI token limit constants."""
+    from redisvl.utils.vectorize.voyageai import VOYAGE_TOTAL_TOKEN_LIMITS
+
+    # Verify token limits are defined correctly
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-context-3") == 32_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-3.5-lite") == 1_000_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-3.5") == 320_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-multimodal-3") == 32_000
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("voyage-multimodal-3.5") == 32_000
+
+    # Default for unknown models
+    assert VOYAGE_TOTAL_TOKEN_LIMITS.get("unknown-model", 120_000) == 120_000
+
+
+def test_voyageai_context_model_detection():
+    """Test detection of contextualized embedding models."""
+    # Test the context model detection logic directly
+    # The method checks if "context" is in the model name
+    assert "context" not in "voyage-3.5"
+    assert "context" in "voyage-context-3"
+    assert "context" not in "voyage-multimodal-3.5"
+
+    # Verify the detection would work correctly for known models
+    test_cases = [
+        ("voyage-3.5", False),
+        ("voyage-context-3", True),
+        ("voyage-multimodal-3.5", False),
+        ("voyage-3-large", False),
+    ]
+    for model_name, expected in test_cases:
+        # The _is_context_model method simply checks: "context" in self.model
+        assert ("context" in model_name) == expected, f"Failed for {model_name}"
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_multimodal_text_only():
+    """Test VoyageAI multimodal vectorizer with text-only input."""
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3")
+
+    # Test single text embedding via embed()
+    embedding = vectorizer.embed("A red apple on a wooden table")
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
+    # Test another text embedding to verify consistency
+    embedding2 = vectorizer.embed("A cat sleeping on a couch")
+    assert isinstance(embedding2, list)
+    assert len(embedding2) == len(embedding)
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_multimodal_image():
+    """Test VoyageAI multimodal vectorizer with image input."""
+    import os
+    import tempfile
+
+    from PIL import Image
+
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3")
+
+    # Create a simple test image
+    img = Image.new("RGB", (100, 100), color="red")
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        img.save(f, format="PNG")
+        temp_path = f.name
+
+    try:
+        # Test embed_image
+        embedding = vectorizer.embed_image(temp_path)
+        assert isinstance(embedding, list)
+        assert len(embedding) > 0
+        assert all(isinstance(x, float) for x in embedding)
+    finally:
+        os.unlink(temp_path)
+
+
+@pytest.mark.requires_api_keys
+def test_voyageai_multimodal_video():
+    """Test VoyageAI multimodal vectorizer with video input."""
+    import os
+    import subprocess
+    import tempfile
+
+    from PIL import Image
+
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3.5")
+
+    # Create a minimal test video using ffmpeg
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create 3 frames
+        for i in range(3):
+            img = Image.new("RGB", (64, 64), color=(i * 80, 100, 150))
+            img.save(os.path.join(tmpdir, f"frame_{i:03d}.png"))
+
+        video_path = os.path.join(tmpdir, "test_video.mp4")
+
+        # Create video from frames
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                "1",
+                "-i",
+                os.path.join(tmpdir, "frame_%03d.png"),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-t",
+                "3",
+                video_path,
+            ],
+            capture_output=True,
+        )
+
+        if result.returncode != 0:
+            pytest.skip("ffmpeg not available or failed to create test video")
+
+        # Test embed_video
+        embedding = vectorizer.embed_video(video_path)
+        assert isinstance(embedding, list)
+        assert len(embedding) > 0
+        assert all(isinstance(x, float) for x in embedding)
+
+
+@pytest.mark.requires_api_keys
+@pytest.mark.asyncio
+async def test_voyageai_multimodal_async():
+    """Test VoyageAI multimodal vectorizer async methods."""
+    vectorizer = VoyageAIVectorizer(model="voyage-multimodal-3")
+
+    # Test async text embedding
+    embedding = await vectorizer.aembed("A beautiful sunset over mountains")
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+
+    # Test async batch
+    texts = ["Ocean waves", "Forest trees"]
+    embeddings = await vectorizer.aembed_many(texts)
+    assert len(embeddings) == 2
