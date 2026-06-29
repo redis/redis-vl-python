@@ -110,3 +110,31 @@ def test_resolve_binding_rejects_unknown_index():
 
     assert excinfo.value.code == MCPErrorCode.INVALID_REQUEST
     assert "missing" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_teardown_continues_when_a_binding_fails_to_close(monkeypatch):
+    """A failed close on one binding must not leak the remaining bindings."""
+    server = _server_with_bindings("knowledge", "tickets")
+    server.config = SimpleNamespace()
+    server._semaphore = SimpleNamespace()
+    server._tools_registered = True
+
+    closed: list[str] = []
+
+    async def fake_close_resources(self, *, index, vectorizer):
+        # Fail on the first binding; the loop must still reach the second.
+        if not closed:
+            closed.append("knowledge")
+            raise RuntimeError("disconnect failed")
+        closed.append("tickets")
+
+    monkeypatch.setattr(RedisVLMCPServer, "_close_resources", fake_close_resources)
+
+    await server._teardown_runtime()
+
+    # Both bindings were attempted despite the first one raising.
+    assert closed == ["knowledge", "tickets"]
+    # Terminal state is fully cleared so a later startup re-registers tools.
+    assert server._bindings == {}
+    assert server._tools_registered is False

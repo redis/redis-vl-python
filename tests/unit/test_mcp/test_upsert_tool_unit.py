@@ -150,6 +150,7 @@ class FakeServer:
         max_upsert_records: int = 5,
         skip_embedding_if_present: bool = True,
         vectorizer: FakeVectorizer | None = None,
+        effective_read_only: bool = False,
     ):
         self.config = _config(
             storage_type,
@@ -164,6 +165,7 @@ class FakeServer:
         self.index = FakeIndex(storage_type, include_vector_field=include_vector_field)
         self.vectorizer = vectorizer or FakeVectorizer() if include_vectorizer else None
         self.registered_tools = []
+        self.effective_read_only = effective_read_only
 
     def resolve_binding(self, index_id=None):
         return BindingRuntime(
@@ -173,7 +175,7 @@ class FakeServer:
             schema=self.index.schema,
             vectorizer=self.vectorizer,
             supports_native_hybrid_search=False,
-            effective_read_only=False,
+            effective_read_only=self.effective_read_only,
         )
 
     async def get_index(self):
@@ -461,6 +463,18 @@ async def test_upsert_records_surfaces_partial_write_possible_on_backend_failure
     assert exc_info.value.code == MCPErrorCode.BACKEND_UNAVAILABLE
     assert exc_info.value.metadata["partial_write_possible"] is True
     assert isinstance(exc_info.value.__cause__, RedisError)
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_rejects_writes_to_read_only_binding():
+    server = FakeServer(effective_read_only=True)
+
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await upsert_records(server, records=[{"content": "alpha doc"}])
+
+    assert exc_info.value.code == MCPErrorCode.FORBIDDEN
+    # The write is rejected before any backend load is attempted.
+    assert server.index.load_calls == []
 
 
 def test_register_upsert_tool_uses_default_and_override_descriptions():
