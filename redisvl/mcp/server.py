@@ -148,17 +148,6 @@ class RedisVLMCPServer(FastMCP):
             )
         return runtime
 
-    async def get_index(self, index_id: str | None = None) -> AsyncSearchIndex:
-        """Return an initialized async index, defaulting to the sole binding."""
-        return self.resolve_binding(index_id).index
-
-    async def get_vectorizer(self, index_id: str | None = None) -> Any:
-        """Return an initialized vectorizer, defaulting to the sole binding."""
-        runtime = self.resolve_binding(index_id)
-        if runtime.vectorizer is None:
-            raise RuntimeError("MCP server vectorizer is not configured")
-        return runtime.vectorizer
-
     async def run_guarded(
         self,
         operation_name: str,

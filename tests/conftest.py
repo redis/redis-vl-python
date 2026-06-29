@@ -705,6 +705,29 @@ def hnsw_index(sample_data, redis_url, redis_test_name):
     index.delete(drop=True)
 
 
+# MCP server test helpers
+def mcp_binding_index(server, index_id=None):
+    """Return a started MCP server's resolved index for the given binding.
+
+    Test-only replacement for the removed ``get_index`` convenience: it routes
+    through ``resolve_binding`` so it preserves the same ``index is required`` /
+    ``has not been started`` errors the real tools see.
+    """
+    return server.resolve_binding(index_id).index
+
+
+def mcp_binding_vectorizer(server, index_id=None):
+    """Return a started MCP server's resolved vectorizer for the given binding.
+
+    Test-only replacement for the removed ``get_vectorizer`` convenience,
+    mirroring its "vectorizer is not configured" error when none is set.
+    """
+    runtime = server.resolve_binding(index_id)
+    if runtime.vectorizer is None:
+        raise RuntimeError("MCP server vectorizer is not configured")
+    return runtime.vectorizer
+
+
 # Version checking utilities
 def get_redis_version(client):
     """Get Redis version from client info."""

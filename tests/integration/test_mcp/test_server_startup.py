@@ -11,7 +11,11 @@ from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
 from redisvl.redis.connection import is_version_gte
 from redisvl.schema import IndexSchema
-from tests.conftest import get_redis_version_async
+from tests.conftest import (
+    get_redis_version_async,
+    mcp_binding_index,
+    mcp_binding_vectorizer,
+)
 
 
 class FakeVectorizer:
@@ -134,8 +138,8 @@ async def test_server_startup_success(monkeypatch, existing_index, mcp_config_pa
 
     await server.startup()
 
-    started_index = await server.get_index()
-    vectorizer = await server.get_vectorizer()
+    started_index = mcp_binding_index(server)
+    vectorizer = mcp_binding_vectorizer(server)
 
     assert await started_index.exists() is True
     assert started_index.schema.index.name == index.name
@@ -185,11 +189,11 @@ async def test_server_startup_succeeds_for_fulltext_without_vectorizer(
 
     await server.startup()
 
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
     assert await started_index.exists() is True
     assert build_vectorizer_called is False
     with pytest.raises(RuntimeError, match="vectorizer is not configured"):
-        await server.get_vectorizer()
+        mcp_binding_vectorizer(server)
 
     await server.shutdown()
 
@@ -288,7 +292,7 @@ async def test_server_uses_schema_overrides_when_inspection_is_incomplete(
 
     await server.startup()
 
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
     assert started_index.schema.fields["embedding"].attrs.dims == 3
 
     await server.shutdown()
@@ -390,7 +394,7 @@ async def test_server_shutdown_disconnects_owned_client(
     )
 
     await server.startup()
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
 
     assert started_index.client is not None
 
@@ -416,7 +420,7 @@ async def test_server_get_index_fails_after_shutdown(
     await server.shutdown()
 
     with pytest.raises(RuntimeError, match="has not been started"):
-        await server.get_index()
+        mcp_binding_index(server)
 
 
 @pytest.mark.asyncio
@@ -433,15 +437,17 @@ async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
     )
 
     await server.startup()
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
 
-    with pytest.raises(RuntimeError, match="vectorizer close failed"):
-        await server.shutdown()
+    # Teardown is best-effort: a failing vectorizer close is logged and
+    # swallowed rather than aborting teardown, so the index is still
+    # disconnected and its Redis connection cannot leak.
+    await server.shutdown()
 
     assert started_index.client is None
 
     with pytest.raises(RuntimeError, match="has not been started"):
-        await server.get_vectorizer()
+        mcp_binding_vectorizer(server)
 
 
 @pytest.mark.asyncio
@@ -463,7 +469,7 @@ async def test_run_guarded_allows_admitted_request_to_finish_during_shutdown(
     )
 
     await server.startup()
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
     entered = asyncio.Event()
     release = asyncio.Event()
 

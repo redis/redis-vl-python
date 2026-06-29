@@ -123,14 +123,6 @@ class FakeServer:
             effective_read_only=False,
         )
 
-    async def get_index(self):
-        return self.index
-
-    async def get_vectorizer(self):
-        if self.vectorizer is None:
-            raise RuntimeError("MCP server vectorizer is not configured")
-        return self.vectorizer
-
     async def run_guarded(self, operation_name, awaitable, *, timeout_seconds=None):
         return await awaitable
 

@@ -10,6 +10,7 @@ from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.upsert import upsert_records
 from redisvl.schema import IndexSchema
+from tests.conftest import mcp_binding_vectorizer
 
 
 class RecordingVectorizer:
@@ -224,7 +225,7 @@ async def test_upsert_records_inserts_rows_into_hash_index(
     assert response["keys_upserted"] == 2
     assert len(response["keys"]) == 2
 
-    vectorizer = await server.get_vectorizer()
+    vectorizer = mcp_binding_vectorizer(server)
     assert vectorizer.aembed_many_inputs == [
         ["first upserted document", "second upserted document"]
     ]
