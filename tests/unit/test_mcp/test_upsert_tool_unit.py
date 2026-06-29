@@ -509,7 +509,7 @@ async def test_upsert_records_rejects_writes_to_read_only_binding():
     with pytest.raises(RedisVLMCPError, match="read-only") as exc_info:
         await upsert_records(server, records=[{"content": "alpha doc"}])
 
-    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert exc_info.value.code == MCPErrorCode.FORBIDDEN
     # Write policy is enforced before any embedding or backend write.
     assert server.index.load_calls == []
     assert server.vectorizer.aembed_many_calls == []

@@ -466,7 +466,7 @@ async def test_upsert_records_rejects_writes_to_read_only_binding(
             records=[{"content": "doc", "category": "operations"}],
         )
 
-    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert exc_info.value.code == MCPErrorCode.FORBIDDEN
 
 
 @pytest.mark.asyncio

@@ -266,7 +266,7 @@ async def upsert_records(
         if rt.effective_read_only:
             raise RedisVLMCPError(
                 f"index '{rt.binding_id}' is read-only",
-                code=MCPErrorCode.INVALID_REQUEST,
+                code=MCPErrorCode.FORBIDDEN,
                 retryable=False,
             )
         index_obj = rt.index
