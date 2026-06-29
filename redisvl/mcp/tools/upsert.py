@@ -255,6 +255,12 @@ async def upsert_records(
     """Execute `upsert-records` against the selected Redis index binding."""
     try:
         rt = server.resolve_binding(None)
+        if rt.effective_read_only:
+            raise RedisVLMCPError(
+                "upsert-records is not permitted: binding is read-only",
+                code=MCPErrorCode.FORBIDDEN,
+                retryable=False,
+            )
         index = rt.index
         runtime = rt.binding.runtime
         effective_skip_embedding = _validate_request(

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from enum import Enum, auto
 from importlib import import_module
@@ -18,6 +19,8 @@ from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
+
+logger = logging.getLogger(__name__)
 
 try:
     from fastmcp import FastMCP
@@ -307,11 +310,19 @@ class RedisVLMCPServer(FastMCP):
         self._bindings = {}
         self.config = None
         self._semaphore = None
+        self._tools_registered = False
 
         for runtime in bindings:
-            await self._close_resources(
-                index=runtime.index, vectorizer=runtime.vectorizer
-            )
+            try:
+                await self._close_resources(
+                    index=runtime.index, vectorizer=runtime.vectorizer
+                )
+            except Exception:
+                logger.warning(
+                    "error closing binding %s during teardown",
+                    runtime.binding_id,
+                    exc_info=True,
+                )
 
     @staticmethod
     def _close_awaitable(awaitable: Awaitable[Any]) -> None:
@@ -383,7 +394,9 @@ class RedisVLMCPServer(FastMCP):
         self.config = load_mcp_config(self._config_path)
         self._verify_auth_not_stale()
         # The semaphore is a single process-wide concurrency ceiling shared by
-        # all bindings; take the max configured limit across bindings.
+        # all bindings; take the max across bindings. This means the most
+        # permissive binding sets the cap — e.g. five bindings each configured
+        # with max_concurrency=2 yield Semaphore(2), not Semaphore(10).
         self._semaphore = asyncio.Semaphore(
             max(
                 binding.runtime.max_concurrency
