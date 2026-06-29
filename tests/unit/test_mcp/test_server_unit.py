@@ -135,6 +135,8 @@ async def test_teardown_continues_when_a_binding_fails_to_close(monkeypatch):
 
     # Both bindings were attempted despite the first one raising.
     assert closed == ["knowledge", "tickets"]
-    # Terminal state is fully cleared so a later startup re-registers tools.
+    # Binding state is cleared...
     assert server._bindings == {}
-    assert server._tools_registered is False
+    # ...but tool registration is instance-level and must survive teardown, so a
+    # stop/start does not re-register the same tool names on the FastMCP object.
+    assert server._tools_registered is True

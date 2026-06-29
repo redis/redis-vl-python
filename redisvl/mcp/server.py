@@ -294,12 +294,18 @@ class RedisVLMCPServer(FastMCP):
                 await client.aclose()
 
     async def _teardown_runtime(self) -> None:
-        """Release every binding's runtime resources and clear terminal state."""
+        """Release every binding's runtime resources and clear terminal state.
+
+        ``_tools_registered`` is intentionally *not* reset here: MCP tools are
+        registered once on the FastMCP instance and their closures resolve the
+        live binding at call time, so they survive teardown and remain valid
+        across a stop/start. Resetting it would make a restart re-register the
+        same tool names on the instance.
+        """
         bindings = list(self._bindings.values())
         self._bindings = {}
         self.config = None
         self._semaphore = None
-        self._tools_registered = False
 
         for runtime in bindings:
             try:
