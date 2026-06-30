@@ -491,7 +491,8 @@ def register_search_tool(server: Any, schema: IndexSchema | None) -> None:
         return_fields: list[str] | None = None,
     ):
         """FastMCP wrapper for the `search-records` tool."""
-        read_scope = getattr(getattr(server, "auth_config", None), "read_scope", None)
+        auth_config = getattr(server, "auth_config", None)
+        read_scope = auth_config.read_scope if auth_config is not None else None
         ensure_tool_scope(server, read_scope)
         return await search_records(
             server,

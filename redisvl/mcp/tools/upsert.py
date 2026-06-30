@@ -363,7 +363,8 @@ def register_upsert_tool(server: Any) -> None:
         skip_embedding_if_present: bool | None = None,
     ):
         """FastMCP wrapper for the `upsert-records` tool."""
-        write_scope = getattr(getattr(server, "auth_config", None), "write_scope", None)
+        auth_config = getattr(server, "auth_config", None)
+        write_scope = auth_config.write_scope if auth_config is not None else None
         ensure_tool_scope(server, write_scope)
         return await upsert_records(
             server,
