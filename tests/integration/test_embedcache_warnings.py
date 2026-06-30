@@ -19,10 +19,14 @@ def reset_warning_flag():
 
 
 @pytest.mark.asyncio
-async def test_sync_methods_warn_with_async_only_client(async_client, caplog):
+async def test_sync_methods_warn_with_async_only_client(
+    async_client, caplog, redis_test_name
+):
     """Test that sync methods warn when only async client is provided."""
     # Initialize EmbeddingsCache with only async_redis_client
-    cache = EmbeddingsCache(name="test_cache", async_redis_client=async_client)
+    cache = EmbeddingsCache(
+        name=redis_test_name("test_cache"), async_redis_client=async_client
+    )
 
     # Mock _get_redis_client to prevent actual connection attempt
     with patch.object(cache, "_get_redis_client") as mock_get_client:
@@ -53,15 +57,15 @@ async def test_sync_methods_warn_with_async_only_client(async_client, caplog):
             assert len(caplog.records) == 0
 
 
-def test_no_warning_with_sync_client(redis_url):
+def test_no_warning_with_sync_client(redis_url, redis_test_name):
     """Test that no warning is shown when sync client is provided."""
     # Create sync redis client from redis_url
     sync_client = Redis.from_url(redis_url)
 
+    cache = EmbeddingsCache(
+        name=redis_test_name("test_cache"), redis_client=sync_client
+    )
     try:
-        # Initialize EmbeddingsCache with sync_redis_client
-        cache = EmbeddingsCache(name="test_cache", redis_client=sync_client)
-
         with patch("redisvl.utils.log.get_logger") as mock_logger:
             # Sync methods should not warn
             _ = cache.get_by_key("test_key")
@@ -70,19 +74,27 @@ def test_no_warning_with_sync_client(redis_url):
             # No warnings should have been logged
             mock_logger.return_value.warning.assert_not_called()
     finally:
+        cache.clear()
         sync_client.close()
 
 
 @pytest.mark.asyncio
-async def test_async_methods_no_warning(async_client):
+async def test_async_methods_no_warning(async_client, redis_test_name):
     """Test that async methods don't trigger warnings."""
     # Initialize EmbeddingsCache with only async_redis_client
-    cache = EmbeddingsCache(name="test_cache", async_redis_client=async_client)
+    cache = EmbeddingsCache(
+        name=redis_test_name("test_cache"), async_redis_client=async_client
+    )
 
-    with patch("redisvl.utils.log.get_logger") as mock_logger:
-        # Async methods should not warn
-        _ = await cache.aget_by_key("test_key")
-        _ = await cache.aset(content="test", model_name="model", embedding=[0.1, 0.2])
+    try:
+        with patch("redisvl.utils.log.get_logger") as mock_logger:
+            # Async methods should not warn
+            _ = await cache.aget_by_key("test_key")
+            _ = await cache.aset(
+                content="test", model_name="model", embedding=[0.1, 0.2]
+            )
 
-        # No warnings should have been logged
-        mock_logger.return_value.warning.assert_not_called()
+            # No warnings should have been logged
+            mock_logger.return_value.warning.assert_not_called()
+    finally:
+        await cache.aclear()
