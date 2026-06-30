@@ -107,7 +107,7 @@ def auth_config_path(tmp_path: Path, redis_url: str):
             "indexes": {
                 "knowledge": {
                     "redis_name": redis_name,
-                    "search": {"type": "fulltext"},
+                    "search": {"type": "fulltext", "params": {"stopwords": None}},
                     "runtime": {"text_field_name": "content"},
                 }
             },
@@ -242,7 +242,7 @@ async def test_http_transport_gates_by_roles_claim(
         "indexes": {
             "knowledge": {
                 "redis_name": auth_index.schema.index.name,
-                "search": {"type": "fulltext"},
+                "search": {"type": "fulltext", "params": {"stopwords": None}},
                 "runtime": {"text_field_name": "content"},
             }
         },

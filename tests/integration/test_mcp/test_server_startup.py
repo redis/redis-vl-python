@@ -177,7 +177,7 @@ async def test_server_startup_succeeds_for_fulltext_without_vectorizer(
         MCPSettings(
             config=mcp_config_path(
                 redis_name=index.name,
-                search={"type": "fulltext"},
+                search={"type": "fulltext", "params": {"stopwords": None}},
                 runtime_overrides={
                     "vector_field_name": None,
                     "default_embed_text_field": None,
@@ -218,6 +218,7 @@ async def test_server_fails_when_hybrid_config_requires_native_runtime(
                 search={
                     "type": "hybrid",
                     "params": {
+                        "stopwords": None,
                         "vector_search_method": "KNN",
                         "knn_ef_runtime": 150,
                     },

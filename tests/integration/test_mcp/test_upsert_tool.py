@@ -242,7 +242,7 @@ async def test_upsert_records_supports_plain_writes_without_vector_configuration
 ):
     server = await started_server(
         redis_name=fulltext_only_upsert_index.schema.index.name,
-        search={"type": "fulltext"},
+        search={"type": "fulltext", "params": {"stopwords": None}},
         runtime_overrides={
             "vector_field_name": None,
             "default_embed_text_field": None,
@@ -270,7 +270,7 @@ async def test_upsert_records_requires_vectors_when_embedding_is_disabled(
     started_server,
 ):
     server = await started_server(
-        search={"type": "fulltext"},
+        search={"type": "fulltext", "params": {"stopwords": None}},
         runtime_overrides={"default_embed_text_field": None},
         include_vectorizer=False,
     )
