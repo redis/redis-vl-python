@@ -78,15 +78,14 @@ def list_indexes(server: "RedisVLMCPServer") -> dict[str, Any]:
 
 def register_list_indexes_tool(server: "RedisVLMCPServer") -> None:
     """Register the always-available, read-only `list-indexes` MCP tool."""
-    description = (
-        getattr(server.mcp_settings, "tool_list_indexes_description", None)
-        or DEFAULT_LIST_INDEXES_DESCRIPTION
-    )
 
     async def list_indexes_tool():
         """FastMCP wrapper for the `list-indexes` tool."""
-        read_scope = getattr(getattr(server, "auth_config", None), "read_scope", None)
+        auth_config = getattr(server, "auth_config", None)
+        read_scope = auth_config.read_scope if auth_config is not None else None
         ensure_tool_scope(server, read_scope)
         return list_indexes(server)
 
-    server.tool(name="list-indexes", description=description)(list_indexes_tool)
+    server.tool(name="list-indexes", description=DEFAULT_LIST_INDEXES_DESCRIPTION)(
+        list_indexes_tool
+    )
