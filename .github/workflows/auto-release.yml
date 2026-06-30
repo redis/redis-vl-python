@@ -251,6 +251,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [gate, release]
     if: needs.gate.outputs.should_release == 'true'
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Check out repository
@@ -281,6 +284,4 @@ jobs:
         run: uv build
 
       - name: Publish to PyPI
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI }}
-        run: uv publish
+        uses: pypa/gh-action-pypi-publish@release/v1
