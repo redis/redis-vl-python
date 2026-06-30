@@ -577,8 +577,11 @@ class SemanticRouter(BaseModel):
             self._update_router_state()
 
     def delete(self) -> None:
-        """Delete the semantic router index."""
+        """Delete the semantic router index and its persisted route config."""
         self._index.delete(drop=True)
+        # The route config is stored as a standalone JSON key that is not
+        # tracked by the search index, so it must be removed explicitly.
+        self._index.client.delete(f"{self.name}:route_config")  # type: ignore
 
     def clear(self) -> None:
         """Flush all routes from the semantic router index."""
