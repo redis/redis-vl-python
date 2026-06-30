@@ -97,6 +97,12 @@ class RedisVLMCPServer(FastMCP):
                 await self._initialize_runtime_resources()
                 await self._mark_running()
             except Exception:
+                # Fail closed: release whatever initialization built before
+                # marking the server stopped. This is the single teardown path
+                # for any post-begin failure -- binding init, tool registration,
+                # or a later step such as _mark_running -- so resources are
+                # never leaked regardless of where startup fails.
+                await self._teardown_runtime()
                 await self._mark_stopped()
                 raise
 
@@ -400,17 +406,14 @@ class RedisVLMCPServer(FastMCP):
         )
         self._bindings = {}
 
-        try:
-            for binding_id, binding in self.config.indexes.items():
-                self._bindings[binding_id] = await self._initialize_binding(
-                    binding_id, binding
-                )
-            self._register_tools()
-        except Exception:
-            # Tear down any bindings already built before re-raising so startup
-            # fails closed without leaking connections.
-            await self._teardown_runtime()
-            raise
+        # On failure, startup()'s handler tears down any bindings built here, so
+        # this method does not need its own teardown. (A binding that fails
+        # mid-build closes its own bare client inside _initialize_binding.)
+        for binding_id, binding in self.config.indexes.items():
+            self._bindings[binding_id] = await self._initialize_binding(
+                binding_id, binding
+            )
+        self._register_tools()
 
     async def _initialize_binding(
         self, binding_id: str, binding: MCPIndexBindingConfig

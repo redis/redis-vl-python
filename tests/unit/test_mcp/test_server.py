@@ -224,6 +224,45 @@ async def test_startup_failure_leaves_server_stopped(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_startup_tears_down_when_a_post_init_step_fails(monkeypatch):
+    """Initialization succeeds but a later step raises; resources must be freed."""
+    monkeypatch.setattr(
+        "redisvl.mcp.server.FastMCP.__init__", lambda self, *a, **k: None
+    )
+
+    async def fake_initialize(self):
+        # Simulate a fully initialized runtime (a live binding) ...
+        self.config = SimpleNamespace()
+        self._semaphore = SimpleNamespace()
+        self._bindings = {
+            "knowledge": SimpleNamespace(
+                binding_id="knowledge", index=None, vectorizer=None
+            )
+        }
+
+    async def fail_mark_running(self):
+        # ... then fail on the post-init step.
+        raise RuntimeError("mark running failed")
+
+    monkeypatch.setattr(
+        RedisVLMCPServer, "_initialize_runtime_resources", fake_initialize
+    )
+    monkeypatch.setattr(RedisVLMCPServer, "_mark_running", fail_mark_running)
+
+    server = RedisVLMCPServer(_dummy_settings())
+
+    with pytest.raises(RuntimeError, match="mark running failed"):
+        await server.startup()
+
+    # Teardown ran from startup()'s handler even though the failure was after
+    # initialization, so nothing leaks and the server is left stopped.
+    assert server._lifecycle_state.name == "STOPPED"
+    assert server._bindings == {}
+    assert server.config is None
+    assert server._semaphore is None
+
+
+@pytest.mark.asyncio
 async def test_startup_failure_before_index_initialization_closes_client(monkeypatch):
     monkeypatch.setattr(
         "redisvl.mcp.server.FastMCP.__init__", lambda self, *a, **k: None
