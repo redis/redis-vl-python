@@ -10,6 +10,7 @@ from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.upsert import upsert_records
 from redisvl.schema import IndexSchema
+from tests.conftest import mcp_binding_vectorizer
 
 
 class RecordingVectorizer:
@@ -224,7 +225,7 @@ async def test_upsert_records_inserts_rows_into_hash_index(
     assert response["keys_upserted"] == 2
     assert len(response["keys"]) == 2
 
-    vectorizer = await server.get_vectorizer()
+    vectorizer = mcp_binding_vectorizer(server)
     assert vectorizer.aembed_many_inputs == [
         ["first upserted document", "second upserted document"]
     ]
@@ -241,7 +242,7 @@ async def test_upsert_records_supports_plain_writes_without_vector_configuration
 ):
     server = await started_server(
         redis_name=fulltext_only_upsert_index.schema.index.name,
-        search={"type": "fulltext"},
+        search={"type": "fulltext", "params": {"stopwords": None}},
         runtime_overrides={
             "vector_field_name": None,
             "default_embed_text_field": None,
@@ -269,7 +270,7 @@ async def test_upsert_records_requires_vectors_when_embedding_is_disabled(
     started_server,
 ):
     server = await started_server(
-        search={"type": "fulltext"},
+        search={"type": "fulltext", "params": {"stopwords": None}},
         runtime_overrides={"default_embed_text_field": None},
         include_vectorizer=False,
     )

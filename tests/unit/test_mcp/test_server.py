@@ -37,17 +37,39 @@ def _startup_schema() -> IndexSchema:
     )
 
 
-def _startup_config():
+def _binding_namespace(
+    *, requires_startup_vectorizer: bool = True, max_concurrency: int = 1
+):
     return SimpleNamespace(
-        runtime=SimpleNamespace(max_concurrency=1, startup_timeout_seconds=1),
-        server=SimpleNamespace(redis_url="redis://localhost:6379"),
         redis_name="idx",
-        requires_startup_vectorizer=True,
+        read_only=False,
+        requires_startup_vectorizer=requires_startup_vectorizer,
+        runtime=SimpleNamespace(
+            max_concurrency=max_concurrency,
+            startup_timeout_seconds=1,
+            request_timeout_seconds=1,
+        ),
         vectorizer=SimpleNamespace(
             class_name="FakeVectorizer",
             to_init_kwargs=lambda: {},
         ),
         validate_search=lambda **kwargs: None,
+    )
+
+
+def _startup_config(indexes=None):
+    return SimpleNamespace(
+        server=SimpleNamespace(redis_url="redis://localhost:6379"),
+        indexes=indexes or {"knowledge": _binding_namespace()},
+    )
+
+
+def _patch_probe(monkeypatch, value: bool = False):
+    async def fake_probe(index):
+        return value
+
+    monkeypatch.setattr(
+        RedisVLMCPServer, "_probe_native_hybrid_search", staticmethod(fake_probe)
     )
 
 
@@ -97,15 +119,12 @@ async def test_run_guarded_rejects_before_startup():
     future.set_result(None)
 
     with pytest.raises(RuntimeError, match="not running"):
-        await server.run_guarded("test", future)
+        await server.run_guarded("test", future, timeout_seconds=1)
 
 
 @pytest.mark.asyncio
 async def test_run_guarded_rejects_after_shutdown():
     server = RedisVLMCPServer(_dummy_settings())
-    server.config = SimpleNamespace(
-        runtime=SimpleNamespace(request_timeout_seconds=1, max_concurrency=1)
-    )
     server._semaphore = asyncio.Semaphore(1)
 
     await server.shutdown()
@@ -113,7 +132,66 @@ async def test_run_guarded_rejects_after_shutdown():
     future = asyncio.get_running_loop().create_future()
     future.set_result(None)
     with pytest.raises(RuntimeError, match="not running"):
-        await server.run_guarded("test", future)
+        await server.run_guarded("test", future, timeout_seconds=1)
+
+
+@pytest.mark.asyncio
+async def test_run_guarded_uses_per_binding_timeout(monkeypatch):
+    server = RedisVLMCPServer(_dummy_settings())
+    server._semaphore = asyncio.Semaphore(1)
+    server.config = _startup_config()
+    server._lifecycle_state = server._LifecycleState.RUNNING
+
+    captured = {}
+
+    async def fake_wait_for(awaitable, timeout):
+        captured["timeout"] = timeout
+        return await awaitable
+
+    monkeypatch.setattr("redisvl.mcp.server.asyncio.wait_for", fake_wait_for)
+
+    future = asyncio.get_running_loop().create_future()
+    future.set_result("ok")
+
+    result = await server.run_guarded("test", future, timeout_seconds=42)
+
+    assert result == "ok"
+    assert captured["timeout"] == 42
+
+
+@pytest.mark.asyncio
+async def test_startup_sizes_semaphore_from_max_binding_concurrency(monkeypatch):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.FastMCP.__init__", lambda self, *a, **k: None
+    )
+    config = _startup_config(
+        indexes={
+            "knowledge": _binding_namespace(max_concurrency=4),
+            "tickets": _binding_namespace(max_concurrency=9),
+        }
+    )
+    monkeypatch.setattr("redisvl.mcp.server.load_mcp_config", lambda path: config)
+
+    captured = {}
+
+    def fake_semaphore(value):
+        captured["value"] = value
+        return SimpleNamespace(value=value)
+
+    monkeypatch.setattr("redisvl.mcp.server.asyncio.Semaphore", fake_semaphore)
+
+    async def fake_initialize_binding(self, binding_id, binding):
+        return SimpleNamespace(binding_id=binding_id)
+
+    monkeypatch.setattr(
+        RedisVLMCPServer, "_initialize_binding", fake_initialize_binding
+    )
+    monkeypatch.setattr(RedisVLMCPServer, "_register_tools", lambda self: None)
+
+    server = RedisVLMCPServer(_dummy_settings())
+    await server._initialize_runtime_resources()
+
+    assert captured["value"] == 9
 
 
 @pytest.mark.asyncio
@@ -123,11 +201,7 @@ async def test_startup_failure_leaves_server_stopped(monkeypatch):
     )
     monkeypatch.setattr(
         "redisvl.mcp.server.load_mcp_config",
-        lambda path: SimpleNamespace(
-            runtime=SimpleNamespace(max_concurrency=1, startup_timeout_seconds=1),
-            server=SimpleNamespace(redis_url="redis://localhost:6379"),
-            redis_name="idx",
-        ),
+        lambda path: _startup_config(),
     )
 
     async def fail_connection(**kwargs):
@@ -144,6 +218,46 @@ async def test_startup_failure_leaves_server_stopped(monkeypatch):
         await server.startup()
 
     assert server._lifecycle_state.name == "STOPPED"
+    assert server.config is None
+    assert server._semaphore is None
+    assert server._bindings == {}
+
+
+@pytest.mark.asyncio
+async def test_startup_tears_down_when_a_post_init_step_fails(monkeypatch):
+    """Initialization succeeds but a later step raises; resources must be freed."""
+    monkeypatch.setattr(
+        "redisvl.mcp.server.FastMCP.__init__", lambda self, *a, **k: None
+    )
+
+    async def fake_initialize(self):
+        # Simulate a fully initialized runtime (a live binding) ...
+        self.config = SimpleNamespace()
+        self._semaphore = SimpleNamespace()
+        self._bindings = {
+            "knowledge": SimpleNamespace(
+                binding_id="knowledge", index=None, vectorizer=None
+            )
+        }
+
+    async def fail_mark_running(self):
+        # ... then fail on the post-init step.
+        raise RuntimeError("mark running failed")
+
+    monkeypatch.setattr(
+        RedisVLMCPServer, "_initialize_runtime_resources", fake_initialize
+    )
+    monkeypatch.setattr(RedisVLMCPServer, "_mark_running", fail_mark_running)
+
+    server = RedisVLMCPServer(_dummy_settings())
+
+    with pytest.raises(RuntimeError, match="mark running failed"):
+        await server.startup()
+
+    # Teardown ran from startup()'s handler even though the failure was after
+    # initialization, so nothing leaks and the server is left stopped.
+    assert server._lifecycle_state.name == "STOPPED"
+    assert server._bindings == {}
     assert server.config is None
     assert server._semaphore is None
 
@@ -170,7 +284,7 @@ async def test_startup_failure_before_index_initialization_closes_client(monkeyp
     async def fake_connect(self, timeout):
         return client
 
-    async def fail_load_schema(self, client, timeout):
+    async def fail_load_schema(self, binding, client, timeout):
         raise RuntimeError("schema load failed")
 
     monkeypatch.setattr(RedisVLMCPServer, "_connect_redis_client", fake_connect)
@@ -185,7 +299,7 @@ async def test_startup_failure_before_index_initialization_closes_client(monkeyp
     assert server._lifecycle_state.name == "STOPPED"
     assert server.config is None
     assert server._semaphore is None
-    assert server._index is None
+    assert server._bindings == {}
 
 
 @pytest.mark.asyncio
@@ -213,13 +327,10 @@ async def test_startup_failure_after_index_initialization_uses_index_teardown(
     async def fake_connect(self, timeout):
         return client
 
-    async def fake_load_schema(self, client, timeout):
+    async def fake_load_schema(self, binding, client, timeout):
         return _startup_schema()
 
-    async def fake_supports_native_hybrid_search(self):
-        return False
-
-    async def fail_vectorizer(self, schema, timeout):
+    async def fail_vectorizer(self, binding, schema, timeout):
         raise RuntimeError("vectorizer init failed")
 
     async def fake_disconnect(self):
@@ -227,11 +338,7 @@ async def test_startup_failure_after_index_initialization_uses_index_teardown(
 
     monkeypatch.setattr(RedisVLMCPServer, "_connect_redis_client", fake_connect)
     monkeypatch.setattr(RedisVLMCPServer, "_load_effective_schema", fake_load_schema)
-    monkeypatch.setattr(
-        RedisVLMCPServer,
-        "supports_native_hybrid_search",
-        fake_supports_native_hybrid_search,
-    )
+    _patch_probe(monkeypatch, value=False)
     monkeypatch.setattr(RedisVLMCPServer, "_initialize_vectorizer", fail_vectorizer)
     monkeypatch.setattr(
         "redisvl.mcp.server.AsyncSearchIndex.disconnect",
@@ -249,7 +356,7 @@ async def test_startup_failure_after_index_initialization_uses_index_teardown(
     assert server._lifecycle_state.name == "STOPPED"
     assert server.config is None
     assert server._semaphore is None
-    assert server._index is None
+    assert server._bindings == {}
 
 
 @pytest.mark.asyncio
@@ -269,7 +376,7 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
     async def fake_connect(self, timeout):
         return FakeClient()
 
-    async def fake_load_schema(self, client, timeout):
+    async def fake_load_schema(self, binding, client, timeout):
         return IndexSchema.from_dict(
             {
                 "index": {
@@ -295,11 +402,8 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
             }
         )
 
-    async def fake_supports_native_hybrid_search(self):
-        return False
-
-    async def fake_initialize_vectorizer(self, schema, timeout):
-        self._vectorizer = SimpleNamespace(dims=3)
+    async def fake_initialize_vectorizer(self, binding, schema, timeout):
+        return SimpleNamespace(dims=3)
 
     registered_schemas = []
 
@@ -311,11 +415,7 @@ async def test_server_registers_tools_with_effective_schema(monkeypatch):
 
     monkeypatch.setattr(RedisVLMCPServer, "_connect_redis_client", fake_connect)
     monkeypatch.setattr(RedisVLMCPServer, "_load_effective_schema", fake_load_schema)
-    monkeypatch.setattr(
-        RedisVLMCPServer,
-        "supports_native_hybrid_search",
-        fake_supports_native_hybrid_search,
-    )
+    _patch_probe(monkeypatch, value=False)
     monkeypatch.setattr(
         RedisVLMCPServer, "_initialize_vectorizer", fake_initialize_vectorizer
     )

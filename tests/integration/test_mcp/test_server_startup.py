@@ -6,11 +6,16 @@ import pytest
 import yaml
 
 from redisvl.index import AsyncSearchIndex
+from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.server import RedisVLMCPServer
 from redisvl.mcp.settings import MCPSettings
 from redisvl.redis.connection import is_version_gte
 from redisvl.schema import IndexSchema
-from tests.conftest import get_redis_version_async
+from tests.conftest import (
+    get_redis_version_async,
+    mcp_binding_index,
+    mcp_binding_vectorizer,
+)
 
 
 class FakeVectorizer:
@@ -133,8 +138,8 @@ async def test_server_startup_success(monkeypatch, existing_index, mcp_config_pa
 
     await server.startup()
 
-    started_index = await server.get_index()
-    vectorizer = await server.get_vectorizer()
+    started_index = mcp_binding_index(server)
+    vectorizer = mcp_binding_vectorizer(server)
 
     assert await started_index.exists() is True
     assert started_index.schema.index.name == index.name
@@ -154,10 +159,10 @@ async def test_server_startup_succeeds_for_fulltext_without_vectorizer(
     original_build_vectorizer = RedisVLMCPServer._build_vectorizer
     build_vectorizer_called = False
 
-    def tracked_build_vectorizer(self):
+    def tracked_build_vectorizer(binding):
         nonlocal build_vectorizer_called
         build_vectorizer_called = True
-        return original_build_vectorizer(self)
+        return original_build_vectorizer(binding)
 
     monkeypatch.setattr(
         "redisvl.mcp.server.resolve_vectorizer_class",
@@ -166,13 +171,13 @@ async def test_server_startup_succeeds_for_fulltext_without_vectorizer(
     monkeypatch.setattr(
         RedisVLMCPServer,
         "_build_vectorizer",
-        tracked_build_vectorizer,
+        staticmethod(tracked_build_vectorizer),
     )
     server = RedisVLMCPServer(
         MCPSettings(
             config=mcp_config_path(
                 redis_name=index.name,
-                search={"type": "fulltext"},
+                search={"type": "fulltext", "params": {"stopwords": None}},
                 runtime_overrides={
                     "vector_field_name": None,
                     "default_embed_text_field": None,
@@ -184,11 +189,11 @@ async def test_server_startup_succeeds_for_fulltext_without_vectorizer(
 
     await server.startup()
 
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
     assert await started_index.exists() is True
     assert build_vectorizer_called is False
     with pytest.raises(RuntimeError, match="vectorizer is not configured"):
-        await server.get_vectorizer()
+        mcp_binding_vectorizer(server)
 
     await server.shutdown()
 
@@ -213,6 +218,7 @@ async def test_server_fails_when_hybrid_config_requires_native_runtime(
                 search={
                     "type": "hybrid",
                     "params": {
+                        "stopwords": None,
                         "vector_search_method": "KNN",
                         "knn_ef_runtime": 150,
                     },
@@ -287,7 +293,7 @@ async def test_server_uses_schema_overrides_when_inspection_is_incomplete(
 
     await server.startup()
 
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
     assert started_index.schema.fields["embedding"].attrs.dims == 3
 
     await server.shutdown()
@@ -389,7 +395,7 @@ async def test_server_shutdown_disconnects_owned_client(
     )
 
     await server.startup()
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
 
     assert started_index.client is not None
 
@@ -415,7 +421,7 @@ async def test_server_get_index_fails_after_shutdown(
     await server.shutdown()
 
     with pytest.raises(RuntimeError, match="has not been started"):
-        await server.get_index()
+        mcp_binding_index(server)
 
 
 @pytest.mark.asyncio
@@ -432,15 +438,17 @@ async def test_server_shutdown_disconnects_index_when_vectorizer_close_fails(
     )
 
     await server.startup()
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
 
-    with pytest.raises(RuntimeError, match="vectorizer close failed"):
-        await server.shutdown()
+    # Teardown is best-effort: a failing vectorizer close is logged and
+    # swallowed rather than aborting teardown, so the index is still
+    # disconnected and its Redis connection cannot leak.
+    await server.shutdown()
 
     assert started_index.client is None
 
     with pytest.raises(RuntimeError, match="has not been started"):
-        await server.get_vectorizer()
+        mcp_binding_vectorizer(server)
 
 
 @pytest.mark.asyncio
@@ -462,7 +470,7 @@ async def test_run_guarded_allows_admitted_request_to_finish_during_shutdown(
     )
 
     await server.startup()
-    started_index = await server.get_index()
+    started_index = mcp_binding_index(server)
     entered = asyncio.Event()
     release = asyncio.Event()
 
@@ -472,7 +480,9 @@ async def test_run_guarded_allows_admitted_request_to_finish_during_shutdown(
         return "done"
 
     operation_task = asyncio.create_task(
-        server.run_guarded("drain-during-shutdown", guarded_operation())
+        server.run_guarded(
+            "drain-during-shutdown", guarded_operation(), timeout_seconds=5
+        )
     )
     await entered.wait()
 
@@ -518,7 +528,9 @@ async def test_run_guarded_rejects_new_requests_after_shutdown_begins(
         return "done"
 
     active_task = asyncio.create_task(
-        server.run_guarded("active-during-shutdown", guarded_operation())
+        server.run_guarded(
+            "active-during-shutdown", guarded_operation(), timeout_seconds=5
+        )
     )
     await entered.wait()
 
@@ -528,7 +540,7 @@ async def test_run_guarded_rejects_new_requests_after_shutdown_begins(
     future = asyncio.get_running_loop().create_future()
     future.set_result("later")
     with pytest.raises(RuntimeError, match="not running"):
-        await server.run_guarded("reject-after-stop", future)
+        await server.run_guarded("reject-after-stop", future, timeout_seconds=5)
 
     release.set()
     assert await active_task == "done"
@@ -567,11 +579,13 @@ async def test_run_guarded_rejects_requests_waiting_on_semaphore_when_shutdown_s
         second_started.set()
         return "second"
 
-    first_task = asyncio.create_task(server.run_guarded("first-op", first_operation()))
+    first_task = asyncio.create_task(
+        server.run_guarded("first-op", first_operation(), timeout_seconds=5)
+    )
     await first_entered.wait()
 
     second_task = asyncio.create_task(
-        server.run_guarded("second-op", second_operation())
+        server.run_guarded("second-op", second_operation(), timeout_seconds=5)
     )
     await asyncio.sleep(0)
 
@@ -586,3 +600,133 @@ async def test_run_guarded_rejects_requests_waiting_on_semaphore_when_shutdown_s
 
     assert second_started.is_set() is False
     await shutdown_task
+
+
+@pytest.fixture
+def multi_index_config_path(tmp_path: Path, redis_url: str):
+    def factory(bindings: dict[str, dict[str, Any]]) -> str:
+        config = {"server": {"redis_url": redis_url}, "indexes": bindings}
+        config_path = tmp_path / "multi-index.yaml"
+        config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        return str(config_path)
+
+    return factory
+
+
+def _binding_config(redis_name: str, *, read_only: bool = False) -> dict[str, Any]:
+    return {
+        "redis_name": redis_name,
+        "read_only": read_only,
+        "vectorizer": {"class": "FakeVectorizer", "model": "fake-model", "dims": 3},
+        "search": {"type": "vector"},
+        "runtime": {
+            "text_field_name": "content",
+            "vector_field_name": "embedding",
+            "default_embed_text_field": "content",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_server_starts_with_multiple_bindings(
+    monkeypatch, existing_index, multi_index_config_path
+):
+    knowledge = await existing_index(index_name="mcp-multi-knowledge")
+    tickets = await existing_index(index_name="mcp-multi-tickets")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=multi_index_config_path(
+                {
+                    "knowledge": _binding_config(knowledge.name),
+                    "tickets": _binding_config(tickets.name, read_only=True),
+                }
+            )
+        )
+    )
+
+    await server.startup()
+
+    try:
+        assert sorted(server._bindings) == ["knowledge", "tickets"]
+
+        knowledge_rt = server.resolve_binding("knowledge")
+        tickets_rt = server.resolve_binding("tickets")
+
+        # Each binding is inspected and initialized independently.
+        assert knowledge_rt.index.schema.index.name == knowledge.name
+        assert tickets_rt.index.schema.index.name == tickets.name
+        assert knowledge_rt.index is not tickets_rt.index
+
+        # Per-index write availability is respected.
+        assert knowledge_rt.effective_read_only is False
+        assert tickets_rt.effective_read_only is True
+
+        # An omitted index is ambiguous when multiple bindings are configured.
+        with pytest.raises(RedisVLMCPError) as excinfo:
+            server.resolve_binding(None)
+        assert excinfo.value.code == MCPErrorCode.INVALID_REQUEST
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_server_global_read_only_overrides_all_bindings(
+    monkeypatch, existing_index, multi_index_config_path
+):
+    knowledge = await existing_index(index_name="mcp-multi-ro-knowledge")
+    tickets = await existing_index(index_name="mcp-multi-ro-tickets")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=multi_index_config_path(
+                {
+                    "knowledge": _binding_config(knowledge.name),
+                    "tickets": _binding_config(tickets.name, read_only=True),
+                }
+            ),
+            read_only=True,
+        )
+    )
+
+    await server.startup()
+
+    try:
+        # Global read-only forces effective write availability false everywhere.
+        assert server.resolve_binding("knowledge").effective_read_only is True
+        assert server.resolve_binding("tickets").effective_read_only is True
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_server_startup_fails_when_one_binding_is_invalid(
+    monkeypatch, existing_index, multi_index_config_path
+):
+    knowledge = await existing_index(index_name="mcp-multi-invalid")
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+    server = RedisVLMCPServer(
+        MCPSettings(
+            config=multi_index_config_path(
+                {
+                    "knowledge": _binding_config(knowledge.name),
+                    "missing": _binding_config("nonexistent-index-name"),
+                }
+            )
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not exist"):
+        await server.startup()
+
+    assert server._lifecycle_state.name == "STOPPED"
+    assert server._bindings == {}

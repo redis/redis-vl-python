@@ -14,14 +14,12 @@ DEFAULT_UPSERT_DESCRIPTION = "Upsert records in the configured Redis index."
 
 def _validate_request(
     *,
-    server: Any,
+    runtime: Any,
     records: list[dict[str, Any]],
     id_field: str | None,
     skip_embedding_if_present: bool | None,
 ) -> bool:
     """Validate the public upsert request contract and resolve defaults."""
-    runtime = server.config.runtime
-
     if not isinstance(records, list) or not records:
         raise RedisVLMCPError(
             "records must be a non-empty list",
@@ -183,9 +181,9 @@ async def _embed_many(vectorizer: Any, contents: list[str]) -> list[list[float]]
     return embeddings
 
 
-def _vector_dtype(server: Any, index: Any) -> str:
-    """Resolve the configured vector field datatype as a lowercase string."""
-    field = server.config.get_vector_field(index.schema)
+def _vector_dtype(rt: Any) -> str:
+    """Resolve the binding's vector field datatype as a lowercase string."""
+    field = rt.binding.get_vector_field(rt.schema)
     datatype = getattr(field.attrs.datatype, "value", field.attrs.datatype)
     return str(datatype).lower()
 
@@ -225,12 +223,12 @@ def _validate_record(
 def _prepare_record_for_storage(
     record: dict[str, Any],
     *,
-    server: Any,
-    index: Any,
+    rt: Any,
 ) -> dict[str, Any]:
     """Validate records before serializing HASH vectors for storage."""
     prepared = dict(record)
-    vector_field_name = server.config.runtime.vector_field_name
+    index = rt.index
+    vector_field_name = rt.binding.runtime.vector_field_name
     _validate_record(prepared, index=index, vector_field_name=vector_field_name)
 
     if vector_field_name is None:
@@ -242,7 +240,7 @@ def _prepare_record_for_storage(
         if isinstance(vector_value, list):
             prepared[vector_field_name] = array_to_buffer(
                 vector_value,
-                _vector_dtype(server, index),
+                _vector_dtype(rt),
             )
     return prepared
 
@@ -254,11 +252,19 @@ async def upsert_records(
     id_field: str | None = None,
     skip_embedding_if_present: bool | None = None,
 ) -> dict[str, Any]:
-    """Execute `upsert-records` against the configured Redis index."""
+    """Execute `upsert-records` against the selected Redis index binding."""
     try:
-        index = await server.get_index()
+        rt = server.resolve_binding(None)
+        if rt.effective_read_only:
+            raise RedisVLMCPError(
+                "upsert-records is not permitted: binding is read-only",
+                code=MCPErrorCode.FORBIDDEN,
+                retryable=False,
+            )
+        index = rt.index
+        runtime = rt.binding.runtime
         effective_skip_embedding = _validate_request(
-            server=server,
+            runtime=runtime,
             records=records,
             id_field=id_field,
             skip_embedding_if_present=skip_embedding_if_present,
@@ -266,14 +272,13 @@ async def upsert_records(
         # Copy caller-provided records before enriching them with embeddings or
         # storage-specific serialization so the MCP tool does not mutate inputs.
         prepared_records = [deepcopy(record) for record in records]
-        runtime = server.config.runtime
         for record in prepared_records:
             _validate_record(
                 record,
                 index=index,
                 vector_field_name=runtime.vector_field_name,
             )
-        if server.config.supports_server_side_embedding:
+        if rt.binding.supports_server_side_embedding:
             if (
                 runtime.default_embed_text_field is None
                 or runtime.vector_field_name is None
@@ -289,7 +294,9 @@ async def upsert_records(
             )
 
             if embed_contents:
-                vectorizer = await server.get_vectorizer()
+                if rt.vectorizer is None:
+                    raise RuntimeError("MCP server vectorizer is not configured")
+                vectorizer = rt.vectorizer
                 # TODO: Avoid re-embedding records that already include vectors.
                 # The current flow can regenerate embeddings for caller-supplied
                 # vectors, which is wasteful and can add external service cost.
@@ -319,14 +326,14 @@ async def upsert_records(
             )
 
         loadable_records = [
-            _prepare_record_for_storage(record, server=server, index=index)
-            for record in prepared_records
+            _prepare_record_for_storage(record, rt=rt) for record in prepared_records
         ]
 
         try:
             keys = await server.run_guarded(
                 "upsert-records",
                 index.load(loadable_records, id_field=id_field),
+                timeout_seconds=runtime.request_timeout_seconds,
             )
         except Exception as exc:
             mapped = map_exception(exc)
@@ -356,7 +363,8 @@ def register_upsert_tool(server: Any) -> None:
         skip_embedding_if_present: bool | None = None,
     ):
         """FastMCP wrapper for the `upsert-records` tool."""
-        write_scope = getattr(getattr(server, "auth_config", None), "write_scope", None)
+        auth_config = getattr(server, "auth_config", None)
+        write_scope = auth_config.write_scope if auth_config is not None else None
         ensure_tool_scope(server, write_scope)
         return await upsert_records(
             server,

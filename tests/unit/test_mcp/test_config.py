@@ -90,11 +90,12 @@ indexes:
     config = load_mcp_config(str(config_path))
 
     assert config.server.redis_url == "redis://localhost:6379"
-    assert config.binding_id == "knowledge"
-    assert config.redis_name == "docs-index"
-    assert config.vectorizer.class_name == "FakeVectorizer"
-    assert config.vectorizer.model == "test-model"
-    assert config.vectorizer.extra_kwargs == {"api_config": {"api_key": "secret"}}
+    assert list(config.indexes) == ["knowledge"]
+    binding = config.indexes["knowledge"]
+    assert binding.redis_name == "docs-index"
+    assert binding.vectorizer.class_name == "FakeVectorizer"
+    assert binding.vectorizer.model == "test-model"
+    assert binding.vectorizer.extra_kwargs == {"api_config": {"api_key": "secret"}}
 
 
 def test_load_mcp_config_required_env_missing(tmp_path: Path, monkeypatch):
@@ -132,22 +133,44 @@ def test_mcp_config_requires_server_redis_url():
         MCPConfig.model_validate(config)
 
 
-@pytest.mark.parametrize(
-    "indexes",
-    [
-        {},
-        {
-            "knowledge": deepcopy(_valid_config()["indexes"]["knowledge"]),
-            "other": deepcopy(_valid_config()["indexes"]["knowledge"]),
-        },
-    ],
-)
-def test_mcp_config_validates_index_count(indexes):
+def test_mcp_config_requires_at_least_one_binding():
     config = _valid_config()
-    config["indexes"] = indexes
+    config["indexes"] = {}
 
-    with pytest.raises(ValueError, match="exactly one configured index binding"):
+    with pytest.raises(ValueError, match="at least one configured binding"):
         MCPConfig.model_validate(config)
+
+
+def test_mcp_config_allows_multiple_bindings():
+    config = _valid_config()
+    config["indexes"] = {
+        "knowledge": deepcopy(_valid_config()["indexes"]["knowledge"]),
+        "tickets": deepcopy(_valid_config()["indexes"]["knowledge"]),
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert list(loaded.indexes) == ["knowledge", "tickets"]
+    assert loaded.indexes["tickets"].redis_name == "docs-index"
+
+
+def test_mcp_config_binding_defaults_for_description_and_read_only():
+    config = MCPConfig.model_validate(_valid_config())
+
+    binding = config.indexes["knowledge"]
+    assert binding.description is None
+    assert binding.read_only is False
+
+
+def test_mcp_config_binding_accepts_description_and_read_only():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["description"] = "Product docs and runbooks"
+    config["indexes"]["knowledge"]["read_only"] = True
+
+    binding = MCPConfig.model_validate(config).indexes["knowledge"]
+
+    assert binding.description == "Product docs and runbooks"
+    assert binding.read_only is True
 
 
 def test_mcp_config_rejects_blank_binding_id():
@@ -166,25 +189,24 @@ def test_mcp_config_rejects_blank_redis_name():
         MCPConfig.model_validate(config)
 
 
-def test_mcp_config_binding_helpers():
+def test_mcp_config_binding_exposes_index_settings():
     config = MCPConfig.model_validate(_valid_config())
 
-    assert config.binding_id == "knowledge"
-    assert config.binding.redis_name == "docs-index"
-    assert config.binding.search.type == "vector"
-    assert config.runtime.default_embed_text_field == "content"
-    assert config.vectorizer.class_name == "FakeVectorizer"
-    assert config.redis_name == "docs-index"
+    binding = config.indexes["knowledge"]
+    assert binding.redis_name == "docs-index"
+    assert binding.search.type == "vector"
+    assert binding.runtime.default_embed_text_field == "content"
+    assert binding.vectorizer.class_name == "FakeVectorizer"
 
 
 def test_vector_search_config_can_omit_text_field_name():
     config = _valid_config()
     del config["indexes"]["knowledge"]["runtime"]["text_field_name"]
 
-    loaded = MCPConfig.model_validate(config)
+    binding = MCPConfig.model_validate(config).indexes["knowledge"]
 
-    assert loaded.search.type == "vector"
-    assert loaded.runtime.text_field_name is None
+    assert binding.search.type == "vector"
+    assert binding.runtime.text_field_name is None
 
 
 def test_fulltext_config_can_omit_vector_settings_and_vectorizer():
@@ -194,12 +216,12 @@ def test_fulltext_config_can_omit_vector_settings_and_vectorizer():
     del config["indexes"]["knowledge"]["runtime"]["vector_field_name"]
     del config["indexes"]["knowledge"]["runtime"]["default_embed_text_field"]
 
-    loaded = MCPConfig.model_validate(config)
+    binding = MCPConfig.model_validate(config).indexes["knowledge"]
 
-    assert loaded.search.type == "fulltext"
-    assert loaded.vectorizer is None
-    assert loaded.runtime.vector_field_name is None
-    assert loaded.runtime.default_embed_text_field is None
+    assert binding.search.type == "fulltext"
+    assert binding.vectorizer is None
+    assert binding.runtime.vector_field_name is None
+    assert binding.runtime.default_embed_text_field is None
 
 
 def test_mcp_config_merges_schema_overrides_into_inspection_result():
@@ -221,7 +243,7 @@ def test_mcp_config_merges_schema_overrides_into_inspection_result():
     inspected["fields"][1]["attrs"] = {"algorithm": "flat"}
     config = MCPConfig.model_validate(config_dict)
 
-    schema = config.to_index_schema(inspected)
+    schema = config.indexes["knowledge"].to_index_schema(inspected)
 
     assert isinstance(schema, IndexSchema)
     assert schema.index.name == "docs-index"
@@ -237,7 +259,7 @@ def test_mcp_config_rejects_override_for_unknown_field():
     config = MCPConfig.model_validate(config_dict)
 
     with pytest.raises(ValueError, match="schema_overrides.fields.*missing"):
-        config.to_index_schema(_inspected_schema())
+        config.indexes["knowledge"].to_index_schema(_inspected_schema())
 
 
 def test_mcp_config_rejects_override_type_conflict():
@@ -248,7 +270,7 @@ def test_mcp_config_rejects_override_type_conflict():
     config = MCPConfig.model_validate(config_dict)
 
     with pytest.raises(ValueError, match="cannot change discovered field type"):
-        config.to_index_schema(_inspected_schema())
+        config.indexes["knowledge"].to_index_schema(_inspected_schema())
 
 
 def test_mcp_config_rejects_override_path_conflict():
@@ -280,7 +302,7 @@ def test_mcp_config_rejects_override_path_conflict():
     config = MCPConfig.model_validate(config_dict)
 
     with pytest.raises(ValueError, match="cannot change discovered field path"):
-        config.to_index_schema(inspected)
+        config.indexes["knowledge"].to_index_schema(inspected)
 
 
 def test_mcp_config_validates_runtime_mapping_against_effective_schema():
@@ -289,7 +311,7 @@ def test_mcp_config_validates_runtime_mapping_against_effective_schema():
     config = MCPConfig.model_validate(config_dict)
 
     with pytest.raises(ValueError, match="runtime.vector_field_name"):
-        config.to_index_schema(_inspected_schema())
+        config.indexes["knowledge"].to_index_schema(_inspected_schema())
 
 
 def test_fulltext_config_does_not_require_vector_mapping_in_schema():
@@ -300,12 +322,12 @@ def test_fulltext_config_does_not_require_vector_mapping_in_schema():
     del config_dict["indexes"]["knowledge"]["runtime"]["default_embed_text_field"]
     config = MCPConfig.model_validate(config_dict)
 
-    schema = config.to_index_schema(_inspected_schema())
+    schema = config.indexes["knowledge"].to_index_schema(_inspected_schema())
 
     assert isinstance(schema, IndexSchema)
 
 
-def test_load_mcp_config_requires_exactly_one_binding(tmp_path: Path):
+def test_load_mcp_config_requires_at_least_one_binding(tmp_path: Path):
     config_path = tmp_path / "mcp.yaml"
     config_path.write_text(
         yaml.safe_dump(
@@ -317,7 +339,7 @@ def test_load_mcp_config_requires_exactly_one_binding(tmp_path: Path):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="exactly one configured index binding"):
+    with pytest.raises(ValueError, match="at least one configured binding"):
         load_mcp_config(str(config_path))
 
 
@@ -328,8 +350,8 @@ def test_mcp_config_accepts_search_types(search_type):
 
     loaded = MCPConfig.model_validate(config)
 
-    assert loaded.binding.search.type == search_type
-    assert loaded.binding.search.params == {}
+    assert loaded.indexes["knowledge"].search.type == search_type
+    assert loaded.indexes["knowledge"].search.params == {}
 
 
 def test_mcp_config_requires_search_type():
@@ -441,8 +463,8 @@ def test_mcp_config_normalizes_hybrid_linear_text_weight():
 
     loaded = MCPConfig.model_validate(config)
 
-    assert loaded.binding.search.type == "hybrid"
-    assert loaded.binding.search.params["linear_text_weight"] == 0.3
+    assert loaded.indexes["knowledge"].search.type == "hybrid"
+    assert loaded.indexes["knowledge"].search.params["linear_text_weight"] == 0.3
 
 
 def test_mcp_config_allows_linear_text_weight_without_explicit_combination_method():
@@ -456,8 +478,8 @@ def test_mcp_config_allows_linear_text_weight_without_explicit_combination_metho
 
     loaded = MCPConfig.model_validate(config)
 
-    assert loaded.binding.search.type == "hybrid"
-    assert loaded.binding.search.params["linear_text_weight"] == 0.3
+    assert loaded.indexes["knowledge"].search.type == "hybrid"
+    assert loaded.indexes["knowledge"].search.params["linear_text_weight"] == 0.3
 
 
 @pytest.mark.parametrize(
@@ -476,10 +498,10 @@ def test_mcp_config_rejects_native_only_hybrid_runtime_params(params):
     }
 
     loaded = MCPConfig.model_validate(config)
-    schema = loaded.to_index_schema(_inspected_schema())
+    schema = loaded.indexes["knowledge"].to_index_schema(_inspected_schema())
 
     with pytest.raises(ValueError, match="native hybrid search support"):
-        loaded.validate_search(
+        loaded.indexes["knowledge"].validate_search(
             schema=schema,
             supports_native_hybrid_search=False,
         )
@@ -497,9 +519,9 @@ def test_mcp_config_allows_linear_hybrid_fallback_params():
     }
 
     loaded = MCPConfig.model_validate(config)
-    schema = loaded.to_index_schema(_inspected_schema())
+    schema = loaded.indexes["knowledge"].to_index_schema(_inspected_schema())
 
-    loaded.validate_search(
+    loaded.indexes["knowledge"].validate_search(
         schema=schema,
         supports_native_hybrid_search=False,
     )
