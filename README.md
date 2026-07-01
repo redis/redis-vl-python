@@ -35,7 +35,7 @@ Perfect for building **RAG pipelines** with real-time retrieval, **AI agents** w
 | **[Vector Search](#retrieval)**<br/>*Similarity search with metadata filters* | **[LLM Memory](#llm-memory)**<br/>*Agentic AI context management* | **Async Support**<br/>*Async indexing and search for improved performance* |
 | **[Complex Filtering](#retrieval)**<br/>*Combine multiple filter types* | **[Semantic Routing](#semantic-routing)**<br/>*Intelligent query classification* | **[Vectorizers](#vectorizers)**<br/>*8+ embedding provider integrations* |
 | **[Hybrid Search](#retrieval)**<br/>*Combine semantic & full-text signals* | **[Embedding Caching](#embedding-caching)**<br/>*Cache embeddings for efficiency* | **[Rerankers](#rerankers)**<br/>*Improve search result relevancy* |
-|  |  | **[MCP Server](#mcp-server)**<br/>*Expose an existing Redis index to MCP clients* |
+|  |  | **[MCP Server](#mcp-server)**<br/>*Expose one or more existing Redis indexes to MCP clients* |
 
 </div>
 
@@ -51,7 +51,7 @@ Install `redisvl` into your Python (>=3.10) environment using `pip`:
 pip install redisvl
 ```
 
-Install the MCP server extra when you want to expose an existing Redis index through MCP:
+Install the MCP server extra when you want to expose one or more existing Redis indexes through MCP:
 
 ```bash
 pip install redisvl[mcp]
@@ -572,15 +572,17 @@ Use `--read-only` to expose search without upsert.
 
 ### MCP Server
 
-RedisVL includes an MCP server that lets MCP-compatible clients search or upsert data in an existing Redis index through a small, stable tool contract.
+RedisVL includes an MCP server that lets MCP-compatible clients search or upsert data in one or more existing Redis indexes through a small, stable tool contract.
 
 The server:
 
-- connects to one existing Redis Search index
-- reconstructs the schema from Redis at startup
-- uses the configured vectorizer for query embedding and optional upsert embedding
-- exposes `search-records` and, unless read-only mode is enabled, `upsert-records`
+- connects to one or more existing Redis Search indexes, each addressed by a logical id
+- reconstructs each index's schema from Redis at startup
+- uses each index's configured vectorizer for query embedding and optional upsert embedding
+- exposes `list-indexes` for discovery, `search-records`, and (unless every index is read-only) `upsert-records`
 - supports stdio (default), Streamable HTTP, and SSE transports
+
+A single configured index is the simplest case and works exactly as before — callers omit the index selector. With multiple indexes, clients call `list-indexes` first and pass the chosen `index` to `search-records` and `upsert-records`.
 
 Run it over stdio (default):
 

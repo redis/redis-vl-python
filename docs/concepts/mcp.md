@@ -7,28 +7,30 @@ myst:
 
 # RedisVL MCP
 
-RedisVL includes an MCP server that exposes a Redis-backed retrieval surface through a small, deterministic tool contract. It is designed for AI applications that want to search or maintain data in an existing Redis index without each client reimplementing Redis query logic.
+RedisVL includes an MCP server that exposes a Redis-backed retrieval surface through a small, deterministic tool contract. It is designed for AI applications that want to search or maintain data in one or more existing Redis indexes without each client reimplementing Redis query logic.
 
 ## What RedisVL MCP Does
 
 The RedisVL MCP server sits between an MCP client and Redis:
 
-1. It connects to an existing Redis Search index.
-2. It inspects that index at startup and reconstructs its schema.
+1. It connects to one or more existing Redis Search indexes.
+2. It inspects each index at startup and reconstructs its schema.
 3. It initializes vector capabilities only when the configured search or upsert behavior needs them.
-4. It exposes stable MCP tools for search, and optionally upsert.
+4. It exposes stable MCP tools for discovery, search, and optionally upsert.
 
-This keeps the Redis index as the source of truth for search behavior while giving MCP clients a predictable interface.
+This keeps each Redis index as the source of truth for its search behavior while giving MCP clients a predictable interface.
 
 ## How RedisVL MCP Runs
 
 RedisVL MCP works with a focused model:
 
-- One server process binds to exactly one existing Redis index.
+- One server process binds to one *or several* existing Redis indexes, each addressed by a logical id.
 - The server supports stdio (default), Streamable HTTP, and SSE transports.
-- Search behavior is owned by configuration, not by MCP callers.
-- Vector search and server-side embedding are optional capabilities configured explicitly.
-- Upsert is optional and can be disabled with read-only mode.
+- Search behavior is owned by per-index configuration, not by MCP callers.
+- Vector search and server-side embedding are optional capabilities configured explicitly per index.
+- Upsert is optional and can be disabled globally with read-only mode or per index with a `read_only` flag.
+
+A single-index server remains the simplest deployment: when exactly one index is configured, callers can omit the index selector entirely and every tool call targets that index. Multi-index support is fully formal — it adds discovery and explicit routing without changing the single-index contract.
 
 ## Config-Owned Search Behavior
 
@@ -44,17 +46,30 @@ These request-time controls are still bounded by runtime config. In particular,
 deep paging is limited by a configured maximum result window, enforced as
 `offset + limit`.
 
-MCP callers do not choose:
+On a multi-index server, callers also choose **which index to target** through an optional `index` argument (see [Index Selection](#index-selection-and-discovery)). Callers do not choose:
 
-- which index to target
 - whether retrieval is `vector`, `fulltext`, or `hybrid`
 - query tuning parameters such as hybrid fusion or vector runtime settings
 
-That behavior lives in the server config under `indexes.<id>.search`. The response includes `search_type` as informational metadata, but it is not a request parameter.
+That behavior lives in the per-index server config under `indexes.<id>.search`. The response includes `search_type` as informational metadata, but it is not a request parameter.
 
-## Single Index Binding
+## Single and Multiple Index Bindings
 
-The YAML config uses an `indexes` mapping with one configured entry. That binding points to an existing Redis index through `redis_name`, and every tool call targets that configured index.
+The YAML config uses an `indexes` mapping. Each entry is a logical binding keyed by an id (for example `knowledge` or `tickets`) that points to an existing Redis index through `redis_name`. The mapping may contain one entry or several; each binding is inspected, validated, and given its own search config, runtime limits, and optional vectorizer independently at startup. Startup is all-or-nothing — if any binding fails to initialize, the server does not start.
+
+A single-binding config is the simplest case and behaves exactly as before: the lone binding is the implicit target of every call. With multiple bindings the server stays a single process and endpoint, but callers select a binding per call.
+
+## Index Selection and Discovery
+
+On a multi-index server, every tool call must say which logical index it targets:
+
+- `search-records` and `upsert-records` accept an optional `index` argument naming the logical id.
+- When exactly one index is configured, `index` may be omitted and resolves to that sole binding (backward compatible).
+- When multiple indexes are configured, omitting `index` is an `invalid_request`; the caller must name one.
+- An unknown logical id is an `invalid_request`.
+- Both tools echo the resolved `index` in their response so clients can confirm routing.
+
+Because a client cannot guess the configured logical ids, multi-index servers expose a `list-indexes` discovery tool. **Clients should call `list-indexes` first** to enumerate the available indexes and their filterable fields, then pass the chosen id as `index` on subsequent calls.
 
 ## Schema Inspection and Overrides
 
@@ -71,14 +86,16 @@ MCP-reserved score metadata field names for the configured search mode.
 
 ## Read-Only and Read-Write Modes
 
-RedisVL MCP always registers `search-records`.
+RedisVL MCP always registers `search-records` and `list-indexes`.
 
-`upsert-records` is only registered when the server is not in read-only mode. Read-only mode is controlled by:
+Write availability is enforced at two levels:
 
-- the CLI flag `--read-only`
-- or the environment variable `REDISVL_MCP_READ_ONLY=true`
+- **Global read-only mode** disables writes across every binding. It is controlled by the CLI flag `--read-only` or the environment variable `REDISVL_MCP_READ_ONLY=true`.
+- **Per-index read-only** disables writes for a single binding via `indexes.<id>.read_only: true`, while other bindings stay writable.
 
-Use read-only mode when Redis is serving approved content to assistants and another system owns ingestion.
+These combine into each binding's *effective* write availability: a binding is read-only if global read-only is on **or** that binding sets `read_only: true`. The `upsert-records` tool is registered only when at least one binding is writable, so a fully read-only server does not advertise it at all. When the tool is registered, a write to a read-only binding is rejected with `invalid_request` before any data is changed. `list-indexes` reports each binding's effective write availability as `upsert_available`.
+
+Use read-only mode when Redis is serving approved content to assistants and another system owns ingestion — globally when no binding should accept writes, or per index when only some indexes are writable.
 
 ## Authentication and Authorization
 
@@ -88,17 +105,35 @@ For configuration and the gateway boundary, see {doc}`/user_guide/how_to_guides/
 
 ## Tool Surface
 
-RedisVL MCP exposes two tools:
+RedisVL MCP exposes up to three tools:
 
-- `search-records` searches the configured index using the server-owned search mode
-- `upsert-records` validates and upserts records, embedding them only when that capability is configured
+- `list-indexes` enumerates the configured logical indexes for discovery (always available)
+- `search-records` searches a selected index using that index's server-owned search mode
+- `upsert-records` validates and upserts records into a selected writable index, embedding them only when that capability is configured
 
 These tools follow a stable contract:
 
 - request validation happens before query or write execution
+- the resolved logical `index` is echoed in every `search-records` and `upsert-records` response
 - filters support either raw strings or a RedisVL-backed JSON DSL
-- `search-records` describes the inspected schema by advertising typed JSON DSL filter fields, object-filter `exists` support, and valid `return_fields`
+- on a single-index server, `search-records` describes the inspected schema by advertising typed JSON DSL filter fields, object-filter `exists` support, and valid `return_fields`; on a multi-index server those hints are ambiguous, so the description instead directs clients to call `list-indexes` and pass `index`
 - error codes are mapped into a stable set of MCP-facing categories
+
+### `list-indexes`
+
+`list-indexes` returns one entry per configured binding so clients can route subsequent calls. Each entry reports:
+
+- the logical `id`
+- an optional `description` (only when configured)
+- `upsert_available`, reflecting the binding's effective write availability
+- `fields`, the filterable fields discovered from the index
+- `limits`, only the runtime limits that were explicitly configured
+
+The discovery payload is deliberately minimal:
+
+- the underlying Redis index name (`redis_name`) is **never** exposed
+- the vector field and the configured embed-source text field are **omitted** from `fields`, since they are implementation inputs rather than fields a client filters on
+- `limits` shows only explicitly set values (such as `max_limit` or `max_upsert_records`); defaults are not echoed
 
 ## Why Use MCP Instead of Direct RedisVL Calls
 
