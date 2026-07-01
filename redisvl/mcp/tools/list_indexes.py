@@ -68,6 +68,11 @@ def list_indexes(server: "RedisVLMCPServer") -> dict[str, Any]:
 
     The Redis index name (``redis_name``) is intentionally never exposed.
     """
+    # Mirror resolve_binding: with no bindings the server is not started (or has
+    # been torn down), so fail loudly rather than return an empty list that a
+    # client could misread as "no indexes configured".
+    if not server._bindings:
+        raise RuntimeError("MCP server has not been started")
     return {
         "indexes": [
             _describe_binding(binding_runtime)

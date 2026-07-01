@@ -98,6 +98,15 @@ class FakeServer:
         return decorator
 
 
+def test_list_indexes_raises_when_no_bindings():
+    # Before startup / after shutdown _bindings is empty; discovery must fail
+    # loudly rather than return an empty list a client could misread.
+    server = FakeServer([])
+
+    with pytest.raises(RuntimeError, match="has not been started"):
+        list_indexes(server)
+
+
 def test_list_indexes_minimal_single_binding():
     server = FakeServer([_binding_runtime()])
 
