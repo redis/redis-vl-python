@@ -96,6 +96,7 @@ def test_hybrid_query(index):
         vector=vector,
         vector_field_name=vector_field,
         return_fields=return_fields,
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -122,6 +123,7 @@ def test_hybrid_query(index):
         vector=vector,
         vector_field_name=vector_field,
         num_results=3,
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -177,6 +179,7 @@ def test_hybrid_query_with_filter(index):
         vector_field_name=vector_field,
         filter_expression=filter_expression,
         return_fields=return_fields,
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -203,6 +206,7 @@ def test_hybrid_query_with_geo_filter(index):
         vector_field_name=vector_field,
         filter_expression=filter_expression,
         return_fields=return_fields,
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -226,6 +230,7 @@ def test_hybrid_query_alpha(index, alpha):
         vector=vector,
         vector_field_name=vector_field,
         alpha=alpha,
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -291,6 +296,7 @@ def test_hybrid_query_with_text_filter(index):
         alpha=0.5,
         filter_expression=filter_expression,
         return_fields=["job", "description"],
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -309,6 +315,7 @@ def test_hybrid_query_with_text_filter(index):
         alpha=0.5,
         filter_expression=filter_expression,
         return_fields=["description"],
+        stopwords=None,
     )
 
     results = index.query(hybrid_query)
@@ -339,6 +346,7 @@ def test_hybrid_query_word_weights(index, scorer):
         return_fields=return_fields,
         text_scorer=scorer,
         text_weights=weights,
+        stopwords=None,
     )
 
     weighted_results = index.query(weighted_query)
@@ -353,6 +361,7 @@ def test_hybrid_query_word_weights(index, scorer):
         return_fields=return_fields,
         text_scorer=scorer,
         text_weights={},
+        stopwords=None,
     )
 
     unweighted_results = index.query(unweighted_query)
@@ -372,6 +381,7 @@ def test_hybrid_query_word_weights(index, scorer):
         return_fields=return_fields,
         text_scorer=scorer,
         text_weights=weights,
+        stopwords=None,
     )
 
     weighted_results = index.query(weighted_query)
@@ -386,6 +396,7 @@ def test_hybrid_query_word_weights(index, scorer):
         return_fields=return_fields,
         text_scorer=scorer,
         text_weights=None,
+        stopwords=None,
     )
 
     new_query.set_text_weights(weights)
