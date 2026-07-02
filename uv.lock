@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10, <3.15"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -3310,21 +3310,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nltk"
-version = "3.9.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "joblib" },
-    { name = "regex" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/74/a1/b3b4adf15585a5bc4c357adde150c01ebeeb642173ded4d871e89468767c/nltk-3.9.4.tar.gz", hash = "sha256:ed03bc098a40481310320808b2db712d95d13ca65b27372f8a403949c8b523d0", size = 2946864, upload-time = "2026-03-24T06:13:40.641Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9d/91/04e965f8e717ba0ab4bdca5c112deeab11c9e750d94c4d4602f050295d39/nltk-3.9.4-py3-none-any.whl", hash = "sha256:f2fa301c3a12718ce4a0e9305c5675299da5ad9e26068218b69d692fda84828f", size = 1552087, upload-time = "2026-03-24T06:13:38.47Z" },
-]
-
-[[package]]
 name = "nodeenv"
 version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4891,7 +4876,6 @@ all = [
     { name = "google-cloud-aiplatform", version = "1.154.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "langcache" },
     { name = "mistralai" },
-    { name = "nltk" },
     { name = "ollama" },
     { name = "openai" },
     { name = "pillow" },
@@ -4917,9 +4901,6 @@ mcp = [
 ]
 mistralai = [
     { name = "mistralai" },
-]
-nltk = [
-    { name = "nltk" },
 ]
 ollama = [
     { name = "ollama" },
@@ -4992,8 +4973,6 @@ requires-dist = [
     { name = "mistralai", marker = "extra == 'all'", specifier = ">=1.0.0,<2" },
     { name = "mistralai", marker = "extra == 'mistralai'", specifier = ">=1.0.0,<2" },
     { name = "ml-dtypes", specifier = ">=0.4.0,<1.0.0" },
-    { name = "nltk", marker = "extra == 'all'", specifier = ">=3.8.1,<4" },
-    { name = "nltk", marker = "extra == 'nltk'", specifier = ">=3.8.1,<4" },
     { name = "numpy", specifier = ">=1.26.0,<3" },
     { name = "ollama", marker = "extra == 'all'", specifier = ">=0.5.4" },
     { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.5.4" },
@@ -5018,7 +4997,7 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'all'", specifier = ">=0.2.2" },
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = ">=0.2.2" },
 ]
-provides-extras = ["mcp", "mistralai", "openai", "nltk", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis", "all", "ollama"]
+provides-extras = ["mcp", "mistralai", "openai", "cohere", "voyageai", "sentence-transformers", "langcache", "vertexai", "bedrock", "pillow", "sql-redis", "all", "ollama"]
 
 [package.metadata.requires-dev]
 dev = [

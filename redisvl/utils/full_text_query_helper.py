@@ -1,9 +1,6 @@
 from redisvl.query.filter import FilterExpression
+from redisvl.utils.stopwords import get_stopwords
 from redisvl.utils.token_escaper import TokenEscaper
-from redisvl.utils.utils import lazy_import
-
-nltk = lazy_import("nltk")
-nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 
 def _parse_text_weights(weights: dict[str, float] | None) -> dict[str, float]:
@@ -88,21 +85,7 @@ class FullTextQueryHelper:
         if not stopwords:
             return set()
         elif isinstance(stopwords, str):
-            try:
-                # Try loading first; only download if not already present.
-                # This avoids race conditions when parallel workers (e.g.
-                # pytest-xdist) call nltk.download() concurrently.
-                try:
-                    return set(nltk_stopwords.words(stopwords))
-                except LookupError:
-                    nltk.download("stopwords", quiet=True)
-                    return set(nltk_stopwords.words(stopwords))
-            except ImportError:
-                raise ValueError(
-                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
-                )
-            except Exception as e:
-                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
+            return get_stopwords(stopwords)
         elif isinstance(stopwords, (set, list, tuple)) and all(
             isinstance(word, str) for word in stopwords
         ):

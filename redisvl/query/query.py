@@ -6,13 +6,11 @@ from redis.commands.search.query import Query as RedisQuery
 from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
 from redisvl.utils.log import get_logger
+from redisvl.utils.stopwords import get_stopwords
 from redisvl.utils.token_escaper import TokenEscaper
-from redisvl.utils.utils import denorm_cosine_distance, lazy_import
+from redisvl.utils.utils import denorm_cosine_distance
 
 logger = get_logger(__name__)
-
-nltk = lazy_import("nltk")
-nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 # Type alias for sort specification
 # Can be:
@@ -1406,21 +1404,7 @@ class TextQuery(BaseQuery):
         if not stopwords:
             self._stopwords = set()
         elif isinstance(stopwords, str):
-            try:
-                # Try loading first; only download if not already present.
-                # This avoids race conditions when parallel workers (e.g.
-                # pytest-xdist) call nltk.download() concurrently.
-                try:
-                    self._stopwords = set(nltk_stopwords.words(stopwords))
-                except LookupError:
-                    nltk.download("stopwords", quiet=True)
-                    self._stopwords = set(nltk_stopwords.words(stopwords))
-            except ImportError:
-                raise ValueError(
-                    f"Loading stopwords for {stopwords} failed: nltk is not installed."
-                )
-            except Exception as e:
-                raise ValueError(f"Error trying to load {stopwords} from nltk. {e}")
+            self._stopwords = get_stopwords(stopwords)
         elif isinstance(stopwords, (set, list, tuple)) and all(
             isinstance(word, str) for word in stopwords
         ):

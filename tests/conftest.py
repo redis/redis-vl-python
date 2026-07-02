@@ -54,43 +54,6 @@ def set_tokenizers_parallelism():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def ensure_nltk_stopwords(tmp_path_factory, worker_id):
-    """Pre-download the NLTK ``stopwords`` corpus once, before tests run.
-
-    Query classes that take a string ``stopwords`` value ("english" by
-    default) lazily download the corpus on first use. Under pytest-xdist
-    several workers can hit the missing corpus simultaneously and call
-    ``nltk.download()`` concurrently, corrupting the shared ``nltk_data``
-    directory and producing intermittent "stopwords/english not found"
-    failures. Fetch it here once, serializing across workers with a file lock
-    so exactly one process performs the download.
-    """
-    try:
-        import nltk
-    except ImportError:
-        return
-
-    def _ensure() -> None:
-        try:
-            nltk.data.find("corpora/stopwords")
-        except LookupError:
-            nltk.download("stopwords", quiet=True)
-
-    # Not running under xdist: download in-process.
-    if worker_id == "master":
-        _ensure()
-        return
-
-    # Under xdist: the first worker to grab the lock downloads; the others
-    # wait, then find the corpus already present.
-    from filelock import FileLock
-
-    root_tmp = tmp_path_factory.getbasetemp().parent
-    with FileLock(str(root_tmp / "nltk_stopwords.lock")):
-        _ensure()
-
-
-@pytest.fixture(scope="session", autouse=True)
 def redis_container(worker_id):
     """
     If using xdist, create a unique Compose project for each xdist worker by
