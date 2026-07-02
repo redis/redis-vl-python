@@ -40,7 +40,6 @@ mcp = [
 ]
 mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
-nltk = ["nltk>=3.8.1,<4"]
 cohere = ["cohere>=4.44"]
 voyageai = ["voyageai>=0.2.2"]
 sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
@@ -62,7 +61,6 @@ sql-redis = [
 all = [
     "mistralai>=1.0.0,<2",
     "openai>=1.1.0",
-    "nltk>=3.8.1,<4",
     "cohere>=4.44",
     "voyageai>=0.2.2",
     "sentence-transformers>=3.4.0,<4",

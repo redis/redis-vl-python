@@ -8,10 +8,6 @@ from redisvl.query.filter import FilterExpression
 from redisvl.redis.utils import array_to_buffer
 from redisvl.schema.fields import VectorDataType
 from redisvl.utils.full_text_query_helper import FullTextQueryHelper
-from redisvl.utils.utils import lazy_import
-
-nltk = lazy_import("nltk")
-nltk_stopwords = lazy_import("nltk.corpus.stopwords")
 
 
 class Vector(BaseModel):
