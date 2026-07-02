@@ -214,6 +214,108 @@ async def started_server(monkeypatch, searchable_index, mcp_config_path):
         await server.shutdown()
 
 
+@pytest.fixture
+async def multi_index_server(
+    monkeypatch, searchable_index, fulltext_only_index, tmp_path, redis_url
+):
+    monkeypatch.setattr(
+        "redisvl.mcp.server.resolve_vectorizer_class",
+        lambda class_name: FakeVectorizer,
+    )
+
+    config = {
+        "server": {"redis_url": redis_url},
+        "indexes": {
+            "knowledge": {
+                "redis_name": searchable_index.schema.index.name,
+                "search": {"type": "vector"},
+                "vectorizer": {
+                    "class": "FakeVectorizer",
+                    "model": "fake-model",
+                    "dims": 3,
+                },
+                "runtime": {
+                    "text_field_name": "content",
+                    "vector_field_name": "embedding",
+                    "default_embed_text_field": "content",
+                    "default_limit": 2,
+                    "max_limit": 5,
+                },
+            },
+            "tickets": {
+                "redis_name": fulltext_only_index.schema.index.name,
+                "search": {"type": "fulltext", "params": {"stopwords": None}},
+                "runtime": {
+                    "text_field_name": "content",
+                    "vector_field_name": None,
+                    "default_embed_text_field": None,
+                    "default_limit": 2,
+                    "max_limit": 5,
+                },
+            },
+        },
+    }
+    config_path = tmp_path / "multi-index-search.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    server = RedisVLMCPServer(MCPSettings(config=str(config_path)))
+    await server.startup()
+    try:
+        yield server
+    finally:
+        await server.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_search_records_routes_to_named_binding(multi_index_server):
+    knowledge = await search_records(
+        multi_index_server,
+        query="science",
+        index="knowledge",
+        return_fields=["content", "category"],
+    )
+    assert knowledge["index"] == "knowledge"
+    assert knowledge["search_type"] == "vector"
+    assert knowledge["results"]
+
+    tickets = await search_records(
+        multi_index_server,
+        query="science",
+        index="tickets",
+        return_fields=["content", "category"],
+    )
+    assert tickets["index"] == "tickets"
+    assert tickets["search_type"] == "fulltext"
+    assert tickets["results"]
+
+
+@pytest.mark.asyncio
+async def test_search_records_requires_index_when_multiple_bindings(multi_index_server):
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await search_records(multi_index_server, query="science")
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_unknown_index_on_multi_binding(
+    multi_index_server,
+):
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await search_records(multi_index_server, query="science", index="missing")
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_single_binding_echoes_index_when_omitted(started_server):
+    server = await started_server({"type": "vector"})
+
+    response = await search_records(server, query="science")
+
+    assert response["index"] == "knowledge"
+
+
 @pytest.mark.asyncio
 async def test_search_records_vector_success_with_pagination_and_projection(
     started_server,
