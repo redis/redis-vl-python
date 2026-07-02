@@ -18,6 +18,15 @@ The `stdio` transport is a local subprocess with no network surface and is never
 authenticated.
 ```
 
+```{important}
+Authentication is a separate concern from **transport security** (Host/Origin
+validation), which is always on for the HTTP transports and defends against DNS
+rebinding independently of auth. See
+[Transport Security](mcp.md#transport-security-host-origin-validation). Both
+layers apply together: auth decides *who* may call; the Host/Origin guard
+rejects requests whose claimed authority is not allowlisted.
+```
+
 ## What RedisVL Enforces
 
 RedisVL validates a bearer **JWT** that an existing identity provider (IdP)
@@ -198,6 +207,11 @@ flowchart LR
 Use RedisVL's JWT validation for authentication and coarse read/write
 authorization. Layer a gateway on top when you need per-tenant Redis ACL
 enforcement.
+
+When such a gateway or reverse proxy terminates the connection and forwards a
+rewritten `Host` header, set `server.transport_security.enabled: false` (or
+declare the public host via `server.transport_security.allowed_hosts`) so the
+proxy's rewritten `Host` is not rejected by the Host/Origin guard.
 
 ## See Also
 
