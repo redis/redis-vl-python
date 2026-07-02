@@ -4,7 +4,13 @@ services:
     ports:
       - "6379"
     environment:
-      - "REDIS_ARGS=--save '' --appendonly no"
+      # Pin the RediSearch worker pool to 0 (single-threaded, foreground
+      # execution). Redis 8.8 changed the default from 0 to a multithreaded
+      # background executor, which surfaces a race where FT.SEARCH can return
+      # nil fields for docs that expire mid-query -- the source of flaky
+      # redis:latest CI runs. WORKERS=0 avoids the race and is already the
+      # default on the pinned 8.2/8.4 images, so this is a no-op there.
+      - "REDIS_ARGS=--save '' --appendonly no --search-workers ${REDIS_SEARCH_WORKERS:-0}"
     deploy:
       replicas: 1
       restart_policy:
