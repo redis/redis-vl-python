@@ -22,6 +22,8 @@ def get_stopwords(language: str) -> set[str]:
     Raises:
         ValueError: If no stopwords are bundled for the given language.
     """
+    if not isinstance(language, str):
+        raise TypeError("language must be a string")
     words = _stopwords_by_language()
     if language not in words:
         raise ValueError(
