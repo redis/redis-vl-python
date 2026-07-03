@@ -926,7 +926,7 @@ class VectorRangeQuery(BaseVectorQuery, BaseQuery):
             TypeError: If filter_expression is not of type redisvl.query.FilterExpression
 
         Note:
-            Learn more about vector range queries: https://redis.io/docs/interact/search-and-query/search/vectors/#range-query
+            Learn more about vector range queries: https://redis.io/docs/latest/develop/ai/search-and-query/vectors/#range-query
 
         """
         self._vector = vector
