@@ -33,6 +33,13 @@ class MCPSettings(BaseSettings):
     auth_authorization_claim: str | None = None
     auth_base_url: str | None = None
 
+    # Transport security overrides (``REDISVL_MCP_*``). When any are set they
+    # take precedence over the YAML ``server.transport_security`` block.
+    transport_security_enabled: bool | None = None
+    allowed_hosts: str | None = None
+    allowed_origins: str | None = None
+    allow_any_origin: bool | None = None
+
     @classmethod
     def from_env(
         cls,
@@ -80,6 +87,27 @@ class MCPSettings(BaseSettings):
         for env_value, field in (
             (self.auth_required_scopes, "required_scopes"),
             (self.auth_required_claims, "required_claims"),
+        ):
+            if env_value is not None:
+                overrides[field] = [
+                    item.strip() for item in env_value.split(",") if item.strip()
+                ]
+        return overrides
+
+    def transport_security_overrides(self) -> dict[str, Any]:
+        """Return the non-``None`` transport-security fields as a config mapping.
+
+        Comma-separated ``allowed_hosts`` / ``allowed_origins`` are split into
+        lists. Returns an empty dict when no transport-security env vars are set.
+        """
+        overrides: dict[str, Any] = {}
+        if self.transport_security_enabled is not None:
+            overrides["enabled"] = self.transport_security_enabled
+        if self.allow_any_origin is not None:
+            overrides["allow_any_origin"] = self.allow_any_origin
+        for env_value, field in (
+            (self.allowed_hosts, "allowed_hosts"),
+            (self.allowed_origins, "allowed_origins"),
         ):
             if env_value is not None:
                 overrides[field] = [

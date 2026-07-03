@@ -165,11 +165,41 @@ class MCPAuthConfig(BaseModel):
         return self
 
 
+class MCPTransportSecurityConfig(BaseModel):
+    """Host/Origin validation for the MCP server's HTTP transports.
+
+    Only serves requests that target a trusted authority: the ``Host`` header
+    must be allowlisted and any cross-site ``Origin`` must be too. This blocks
+    requests that reach the server claiming an authority it does not own --
+    DNS-rebinding being the primary motivating case, alongside cross-origin
+    browser requests and misrouted/proxied traffic.
+
+    Defaults to enabled. The effective host allowlist is the set derived from
+    the bind address (see :func:`default_allowed_hosts`) unioned with
+    ``allowed_hosts``. ``stdio`` has no network surface and is never affected.
+    """
+
+    enabled: bool = True
+    # Extra hosts accepted in addition to the bind-derived default allowlist.
+    # Needed for reverse-proxy / non-loopback deployments whose public Host
+    # differs from the bind address.
+    allowed_hosts: list[str] = Field(default_factory=list)
+    # Exact ``Origin`` values accepted from browser clients. Empty means no
+    # cross-site browser origin is allowed; requests with no Origin (typical of
+    # non-browser MCP clients) always pass.
+    allowed_origins: list[str] = Field(default_factory=list)
+    # Escape hatch for trusted-proxy setups that terminate/validate Origin
+    # upstream. Distinct from an empty allowlist so "no origins configured"
+    # (fail closed on any Origin) differs from "operator disabled the check".
+    allow_any_origin: bool = False
+
+
 class MCPServerConfig(BaseModel):
     """Server-level bootstrap configuration."""
 
     redis_url: str = Field(..., min_length=1)
     auth: MCPAuthConfig | None = None
+    transport_security: MCPTransportSecurityConfig | None = None
 
 
 class MCPIndexSearchConfig(BaseModel):
