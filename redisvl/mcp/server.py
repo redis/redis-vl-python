@@ -18,6 +18,10 @@ from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.list_indexes import register_list_indexes_tool
 from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
+from redisvl.mcp.transport_security import (
+    build_host_origin_middleware,
+    resolve_transport_security_config,
+)
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.schema import IndexSchema
 
@@ -88,7 +92,38 @@ class RedisVLMCPServer(FastMCP):
         self.auth_config = auth_config
         self._auth_enabled = auth_provider is not None
 
+        # Host/Origin (DNS-rebinding) protection for HTTP transports. Resolved
+        # here so config errors surface at construction; the bind-derived host
+        # allowlist is finalized in run_async once host/port are known.
+        self._transport_security = resolve_transport_security_config(
+            settings, self._config_path
+        )
+
         super().__init__("redisvl", lifespan=self._fastmcp_lifespan, auth=auth_provider)
+
+    async def run_async(
+        self,
+        transport: Any = None,
+        show_banner: bool | None = None,
+        **transport_kwargs: Any,
+    ) -> None:
+        """Run the server, injecting Host/Origin validation for HTTP transports.
+
+        The guard is prepended to any caller-supplied middleware so it runs
+        outermost, rejecting DNS-rebinding requests before auth or tool handlers.
+        ``stdio`` is untouched.
+        """
+        if transport in ("sse", "streamable-http"):
+            host = transport_kwargs.get("host", "127.0.0.1")
+            port = transport_kwargs.get("port", 8000)
+            guard = build_host_origin_middleware(self._transport_security, host, port)
+            if guard:
+                existing = transport_kwargs.get("middleware") or []
+                transport_kwargs["middleware"] = [*guard, *existing]
+
+        await super().run_async(
+            transport=transport, show_banner=show_banner, **transport_kwargs
+        )
 
     async def startup(self) -> None:
         """Load config, inspect the configured index, and initialize dependencies."""

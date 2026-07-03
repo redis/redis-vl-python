@@ -57,6 +57,29 @@ uvx --from redisvl[mcp] rvl mcp --config /path/to/mcp.yaml --transport sse --hos
 Streamable HTTP and SSE endpoints are **unauthenticated by default**. Binding to a non-loopback host without auth fails closed unless you pass `--allow-unauthenticated`; binding to loopback without auth only warns. For real deployments, enable JWT authentication (see {doc}`mcp_authentication`) rather than using `--allow-unauthenticated`. When not using `--read-only`, the `upsert-records` tool is also exposed to any client that can reach the server.
 ```
 
+### Transport Security (Host / Origin Validation)
+
+On the HTTP transports the server validates the request `Host` and `Origin` headers against allowlists before any tool runs. This is **on by default** and defends against [DNS rebinding](https://en.wikipedia.org/wiki/DNS_rebinding): without it, a malicious web page could rebind its own hostname to `127.0.0.1` and use the victim's browser to reach a local MCP server, even one bound to loopback.
+
+- **Host:** the allowlist is derived automatically from the bind address. Loopback binds accept `localhost`, `127.0.0.1`, and `[::1]` (with or without the port), so local MCP clients work with no configuration.
+- **Origin:** requests with no `Origin` header (typical of non-browser MCP clients) always pass. A request that carries a cross-site `Origin` is rejected unless that origin is explicitly allowlisted.
+
+You only need to configure this for deployments where the client-visible `Host` differs from the bind address (a reverse proxy, or a `--host 0.0.0.0` bind reached via a public hostname). Use the `REDISVL_MCP_ALLOWED_HOSTS` / `REDISVL_MCP_ALLOWED_ORIGINS` env vars, or a `server.transport_security` block in the config:
+
+```yaml
+server:
+  redis_url: ${REDIS_URL}
+  transport_security:
+    allowed_hosts: [mcp.example.com]          # extra Host values to accept
+    allowed_origins: [https://app.example.com]  # browser origins to accept
+    # allow_any_origin: true                   # trust upstream Origin validation
+    # enabled: false                           # disable when a trusted proxy validates
+```
+
+```{note}
+Behind a reverse proxy or gateway that already validates `Host`/`Origin`, set `server.transport_security.enabled: false` (or `allow_any_origin: true`) so the proxy's rewritten headers are not rejected.
+```
+
 Run it in read-only mode to expose search without upsert:
 
 ```bash
@@ -83,6 +106,10 @@ You can also control boot settings through environment variables:
 | `REDISVL_MCP_READ_ONLY` | Disable `upsert-records` when set to `true` |
 | `REDISVL_MCP_TOOL_SEARCH_DESCRIPTION` | Set the base search tool description text. On a single-index server RedisVL appends schema-derived typed filter, `exists`, and `return_fields` hints; on a multi-index server it appends a note directing clients to call `list-indexes` and pass `index` |
 | `REDISVL_MCP_TOOL_UPSERT_DESCRIPTION` | Override the upsert tool description |
+| `REDISVL_MCP_ALLOWED_HOSTS` | Comma-separated extra `Host` header values to accept on HTTP transports (in addition to the bind-derived defaults) |
+| `REDISVL_MCP_ALLOWED_ORIGINS` | Comma-separated browser `Origin` values to accept on HTTP transports |
+| `REDISVL_MCP_ALLOW_ANY_ORIGIN` | Accept any `Origin` (for trusted-proxy setups) when set to `true` |
+| `REDISVL_MCP_TRANSPORT_SECURITY_ENABLED` | Set to `false` to disable Host/Origin validation (e.g. behind a validating proxy) |
 
 ## Connect a Remote MCP Client
 
@@ -91,7 +118,7 @@ When using Streamable HTTP or SSE transport, point your MCP client at the server
 - **Streamable HTTP**: `http://<host>:<port>/mcp`
 - **SSE**: `http://<host>:<port>/sse`
 
-> **Note:** `<host>` here is the bind address the server was started with. The default `127.0.0.1` only accepts connections from the same machine. To allow connections from other machines, start the server with `--host 0.0.0.0` and use the machine's actual IP or hostname in the client URL.
+> **Note:** `<host>` here is the bind address the server was started with. The default `127.0.0.1` only accepts connections from the same machine. To allow connections from other machines, start the server with `--host 0.0.0.0` and use the machine's actual IP or hostname in the client URL. Because a `0.0.0.0` bind has no single canonical `Host`, add the client-visible hostname(s) to `REDISVL_MCP_ALLOWED_HOSTS` (or `server.transport_security.allowed_hosts`), or Host validation will reject those requests. See [Transport Security](#transport-security-host-origin-validation).
 
 For example, to configure a remote MCP client to connect to a Streamable HTTP server running on `192.168.1.10:8000`:
 
