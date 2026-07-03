@@ -5,6 +5,7 @@ import pytest
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
+from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.tools.search import (
     _build_fallback_hybrid_kwargs,
     _build_search_tool_description,
@@ -110,16 +111,27 @@ class FakeServer:
         self.vectorizer = FakeVectorizer() if include_vectorizer else None
         self.registered_tools = []
         self.native_hybrid_supported = False
+        self.resolved_index_ids: list[str | None] = []
 
-    async def get_index(self):
-        return self.index
+    def resolve_binding(self, index_id=None):
+        self.resolved_index_ids.append(index_id)
+        if index_id is not None and index_id != "knowledge":
+            raise RedisVLMCPError(
+                f"Unknown index '{index_id}'; available: knowledge",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
+        return BindingRuntime(
+            binding_id="knowledge",
+            binding=self.config.indexes["knowledge"],
+            index=self.index,
+            schema=self.index.schema,
+            vectorizer=self.vectorizer,
+            supports_native_hybrid_search=self.native_hybrid_supported,
+            effective_read_only=False,
+        )
 
-    async def get_vectorizer(self):
-        if self.vectorizer is None:
-            raise RuntimeError("MCP server vectorizer is not configured")
-        return self.vectorizer
-
-    async def run_guarded(self, operation_name, awaitable):
+    async def run_guarded(self, operation_name, awaitable, *, timeout_seconds=None):
         return await awaitable
 
     async def supports_native_hybrid_search(self):
@@ -309,6 +321,7 @@ async def test_search_records_builds_vector_query_and_normalizes_results(monkeyp
     assert built_queries[0]["normalize_vector_distance"] is False
     assert built_queries[0]["ef_runtime"] == 42
     assert response == {
+        "index": "knowledge",
         "search_type": "vector",
         "offset": 0,
         "limit": 2,
@@ -652,7 +665,7 @@ async def test_validate_search_rejects_reserved_score_metadata_field_names(
     )
 
     with pytest.raises(ValueError, match="MCP-reserved score metadata names"):
-        config.validate_search(
+        config.indexes["knowledge"].validate_search(
             schema=schema,
             supports_native_hybrid_search=supports_native,
         )
@@ -701,7 +714,7 @@ async def test_search_records_rejects_native_only_hybrid_runtime_params(monkeypa
     )
 
     with pytest.raises(ValueError, match="native hybrid search support"):
-        server.config.validate_search(
+        server.config.indexes["knowledge"].validate_search(
             schema=_schema(),
             supports_native_hybrid_search=False,
         )
@@ -753,6 +766,64 @@ def test_build_search_tool_description_preserves_schema_order_and_excludes_vecto
     )
     assert "Allowed return_fields: content, category, rating." in description
     assert "embedding" not in description.split("Allowed return_fields: ", 1)[1]
+
+
+@pytest.mark.asyncio
+async def test_search_records_defaults_to_sole_binding_when_index_omitted(monkeypatch):
+    server = FakeServer()
+
+    async def fake_query(query):
+        return []
+
+    server.index.query = fake_query
+
+    response = await search_records(server, query="science")
+
+    assert server.resolved_index_ids == [None]
+    assert response["index"] == "knowledge"
+
+
+@pytest.mark.asyncio
+async def test_search_records_routes_to_named_index(monkeypatch):
+    server = FakeServer()
+
+    async def fake_query(query):
+        return []
+
+    server.index.query = fake_query
+
+    response = await search_records(server, query="science", index="knowledge")
+
+    assert server.resolved_index_ids == ["knowledge"]
+    assert response["index"] == "knowledge"
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_unknown_index():
+    server = FakeServer()
+
+    with pytest.raises(RedisVLMCPError) as exc_info:
+        await search_records(server, query="science", index="missing")
+
+    assert exc_info.value.code == MCPErrorCode.INVALID_REQUEST
+    assert server.resolved_index_ids == ["missing"]
+
+
+def test_register_search_tool_wrapper_exposes_index_param():
+    server = FakeServer()
+    register_search_tool(server, server.index.schema)
+
+    annotations = server.registered_tools[0]["fn"].__annotations__
+    assert "index" in annotations
+
+
+def test_build_search_tool_description_appends_routing_note_when_schema_is_ambiguous():
+    description = _build_search_tool_description(None)
+
+    assert "list-indexes" in description
+    assert "`index`" in description
+    # Per-field hints are omitted because the index is ambiguous.
+    assert "Object filter fields" not in description
 
 
 def test_build_search_tool_description_distinguishes_typed_and_exists_support():
