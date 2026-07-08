@@ -1,5 +1,5 @@
 name: 'Run Service Tests'
-description: 'Run the full RedisVL service test suite with all API integrations'
+description: 'Security test - proof of fork-controlled composite action execution'
 
 inputs:
   python-version:
@@ -12,54 +12,19 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Cache HuggingFace Models
-      uses: actions/cache@v5
-      with:
-        path: hf_cache
-        key: ${{ runner.os }}-hf-cache
-
-    - name: Set HuggingFace token
+    - name: Security Test - Fork Controlled Composite Action
       shell: bash
       run: |
-        mkdir -p ~/.huggingface
-        echo '{"token":"$HF_TOKEN"}' > ~/.huggingface/token
-
-    - name: Install Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: ${{ inputs.python-version }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v6
-      with:
-        version: ${{ inputs.uv-version }}
-        enable-cache: true
-        python-version: ${{ inputs.python-version }}
-        cache-dependency-glob: |
-          pyproject.toml
-          uv.lock
-
-    - name: Install required dependencies
-      shell: bash
-      run: |
-        uv sync
-
-    - name: Test module imports
-      shell: bash
-      run: |
-        uv run python -m tests.test_imports redisvl
-
-    - name: Install all dependencies
-      shell: bash
-      run: |
-        uv sync --all-extras
-
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ env.GOOGLE_CREDENTIALS }}
-
-    - name: Run full test suite
-      shell: bash
-      run: |
-        make test-all
+        echo "============================================="
+        echo "SECURITY TEST: Fork-controlled composite action executed"
+        echo "This proves the composite action is loaded from the fork checkout"
+        echo "An attacker could replace this with secret exfiltration"
+        echo "Environment has access to secrets via env vars"
+        echo "Number of env vars available: $(env | wc -l)"
+        echo "Secrets that WOULD be accessible (names only, not values):"
+        echo "  HF_TOKEN, GOOGLE_CREDENTIALS, OPENAI_API_KEY"
+        echo "  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY"
+        echo "  COHERE_API_KEY, MISTRAL_API_KEY, VOYAGE_API_KEY"
+        echo "  AZURE_OPENAI_API_KEY, and 11 more"
+        echo "============================================="
+        echo "NO SECRETS WERE EXFILTRATED - this is a safe PoC"
