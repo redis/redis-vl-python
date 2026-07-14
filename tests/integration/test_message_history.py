@@ -607,6 +607,30 @@ def test_semantic_add_and_get_relevant(semantic_history):
 
 
 @requires_hf
+def test_semantic_get_relevant_with_zero_distance_threshold(semantic_history):
+    """A per-call distance_threshold of 0 must be honored, not treated as unset.
+
+    Regression test: `distance_threshold or self._distance_threshold` treated the
+    valid threshold 0 as falsy and silently fell back to the configured default,
+    so callers requesting exact-match-only context received fuzzy matches.
+    """
+    semantic_history.store(
+        prompt="list of common fruits",
+        response="apples, oranges, bananas, strawberries",
+    )
+    semantic_history.set_distance_threshold(0.5)
+
+    # Semantically similar but not identical -> must NOT match at threshold 0
+    assert (
+        semantic_history.get_relevant("list of typical fruits", distance_threshold=0)
+        == []
+    )
+
+    # Sanity check: the same query does match at the configured default
+    assert semantic_history.get_relevant("list of typical fruits") != []
+
+
+@requires_hf
 def test_semantic_get_raw(semantic_history):
     semantic_history.store("first prompt", "first response")
     semantic_history.store("second prompt", "second response")
