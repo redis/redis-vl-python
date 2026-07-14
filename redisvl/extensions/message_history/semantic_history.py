@@ -231,8 +231,10 @@ class SemanticMessageHistory(BaseMessageHistory):
         # Validate and normalize role parameter
         roles_to_filter = self._validate_roles(role)
 
-        # override distance threshold
-        distance_threshold = distance_threshold or self._distance_threshold
+        # override distance threshold. Note: 0 is a valid distance threshold
+        # (exact match only), so only fall back on None.
+        if distance_threshold is None:
+            distance_threshold = self._distance_threshold
 
         return_fields = [
             SESSION_FIELD_NAME,
