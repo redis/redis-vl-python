@@ -577,6 +577,33 @@ def test_check_no_match(cache, vectorizer):
     assert len(check_result) == 0
 
 
+def test_check_with_zero_distance_threshold(cache):
+    """A per-call distance_threshold of 0 must be honored, not treated as unset.
+
+    Regression test: `distance_threshold or self._distance_threshold` treated the
+    valid threshold 0 as falsy and silently fell back to the cache default, so
+    callers requesting exact-match-only lookups received fuzzy matches.
+    """
+    cache.store("what is the capital of france?", "paris")
+
+    # Semantically similar but not identical -> must NOT hit at threshold 0
+    assert cache.check("what's the capital of france?", distance_threshold=0) == []
+
+    # Sanity check: the same query does hit at the cache's default threshold
+    assert cache.check("what's the capital of france?") != []
+
+
+@pytest.mark.asyncio
+async def test_acheck_with_zero_distance_threshold(cache):
+    """Async variant: a per-call distance_threshold of 0 must be honored."""
+    await cache.astore("what is the capital of france?", "paris")
+
+    assert (
+        await cache.acheck("what's the capital of france?", distance_threshold=0)
+    ) == []
+    assert (await cache.acheck("what's the capital of france?")) != []
+
+
 def test_check_invalid_input(cache):
     with pytest.raises(ValueError):
         cache.check()

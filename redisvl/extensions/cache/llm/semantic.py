@@ -398,8 +398,10 @@ class SemanticCache(BaseLLMCache):
         if return_fields and not isinstance(return_fields, list):
             raise TypeError("Return fields must be a list of values.")
 
-        # Use overrides or defaults
-        distance_threshold = distance_threshold or self._distance_threshold
+        # Use overrides or defaults. Note: 0 is a valid distance threshold
+        # (exact match only), so only fall back on None.
+        if distance_threshold is None:
+            distance_threshold = self._distance_threshold
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
@@ -491,8 +493,10 @@ class SemanticCache(BaseLLMCache):
         if return_fields and not isinstance(return_fields, list):
             raise TypeError("Return fields must be a list of values.")
 
-        # Use overrides or defaults
-        distance_threshold = distance_threshold or self._distance_threshold
+        # Use overrides or defaults. Note: 0 is a valid distance threshold
+        # (exact match only), so only fall back on None.
+        if distance_threshold is None:
+            distance_threshold = self._distance_threshold
 
         # Vectorize prompt if not provided
         if vector is None and prompt is not None:
