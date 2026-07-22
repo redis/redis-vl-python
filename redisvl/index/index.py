@@ -1009,6 +1009,14 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             int: Count of documents deleted (or that would be deleted when
             ``dry_run=True``).
+
+        Note:
+            This operation is **not atomic** across the match set. Each key is
+            unlinked atomically, but batches are applied incrementally with no
+            rollback, so a crash or connection error mid-run leaves the already
+            -deleted documents gone and the rest in place. Deletes are
+            idempotent: re-running the same call after a failure removes only
+            whatever still matches, converging on the intended state.
         """
         _require_specific_filter(filter_expression, allow_all)
 
@@ -1073,6 +1081,18 @@ class SearchIndex(BaseSearchIndex):
         Returns:
             int: Count of documents updated (or that would be updated when
             ``dry_run=True``).
+
+        Note:
+            This operation is **not atomic** across the match set. Each
+            document is updated atomically (one ``HSET``/``JSON.MERGE``), but
+            batches use a non-transactional pipeline and are applied
+            incrementally with no rollback, so a crash or connection error
+            mid-run can leave some documents updated and others not. Because
+            the update is a fixed field set, it is idempotent: re-running the
+            same call after a failure converges on the intended state. Note
+            that keys are resolved before writing, so if a matching document is
+            *deleted concurrently* between resolution and the write, the write
+            will recreate it as a partial document.
         """
         _require_specific_filter(filter_expression, allow_all)
         if not values:

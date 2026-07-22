@@ -112,6 +112,10 @@ Both methods share the same safety-oriented options:
 
 The related `drop_documents()` and `drop_keys()` helpers—which delete by document ID or full Redis key—also batch large inputs and remain safe on Redis Cluster.
 
+**Durability and partial failure.** Because Redis has no server-side delete/update-by-query, these operations run as a series of batched writes rather than a single transaction—they are **not atomic across the match set** and there is no rollback. The unit of atomicity is a single document: each key is deleted with one `UNLINK`, and each document is updated with one `HSET` or `JSON.MERGE`, so you never get a half-deleted key or a half-updated document. But batches are applied incrementally, so a crash or connection error mid-run leaves some documents changed and the rest untouched.
+
+The intended recovery is simply to **re-run the same call**: both operations are idempotent, so a repeat pass removes (or re-sets) only what still needs it and converges on the desired state. There is no built-in checkpoint or resume token—`on_progress` reports live progress but is not a restart point. One concurrency caveat for `update_by_filter`: keys are resolved before the writes, so a document deleted by another client between resolution and the write will be recreated as a partial document.
+
 ## Data Validation
 
 RedisVL can validate data against your schema before loading it to Redis. This catches type mismatches, missing required fields, and invalid values early—before they cause problems in production.
