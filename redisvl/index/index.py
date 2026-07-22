@@ -2,8 +2,10 @@ import asyncio
 import json
 import threading
 import time
+import uuid
 import warnings
 import weakref
+from dataclasses import dataclass
 from math import ceil
 from typing import (
     TYPE_CHECKING,
@@ -131,6 +133,47 @@ def _sql_executor_cache_key(sql_redis_options: dict[str, Any]) -> str:
 # Default number of documents processed per round-trip in bulk operations.
 DEFAULT_BULK_BATCH_SIZE = 500
 
+# Idle timeout (ms) applied to the FT.AGGREGATE cursor used by bulk updates, so
+# an abandoned cursor is reclaimed server-side rather than lingering.
+BULK_CURSOR_MAX_IDLE_MS = 300_000
+
+# TTL (seconds) on the temporary staging key used by update_by_filter, so a
+# crash mid-operation cannot leave an orphaned key behind indefinitely.
+BULK_STAGING_KEY_TTL = 3600
+
+
+@dataclass(frozen=True)
+class BulkResult:
+    """Outcome of a bulk operation (:meth:`SearchIndex.delete_by_filter` /
+    :meth:`SearchIndex.update_by_filter`).
+
+    Because bulk operations are not atomic across the match set, the result
+    distinguishes how many documents matched from how many were actually
+    processed, and whether the run ran to completion.
+
+    Attributes:
+        matched (int): Documents matching the filter when the run started.
+        processed (int): Documents actually deleted/updated (for ``dry_run``,
+            the number that *would* be processed).
+        completed (bool): False if the run stopped early (e.g. a delete hit its
+            runaway backstop under heavy concurrent inserts); re-run to finish.
+        dry_run (bool): True if this was a preview and nothing was mutated.
+
+    The object is int-compatible: ``int(result)`` returns ``processed``, so it
+    can be used wherever the previous integer count was expected.
+    """
+
+    matched: int
+    processed: int
+    completed: bool = True
+    dry_run: bool = False
+
+    def __int__(self) -> int:
+        return self.processed
+
+    def __index__(self) -> int:
+        return self.processed
+
 
 def _is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
     """Return True if the filter would match every document in the index.
@@ -172,6 +215,16 @@ def _agg_row_to_key(row: Any) -> str:
     decoded = convert_bytes(row)
     key_field_index = decoded.index("__key")
     return decoded[key_field_index + 1]
+
+
+def _bulk_staging_key() -> str:
+    """Return a unique, single-slot key for staging bulk-update document keys.
+
+    Deliberately distinct from any index prefix so the temporary list is not
+    picked up by a search index, and safe on Redis Cluster (a single key lives
+    in one slot).
+    """
+    return f"_redisvl:bulk_staging:{uuid.uuid4().hex}"
 
 
 def process_results(
@@ -949,6 +1002,10 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of documents deleted from Redis.
+
+        Raises:
+            ValueError: On Redis Cluster, if the resolved keys do not all share
+                a hash tag (a cross-slot ``DELETE`` is not permitted).
         """
         if not isinstance(ids, list):
             key = self.key(ids)
@@ -997,32 +1054,44 @@ class SearchIndex(BaseSearchIndex):
         batch_size: int = DEFAULT_BULK_BATCH_SIZE,
         dry_run: bool = False,
         allow_all: bool = False,
-        on_progress: Callable[[int], None] | None = None,
-    ) -> int:
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
         """Delete every document matching a filter expression.
 
         Redis has no server-side "delete by query", so RedisVL resolves the
         matching document keys and removes them with non-blocking ``UNLINK`` in
         batches. Matching documents leave the result set as they are deleted, so
         this re-queries from offset 0 each round (the same strategy as
-        :meth:`clear`) and is not subject to the ``MAXSEARCHRESULTS`` limit.
+        :meth:`clear`) and is not subject to the ``MAXSEARCHRESULTS`` limit
+        (provided ``batch_size`` itself does not exceed it).
 
         Args:
             filter_expression (Union[str, FilterExpression]): Selects the
-                documents to delete (e.g. ``Tag("category") == "archived"``).
+                documents to delete. Prefer the escaping builders (``Tag``,
+                ``Num``, ``Text``...) over raw filter strings; **never
+                string-concatenate untrusted input into a filter** — unlike a
+                read query, an injected predicate here deletes data.
             batch_size (int): Number of documents to resolve and unlink per
                 round-trip. Defaults to 500.
-            dry_run (bool): If True, return how many documents *would* be
+            dry_run (bool): If True, report how many documents *would* be
                 deleted (via a count query) without deleting anything.
             allow_all (bool): Must be True to run against a match-all filter
                 (empty/``"*"``/``None``). Prefer :meth:`clear` to intentionally
                 empty the index.
-            on_progress (Optional[Callable[[int], None]]): Called after each
-                batch with the cumulative number of documents deleted so far.
+            on_progress (Optional[Callable[[int, int], None]]): Called after each
+                batch with ``(processed, matched)`` — the cumulative documents
+                deleted and the total matched at the start. Invoked
+                synchronously (do not pass a coroutine); raising from it aborts
+                the run (already-deleted documents stay deleted).
 
         Returns:
-            int: Count of documents deleted (or that would be deleted when
-            ``dry_run=True``).
+            BulkResult: ``matched``/``processed`` counts, plus ``completed``
+            (False if the runaway backstop tripped) and ``dry_run``. The object
+            is int-compatible (``int(result) == processed``).
+
+        See Also:
+            :meth:`update_by_filter` (bulk partial update), :meth:`drop_documents`
+            / :meth:`drop_keys` (delete by id/key), :meth:`clear` (delete all).
 
         Note:
             This operation is **not atomic** across the match set. Each key is
@@ -1034,28 +1103,40 @@ class SearchIndex(BaseSearchIndex):
         """
         _require_specific_filter(filter_expression, allow_all)
 
-        count = cast(int, self.query(CountQuery(filter_expression)))
+        matched = cast(int, self.query(CountQuery(filter_expression)))
         if dry_run:
-            return count
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
 
         # Runaway backstop sized to the matched count (plus slack for concurrent
         # inserts); normal termination is an empty offset-0 re-query.
-        max_records = ceil(count * 1.5) + batch_size
+        max_records = ceil(matched * 1.5) + batch_size
         total_deleted = 0
+        completed = True
         query = FilterQuery(filter_expression, return_fields=["id"])
         query.paging(0, batch_size)
 
-        while total_deleted <= max_records:
+        while True:
+            if total_deleted > max_records:
+                logger.warning(
+                    "delete_by_filter hit its runaway backstop (%d) with documents "
+                    "possibly still matching; returning an incomplete result. "
+                    "Re-run to continue.",
+                    max_records,
+                )
+                completed = False
+                break
             batch = self._query(query)
             if not batch:
                 break
             batch_keys = [record["id"] for record in batch]
             total_deleted += self._unlink_batch(batch_keys)
             if on_progress is not None:
-                on_progress(total_deleted)
+                on_progress(total_deleted, matched)
 
         self.invalidate_sql_schema_cache()
-        return total_deleted
+        return BulkResult(matched=matched, processed=total_deleted, completed=completed)
 
     def update_by_filter(
         self,
@@ -1065,36 +1146,53 @@ class SearchIndex(BaseSearchIndex):
         batch_size: int = DEFAULT_BULK_BATCH_SIZE,
         dry_run: bool = False,
         allow_all: bool = False,
-        on_progress: Callable[[int], None] | None = None,
-    ) -> int:
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
         """Set ``values`` on every document matching a filter expression.
 
         This is a partial update: fields not present in ``values`` are left
         untouched. For hash indexes the fields are written with ``HSET``; for
-        JSON indexes they are merged at the document root with ``JSON.MERGE``
-        (RFC 7396), so nested objects merge recursively, arrays are replaced
-        wholesale, and a ``None`` value deletes that path.
+        JSON indexes they are merged at the document root (``$``) with
+        ``JSON.MERGE`` (RFC 7396), so nested objects merge recursively, arrays
+        are replaced wholesale, and a ``None`` value deletes that path.
 
-        Matching keys are collected first (via ``FT.AGGREGATE`` with a cursor,
-        which yields a stable, unbounded iteration) and then updated in
-        batches. Avoid updating a field used in ``filter_expression``.
+        Because the read phase (an ``FT.AGGREGATE`` cursor) cannot safely run
+        while the index is being written, matching keys are resolved *before*
+        any write. To keep client memory bounded to ``O(batch_size)`` regardless
+        of match-set size, the keys are staged in a temporary server-side Redis
+        list rather than buffered in the client, then consumed in batches.
 
         Args:
             filter_expression (Union[str, FilterExpression]): Selects the
-                documents to update.
+                documents to update. Prefer the escaping builders (``Tag``,
+                ``Num``...) over raw filter strings; **never string-concatenate
+                untrusted input into a filter** — an injected predicate here
+                mutates data.
             values (Dict[str, Any]): Field/value pairs to set on each match.
-                Values are written as-is; callers must pre-encode vectors/bytes
-                and format numerics as the schema expects.
+                Values are written **as-is with no schema validation** (unlike
+                :meth:`load`): callers must pre-encode vectors/bytes and format
+                numerics as the schema expects. For JSON indexes, keys must
+                match the document's JSON **layout**, not the schema field name
+                — a field indexed at a nested path (e.g. ``$.metadata.status``)
+                must be passed nested (``{"metadata": {"status": ...}}``);
+                passing the flat field name writes the wrong path and leaves the
+                indexed field unchanged. Only static values are supported (no
+                callable/expression transforms).
             batch_size (int): Number of documents to update per round-trip.
-            dry_run (bool): If True, return how many documents *would* be
+            dry_run (bool): If True, report how many documents *would* be
                 updated without writing anything.
             allow_all (bool): Must be True to run against a match-all filter.
-            on_progress (Optional[Callable[[int], None]]): Called after each
-                batch with the cumulative number of documents updated so far.
+            on_progress (Optional[Callable[[int, int], None]]): Called after each
+                write batch with ``(processed, matched)``. Invoked synchronously
+                (do not pass a coroutine); raising from it aborts the run.
 
         Returns:
-            int: Count of documents updated (or that would be updated when
-            ``dry_run=True``).
+            BulkResult: ``matched``/``processed`` counts, plus ``completed`` and
+            ``dry_run``. Int-compatible (``int(result) == processed``).
+
+        See Also:
+            :meth:`delete_by_filter`, :meth:`load` (validated whole-document
+            upsert by key).
 
         Note:
             This operation is **not atomic** across the match set. Each
@@ -1112,59 +1210,87 @@ class SearchIndex(BaseSearchIndex):
         if not values:
             raise ValueError("values must be a non-empty mapping of field to value.")
 
-        count = cast(int, self.query(CountQuery(filter_expression)))
+        matched = cast(int, self.query(CountQuery(filter_expression)))
         if dry_run:
-            return count
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
 
-        # Fully resolve matching keys before mutating: interleaving cursor reads
-        # with writes on the same client can deadlock, and draining first keeps
-        # the read phase cleanly separated from the write phase.
-        keys = [
-            key
-            for batch in self._iter_keys_by_filter(filter_expression, batch_size)
-            for key in batch
-        ]
-
+        client = self._redis_client
+        staging_key = _bulk_staging_key()
         total_updated = 0
-        for i in range(0, len(keys), batch_size):
-            total_updated += self._apply_update_batch(keys[i : i + batch_size], values)
-            if on_progress is not None:
-                on_progress(total_updated)
-        return total_updated
+        try:
+            # Phase 1 (read): drain the cursor and stage keys in a temporary
+            # server-side list. The list is not covered by the index prefix, so
+            # writing to it does not perturb the cursor's search index.
+            first_push = True
+            for batch_keys in self._iter_keys_by_filter(filter_expression, batch_size):
+                client.rpush(staging_key, *batch_keys)  # type: ignore[union-attr]
+                if first_push:
+                    client.expire(staging_key, BULK_STAGING_KEY_TTL)  # type: ignore[union-attr]
+                    first_push = False
+
+            # Phase 2 (write): the cursor is now closed, so it is safe to mutate
+            # the index. Pop one batch at a time to keep client memory bounded.
+            while True:
+                popped = cast(
+                    "list | None", client.lpop(staging_key, batch_size)  # type: ignore[union-attr]
+                )
+                if not popped:
+                    break
+                batch_keys = [convert_bytes(k) for k in popped]
+                total_updated += self._apply_update_batch(batch_keys, values)
+                if on_progress is not None:
+                    on_progress(total_updated, matched)
+        finally:
+            client.unlink(staging_key)  # type: ignore[union-attr]
+
+        return BulkResult(matched=matched, processed=total_updated, completed=True)
 
     def _iter_keys_by_filter(
         self, filter_expression: str | FilterExpression, batch_size: int
     ) -> Iterator[list[str]]:
         """Yield batches of document keys matching a filter using a cursor.
 
-        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` for deterministic,
+        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` for resumable,
         unbounded iteration (unlike ``FT.SEARCH`` + ``LIMIT``, which is capped
         by ``MAXSEARCHRESULTS`` and non-deterministic without a unique sort).
+        The server-side cursor is always released on exit, even if iteration is
+        abandoned early or errors.
         """
         request = (
             AggregateRequest(str(filter_expression))
             .load("__key")
-            .cursor(count=batch_size)
+            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_MS)
             .dialect(2)
         )
-        ft = self._redis_client.ft(self.schema.index.name)  # type: ignore[union-attr]
+        name = self.schema.index.name
+        ft = self._redis_client.ft(name)  # type: ignore[union-attr]
+        cid = 0
         try:
             result = ft.aggregate(request)
             while True:
                 keys = [_agg_row_to_key(row) for row in result.rows]
+                # A cursor id of 0 signals the server has released the cursor.
+                cid = result.cursor.cid if result.cursor else 0
                 if keys:
                     yield keys
-
-                # A cursor id of 0 signals the server has no more rows.
-                cid = result.cursor.cid if result.cursor else 0
                 if not cid:
                     break
-
                 result = ft.aggregate(Cursor(cid))
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Error while iterating documents by filter: {str(e)}"
             ) from e
+        finally:
+            # Release the cursor if it is still open (early break/error/abandon).
+            if cid:
+                try:
+                    self._redis_client.execute_command(  # type: ignore[union-attr]
+                        "FT.CURSOR", "DEL", name, cid
+                    )
+                except redis.exceptions.RedisError:
+                    pass
 
     def _apply_update_batch(self, batch_keys: list[str], values: dict[str, Any]) -> int:
         """Apply a partial update to a batch of keys (hash HSET / JSON.MERGE)."""
@@ -2154,6 +2280,10 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of documents deleted from Redis.
+
+        Raises:
+            ValueError: On Redis Cluster, if the resolved keys do not all share
+                a hash tag (a cross-slot ``DELETE`` is not permitted).
         """
         client = await self._get_client()
 
@@ -2205,34 +2335,46 @@ class AsyncSearchIndex(BaseSearchIndex):
         batch_size: int = DEFAULT_BULK_BATCH_SIZE,
         dry_run: bool = False,
         allow_all: bool = False,
-        on_progress: Callable[[int], None] | None = None,
-    ) -> int:
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
         """Delete every document matching a filter expression (async).
 
         See :meth:`SearchIndex.delete_by_filter` for full semantics.
         """
         _require_specific_filter(filter_expression, allow_all)
 
-        count = cast(int, await self.query(CountQuery(filter_expression)))
+        matched = cast(int, await self.query(CountQuery(filter_expression)))
         if dry_run:
-            return count
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
 
-        max_records = ceil(count * 1.5) + batch_size
+        max_records = ceil(matched * 1.5) + batch_size
         total_deleted = 0
+        completed = True
         query = FilterQuery(filter_expression, return_fields=["id"])
         query.paging(0, batch_size)
 
-        while total_deleted <= max_records:
+        while True:
+            if total_deleted > max_records:
+                logger.warning(
+                    "delete_by_filter hit its runaway backstop (%d) with documents "
+                    "possibly still matching; returning an incomplete result. "
+                    "Re-run to continue.",
+                    max_records,
+                )
+                completed = False
+                break
             batch = await self._query(query)
             if not batch:
                 break
             batch_keys = [record["id"] for record in batch]
             total_deleted += await self._unlink_batch(batch_keys)
             if on_progress is not None:
-                on_progress(total_deleted)
+                on_progress(total_deleted, matched)
 
         self.invalidate_sql_schema_cache()
-        return total_deleted
+        return BulkResult(matched=matched, processed=total_deleted, completed=completed)
 
     async def update_by_filter(
         self,
@@ -2242,8 +2384,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         batch_size: int = DEFAULT_BULK_BATCH_SIZE,
         dry_run: bool = False,
         allow_all: bool = False,
-        on_progress: Callable[[int], None] | None = None,
-    ) -> int:
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
         """Set ``values`` on every document matching a filter expression (async).
 
         See :meth:`SearchIndex.update_by_filter` for full semantics.
@@ -2252,53 +2394,79 @@ class AsyncSearchIndex(BaseSearchIndex):
         if not values:
             raise ValueError("values must be a non-empty mapping of field to value.")
 
-        count = cast(int, await self.query(CountQuery(filter_expression)))
+        matched = cast(int, await self.query(CountQuery(filter_expression)))
         if dry_run:
-            return count
-
-        # Fully resolve matching keys before mutating (see sync counterpart).
-        keys: list[str] = []
-        async for batch in self._iter_keys_by_filter(filter_expression, batch_size):
-            keys.extend(batch)
-
-        total_updated = 0
-        for i in range(0, len(keys), batch_size):
-            total_updated += await self._apply_update_batch(
-                keys[i : i + batch_size], values
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
             )
-            if on_progress is not None:
-                on_progress(total_updated)
-        return total_updated
+
+        client = await self._get_client()
+        staging_key = _bulk_staging_key()
+        total_updated = 0
+        try:
+            # Phase 1 (read): stage keys in a temporary server-side list so
+            # client memory stays O(batch_size) (see sync counterpart).
+            first_push = True
+            async for batch_keys in self._iter_keys_by_filter(
+                filter_expression, batch_size
+            ):
+                await client.rpush(staging_key, *batch_keys)  # type: ignore[misc]
+                if first_push:
+                    await client.expire(staging_key, BULK_STAGING_KEY_TTL)  # type: ignore[misc]
+                    first_push = False
+
+            # Phase 2 (write): cursor closed, safe to mutate the index.
+            while True:
+                popped = cast("list | None", await client.lpop(staging_key, batch_size))  # type: ignore[misc]
+                if not popped:
+                    break
+                batch_keys = [convert_bytes(k) for k in popped]
+                total_updated += await self._apply_update_batch(batch_keys, values)
+                if on_progress is not None:
+                    on_progress(total_updated, matched)
+        finally:
+            await client.unlink(staging_key)  # type: ignore[misc]
+
+        return BulkResult(matched=matched, processed=total_updated, completed=True)
 
     async def _iter_keys_by_filter(
         self, filter_expression: str | FilterExpression, batch_size: int
     ) -> AsyncGenerator[list[str], None]:
-        """Yield batches of document keys matching a filter using a cursor (async)."""
+        """Yield batches of document keys matching a filter using a cursor (async).
+
+        Always releases the server-side cursor on exit (see sync counterpart).
+        """
         client = await self._get_client()
         request = (
             AggregateRequest(str(filter_expression))
             .load("__key")
-            .cursor(count=batch_size)
+            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_MS)
             .dialect(2)
         )
-        ft = client.ft(self.schema.index.name)
+        name = self.schema.index.name
+        ft = client.ft(name)
+        cid = 0
         try:
             result = await ft.aggregate(request)  # type: ignore[arg-type]
             while True:
                 keys = [_agg_row_to_key(row) for row in result.rows]
+                # A cursor id of 0 signals the server has released the cursor.
+                cid = result.cursor.cid if result.cursor else 0
                 if keys:
                     yield keys
-
-                # A cursor id of 0 signals the server has no more rows.
-                cid = result.cursor.cid if result.cursor else 0
                 if not cid:
                     break
-
                 result = await ft.aggregate(Cursor(cid))
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
                 f"Error while iterating documents by filter: {str(e)}"
             ) from e
+        finally:
+            if cid:
+                try:
+                    await client.execute_command("FT.CURSOR", "DEL", name, cid)
+                except redis.exceptions.RedisError:
+                    pass
 
     async def _apply_update_batch(
         self, batch_keys: list[str], values: dict[str, Any]

@@ -104,17 +104,30 @@ index.delete_by_filter((Tag("status") == "archived") & (Num("year") < 2020))
 index.update_by_filter(Tag("status") == "draft", {"status": "published"})
 ```
 
-Both methods share the same safety-oriented options:
+Two caveats for `update_by_filter` values:
 
-- `dry_run=True` returns how many documents *would* be affected—via a count query—without changing anything.
-- A match-all filter (empty, `"*"`, or `None`) is refused unless you pass `allow_all=True`; use `clear()` when you intentionally want to empty the index.
-- `on_progress` receives the cumulative count after each batch for observability on large operations, and `batch_size` tunes how many documents are processed per round-trip.
+- **No schema validation.** Unlike `load()`, values are written as-is—pre-encode vectors/bytes and format numerics as your schema expects, or you may corrupt query results.
+- **JSON keys must match the document layout, not the schema field name.** Values merge at the document root (`$`). If a field is indexed at a nested path (e.g. `$.metadata.status`), pass the correspondingly nested mapping (`{"metadata": {"status": "published"}}`); passing the flat field name writes the wrong path and leaves the indexed field unchanged. Only static values are supported (no callable/expression transforms).
 
-The related `drop_documents()` and `drop_keys()` helpers—which delete by document ID or full Redis key—also batch large inputs and remain safe on Redis Cluster.
+Both methods share the same safety-oriented options and return a `BulkResult`:
+
+- The return value carries `matched` (documents matching the filter), `processed` (documents actually affected), `completed` (False if a delete stopped early at its runaway backstop), and `dry_run`. It is int-compatible—`int(result)` is `processed`—so it drops into code expecting a count.
+- `dry_run=True` reports how many documents *would* be affected—via a count query—without changing anything.
+- A match-all filter (empty, `"*"`, or `None`) is refused unless you pass `allow_all=True`; use `clear()` when you intentionally want to empty the index. This guard catches the canonical match-all forms only—it is a convenience backstop, not a security control.
+- `on_progress(processed, matched)` is called after each batch for observability on large operations (it runs synchronously—don't pass a coroutine—and raising from it aborts the run). `batch_size` tunes how many documents are processed per round-trip.
+
+The related `drop_documents()` and `drop_keys()` helpers delete by document ID or full Redis key and batch large inputs. On Redis Cluster, `drop_keys()` unlinks per-key so it works across hash slots, while `drop_documents()` requires the target keys to share a hash tag and raises `ValueError` otherwise.
 
 **Durability and partial failure.** Because Redis has no server-side delete/update-by-query, these operations run as a series of batched writes rather than a single transaction—they are **not atomic across the match set** and there is no rollback. The unit of atomicity is a single document: each key is deleted with one `UNLINK`, and each document is updated with one `HSET` or `JSON.MERGE`, so you never get a half-deleted key or a half-updated document. But batches are applied incrementally, so a crash or connection error mid-run leaves some documents changed and the rest untouched.
 
 The intended recovery is simply to **re-run the same call**: both operations are idempotent, so a repeat pass removes (or re-sets) only what still needs it and converges on the desired state. There is no built-in checkpoint or resume token—`on_progress` reports live progress but is not a restart point. One concurrency caveat for `update_by_filter`: keys are resolved before the writes, so a document deleted by another client between resolution and the write will be recreated as a partial document.
+
+**Operational considerations at scale.** These are single-threaded, foreground operations that issue one round-trip per batch; a very large match set is a long-running job. Keep the following in mind for production use:
+
+- **Live-traffic impact.** Every delete/update also updates the search index synchronously. Running a large bulk job against a node that is serving queries competes for CPU and reindex bandwidth and can raise query latency—prefer off-peak windows, or narrow the filter and run in waves.
+- **Memory.** `delete_by_filter` is `O(batch_size)` in client memory. `update_by_filter` must resolve all matching keys before writing (an open aggregation cursor can't be read while the index is being written); to keep client memory at `O(batch_size)` it stages those keys in a temporary server-side Redis list (auto-expired and cleaned up), which costs transient server memory proportional to the match count.
+- **Redis Cluster.** Cross-slot multi-key commands aren't allowed, so writes are issued per key (no pipelining across slots)—expect this to be slower on Cluster for large match sets.
+- **Resumability.** There is no checkpoint; recovery is a full re-run. For very large corpora, partition the filter (e.g. by a tag or numeric range) and process partition-by-partition so each call is smaller and independently retryable.
 
 ## Data Validation
 
