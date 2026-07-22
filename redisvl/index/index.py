@@ -140,7 +140,7 @@ BULK_CURSOR_MAX_IDLE_SECONDS = 300
 
 @dataclass(frozen=True)
 class BulkResult:
-    """Outcome of a bulk operation (:meth:`SearchIndex.delete_by_filter` /
+    """Outcome of a bulk operation (:meth:`SearchIndex.drop_by_filter` /
     :meth:`SearchIndex.update_by_filter`).
 
     Because bulk operations are not atomic across the match set, the result
@@ -1025,7 +1025,7 @@ class SearchIndex(BaseSearchIndex):
         else:
             return self._redis_client.expire(keys, ttl)  # type: ignore
 
-    def delete_by_filter(
+    def drop_by_filter(
         self,
         filter_expression: str | FilterExpression,
         *,
@@ -1098,7 +1098,7 @@ class SearchIndex(BaseSearchIndex):
         while True:
             if total_deleted > max_records:
                 logger.warning(
-                    "delete_by_filter hit its runaway backstop (%d) with documents "
+                    "drop_by_filter hit its runaway backstop (%d) with documents "
                     "possibly still matching; returning an incomplete result. "
                     "Re-run to continue.",
                     max_records,
@@ -1170,7 +1170,7 @@ class SearchIndex(BaseSearchIndex):
             ``dry_run``.
 
         See Also:
-            :meth:`delete_by_filter`, :meth:`load` (validated whole-document
+            :meth:`drop_by_filter`, :meth:`load` (validated whole-document
             upsert by key).
 
         Note:
@@ -2294,7 +2294,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         else:
             return await client.expire(keys, ttl)
 
-    async def delete_by_filter(
+    async def drop_by_filter(
         self,
         filter_expression: str | FilterExpression,
         *,
@@ -2305,7 +2305,7 @@ class AsyncSearchIndex(BaseSearchIndex):
     ) -> BulkResult:
         """Delete every document matching a filter expression (async).
 
-        See :meth:`SearchIndex.delete_by_filter` for full semantics.
+        See :meth:`SearchIndex.drop_by_filter` for full semantics.
         """
         _require_specific_filter(filter_expression, allow_all)
 
@@ -2324,7 +2324,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         while True:
             if total_deleted > max_records:
                 logger.warning(
-                    "delete_by_filter hit its runaway backstop (%d) with documents "
+                    "drop_by_filter hit its runaway backstop (%d) with documents "
                     "possibly still matching; returning an incomplete result. "
                     "Re-run to continue.",
                     max_records,

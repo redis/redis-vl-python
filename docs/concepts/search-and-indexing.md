@@ -94,7 +94,7 @@ Redis has no server-side "delete/update by query", so mutating many documents tr
 from redisvl.query.filter import Tag, Num
 
 # Remove every archived document from before 2020
-index.delete_by_filter((Tag("status") == "archived") & (Num("year") < 2020))
+index.drop_by_filter((Tag("status") == "archived") & (Num("year") < 2020))
 ```
 
 **Updating by filter** applies a partial field update to every match. Fields you don't mention are left untouched—hash fields are written with `HSET`, and JSON documents are merged at the root with `JSON.MERGE` (RFC 7396: nested objects merge recursively, arrays are replaced wholesale, and a `None` value deletes that path):
@@ -125,7 +125,7 @@ The intended recovery is simply to **re-run the same call**: both operations are
 **Operational considerations at scale.** These are single-threaded, foreground operations that issue one round-trip per batch; a very large match set is a long-running job. Keep the following in mind for production use:
 
 - **Live-traffic impact.** Every delete/update also updates the search index synchronously. Running a large bulk job against a node that is serving queries competes for CPU and reindex bandwidth and can raise query latency—prefer off-peak windows, or narrow the filter and run in waves.
-- **Memory.** `delete_by_filter` holds only one batch of keys at a time (`O(batch_size)`). `update_by_filter` must resolve *all* matching keys before it can write (an open aggregation cursor can't be read while the index is being written), so its client memory grows with the match count—roughly the total size of the matched keys. For very large match sets, partition the filter (see below) rather than updating everything in one call.
+- **Memory.** `drop_by_filter` holds only one batch of keys at a time (`O(batch_size)`). `update_by_filter` must resolve *all* matching keys before it can write (an open aggregation cursor can't be read while the index is being written), so its client memory grows with the match count—roughly the total size of the matched keys. For very large match sets, partition the filter (see below) rather than updating everything in one call.
 - **Redis Cluster.** Cross-slot multi-key commands aren't allowed, so writes are issued per key (no pipelining across slots)—expect this to be slower on Cluster for large match sets.
 - **Resumability.** There is no checkpoint; recovery is a full re-run. For very large corpora, **partition the filter** (e.g. by a tag or numeric range) and process partition-by-partition. This is the recommended pattern at scale: it bounds memory and per-run time, keeps each call independently retryable, and lets you spread load across off-peak windows.
 

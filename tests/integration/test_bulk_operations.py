@@ -62,7 +62,7 @@ def json_index(worker_id, client):
 # --------------------------------------------------------------------------- #
 def test_bulk_result_fields(hash_index):
     hash_index.load(_data(), id_field="id")
-    result = hash_index.delete_by_filter(Tag("cat") == "a")
+    result = hash_index.drop_by_filter(Tag("cat") == "a")
     assert isinstance(result, BulkResult)
     assert result.matched == 20
     assert result.processed == 20
@@ -71,37 +71,37 @@ def test_bulk_result_fields(hash_index):
 
 
 # --------------------------------------------------------------------------- #
-# delete_by_filter
+# drop_by_filter
 # --------------------------------------------------------------------------- #
-def test_delete_by_filter_removes_only_matches(hash_index):
+def test_drop_by_filter_removes_only_matches(hash_index):
     hash_index.load(_data(), id_field="id")
-    result = hash_index.delete_by_filter(Tag("cat") == "a", batch_size=10)
+    result = hash_index.drop_by_filter(Tag("cat") == "a", batch_size=10)
     assert result.processed == 20
     assert hash_index.query(CountQuery(Tag("cat") == "a")) == 0
     assert hash_index.query(CountQuery(Tag("cat") == "b")) == 20
 
 
-def test_delete_by_filter_json(json_index):
+def test_drop_by_filter_json(json_index):
     json_index.load(_data(30), id_field="id")  # 15 'a' + 15 'b'
-    result = json_index.delete_by_filter(Tag("cat") == "a", batch_size=10)
+    result = json_index.drop_by_filter(Tag("cat") == "a", batch_size=10)
     assert result.processed == 15
     assert json_index.query(CountQuery(Tag("cat") == "a")) == 0
     assert json_index.query(CountQuery(Tag("cat") == "b")) == 15
 
 
-def test_delete_by_filter_dry_run_does_not_mutate(hash_index):
+def test_drop_by_filter_dry_run_does_not_mutate(hash_index):
     hash_index.load(_data(), id_field="id")
-    result = hash_index.delete_by_filter(Num("n") < 10, dry_run=True)
+    result = hash_index.drop_by_filter(Num("n") < 10, dry_run=True)
     assert result.dry_run is True
     assert result.matched == 10
     assert result.processed == 10
     assert hash_index.query(CountQuery(Num("n") < 10)) == 10  # nothing removed
 
 
-def test_delete_by_filter_reports_progress(hash_index):
+def test_drop_by_filter_reports_progress(hash_index):
     hash_index.load(_data(), id_field="id")
     progress = []
-    hash_index.delete_by_filter(
+    hash_index.drop_by_filter(
         Tag("cat") == "a",
         batch_size=5,
         on_progress=lambda p, t: progress.append((p, t)),
@@ -114,16 +114,16 @@ def test_delete_by_filter_reports_progress(hash_index):
 
 
 @pytest.mark.parametrize("bad_filter", [None, "*", ""])
-def test_delete_by_filter_guards_match_all(hash_index, bad_filter):
+def test_drop_by_filter_guards_match_all(hash_index, bad_filter):
     hash_index.load(_data(), id_field="id")
     with pytest.raises(ValueError):
-        hash_index.delete_by_filter(bad_filter)
+        hash_index.drop_by_filter(bad_filter)
     assert hash_index.query(CountQuery(Num("n") >= 0)) == 40
 
 
-def test_delete_by_filter_allow_all_override(hash_index):
+def test_drop_by_filter_allow_all_override(hash_index):
     hash_index.load(_data(), id_field="id")
-    result = hash_index.delete_by_filter("*", allow_all=True, batch_size=10)
+    result = hash_index.drop_by_filter("*", allow_all=True, batch_size=10)
     assert result.processed == 40
     assert hash_index.query(CountQuery(Num("n") >= 0)) == 0
 
@@ -235,7 +235,7 @@ async def test_async_delete_and_update_by_filter(worker_id, async_client):
         await index.load(_data(120), id_field="id")
 
         with pytest.raises(ValueError):
-            await index.delete_by_filter(None)
+            await index.drop_by_filter(None)
 
         result = await index.update_by_filter(
             Tag("cat") == "b", {"status": "live"}, batch_size=25
@@ -244,7 +244,7 @@ async def test_async_delete_and_update_by_filter(worker_id, async_client):
         doc = await index.fetch("0")
         assert doc["status"] == "live" and doc["keep"] == "orig"
 
-        result = await index.delete_by_filter(Num("n") < 60, batch_size=25)
+        result = await index.drop_by_filter(Num("n") < 60, batch_size=25)
         assert result.processed == 60
         assert await index.query(CountQuery(Num("n") < 60)) == 0
     finally:
