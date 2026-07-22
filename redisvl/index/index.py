@@ -164,10 +164,14 @@ def _require_specific_filter(
 
 
 def _agg_row_to_key(row: Any) -> str:
-    """Extract the document key from a ``LOAD 1 @__key`` aggregation row."""
+    """Extract the document key from a ``LOAD 1 @__key`` aggregation row.
+
+    Aggregation rows are a flat ``[field, value, field, value, ...]`` list, so
+    the key is the element immediately after the ``__key`` field name.
+    """
     decoded = convert_bytes(row)
-    pairs = dict(zip(decoded[::2], decoded[1::2]))
-    return pairs["__key"]
+    key_field_index = decoded.index("__key")
+    return decoded[key_field_index + 1]
 
 
 def process_results(
@@ -881,6 +885,7 @@ class SearchIndex(BaseSearchIndex):
             int: Count of records unlinked from Redis.
         """
         client = cast(SyncRedisClient, self._redis_client)
+
         if isinstance(client, RedisCluster):
             unlinked = 0
             for key_to_unlink in batch_keys:
@@ -889,6 +894,7 @@ class SearchIndex(BaseSearchIndex):
                 except redis.exceptions.RedisError as e:
                     logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
             return unlinked
+
         return cast(int, client.unlink(*batch_keys))
 
     def drop_keys(
@@ -914,8 +920,10 @@ class SearchIndex(BaseSearchIndex):
         """
         if not isinstance(keys, list):
             return self._redis_client.unlink(keys)  # type: ignore
+
         if not keys:
             return 0
+
         total = 0
         for i in range(0, len(keys), batch_size):
             total += self._unlink_batch(keys[i : i + batch_size])
@@ -945,16 +953,22 @@ class SearchIndex(BaseSearchIndex):
         if not isinstance(ids, list):
             key = self.key(ids)
             return self._redis_client.delete(key)  # type: ignore
+
         if not ids:
             return 0
+
         keys = [self.key(id) for id in ids]
-        # Check for cluster compatibility
+
+        # On cluster, a multi-key DELETE must stay within one hash slot, so
+        # require the keys to share a hash tag and delete them in a single call.
         if isinstance(self._redis_client, RedisCluster):
             if not _keys_share_hash_tag(keys):
                 raise ValueError(
                     "All keys must share a hash tag when using Redis Cluster."
                 )
             return self._redis_client.delete(*keys)  # type: ignore
+
+        # Standalone: delete in chunks to bound the size of any single command.
         total = 0
         for i in range(0, len(keys), batch_size):
             batch = keys[i : i + batch_size]
@@ -1140,9 +1154,12 @@ class SearchIndex(BaseSearchIndex):
                 keys = [_agg_row_to_key(row) for row in result.rows]
                 if keys:
                     yield keys
+
+                # A cursor id of 0 signals the server has no more rows.
                 cid = result.cursor.cid if result.cursor else 0
                 if not cid:
                     break
+
                 result = ft.aggregate(Cursor(cid))
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
@@ -2071,6 +2088,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         Cluster, keys are unlinked individually to avoid cross-slot errors.
         """
         client = await self._get_client()
+
         if isinstance(client, AsyncRedisCluster):
             unlinked = 0
             for key_to_unlink in batch_keys:
@@ -2079,6 +2097,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 except redis.exceptions.RedisError as e:
                     logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
             return unlinked
+
         return cast(int, await client.unlink(*batch_keys))
 
     async def drop_keys(
@@ -2103,10 +2122,13 @@ class AsyncSearchIndex(BaseSearchIndex):
             int: Count of records deleted from Redis.
         """
         client = await self._get_client()
+
         if not isinstance(keys, list):
             return await client.unlink(keys)
+
         if not keys:
             return 0
+
         total = 0
         for i in range(0, len(keys), batch_size):
             total += await self._unlink_batch(keys[i : i + batch_size])
@@ -2134,19 +2156,26 @@ class AsyncSearchIndex(BaseSearchIndex):
             int: Count of documents deleted from Redis.
         """
         client = await self._get_client()
+
         if not isinstance(ids, list):
             key = self.key(ids)
             return await client.delete(key)
+
         if not ids:
             return 0
+
         keys = [self.key(id) for id in ids]
-        # Check for cluster compatibility
+
+        # On cluster, a multi-key DELETE must stay within one hash slot, so
+        # require the keys to share a hash tag and delete them in a single call.
         if isinstance(client, AsyncRedisCluster):
             if not _keys_share_hash_tag(keys):
                 raise ValueError(
                     "All keys must share a hash tag when using Redis Cluster."
                 )
             return await client.delete(*keys)
+
+        # Standalone: delete in chunks to bound the size of any single command.
         total = 0
         for i in range(0, len(keys), batch_size):
             batch = keys[i : i + batch_size]
@@ -2259,9 +2288,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                 keys = [_agg_row_to_key(row) for row in result.rows]
                 if keys:
                     yield keys
+
+                # A cursor id of 0 signals the server has no more rows.
                 cid = result.cursor.cid if result.cursor else 0
                 if not cid:
                     break
+
                 result = await ft.aggregate(Cursor(cid))
         except redis.exceptions.RedisError as e:
             raise RedisSearchError(
