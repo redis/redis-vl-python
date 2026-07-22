@@ -111,10 +111,10 @@ Two caveats for `update_by_filter` values:
 
 Both methods share the same safety-oriented options and return a `BulkResult`:
 
-- The return value carries `matched` (documents matching the filter), `processed` (documents actually affected), `completed` (False if a delete stopped early at its runaway backstop), and `dry_run`. It is int-compatible—`int(result)` is `processed`—so it drops into code expecting a count.
+- The return value carries `matched` (documents matching the filter), `processed` (documents actually affected), `completed` (False if a delete stopped early at its runaway backstop; always True for update), and `dry_run`. Read the fields explicitly—`result.processed`, `result.completed`, etc.
 - `dry_run=True` reports how many documents *would* be affected—via a count query—without changing anything.
 - A match-all filter (empty, `"*"`, or `None`) is refused unless you pass `allow_all=True`; use `clear()` when you intentionally want to empty the index. This guard catches the canonical match-all forms only—it is a convenience backstop, not a security control.
-- `on_progress(processed, matched)` is called after each batch for observability on large operations (it runs synchronously—don't pass a coroutine—and raising from it aborts the run). `batch_size` tunes how many documents are processed per round-trip.
+- `on_progress(processed, matched)` is called after each write batch for observability on large operations (it runs synchronously—don't pass a coroutine—and raising from it aborts the run). Note `update_by_filter` resolves all matching keys before it writes, so progress callbacks begin only once the write phase starts. `batch_size` tunes how many documents are processed per round-trip.
 
 The related `drop_documents()` and `drop_keys()` helpers delete by document ID or full Redis key and batch large inputs. On Redis Cluster, `drop_keys()` unlinks per-key so it works across hash slots, while `drop_documents()` requires the target keys to share a hash tag and raises `ValueError` otherwise.
 
@@ -125,9 +125,9 @@ The intended recovery is simply to **re-run the same call**: both operations are
 **Operational considerations at scale.** These are single-threaded, foreground operations that issue one round-trip per batch; a very large match set is a long-running job. Keep the following in mind for production use:
 
 - **Live-traffic impact.** Every delete/update also updates the search index synchronously. Running a large bulk job against a node that is serving queries competes for CPU and reindex bandwidth and can raise query latency—prefer off-peak windows, or narrow the filter and run in waves.
-- **Memory.** `delete_by_filter` is `O(batch_size)` in client memory. `update_by_filter` must resolve all matching keys before writing (an open aggregation cursor can't be read while the index is being written); to keep client memory at `O(batch_size)` it stages those keys in a temporary server-side Redis list (auto-expired and cleaned up), which costs transient server memory proportional to the match count.
+- **Memory.** `delete_by_filter` holds only one batch of keys at a time (`O(batch_size)`). `update_by_filter` must resolve *all* matching keys before it can write (an open aggregation cursor can't be read while the index is being written), so its client memory grows with the match count—roughly the total size of the matched keys. For very large match sets, partition the filter (see below) rather than updating everything in one call.
 - **Redis Cluster.** Cross-slot multi-key commands aren't allowed, so writes are issued per key (no pipelining across slots)—expect this to be slower on Cluster for large match sets.
-- **Resumability.** There is no checkpoint; recovery is a full re-run. For very large corpora, partition the filter (e.g. by a tag or numeric range) and process partition-by-partition so each call is smaller and independently retryable.
+- **Resumability.** There is no checkpoint; recovery is a full re-run. For very large corpora, **partition the filter** (e.g. by a tag or numeric range) and process partition-by-partition. This is the recommended pattern at scale: it bounds memory and per-run time, keeps each call independently retryable, and lets you spread load across off-peak windows.
 
 ## Data Validation
 

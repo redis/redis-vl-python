@@ -60,7 +60,7 @@ def json_index(worker_id, client):
 # --------------------------------------------------------------------------- #
 # BulkResult contract
 # --------------------------------------------------------------------------- #
-def test_bulk_result_is_int_compatible(hash_index):
+def test_bulk_result_fields(hash_index):
     hash_index.load(_data(), id_field="id")
     result = hash_index.delete_by_filter(Tag("cat") == "a")
     assert isinstance(result, BulkResult)
@@ -68,7 +68,6 @@ def test_bulk_result_is_int_compatible(hash_index):
     assert result.processed == 20
     assert result.completed is True
     assert result.dry_run is False
-    assert int(result) == 20  # int-compatible
 
 
 # --------------------------------------------------------------------------- #
@@ -95,7 +94,7 @@ def test_delete_by_filter_dry_run_does_not_mutate(hash_index):
     result = hash_index.delete_by_filter(Num("n") < 10, dry_run=True)
     assert result.dry_run is True
     assert result.matched == 10
-    assert int(result) == 10
+    assert result.processed == 10
     assert hash_index.query(CountQuery(Num("n") < 10)) == 10  # nothing removed
 
 
@@ -200,16 +199,10 @@ def test_update_by_filter_dry_run_and_empty_values(hash_index):
     result = hash_index.update_by_filter(
         Tag("cat") == "a", {"status": "z"}, dry_run=True
     )
-    assert result.dry_run is True and int(result) == 20
+    assert result.dry_run is True and result.processed == 20
     assert hash_index.fetch("1")["status"] == "draft"  # unchanged
     with pytest.raises(ValueError):
         hash_index.update_by_filter(Tag("cat") == "a", {})
-
-
-def test_update_by_filter_leaves_no_staging_key(hash_index, client):
-    hash_index.load(_data(60), id_field="id")
-    hash_index.update_by_filter(Tag("cat") == "a", {"status": "x"}, batch_size=10)
-    assert client.keys("_redisvl:bulk_staging:*") == []  # temp key cleaned up
 
 
 # --------------------------------------------------------------------------- #

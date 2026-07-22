@@ -2,7 +2,6 @@ import asyncio
 import json
 import threading
 import time
-import uuid
 import warnings
 import weakref
 from dataclasses import dataclass
@@ -133,13 +132,10 @@ def _sql_executor_cache_key(sql_redis_options: dict[str, Any]) -> str:
 # Default number of documents processed per round-trip in bulk operations.
 DEFAULT_BULK_BATCH_SIZE = 500
 
-# Idle timeout (ms) applied to the FT.AGGREGATE cursor used by bulk updates, so
-# an abandoned cursor is reclaimed server-side rather than lingering.
-BULK_CURSOR_MAX_IDLE_MS = 300_000
-
-# TTL (seconds) on the temporary staging key used by update_by_filter, so a
-# crash mid-operation cannot leave an orphaned key behind indefinitely.
-BULK_STAGING_KEY_TTL = 3600
+# Idle timeout (seconds) applied to the FT.AGGREGATE cursor used by bulk
+# updates, so an abandoned cursor is reclaimed server-side rather than
+# lingering. redis-py's AggregateRequest.cursor(max_idle=...) takes seconds.
+BULK_CURSOR_MAX_IDLE_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -149,7 +145,8 @@ class BulkResult:
 
     Because bulk operations are not atomic across the match set, the result
     distinguishes how many documents matched from how many were actually
-    processed, and whether the run ran to completion.
+    processed, and whether the run ran to completion. Read the fields
+    explicitly (``result.processed`` / ``result.matched`` / ``result.completed``).
 
     Attributes:
         matched (int): Documents matching the filter when the run started.
@@ -158,21 +155,12 @@ class BulkResult:
         completed (bool): False if the run stopped early (e.g. a delete hit its
             runaway backstop under heavy concurrent inserts); re-run to finish.
         dry_run (bool): True if this was a preview and nothing was mutated.
-
-    The object is int-compatible: ``int(result)`` returns ``processed``, so it
-    can be used wherever the previous integer count was expected.
     """
 
     matched: int
     processed: int
     completed: bool = True
     dry_run: bool = False
-
-    def __int__(self) -> int:
-        return self.processed
-
-    def __index__(self) -> int:
-        return self.processed
 
 
 def _is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
@@ -215,16 +203,6 @@ def _agg_row_to_key(row: Any) -> str:
     decoded = convert_bytes(row)
     key_field_index = decoded.index("__key")
     return decoded[key_field_index + 1]
-
-
-def _bulk_staging_key() -> str:
-    """Return a unique, single-slot key for staging bulk-update document keys.
-
-    Deliberately distinct from any index prefix so the temporary list is not
-    picked up by a search index, and safe on Redis Cluster (a single key lives
-    in one slot).
-    """
-    return f"_redisvl:bulk_staging:{uuid.uuid4().hex}"
 
 
 def process_results(
@@ -1157,10 +1135,10 @@ class SearchIndex(BaseSearchIndex):
         are replaced wholesale, and a ``None`` value deletes that path.
 
         Because the read phase (an ``FT.AGGREGATE`` cursor) cannot safely run
-        while the index is being written, matching keys are resolved *before*
-        any write. To keep client memory bounded to ``O(batch_size)`` regardless
-        of match-set size, the keys are staged in a temporary server-side Redis
-        list rather than buffered in the client, then consumed in batches.
+        while the index is being written, all matching keys are resolved into
+        memory *before* any write, then updated in batches. Memory use is
+        therefore proportional to the match count; for very large match sets,
+        narrow the filter and run in partitions (see the user guide).
 
         Args:
             filter_expression (Union[str, FilterExpression]): Selects the
@@ -1187,8 +1165,9 @@ class SearchIndex(BaseSearchIndex):
                 (do not pass a coroutine); raising from it aborts the run.
 
         Returns:
-            BulkResult: ``matched``/``processed`` counts, plus ``completed`` and
-            ``dry_run``. Int-compatible (``int(result) == processed``).
+            BulkResult: ``matched``/``processed`` counts, plus ``completed``
+            (always True for update — it runs to completion or raises) and
+            ``dry_run``.
 
         See Also:
             :meth:`delete_by_filter`, :meth:`load` (validated whole-document
@@ -1216,34 +1195,21 @@ class SearchIndex(BaseSearchIndex):
                 matched=matched, processed=matched, completed=True, dry_run=True
             )
 
-        client = self._redis_client
-        staging_key = _bulk_staging_key()
-        total_updated = 0
-        try:
-            # Phase 1 (read): drain the cursor and stage keys in a temporary
-            # server-side list. The list is not covered by the index prefix, so
-            # writing to it does not perturb the cursor's search index.
-            first_push = True
-            for batch_keys in self._iter_keys_by_filter(filter_expression, batch_size):
-                client.rpush(staging_key, *batch_keys)  # type: ignore[union-attr]
-                if first_push:
-                    client.expire(staging_key, BULK_STAGING_KEY_TTL)  # type: ignore[union-attr]
-                    first_push = False
+        # Phase 1 (read): fully resolve matching keys before mutating. The
+        # aggregation cursor cannot be read while the index is written, so the
+        # read phase must finish first. on_progress fires only in phase 2.
+        keys = [
+            key
+            for batch in self._iter_keys_by_filter(filter_expression, batch_size)
+            for key in batch
+        ]
 
-            # Phase 2 (write): the cursor is now closed, so it is safe to mutate
-            # the index. Pop one batch at a time to keep client memory bounded.
-            while True:
-                popped = cast(
-                    "list | None", client.lpop(staging_key, batch_size)  # type: ignore[union-attr]
-                )
-                if not popped:
-                    break
-                batch_keys = [convert_bytes(k) for k in popped]
-                total_updated += self._apply_update_batch(batch_keys, values)
-                if on_progress is not None:
-                    on_progress(total_updated, matched)
-        finally:
-            client.unlink(staging_key)  # type: ignore[union-attr]
+        # Phase 2 (write): cursor closed, safe to mutate the index.
+        total_updated = 0
+        for i in range(0, len(keys), batch_size):
+            total_updated += self._apply_update_batch(keys[i : i + batch_size], values)
+            if on_progress is not None:
+                on_progress(total_updated, matched)
 
         return BulkResult(matched=matched, processed=total_updated, completed=True)
 
@@ -1261,7 +1227,7 @@ class SearchIndex(BaseSearchIndex):
         request = (
             AggregateRequest(str(filter_expression))
             .load("__key")
-            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_MS)
+            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_SECONDS)
             .dialect(2)
         )
         name = self.schema.index.name
@@ -2400,32 +2366,21 @@ class AsyncSearchIndex(BaseSearchIndex):
                 matched=matched, processed=matched, completed=True, dry_run=True
             )
 
-        client = await self._get_client()
-        staging_key = _bulk_staging_key()
-        total_updated = 0
-        try:
-            # Phase 1 (read): stage keys in a temporary server-side list so
-            # client memory stays O(batch_size) (see sync counterpart).
-            first_push = True
-            async for batch_keys in self._iter_keys_by_filter(
-                filter_expression, batch_size
-            ):
-                await client.rpush(staging_key, *batch_keys)  # type: ignore[misc]
-                if first_push:
-                    await client.expire(staging_key, BULK_STAGING_KEY_TTL)  # type: ignore[misc]
-                    first_push = False
+        # Phase 1 (read): fully resolve matching keys before mutating (the
+        # cursor cannot be read while the index is written). on_progress fires
+        # only in phase 2.
+        keys: list[str] = []
+        async for batch in self._iter_keys_by_filter(filter_expression, batch_size):
+            keys.extend(batch)
 
-            # Phase 2 (write): cursor closed, safe to mutate the index.
-            while True:
-                popped = cast("list | None", await client.lpop(staging_key, batch_size))  # type: ignore[misc]
-                if not popped:
-                    break
-                batch_keys = [convert_bytes(k) for k in popped]
-                total_updated += await self._apply_update_batch(batch_keys, values)
-                if on_progress is not None:
-                    on_progress(total_updated, matched)
-        finally:
-            await client.unlink(staging_key)  # type: ignore[misc]
+        # Phase 2 (write): cursor closed, safe to mutate the index.
+        total_updated = 0
+        for i in range(0, len(keys), batch_size):
+            total_updated += await self._apply_update_batch(
+                keys[i : i + batch_size], values
+            )
+            if on_progress is not None:
+                on_progress(total_updated, matched)
 
         return BulkResult(matched=matched, processed=total_updated, completed=True)
 
@@ -2440,7 +2395,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         request = (
             AggregateRequest(str(filter_expression))
             .load("__key")
-            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_MS)
+            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_SECONDS)
             .dialect(2)
         )
         name = self.schema.index.name
