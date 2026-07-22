@@ -84,6 +84,34 @@ index = SearchIndex.from_existing("my-index", redis_url="redis://localhost:6379"
 
 **Clearing data** with `clear()` removes all documents from the index without deleting the index itself. The schema remains intact, ready for new data.
 
+## Bulk Delete and Update
+
+Redis has no server-side "delete/update by query", so mutating many documents traditionally means scanning for keys and issuing writes yourself. RedisVL wraps that pattern behind two filter-driven methods (available on both `SearchIndex` and `AsyncSearchIndex`).
+
+**Deleting by filter** resolves every document matching a filter expression and removes it with non-blocking `UNLINK`, in batches:
+
+```python
+from redisvl.query.filter import Tag, Num
+
+# Remove every archived document from before 2020
+index.delete_by_filter((Tag("status") == "archived") & (Num("year") < 2020))
+```
+
+**Updating by filter** applies a partial field update to every match. Fields you don't mention are left untouched—hash fields are written with `HSET`, and JSON documents are merged at the root with `JSON.MERGE` (RFC 7396: nested objects merge recursively, arrays are replaced wholesale, and a `None` value deletes that path):
+
+```python
+# Mark all draft documents as published, leaving other fields intact
+index.update_by_filter(Tag("status") == "draft", {"status": "published"})
+```
+
+Both methods share the same safety-oriented options:
+
+- `dry_run=True` returns how many documents *would* be affected—via a count query—without changing anything.
+- A match-all filter (empty, `"*"`, or `None`) is refused unless you pass `allow_all=True`; use `clear()` when you intentionally want to empty the index.
+- `on_progress` receives the cumulative count after each batch for observability on large operations, and `batch_size` tunes how many documents are processed per round-trip.
+
+The related `drop_documents()` and `drop_keys()` helpers—which delete by document ID or full Redis key—also batch large inputs and remain safe on Redis Cluster.
+
 ## Data Validation
 
 RedisVL can validate data against your schema before loading it to Redis. This catches type mismatches, missing required fields, and invalid values early—before they cause problems in production.
