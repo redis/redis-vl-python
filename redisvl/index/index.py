@@ -137,6 +137,22 @@ DEFAULT_BULK_BATCH_SIZE = 500
 # lingering. redis-py's AggregateRequest.cursor(max_idle=...) takes seconds.
 BULK_CURSOR_MAX_IDLE_SECONDS = 300
 
+# update_by_filter resolves keys before it writes, so a key can be deleted by
+# another client in between. These scripts make each write conditional on the
+# key still existing, atomically — so a concurrently-deleted document is
+# skipped rather than resurrected as a partial document. Each returns 1 if the
+# document was written, 0 if it no longer existed.
+_UPDATE_HASH_IF_EXISTS_LUA = """
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('HSET', KEYS[1], unpack(ARGV))
+return 1
+"""
+_UPDATE_JSON_IF_EXISTS_LUA = """
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('JSON.MERGE', KEYS[1], '$', ARGV[1])
+return 1
+"""
+
 
 @dataclass(frozen=True)
 class BulkResult:
@@ -203,6 +219,22 @@ def _agg_row_to_key(row: Any) -> str:
     decoded = convert_bytes(row)
     key_field_index = decoded.index("__key")
     return decoded[key_field_index + 1]
+
+
+def _update_script_and_args(
+    is_json: bool, values: dict[str, Any]
+) -> tuple[str, list[Any]]:
+    """Return the (Lua script, args) for an existence-guarded partial update.
+
+    Hash values are flattened into ``HSET`` field/value pairs; JSON values are
+    serialized into a single ``JSON.MERGE`` payload.
+    """
+    if is_json:
+        return _UPDATE_JSON_IF_EXISTS_LUA, [json.dumps(values)]
+    flattened: list[Any] = []
+    for field, value in values.items():
+        flattened.extend((field, value))
+    return _UPDATE_HASH_IF_EXISTS_LUA, flattened
 
 
 def process_results(
@@ -1180,10 +1212,15 @@ class SearchIndex(BaseSearchIndex):
             incrementally with no rollback, so a crash or connection error
             mid-run can leave some documents updated and others not. Because
             the update is a fixed field set, it is idempotent: re-running the
-            same call after a failure converges on the intended state. Note
-            that keys are resolved before writing, so if a matching document is
-            *deleted concurrently* between resolution and the write, the write
-            will recreate it as a partial document.
+            same call after a failure converges on the intended state.
+
+            Keys are resolved before writing, so a document may be deleted by
+            another client in between. Each write is conditional on the key
+            still existing (applied atomically), so such a document is
+            **skipped rather than recreated** as a partial document; it simply
+            isn't counted in ``processed``. ``processed`` therefore reflects the
+            documents actually written, which can be less than ``matched`` under
+            concurrent deletion.
         """
         _require_specific_filter(filter_expression, allow_all)
         if not values:
@@ -1259,27 +1296,27 @@ class SearchIndex(BaseSearchIndex):
                     pass
 
     def _apply_update_batch(self, batch_keys: list[str], values: dict[str, Any]) -> int:
-        """Apply a partial update to a batch of keys (hash HSET / JSON.MERGE)."""
-        is_json = self.storage_type == StorageType.JSON
+        """Apply a partial update to a batch of keys, skipping any that no longer
+        exist (guards against recreating a concurrently-deleted document).
+
+        Returns the number of documents actually written.
+        """
+        lua, args = _update_script_and_args(
+            self.storage_type == StorageType.JSON, values
+        )
         client = self._redis_client
 
         if isinstance(client, RedisCluster):
             # Per-key to stay within a single slot per command.
+            written = 0
             for key in batch_keys:
-                if is_json:
-                    client.json().merge(key, "$", values)  # type: ignore[union-attr]
-                else:
-                    client.hset(key, mapping=values)  # type: ignore[arg-type]
-            return len(batch_keys)
+                written += int(cast(int, client.eval(lua, 1, key, *args)))
+            return written
 
         pipe = client.pipeline(transaction=False)  # type: ignore[union-attr]
         for key in batch_keys:
-            if is_json:
-                pipe.json().merge(key, "$", values)
-            else:
-                pipe.hset(key, mapping=values)
-        pipe.execute()
-        return len(batch_keys)
+            pipe.eval(lua, 1, key, *args)
+        return sum(int(r) for r in pipe.execute())
 
     def load(
         self,
@@ -2426,26 +2463,25 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _apply_update_batch(
         self, batch_keys: list[str], values: dict[str, Any]
     ) -> int:
-        """Apply a partial update to a batch of keys (async)."""
+        """Apply a partial update to a batch of keys, skipping any that no longer
+        exist (async; see sync counterpart). Returns documents actually written.
+        """
         client = await self._get_client()
-        is_json = self.storage_type == StorageType.JSON
+        lua, args = _update_script_and_args(
+            self.storage_type == StorageType.JSON, values
+        )
 
         if isinstance(client, AsyncRedisCluster):
+            written = 0
             for key in batch_keys:
-                if is_json:
-                    await client.json().merge(key, "$", values)  # type: ignore[misc]
-                else:
-                    await client.hset(key, mapping=values)  # type: ignore[arg-type,misc]
-            return len(batch_keys)
+                written += int(cast(int, await client.eval(lua, 1, key, *args)))  # type: ignore[misc]
+            return written
 
         pipe = client.pipeline(transaction=False)
         for key in batch_keys:
-            if is_json:
-                pipe.json().merge(key, "$", values)
-            else:
-                pipe.hset(key, mapping=values)
-        await pipe.execute()
-        return len(batch_keys)
+            pipe.eval(lua, 1, key, *args)
+        results = await pipe.execute()
+        return sum(int(r) for r in results)
 
     @deprecated_argument("concurrency", "Use batch_size instead.")
     async def load(

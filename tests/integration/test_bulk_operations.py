@@ -194,6 +194,32 @@ def test_update_by_filter_spans_multiple_batches_json(json_index):
     assert json_index.fetch("118")["status"] == "live"
 
 
+def test_update_by_filter_skips_concurrently_deleted_key(hash_index, client):
+    # Simulate the resolve->write race: a matched key is deleted before the
+    # write lands. The guard must skip it (not recreate a partial doc) and not
+    # count it in processed.
+    hash_index.load(_data(4), id_field="id")  # ids 1,3 -> 'a'; 0,2 -> 'b'
+    a_keys = [hash_index.key("1"), hash_index.key("3")]
+    client.unlink(a_keys[0])  # id "1" vanishes mid-flight
+
+    written = hash_index._apply_update_batch(a_keys, {"status": "x"})
+
+    assert written == 1  # deleted key skipped, not counted
+    assert not client.exists(a_keys[0])  # NOT recreated as a partial doc
+    assert hash_index.fetch("3")["status"] == "x"  # survivor updated
+
+
+def test_update_by_filter_json_skips_missing_key(json_index, client):
+    json_index.load([{"id": "x", "cat": "a", "status": "draft", "n": 1}], id_field="id")
+    missing = json_index.key("does-not-exist")
+    written = json_index._apply_update_batch(
+        [json_index.key("x"), missing], {"status": "done"}
+    )
+    assert written == 1
+    assert not client.exists(missing)  # not recreated
+    assert json_index.fetch("x")["status"] == "done"
+
+
 def test_update_by_filter_dry_run_and_empty_values(hash_index):
     hash_index.load(_data(), id_field="id")
     result = hash_index.update_by_filter(
