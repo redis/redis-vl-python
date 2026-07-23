@@ -1,8 +1,6 @@
 import builtins
-import math
 import sys
 import types
-import warnings
 
 import pytest
 
@@ -292,22 +290,21 @@ async def test_aembed_many_uses_async_client(fake_genai):
 # --------------------------------------------------------------------------- #
 
 
-def test_output_dimensionality_sets_dims_and_normalizes(fake_genai):
+def test_output_dimensionality_sets_dims(fake_genai):
     vectorizer = GoogleGenAIVectorizer(
         api_config={"api_key": "k"}, output_dimensionality=6
     )
     assert vectorizer.dims == 6
     result = vectorizer.embed("hello")
-    assert len(result) == 6
-    assert math.isclose(sum(v * v for v in result), 1.0, rel_tol=1e-6)
+    # Raw provider values are returned as-is (no normalization).
+    assert result == _vec("hello", 6)
 
 
 def test_per_call_output_dimensionality_overrides_default(fake_genai):
     vectorizer = GoogleGenAIVectorizer(api_config={"api_key": "k"})
     assert vectorizer.dims == 3  # default probe, no reduction
     result = vectorizer.embed("hello", output_dimensionality=5)
-    assert len(result) == 5
-    assert math.isclose(sum(v * v for v in result), 1.0, rel_tol=1e-6)
+    assert result == _vec("hello", 5)
 
 
 def test_task_type_passthrough_per_call(fake_genai):

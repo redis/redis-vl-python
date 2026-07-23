@@ -1,7 +1,6 @@
 import os
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from pydantic import ConfigDict
 from tenacity import (
     retry,
@@ -14,9 +13,6 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 
 if TYPE_CHECKING:
     from redisvl.extensions.cache.embeddings.embeddings import EmbeddingsCache
-
-# ignore that google.genai isn't imported at module level
-# mypy: disable-error-code="name-defined"
 
 
 class GoogleGenAIVectorizer(BaseVectorizer):
@@ -47,10 +43,11 @@ class GoogleGenAIVectorizer(BaseVectorizer):
     .. note::
         The default model ``gemini-embedding-001`` returns **3072-dimensional**
         vectors (≈4× the width of the legacy ``textembedding-gecko``, so ≈4× the
-        index memory). When you request a reduced ``output_dimensionality`` the API
-        returns **un-normalized** vectors; this vectorizer L2-normalizes them so they
-        are valid for Redis COSINE / inner-product search. Embeddings from different
-        models (or dimensions) are not interchangeable — reindex when you change them.
+        index memory). A reduced ``output_dimensionality`` returns shorter vectors that
+        Google does **not** re-normalize; this is invisible under the COSINE metric
+        (scale-invariant) but matters for inner-product / L2 — normalize yourself if your
+        index needs it. Embeddings from different models (or dimensions) are not
+        interchangeable — reindex when you change them.
 
     .. code-block:: python
 
@@ -72,7 +69,7 @@ class GoogleGenAIVectorizer(BaseVectorizer):
             api_config={"api_key": "your-gemini-api-key"},  # or set GEMINI_API_KEY
         )
 
-        # Reduced dimensions (returned normalized) + caching
+        # Reduced dimensions (Matryoshka) + caching
         from redisvl.extensions.cache.embeddings import EmbeddingsCache
 
         vectorizer = GoogleGenAIVectorizer(
@@ -114,8 +111,9 @@ class GoogleGenAIVectorizer(BaseVectorizer):
             cache (Optional[EmbeddingsCache]): Optional cache for repeated inputs.
             task_type (Optional[str]): Default embedding task type (e.g.
                 'RETRIEVAL_DOCUMENT', 'RETRIEVAL_QUERY'). Overridable per call.
-            output_dimensionality (Optional[int]): Truncate embeddings to this many
-                dimensions. Truncated vectors are L2-normalized. Overridable per call.
+            output_dimensionality (Optional[int]): Request shorter (Matryoshka)
+                embeddings of this width. Sets ``dims`` accordingly. Note Google does
+                not re-normalize reduced vectors. Overridable per call.
             **kwargs: Additional arguments forwarded to ``google.genai.Client``
                 (e.g. ``http_options``).
 
@@ -256,16 +254,10 @@ class GoogleGenAIVectorizer(BaseVectorizer):
                 "Verify the model name, backend selection, and credentials."
             ) from e
 
-    def _build_config(self, extra: dict[str, Any]) -> tuple[Any, bool]:
-        """Merge stored defaults with per-call kwargs into an EmbedContentConfig.
-
-        Returns the config (or None) and whether results should be normalized
-        (true whenever output_dimensionality is requested).
-        """
+    def _build_config(self, extra: dict[str, Any]) -> Any:
+        """Merge stored config defaults with per-call kwargs into an EmbedContentConfig."""
         merged = {**self._embed_config, **extra}
-        normalize = merged.get("output_dimensionality") is not None
-        config = self._config_cls(**merged) if merged else None
-        return config, normalize
+        return self._config_cls(**merged) if merged else None
 
     @staticmethod
     def _embeddings_from_response(response: Any, expected: int) -> list:
@@ -280,16 +272,11 @@ class GoogleGenAIVectorizer(BaseVectorizer):
         return embeddings
 
     @staticmethod
-    def _postprocess(values: list[float] | None, normalize: bool) -> list[float]:
-        """Validate and optionally L2-normalize a returned embedding."""
-        if values is None:
+    def _values(embedding: Any) -> list[float]:
+        """Return an embedding's raw values, guarding against a null payload."""
+        if embedding.values is None:
             raise ValueError("No embedding returned from the Google GenAI API.")
-        if normalize:
-            arr = np.asarray(values, dtype=np.float32)
-            norm = float(np.linalg.norm(arr))
-            if norm > 0:
-                return (arr / norm).tolist()
-        return list(values)
+        return list(embedding.values)
 
     @staticmethod
     def _validate_many(contents: list[str]) -> None:
@@ -313,12 +300,12 @@ class GoogleGenAIVectorizer(BaseVectorizer):
             raise TypeError(
                 f"Input content must be a string to embed, got {type(content)}"
             )
-        config, normalize = self._build_config(kwargs)
+        config = self._build_config(kwargs)
         response = self._client.models.embed_content(
             model=self.model, contents=content, config=config
         )
         embeddings = self._embeddings_from_response(response, 1)
-        return self._postprocess(embeddings[0].values, normalize)
+        return self._values(embeddings[0])
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -331,16 +318,14 @@ class GoogleGenAIVectorizer(BaseVectorizer):
     ) -> list[list[float]]:
         """Generate vector embeddings for a batch of strings."""
         self._validate_many(contents)
-        config, normalize = self._build_config(kwargs)
+        config = self._build_config(kwargs)
         embeddings: list[list[float]] = []
         for batch in self.batchify(contents, batch_size):
             response = self._client.models.embed_content(
                 model=self.model, contents=batch, config=config
             )
             batch_embeddings = self._embeddings_from_response(response, len(batch))
-            embeddings.extend(
-                self._postprocess(e.values, normalize) for e in batch_embeddings
-            )
+            embeddings.extend(self._values(e) for e in batch_embeddings)
         return embeddings
 
     @retry(
@@ -355,12 +340,12 @@ class GoogleGenAIVectorizer(BaseVectorizer):
             raise TypeError(
                 f"Input content must be a string to embed, got {type(content)}"
             )
-        config, normalize = self._build_config(kwargs)
+        config = self._build_config(kwargs)
         response = await self._client.aio.models.embed_content(
             model=self.model, contents=content, config=config
         )
         embeddings = self._embeddings_from_response(response, 1)
-        return self._postprocess(embeddings[0].values, normalize)
+        return self._values(embeddings[0])
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),
@@ -373,16 +358,14 @@ class GoogleGenAIVectorizer(BaseVectorizer):
     ) -> list[list[float]]:
         """Asynchronously generate vector embeddings for a batch of strings."""
         self._validate_many(contents)
-        config, normalize = self._build_config(kwargs)
+        config = self._build_config(kwargs)
         embeddings: list[list[float]] = []
         for batch in self.batchify(contents, batch_size):
             response = await self._client.aio.models.embed_content(
                 model=self.model, contents=batch, config=config
             )
             batch_embeddings = self._embeddings_from_response(response, len(batch))
-            embeddings.extend(
-                self._postprocess(e.values, normalize) for e in batch_embeddings
-            )
+            embeddings.extend(self._values(e) for e in batch_embeddings)
         return embeddings
 
     @property
