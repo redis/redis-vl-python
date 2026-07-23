@@ -1096,8 +1096,8 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             BulkResult: ``matched``/``processed`` counts, plus ``completed``
-            (False if the runaway backstop tripped) and ``dry_run``. The object
-            is int-compatible (``int(result) == processed``).
+            (False if the runaway backstop tripped) and ``dry_run``. Read the
+            fields explicitly (``result.processed``, ``result.completed``).
 
         See Also:
             :meth:`update_by_filter` (bulk partial update), :meth:`drop_documents`
@@ -1273,9 +1273,11 @@ class SearchIndex(BaseSearchIndex):
         try:
             result = ft.aggregate(request)
             while True:
-                keys = [_agg_row_to_key(row) for row in result.rows]
+                # Capture the cursor id BEFORE parsing rows, so the finally
+                # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
+                keys = [_agg_row_to_key(row) for row in result.rows]
                 if keys:
                     yield keys
                 if not cid:
@@ -2441,9 +2443,11 @@ class AsyncSearchIndex(BaseSearchIndex):
         try:
             result = await ft.aggregate(request)  # type: ignore[arg-type]
             while True:
-                keys = [_agg_row_to_key(row) for row in result.rows]
+                # Capture the cursor id BEFORE parsing rows, so the finally
+                # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
+                keys = [_agg_row_to_key(row) for row in result.rows]
                 if keys:
                     yield keys
                 if not cid:
