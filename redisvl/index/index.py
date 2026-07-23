@@ -268,6 +268,78 @@ def _update_script_and_args(
     return _UPDATE_HASH_IF_EXISTS_LUA, flattened
 
 
+class SearchResults(list):
+    """A list of result documents that also reports result completeness.
+
+    This is a drop-in ``list`` — iteration, indexing, ``len()``, and every other
+    list operation behave exactly as before, so existing callers need no
+    changes. It additionally carries:
+
+    - ``dropped_count``: the number of matched documents that were skipped
+      because their field payload came back missing (the Redis 8.8+
+      background-search TTL/expiry race); ``0`` in the normal case.
+    - ``complete``: ``False`` when ``dropped_count > 0``, i.e. the result set may
+      be missing one or more matches that the server reported but could not
+      materialize.
+
+    Callers that need completeness guarantees — audit/compliance queries, eval
+    harnesses, or agents making control-flow decisions — can inspect these to
+    detect and react to a partial result (e.g. retry, reconcile against a
+    ``CountQuery``, or annotate a downstream answer as incomplete). Everyone else
+    can ignore them. Note that operations returning a new list (slicing,
+    ``sorted()``, concatenation) yield a plain ``list`` without this metadata.
+    """
+
+    def __init__(self, iterable: Any = (), dropped_count: int = 0):
+        super().__init__(iterable)
+        self.dropped_count = dropped_count
+
+    @property
+    def complete(self) -> bool:
+        """True when no matched documents were dropped from this result set."""
+        return self.dropped_count == 0
+
+
+# Sentinel returned by the per-document processor to mark a matched document
+# whose field payload came back missing (the Redis 8.8+ background-WORKERS
+# TTL/expiry race). Such documents are filtered out of the final result list.
+_SKIP_DOC = object()
+
+
+def _has_missing_field_payload(
+    doc_dict: dict[str, Any], query: BaseQuery, unpack_json: bool
+) -> bool:
+    """Detect a matched document whose field payload is missing.
+
+    On Redis 8.8+ the RediSearch worker pool defaults to a nonzero background
+    executor. If a document key or an indexed hash field expires (TTL/HPEXPIRE)
+    exactly while a background ``FT.SEARCH`` is running, the server returns the
+    matched document id with a ``nil`` field array instead of dropping the
+    expired doc. redis-py collapses that ``nil`` to an empty field set, leaving a
+    ``Document`` whose ``__dict__`` is only ``{"id": ..., "payload": None}``.
+
+    A race-victim doc is byte-for-byte identical to a *legitimate* id-only result
+    (e.g. ``FilterQuery(return_fields=["id"])``) or an ``INDEXMISSING`` sparse
+    doc, so we cannot key off "the dict has only id". We only report a missing
+    payload when the query type *guarantees* a field would be present on a
+    healthy match:
+
+    - vector/range queries always project ``DISTANCE_ID`` (``vector_distance``)
+      when ``return_score=True`` (the default), so its absence is unambiguous;
+    - the JSON full-object unpack path always sees a ``"json"`` key on a healthy
+      match.
+
+    Every other query passes through untouched.
+    """
+    if unpack_json:
+        return "json" not in doc_dict
+    if isinstance(query, BaseVectorQuery) and query.DISTANCE_ID in getattr(
+        query, "_return_fields", []
+    ):
+        return query.DISTANCE_ID not in doc_dict
+    return False
+
+
 def process_results(
     results: "Result", query: BaseQuery, schema: IndexSchema
 ) -> list[dict[str, Any]]:
@@ -279,11 +351,28 @@ def process_results(
     unpacks the JSON object while retaining the document ID. The 'payload'
     field is also removed from all resulting documents for consistency.
 
+    Where it can be detected, a matched document whose field payload came back
+    missing is silently dropped (and logged at WARNING level). On Redis 8.8+ the
+    RediSearch worker pool defaults to a nonzero number of background worker
+    threads, and a document that expires (TTL/HPEXPIRE) exactly while a
+    background search runs is returned as a matched id with a ``nil`` field array
+    instead of being dropped server-side. This is only detectable for queries
+    that guarantee a field on a healthy match — vector/range queries with
+    ``return_score=True`` (missing ``vector_distance``) and JSON full-object
+    unpack (missing ``json``). For a plain hash ``FilterQuery``/``TextQuery`` a
+    race victim is indistinguishable from a legitimately sparse/id-only result,
+    so it is passed through as an id-only dict rather than dropped.
+
+    Because of this, the returned list is best-effort and may contain fewer
+    items than ``num_results`` (or a paginated ``page_size``) when such docs are
+    present. ``CountQuery.total`` is unaffected — it reflects the server's match
+    count and can therefore exceed the number of materialized documents.
+
     Args:
         results (Result): The search results from Redis.
         query (BaseQuery): The query object used for the search.
-        storage_type (StorageType): The storage type of the search
-            index (json or hash).
+        schema (IndexSchema): The index schema, used to determine storage type
+            and field metadata (e.g. the vector distance metric).
 
     Returns:
         List[Dict[str, Any]]: A list of processed document dictionaries.
@@ -312,12 +401,24 @@ def process_results(
     else:
         norm_fn = None
 
+    # Collect ids of documents skipped because their field payload was missing
+    # (the Redis 8.8+ background-WORKERS expiry race); warned once per query.
+    skipped_ids: list[Any] = []
+
     # Process records
-    def _process(doc: "Document") -> dict[str, Any]:
+    def _process(doc: "Document") -> Any:
         doc_dict = doc.__dict__
 
-        # Unpack and Project JSON fields properly
-        if unpack_json and "json" in doc_dict:
+        # Skip matched documents whose field payload came back missing rather
+        # than raising (KeyError below) or leaking a partial record downstream.
+        if _has_missing_field_payload(doc_dict, query, unpack_json):
+            skipped_ids.append(doc_dict.get("id"))
+            return _SKIP_DOC
+
+        # Unpack and Project JSON fields properly. The skip guard above already
+        # dropped the unpack_json case where "json" is absent, so here it is
+        # guaranteed present.
+        if unpack_json:
             json_data = doc_dict.get("json", {})
             if isinstance(json_data, str):
                 json_data = json.loads(json_data)
@@ -336,7 +437,21 @@ def process_results(
 
         return doc_dict
 
-    return [_process(doc) for doc in results.docs]
+    processed = [_process(doc) for doc in results.docs]
+    if skipped_ids:
+        logger.warning(
+            "Skipped %d matched document(s) with missing field data (likely "
+            "expired during a background FT.SEARCH on Redis 8.8+). "
+            "query_type=%s index=%s ids=%s",
+            len(skipped_ids),
+            type(query).__name__,
+            schema.index.name,
+            skipped_ids[:10],
+        )
+    return SearchResults(
+        (doc for doc in processed if doc is not _SKIP_DOC),
+        dropped_count=len(skipped_ids),
+    )
 
 
 def process_aggregate_results(
@@ -364,7 +479,36 @@ def process_aggregate_results(
         result.pop("__score", None)
         return result
 
-    return [_process(r) for r in results.rows]
+    processed = [_process(r) for r in results.rows]
+    kept = [r for r in processed if r]
+    dropped = len(processed) - len(kept)
+    if dropped:
+        logger.warning(
+            "Dropped %d empty aggregate row(s) with no field data.",
+            dropped,
+        )
+    return SearchResults(kept, dropped_count=dropped)
+
+
+def _convert_and_drop_empty_rows(rows: Any, source: str) -> list[dict[str, Any]]:
+    """Byte-decode result rows and drop any that came back entirely empty.
+
+    Used by the hybrid (FT.HYBRID) and SQL result paths, which decode rows with
+    ``convert_bytes`` and perform no keyed field access (so they never raise).
+    An entirely-empty row carries no data and is dropped for behavioral
+    consistency with the FT.SEARCH/FT.AGGREGATE paths under the Redis 8.8+
+    background-search expiry race. Non-empty rows are returned unchanged.
+    """
+    converted = [convert_bytes(r) for r in rows]
+    kept = [r for r in converted if r]
+    dropped = len(converted) - len(kept)
+    if dropped:
+        logger.warning(
+            "Dropped %d empty %s row(s) with no field data.",
+            dropped,
+            source,
+        )
+    return SearchResults(kept, dropped_count=dropped)
 
 
 class BaseSearchIndex:
@@ -1514,7 +1658,7 @@ class SearchIndex(BaseSearchIndex):
         # Execute the query with any params
         result = executor.execute(sql_query.sql, params=sql_query.params)
 
-        return [convert_bytes(row) for row in result.rows]
+        return _convert_and_drop_empty_rows(result.rows, "SQL")
 
     def aggregate(self, *args, **kwargs) -> "AggregateResult":
         """Perform an aggregation operation against the index.
@@ -1689,7 +1833,7 @@ class SearchIndex(BaseSearchIndex):
             params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
-        return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
+        return _convert_and_drop_empty_rows(results.results, "hybrid")  # type: ignore[union-attr]
 
     def batch_query(
         self, queries: Sequence[BaseQuery], batch_size: int = 10
@@ -2861,7 +3005,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             params_substitution=query.params,  # type: ignore[arg-type]
             **kwargs,
         )  # type: ignore
-        return [convert_bytes(r) for r in results.results]  # type: ignore[union-attr]
+        return _convert_and_drop_empty_rows(results.results, "hybrid")  # type: ignore[union-attr]
 
     async def batch_query(
         self, queries: list[BaseQuery], batch_size: int = 10
@@ -2934,7 +3078,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         # Execute the query with any params asynchronously
         result = await executor.execute(sql_query.sql, params=sql_query.params)
 
-        return [convert_bytes(row) for row in result.rows]
+        return _convert_and_drop_empty_rows(result.rows, "SQL")
 
     async def query(
         self, query: BaseQuery | AggregationQuery | HybridQuery | SQLQuery

@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any
 
+from pydantic import ValidationError
 from redis import Redis
 
 from redisvl.extensions.cache.llm.base import BaseLLMCache
@@ -544,10 +545,28 @@ class SemanticCache(BaseLLMCache):
         for cache_search_result in cache_search_results:
             # Pop the redis key from the result
             redis_key = cache_search_result.pop("id")
-            redis_keys.append(redis_key)
 
-            # Create and process cache hit
-            cache_hit = CacheHit(**cache_search_result)
+            # Create and process cache hit. A matched entry whose field payload
+            # came back missing (the Redis 8.8+ background-search expiry race)
+            # would arrive as an id-only dict and fail validation; skip it and
+            # do not refresh its TTL rather than raise. The core parser already
+            # drops these upstream, so this is defense-in-depth.
+            # Only ValidationError is expected here: CacheHit has no
+            # before-validator that does keyed access on the input (unlike
+            # message history's ChatMessage.generate_id, whose guard must also
+            # catch KeyError). If CacheHit ever gains such a validator, widen
+            # this accordingly.
+            try:
+                cache_hit = CacheHit(**cache_search_result)
+            except ValidationError:
+                logger.warning(
+                    "Skipping cache hit with missing field data (likely expired "
+                    "during a background search on Redis 8.8+): key=%s",
+                    redis_key,
+                )
+                continue
+
+            redis_keys.append(redis_key)
             cache_hit_dict = cache_hit.to_dict()
 
             # Filter down to only selected return fields if needed
