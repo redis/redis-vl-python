@@ -220,6 +220,29 @@ def test_update_by_filter_json_skips_missing_key(json_index, client):
     assert json_index.fetch("x")["status"] == "done"
 
 
+def test_update_by_filter_processed_less_than_matched_on_delete(hash_index, client):
+    # End-to-end through the public API: delete a still-pending matching doc
+    # mid-run (via on_progress) and confirm it's skipped, so processed < matched.
+    hash_index.load(_data(6), id_field="id")  # 'a' ids: 1, 3, 5
+    state = {"deleted": False}
+
+    def on_progress(processed, matched):
+        if state["deleted"]:
+            return
+        for i in ("1", "3", "5"):
+            doc = hash_index.fetch(i)
+            if doc and doc.get("status") != "x":  # not yet written -> still pending
+                client.unlink(hash_index.key(i))
+                state["deleted"] = True
+                return
+
+    result = hash_index.update_by_filter(
+        Tag("cat") == "a", {"status": "x"}, batch_size=1, on_progress=on_progress
+    )
+    assert result.matched == 3
+    assert result.processed == 2  # one pending match deleted mid-run -> skipped
+
+
 def test_update_by_filter_dry_run_and_empty_values(hash_index):
     hash_index.load(_data(), id_field="id")
     result = hash_index.update_by_filter(
@@ -273,5 +296,26 @@ async def test_async_delete_and_update_by_filter(worker_id, async_client):
         result = await index.drop_by_filter(Num("n") < 60, batch_size=25)
         assert result.processed == 60
         assert await index.query(CountQuery(Num("n") < 60)) == 0
+    finally:
+        await index.delete(drop=True)
+
+
+@pytest.mark.asyncio
+async def test_async_update_skips_missing_key(worker_id, async_client):
+    # Cover the async existence-guard path: a missing key is skipped, not recreated.
+    index = AsyncSearchIndex(
+        schema=_schema(f"bulk_askip_{worker_id}", "hash"), redis_client=async_client
+    )
+    await index.create(overwrite=True, drop=True)
+    try:
+        await index.load(_data(4), id_field="id")  # 'a' ids: 1, 3
+        keys = [index.key("1"), index.key("3")]
+        await async_client.unlink(keys[0])
+
+        written = await index._apply_update_batch(keys, {"status": "x"})
+
+        assert written == 1
+        assert not await async_client.exists(keys[0])  # not recreated
+        assert (await index.fetch("3"))["status"] == "x"
     finally:
         await index.delete(drop=True)
