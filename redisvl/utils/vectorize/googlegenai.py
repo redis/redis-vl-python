@@ -112,8 +112,9 @@ class GoogleGenAIVectorizer(BaseVectorizer):
             task_type (Optional[str]): Default embedding task type (e.g.
                 'RETRIEVAL_DOCUMENT', 'RETRIEVAL_QUERY'). Overridable per call.
             output_dimensionality (Optional[int]): Request shorter (Matryoshka)
-                embeddings of this width. Sets ``dims`` accordingly. Note Google does
-                not re-normalize reduced vectors. Overridable per call.
+                embeddings of this width; sets ``dims`` accordingly. Fixed for the
+                vectorizer's lifetime (cannot be overridden per call). Note Google does
+                not re-normalize reduced vectors.
             **kwargs: Additional arguments forwarded to ``google.genai.Client``
                 (e.g. ``http_options``).
 
@@ -255,7 +256,17 @@ class GoogleGenAIVectorizer(BaseVectorizer):
             ) from e
 
     def _build_config(self, extra: dict[str, Any]) -> Any:
-        """Merge stored config defaults with per-call kwargs into an EmbedContentConfig."""
+        """Merge stored config defaults with per-call kwargs into an EmbedContentConfig.
+
+        ``output_dimensionality`` is fixed at construction (it determines ``self.dims``),
+        so it cannot be overridden per call — that would desync returned embeddings from
+        the index's vector width. Other fields (e.g. ``task_type``) may vary per call.
+        """
+        if "output_dimensionality" in extra:
+            raise TypeError(
+                "output_dimensionality cannot be overridden per call; set it on the "
+                "GoogleGenAIVectorizer(...) constructor instead (it determines dims)."
+            )
         merged = {**self._embed_config, **extra}
         return self._config_cls(**merged) if merged else None
 

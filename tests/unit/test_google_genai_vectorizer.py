@@ -300,11 +300,12 @@ def test_output_dimensionality_sets_dims(fake_genai):
     assert result == _vec("hello", 6)
 
 
-def test_per_call_output_dimensionality_overrides_default(fake_genai):
+def test_per_call_output_dimensionality_is_rejected(fake_genai):
+    # output_dimensionality determines dims, so it is fixed at construction and must
+    # not be overridable per call (that would desync from the index vector width).
     vectorizer = GoogleGenAIVectorizer(api_config={"api_key": "k"})
-    assert vectorizer.dims == 3  # default probe, no reduction
-    result = vectorizer.embed("hello", output_dimensionality=5)
-    assert result == _vec("hello", 5)
+    with pytest.raises(TypeError, match="output_dimensionality"):
+        vectorizer.embed("hello", output_dimensionality=5)
 
 
 def test_task_type_passthrough_per_call(fake_genai):
