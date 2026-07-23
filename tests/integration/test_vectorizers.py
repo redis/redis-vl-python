@@ -11,6 +11,7 @@ from redisvl.utils.vectorize import (
     BedrockVectorizer,
     CohereTextVectorizer,
     CustomVectorizer,
+    GoogleGenAIVectorizer,
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAIVectorizer,
@@ -45,6 +46,7 @@ def embeddings_cache(client):
 _vectorizer_params = [
     OpenAITextVectorizer,
     VertexAIVectorizer,
+    GoogleGenAIVectorizer,
     CohereTextVectorizer,
     AzureOpenAITextVectorizer,
     BedrockVectorizer,
@@ -63,6 +65,15 @@ def vectorizer(request):
     elif request.param == OpenAITextVectorizer:
         return request.param()
     elif request.param == VertexAIVectorizer:
+        return request.param()
+    elif request.param == GoogleGenAIVectorizer:
+        # Prefer the Gemini Developer API key when present so this fixture
+        # exercises the Gemini backend. The dtype-param tests below construct
+        # GoogleGenAIVectorizer() with no config, exercising env auto-detect
+        # (Vertex when GCP creds are set) — so both backends get covered in CI.
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            return request.param(api_config={"api_key": api_key})
         return request.param()
     elif request.param == CohereTextVectorizer:
         return request.param()
@@ -426,6 +437,7 @@ _dtype_params = [
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAIVectorizer,
+    GoogleGenAIVectorizer,
     VoyageAIVectorizer,
 ]
 
@@ -484,6 +496,7 @@ _non_supported_dtype_params = [
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAIVectorizer,
+    GoogleGenAIVectorizer,
     VoyageAIVectorizer,
 ]
 

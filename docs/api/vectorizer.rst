@@ -8,7 +8,8 @@ Vectorizers
    compatibility:
 
    - ``VoyageAITextVectorizer`` → Use ``VoyageAIVectorizer`` instead
-   - ``VertexAITextVectorizer`` → Use ``VertexAIVectorizer`` instead
+   - ``VertexAITextVectorizer`` → Use ``GoogleGenAIVectorizer`` instead
+     (``VertexAIVectorizer`` is itself deprecated; see below)
    - ``BedrockTextVectorizer`` → Use ``BedrockVectorizer`` instead
    - ``CustomTextVectorizer`` → Use ``CustomVectorizer`` instead
 
@@ -59,11 +60,27 @@ VertexAIVectorizer
 .. currentmodule:: redisvl.utils.vectorize.vertexai
 
 .. note::
-    For backwards compatibility, an alias ``VertexAITextVectorizer`` is available
-    in the ``redisvl.utils.vectorize.text`` module. This alias is deprecated
-    as of version 0.13.0 and will be removed in a future major release.
+    ``VertexAIVectorizer`` is **deprecated**. It uses Google's Vertex AI
+    model-garden SDK, which Google has deprecated with a scheduled removal. Use
+    :class:`~redisvl.utils.vectorize.googlegenai.GoogleGenAIVectorizer` for text
+    embeddings on the supported ``google-genai`` SDK. The alias
+    ``VertexAITextVectorizer`` (in ``redisvl.utils.vectorize.text``) is likewise
+    deprecated. Multimodal (image/video) migration is tracked in
+    `issue #620 <https://github.com/redis/redis-vl-python/issues/620>`_.
 
 .. autoclass:: VertexAIVectorizer
+   :show-inheritance:
+   :members:
+
+
+GoogleGenAIVectorizer
+=====================
+
+.. _googlegenaivectorizer_api:
+
+.. currentmodule:: redisvl.utils.vectorize.googlegenai
+
+.. autoclass:: GoogleGenAIVectorizer
    :show-inheritance:
    :members:
 
