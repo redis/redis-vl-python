@@ -412,6 +412,26 @@ def test_timestamp_date():
     assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
 
 
+def test_timestamp_not_equal_date():
+    """Test Timestamp != with date objects (should exclude the full day)."""
+    d = date(2023, 3, 17)
+    ts = Timestamp("created_at") != d
+
+    expected_ts_start = (
+        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
+    )
+    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+
+    assert str(ts) == f"(-@created_at:[{expected_ts_start} {expected_ts_end}])"
+
+    # != must be the exact negation of == for the same date
+    eq = Timestamp("created_at") == d
+    assert str(ts) == f"(-{eq!s})"
+
+    # A date-only ISO string takes the same path as a date object
+    assert str(Timestamp("created_at") != "2023-03-17") == str(ts)
+
+
 def test_timestamp_iso_string():
     """Test Timestamp filter with ISO format strings."""
     # Date-only ISO string
