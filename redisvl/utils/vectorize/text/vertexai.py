@@ -5,7 +5,8 @@ from redisvl.utils.vectorize.vertexai import VertexAIVectorizer
 
 
 @deprecated_class(
-    name="VertexAITextVectorizer", replacement="Use VertexAIVectorizer instead."
+    name="VertexAITextVectorizer",
+    replacement="Use GoogleGenAIVectorizer instead.",
 )
 class VertexAITextVectorizer(VertexAIVectorizer):
     """A backwards-compatible alias for VertexAIVectorizer."""

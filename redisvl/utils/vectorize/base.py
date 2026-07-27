@@ -28,6 +28,7 @@ class Vectorizers(Enum):
     mistral = "mistral"
     ollama = "ollama"
     vertexai = "vertexai"
+    google_genai = "google_genai"
     hf = "hf"
     voyageai = "voyageai"
 

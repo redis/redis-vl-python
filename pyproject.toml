@@ -44,10 +44,19 @@ cohere = ["cohere>=4.44"]
 voyageai = ["voyageai>=0.2.2"]
 sentence-transformers = ["sentence-transformers>=3.4.0,<4"]
 langcache = ["langcache>=0.11.0"]
+# Legacy Google backend for the deprecated VertexAIVectorizer. The <2.0.0 cap is
+# intentional: Google's model-garden modules (vertexai.language_models /
+# vertexai.vision_models) that this vectorizer imports are deprecated with a
+# scheduled removal. They still ship in the 1.x line (latest 1.162.0); the 2.0.0
+# release that drops them is yanked on PyPI. Keep the cap so the deprecated class
+# (and its multimodal path, which has no google-genai replacement yet) keeps
+# importing. New text embeddings should use the `google-genai` extra below.
 vertexai = [
     "google-cloud-aiplatform>=1.26,<2.0.0",
     "protobuf>=5.28.0,<6.0.0",
 ]
+# Modern Google backend (Vertex AI + Gemini Developer API) for GoogleGenAIVectorizer.
+google-genai = ["google-genai>=1.0.0"]
 bedrock = [
     "boto3>=1.36.0,<2",
     "urllib3<2.2.0",
@@ -67,6 +76,7 @@ all = [
     "langcache>=0.11.0",
     "google-cloud-aiplatform>=1.26,<2.0.0",
     "protobuf>=5.28.0,<6.0.0",
+    "google-genai>=1.0.0",
     "boto3>=1.36.0,<2",
     "urllib3<2.2.0",
     "pillow>=11.3.0",

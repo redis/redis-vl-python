@@ -203,7 +203,15 @@ def deprecated_class(name: str | None = None, replacement: str | None = None):
 
         @wraps(original_init)
         def new_init(self, *args, **kwargs):
-            warn(warning_message, category=DeprecationWarning, stacklevel=2)
+            # Emit only once per instance. When a deprecated subclass wraps a
+            # deprecated parent, both __init__ wrappers run via super().__init__;
+            # the sentinel keeps that to a single warning.
+            if not getattr(self, "_deprecation_warned", False):
+                warn(warning_message, category=DeprecationWarning, stacklevel=2)
+                try:
+                    object.__setattr__(self, "_deprecation_warned", True)
+                except Exception:
+                    pass
             original_init(self, *args, **kwargs)
 
         cls.__init__ = new_init

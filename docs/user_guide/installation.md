@@ -27,7 +27,8 @@ $ pip install redisvl[cohere]              # Cohere embeddings and reranking
 $ pip install redisvl[mistralai]           # Mistral AI embeddings
 $ pip install redisvl[voyageai]            # Voyage AI embeddings and reranking
 $ pip install redisvl[sentence-transformers]  # HuggingFace local embeddings
-$ pip install redisvl[vertexai]            # Google Vertex AI embeddings
+$ pip install redisvl[google-genai]        # Google embeddings (Vertex AI + Gemini API)
+$ pip install redisvl[vertexai]            # Google Vertex AI embeddings (legacy; deprecated, multimodal only)
 $ pip install redisvl[bedrock]             # AWS Bedrock embeddings
 
 # Other optional features
