@@ -125,6 +125,26 @@ def test_vector_fields_as_field():
     assert hnsw_vector_field.name == "example_hnswvectorfield"
 
 
+def test_vector_field_supports_cosine_similarity_metric():
+    vector_field = FlatVectorField(
+        name="embedding",
+        attrs={
+            "dims": 128,
+            "algorithm": "flat",
+            "distance_metric": "cosine_similarity",
+        },
+    )
+
+    redis_field = vector_field.as_redis_field()
+
+    assert vector_field.attrs.distance_metric.value == "COSINE_SIMILARITY"
+    assert "DISTANCE_METRIC" in redis_field.args
+    assert (
+        redis_field.args[redis_field.args.index("DISTANCE_METRIC") + 1]
+        == "COSINE_SIMILARITY"
+    )
+
+
 @pytest.mark.parametrize(
     "vector_schema_func,extra_params",
     [

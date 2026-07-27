@@ -1,13 +1,18 @@
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 from redis import __version__ as redis_version
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 
+from redisvl.index import SearchIndex
 from redisvl.index.index import process_results
 from redisvl.query import CountQuery, FilterQuery, RangeQuery, TextQuery, VectorQuery
 from redisvl.query.filter import Tag
 from redisvl.query.query import VectorRangeQuery
 from redisvl.redis.connection import is_version_gte
+from redisvl.schema import IndexSchema
 
 # Sample data for testing
 sample_vector = [0.1, 0.2, 0.3, 0.4]
@@ -34,6 +39,108 @@ def test_count_query():
 
     fake_result = Result([2], "")
     assert process_results(fake_result, count_query, "json") == 2
+
+
+def test_process_results_preserves_cosine_similarity_scores():
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": "test-index",
+                "prefix": "doc",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                        "distance_metric": "cosine_similarity",
+                    },
+                }
+            ],
+        }
+    )
+    query = VectorQuery(
+        vector=[0.1, 0.2, 0.3],
+        vector_field_name="embedding",
+        normalize_vector_distance=True,
+        return_score=True,
+    )
+    fake_results = SimpleNamespace(
+        docs=[SimpleNamespace(id="doc:1", vector_distance="0.7")]
+    )
+
+    processed = process_results(fake_results, query, schema)
+
+    assert processed[0]["vector_distance"] == "0.7"
+
+
+def test_cosine_similarity_vector_query_defaults_to_desc_sort():
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": "test-index",
+                "prefix": "doc",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                        "distance_metric": "cosine_similarity",
+                    },
+                }
+            ],
+        }
+    )
+    index = SearchIndex(schema=schema, redis_client=Mock())
+    query = VectorQuery(vector=[0.1, 0.2, 0.3], vector_field_name="embedding")
+
+    index._validate_query(query)
+
+    assert query._sortby.args == [query.DISTANCE_ID, "DESC"]
+    assert query._uses_default_vector_distance_sort is True
+
+
+def test_explicit_sort_is_not_overridden_for_cosine_similarity_vector_query():
+    schema = IndexSchema.from_dict(
+        {
+            "index": {
+                "name": "test-index",
+                "prefix": "doc",
+                "storage_type": "hash",
+            },
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "dims": 3,
+                        "algorithm": "flat",
+                        "datatype": "float32",
+                        "distance_metric": "cosine_similarity",
+                    },
+                }
+            ],
+        }
+    )
+    index = SearchIndex(schema=schema, redis_client=Mock())
+    query = VectorQuery(
+        vector=[0.1, 0.2, 0.3],
+        vector_field_name="embedding",
+        sort_by="custom_field",
+    )
+
+    index._validate_query(query)
+
+    assert query._sortby.args == ["custom_field", "ASC"]
 
 
 def test_filter_query():
