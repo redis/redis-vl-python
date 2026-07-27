@@ -4,6 +4,7 @@ import threading
 import time
 import warnings
 import weakref
+from dataclasses import dataclass
 from math import ceil
 from typing import (
     TYPE_CHECKING,
@@ -12,6 +13,7 @@ from typing import (
     Callable,
     Generator,
     Iterable,
+    Iterator,
     Sequence,
     cast,
 )
@@ -47,6 +49,7 @@ if TYPE_CHECKING:
 
 from redis import __version__ as redis_version
 from redis.client import NEVER_DECODE
+from redis.commands.search.aggregation import AggregateRequest, Cursor
 
 from redisvl.utils.redis_protocol import get_protocol_version
 
@@ -124,6 +127,114 @@ def _get_sql_redis_options(sql_query: SQLQuery) -> dict[str, Any]:
 def _sql_executor_cache_key(sql_redis_options: dict[str, Any]) -> str:
     """Build a stable cache key for sql-redis executor reuse."""
     return json.dumps(sql_redis_options, sort_keys=True, default=repr)
+
+
+# Default number of documents processed per round-trip in bulk operations.
+DEFAULT_BULK_BATCH_SIZE = 500
+
+# Idle timeout (seconds) applied to the FT.AGGREGATE cursor used by bulk
+# updates, so an abandoned cursor is reclaimed server-side rather than
+# lingering. redis-py's AggregateRequest.cursor(max_idle=...) takes seconds.
+BULK_CURSOR_MAX_IDLE_SECONDS = 300
+
+# update_by_filter resolves keys before it writes, so a key can be deleted by
+# another client in between. These scripts make each write conditional on the
+# key still existing, atomically — so a concurrently-deleted document is
+# skipped rather than resurrected as a partial document. Each returns 1 if the
+# document was written, 0 if it no longer existed.
+_UPDATE_HASH_IF_EXISTS_LUA = """
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('HSET', KEYS[1], unpack(ARGV))
+return 1
+"""
+_UPDATE_JSON_IF_EXISTS_LUA = """
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('JSON.MERGE', KEYS[1], '$', ARGV[1])
+return 1
+"""
+
+
+@dataclass(frozen=True)
+class BulkResult:
+    """Outcome of a bulk operation (:meth:`SearchIndex.drop_by_filter` /
+    :meth:`SearchIndex.update_by_filter`).
+
+    Because bulk operations are not atomic across the match set, the result
+    distinguishes how many documents matched from how many were actually
+    processed, and whether the run ran to completion. Read the fields
+    explicitly (``result.processed`` / ``result.matched`` / ``result.completed``).
+
+    Attributes:
+        matched (int): Documents matching the filter when the run started.
+        processed (int): Documents actually deleted/updated (for ``dry_run``,
+            the number that *would* be processed).
+        completed (bool): False if the run stopped early (e.g. a delete hit its
+            runaway backstop under heavy concurrent inserts); re-run to finish.
+        dry_run (bool): True if this was a preview and nothing was mutated.
+    """
+
+    matched: int
+    processed: int
+    completed: bool = True
+    dry_run: bool = False
+
+
+def _is_match_all_filter(filter_expression: str | FilterExpression | None) -> bool:
+    """Return True if the filter would match every document in the index.
+
+    Guards the bulk ``*_by_filter`` methods against an accidental full-index
+    wipe/update. ``None`` is treated as match-all because it defaults to
+    ``FilterExpression("*")`` downstream; a default/empty ``FilterExpression``
+    (whose ``str()`` raises) is likewise treated as match-all rather than
+    surfacing an opaque error.
+    """
+    if filter_expression is None:
+        return True
+    try:
+        rendered = str(filter_expression).strip()
+    except ValueError:
+        # Improperly initialized FilterExpression() - treat as the match-all sentinel
+        return True
+    return rendered in ("", "*")
+
+
+def _require_specific_filter(
+    filter_expression: str | FilterExpression | None, allow_all: bool
+) -> None:
+    """Raise unless the filter is specific or the caller opted into match-all."""
+    if not allow_all and _is_match_all_filter(filter_expression):
+        raise ValueError(
+            "Refusing to run a bulk operation that matches all documents. "
+            "Pass a specific filter_expression, set allow_all=True to override, "
+            "or use clear() to intentionally remove every document."
+        )
+
+
+def _agg_row_to_key(row: Any) -> str:
+    """Extract the document key from a ``LOAD 1 @__key`` aggregation row.
+
+    Aggregation rows are a flat ``[field, value, field, value, ...]`` list, so
+    the key is the element immediately after the ``__key`` field name.
+    """
+    decoded = convert_bytes(row)
+    key_field_index = decoded.index("__key")
+    return decoded[key_field_index + 1]
+
+
+def _update_script_and_args(
+    is_json: bool, values: dict[str, Any]
+) -> tuple[str, list[Any]]:
+    """Return the (Lua script, args) for an existence-guarded partial update.
+
+    Hash values are flattened into ``HSET`` field/value pairs; JSON values are
+    serialized into a single ``JSON.MERGE`` payload.
+    """
+    if is_json:
+        return _UPDATE_JSON_IF_EXISTS_LUA, [json.dumps(values)]
+    flattened: list[Any] = []
+    for field, value in values.items():
+        flattened.extend((field, value))
+    return _UPDATE_HASH_IF_EXISTS_LUA, flattened
 
 
 def process_results(
@@ -823,7 +934,35 @@ class SearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    def drop_keys(self, keys: str | list[str]) -> int:
+    def _unlink_batch(self, batch_keys: list[str]) -> int:
+        """Unlink a batch of keys from Redis.
+
+        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
+        Cluster, keys are unlinked individually to avoid cross-slot errors;
+        for standalone Redis a single variadic ``UNLINK`` is used.
+
+        Args:
+            batch_keys (List[str]): List of Redis keys to unlink.
+
+        Returns:
+            int: Count of records unlinked from Redis.
+        """
+        client = cast(SyncRedisClient, self._redis_client)
+
+        if isinstance(client, RedisCluster):
+            unlinked = 0
+            for key_to_unlink in batch_keys:
+                try:
+                    unlinked += cast(int, client.unlink(key_to_unlink))
+                except redis.exceptions.RedisError as e:
+                    logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
+            return unlinked
+
+        return cast(int, client.unlink(*batch_keys))
+
+    def drop_keys(
+        self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
 
         Uses ``UNLINK`` rather than ``DEL`` so memory reclamation runs on a
@@ -831,18 +970,31 @@ class SearchIndex(BaseSearchIndex):
         number of keys are dropped at once (for example, scope-targeted
         ``SemanticCache`` invalidation). The returned count is unchanged.
 
+        Large key lists are unlinked in chunks of ``batch_size``. On Redis
+        Cluster, keys are unlinked individually so a chunk that spans hash
+        slots does not raise ``CROSSSLOT``.
+
         Args:
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
+            batch_size (int): Number of keys to unlink per round-trip.
 
         Returns:
             int: Count of records deleted from Redis.
         """
-        if isinstance(keys, list):
-            return self._redis_client.unlink(*keys)  # type: ignore
-        else:
+        if not isinstance(keys, list):
             return self._redis_client.unlink(keys)  # type: ignore
 
-    def drop_documents(self, ids: str | list[str]) -> int:
+        if not keys:
+            return 0
+
+        total = 0
+        for i in range(0, len(keys), batch_size):
+            total += self._unlink_batch(keys[i : i + batch_size])
+        return total
+
+    def drop_documents(
+        self, ids: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> int:
         """Remove documents from the index by their document IDs.
 
         This method converts document IDs to Redis keys automatically by applying
@@ -854,25 +1006,41 @@ class SearchIndex(BaseSearchIndex):
 
         Args:
             ids (Union[str, List[str]]): The document ID or IDs to remove from the index.
+            batch_size (int): Number of documents to delete per round-trip
+                (standalone Redis only; cluster deletes in a single call after
+                the shared-hash-tag check).
 
         Returns:
             int: Count of documents deleted from Redis.
+
+        Raises:
+            ValueError: On Redis Cluster, if the resolved keys do not all share
+                a hash tag (a cross-slot ``DELETE`` is not permitted).
         """
-        if isinstance(ids, list):
-            if not ids:
-                return 0
-            keys = [self.key(id) for id in ids]
-            # Check for cluster compatibility
-            if isinstance(
-                self._redis_client, RedisCluster
-            ) and not _keys_share_hash_tag(keys):
+        if not isinstance(ids, list):
+            key = self.key(ids)
+            return self._redis_client.delete(key)  # type: ignore
+
+        if not ids:
+            return 0
+
+        keys = [self.key(id) for id in ids]
+
+        # On cluster, a multi-key DELETE must stay within one hash slot, so
+        # require the keys to share a hash tag and delete them in a single call.
+        if isinstance(self._redis_client, RedisCluster):
+            if not _keys_share_hash_tag(keys):
                 raise ValueError(
                     "All keys must share a hash tag when using Redis Cluster."
                 )
             return self._redis_client.delete(*keys)  # type: ignore
-        else:
-            key = self.key(ids)
-            return self._redis_client.delete(key)  # type: ignore
+
+        # Standalone: delete in chunks to bound the size of any single command.
+        total = 0
+        for i in range(0, len(keys), batch_size):
+            batch = keys[i : i + batch_size]
+            total += cast(int, self._redis_client.delete(*batch))
+        return total
 
     def expire_keys(self, keys: str | list[str], ttl: int) -> int | list[int]:
         """Set the expiration time for a specific entry or entries in Redis.
@@ -888,6 +1056,269 @@ class SearchIndex(BaseSearchIndex):
             return pipe.execute()
         else:
             return self._redis_client.expire(keys, ttl)  # type: ignore
+
+    def drop_by_filter(
+        self,
+        filter_expression: str | FilterExpression,
+        *,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+        dry_run: bool = False,
+        allow_all: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
+        """Delete every document matching a filter expression.
+
+        Redis has no server-side "delete by query", so RedisVL resolves the
+        matching document keys and removes them with non-blocking ``UNLINK`` in
+        batches. Matching documents leave the result set as they are deleted, so
+        this re-queries from offset 0 each round (the same strategy as
+        :meth:`clear`) and is not subject to the ``MAXSEARCHRESULTS`` limit
+        (provided ``batch_size`` itself does not exceed it).
+
+        Args:
+            filter_expression (Union[str, FilterExpression]): Selects the
+                documents to delete. Prefer the escaping builders (``Tag``,
+                ``Num``, ``Text``...) over raw filter strings; **never
+                string-concatenate untrusted input into a filter** — unlike a
+                read query, an injected predicate here deletes data.
+            batch_size (int): Number of documents to resolve and unlink per
+                round-trip. Defaults to 500.
+            dry_run (bool): If True, report how many documents *would* be
+                deleted (via a count query) without deleting anything.
+            allow_all (bool): Must be True to run against a match-all filter
+                (empty/``"*"``/``None``). Prefer :meth:`clear` to intentionally
+                empty the index.
+            on_progress (Optional[Callable[[int, int], None]]): Called after each
+                batch with ``(processed, matched)`` — the cumulative documents
+                deleted and the total matched at the start. Invoked
+                synchronously (do not pass a coroutine); raising from it aborts
+                the run (already-deleted documents stay deleted).
+
+        Returns:
+            BulkResult: ``matched``/``processed`` counts, plus ``completed``
+            (False if the runaway backstop tripped) and ``dry_run``. Read the
+            fields explicitly (``result.processed``, ``result.completed``).
+
+        See Also:
+            :meth:`update_by_filter` (bulk partial update), :meth:`drop_documents`
+            / :meth:`drop_keys` (delete by id/key), :meth:`clear` (delete all).
+
+        Note:
+            This operation is **not atomic** across the match set. Each key is
+            unlinked atomically, but batches are applied incrementally with no
+            rollback, so a crash or connection error mid-run leaves the already
+            -deleted documents gone and the rest in place. Deletes are
+            idempotent: re-running the same call after a failure removes only
+            whatever still matches, converging on the intended state.
+        """
+        _require_specific_filter(filter_expression, allow_all)
+
+        matched = cast(int, self.query(CountQuery(filter_expression)))
+        if dry_run:
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
+
+        # Runaway backstop sized to the matched count (plus slack for concurrent
+        # inserts); normal termination is an empty offset-0 re-query.
+        max_records = ceil(matched * 1.5) + batch_size
+        total_deleted = 0
+        completed = True
+        query = FilterQuery(filter_expression, return_fields=["id"])
+        query.paging(0, batch_size)
+
+        while True:
+            if total_deleted > max_records:
+                logger.warning(
+                    "drop_by_filter hit its runaway backstop (%d) with documents "
+                    "possibly still matching; returning an incomplete result. "
+                    "Re-run to continue.",
+                    max_records,
+                )
+                completed = False
+                break
+            batch = self._query(query)
+            if not batch:
+                break
+            batch_keys = [record["id"] for record in batch]
+            total_deleted += self._unlink_batch(batch_keys)
+            if on_progress is not None:
+                on_progress(total_deleted, matched)
+
+        self.invalidate_sql_schema_cache()
+        return BulkResult(matched=matched, processed=total_deleted, completed=completed)
+
+    def update_by_filter(
+        self,
+        filter_expression: str | FilterExpression,
+        values: dict[str, Any],
+        *,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+        dry_run: bool = False,
+        allow_all: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
+        """Set ``values`` on every document matching a filter expression.
+
+        This is a partial update: fields not present in ``values`` are left
+        untouched. For hash indexes the fields are written with ``HSET``; for
+        JSON indexes they are merged at the document root (``$``) with
+        ``JSON.MERGE`` (RFC 7396), so nested objects merge recursively, arrays
+        are replaced wholesale, and a ``None`` value deletes that path.
+
+        Because the read phase (an ``FT.AGGREGATE`` cursor) cannot safely run
+        while the index is being written, all matching keys are resolved into
+        memory *before* any write, then updated in batches. Memory use is
+        therefore proportional to the match count; for very large match sets,
+        narrow the filter and run in partitions (see the user guide).
+
+        Args:
+            filter_expression (Union[str, FilterExpression]): Selects the
+                documents to update. Prefer the escaping builders (``Tag``,
+                ``Num``...) over raw filter strings; **never string-concatenate
+                untrusted input into a filter** — an injected predicate here
+                mutates data.
+            values (Dict[str, Any]): Field/value pairs to set on each match.
+                Values are written **as-is with no schema validation** (unlike
+                :meth:`load`): callers must pre-encode vectors/bytes and format
+                numerics as the schema expects. For JSON indexes, keys must
+                match the document's JSON **layout**, not the schema field name
+                — a field indexed at a nested path (e.g. ``$.metadata.status``)
+                must be passed nested (``{"metadata": {"status": ...}}``);
+                passing the flat field name writes the wrong path and leaves the
+                indexed field unchanged. Only static values are supported (no
+                callable/expression transforms).
+            batch_size (int): Number of documents to update per round-trip.
+            dry_run (bool): If True, report how many documents *would* be
+                updated without writing anything.
+            allow_all (bool): Must be True to run against a match-all filter.
+            on_progress (Optional[Callable[[int, int], None]]): Called after each
+                write batch with ``(processed, matched)``. Invoked synchronously
+                (do not pass a coroutine); raising from it aborts the run.
+
+        Returns:
+            BulkResult: ``matched``/``processed`` counts, plus ``completed``
+            (always True for update — it runs to completion or raises) and
+            ``dry_run``.
+
+        See Also:
+            :meth:`drop_by_filter`, :meth:`load` (validated whole-document
+            upsert by key).
+
+        Note:
+            This operation is **not atomic** across the match set. Each
+            document is updated atomically (one ``HSET``/``JSON.MERGE``), but
+            batches use a non-transactional pipeline and are applied
+            incrementally with no rollback, so a crash or connection error
+            mid-run can leave some documents updated and others not. Because
+            the update is a fixed field set, it is idempotent: re-running the
+            same call after a failure converges on the intended state.
+
+            Keys are resolved before writing, so a document may be deleted by
+            another client in between. Each write is conditional on the key
+            still existing (applied atomically), so such a document is
+            **skipped rather than recreated** as a partial document; it simply
+            isn't counted in ``processed``. ``processed`` therefore reflects the
+            documents actually written, which can be less than ``matched`` under
+            concurrent deletion.
+        """
+        _require_specific_filter(filter_expression, allow_all)
+        if not values:
+            raise ValueError("values must be a non-empty mapping of field to value.")
+
+        matched = cast(int, self.query(CountQuery(filter_expression)))
+        if dry_run:
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
+
+        # Phase 1 (read): fully resolve matching keys before mutating. The
+        # aggregation cursor cannot be read while the index is written, so the
+        # read phase must finish first. on_progress fires only in phase 2.
+        keys = [
+            key
+            for batch in self._iter_keys_by_filter(filter_expression, batch_size)
+            for key in batch
+        ]
+
+        # Phase 2 (write): cursor closed, safe to mutate the index.
+        total_updated = 0
+        for i in range(0, len(keys), batch_size):
+            total_updated += self._apply_update_batch(keys[i : i + batch_size], values)
+            if on_progress is not None:
+                on_progress(total_updated, matched)
+
+        return BulkResult(matched=matched, processed=total_updated, completed=True)
+
+    def _iter_keys_by_filter(
+        self, filter_expression: str | FilterExpression, batch_size: int
+    ) -> Iterator[list[str]]:
+        """Yield batches of document keys matching a filter using a cursor.
+
+        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` for resumable,
+        unbounded iteration (unlike ``FT.SEARCH`` + ``LIMIT``, which is capped
+        by ``MAXSEARCHRESULTS`` and non-deterministic without a unique sort).
+        The server-side cursor is always released on exit, even if iteration is
+        abandoned early or errors.
+        """
+        request = (
+            AggregateRequest(str(filter_expression))
+            .load("__key")
+            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_SECONDS)
+            .dialect(2)
+        )
+        name = self.schema.index.name
+        ft = self._redis_client.ft(name)  # type: ignore[union-attr]
+        cid = 0
+        try:
+            result = ft.aggregate(request)
+            while True:
+                # Capture the cursor id BEFORE parsing rows, so the finally
+                # block can release the cursor even if row parsing raises.
+                # A cursor id of 0 signals the server has released the cursor.
+                cid = result.cursor.cid if result.cursor else 0
+                keys = [_agg_row_to_key(row) for row in result.rows]
+                if keys:
+                    yield keys
+                if not cid:
+                    break
+                result = ft.aggregate(Cursor(cid))
+        except redis.exceptions.RedisError as e:
+            raise RedisSearchError(
+                f"Error while iterating documents by filter: {str(e)}"
+            ) from e
+        finally:
+            # Release the cursor if it is still open (early break/error/abandon).
+            if cid:
+                try:
+                    self._redis_client.execute_command(  # type: ignore[union-attr]
+                        "FT.CURSOR", "DEL", name, cid
+                    )
+                except redis.exceptions.RedisError:
+                    pass
+
+    def _apply_update_batch(self, batch_keys: list[str], values: dict[str, Any]) -> int:
+        """Apply a partial update to a batch of keys, skipping any that no longer
+        exist (guards against recreating a concurrently-deleted document).
+
+        Returns the number of documents actually written.
+        """
+        lua, args = _update_script_and_args(
+            self.storage_type == StorageType.JSON, values
+        )
+        client = self._redis_client
+
+        if isinstance(client, RedisCluster):
+            # Per-key to stay within a single slot per command.
+            written = 0
+            for key in batch_keys:
+                written += int(cast(int, client.eval(lua, 1, key, *args)))
+            return written
+
+        pipe = client.pipeline(transaction=False)  # type: ignore[union-attr]
+        for key in batch_keys:
+            pipe.eval(lua, 1, key, *args)
+        return sum(int(r) for r in pipe.execute())
 
     def load(
         self,
@@ -1781,7 +2212,28 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    async def drop_keys(self, keys: str | list[str]) -> int:
+    async def _unlink_batch(self, batch_keys: list[str]) -> int:
+        """Unlink a batch of keys from Redis (async).
+
+        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
+        Cluster, keys are unlinked individually to avoid cross-slot errors.
+        """
+        client = await self._get_client()
+
+        if isinstance(client, AsyncRedisCluster):
+            unlinked = 0
+            for key_to_unlink in batch_keys:
+                try:
+                    unlinked += cast(int, await client.unlink(key_to_unlink))
+                except redis.exceptions.RedisError as e:
+                    logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
+            return unlinked
+
+        return cast(int, await client.unlink(*batch_keys))
+
+    async def drop_keys(
+        self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> int:
         """Remove a specific entry or entries from the index by it's key ID.
 
         Uses ``UNLINK`` rather than ``DEL`` so memory reclamation runs on a
@@ -1789,19 +2241,33 @@ class AsyncSearchIndex(BaseSearchIndex):
         number of keys are dropped at once (for example, scope-targeted
         ``SemanticCache`` invalidation). The returned count is unchanged.
 
+        Large key lists are unlinked in chunks of ``batch_size``. On Redis
+        Cluster, keys are unlinked individually so a chunk that spans hash
+        slots does not raise ``CROSSSLOT``.
+
         Args:
             keys (Union[str, List[str]]): The document ID or IDs to remove from the index.
+            batch_size (int): Number of keys to unlink per round-trip.
 
         Returns:
             int: Count of records deleted from Redis.
         """
         client = await self._get_client()
-        if isinstance(keys, list):
-            return await client.unlink(*keys)
-        else:
+
+        if not isinstance(keys, list):
             return await client.unlink(keys)
 
-    async def drop_documents(self, ids: str | list[str]) -> int:
+        if not keys:
+            return 0
+
+        total = 0
+        for i in range(0, len(keys), batch_size):
+            total += await self._unlink_batch(keys[i : i + batch_size])
+        return total
+
+    async def drop_documents(
+        self, ids: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> int:
         """Remove documents from the index by their document IDs.
 
         This method converts document IDs to Redis keys automatically by applying
@@ -1813,24 +2279,43 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Args:
             ids (Union[str, List[str]]): The document ID or IDs to remove from the index.
+            batch_size (int): Number of documents to delete per round-trip
+                (standalone Redis only; cluster deletes in a single call after
+                the shared-hash-tag check).
 
         Returns:
             int: Count of documents deleted from Redis.
+
+        Raises:
+            ValueError: On Redis Cluster, if the resolved keys do not all share
+                a hash tag (a cross-slot ``DELETE`` is not permitted).
         """
         client = await self._get_client()
-        if isinstance(ids, list):
-            if not ids:
-                return 0
-            keys = [self.key(id) for id in ids]
-            # Check for cluster compatibility
-            if isinstance(client, AsyncRedisCluster) and not _keys_share_hash_tag(keys):
+
+        if not isinstance(ids, list):
+            key = self.key(ids)
+            return await client.delete(key)
+
+        if not ids:
+            return 0
+
+        keys = [self.key(id) for id in ids]
+
+        # On cluster, a multi-key DELETE must stay within one hash slot, so
+        # require the keys to share a hash tag and delete them in a single call.
+        if isinstance(client, AsyncRedisCluster):
+            if not _keys_share_hash_tag(keys):
                 raise ValueError(
                     "All keys must share a hash tag when using Redis Cluster."
                 )
             return await client.delete(*keys)
-        else:
-            key = self.key(ids)
-            return await client.delete(key)
+
+        # Standalone: delete in chunks to bound the size of any single command.
+        total = 0
+        for i in range(0, len(keys), batch_size):
+            batch = keys[i : i + batch_size]
+            total += cast(int, await client.delete(*batch))
+        return total
 
     async def expire_keys(self, keys: str | list[str], ttl: int) -> int | list[int]:
         """Set the expiration time for a specific entry or entries in Redis.
@@ -1847,6 +2332,160 @@ class AsyncSearchIndex(BaseSearchIndex):
             return await pipe.execute()
         else:
             return await client.expire(keys, ttl)
+
+    async def drop_by_filter(
+        self,
+        filter_expression: str | FilterExpression,
+        *,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+        dry_run: bool = False,
+        allow_all: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
+        """Delete every document matching a filter expression (async).
+
+        See :meth:`SearchIndex.drop_by_filter` for full semantics.
+        """
+        _require_specific_filter(filter_expression, allow_all)
+
+        matched = cast(int, await self.query(CountQuery(filter_expression)))
+        if dry_run:
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
+
+        max_records = ceil(matched * 1.5) + batch_size
+        total_deleted = 0
+        completed = True
+        query = FilterQuery(filter_expression, return_fields=["id"])
+        query.paging(0, batch_size)
+
+        while True:
+            if total_deleted > max_records:
+                logger.warning(
+                    "drop_by_filter hit its runaway backstop (%d) with documents "
+                    "possibly still matching; returning an incomplete result. "
+                    "Re-run to continue.",
+                    max_records,
+                )
+                completed = False
+                break
+            batch = await self._query(query)
+            if not batch:
+                break
+            batch_keys = [record["id"] for record in batch]
+            total_deleted += await self._unlink_batch(batch_keys)
+            if on_progress is not None:
+                on_progress(total_deleted, matched)
+
+        self.invalidate_sql_schema_cache()
+        return BulkResult(matched=matched, processed=total_deleted, completed=completed)
+
+    async def update_by_filter(
+        self,
+        filter_expression: str | FilterExpression,
+        values: dict[str, Any],
+        *,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+        dry_run: bool = False,
+        allow_all: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BulkResult:
+        """Set ``values`` on every document matching a filter expression (async).
+
+        See :meth:`SearchIndex.update_by_filter` for full semantics.
+        """
+        _require_specific_filter(filter_expression, allow_all)
+        if not values:
+            raise ValueError("values must be a non-empty mapping of field to value.")
+
+        matched = cast(int, await self.query(CountQuery(filter_expression)))
+        if dry_run:
+            return BulkResult(
+                matched=matched, processed=matched, completed=True, dry_run=True
+            )
+
+        # Phase 1 (read): fully resolve matching keys before mutating (the
+        # cursor cannot be read while the index is written). on_progress fires
+        # only in phase 2.
+        keys: list[str] = []
+        async for batch in self._iter_keys_by_filter(filter_expression, batch_size):
+            keys.extend(batch)
+
+        # Phase 2 (write): cursor closed, safe to mutate the index.
+        total_updated = 0
+        for i in range(0, len(keys), batch_size):
+            total_updated += await self._apply_update_batch(
+                keys[i : i + batch_size], values
+            )
+            if on_progress is not None:
+                on_progress(total_updated, matched)
+
+        return BulkResult(matched=matched, processed=total_updated, completed=True)
+
+    async def _iter_keys_by_filter(
+        self, filter_expression: str | FilterExpression, batch_size: int
+    ) -> AsyncGenerator[list[str], None]:
+        """Yield batches of document keys matching a filter using a cursor (async).
+
+        Always releases the server-side cursor on exit (see sync counterpart).
+        """
+        client = await self._get_client()
+        request = (
+            AggregateRequest(str(filter_expression))
+            .load("__key")
+            .cursor(count=batch_size, max_idle=BULK_CURSOR_MAX_IDLE_SECONDS)
+            .dialect(2)
+        )
+        name = self.schema.index.name
+        ft = client.ft(name)
+        cid = 0
+        try:
+            result = await ft.aggregate(request)  # type: ignore[arg-type]
+            while True:
+                # Capture the cursor id BEFORE parsing rows, so the finally
+                # block can release the cursor even if row parsing raises.
+                # A cursor id of 0 signals the server has released the cursor.
+                cid = result.cursor.cid if result.cursor else 0
+                keys = [_agg_row_to_key(row) for row in result.rows]
+                if keys:
+                    yield keys
+                if not cid:
+                    break
+                result = await ft.aggregate(Cursor(cid))
+        except redis.exceptions.RedisError as e:
+            raise RedisSearchError(
+                f"Error while iterating documents by filter: {str(e)}"
+            ) from e
+        finally:
+            if cid:
+                try:
+                    await client.execute_command("FT.CURSOR", "DEL", name, cid)
+                except redis.exceptions.RedisError:
+                    pass
+
+    async def _apply_update_batch(
+        self, batch_keys: list[str], values: dict[str, Any]
+    ) -> int:
+        """Apply a partial update to a batch of keys, skipping any that no longer
+        exist (async; see sync counterpart). Returns documents actually written.
+        """
+        client = await self._get_client()
+        lua, args = _update_script_and_args(
+            self.storage_type == StorageType.JSON, values
+        )
+
+        if isinstance(client, AsyncRedisCluster):
+            written = 0
+            for key in batch_keys:
+                written += int(cast(int, await client.eval(lua, 1, key, *args)))  # type: ignore[misc]
+            return written
+
+        pipe = client.pipeline(transaction=False)
+        for key in batch_keys:
+            pipe.eval(lua, 1, key, *args)
+        results = await pipe.execute()
+        return sum(int(r) for r in results)
 
     @deprecated_argument("concurrency", "Use batch_size instead.")
     async def load(

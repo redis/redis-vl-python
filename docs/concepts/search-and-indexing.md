@@ -84,6 +84,51 @@ index = SearchIndex.from_existing("my-index", redis_url="redis://localhost:6379"
 
 **Clearing data** with `clear()` removes all documents from the index without deleting the index itself. The schema remains intact, ready for new data.
 
+## Bulk Delete and Update
+
+Redis has no server-side "delete/update by query", so mutating many documents traditionally means scanning for keys and issuing writes yourself. RedisVL wraps that pattern behind two filter-driven methods (available on both `SearchIndex` and `AsyncSearchIndex`).
+
+**Deleting by filter** resolves every document matching a filter expression and removes it with non-blocking `UNLINK`, in batches:
+
+```python
+from redisvl.query.filter import Tag, Num
+
+# Remove every archived document from before 2020
+index.drop_by_filter((Tag("status") == "archived") & (Num("year") < 2020))
+```
+
+**Updating by filter** applies a partial field update to every match. Fields you don't mention are left untouched—hash fields are written with `HSET`, and JSON documents are merged at the root with `JSON.MERGE` (RFC 7396: nested objects merge recursively, arrays are replaced wholesale, and a `None` value deletes that path):
+
+```python
+# Mark all draft documents as published, leaving other fields intact
+index.update_by_filter(Tag("status") == "draft", {"status": "published"})
+```
+
+Two caveats for `update_by_filter` values:
+
+- **No schema validation.** Unlike `load()`, values are written as-is—pre-encode vectors/bytes and format numerics as your schema expects, or you may corrupt query results.
+- **JSON keys must match the document layout, not the schema field name.** Values merge at the document root (`$`). If a field is indexed at a nested path (e.g. `$.metadata.status`), pass the correspondingly nested mapping (`{"metadata": {"status": "published"}}`); passing the flat field name writes the wrong path and leaves the indexed field unchanged. Only static values are supported (no callable/expression transforms).
+
+Both methods share the same safety-oriented options and return a `BulkResult`:
+
+- The return value carries `matched` (documents matching the filter), `processed` (documents actually affected), `completed` (False if a delete stopped early at its runaway backstop; always True for update), and `dry_run`. Read the fields explicitly—`result.processed`, `result.completed`, etc.
+- `dry_run=True` reports how many documents *would* be affected—via a count query—without changing anything.
+- A match-all filter (empty, `"*"`, or `None`) is refused unless you pass `allow_all=True`; use `clear()` when you intentionally want to empty the index. This guard catches the canonical match-all forms only—it is a convenience backstop, not a security control.
+- `on_progress(processed, matched)` is called after each write batch for observability on large operations (it runs synchronously—don't pass a coroutine—and raising from it aborts the run). Note `update_by_filter` resolves all matching keys before it writes, so progress callbacks begin only once the write phase starts. `batch_size` tunes how many documents are processed per round-trip.
+
+The related `drop_documents()` and `drop_keys()` helpers delete by document ID or full Redis key and batch large inputs. On Redis Cluster, `drop_keys()` unlinks per-key so it works across hash slots, while `drop_documents()` requires the target keys to share a hash tag and raises `ValueError` otherwise.
+
+**Durability and partial failure.** Because Redis has no server-side delete/update-by-query, these operations run as a series of batched writes rather than a single transaction—they are **not atomic across the match set** and there is no rollback. The unit of atomicity is a single document: each key is deleted with one `UNLINK`, and each document is updated with one `HSET` or `JSON.MERGE`, so you never get a half-deleted key or a half-updated document. But batches are applied incrementally, so a crash or connection error mid-run leaves some documents changed and the rest untouched.
+
+The intended recovery is simply to **re-run the same call**: both operations are idempotent, so a repeat pass removes (or re-sets) only what still needs it and converges on the desired state. There is no built-in checkpoint or resume token—`on_progress` reports live progress but is not a restart point. `update_by_filter` resolves keys before it writes, so a document can be deleted by another client in between; each write is applied only if the key still exists (atomically), so such a document is **skipped, not recreated** as a partial document—it just isn't counted in `processed`, which is why `processed` can be less than `matched` under concurrent deletion. Note this guard is *existence*-based, not *identity*-based: if a key is deleted and a different document is recreated at the same key mid-run, the update can land on that new document. Running against a quiescent partition (below) avoids all of these concurrency cases.
+
+**Operational considerations at scale.** These are single-threaded, foreground operations that issue one round-trip per batch; a very large match set is a long-running job. Keep the following in mind for production use:
+
+- **Live-traffic impact.** Every delete/update also updates the search index synchronously. Running a large bulk job against a node that is serving queries competes for CPU and reindex bandwidth and can raise query latency—prefer off-peak windows, or narrow the filter and run in waves.
+- **Memory.** `drop_by_filter` holds only one batch of keys at a time (`O(batch_size)`). `update_by_filter` must resolve *all* matching keys before it can write (an open aggregation cursor can't be read while the index is being written), so its client memory grows with the match count—roughly the total size of the matched keys. For very large match sets, partition the filter (see below) rather than updating everything in one call.
+- **Redis Cluster.** Cross-slot multi-key commands aren't allowed, so writes are issued per key (no pipelining across slots)—expect this to be slower on Cluster for large match sets.
+- **Resumability.** There is no checkpoint; recovery is a full re-run. For very large corpora, **partition the filter** (e.g. by a tag or numeric range) and process partition-by-partition. This is the recommended pattern at scale: it bounds memory and per-run time, keeps each call independently retryable, and lets you spread load across off-peak windows.
+
 ## Data Validation
 
 RedisVL can validate data against your schema before loading it to Redis. This catches type mismatches, missing required fields, and invalid values early—before they cause problems in production.
