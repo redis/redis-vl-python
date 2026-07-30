@@ -3,14 +3,26 @@ services:
     image: "${REDIS_IMAGE:-redis:8.4}"
     ports:
       - "6379"
-    environment:
-      # Pin the RediSearch worker pool to 0 (single-threaded, foreground
-      # execution). Redis 8.8 changed the default from 0 to a multithreaded
-      # background executor, which surfaces a race where FT.SEARCH can return
-      # nil fields for docs that expire mid-query -- the source of flaky
-      # redis:latest CI runs. WORKERS=0 avoids the race and is already the
-      # default on the pinned 8.2/8.4 images, so this is a no-op there.
-      - "REDIS_ARGS=--save '' --appendonly no --search-workers ${REDIS_SEARCH_WORKERS:-0}"
+    # Pin the RediSearch worker pool to 0 (single-threaded, foreground
+    # execution). Redis 8.8 changed the default from 0 to a multithreaded
+    # background executor (12 on 8.8.0), which surfaces a race where FT.SEARCH
+    # can return nil fields for docs modified/expiring mid-query -- the source
+    # of flaky redis:latest CI runs. WORKERS=0 avoids the race; it is already
+    # the default on 8.2/8.4.
+    #
+    # This MUST be passed on the server command line: the official redis image
+    # does NOT honor the REDIS_ARGS env var (that is a Redis Stack convention),
+    # so the previous env-based pin was a silent no-op and the race stayed live
+    # on redis:latest. Override the worker count via REDIS_SEARCH_WORKERS (e.g.
+    # to reproduce the race locally).
+    command:
+      - "redis-server"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+      - "--search-workers"
+      - "${REDIS_SEARCH_WORKERS:-0}"
     deploy:
       replicas: 1
       restart_policy:
