@@ -1366,6 +1366,19 @@ def test_process_aggregate_strips_score():
     assert processed[0]["route_name"] == "tech"
 
 
+def test_process_aggregate_keeps_score_only_row():
+    """A row that carried only __score is a real result and must be kept as {}.
+
+    Emptiness is judged before __score is stripped, so a scoring-only
+    aggregation row is not mistaken for a race-dropped empty row.
+    """
+    agg = _FakeAggResult([["__score", "9"], []])  # score-only + truly-empty
+    processed = process_aggregate_results(agg, None, None)
+    assert processed == [{}]  # score-only kept (as {}); truly-empty dropped
+    assert processed.dropped_count == 1
+    assert processed.complete is False
+
+
 def test_convert_and_drop_empty_rows_hybrid():
     rows = [{"content": "a"}, {}, [b"k", b"v"]]
     kept = _convert_and_drop_empty_rows(rows, "hybrid")

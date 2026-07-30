@@ -476,11 +476,15 @@ def process_aggregate_results(
 
     def _process(row):
         result = make_dict(convert_bytes(row))
+        # Determine emptiness BEFORE removing __score: a row that carried only a
+        # score is a legitimate (if unusual) aggregation result and must be
+        # kept, whereas a row that came back with no fields at all is dropped.
+        had_content = bool(result)
         result.pop("__score", None)
-        return result
+        return result, had_content
 
     processed = [_process(r) for r in results.rows]
-    kept = [r for r in processed if r]
+    kept = [result for result, had_content in processed if had_content]
     dropped = len(processed) - len(kept)
     if dropped:
         logger.warning(
