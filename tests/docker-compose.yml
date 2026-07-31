@@ -3,14 +3,26 @@ services:
     image: "${REDIS_IMAGE:-redis:8.4}"
     ports:
       - "6379"
-    environment:
-      # Pin the RediSearch worker pool to 0 (single-threaded, foreground
-      # execution). Redis 8.8 changed the default from 0 to a multithreaded
-      # background executor, which surfaces a race where FT.SEARCH can return
-      # nil fields for docs that expire mid-query -- the source of flaky
-      # redis:latest CI runs. WORKERS=0 avoids the race and is already the
-      # default on the pinned 8.2/8.4 images, so this is a no-op there.
-      - "REDIS_ARGS=--save '' --appendonly no --search-workers ${REDIS_SEARCH_WORKERS:-0}"
+    # Server flags have to be passed as real arguments. REDIS_ARGS is a
+    # redis-stack image convention: the official docker.io/library/redis image
+    # used here never reads it, so anything set that way is silently ignored.
+    #
+    # --save "" disables RDB save points and --appendonly no disables the AOF;
+    # test data is disposable.
+    #
+    # --search-workers pins the RediSearch worker pool to 0 (single-threaded,
+    # foreground execution). Redis 8.8 changed the default from 0 to a
+    # multithreaded background executor, so pinning it keeps newer images on the
+    # same query execution model as the pinned 8.2/8.4 images, where 0 is
+    # already the default (a no-op there). Override with REDIS_SEARCH_WORKERS.
+    command:
+      - "redis-server"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+      - "--search-workers"
+      - "${REDIS_SEARCH_WORKERS:-0}"
     deploy:
       replicas: 1
       restart_policy:
