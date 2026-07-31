@@ -129,6 +129,37 @@ def _sql_executor_cache_key(sql_redis_options: dict[str, Any]) -> str:
     return json.dumps(sql_redis_options, sort_keys=True, default=repr)
 
 
+def _close_owned_sync_client(client: SyncRedisClient) -> None:
+    """weakref.finalize callback that closes an index-owned sync client.
+
+    Must stay a module-level function taking the client as an argument: a
+    callback that references the index (e.g. a bound method) would be kept
+    alive by the finalizer registry and prevent the index from ever being
+    garbage collected.
+    """
+    try:
+        client.close()
+    except Exception:
+        # Finalizers may run during interpreter shutdown; never propagate.
+        pass
+
+
+def _close_owned_async_client(client: AsyncRedisClient) -> None:
+    """weakref.finalize callback that closes an index-owned async client.
+
+    Same constraint as :func:`_close_owned_sync_client`: must not reference
+    the index instance.
+    """
+
+    async def _aclose() -> None:
+        await client.aclose()
+
+    try:
+        sync_wrapper(_aclose)()
+    except Exception:
+        pass
+
+
 # Default number of documents processed per round-trip in bulk operations.
 DEFAULT_BULK_BATCH_SIZE = 500
 
@@ -346,8 +377,42 @@ class BaseSearchIndex:
 
     schema: IndexSchema
 
+    # Module-level callback (set per subclass) used to close an owned client
+    # when the index is garbage collected. Must never be a bound method.
+    _finalizer_close_client: Callable[[Any], None]
+
+    _client_finalizer: "weakref.finalize | None" = None
+
     def __init__(*args, **kwargs):
         pass
+
+    def _register_client_finalizer(self, client: Any) -> None:
+        """Register a finalizer that closes ``client`` once this index is
+        garbage collected.
+
+        Call this at every point where the index creates or takes over a
+        client it owns. The finalizer callback must only capture the client,
+        never ``self``: ``weakref.finalize`` keeps the callback alive in a
+        module-level registry until it fires, so a callback holding the
+        instance (a bound method, or any closure over ``self``) would keep
+        the instance reachable forever and the finalizer would never run.
+        """
+        self._detach_client_finalizer()
+        if client is not None and getattr(self, "_owns_redis_client", False):
+            self._client_finalizer = weakref.finalize(
+                self, type(self)._finalizer_close_client, client
+            )
+
+    def _detach_client_finalizer(self) -> None:
+        """Cancel the pending client finalizer, if any.
+
+        Called when the owned client is closed or replaced so the finalizer
+        neither double-closes a client nor keeps a replaced client alive.
+        """
+        finalizer = self._client_finalizer
+        if finalizer is not None:
+            finalizer.detach()
+        self._client_finalizer = None
 
     @property
     def _storage(self) -> BaseStorage:
@@ -600,8 +665,13 @@ class SearchIndex(BaseSearchIndex):
 
         self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
-        if self._owns_redis_client:
-            weakref.finalize(self, self.disconnect)
+        self._client_finalizer = None
+        # Close the owned client when this index is garbage collected. When
+        # the client is created lazily, registration happens at creation time
+        # instead (see the _redis_client property).
+        self._register_client_finalizer(redis_client)
+
+    _finalizer_close_client = staticmethod(_close_owned_sync_client)
 
     def disconnect(self):
         """Disconnect from the Redis database."""
@@ -609,6 +679,7 @@ class SearchIndex(BaseSearchIndex):
         if self._owns_redis_client is False:
             logger.info("Index does not own client, not disconnecting")
             return
+        self._detach_client_finalizer()
         if self.__redis_client:
             self.__redis_client.close()
         self.__redis_client = None
@@ -698,6 +769,7 @@ class SearchIndex(BaseSearchIndex):
                         redis_url=self._redis_url,
                         **kwargs,
                     )
+                    self._register_client_finalizer(self.__redis_client)
         if not self._validated_client and self._lib_name:
             # Only set lib name for user-provided clients
             RedisConnectionFactory.validate_sync_redis(
@@ -730,6 +802,7 @@ class SearchIndex(BaseSearchIndex):
         self.__redis_client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
+        self._register_client_finalizer(self.__redis_client)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
     def set_client(self, redis_client: SyncRedisClient, **kwargs):
@@ -749,6 +822,7 @@ class SearchIndex(BaseSearchIndex):
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.invalidate_sql_schema_cache()
         self.__redis_client = redis_client
+        self._register_client_finalizer(redis_client)
         return self
 
     def _check_svs_support(self) -> None:
@@ -1858,8 +1932,13 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         self._validated_client = kwargs.pop("_client_validated", False)
         self._owns_redis_client = kwargs.pop("_owns_redis_client", redis_client is None)
-        if self._owns_redis_client:
-            weakref.finalize(self, sync_wrapper(self.disconnect))
+        self._client_finalizer = None
+        # Close the owned client when this index is garbage collected. When
+        # the client is created lazily, registration happens at creation time
+        # instead (see _get_client).
+        self._register_client_finalizer(redis_client)
+
+    _finalizer_close_client = staticmethod(_close_owned_async_client)
 
     @classmethod
     async def from_existing(
@@ -1957,6 +2036,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         await self.disconnect()
         async with self._lock:
             self._redis_client = redis_client
+        self._register_client_finalizer(redis_client)
         return self
 
     async def _get_client(self) -> AsyncRedisClient:
@@ -1974,6 +2054,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                     self._redis_client = (
                         await RedisConnectionFactory._get_aredis_connection(**kwargs)
                     )
+                    self._register_client_finalizer(self._redis_client)
         if not self._validated_client and self._lib_name:
             # Set lib name for user-provided clients
             await RedisConnectionFactory.validate_async_redis(
@@ -2980,6 +3061,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         self.invalidate_sql_schema_cache()
         if self._owns_redis_client is False:
             return
+        self._detach_client_finalizer()
         if self._redis_client is not None:
             await self._redis_client.aclose()
         self._redis_client = None
