@@ -969,8 +969,14 @@ class SearchIndex(BaseSearchIndex):
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.invalidate_sql_schema_cache()
+        # Release the client this index created for itself, if any, before
+        # taking on the caller's client.
+        self.disconnect()
         self.__redis_client = redis_client
-        self._register_client_finalizer(redis_client)
+        # The caller owns the client they passed in, so this index must never
+        # close it. This matches __init__(redis_client=...) semantics.
+        self._owns_redis_client = False
+        self._detach_client_finalizer()
         return self
 
     def _check_svs_support(self) -> None:
@@ -2171,7 +2177,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         client = await RedisConnectionFactory._get_aredis_connection(
             redis_url=redis_url, **kwargs
         )
-        await self.set_client(client)
+        # This index created the client, so it owns and must close it.
+        await self._swap_client(client, owns=True)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
     async def set_client(self, redis_client: AsyncRedisClient | SyncRedisClient):
@@ -2179,12 +2186,31 @@ class AsyncSearchIndex(BaseSearchIndex):
         [DEPRECATED] Manually set the Redis client to use with the search index.
         This method is deprecated; please provide connection parameters in __init__.
         """
-        redis_client = await self._validate_client(redis_client)
+        # The caller owns the client they passed in, so this index must never
+        # close it. This matches __init__(redis_client=...) semantics.
+        return await self._swap_client(redis_client, owns=False)
+
+    async def _swap_client(
+        self, redis_client: AsyncRedisClient | SyncRedisClient, *, owns: bool
+    ):
+        """Replace the active client, releasing the previous one if owned.
+
+        Args:
+            redis_client: The client to start using.
+            owns: Whether this index owns the new client and is therefore
+                responsible for closing it. Callers passing their own client
+                must use False so it is never closed on their behalf.
+        """
+        validated_client = await self._validate_client(redis_client)
         self.invalidate_sql_schema_cache()
+        # Release the client this index created for itself, if any.
         await self.disconnect()
         async with self._lock:
-            self._redis_client = redis_client
-        self._register_client_finalizer(redis_client)
+            self._redis_client = validated_client
+        self._owns_redis_client = owns
+        # No-op when owns is False; also detaches any finalizer left over from
+        # a previously owned client.
+        self._register_client_finalizer(validated_client)
         return self
 
     async def _get_client(self) -> AsyncRedisClient:

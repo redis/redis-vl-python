@@ -1,0 +1,217 @@
+"""Ownership semantics for clients handed to an index after construction.
+
+`__init__` already treats a caller-provided client as not owned, and never
+closes it. The deprecated `set_client()` did not follow that rule: an index
+created with `redis_url` keeps `_owns_redis_client=True`, so after
+`set_client(caller_client)` the index would close a client it never created.
+Since 0.25.0 the client finalizer actually fires, which made that observable
+as the caller's client being closed when the index is garbage collected.
+
+The deprecated `connect()` is the mirror case and must keep working: it
+creates the client itself, so the index does own it and must still close it.
+"""
+
+import asyncio
+import gc
+import warnings
+import weakref
+from unittest import mock
+
+from redisvl.index import AsyncSearchIndex, SearchIndex
+
+SCHEMA_DICT = {
+    "index": {"name": "ownership-probe", "prefix": "own", "storage_type": "hash"},
+    "fields": [{"name": "tag", "type": "tag"}],
+}
+
+
+def collect():
+    for _ in range(3):
+        gc.collect()
+
+
+def sync_index_owning_client(created_client=None):
+    """Index built from a URL, so it owns whatever client it creates."""
+    index = SearchIndex.from_dict(SCHEMA_DICT, redis_url="redis://fake:6379")
+    if created_client is not None:
+        with mock.patch(
+            "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+            return_value=created_client,
+        ):
+            assert index._redis_client is created_client
+    return index
+
+
+def set_client_sync(index, client):
+    with mock.patch(
+        "redisvl.index.index.RedisConnectionFactory.validate_sync_redis",
+        return_value=None,
+    ):
+        return index.set_client(client)
+
+
+async def set_client_async(index, client):
+    with mock.patch.object(
+        AsyncSearchIndex, "_validate_client", new=mock.AsyncMock(return_value=client)
+    ):
+        return await index.set_client(client)
+
+
+class TestCallerProvidedClientIsNotOwned:
+    def test_sync_set_client_marks_client_unowned(self):
+        index = sync_index_owning_client()
+        caller_client = mock.MagicMock(name="caller_client")
+        set_client_sync(index, caller_client)
+        assert index._owns_redis_client is False
+
+    def test_sync_set_client_client_survives_gc(self):
+        index = sync_index_owning_client()
+        caller_client = mock.MagicMock(name="caller_client")
+        set_client_sync(index, caller_client)
+
+        ref = weakref.ref(index)
+        del index
+        collect()
+
+        assert ref() is None, "index was not collected"
+        caller_client.close.assert_not_called()
+
+    def test_sync_set_client_client_survives_disconnect(self):
+        index = sync_index_owning_client()
+        caller_client = mock.MagicMock(name="caller_client")
+        set_client_sync(index, caller_client)
+
+        index.disconnect()
+
+        caller_client.close.assert_not_called()
+
+    def test_async_set_client_marks_client_unowned(self):
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379"
+            )
+            caller_client = mock.MagicMock(name="caller_async_client")
+            caller_client.aclose = mock.AsyncMock()
+            await set_client_async(index, caller_client)
+            return index
+
+        index = asyncio.run(run())
+        assert index._owns_redis_client is False
+
+    def test_async_set_client_client_survives_gc(self):
+        caller_client = mock.MagicMock(name="caller_async_client")
+        caller_client.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379"
+            )
+            await set_client_async(index, caller_client)
+            return index
+
+        index = asyncio.run(run())
+        ref = weakref.ref(index)
+        del index
+        collect()
+
+        assert ref() is None, "index was not collected"
+        caller_client.aclose.assert_not_awaited()
+
+    def test_async_set_client_client_survives_disconnect(self):
+        caller_client = mock.MagicMock(name="caller_async_client")
+        caller_client.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379"
+            )
+            await set_client_async(index, caller_client)
+            await index.disconnect()
+
+        asyncio.run(run())
+        caller_client.aclose.assert_not_awaited()
+
+
+class TestIndexCreatedClientIsStillOwned:
+    """Regression guard: the deprecated connect() creates its own client, so
+    the index must keep ownership and still close it."""
+
+    def test_sync_connect_keeps_ownership_and_closes_on_gc(self):
+        created = mock.MagicMock(name="connect_created_client")
+        index = SearchIndex.from_dict(SCHEMA_DICT)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+                return_value=created,
+            ):
+                index.connect(redis_url="redis://fake:6379")
+
+        assert index._owns_redis_client is True
+        del index
+        collect()
+        created.close.assert_called_once()
+
+    def test_async_connect_keeps_ownership_and_closes_on_gc(self):
+        created = mock.MagicMock(name="aconnect_created_client")
+        created.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(SCHEMA_DICT)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with mock.patch(
+                    "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+                    new=mock.AsyncMock(return_value=created),
+                ):
+                    with mock.patch.object(
+                        AsyncSearchIndex,
+                        "_validate_client",
+                        new=mock.AsyncMock(return_value=created),
+                    ):
+                        await index.connect(redis_url="redis://fake:6379")
+            return index
+
+        index = asyncio.run(run())
+        assert (
+            index._owns_redis_client is True
+        ), "connect() created the client, so the index must still own it"
+        del index
+        collect()
+        created.aclose.assert_awaited_once()
+
+
+class TestPreviouslyOwnedClientIsReleased:
+    """Swapping in a caller's client must not silently abandon a client the
+    index created for itself."""
+
+    def test_sync_set_client_closes_previously_owned_client(self):
+        owned = mock.MagicMock(name="index_owned_client")
+        index = sync_index_owning_client(created_client=owned)
+
+        caller_client = mock.MagicMock(name="caller_client")
+        set_client_sync(index, caller_client)
+
+        owned.close.assert_called_once()
+        caller_client.close.assert_not_called()
+
+    def test_async_set_client_closes_previously_owned_client(self):
+        owned = mock.MagicMock(name="index_owned_async_client")
+        owned.aclose = mock.AsyncMock()
+        caller_client = mock.MagicMock(name="caller_async_client")
+        caller_client.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379"
+            )
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+                new=mock.AsyncMock(return_value=owned),
+            ):
+                assert await index._get_client() is owned
+            await set_client_async(index, caller_client)
+
+        asyncio.run(run())
+        owned.aclose.assert_awaited_once()
+        caller_client.aclose.assert_not_awaited()
