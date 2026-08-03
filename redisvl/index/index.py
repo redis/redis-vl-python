@@ -947,10 +947,17 @@ class SearchIndex(BaseSearchIndex):
             ModuleNotFoundError: If required Redis modules are not installed.
         """
         self.invalidate_sql_schema_cache()
-        self.__redis_client = RedisConnectionFactory.get_redis_connection(
+        client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
-        self._register_client_finalizer(self.__redis_client)
+        with self._lock:
+            self.__redis_client = client
+            # This index created the client, so it owns and must close it. The
+            # index may have been holding a caller-provided client until now
+            # (constructor injection or set_client), in which case ownership
+            # has to be taken back or nothing would ever close this one.
+            self._owns_redis_client = True
+            self._register_client_finalizer(client)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
     def set_client(self, redis_client: SyncRedisClient, **kwargs):
@@ -969,14 +976,19 @@ class SearchIndex(BaseSearchIndex):
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.invalidate_sql_schema_cache()
-        # Release the client this index created for itself, if any, before
-        # taking on the caller's client.
-        self.disconnect()
-        self.__redis_client = redis_client
-        # The caller owns the client they passed in, so this index must never
-        # close it. This matches __init__(redis_client=...) semantics.
-        self._owns_redis_client = False
-        self._detach_client_finalizer()
+        # Release the client this index created for itself, if any. Skipped when
+        # the current client is not ours, where disconnect() would do nothing
+        # beyond logging that it is not disconnecting.
+        if self._owns_redis_client:
+            self.disconnect()
+        # Swap the client and its ownership together so no other thread can
+        # observe the new client while ownership still describes the old one.
+        with self._lock:
+            self.__redis_client = redis_client
+            # The caller owns the client they passed in, so this index must
+            # never close it. Matches __init__(redis_client=...) semantics.
+            self._owns_redis_client = False
+            self._detach_client_finalizer()
         return self
 
     def _check_svs_support(self) -> None:
@@ -2203,14 +2215,20 @@ class AsyncSearchIndex(BaseSearchIndex):
         """
         validated_client = await self._validate_client(redis_client)
         self.invalidate_sql_schema_cache()
-        # Release the client this index created for itself, if any.
-        await self.disconnect()
+        # Release the client this index created for itself, if any. Skipped when
+        # the current client is not ours, where disconnect() is a no-op.
+        if self._owns_redis_client:
+            await self.disconnect()
+        # Swap the client and its ownership together. Setting ownership outside
+        # the lock would leave a window where another coroutine could see the
+        # new client while ownership still describes the old one, and close a
+        # caller-provided client on that basis.
         async with self._lock:
             self._redis_client = validated_client
-        self._owns_redis_client = owns
-        # No-op when owns is False; also detaches any finalizer left over from
-        # a previously owned client.
-        self._register_client_finalizer(validated_client)
+            self._owns_redis_client = owns
+            # No-op when owns is False; also detaches any finalizer left over
+            # from a previously owned client.
+            self._register_client_finalizer(validated_client)
         return self
 
     async def _get_client(self) -> AsyncRedisClient:
