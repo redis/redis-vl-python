@@ -355,7 +355,72 @@ class TestSwappingInTheSameClient:
 
         owned.close.assert_not_called()
         assert index.client is owned
+        # Ownership tracks who created the object, so handing the same client
+        # back does not change it. Flipping to unowned here would strand this
+        # client: a later swap would not close it and its finalizer is gone.
+        assert index._owns_redis_client is True
+
+    def test_sync_reinstalled_client_is_still_closed_by_a_later_swap(self):
+        owned = mock.MagicMock(name="owned_client")
+        other = mock.MagicMock(name="other_client")
+        index = sync_index_owning_client(created_client=owned)
+
+        set_client_sync(index, owned)
+        set_client_sync(index, other)
+
+        owned.close.assert_called_once()
+        other.close.assert_not_called()
+
+    def test_sync_set_client_with_an_unowned_current_client_stays_unowned(self):
+        caller_client = mock.MagicMock(name="caller_client")
+        schema = IndexSchema.from_dict(SCHEMA_DICT)
+        index = SearchIndex(schema, redis_client=caller_client)
+
+        set_client_sync(index, caller_client)
+
         assert index._owns_redis_client is False
+        caller_client.close.assert_not_called()
+
+    def test_sync_ownership_is_cleared_before_the_caller_client_is_installed(self):
+        """`disconnect()` does not take the lock, so another thread must never
+        be able to observe a caller-provided client while ownership still says
+        the index owns it: it would close a client it does not own."""
+
+        class RecordingIndex(SearchIndex):
+            def __init__(self, *args, **kwargs):
+                self.attr_writes: list[str] = []
+                super().__init__(*args, **kwargs)
+
+            def __setattr__(self, name, value):
+                if name in ("_SearchIndex__redis_client", "_owns_redis_client"):
+                    self.attr_writes.append(name)
+                super().__setattr__(name, value)
+
+        owned = mock.MagicMock(name="owned_client")
+        index = RecordingIndex(
+            IndexSchema.from_dict(SCHEMA_DICT), redis_url="redis://fake:6379"
+        )
+        with mock.patch(
+            "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+            return_value=owned,
+        ):
+            assert index._redis_client is owned
+
+        index.attr_writes.clear()
+        set_client_sync(index, mock.MagicMock(name="caller_client"))
+
+        last_owns = max(
+            i for i, n in enumerate(index.attr_writes) if n == "_owns_redis_client"
+        )
+        last_client = max(
+            i
+            for i, n in enumerate(index.attr_writes)
+            if n == "_SearchIndex__redis_client"
+        )
+        assert last_owns < last_client, (
+            "ownership must be cleared before the caller's client is installed, "
+            f"got write order {index.attr_writes}"
+        )
 
     def test_async_set_client_with_the_current_client_does_not_close_it(self):
         owned = mock.MagicMock(name="owned_async_client")
@@ -376,7 +441,9 @@ class TestSwappingInTheSameClient:
         index = asyncio.run(run())
         owned.aclose.assert_not_awaited()
         assert index.client is owned
-        assert index._owns_redis_client is False
+        # Same rule as the sync case: reinstalling the active client changes
+        # nothing about who created it, so ownership is left alone.
+        assert index._owns_redis_client is True
 
 
 class TestSwapResetsValidation:

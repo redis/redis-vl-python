@@ -987,15 +987,20 @@ class SearchIndex(BaseSearchIndex):
         # Release the previous client and install the caller's under a single
         # lock hold, for the reason described in connect().
         with self._lock:
-            # Skip the release when the caller hands back the client already
-            # installed: closing it would leave this index holding a client it
-            # had just closed.
-            if redis_client is not self.__redis_client:
-                self._release_owned_client_locked()
-            self.__redis_client = redis_client
-            # The caller owns the client they passed in, so this index must
-            # never close it. Matches __init__(redis_client=...) semantics.
+            if redis_client is self.__redis_client:
+                # The client is already installed, so there is nothing to
+                # release and nothing about its provenance has changed. Leaving
+                # ownership alone matters: clearing it for a client this index
+                # created would strand that client, since a later swap only
+                # closes what the index owns and its finalizer is detached
+                # below.
+                return self
+            self._release_owned_client_locked()
+            # Clear ownership before installing the caller's client. disconnect()
+            # does not take this lock, so another thread must never see the
+            # caller's client while ownership still says the index owns it.
             self._owns_redis_client = False
+            self.__redis_client = redis_client
             # A replacement client has not had this index's lib name applied.
             self._validated_client = False
             self._detach_client_finalizer()
@@ -2281,10 +2286,21 @@ class AsyncSearchIndex(BaseSearchIndex):
             # Skip the release when the client being installed is the one
             # already active: closing it would leave this index holding a
             # client it had just closed.
-            if validated_client is not self._redis_client:
-                await self._release_owned_client_locked()
-            self._redis_client = validated_client
-            self._owns_redis_client = owns_client
+            if validated_client is self._redis_client:
+                # Already installed: nothing to release, and its provenance is
+                # unchanged, so ownership stays as it is. Clearing it for a
+                # client this index created would strand that client.
+                return self
+            await self._release_owned_client_locked()
+            if owns_client:
+                # Install first, then claim, so no reader can see a client this
+                # index does not own marked as owned.
+                self._redis_client = validated_client
+                self._owns_redis_client = True
+            else:
+                # Give up ownership first, for the same reason in reverse.
+                self._owns_redis_client = False
+                self._redis_client = validated_client
             # A replacement client has not had this index's lib name applied.
             self._validated_client = False
             # No-op when ownership is False; also detaches any finalizer left
