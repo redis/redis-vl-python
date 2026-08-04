@@ -406,6 +406,66 @@ class TestSwapResetsValidation:
         assert index._validated_client is False
 
 
+class TestSwapSurvivesAFailingClose:
+    """Closing the outgoing client must not abort the swap. If it did, the
+    replacement would never be installed and nothing would close it, and the
+    index would be left holding a client it had already closed."""
+
+    def test_sync_set_client_completes_when_closing_the_old_client_raises(self):
+        old = mock.MagicMock(name="old_client")
+        old.close.side_effect = RuntimeError  # fresh instance per call
+        index = sync_index_owning_client(created_client=old)
+        caller_client = mock.MagicMock(name="caller_client")
+
+        set_client_sync(index, caller_client)
+
+        assert index.client is caller_client
+        assert index._owns_redis_client is False
+
+    def test_sync_connect_completes_and_owns_when_closing_the_old_client_raises(self):
+        old = mock.MagicMock(name="old_client")
+        old.close.side_effect = RuntimeError  # fresh instance per call
+        created = mock.MagicMock(name="connect_created_client")
+        index = sync_index_owning_client(created_client=old)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+                return_value=created,
+            ):
+                index.connect(redis_url="redis://fake:6379")
+
+        assert index.client is created
+        assert index._owns_redis_client is True
+        # The replacement is still tracked, so it is not leaked.
+        del index
+        collect()
+        created.close.assert_called_once()
+
+    def test_async_set_client_completes_when_closing_the_old_client_raises(self):
+        old = mock.MagicMock(name="old_async_client")
+        old.aclose = mock.AsyncMock(side_effect=RuntimeError)
+        caller_client = mock.MagicMock(name="caller_async_client")
+        caller_client.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379"
+            )
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+                new=mock.AsyncMock(return_value=old),
+            ):
+                assert await index._get_client() is old
+            await set_client_async(index, caller_client)
+            return index
+
+        index = asyncio.run(run())
+        assert index.client is caller_client
+        assert index._owns_redis_client is False
+
+
 class TestPreviouslyOwnedClientIsReleased:
     """Swapping in a caller's client must not silently abandon a client the
     index created for itself."""

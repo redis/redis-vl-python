@@ -1004,11 +1004,23 @@ class SearchIndex(BaseSearchIndex):
     def _release_owned_client_locked(self) -> None:
         """Close the current client if this index owns it. Call with ``_lock``
         held, so releasing and replacing a client cannot interleave with the
-        lazy creation in the ``_redis_client`` property."""
+        lazy creation in the ``_redis_client`` property.
+
+        The reference is cleared before the close so a failed close cannot
+        leave the index holding a client it already closed, and the failure is
+        swallowed so it cannot abort the swap and orphan the replacement.
+        """
         if self._owns_redis_client and self.__redis_client is not None:
+            client = self.__redis_client
             self._detach_client_finalizer()
-            self.__redis_client.close()
             self.__redis_client = None
+            try:
+                client.close()
+            except Exception as e:
+                # Deliberately not exc_info: retaining the traceback keeps the
+                # frames, and therefore this index, reachable, which is the
+                # class of leak this lifecycle code exists to avoid.
+                logger.warning("Failed to close the Redis client being replaced: %s", e)
 
     def _check_svs_support(self) -> None:
         """Validate SVS-VAMANA support.
@@ -2221,6 +2233,26 @@ class AsyncSearchIndex(BaseSearchIndex):
         # close it. This matches __init__(redis_client=...) semantics.
         return await self._swap_client(redis_client, owns=False)
 
+    async def _release_owned_client_locked(self) -> None:
+        """Close the current client if this index owns it. Call with ``_lock``
+        held, matching the sync counterpart.
+
+        The reference is cleared before awaiting the close so a failed or
+        in-flight close cannot leave the index holding a client it already
+        closed, and the failure is swallowed so it cannot abort the swap and
+        orphan the replacement.
+        """
+        if self._owns_redis_client and self._redis_client is not None:
+            client = self._redis_client
+            self._detach_client_finalizer()
+            self._redis_client = None
+            try:
+                await client.aclose()
+            except Exception as e:
+                # See the sync counterpart: no exc_info, so the traceback does
+                # not keep this index reachable.
+                logger.warning("Failed to close the Redis client being replaced: %s", e)
+
     async def _swap_client(
         self, redis_client: AsyncRedisClient | SyncRedisClient, *, owns: bool
     ):
@@ -2250,9 +2282,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             # already active: closing it would leave this index holding a
             # client it had just closed.
             if validated_client is not self._redis_client:
-                if self._owns_redis_client and self._redis_client is not None:
-                    self._detach_client_finalizer()
-                    await self._redis_client.aclose()
+                await self._release_owned_client_locked()
             self._redis_client = validated_client
             self._owns_redis_client = owns_client
             # A replacement client has not had this index's lib name applied.
