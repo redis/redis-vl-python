@@ -324,9 +324,19 @@ class SemanticRouter(BaseModel):
         """
         return next((route for route in self.routes if route.name == route_name), None)
 
-    def _process_route(self, result: dict[str, Any]) -> RouteMatch:
-        """Process resulting route objects and metadata."""
+    def _process_route(self, result: dict[str, Any]) -> RouteMatch | None:
+        """Process resulting route objects and metadata.
+
+        Returns None for a row missing ``route_name``/``distance`` — e.g. a doc
+        that expired mid-search on Redis 8.8+ (the background-search expiry
+        race) — so the caller can drop it rather than raise a KeyError. Note
+        this is a stricter rule than the core ``process_aggregate_results``,
+        which only drops entirely-empty rows; the router applies it because it
+        knows its exact aggregate schema. The caller aggregates the warning.
+        """
         route_dict = make_dict(convert_bytes(result))
+        if "route_name" not in route_dict or "distance" not in route_dict:
+            return None
         return RouteMatch(
             name=route_dict["route_name"], distance=float(route_dict["distance"])
         )
@@ -409,10 +419,19 @@ class SemanticRouter(BaseModel):
                 )
             raise e
 
-        # process aggregation results into route matches
-        return [
+        # process aggregation results into route matches, dropping any row whose
+        # field payload came back missing (the Redis 8.8+ expiry race)
+        processed = [
             self._process_route(route_match) for route_match in aggregation_result.rows
         ]
+        matches = [match for match in processed if match is not None]
+        if len(matches) != len(processed):
+            logger.warning(
+                "Dropped %d route match(es) with missing field data (likely "
+                "expired during a background search on Redis 8.8+).",
+                len(processed) - len(matches),
+            )
+        return matches
 
     def _classify_route(
         self,

@@ -1,3 +1,3 @@
-from redisvl.index.index import AsyncSearchIndex, SearchIndex
+from redisvl.index.index import AsyncSearchIndex, SearchIndex, SearchResults
 
-__all__ = ["SearchIndex", "AsyncSearchIndex"]
+__all__ = ["SearchIndex", "AsyncSearchIndex", "SearchResults"]
