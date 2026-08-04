@@ -955,8 +955,14 @@ class SearchIndex(BaseSearchIndex):
         # create a client in between, whose finalizer would then be detached by
         # the swap below without anything closing it.
         with self._lock:
-            if client is not self.__redis_client:
-                self._release_owned_client_locked()
+            if client is self.__redis_client:
+                # The factory handed back the client already installed, so its
+                # provenance has not changed and ownership stays as it is.
+                # Claiming it here would let this index close a caller-provided
+                # client. Only reachable with a factory that reuses clients;
+                # Redis.from_url always builds a fresh one.
+                return
+            self._release_owned_client_locked()
             self.__redis_client = client
             # This index created the client, so it owns and must close it. The
             # index may have been holding a caller-provided client until now

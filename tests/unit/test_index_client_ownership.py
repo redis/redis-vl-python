@@ -371,6 +371,31 @@ class TestSwappingInTheSameClient:
         owned.close.assert_called_once()
         other.close.assert_not_called()
 
+    def test_sync_connect_returning_the_active_caller_client_does_not_claim_it(self):
+        """`connect()` normally builds a fresh client, so this branch is only
+        reachable when the connection factory hands back an existing client, for
+        example an application that caches one client per URL. Claiming it would
+        make the index close a client it never created."""
+        caller_client = mock.MagicMock(name="caller_client")
+        schema = IndexSchema.from_dict(SCHEMA_DICT)
+        index = SearchIndex(schema, redis_client=caller_client)
+        assert index._owns_redis_client is False
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+                return_value=caller_client,
+            ):
+                index.connect(redis_url="redis://fake:6379")
+
+        assert index._owns_redis_client is False
+        assert index.client is caller_client
+
+        del index
+        collect()
+        caller_client.close.assert_not_called()
+
     def test_sync_set_client_with_an_unowned_current_client_stays_unowned(self):
         caller_client = mock.MagicMock(name="caller_client")
         schema = IndexSchema.from_dict(SCHEMA_DICT)
