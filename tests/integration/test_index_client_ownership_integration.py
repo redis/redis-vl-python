@@ -113,6 +113,64 @@ class TestSetClientLeavesCallerClientOpen:
         ), "disconnect() closed the caller's async client"
 
 
+class TestConvertedSyncClientIsOwned:
+    """Passing a sync client to an async index does not hand the index the
+    caller's object: `_validate_client` builds a new async client with its own
+    connection pool. That object is RedisVL's, so the index owns it, and closing
+    it must leave the caller's sync client untouched."""
+
+    async def test_converted_wrapper_is_owned_and_closed_without_harming_caller(
+        self, redis_url, schema_dict, client
+    ):
+        index = AsyncSearchIndex.from_dict(schema_dict, redis_url=redis_url)
+        assert await index.exists() is False
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            await index.set_client(client)
+
+        wrapper = index.client
+        assert wrapper is not None
+        # A distinct object with its own pool, not the caller's client.
+        assert wrapper is not client
+        assert wrapper.connection_pool is not client.connection_pool
+        assert index._owns_redis_client is True
+        assert await wrapper.ping() is True
+
+        await index.disconnect()
+
+        assert index.client is None
+        # The caller's client keeps working: closing the wrapper only tore down
+        # the pool RedisVL created.
+        assert client.ping() is True
+
+    async def test_converted_wrapper_closed_when_index_is_collected(
+        self, redis_url, schema_dict, client
+    ):
+        aclose_calls = []
+
+        index = AsyncSearchIndex.from_dict(schema_dict, redis_url=redis_url)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            await index.set_client(client)
+
+        wrapper = index.client
+        original = wrapper.aclose
+
+        async def recording_aclose():
+            aclose_calls.append(1)
+            await original()
+
+        wrapper.aclose = recording_aclose
+
+        del index
+        collect()
+        await asyncio.sleep(0)
+
+        assert aclose_calls == [1], "converted wrapper was not closed on collection"
+        assert client.ping() is True
+
+
 class TestConnectStillOwnsItsClient:
     """The deprecated connect() creates the client, so the index must still
     close it. This guards against over-correcting the ownership fix."""

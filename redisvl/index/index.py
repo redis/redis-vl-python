@@ -950,12 +950,12 @@ class SearchIndex(BaseSearchIndex):
         client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
-        # Release the client this index owned before, if any. Registering a
-        # finalizer for the new client detaches the old client's finalizer, so
-        # without closing it here its connections would leak.
-        if self._owns_redis_client:
-            self.disconnect()
+        # Release the previous client and install the new one under a single
+        # lock hold. Releasing outside the lock would let another thread lazily
+        # create a client in between, whose finalizer would then be detached by
+        # the swap below without anything closing it.
         with self._lock:
+            self._release_owned_client_locked()
             self.__redis_client = client
             # This index created the client, so it owns and must close it. The
             # index may have been holding a caller-provided client until now
@@ -981,20 +981,25 @@ class SearchIndex(BaseSearchIndex):
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.invalidate_sql_schema_cache()
-        # Release the client this index created for itself, if any. Skipped when
-        # the current client is not ours, where disconnect() would do nothing
-        # beyond logging that it is not disconnecting.
-        if self._owns_redis_client:
-            self.disconnect()
-        # Swap the client and its ownership together so no other thread can
-        # observe the new client while ownership still describes the old one.
+        # Release the previous client and install the caller's under a single
+        # lock hold, for the reason described in connect().
         with self._lock:
+            self._release_owned_client_locked()
             self.__redis_client = redis_client
             # The caller owns the client they passed in, so this index must
             # never close it. Matches __init__(redis_client=...) semantics.
             self._owns_redis_client = False
             self._detach_client_finalizer()
         return self
+
+    def _release_owned_client_locked(self) -> None:
+        """Close the current client if this index owns it. Call with ``_lock``
+        held, so releasing and replacing a client cannot interleave with the
+        lazy creation in the ``_redis_client`` property."""
+        if self._owns_redis_client and self.__redis_client is not None:
+            self._detach_client_finalizer()
+            self.__redis_client.close()
+            self.__redis_client = None
 
     def _check_svs_support(self) -> None:
         """Validate SVS-VAMANA support.
@@ -2219,20 +2224,26 @@ class AsyncSearchIndex(BaseSearchIndex):
                 must use False so it is never closed on their behalf.
         """
         validated_client = await self._validate_client(redis_client)
+        # A deprecated sync client is converted into a *new* async client with
+        # its own connection pool, so that object is ours to close even though
+        # the caller supplied the original. The conversion does not share the
+        # caller's pool, so closing it leaves the caller's client working.
+        owns_client = owns or validated_client is not redis_client
         self.invalidate_sql_schema_cache()
-        # Release the client this index created for itself, if any. Skipped when
-        # the current client is not ours, where disconnect() is a no-op.
-        if self._owns_redis_client:
-            await self.disconnect()
-        # Swap the client and its ownership together. Setting ownership outside
-        # the lock would leave a window where another coroutine could see the
-        # new client while ownership still describes the old one, and close a
-        # caller-provided client on that basis.
+        # Release the previous client and install the new one under a single
+        # lock hold. Releasing outside the lock would let another coroutine
+        # lazily create a client in between, whose finalizer would then be
+        # detached by the swap below without anything closing it. Holding the
+        # lock also means ownership is never observable out of step with the
+        # client it describes.
         async with self._lock:
+            if self._owns_redis_client and self._redis_client is not None:
+                self._detach_client_finalizer()
+                await self._redis_client.aclose()
             self._redis_client = validated_client
-            self._owns_redis_client = owns
-            # No-op when owns is False; also detaches any finalizer left over
-            # from a previously owned client.
+            self._owns_redis_client = owns_client
+            # No-op when ownership is False; also detaches any finalizer left
+            # over from a previously owned client.
             self._register_client_finalizer(validated_client)
         return self
 
