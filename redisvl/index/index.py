@@ -955,13 +955,16 @@ class SearchIndex(BaseSearchIndex):
         # create a client in between, whose finalizer would then be detached by
         # the swap below without anything closing it.
         with self._lock:
-            self._release_owned_client_locked()
+            if client is not self.__redis_client:
+                self._release_owned_client_locked()
             self.__redis_client = client
             # This index created the client, so it owns and must close it. The
             # index may have been holding a caller-provided client until now
             # (constructor injection or set_client), in which case ownership
             # has to be taken back or nothing would ever close this one.
             self._owns_redis_client = True
+            # A different client has not had this index's lib name applied yet.
+            self._validated_client = False
             self._register_client_finalizer(client)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
@@ -984,11 +987,17 @@ class SearchIndex(BaseSearchIndex):
         # Release the previous client and install the caller's under a single
         # lock hold, for the reason described in connect().
         with self._lock:
-            self._release_owned_client_locked()
+            # Skip the release when the caller hands back the client already
+            # installed: closing it would leave this index holding a client it
+            # had just closed.
+            if redis_client is not self.__redis_client:
+                self._release_owned_client_locked()
             self.__redis_client = redis_client
             # The caller owns the client they passed in, so this index must
             # never close it. Matches __init__(redis_client=...) semantics.
             self._owns_redis_client = False
+            # A replacement client has not had this index's lib name applied.
+            self._validated_client = False
             self._detach_client_finalizer()
         return self
 
@@ -2237,11 +2246,17 @@ class AsyncSearchIndex(BaseSearchIndex):
         # lock also means ownership is never observable out of step with the
         # client it describes.
         async with self._lock:
-            if self._owns_redis_client and self._redis_client is not None:
-                self._detach_client_finalizer()
-                await self._redis_client.aclose()
+            # Skip the release when the client being installed is the one
+            # already active: closing it would leave this index holding a
+            # client it had just closed.
+            if validated_client is not self._redis_client:
+                if self._owns_redis_client and self._redis_client is not None:
+                    self._detach_client_finalizer()
+                    await self._redis_client.aclose()
             self._redis_client = validated_client
             self._owns_redis_client = owns_client
+            # A replacement client has not had this index's lib name applied.
+            self._validated_client = False
             # No-op when ownership is False; also detaches any finalizer left
             # over from a previously owned client.
             self._register_client_finalizer(validated_client)

@@ -341,6 +341,71 @@ class TestConnectReleasesThePreviousOwnedClient:
         assert index.client is second
 
 
+class TestSwappingInTheSameClient:
+    """Handing back the client the index already holds must not close it.
+    Releasing the old client unconditionally would close the very instance
+    being installed, leaving the index holding a closed client."""
+
+    def test_sync_set_client_with_the_current_client_does_not_close_it(self):
+        owned = mock.MagicMock(name="owned_client")
+        index = sync_index_owning_client(created_client=owned)
+        assert index.client is owned
+
+        set_client_sync(index, owned)
+
+        owned.close.assert_not_called()
+        assert index.client is owned
+        assert index._owns_redis_client is False
+
+    def test_async_set_client_with_the_current_client_does_not_close_it(self):
+        owned = mock.MagicMock(name="owned_async_client")
+        owned.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379"
+            )
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+                new=mock.AsyncMock(return_value=owned),
+            ):
+                assert await index._get_client() is owned
+            await set_client_async(index, owned)
+            return index
+
+        index = asyncio.run(run())
+        owned.aclose.assert_not_awaited()
+        assert index.client is owned
+        assert index._owns_redis_client is False
+
+
+class TestSwapResetsValidation:
+    """A replacement client has not had this index's lib name applied, so the
+    validated flag must clear or the new client keeps the old one's state."""
+
+    def test_sync_set_client_clears_validated_flag(self):
+        index = SearchIndex.from_dict(
+            SCHEMA_DICT, redis_url="redis://fake:6379", lib_name="probe"
+        )
+        index._validated_client = True
+        set_client_sync(index, mock.MagicMock(name="caller_client"))
+        assert index._validated_client is False
+
+    def test_async_set_client_clears_validated_flag(self):
+        async def run():
+            index = AsyncSearchIndex.from_dict(
+                SCHEMA_DICT, redis_url="redis://fake:6379", lib_name="probe"
+            )
+            index._validated_client = True
+            caller = mock.MagicMock(name="caller_async_client")
+            caller.aclose = mock.AsyncMock()
+            await set_client_async(index, caller)
+            return index
+
+        index = asyncio.run(run())
+        assert index._validated_client is False
+
+
 class TestPreviouslyOwnedClientIsReleased:
     """Swapping in a caller's client must not silently abandon a client the
     index created for itself."""
