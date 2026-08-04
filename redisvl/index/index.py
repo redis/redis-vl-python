@@ -950,6 +950,11 @@ class SearchIndex(BaseSearchIndex):
         client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
+        # Release the client this index owned before, if any. Registering a
+        # finalizer for the new client detaches the old client's finalizer, so
+        # without closing it here its connections would leak.
+        if self._owns_redis_client:
+            self.disconnect()
         with self._lock:
             self.__redis_client = client
             # This index created the client, so it owns and must close it. The

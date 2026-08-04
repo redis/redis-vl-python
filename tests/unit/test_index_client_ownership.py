@@ -266,6 +266,81 @@ class TestConnectTakesOwnershipFromAnUnownedState:
         caller_client.aclose.assert_not_awaited()
 
 
+class TestConnectReleasesThePreviousOwnedClient:
+    """connect() replaces the active client. When the index owned the old one,
+    it must be closed: registering a finalizer for the new client detaches the
+    old client's finalizer, so nothing else would ever close it."""
+
+    def test_sync_repeated_connect_closes_the_first_client(self):
+        first = mock.MagicMock(name="first_client")
+        second = mock.MagicMock(name="second_client")
+        index = SearchIndex.from_dict(SCHEMA_DICT)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+                side_effect=[first, second],
+            ):
+                index.connect(redis_url="redis://fake:6379")
+                index.connect(redis_url="redis://fake:6380")
+
+        first.close.assert_called_once()
+        assert index.client is second
+
+        del index
+        collect()
+        second.close.assert_called_once()
+
+    def test_sync_connect_closes_a_lazily_created_client(self):
+        lazy = mock.MagicMock(name="lazy_client")
+        connected = mock.MagicMock(name="connect_client")
+        index = SearchIndex.from_dict(SCHEMA_DICT, redis_url="redis://fake:6379")
+
+        with mock.patch(
+            "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+            return_value=lazy,
+        ):
+            assert index._redis_client is lazy
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with mock.patch(
+                "redisvl.index.index.RedisConnectionFactory.get_redis_connection",
+                return_value=connected,
+            ):
+                index.connect(redis_url="redis://fake:6380")
+
+        lazy.close.assert_called_once()
+
+    def test_async_repeated_connect_closes_the_first_client(self):
+        first = mock.MagicMock(name="first_async_client")
+        first.aclose = mock.AsyncMock()
+        second = mock.MagicMock(name="second_async_client")
+        second.aclose = mock.AsyncMock()
+
+        async def run():
+            index = AsyncSearchIndex.from_dict(SCHEMA_DICT)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with mock.patch(
+                    "redisvl.index.index.RedisConnectionFactory._get_aredis_connection",
+                    new=mock.AsyncMock(side_effect=[first, second]),
+                ):
+                    with mock.patch.object(
+                        AsyncSearchIndex,
+                        "_validate_client",
+                        new=mock.AsyncMock(side_effect=lambda c: c),
+                    ):
+                        await index.connect(redis_url="redis://fake:6379")
+                        await index.connect(redis_url="redis://fake:6380")
+            return index
+
+        index = asyncio.run(run())
+        first.aclose.assert_awaited_once()
+        assert index.client is second
+
+
 class TestPreviouslyOwnedClientIsReleased:
     """Swapping in a caller's client must not silently abandon a client the
     index created for itself."""
