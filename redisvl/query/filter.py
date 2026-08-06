@@ -687,6 +687,8 @@ class Timestamp(Num):
     - Unix timestamps (as integers or floats)
 
     All timestamps are converted to Unix timestamps in UTC for consistency.
+    Bare date values and date-only ISO strings are anchored to the UTC calendar
+    day, not the host's local day, and naive datetimes are read as UTC.
     """
 
     SUPPORTED_TYPES = (
@@ -718,8 +720,12 @@ class Timestamp(Num):
         """
         Convert various inputs to a Unix timestamp (seconds since epoch in UTC).
 
+        Naive datetimes are interpreted as UTC rather than local time.
+
         Args:
             value: A datetime, date, string, int, or float
+            end_date: For a bare date, anchor to the end of that UTC day
+                (23:59:59.999999) instead of the start (00:00:00).
 
         Returns:
             float: Unix timestamp
@@ -764,7 +770,8 @@ class Timestamp(Num):
     ) -> FilterExpression:
         """
         Filter for timestamps equal to the specified value.
-        For date objects (without time), this matches the entire day.
+        For date objects (without time), this matches the entire UTC calendar
+        day, from 00:00:00 to 23:59:59.999999 UTC.
 
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
@@ -789,7 +796,8 @@ class Timestamp(Num):
     ) -> FilterExpression:
         """
         Filter for timestamps not equal to the specified value.
-        For date objects (without time), this excludes the entire day.
+        For date objects (without time), this excludes the entire UTC calendar
+        day, from 00:00:00 to 23:59:59.999999 UTC.
 
         Args:
             other: A datetime, date, ISO string, or Unix timestamp

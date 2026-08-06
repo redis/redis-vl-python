@@ -1,3 +1,4 @@
+import calendar
 import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -410,6 +411,10 @@ def test_timestamp_date():
 
     assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
 
+    # Independent ground truth: 2023-03-17T00:00:00Z / T23:59:59.999999Z.
+    # Hard-coded so this test cannot drift along with the implementation.
+    assert str(ts) == "@created_at:[1679011200.0 1679097599.999999]"
+
 
 def test_timestamp_not_equal_date():
     """Test Timestamp != with date objects (should exclude the full day in UTC)."""
@@ -430,24 +435,45 @@ def test_timestamp_not_equal_date():
 
 
 @pytest.mark.skipif(not hasattr(time_module, "tzset"), reason="tzset() is POSIX-only")
-def test_timestamp_date_bounds_are_utc_regardless_of_local_timezone(monkeypatch):
-    """Date filters resolve to the UTC day, not the host's local day."""
-    d = date(2023, 3, 17)
-    expected_eq = (
-        f"@created_at:"
-        f"[{datetime.combine(d, time.min, tzinfo=timezone.utc).timestamp()} "
-        f"{datetime.combine(d, time.max, tzinfo=timezone.utc).timestamp()}]"
-    )
+@pytest.mark.parametrize(
+    "d",
+    [
+        date(2023, 3, 17),  # ordinary date
+        date(2023, 3, 12),  # US DST spring-forward
+        date(2023, 11, 5),  # US DST fall-back
+        date(1970, 1, 1),  # Unix epoch
+        date(2038, 1, 20),  # past the signed 32-bit rollover
+    ],
+)
+def test_timestamp_date_bounds_are_utc_regardless_of_local_timezone(d, monkeypatch):
+    """Date filters resolve to the UTC day, not the host's local day.
+
+    CI runs in UTC, where the correct and the local-time conversions agree, so
+    this is the only test that would catch a regression to local-day bounds.
+    """
+    # calendar.timegm is a timezone-independent oracle that shares no code with
+    # the conversion path under test.
+    start = float(calendar.timegm(datetime.combine(d, time.min).timetuple()))
+    end = float(calendar.timegm(datetime.combine(d, time.max).timetuple())) + 0.999999
+    expected_eq = f"@created_at:[{start} {end}]"
 
     try:
-        for tz in ("UTC", "America/New_York", "Asia/Tokyo"):
+        # Includes zones with non-hour offsets (+05:45, +12:45/+13:45), which an
+        # hour-granularity mistake would pass.
+        for tz in (
+            "UTC",
+            "America/New_York",
+            "Asia/Tokyo",
+            "Asia/Kathmandu",
+            "Pacific/Chatham",
+        ):
             monkeypatch.setenv("TZ", tz)
             time_module.tzset()
 
             assert str(Timestamp("created_at") == d) == expected_eq
             assert str(Timestamp("created_at") != d) == f"(-{expected_eq})"
             # Date-only ISO strings take the same branch
-            assert str(Timestamp("created_at") == "2023-03-17") == expected_eq
+            assert str(Timestamp("created_at") == d.isoformat()) == expected_eq
     finally:
         # Restore TZ and re-read it, so later tests see the original zone
         monkeypatch.undo()
