@@ -3,7 +3,7 @@ from conftest import _schema
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.filters import parse_filter
-from redisvl.query.filter import FilterExpression
+from redisvl.query.filter import FilterExpression, Text
 
 
 def _render_filter(value):
@@ -148,10 +148,56 @@ def test_parse_filter_escapes_text_values_so_they_cannot_leave_their_clause(
     assert skeleton.count('"') % 2 == 0
 
 
-def test_parse_filter_preserves_wildcards_in_text_like_patterns():
-    parsed = parse_filter(
-        {"field": "content", "op": "like", "value": "quant*"}, _schema()
-    )
+@pytest.mark.parametrize(
+    ("value", "rendered"),
+    [
+        # Each metacharacter that gives a `like` pattern its meaning. Escaping any
+        # of these does not fail loudly -- it turns the pattern into a literal that
+        # matches nothing -- so each is pinned separately.
+        ("quant*", "@content:(quant*)"),
+        ("qu?nt", "@content:(qu?nt)"),
+        # A space is the implicit AND between terms, not padding.
+        ("foo bar", "@content:(foo bar)"),
+        # `%` is fuzzy matching.
+        ("%foo%", "@content:(%foo%)"),
+    ],
+)
+def test_parse_filter_preserves_like_pattern_metacharacters(value, rendered):
+    parsed = parse_filter({"field": "content", "op": "like", "value": value}, _schema())
 
-    # `like` is the pattern operator, so escaping must not neuter `*`.
-    assert _render_filter(parsed) == "@content:(quant*)"
+    assert _render_filter(parsed) == rendered
+
+
+def test_parse_filter_like_matches_library_semantics_for_patterns():
+    """MCP `like` must not diverge from `Text.__mod__` for ordinary patterns."""
+    for value in ["quant*", "foo bar", "%foo%", "qu?nt"]:
+        mcp = _render_filter(
+            parse_filter({"field": "content", "op": "like", "value": value}, _schema())
+        )
+        assert mcp == str(Text("content") % value), f"diverged for {value!r}"
+
+
+def test_parse_filter_like_still_escapes_clause_delimiters():
+    """Preserving pattern metacharacters must not cost containment.
+
+    Containment comes from the delimiters, not from `%`/space: with `(` and `)`
+    escaped the value cannot close its own `@field:(...)`, so a `|` it carries
+    stays scoped to this field. `|` is deliberately checked because no escaper in
+    RedisVL touches it.
+    """
+    parsed = parse_filter(
+        {"field": "content", "op": "like", "value": "alpha) | (-@category:{secret}"},
+        _schema(),
+    )
+    rendered = _render_filter(parsed)
+
+    # The payload's own parens are escaped...
+    assert "\\)" in rendered and "\\(" in rendered
+    # ...so stripping escape pairs leaves a balanced skeleton: nothing the payload
+    # contributed can terminate the clause early.
+    skeleton = _strip_escapes(rendered)
+    assert skeleton.count("(") == skeleton.count(")")
+    # The `|` survives unescaped but is inside the field clause, so it unions
+    # within `content` rather than splitting the whole expression.
+    assert skeleton.index("|") > skeleton.index("(")
+    assert skeleton.index("|") < skeleton.rindex(")")

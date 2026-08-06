@@ -1,3 +1,4 @@
+import re
 from typing import Any, Iterable
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
@@ -12,6 +13,20 @@ from redisvl.utils.token_escaper import TokenEscaper
 # Tag and numeric values are already escaped or type-checked upstream; text is
 # not, so this boundary escapes it before building the expression.
 _TEXT_ESCAPER = TokenEscaper()
+
+# `like` is the pattern operator, so the metacharacters that give a pattern its
+# meaning have to stay live: `*` and `?` for wildcards, `%` for fuzzy matching,
+# and a space for the implicit AND between terms. Escaping those does not fail
+# loudly -- it silently turns a documented pattern into a literal that matches
+# nothing -- so this set is the shared no-wildcard set minus `%` and space.
+#
+# Dropping them costs nothing in containment, because containment comes from the
+# delimiters rather than from these. With `(` and `)` escaped, the value cannot
+# close its own `@field:(...)`, so anything it carries -- including a `|`, which
+# no escaper in RedisVL touches -- stays scoped to this one field instead of
+# reaching the surrounding expression.
+_LIKE_ESCAPED_CHARS = re.compile(r"[,.<>{}\[\]\\\"\':;!@#$^&()\-+=~\/]")
+_LIKE_ESCAPER = TokenEscaper(escape_chars_re=_LIKE_ESCAPED_CHARS)
 
 
 def parse_filter(
@@ -141,9 +156,14 @@ def _parse_tag_expression(field_name: str, op: str, operand: Any) -> FilterExpre
     )
 
 
-def _escape_text(value: str, *, preserve_wildcards: bool = False) -> str:
+def _escape_text(value: str) -> str:
     """Escape a caller-supplied text value so it cannot leave its own clause."""
-    return _TEXT_ESCAPER.escape(value, preserve_wildcards=preserve_wildcards)
+    return _TEXT_ESCAPER.escape(value)
+
+
+def _escape_like_pattern(value: str) -> str:
+    """Escape a `like` pattern, leaving its pattern metacharacters intact."""
+    return _LIKE_ESCAPER.escape(value)
 
 
 def _parse_text_expression(field_name: str, op: str, operand: Any) -> FilterExpression:
@@ -153,10 +173,9 @@ def _parse_text_expression(field_name: str, op: str, operand: Any) -> FilterExpr
     if op == "ne":
         return field != _escape_text(_require_string(operand, field_name, op))
     if op == "like":
-        # `like` is the pattern-matching operator, so `*` and `?` stay live.
-        return field % _escape_text(
-            _require_string(operand, field_name, op), preserve_wildcards=True
-        )
+        # An exact-match value is a literal, but a `like` value is a pattern, so
+        # the two need different escaping -- see `_LIKE_ESCAPED_CHARS`.
+        return field % _escape_like_pattern(_require_string(operand, field_name, op))
     if op == "in":
         return _combine_or(
             [
