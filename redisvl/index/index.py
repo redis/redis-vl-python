@@ -528,10 +528,32 @@ def _page_had_matches(results: Any) -> bool:
 
     Stopping on case 2 silently truncates iteration and discards every remaining
     page. ``SearchResults.dropped_count`` tells the two apart: a page had matches
-    when it either yielded documents or dropped some. ``getattr`` keeps this
-    tolerant of query paths that return a plain ``list`` without the metadata.
+    when it either yielded documents or dropped some.
+
+    Truthiness (not ``len()``) is deliberate, and ``getattr`` is defensive: every
+    query path returns ``SearchResults`` today, but a subclass or test double may
+    substitute a plain ``list``, and ``process_results`` returns a bare ``int``
+    for a ``CountQuery``. Neither should raise here.
     """
-    return bool(len(results) or getattr(results, "dropped_count", 0))
+    return bool(results) or bool(getattr(results, "dropped_count", 0))
+
+
+def _fold_carried_drops(results: Any, carried: int) -> None:
+    """Add drops carried over from skipped pages to this page's ``dropped_count``.
+
+    ``paginate`` never yields an empty batch, so a page whose matches were *all*
+    dropped would otherwise carry its ``dropped_count`` out of the stream and
+    leave the remaining batches reporting ``complete is True`` — the same silent
+    incompleteness the drop accounting exists to surface. Folding the count into
+    the next yielded batch keeps the signal reachable from the batches a caller
+    actually sees, without breaking the non-empty-batch guarantee.
+
+    Note the residual gap: if the *trailing* pages of a result set are entirely
+    dropped there is no subsequent batch to fold into, and those drops are
+    reported only by the ``process_results`` warning.
+    """
+    if carried and isinstance(results, SearchResults):
+        results.dropped_count += carried
 
 
 class BaseSearchIndex:
@@ -1933,7 +1955,7 @@ class SearchIndex(BaseSearchIndex):
                 batch. Defaults to 30.
 
         Yields:
-            A generator yielding batches of search results.
+            A generator yielding non-empty ``SearchResults`` batches.
 
         Raises:
             TypeError: If the page_size argument is not of type int.
@@ -1955,11 +1977,13 @@ class SearchIndex(BaseSearchIndex):
             For stable pagination, the query must have a `sort_by` clause.
 
         Note:
-            Iteration stops when the server reports no further matches, not when
-            a page yields no documents. A page whose matches were all dropped by
-            ``process_results`` (the Redis 8.8+ background-search expiry race) is
-            skipped rather than treated as the end of the result set. Such a page
-            is not yielded, so every yielded batch is non-empty as before.
+            A yielded batch may contain fewer than ``page_size`` documents, and an
+            empty batch is never yielded. On Redis 8+ a matched document whose
+            data expires while the search is running is skipped; each batch
+            reports how many were skipped via ``dropped_count`` (and
+            ``complete``), including skips inherited from a page that was dropped
+            in its entirety. Pagination still runs to the end of the result set in
+            that case.
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be an integer")
@@ -1967,17 +1991,29 @@ class SearchIndex(BaseSearchIndex):
         if page_size <= 0:
             raise ValueError("page_size must be greater than 0")
 
+        if isinstance(query, CountQuery):
+            raise TypeError(
+                "CountQuery cannot be paginated: it returns a match count rather "
+                "than documents. Use index.query(query) instead."
+            )
+
         offset = 0
+        carried_drops = 0
         while True:
             query.paging(offset, page_size)
             results = self._query(query)
             if not _page_had_matches(results):
                 break
             if results:
+                _fold_carried_drops(results, carried_drops)
+                carried_drops = 0
                 yield results
-            # Increment the offset for the next batch of pagination. This happens
-            # unconditionally -- including when every match on this page was
-            # dropped -- so a page we cannot materialize can never wedge the loop.
+            else:
+                # Whole page dropped: keep its count so it reaches the caller on
+                # the next yielded batch instead of vanishing with the page.
+                carried_drops += getattr(results, "dropped_count", 0)
+            # Advance unconditionally, so a page we cannot materialize can never
+            # wedge the loop.
             offset += page_size
 
     def listall(self) -> list[str]:
@@ -3161,7 +3197,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 batch. Defaults to 30.
 
         Yields:
-            An async generator yielding batches of search results.
+            An async generator yielding non-empty ``SearchResults`` batches.
 
         Raises:
             TypeError: If the page_size argument is not of type int.
@@ -3183,11 +3219,13 @@ class AsyncSearchIndex(BaseSearchIndex):
             For stable pagination, the query must have a `sort_by` clause.
 
         Note:
-            Iteration stops when the server reports no further matches, not when
-            a page yields no documents. A page whose matches were all dropped by
-            ``process_results`` (the Redis 8.8+ background-search expiry race) is
-            skipped rather than treated as the end of the result set. Such a page
-            is not yielded, so every yielded batch is non-empty as before.
+            A yielded batch may contain fewer than ``page_size`` documents, and an
+            empty batch is never yielded. On Redis 8+ a matched document whose
+            data expires while the search is running is skipped; each batch
+            reports how many were skipped via ``dropped_count`` (and
+            ``complete``), including skips inherited from a page that was dropped
+            in its entirety. Pagination still runs to the end of the result set in
+            that case.
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be of type int")
@@ -3195,17 +3233,29 @@ class AsyncSearchIndex(BaseSearchIndex):
         if page_size <= 0:
             raise ValueError("page_size must be greater than 0")
 
+        if isinstance(query, CountQuery):
+            raise TypeError(
+                "CountQuery cannot be paginated: it returns a match count rather "
+                "than documents. Use index.query(query) instead."
+            )
+
         first = 0
+        carried_drops = 0
         while True:
             query.paging(first, page_size)
             results = await self._query(query)
             if not _page_had_matches(results):
                 break
             if results:
+                _fold_carried_drops(results, carried_drops)
+                carried_drops = 0
                 yield results
-            # Advance unconditionally -- including when every match on this page
-            # was dropped -- so a page we cannot materialize can never wedge the
-            # loop.
+            else:
+                # Whole page dropped: keep its count so it reaches the caller on
+                # the next yielded batch instead of vanishing with the page.
+                carried_drops += getattr(results, "dropped_count", 0)
+            # Advance unconditionally, so a page we cannot materialize can never
+            # wedge the loop.
             first += page_size
 
     async def listall(self) -> list[str]:
