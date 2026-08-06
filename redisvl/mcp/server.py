@@ -16,6 +16,10 @@ from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.mcp.runtime import BindingRuntime
 from redisvl.mcp.settings import MCPSettings
 from redisvl.mcp.tools.list_indexes import register_list_indexes_tool
+from redisvl.mcp.tools.profiles import (
+    register_profile_tools,
+    validate_profile_against_schema,
+)
 from redisvl.mcp.tools.search import register_search_tool
 from redisvl.mcp.tools.upsert import register_upsert_tool
 from redisvl.mcp.transport_security import (
@@ -68,6 +72,7 @@ class RedisVLMCPServer(FastMCP):
         self._bindings: dict[str, BindingRuntime] = {}
         self._semaphore: asyncio.Semaphore | None = None
         self._tools_registered = False
+        self._registered_tool_fingerprint = ""
 
         # Lifecycle management
         self._lifecycle_state = _LifecycleState.INITIAL  # Server lifecycle
@@ -270,9 +275,54 @@ class RedisVLMCPServer(FastMCP):
 
         return hasattr(client.ft(index.schema.index.name), "hybrid_search")
 
+    def _validate_custom_tools(self) -> None:
+        """Fail startup on profiles that do not fit their bound index schema.
+
+        Config load already checked naming, parameter policy, and that a pinned
+        index exists. What it could not check is the schema, which is only known
+        once the binding has been inspected -- so a locked projection or filter
+        naming a missing field is caught here rather than silently matching
+        nothing at request time.
+        """
+        config = getattr(self, "config", None)
+        if config is None or not config.custom_tools:
+            return
+
+        for profile in config.custom_tools:
+            binding_id = config.resolved_profile_index(profile)
+            runtime = self._bindings[binding_id]
+            validate_profile_against_schema(profile, runtime.schema)
+
+    @staticmethod
+    def _tool_surface_fingerprint(config: Any) -> str:
+        """Summarize the config that a registered tool set baked in."""
+        if config is None:
+            return ""
+        return repr(
+            (
+                sorted(config.server.builtin_tools.items()),
+                [profile.model_dump(mode="json") for profile in config.custom_tools],
+            )
+        )
+
     def _register_tools(self) -> None:
         """Register MCP tools once every binding is ready."""
         if self._tools_registered or not hasattr(self, "tool"):
+            # Built-in tool closures resolve their binding per call, so they
+            # survive a restart. Profiles do not: their locked filter, projection,
+            # and signature are fixed at registration. A restart that reloads a
+            # *changed* config would therefore keep enforcing the old profiles,
+            # and the dangerous direction is an operator tightening a lock and
+            # believing the restart applied it.
+            if self._tools_registered:
+                current = self._tool_surface_fingerprint(getattr(self, "config", None))
+                if current != self._registered_tool_fingerprint:
+                    logger.warning(
+                        "MCP custom tool configuration changed since tools were "
+                        "registered, but tools register once per process. The "
+                        "previously registered profiles are still in effect; "
+                        "restart the process to apply the new configuration."
+                    )
             return
 
         # The search description advertises schema-specific filter hints, which
@@ -282,9 +332,9 @@ class RedisVLMCPServer(FastMCP):
         if len(self._bindings) == 1:
             search_schema = next(iter(self._bindings.values())).schema
 
-        # An operator can turn off a built-in whose capability the server should
-        # not offer at all -- a read-only deployment, or one that should not
-        # advertise discovery.
+        # An operator can disable a built-in whose curated profiles supersede it;
+        # adding near-duplicate tools otherwise degrades the model's ability to
+        # pick the right one.
         config = getattr(self, "config", None)
         enabled = (
             config.server.builtin_tool_enabled
@@ -294,7 +344,8 @@ class RedisVLMCPServer(FastMCP):
 
         registered: list[str] = []
 
-        # Discovery is on by default so clients can enumerate indexes.
+        # Discovery is on by default so clients can enumerate indexes; an
+        # operator serving only curated profiles may still turn it off.
         if enabled("list-indexes"):
             register_list_indexes_tool(self)
             registered.append("list-indexes")
@@ -310,8 +361,10 @@ class RedisVLMCPServer(FastMCP):
         ):
             register_upsert_tool(self)
             registered.append("upsert-records")
+        registered.extend(register_profile_tools(self))
 
         self._warn_on_unusable_tool_surface(registered)
+        self._registered_tool_fingerprint = self._tool_surface_fingerprint(config)
         self._tools_registered = True
 
     def _warn_on_unusable_tool_surface(self, registered: list[str]) -> None:
@@ -327,7 +380,8 @@ class RedisVLMCPServer(FastMCP):
             # `builtin_tools` disabled it.
             logger.warning(
                 "MCP server registered no tools, so clients will see an empty "
-                "tool list. Check server.builtin_tools and read-only settings."
+                "tool list. Check server.builtin_tools, custom_tools, and "
+                "read-only settings."
             )
             return
 
@@ -492,6 +546,9 @@ class RedisVLMCPServer(FastMCP):
             self._bindings[binding_id] = await self._initialize_binding(
                 binding_id, binding
             )
+        # Validate before registering so a bad profile fails startup rather than
+        # leaving a half-registered tool set behind.
+        self._validate_custom_tools()
         self._register_tools()
 
     async def _initialize_binding(

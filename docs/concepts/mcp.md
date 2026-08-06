@@ -86,7 +86,7 @@ MCP-reserved score metadata field names for the configured search mode.
 
 ## Read-Only and Read-Write Modes
 
-RedisVL MCP registers `search-records` and `list-indexes` by default (see [Tool Surface](#tool-surface) for turning a built-in off deliberately).
+RedisVL MCP registers `search-records` and `list-indexes` by default (see [Custom Tool Profiles](#custom-tool-profiles) for turning a built-in off deliberately).
 
 Write availability is enforced at two levels:
 
@@ -105,13 +105,13 @@ For configuration and the gateway boundary, see {doc}`/user_guide/how_to_guides/
 
 ## Tool Surface
 
-RedisVL MCP exposes up to three built-in tools:
+RedisVL MCP exposes up to three built-in tools, plus any configured [custom tool profiles](#custom-tool-profiles):
 
 - `list-indexes` enumerates the configured logical indexes for discovery
 - `search-records` searches a selected index using that index's server-owned search mode
 - `upsert-records` validates and upserts records into a selected writable index, embedding them only when that capability is configured
 
-Any of the three can be turned off with `server.builtin_tools` — useful for a server that should only ever read, or one that should not advertise discovery:
+Any of the three can be turned off with `server.builtin_tools`, independently of whether custom tools are configured — useful for a server that should only ever read, or one that serves nothing but curated profiles:
 
 ```yaml
 server:
@@ -121,7 +121,7 @@ server:
 
 Only the three names above are accepted; anything else fails at startup rather than being silently ignored. A server whose tool set ends up unusable — no tools at all, or discovery disabled on a multi-index server, where clients cannot learn the logical index ids `search-records` requires — logs a warning at startup.
 
-These tools follow a stable contract:
+These built-in tools follow a stable contract (profiles differ where noted in [Custom Tool Profiles](#custom-tool-profiles) — notably they accept the object filter form only):
 
 - request validation happens before query or write execution
 - the resolved logical `index` is echoed in every `search-records` and `upsert-records` response
@@ -144,6 +144,49 @@ The discovery payload is deliberately minimal:
 - the underlying Redis index name (`redis_name`) is **never** exposed
 - the vector field and the configured embed-source text field are **omitted** from `fields`, since they are implementation inputs rather than fields a client filters on
 - `limits` shows only explicitly set values (such as `max_limit` or `max_upsert_records`); defaults are not echoed
+
+## Custom Tool Profiles
+
+The built-in tools expose the index generically, which leaves the model doing query engineering on every call: pick the index, understand the schema, build a filter, choose return fields. A **profile** moves those decisions into config. It is `search-records` with some arguments pre-filled and frozen and the rest still exposed, published under a name and description of your choosing.
+
+Profiles are pure configuration. You add a `custom_tools` entry to the same YAML the server already loads and restart it; there is no Python to write.
+
+```yaml
+custom_tools:
+  - name: search-support-tickets
+    based_on: search-records
+    index: support_tickets
+    description: >
+      Search historical customer support tickets by semantic similarity.
+      Use this to find prior resolutions for a customer problem.
+    lock:
+      return_fields: [subject, resolution, created_at]
+      filter: { field: status, op: eq, value: resolved }
+    params:
+      limit: { expose: true, max: 20 }
+      filter: { expose: true }
+```
+
+`lock` holds what the author decides; `params` holds what the model may still pass. Anything not listed in `params` stays exposed, so a profile that only locks a filter keeps the rest of the built-in's contract. `index` is pinned by the top-level `index:` key rather than exposed as a param, and may be omitted only when exactly one index is configured.
+
+`params.limit.max` bounds the result count. It applies whether the model names a limit or leaves it out — an omitted limit is capped rather than falling through to the binding's default. An explicit request above the cap is rejected. When `limit` is hidden (`expose: false`), the cap becomes the fixed result count instead. The cap must not exceed the binding's own `runtime.max_limit`, which is checked at startup. Note that it bounds page size, not total reachable data: `offset` is a separate argument, so paging is still possible up to the binding's `max_result_window`.
+
+`suppress_schema_hints: true` drops the auto-generated field hints from the tool description. Those hints enumerate filterable and returnable fields, which is noise once those arguments are locked — and by default they are appended only for arguments the model can still use.
+
+Two things about filters are easy to conflate:
+
+- `lock.filter` is an ordinary expression in the JSON filter DSL. Its `and`/`or`/`not` operators describe the locked filter's own content.
+- How the locked filter combines with a model-supplied one is fixed and not configurable: the executed query is always `locked AND caller`. A compound model-supplied expression renders parenthesized, so its `or`/`not` nests *inside* the locked AND and cannot reach the top level — the model can only narrow within the locked scope and never widen past it.
+
+For that reason a profile accepts only the **object** form of a filter from the model. A raw filter string is rejected both by the advertised schema and by the tool itself, because strings bypass the DSL's field validation and have no safe composition with a locked expression.
+
+Structure is only half of it: the nesting guarantee holds only while every filter *value* stays inside its own clause. Text values are escaped at the filter boundary for that reason — unescaped, a value containing a quote or a parenthesis could close its clause and inject query syntax after it, including a `|` that escapes the surrounding AND. Tag values are escaped and numeric values are type-checked. A caller filter that still renders as something able to break out is refused rather than combined.
+
+Profiles resolve to a built-in call and nothing more, so they inherit the concurrency cap, request timeout, read-only policy, auth scoping, and error mapping already applied to `search-records`.
+
+Because adding near-duplicate tools makes tool selection harder rather than easier, built-ins that curated profiles supersede can be turned off with `server.builtin_tools` (see [Tool Surface](#tool-surface)).
+
+Misconfiguration fails at startup rather than at the first call. Among the checks: a name colliding with a built-in or using a reserved `redisvl-`/`redisvl_` prefix; a duplicate tool name; a missing or unknown `index`; a `params` key that is not a real argument; `max` on anything but `limit`, or a cap above the binding's `max_limit`; hiding `query`; locking `return_fields` while also exposing them; and a locked filter or projection naming a field the bound index does not have. Unrecognized keys are rejected too, so a typo in `lock` fails loudly instead of silently producing a tool that reads as locked but enforces nothing.
 
 ## Why Use MCP Instead of Direct RedisVL Calls
 
