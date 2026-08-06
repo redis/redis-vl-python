@@ -93,8 +93,7 @@ class Migrate:
         else:
             print("  (none found)")
 
-        print(
-            """\nSupported changes:
+        print("""\nSupported changes:
   - Adding or removing non-vector fields (text, tag, numeric, geo)
   - Changing field options (sortable, separator, weight)
   - Changing vector algorithm (FLAT, HNSW, SVS-VAMANA)
@@ -115,8 +114,7 @@ Commands:
   rvl migrate apply --plan <plan.yaml>
   rvl migrate validate --plan <plan.yaml>
 
-  Tip: use 'rvl index listall' to see available indexes."""
-        )
+  Tip: use 'rvl index listall' to see available indexes.""")
 
     def wizard(self):
         parser = argparse.ArgumentParser(
@@ -655,11 +653,9 @@ Commands:
         import os
 
         abs_path = os.path.abspath(plan_out)
-        print(
-            f"""Migration plan written to {abs_path}
+        print(f"""Migration plan written to {abs_path}
 Mode: {plan.mode}
-Supported: {plan.diff_classification.supported}"""
-        )
+Supported: {plan.diff_classification.supported}""")
         if plan.warnings:
             print("Warnings:")
             for warning in plan.warnings:
@@ -669,13 +665,11 @@ Supported: {plan.diff_classification.supported}"""
             for reason in plan.diff_classification.blocked_reasons:
                 print(f"- {reason}")
 
-        print(
-            f"""\nNext steps:
+        print(f"""\nNext steps:
   Review the plan:     cat {plan_out}
   Apply the migration: rvl migrate apply --plan {plan_out}
   Validate the result: rvl migrate validate --plan {plan_out}
-  To cancel:           rm {plan_out}"""
-        )
+  To cancel:           rm {plan_out}""")
 
     def _print_report_summary(
         self,
@@ -683,14 +677,12 @@ Supported: {plan.diff_classification.supported}"""
         report,
         benchmark_out: Optional[str],
     ) -> None:
-        print(
-            f"""Migration report written to {report_out}
+        print(f"""Migration report written to {report_out}
 Result: {report.result}
 Schema match: {report.validation.schema_match}
 Doc count match: {report.validation.doc_count_match}
 Key sample exists: {report.validation.key_sample_exists}
-Indexing failures delta: {report.validation.indexing_failures_delta}"""
-        )
+Indexing failures delta: {report.validation.indexing_failures_delta}""")
         if report.validation.errors:
             print("Errors:")
             for error in report.validation.errors:
@@ -954,8 +946,7 @@ Indexing failures delta: {report.validation.indexing_failures_delta}"""
         state_data = load_yaml(args.state)
         state = BatchState.model_validate(state_data)
 
-        print(
-            f"""Batch ID: {state.batch_id}
+        print(f"""Batch ID: {state.batch_id}
 Started at: {state.started_at}
 Updated at: {state.updated_at}
 Backup directory: {state.backup_dir or "(none)"}
@@ -964,8 +955,7 @@ Remaining: {len(state.remaining)}
 Completed: {len(state.completed)}
   - Succeeded: {state.success_count}
   - Failed: {state.failed_count}
-  - Skipped: {state.skipped_count}"""
-        )
+  - Skipped: {state.skipped_count}""")
 
         if state.completed:
             print("\nCompleted indexes:")
@@ -992,16 +982,14 @@ Completed: {len(state.completed)}
         import os
 
         abs_path = os.path.abspath(plan_out)
-        print(
-            f"""Batch plan written to {abs_path}
+        print(f"""Batch plan written to {abs_path}
 Batch ID: {batch_plan.batch_id}
 Mode: {batch_plan.mode}
 Failure policy: {batch_plan.failure_policy}
 Requires quantization: {batch_plan.requires_quantization}
 Total indexes: {len(batch_plan.indexes)}
   - Applicable: {batch_plan.applicable_count}
-  - Skipped: {batch_plan.skipped_count}"""
-        )
+  - Skipped: {batch_plan.skipped_count}""")
 
         if batch_plan.skipped_count > 0:
             print("\nSkipped indexes:")
@@ -1009,28 +997,24 @@ Total indexes: {len(batch_plan.indexes)}
                 if not idx.applicable:
                     print(f"  - {idx.name}: {idx.skip_reason}")
 
-        print(
-            f"""
+        print(f"""
 Next steps:
   Review the plan:      cat {plan_out}
-  Apply the migration:  rvl migrate batch-apply --plan {plan_out}"""
-        )
+  Apply the migration:  rvl migrate batch-apply --plan {plan_out}""")
 
         if batch_plan.requires_quantization:
             print("                       (add --accept-data-loss for quantization)")
 
     def _print_batch_report_summary(self, report) -> None:
         """Print summary after batch migration completes."""
-        print(
-            f"""
+        print(f"""
 Batch migration {report.status}
 Batch ID: {report.batch_id}
 Duration: {report.summary.total_duration_seconds}s
 Total: {report.summary.total_indexes}
   - Succeeded: {report.summary.successful}
   - Failed: {report.summary.failed}
-  - Skipped: {report.summary.skipped}"""
-        )
+  - Skipped: {report.summary.skipped}""")
 
         if report.summary.failed > 0:
             print("\nFailed indexes:")

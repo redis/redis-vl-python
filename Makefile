@@ -22,11 +22,11 @@ redis-stop: ## Stop Redis Docker container
 format: ## Format code with isort and black
 	@echo "🎨 Formatting code"
 	uv run isort ./redisvl ./tests/ --profile black
-	uv run black ./redisvl ./tests/
+	uv run black --target-version py311 ./redisvl ./tests/
 
 check-format: ## Check code formatting
 	@echo "🔍 Checking code formatting"
-	uv run black --check ./redisvl
+	uv run black --target-version py311 --check ./redisvl
 
 sort-imports: ## Sort imports with isort
 	@echo "📦 Sorting imports"

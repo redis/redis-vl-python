@@ -82,10 +82,8 @@ class VoyageAIReranker(BaseReranker):
         try:
             from voyageai import AsyncClient, Client
         except ImportError:
-            raise ImportError(
-                "VoyageAI reranker requires the voyageai library. \
-                    Please install with `pip install voyageai`"
-            )
+            raise ImportError("VoyageAI reranker requires the voyageai library. \
+                    Please install with `pip install voyageai`")
 
         # Fetch the API key from api_config or environment variable
         api_key = (
