@@ -62,15 +62,20 @@ test-all: ## Run all tests including API tests
 # call can silently add half an hour to CI. Cap it: no legitimate cell is slow.
 NBVAL_CELL_TIMEOUT ?= 60
 
+# Every cell in this notebook is NBVAL_SKIP -- it needs a hosted LangCache cache
+# ID and API key -- so collecting it only starts a kernel to validate nothing.
+# Drop the ignore if any of its cells ever become runnable in CI.
+NBVAL_IGNORE = --ignore=./docs/user_guide/13_langcache_semantic_cache.ipynb
+
 test-notebooks: ## Run notebook tests
 	@echo "📓 Running notebook tests"
 	@echo "🔍 Checking Redis version..."
 	@if uv run python -c "import redis; from redisvl.redis.connection import supports_svs; client = redis.Redis.from_url('redis://localhost:6379'); exit(0 if supports_svs(client) else 1)" 2>/dev/null; then \
 		echo "✅ Redis 8.2.0+ detected - running all notebooks"; \
-		uv run python -m pytest --nbval-lax --nbval-cell-timeout=$(NBVAL_CELL_TIMEOUT) ./docs/user_guide -vvv $(ARGS); \
+		uv run python -m pytest --nbval-lax --nbval-cell-timeout=$(NBVAL_CELL_TIMEOUT) ./docs/user_guide -vvv $(NBVAL_IGNORE) $(ARGS); \
 	else \
 		echo "⚠️ Redis < 8.2.0 detected - skipping SVS notebook"; \
-		uv run python -m pytest --nbval-lax --nbval-cell-timeout=$(NBVAL_CELL_TIMEOUT) ./docs/user_guide -vvv --ignore=./docs/user_guide/09_svs_vamana.ipynb $(ARGS); \
+		uv run python -m pytest --nbval-lax --nbval-cell-timeout=$(NBVAL_CELL_TIMEOUT) ./docs/user_guide -vvv $(NBVAL_IGNORE) --ignore=./docs/user_guide/09_svs_vamana.ipynb $(ARGS); \
 	fi
 
 check: lint test ## Run all checks (lint + test)
