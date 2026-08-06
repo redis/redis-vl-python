@@ -602,10 +602,10 @@ async def search_records(
     response so multi-index clients can confirm routing.
 
     ``locked_filter`` and ``limit_cap`` are server-supplied and never reach the
-    model: they are how a caller in-process pins an author-locked expression and
-    result ceiling onto this tool. The filter is AND-combined with ``filter`` so
-    a caller can only narrow within it, and the cap bounds the effective limit
-    whether the caller named one or fell through to the binding default.
+    model: custom tool profiles pass an author-locked expression and result
+    ceiling here. The filter is AND-combined with ``filter`` so a caller can only
+    narrow within it, and the cap bounds the effective limit whether the caller
+    named one or fell through to the binding default.
     """
     try:
         rt = server.resolve_binding(index)
