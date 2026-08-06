@@ -1,3 +1,4 @@
+import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
@@ -400,27 +401,23 @@ def test_timestamp_datetime():
 
 
 def test_timestamp_date():
-    """Test Timestamp filter with date objects (should match full day)."""
+    """Test Timestamp filter with date objects (should match full day in UTC)."""
     d = date(2023, 3, 17)
     ts = Timestamp("created_at") == d
 
-    expected_ts_start = (
-        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
-    )
-    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+    expected_ts_start = datetime.combine(d, time.min, tzinfo=timezone.utc).timestamp()
+    expected_ts_end = datetime.combine(d, time.max, tzinfo=timezone.utc).timestamp()
 
     assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
 
 
 def test_timestamp_not_equal_date():
-    """Test Timestamp != with date objects (should exclude the full day)."""
+    """Test Timestamp != with date objects (should exclude the full day in UTC)."""
     d = date(2023, 3, 17)
     ts = Timestamp("created_at") != d
 
-    expected_ts_start = (
-        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
-    )
-    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+    expected_ts_start = datetime.combine(d, time.min, tzinfo=timezone.utc).timestamp()
+    expected_ts_end = datetime.combine(d, time.max, tzinfo=timezone.utc).timestamp()
 
     assert str(ts) == f"(-@created_at:[{expected_ts_start} {expected_ts_end}])"
 
@@ -432,15 +429,38 @@ def test_timestamp_not_equal_date():
     assert str(Timestamp("created_at") != "2023-03-17") == str(ts)
 
 
+@pytest.mark.skipif(not hasattr(time_module, "tzset"), reason="tzset() is POSIX-only")
+def test_timestamp_date_bounds_are_utc_regardless_of_local_timezone(monkeypatch):
+    """Date filters resolve to the UTC day, not the host's local day."""
+    d = date(2023, 3, 17)
+    expected_eq = (
+        f"@created_at:"
+        f"[{datetime.combine(d, time.min, tzinfo=timezone.utc).timestamp()} "
+        f"{datetime.combine(d, time.max, tzinfo=timezone.utc).timestamp()}]"
+    )
+
+    try:
+        for tz in ("UTC", "America/New_York", "Asia/Tokyo"):
+            monkeypatch.setenv("TZ", tz)
+            time_module.tzset()
+
+            assert str(Timestamp("created_at") == d) == expected_eq
+            assert str(Timestamp("created_at") != d) == f"(-{expected_eq})"
+            # Date-only ISO strings take the same branch
+            assert str(Timestamp("created_at") == "2023-03-17") == expected_eq
+    finally:
+        # Restore TZ and re-read it, so later tests see the original zone
+        monkeypatch.undo()
+        time_module.tzset()
+
+
 def test_timestamp_iso_string():
     """Test Timestamp filter with ISO format strings."""
     # Date-only ISO string
     ts = Timestamp("created_at") == "2023-03-17"
     d = date(2023, 3, 17)
-    expected_ts_start = (
-        datetime.combine(d, time.min).astimezone(timezone.utc).timestamp()
-    )
-    expected_ts_end = datetime.combine(d, time.max).astimezone(timezone.utc).timestamp()
+    expected_ts_start = datetime.combine(d, time.min, tzinfo=timezone.utc).timestamp()
+    expected_ts_end = datetime.combine(d, time.max, tzinfo=timezone.utc).timestamp()
     assert str(ts) == f"@created_at:[{expected_ts_start} {expected_ts_end}]"
 
     # Full ISO datetime string

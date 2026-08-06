@@ -773,17 +773,12 @@ class Timestamp(Num):
             self: The filter object for method chaining
         """
         if self._is_date(other):
-            # For date objects, match the entire day
+            # For date objects, match the entire day. Passing the date itself
+            # lets _convert_to_timestamp derive the UTC day bounds.
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
             assert isinstance(other, datetime.date)  # validate for mypy
-            start = datetime.datetime.combine(other, datetime.time.min).astimezone(
-                datetime.timezone.utc
-            )
-            end = datetime.datetime.combine(other, datetime.time.max).astimezone(
-                datetime.timezone.utc
-            )
-            return self.between(start, end)
+            return self.between(other, other)
 
         timestamp = self._convert_to_timestamp(other)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.EQ)
@@ -808,14 +803,8 @@ class Timestamp(Num):
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
             assert isinstance(other, datetime.date)  # validate for mypy
-            start = datetime.datetime.combine(other, datetime.time.min).astimezone(
-                datetime.timezone.utc
-            )
-            end = datetime.datetime.combine(other, datetime.time.max).astimezone(
-                datetime.timezone.utc
-            )
-            start_ts = self._convert_to_timestamp(start)
-            end_ts = self._convert_to_timestamp(end, end_date=True)
+            start_ts = self._convert_to_timestamp(other)
+            end_ts = self._convert_to_timestamp(other, end_date=True)
             return FilterExpression(
                 self.OPERATOR_MAP[FilterOperator.NE] % (self._field, start_ts, end_ts)
             )
