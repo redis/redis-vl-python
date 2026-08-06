@@ -803,13 +803,22 @@ class Timestamp(Num):
             self: The filter object for method chaining
         """
         if self._is_date(other):
-            # For date objects, exclude the entire day
+            # For date objects, exclude the entire day by negating exactly the
+            # range that __eq__ matches.
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
             assert isinstance(other, datetime.date)  # validate for mypy
-            start = datetime.datetime.combine(other, datetime.time.min)
-            end = datetime.datetime.combine(other, datetime.time.max)
-            return self.between(start, end)
+            start = datetime.datetime.combine(other, datetime.time.min).astimezone(
+                datetime.timezone.utc
+            )
+            end = datetime.datetime.combine(other, datetime.time.max).astimezone(
+                datetime.timezone.utc
+            )
+            start_ts = self._convert_to_timestamp(start)
+            end_ts = self._convert_to_timestamp(end, end_date=True)
+            return FilterExpression(
+                self.OPERATOR_MAP[FilterOperator.NE] % (self._field, start_ts, end_ts)
+            )
 
         timestamp = self._convert_to_timestamp(other)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.NE)
