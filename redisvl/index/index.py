@@ -515,6 +515,25 @@ def _convert_and_drop_empty_rows(rows: Any, source: str) -> list[dict[str, Any]]
     return SearchResults(kept, dropped_count=dropped)
 
 
+def _page_had_matches(results: Any) -> bool:
+    """Whether the server reported any match for one page of paginated results.
+
+    ``paginate`` must not treat "empty page" as "result set exhausted". A page
+    comes back empty for two very different reasons:
+
+    1. the server reported no more matches — iteration is genuinely done;
+    2. the server reported matches whose field payload could not be
+       materialized, so ``process_results`` dropped them (the Redis 8.8+
+       background-WORKERS TTL/expiry race, see ``_has_missing_field_payload``).
+
+    Stopping on case 2 silently truncates iteration and discards every remaining
+    page. ``SearchResults.dropped_count`` tells the two apart: a page had matches
+    when it either yielded documents or dropped some. ``getattr`` keeps this
+    tolerant of query paths that return a plain ``list`` without the metadata.
+    """
+    return bool(len(results) or getattr(results, "dropped_count", 0))
+
+
 class BaseSearchIndex:
     """Base search engine class"""
 
@@ -1935,6 +1954,12 @@ class SearchIndex(BaseSearchIndex):
         Note:
             For stable pagination, the query must have a `sort_by` clause.
 
+        Note:
+            Iteration stops when the server reports no further matches, not when
+            a page yields no documents. A page whose matches were all dropped by
+            ``process_results`` (the Redis 8.8+ background-search expiry race) is
+            skipped rather than treated as the end of the result set. Such a page
+            is not yielded, so every yielded batch is non-empty as before.
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be an integer")
@@ -1946,10 +1971,13 @@ class SearchIndex(BaseSearchIndex):
         while True:
             query.paging(offset, page_size)
             results = self._query(query)
-            if not results:
+            if not _page_had_matches(results):
                 break
-            yield results
-            # Increment the offset for the next batch of pagination
+            if results:
+                yield results
+            # Increment the offset for the next batch of pagination. This happens
+            # unconditionally -- including when every match on this page was
+            # dropped -- so a page we cannot materialize can never wedge the loop.
             offset += page_size
 
     def listall(self) -> list[str]:
@@ -3154,6 +3182,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         Note:
             For stable pagination, the query must have a `sort_by` clause.
 
+        Note:
+            Iteration stops when the server reports no further matches, not when
+            a page yields no documents. A page whose matches were all dropped by
+            ``process_results`` (the Redis 8.8+ background-search expiry race) is
+            skipped rather than treated as the end of the result set. Such a page
+            is not yielded, so every yielded batch is non-empty as before.
         """
         if not isinstance(page_size, int):
             raise TypeError("page_size must be of type int")
@@ -3165,9 +3199,13 @@ class AsyncSearchIndex(BaseSearchIndex):
         while True:
             query.paging(first, page_size)
             results = await self._query(query)
-            if not results:
+            if not _page_had_matches(results):
                 break
-            yield results
+            if results:
+                yield results
+            # Advance unconditionally -- including when every match on this page
+            # was dropped -- so a page we cannot materialize can never wedge the
+            # loop.
             first += page_size
 
     async def listall(self) -> list[str]:
