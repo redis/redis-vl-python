@@ -850,3 +850,37 @@ def test_build_search_tool_description_distinguishes_typed_and_exists_support():
         in description
     )
     assert "Allowed return_fields: content, category, rating, location." in description
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("search_type", ["vector", "fulltext"])
+async def test_default_projection_always_produces_a_return_clause(
+    monkeypatch, search_type
+):
+    """A query with no RETURN clause returns every stored field, vector included.
+
+    The default projection is every *non-vector* field, so on an index with no
+    other fields it is empty -- and an empty `return_fields` is falsy, which makes
+    RedisVL omit RETURN entirely. `VectorQuery` self-adds `vector_distance` so it
+    is safe; `TextQuery` does not, which is why config validation refuses to point
+    `text_field_name` at a vector field. This pins the resulting invariant: no
+    search path may build a query without a RETURN clause.
+    """
+    server = FakeServer(search_type=search_type)
+    built = []
+
+    monkeypatch.setattr(
+        "redisvl.mcp.tools.search.VectorQuery",
+        lambda **kw: built.append(kw) or FakeQuery(**kw),
+    )
+    monkeypatch.setattr(
+        "redisvl.mcp.tools.search.TextQuery",
+        lambda **kw: built.append(kw) or FakeQuery(**kw),
+    )
+
+    await search_records(server, query="science")
+
+    assert built, "no query was built"
+    # Non-empty is what makes RedisVL emit RETURN; empty would silently widen the
+    # response to every field.
+    assert built[0]["return_fields"], "empty projection would omit RETURN entirely"
