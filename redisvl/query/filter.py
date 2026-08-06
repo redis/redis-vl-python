@@ -716,6 +716,19 @@ class Timestamp(Num):
         date_pattern = r"^\d{4}-\d{2}-\d{2}$"
         return bool(re.match(date_pattern, iso_string))
 
+    @staticmethod
+    def _as_date(value: Any) -> Any:
+        """Normalize a date-only ISO string to a date, leaving anything else alone.
+
+        _convert_to_timestamp parses every string with fromisoformat, which turns
+        "2023-03-17" into a midnight *datetime* and so skips the date branch that
+        honors end_date. Coercing to a date first keeps date-only strings and bare
+        date objects on the same path.
+        """
+        if isinstance(value, str) and Timestamp._is_date_only(value):
+            return datetime.datetime.strptime(value, "%Y-%m-%d").date()
+        return value
+
     def _convert_to_timestamp(self, value, end_date=False):
         """
         Convert various inputs to a Unix timestamp (seconds since epoch in UTC).
@@ -825,19 +838,27 @@ class Timestamp(Num):
         """
         Filter for timestamps greater than the specified value.
 
+        For a bare date (or date-only ISO string), this means after the *end* of
+        that UTC day, so the day itself is excluded.
+
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
 
         Returns:
             self: The filter object for method chaining
         """
-        timestamp = self._convert_to_timestamp(other)
+        # end_date anchors a bare date to 23:59:59.999999 so the exclusive lower
+        # bound skips the whole day rather than just its first instant.
+        timestamp = self._convert_to_timestamp(self._as_date(other), end_date=True)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
 
     def __lt__(self, other):
         """
         Filter for timestamps less than the specified value.
+
+        For a bare date (or date-only ISO string), this means before the *start*
+        of that UTC day, so the day itself is excluded.
 
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
@@ -853,6 +874,9 @@ class Timestamp(Num):
         """
         Filter for timestamps greater than or equal to the specified value.
 
+        For a bare date (or date-only ISO string), this means from the *start* of
+        that UTC day, so the day itself is included.
+
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
 
@@ -867,13 +891,18 @@ class Timestamp(Num):
         """
         Filter for timestamps less than or equal to the specified value.
 
+        For a bare date (or date-only ISO string), this means through the *end* of
+        that UTC day, so the day itself is included.
+
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
 
         Returns:
             self: The filter object for method chaining
         """
-        timestamp = self._convert_to_timestamp(other)
+        # end_date anchors a bare date to 23:59:59.999999 so the inclusive upper
+        # bound covers the whole day rather than just its first instant.
+        timestamp = self._convert_to_timestamp(self._as_date(other), end_date=True)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
