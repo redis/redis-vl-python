@@ -2,11 +2,15 @@
 Exceptions
 ***********
 
+.. currentmodule:: redisvl.exceptions
+
 RedisVL defines its custom exceptions in ``redisvl.exceptions``. Every one of them
 inherits from :class:`RedisVLError`, so catching that single base class is enough to
-handle any error the library raises on its own behalf. Catch the more specific
-subclasses when you want to react differently to, for example, a schema validation
-failure than to a Redis connection problem.
+handle any error the core index and query APIs raise on their own behalf. Catch the
+more specific subclasses when you want to react differently to, for example, a
+schema validation failure than to a Redis connection problem. (The MCP integration
+defines its own ``redisvl.mcp.errors.RedisVLMCPError``, which is outside this
+hierarchy.)
 
 .. code-block:: text
 
@@ -23,7 +27,10 @@ failure than to a Redis connection problem.
    ``redis.exceptions.ConnectionError``, are not part of this hierarchy. Where
    RedisVL performs an index or search operation on your behalf it wraps those
    errors in a :class:`RedisSearchError` and chains the original exception, so the
-   underlying cause is still available on ``__cause__``.
+   underlying cause is still available on ``__cause__``. Constructor and argument
+   validation raises standard Python exceptions instead: for example,
+   ``VectorQuery(..., ef_runtime=-1)`` raises ``ValueError`` at construction time,
+   before any ``try`` block around the query run is entered.
 
 
 When each error is raised
@@ -161,8 +168,6 @@ still holds the original ``redis-py`` error where there was one.
 
 Exception classes
 =================
-
-.. currentmodule:: redisvl.exceptions
 
 RedisVLError
 ------------
