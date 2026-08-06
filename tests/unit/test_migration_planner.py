@@ -2,6 +2,7 @@ from fnmatch import fnmatch
 from unittest.mock import MagicMock
 
 import yaml
+from redis.client import Redis
 
 from redisvl.migration import MigrationPlanner
 from redisvl.migration.executor import _extract_prefixes_from_info
@@ -17,10 +18,14 @@ from redisvl.schema.schema import IndexSchema
 
 
 class DummyClient:
+    # Bind redis-py's real scan_iter so key enumeration under test goes through
+    # the actual library loop rather than a stand-in for it.
+    scan_iter = Redis.scan_iter
+
     def __init__(self, keys):
         self.keys = keys
 
-    def scan(self, cursor=0, match=None, count=None):
+    def scan(self, cursor=0, match=None, count=None, _type=None, **kwargs):
         matched = []
         for key in self.keys:
             decoded_key = key.decode() if isinstance(key, bytes) else str(key)

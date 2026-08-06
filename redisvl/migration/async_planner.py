@@ -272,21 +272,17 @@ class AsyncMigrationPlanner:
                 match_pattern = f"{prefix}*"
             else:
                 match_pattern = f"{prefix}{key_separator}*"
-            cursor: int = 0
-            while True:
-                cursor, keys = await client.scan(
-                    cursor=cursor,
-                    match=match_pattern,
-                    count=max(self.key_sample_limit, 10),
-                )
-                for key in keys:
-                    decoded_key = key.decode() if isinstance(key, bytes) else str(key)
-                    if decoded_key not in key_sample:
-                        key_sample.append(decoded_key)
-                    if len(key_sample) >= self.key_sample_limit:
-                        return key_sample
-                if cursor == 0:
-                    break
+            # See the note in the sync planner's _sample_keys on why this
+            # delegates to scan_iter rather than driving the cursor by hand.
+            async for key in client.scan_iter(
+                match=match_pattern,
+                count=max(self.key_sample_limit, 10),
+            ):
+                decoded_key = key.decode() if isinstance(key, bytes) else str(key)
+                if decoded_key not in key_sample:
+                    key_sample.append(decoded_key)
+                if len(key_sample) >= self.key_sample_limit:
+                    return key_sample
         return key_sample
 
     def write_plan(self, plan: MigrationPlan, plan_out: str) -> None:

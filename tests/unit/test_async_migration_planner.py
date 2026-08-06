@@ -7,6 +7,7 @@ from fnmatch import fnmatch
 
 import pytest
 import yaml
+from redis.asyncio.client import Redis as AsyncRedis
 
 from redisvl.migration import AsyncMigrationPlanner, MigrationPlanner
 from redisvl.schema.schema import IndexSchema
@@ -15,10 +16,14 @@ from redisvl.schema.schema import IndexSchema
 class AsyncDummyClient:
     """Async mock Redis client for testing."""
 
+    # Bind redis-py's real scan_iter so key enumeration under test goes through
+    # the actual library loop rather than a stand-in for it.
+    scan_iter = AsyncRedis.scan_iter
+
     def __init__(self, keys):
         self.keys = keys
 
-    async def scan(self, cursor=0, match=None, count=None):
+    async def scan(self, cursor=0, match=None, count=None, _type=None, **kwargs):
         matched = []
         for key in self.keys:
             decoded_key = key.decode() if isinstance(key, bytes) else str(key)
