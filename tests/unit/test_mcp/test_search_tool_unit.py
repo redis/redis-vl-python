@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from conftest import _schema
 
 from redisvl.mcp.config import MCPConfig
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
@@ -14,33 +15,6 @@ from redisvl.mcp.tools.search import (
     search_records,
 )
 from redisvl.schema import IndexSchema
-
-
-def _schema() -> IndexSchema:
-    return IndexSchema.from_dict(
-        {
-            "index": {
-                "name": "docs-index",
-                "prefix": "doc",
-                "storage_type": "hash",
-            },
-            "fields": [
-                {"name": "content", "type": "text"},
-                {"name": "category", "type": "tag"},
-                {"name": "rating", "type": "numeric"},
-                {
-                    "name": "embedding",
-                    "type": "vector",
-                    "attrs": {
-                        "algorithm": "flat",
-                        "dims": 3,
-                        "distance_metric": "cosine",
-                        "datatype": "float32",
-                    },
-                },
-            ],
-        }
-    )
 
 
 def _config_with_search(
@@ -242,6 +216,20 @@ async def test_search_records_rejects_unknown_or_vector_return_fields():
 
     assert unknown_exc.value.code == MCPErrorCode.INVALID_REQUEST
     assert vector_exc.value.code == MCPErrorCode.INVALID_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_search_records_rejects_an_empty_return_fields_list():
+    server = FakeServer()
+
+    # An empty list is not "no projection" -- it reaches Redis as an absent
+    # RETURN clause, which widens the response to every field including the
+    # vector. Rejecting it keeps `[]` from quietly meaning the opposite of what
+    # it reads like.
+    with pytest.raises(RedisVLMCPError, match="return_fields must not be empty") as exc:
+        await search_records(server, query="science", return_fields=[])
+
+    assert exc.value.code == MCPErrorCode.INVALID_REQUEST
 
 
 @pytest.mark.asyncio

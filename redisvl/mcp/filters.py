@@ -3,6 +3,15 @@ from typing import Any, Iterable
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.query.filter import FilterExpression, Num, Tag, Text
 from redisvl.schema import IndexSchema
+from redisvl.utils.token_escaper import TokenEscaper
+
+# Text values reach the query string unescaped: `Text`'s operator templates are
+# `@field:("value")` for eq/ne and `@field:(value)` for like, so a caller value
+# containing a quote or a paren can close its own clause and inject arbitrary
+# RediSearch syntax after it -- including a `|` that escapes an enclosing AND.
+# Tag and numeric values are already escaped or type-checked upstream; text is
+# not, so this boundary escapes it before building the expression.
+_TEXT_ESCAPER = TokenEscaper()
 
 
 def parse_filter(
@@ -132,17 +141,28 @@ def _parse_tag_expression(field_name: str, op: str, operand: Any) -> FilterExpre
     )
 
 
+def _escape_text(value: str, *, preserve_wildcards: bool = False) -> str:
+    """Escape a caller-supplied text value so it cannot leave its own clause."""
+    return _TEXT_ESCAPER.escape(value, preserve_wildcards=preserve_wildcards)
+
+
 def _parse_text_expression(field_name: str, op: str, operand: Any) -> FilterExpression:
     field = Text(field_name)
     if op == "eq":
-        return field == _require_string(operand, field_name, op)
+        return field == _escape_text(_require_string(operand, field_name, op))
     if op == "ne":
-        return field != _require_string(operand, field_name, op)
+        return field != _escape_text(_require_string(operand, field_name, op))
     if op == "like":
-        return field % _require_string(operand, field_name, op)
+        # `like` is the pattern-matching operator, so `*` and `?` stay live.
+        return field % _escape_text(
+            _require_string(operand, field_name, op), preserve_wildcards=True
+        )
     if op == "in":
         return _combine_or(
-            [field == item for item in _require_string_list(operand, field_name, op)]
+            [
+                field == _escape_text(item)
+                for item in _require_string_list(operand, field_name, op)
+            ]
         )
     raise RedisVLMCPError(
         f"Unsupported operator '{op}' for text field '{field_name}'",
