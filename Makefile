@@ -58,15 +58,19 @@ test-all: ## Run all tests including API tests
 	@echo "🧪 Running all tests including API tests"
 	uv run python -m pytest -n auto --log-level=CRITICAL --run-api-tests $(ARGS)
 
+# nbval defaults to a 2000s per-cell timeout, so a cell that blocks on a network
+# call can silently add half an hour to CI. Cap it: no legitimate cell is slow.
+NBVAL_CELL_TIMEOUT ?= 60
+
 test-notebooks: ## Run notebook tests
 	@echo "📓 Running notebook tests"
 	@echo "🔍 Checking Redis version..."
 	@if uv run python -c "import redis; from redisvl.redis.connection import supports_svs; client = redis.Redis.from_url('redis://localhost:6379'); exit(0 if supports_svs(client) else 1)" 2>/dev/null; then \
 		echo "✅ Redis 8.2.0+ detected - running all notebooks"; \
-		uv run python -m pytest --nbval-lax ./docs/user_guide -vvv $(ARGS); \
+		uv run python -m pytest --nbval-lax --nbval-cell-timeout=$(NBVAL_CELL_TIMEOUT) ./docs/user_guide -vvv $(ARGS); \
 	else \
 		echo "⚠️ Redis < 8.2.0 detected - skipping SVS notebook"; \
-		uv run python -m pytest --nbval-lax ./docs/user_guide -vvv --ignore=./docs/user_guide/09_svs_vamana.ipynb $(ARGS); \
+		uv run python -m pytest --nbval-lax --nbval-cell-timeout=$(NBVAL_CELL_TIMEOUT) ./docs/user_guide -vvv --ignore=./docs/user_guide/09_svs_vamana.ipynb $(ARGS); \
 	fi
 
 check: lint test ## Run all checks (lint + test)
