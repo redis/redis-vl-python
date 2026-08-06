@@ -35,8 +35,14 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = [
-    "fastmcp>=2.0.0",
-    "pydantic-settings>=2.0",
+    # Upper-bounded because the MCP protocol revision is chosen by this
+    # dependency, not by RedisVL: the SDK's LATEST_PROTOCOL_VERSION is the
+    # ceiling a server can negotiate. The 2026-07-28 revision is a breaking,
+    # stateless redesign of the protocol core, so a major bump could change both
+    # the negotiated version and how tools advertise their input schemas.
+    # Supporting that revision is its own piece of work.
+    "fastmcp>=2.0.0,<4",
+    "pydantic-settings>=2.0,<3",
 ]
 mistralai = ["mistralai>=1.0.0,<2"]
 openai = ["openai>=1.1.0"]
