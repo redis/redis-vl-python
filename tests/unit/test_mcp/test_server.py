@@ -59,7 +59,12 @@ def _binding_namespace(
 
 def _startup_config(indexes=None):
     return SimpleNamespace(
-        server=SimpleNamespace(redis_url="redis://localhost:6379"),
+        server=SimpleNamespace(
+            redis_url="redis://localhost:6379",
+            # Mirrors MCPServerConfig: every built-in is enabled unless a config
+            # explicitly disables it.
+            builtin_tool_enabled=lambda _name: True,
+        ),
         indexes=indexes or {"knowledge": _binding_namespace()},
     )
 
