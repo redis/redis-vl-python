@@ -720,13 +720,18 @@ class Timestamp(Num):
     def _as_date(value: Any) -> Any:
         """Normalize a date-only ISO string to a date, leaving anything else alone.
 
-        _convert_to_timestamp parses every string with fromisoformat, which turns
-        "2023-03-17" into a midnight *datetime* and so skips the date branch that
-        honors end_date. Coercing to a date first keeps date-only strings and bare
-        date objects on the same path.
+        Returns a datetime.date for a "YYYY-MM-DD" string, and the value
+        unchanged for every other input, including a date-shaped string that is
+        not a real calendar date.
         """
         if isinstance(value, str) and Timestamp._is_date_only(value):
-            return datetime.datetime.strptime(value, "%Y-%m-%d").date()
+            try:
+                return datetime.datetime.strptime(value, "%Y-%m-%d").date()
+            except ValueError:
+                # Date-shaped but not a real date, e.g. "2023-02-30": _is_date_only
+                # only checks the digit pattern. Hand it back so the caller below
+                # rejects it with one consistent message.
+                return value
         return value
 
     def _convert_to_timestamp(self, value, end_date=False):
@@ -749,6 +754,10 @@ class Timestamp(Num):
         if isinstance(value, (int, float)):
             # Already a Unix timestamp
             return float(value)
+
+        # Coerce before the fromisoformat call below, which would otherwise turn a
+        # date-only string into a midnight datetime and skip the end_date branch.
+        value = self._as_date(value)
 
         if isinstance(value, str):
             # Parse ISO format
@@ -849,7 +858,7 @@ class Timestamp(Num):
         """
         # end_date anchors a bare date to 23:59:59.999999 so the exclusive lower
         # bound skips the whole day rather than just its first instant.
-        timestamp = self._convert_to_timestamp(self._as_date(other), end_date=True)
+        timestamp = self._convert_to_timestamp(other, end_date=True)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.GT)
         return FilterExpression(str(self))
 
@@ -902,7 +911,7 @@ class Timestamp(Num):
         """
         # end_date anchors a bare date to 23:59:59.999999 so the inclusive upper
         # bound covers the whole day rather than just its first instant.
-        timestamp = self._convert_to_timestamp(self._as_date(other), end_date=True)
+        timestamp = self._convert_to_timestamp(other, end_date=True)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.LE)
         return FilterExpression(str(self))
 
@@ -910,9 +919,15 @@ class Timestamp(Num):
         """
         Filter for timestamps between start and end (inclusive).
 
+        Bare dates (and date-only ISO strings) span whole UTC calendar days:
+        start anchors to 00:00:00 of its day and end to 23:59:59.999999 of its
+        day, so both endpoint days are covered in full.
+
         Args:
             start: A datetime, date, ISO string, or Unix timestamp
             end: A datetime, date, ISO string, or Unix timestamp
+            inclusive: Which endpoints to include -- "both" (default), "left",
+                "right", or "neither".
 
         Returns:
             self: The filter object for method chaining
