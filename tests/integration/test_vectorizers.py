@@ -12,15 +12,12 @@ from redisvl.utils.vectorize import (
     CohereTextVectorizer,
     CustomVectorizer,
     GoogleGenAIVectorizer,
+    HFTextVectorizer,
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAIVectorizer,
     VoyageAIVectorizer,
 )
-from tests.conftest import SKIP_HF
-
-if not SKIP_HF:
-    from redisvl.utils.vectorize import HFTextVectorizer
 
 # Constants for testing
 TEST_TEXT = "This is a test sentence."
@@ -42,8 +39,8 @@ def embeddings_cache(client):
     cache.clear()
 
 
-# Build the params list conditionally based on HF availability
 _vectorizer_params = [
+    pytest.param(HFTextVectorizer, marks=pytest.mark.requires_hf),
     OpenAITextVectorizer,
     VertexAIVectorizer,
     GoogleGenAIVectorizer,
@@ -54,13 +51,11 @@ _vectorizer_params = [
     CustomVectorizer,
     VoyageAIVectorizer,
 ]
-if not SKIP_HF:
-    _vectorizer_params.insert(0, HFTextVectorizer)
 
 
 @pytest.fixture(params=_vectorizer_params)
 def vectorizer(request):
-    if not SKIP_HF and request.param == HFTextVectorizer:
+    if request.param == HFTextVectorizer:
         return request.param()
     elif request.param == OpenAITextVectorizer:
         return request.param()
@@ -420,20 +415,12 @@ def test_custom_vectorizer_embed_many(custom_embed_class, custom_embed_func):
         )
 
 
-_skip_hf_marker = pytest.mark.skipif(
-    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
-)
-
-# Params for dtype tests - conditionally skip HF on Python 3.14+
 _dtype_params = [
     AzureOpenAITextVectorizer,
     BedrockVectorizer,
     CohereTextVectorizer,
     CustomVectorizer,
-    pytest.param(
-        "HFTextVectorizer",
-        marks=_skip_hf_marker,
-    ),
+    pytest.param(HFTextVectorizer, marks=pytest.mark.requires_hf),
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAIVectorizer,
@@ -445,9 +432,6 @@ _dtype_params = [
 @pytest.mark.requires_api_keys
 @pytest.mark.parametrize("vectorizer_", _dtype_params)
 def test_default_dtype(vectorizer_):
-    # Handle HFTextVectorizer as a string param when skipped
-    if vectorizer_ == "HFTextVectorizer":
-        vectorizer_ = HFTextVectorizer
     # test dtype defaults to float32
     if issubclass(vectorizer_, CustomVectorizer):
         vectorizer = vectorizer_(embed=lambda x, input_type=None: [1.0, 2.0, 3.0])
@@ -464,9 +448,6 @@ def test_default_dtype(vectorizer_):
 @pytest.mark.requires_api_keys
 @pytest.mark.parametrize("vectorizer_", _dtype_params)
 def test_vectorizer_dtype_assignment(vectorizer_):
-    # Handle HFTextVectorizer as a string param when skipped
-    if vectorizer_ == "HFTextVectorizer":
-        vectorizer_ = HFTextVectorizer
     # test initializing dtype in constructor
     for dtype in ["float16", "float32", "float64", "bfloat16", "int8", "uint8"]:
         if issubclass(vectorizer_, CustomVectorizer):
@@ -489,10 +470,7 @@ _non_supported_dtype_params = [
     AzureOpenAITextVectorizer,
     BedrockVectorizer,
     CohereTextVectorizer,
-    pytest.param(
-        "HFTextVectorizer",
-        marks=_skip_hf_marker,
-    ),
+    pytest.param(HFTextVectorizer, marks=pytest.mark.requires_hf),
     MistralAITextVectorizer,
     OpenAITextVectorizer,
     VertexAIVectorizer,
@@ -504,9 +482,6 @@ _non_supported_dtype_params = [
 @pytest.mark.requires_api_keys
 @pytest.mark.parametrize("vectorizer_", _non_supported_dtype_params)
 def test_non_supported_dtypes(vectorizer_):
-    # Handle HFTextVectorizer as a string param when skipped
-    if vectorizer_ == "HFTextVectorizer":
-        vectorizer_ = HFTextVectorizer
     with pytest.raises(ValueError):
         vectorizer_(dtype="float25")
 
@@ -641,9 +616,7 @@ def test_cohere_embedding_types_warning():
     assert len(embeddings) == len(texts)
 
 
-@pytest.mark.skipif(
-    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
-)
+@pytest.mark.requires_hf
 def test_deprecated_text_parameter_warning():
     """Test that using deprecated 'text' and 'texts' parameters emits deprecation warnings."""
     vectorizer = HFTextVectorizer(model="sentence-transformers/all-MiniLM-L6-v2")

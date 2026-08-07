@@ -1,5 +1,4 @@
 import asyncio
-import sys
 import warnings
 from collections import namedtuple
 from contextlib import suppress
@@ -12,18 +11,10 @@ from redis.exceptions import ConnectionError
 from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Num, Tag, Text
-from tests.conftest import (
-    SKIP_HF,
-    skip_if_no_redis_search,
-    skip_if_no_redis_search_async,
-)
+from redisvl.utils.vectorize import HFTextVectorizer
+from tests.conftest import skip_if_no_redis_search, skip_if_no_redis_search_async
 
-if not SKIP_HF:
-    from redisvl.utils.vectorize import HFTextVectorizer
-
-pytestmark = pytest.mark.skipif(
-    SKIP_HF, reason="sentence-transformers not supported on Python 3.14+"
-)
+pytestmark = pytest.mark.requires_hf
 
 
 @pytest.fixture(scope="session")
