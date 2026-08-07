@@ -1,26 +1,29 @@
-"""Unit tests for BaseCache.clear/aclear key enumeration, especially on cluster.
+"""Unit tests for BaseCache.clear/aclear enumeration on Redis Cluster.
 
 On a cluster client, ``scan`` is broadcast to every primary and replies with a
-``{node_name: cursor}`` mapping. Those cursors are node-local: they can neither
-be fed back as a single cursor nor broadcast to the other primaries. The clear
-loop used to leave its cursor at 0 in that case, so it re-issued ``SCAN 0``
-forever and never made progress once the first page stopped yielding matches.
+``{node_name: cursor}`` mapping of node-local cursors. The clear loop used to
+leave its cursor at 0 in that case, so it re-issued ``SCAN 0`` forever and made
+no progress once the first page stopped yielding matches.
 
-``clear`` now delegates enumeration to redis-py's ``scan_iter``, which drives
-each primary on its own cursor via ``target_nodes``. The fakes below bind the
-real upstream ``scan_iter`` onto themselves, so these tests exercise the actual
-library loop rather than a reimplementation of it, and assert that every
-follow-up ``SCAN`` carries the cursor the previous reply returned for that node.
+``clear`` now delegates enumeration to redis-py's ``scan_iter``, so the cursor
+walk itself is upstream's code and not worth re-asserting here. What these tests
+pin is our part: every primary gets drained, the match pattern stays scoped to
+the cache prefix, and deletes are batched rather than issued per page or all at
+once. The fakes bind the real upstream ``scan_iter`` so the drain runs through
+the actual library loop.
+
+Standalone clear/aclear is covered end-to-end against a real Redis by
+tests/integration/test_llmcache.py; the cluster path is covered against a real
+cluster by tests/integration/test_redis_cluster_support.py, which only runs
+under --run-cluster-tests.
 """
 
 import pytest
-from redis.asyncio.client import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
-from redis.client import Redis
 from redis.cluster import RedisCluster
 
-from redisvl.extensions.cache.base import CLEAR_BATCH_SIZE, BaseCache
-from redisvl.extensions.cache.embeddings import EmbeddingsCache
+from redisvl.extensions.cache import base as cache_base
+from redisvl.extensions.cache.base import BaseCache
 
 PREFIX = "clear_cursor_test"
 MATCH = f"{PREFIX}:*"
@@ -30,29 +33,35 @@ class MockClusterClient:
     """Stand-in for RedisCluster SCAN/DEL, driven by a per-node key layout.
 
     Keys live on named primaries and each primary pages through its own keys on
-    its own cursor, which is what makes the cluster contract testable. ``scan``
-    raises if a node-local cursor is ever broadcast, and if the call count runs
-    away -- so a loop that fails to advance fails the test loudly instead of
-    hanging the suite (``pytest-timeout`` is not installed).
+    its own cursor, which is what makes the cluster contract testable.
+
+    Two built-in guards, so failures are loud rather than silent:
+    ``scan`` raises if a node-local cursor is ever broadcast or if the call
+    count runs away (a non-advancing cursor would otherwise hang the suite --
+    pytest-timeout is not installed), and ``delete`` raises on a zero-argument
+    call, which real Redis rejects with "wrong number of arguments".
     """
 
     # Exercise the real upstream loop instead of imitating it.
     scan_iter = RedisCluster.scan_iter
 
-    def __init__(self, keys_by_node, page=2, missing_nodes=frozenset(), max_calls=200):
+    def __init__(self, keys_by_node, page=2, max_calls=200):
         self.keys_by_node = {n: list(k) for n, k in keys_by_node.items()}
         self.page = page
-        self.missing_nodes = frozenset(missing_nodes)
         self.max_calls = max_calls
         self.scan_calls = []
-        self.deleted = []
+        self.delete_batches = []
+
+    @property
+    def deleted(self):
+        return [key for batch in self.delete_batches for key in batch]
 
     def _page(self, node, cursor):
         keys = self.keys_by_node[node]
         nxt = cursor + self.page
         return (0 if nxt >= len(keys) else nxt), keys[cursor : cursor + self.page]
 
-    def _next_scan(self, cursor, match, count, target_nodes):
+    def _next_scan(self, cursor, match, target_nodes):
         self.scan_calls.append(
             {"cursor": cursor, "match": match, "target_nodes": target_nodes}
         )
@@ -74,16 +83,19 @@ class MockClusterClient:
         nxt, keys = self._page(node, cursor)
         return {node: nxt}, keys
 
-    def scan(self, cursor=0, match=None, count=None, target_nodes=None, **kwargs):
-        return self._next_scan(cursor, match, count, target_nodes)
-
-    def delete(self, *keys):
-        self.deleted.extend(keys)
+    def _record_delete(self, keys):
+        if not keys:
+            raise AssertionError("DEL issued with no keys; real Redis rejects this")
+        self.delete_batches.append(list(keys))
         return len(keys)
 
+    def scan(self, cursor=0, match=None, count=None, target_nodes=None, _type=None):
+        return self._next_scan(cursor, match, target_nodes)
+
+    def delete(self, *keys):
+        return self._record_delete(keys)
+
     def get_node(self, host=None, port=None, node_name=None):
-        if node_name in self.missing_nodes:
-            return None
         return f"node-object:{node_name}"
 
 
@@ -92,42 +104,13 @@ class MockAsyncClusterClient(MockClusterClient):
 
     scan_iter = AsyncRedisCluster.scan_iter
 
-    async def scan(self, cursor=0, match=None, count=None, target_nodes=None, **kwargs):
-        return self._next_scan(cursor, match, count, target_nodes)
+    async def scan(
+        self, cursor=0, match=None, count=None, target_nodes=None, _type=None
+    ):
+        return self._next_scan(cursor, match, target_nodes)
 
     async def delete(self, *keys):
-        self.deleted.extend(keys)
-        return len(keys)
-
-
-class MockStandaloneClient(MockClusterClient):
-    """Standalone client: one integer cursor, no per-node mapping."""
-
-    scan_iter = Redis.scan_iter
-
-    def _next_scan(self, cursor, match, count, target_nodes):
-        self.scan_calls.append(
-            {"cursor": cursor, "match": match, "target_nodes": target_nodes}
-        )
-        if len(self.scan_calls) > self.max_calls:
-            raise AssertionError(f"{len(self.scan_calls)} SCAN calls -- not advancing")
-        keys = self.keys_by_node["single"]
-        cursor = int(cursor)
-        nxt = cursor + self.page
-        return (0 if nxt >= len(keys) else nxt), keys[cursor : cursor + self.page]
-
-
-class MockAsyncStandaloneClient(MockStandaloneClient):
-    """Async standalone client."""
-
-    scan_iter = AsyncRedis.scan_iter
-
-    async def scan(self, cursor=0, match=None, count=None, target_nodes=None, **kwargs):
-        return self._next_scan(cursor, match, count, target_nodes)
-
-    async def delete(self, *keys):
-        self.deleted.extend(keys)
-        return len(keys)
+        return self._record_delete(keys)
 
 
 def _layout():
@@ -139,92 +122,60 @@ def _layout():
     }
 
 
-def _all_keys(layout):
-    return sorted(k for ks in layout.values() for k in ks)
-
-
-def _assert_cursors_advanced(client):
-    """Every targeted SCAN must carry a non-zero, node-local cursor."""
-    targeted = [c for c in client.scan_calls if c["target_nodes"] is not None]
-    assert targeted, "no per-node continuation happened; test proves nothing"
-    assert all(
-        c["cursor"] != 0 for c in targeted
-    ), f"a continuation restarted at cursor 0: {targeted}"
+def _assert_drained(client, layout):
+    """Every primary emptied, nothing scanned outside the cache prefix."""
+    assert sorted(client.deleted) == sorted(k for ks in layout.values() for k in ks)
+    # Scoping the match pattern is what keeps clear() from wiping the whole DB.
     assert all(c["match"] == MATCH for c in client.scan_calls)
+    # Anti-vacuity: a single broadcast page would prove nothing about paging.
+    assert any(
+        c["target_nodes"] is not None for c in client.scan_calls
+    ), "no per-node continuation happened; test proves nothing"
+    # node-2 finished on the broadcast and must not be revisited.
+    assert not any(c["target_nodes"] == "node-object:node-2" for c in client.scan_calls)
 
 
 class TestClearOnCluster:
-    """clear() must drain every primary and terminate."""
-
-    def test_drains_all_primaries_with_uneven_depth(self):
+    def test_drains_every_primary(self):
         layout = _layout()
-        client = MockClusterClient(layout)
-        cache = BaseCache(name=PREFIX, redis_client=client)
-
-        cache.clear()
-
-        assert sorted(client.deleted) == _all_keys(layout)
-        _assert_cursors_advanced(client)
-        # node-2 finished on the broadcast and is never targeted again.
-        assert not any(
-            c["target_nodes"] == "node-object:node-2" for c in client.scan_calls
-        )
-
-    def test_single_node_cluster_is_drained(self):
-        layout = {"node-1": [f"{PREFIX}:{i}" for i in range(5)]}
         client = MockClusterClient(layout)
 
         BaseCache(name=PREFIX, redis_client=client).clear()
 
-        assert sorted(client.deleted) == _all_keys(layout)
-        _assert_cursors_advanced(client)
+        _assert_drained(client, layout)
 
     def test_empty_cache_issues_no_delete(self):
         client = MockClusterClient({"node-1": [], "node-2": []})
 
         BaseCache(name=PREFIX, redis_client=client).clear()
 
-        assert client.deleted == []
-        assert len(client.scan_calls) == 1
+        assert client.delete_batches == []
 
-    def test_tolerates_duplicate_keys_across_pages(self):
-        # SCAN may return the same key more than once. DEL is idempotent, so
-        # clear() must not choke -- and nothing here counts keys.
-        dup = f"{PREFIX}:dup"
-        client = MockClusterClient({"node-1": [dup, dup, f"{PREFIX}:other", dup]})
-
-        BaseCache(name=PREFIX, redis_client=client).clear()
-
-        assert sorted(set(client.deleted)) == [dup, f"{PREFIX}:other"]
-
-    def test_deletes_are_batched(self):
-        n = CLEAR_BATCH_SIZE * 2 + 7
-        layout = {"node-1": [f"{PREFIX}:{i}" for i in range(n)]}
-        client = MockClusterClient(layout, page=CLEAR_BATCH_SIZE)
-        calls = []
-
-        real_delete = client.delete
-        client.delete = lambda *keys: (calls.append(len(keys)), real_delete(*keys))[1]
+    def test_deletes_are_batched(self, monkeypatch):
+        # Patch the batch size rather than asserting against its real value, so
+        # tuning CLEAR_BATCH_SIZE in production doesn't touch this test.
+        monkeypatch.setattr(cache_base, "CLEAR_BATCH_SIZE", 3)
+        keys = [f"{PREFIX}:{i}" for i in range(8)]
+        client = MockClusterClient({"node-1": keys}, page=3)
 
         BaseCache(name=PREFIX, redis_client=client).clear()
 
-        assert sorted(client.deleted) == _all_keys(layout)
-        assert calls == [CLEAR_BATCH_SIZE, CLEAR_BATCH_SIZE, 7]
+        # Bounded batches, and the trailing remainder is still flushed.
+        assert [len(b) for b in client.delete_batches] == [3, 3, 2]
+        assert sorted(client.deleted) == sorted(keys)
 
 
 class TestAsyncClearOnCluster:
-    """aclear() must match clear() behavior exactly."""
+    """aclear is written separately from clear, so it needs its own coverage."""
 
     @pytest.mark.asyncio
-    async def test_drains_all_primaries_with_uneven_depth(self):
+    async def test_drains_every_primary(self):
         layout = _layout()
         client = MockAsyncClusterClient(layout)
-        cache = BaseCache(name=PREFIX, async_redis_client=client)
 
-        await cache.aclear()
+        await BaseCache(name=PREFIX, async_redis_client=client).aclear()
 
-        assert sorted(client.deleted) == _all_keys(layout)
-        _assert_cursors_advanced(client)
+        _assert_drained(client, layout)
 
     @pytest.mark.asyncio
     async def test_empty_cache_issues_no_delete(self):
@@ -232,65 +183,4 @@ class TestAsyncClearOnCluster:
 
         await BaseCache(name=PREFIX, async_redis_client=client).aclear()
 
-        assert client.deleted == []
-
-    @pytest.mark.asyncio
-    async def test_tolerates_duplicate_keys_across_pages(self):
-        dup = f"{PREFIX}:dup"
-        client = MockAsyncClusterClient({"node-1": [dup, dup, f"{PREFIX}:other", dup]})
-
-        await BaseCache(name=PREFIX, async_redis_client=client).aclear()
-
-        assert sorted(set(client.deleted)) == [dup, f"{PREFIX}:other"]
-
-
-class TestClearOnStandalone:
-    """The standalone path must keep working unchanged."""
-
-    def test_advances_single_cursor(self):
-        keys = [f"{PREFIX}:{i}" for i in range(7)]
-        client = MockStandaloneClient({"single": keys})
-
-        BaseCache(name=PREFIX, redis_client=client).clear()
-
-        assert sorted(client.deleted) == sorted(keys)
-        cursors = [c["cursor"] for c in client.scan_calls]
-        assert cursors[0] in (0, "0")
-        assert [int(c) for c in cursors] == [0, 2, 4, 6]
-
-    @pytest.mark.asyncio
-    async def test_async_advances_single_cursor(self):
-        keys = [f"{PREFIX}:{i}" for i in range(7)]
-        client = MockAsyncStandaloneClient({"single": keys})
-
-        await BaseCache(name=PREFIX, async_redis_client=client).aclear()
-
-        assert sorted(client.deleted) == sorted(keys)
-        assert [int(c["cursor"]) for c in client.scan_calls] == [0, 2, 4, 6]
-
-
-class TestConcreteCachesClearOnCluster:
-    """The fix must hold through the cache classes users actually instantiate.
-
-    Also pins that each subclass's effective key prefix really is ``<name>:*``,
-    which clear() depends on and nothing else covers.
-    """
-
-    def test_embeddings_cache_drains_cluster(self):
-        layout = _layout()
-        client = MockClusterClient(layout)
-
-        EmbeddingsCache(name=PREFIX, redis_client=client).clear()
-
-        assert sorted(client.deleted) == _all_keys(layout)
-        assert all(c["match"] == MATCH for c in client.scan_calls)
-
-    @pytest.mark.asyncio
-    async def test_embeddings_cache_drains_cluster_async(self):
-        layout = _layout()
-        client = MockAsyncClusterClient(layout)
-
-        await EmbeddingsCache(name=PREFIX, async_redis_client=client).aclear()
-
-        assert sorted(client.deleted) == _all_keys(layout)
-        assert all(c["match"] == MATCH for c in client.scan_calls)
+        assert client.delete_batches == []

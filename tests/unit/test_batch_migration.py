@@ -48,7 +48,7 @@ class MockRedisClient:
             return [idx.encode() for idx in self.indexes]
         raise NotImplementedError(f"Command not mocked: {args}")
 
-    def scan(self, cursor=0, match=None, count=None, _type=None, **kwargs):
+    def scan(self, cursor=0, match=None, count=None, _type=None):
         matched = []
         all_keys = []
         for prefix_keys in self.keys.values():

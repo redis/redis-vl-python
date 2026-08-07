@@ -25,7 +25,7 @@ class DummyClient:
     def __init__(self, keys):
         self.keys = keys
 
-    def scan(self, cursor=0, match=None, count=None, _type=None, **kwargs):
+    def scan(self, cursor=0, match=None, count=None, _type=None):
         matched = []
         for key in self.keys:
             decoded_key = key.decode() if isinstance(key, bytes) else str(key)
