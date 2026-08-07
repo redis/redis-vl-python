@@ -1299,7 +1299,7 @@ class SearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    def _unlink_batch(self, batch_keys: list[str]) -> int:
+    def _unlink_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Unlink a batch of keys from Redis.
 
         Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
@@ -1310,20 +1310,54 @@ class SearchIndex(BaseSearchIndex):
             batch_keys (List[str]): List of Redis keys to unlink.
 
         Returns:
-            int: Count of records unlinked from Redis.
+            Tuple[int, List[str]]: Count of records unlinked from Redis, and the
+            keys whose ``UNLINK`` raised. Only the per-key cluster path reports
+            failures — it logs and continues so one bad key does not abort the
+            batch. On standalone Redis a failure propagates to the caller, so
+            the failed list is always empty there.
         """
         client = cast(SyncRedisClient, self._redis_client)
 
         if isinstance(client, RedisCluster):
             unlinked = 0
+            failed: list[str] = []
             for key_to_unlink in batch_keys:
                 try:
                     unlinked += cast(int, client.unlink(key_to_unlink))
                 except redis.exceptions.RedisError as e:
                     logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
-            return unlinked
+                    failed.append(key_to_unlink)
+            return unlinked, failed
 
-        return cast(int, client.unlink(*batch_keys))
+        return cast(int, client.unlink(*batch_keys)), []
+
+    def _drop_keys(
+        self, keys: list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> tuple[int, list[str]]:
+        """Unlink keys in batches, surfacing the ones that could not be unlinked.
+
+        Backs :meth:`drop_keys` for callers that mirror the keyspace in their own
+        state and must not record a key as gone when its ``UNLINK`` failed — for
+        example ``SemanticRouter``, which persists a route config listing the
+        references it holds. On Redis Cluster a per-key ``RedisError`` is logged
+        rather than raised, so without the failed-key list a partial failure is
+        indistinguishable from keys that simply did not exist.
+
+        Args:
+            keys (List[str]): Redis keys to unlink.
+            batch_size (int): Number of keys to unlink per round-trip.
+
+        Returns:
+            Tuple[int, List[str]]: Count of records unlinked, and the keys that
+            failed to unlink.
+        """
+        total = 0
+        failed: list[str] = []
+        for i in range(0, len(keys), batch_size):
+            unlinked, batch_failed = self._unlink_batch(keys[i : i + batch_size])
+            total += unlinked
+            failed.extend(batch_failed)
+        return total, failed
 
     def drop_keys(
         self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
@@ -1345,6 +1379,13 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Note:
+            The returned count can be lower than ``len(keys)`` either because a
+            key did not exist or, on Redis Cluster, because its ``UNLINK``
+            failed (logged, not raised) — the count alone cannot tell those
+            apart. Callers that mirror the keyspace in their own state should use
+            ``_drop_keys``, which also returns the keys that failed.
         """
         if not isinstance(keys, list):
             return self._redis_client.unlink(keys)  # type: ignore
@@ -1352,9 +1393,7 @@ class SearchIndex(BaseSearchIndex):
         if not keys:
             return 0
 
-        total = 0
-        for i in range(0, len(keys), batch_size):
-            total += self._unlink_batch(keys[i : i + batch_size])
+        total, _ = self._drop_keys(keys, batch_size)
         return total
 
     def drop_documents(
@@ -1506,7 +1545,21 @@ class SearchIndex(BaseSearchIndex):
             if not batch:
                 break
             batch_keys = [record["id"] for record in batch]
-            total_deleted += self._unlink_batch(batch_keys)
+            unlinked, failed_keys = self._unlink_batch(batch_keys)
+            total_deleted += unlinked
+            if failed_keys and not unlinked:
+                # Cluster unlinks per key and logs failures instead of raising,
+                # so a fully failed batch makes no progress: the same documents
+                # come back on the next offset-0 re-query and the loop would
+                # never terminate (the runaway backstop counts deletions only).
+                logger.warning(
+                    "drop_by_filter could not unlink %d key(s) (e.g. %s) and made "
+                    "no progress; returning an incomplete result. Re-run to continue.",
+                    len(failed_keys),
+                    failed_keys[0],
+                )
+                completed = False
+                break
             if on_progress is not None:
                 on_progress(total_deleted, matched)
 
@@ -2698,24 +2751,43 @@ class AsyncSearchIndex(BaseSearchIndex):
         """Clear cached sql-redis executors and schema state for this index."""
         self._sql_executors.clear()
 
-    async def _unlink_batch(self, batch_keys: list[str]) -> int:
+    async def _unlink_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Unlink a batch of keys from Redis (async).
 
         Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
         Cluster, keys are unlinked individually to avoid cross-slot errors.
+
+        See :meth:`SearchIndex._unlink_batch` for the return contract.
         """
         client = await self._get_client()
 
         if isinstance(client, AsyncRedisCluster):
             unlinked = 0
+            failed: list[str] = []
             for key_to_unlink in batch_keys:
                 try:
                     unlinked += cast(int, await client.unlink(key_to_unlink))
                 except redis.exceptions.RedisError as e:
                     logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
-            return unlinked
+                    failed.append(key_to_unlink)
+            return unlinked, failed
 
-        return cast(int, await client.unlink(*batch_keys))
+        return cast(int, await client.unlink(*batch_keys)), []
+
+    async def _drop_keys(
+        self, keys: list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
+    ) -> tuple[int, list[str]]:
+        """Unlink keys in batches, surfacing the ones that could not be unlinked.
+
+        See :meth:`SearchIndex._drop_keys` for full semantics.
+        """
+        total = 0
+        failed: list[str] = []
+        for i in range(0, len(keys), batch_size):
+            unlinked, batch_failed = await self._unlink_batch(keys[i : i + batch_size])
+            total += unlinked
+            failed.extend(batch_failed)
+        return total, failed
 
     async def drop_keys(
         self, keys: str | list[str], batch_size: int = DEFAULT_BULK_BATCH_SIZE
@@ -2737,6 +2809,13 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Returns:
             int: Count of records deleted from Redis.
+
+        Note:
+            The returned count can be lower than ``len(keys)`` either because a
+            key did not exist or, on Redis Cluster, because its ``UNLINK``
+            failed (logged, not raised) — the count alone cannot tell those
+            apart. Callers that mirror the keyspace in their own state should use
+            ``_drop_keys``, which also returns the keys that failed.
         """
         client = await self._get_client()
 
@@ -2746,9 +2825,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         if not keys:
             return 0
 
-        total = 0
-        for i in range(0, len(keys), batch_size):
-            total += await self._unlink_batch(keys[i : i + batch_size])
+        total, _ = await self._drop_keys(keys, batch_size)
         return total
 
     async def drop_documents(
@@ -2860,7 +2937,19 @@ class AsyncSearchIndex(BaseSearchIndex):
             if not batch:
                 break
             batch_keys = [record["id"] for record in batch]
-            total_deleted += await self._unlink_batch(batch_keys)
+            unlinked, failed_keys = await self._unlink_batch(batch_keys)
+            total_deleted += unlinked
+            if failed_keys and not unlinked:
+                # See SearchIndex.drop_by_filter: a fully failed cluster batch
+                # makes no progress and would otherwise loop forever.
+                logger.warning(
+                    "drop_by_filter could not unlink %d key(s) (e.g. %s) and made "
+                    "no progress; returning an incomplete result. Re-run to continue.",
+                    len(failed_keys),
+                    failed_keys[0],
+                )
+                completed = False
+                break
             if on_progress is not None:
                 on_progress(total_deleted, matched)
 

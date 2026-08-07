@@ -666,18 +666,34 @@ class SemanticRouter(BaseModel):
 
         Args:
             route_name (str): Name of the route to remove.
+
+        Note:
+            On Redis Cluster an individual reference key can fail to unlink
+            (logged, not raised). If any do, the route is kept with only those
+            references rather than dropped, so the persisted config keeps
+            describing what the index can still match.
         """
         route = self.get(route_name)
         if route is None:
             logger.warning(f"Route {route_name} is not found in the SemanticRouter")
         else:
-            self._index.drop_keys(
-                [
-                    self._route_ref_key(self._index, route.name, hashify(reference))
-                    for reference in route.references
-                ]
-            )
-            self.routes = [route for route in self.routes if route.name != route_name]
+            keys_by_reference = {
+                self._route_ref_key(
+                    self._index, route.name, hashify(reference)
+                ): reference
+                for reference in route.references
+            }
+            _, failed_keys = self._index._drop_keys(list(keys_by_reference))
+            remaining = [keys_by_reference[key] for key in failed_keys]
+
+            if remaining:
+                logger.warning(
+                    f"Failed to unlink {len(remaining)} reference key(s) for route "
+                    f"{route_name}; keeping the route with those references"
+                )
+                route.references = remaining
+            else:
+                self.routes = [r for r in self.routes if r.name != route_name]
             self._update_router_state()
 
     def delete(self) -> None:
@@ -977,6 +993,14 @@ class SemanticRouter(BaseModel):
 
         Returns:
             int: Number of objects deleted
+
+        Note:
+            On Redis Cluster keys are unlinked one at a time and a per-key
+            failure is logged rather than raised. References whose key failed to
+            unlink are left in the persisted route config, because the hash is
+            still in the index and the router would keep matching it — dropping
+            it from the config would make the router claim a reference is gone
+            while still routing to it.
         """
 
         if reference_ids and not keys:
@@ -990,22 +1014,38 @@ class SemanticRouter(BaseModel):
         if not keys:
             raise ValueError(f"No references found for route {route_name}")
 
+        keys = convert_bytes(list(keys))
+
         to_be_deleted = []
         for key in keys:
-            route_name = key.split(":")[-2]
             to_be_deleted.append(
-                (route_name, convert_bytes(self._index._redis_client.hgetall(key)))
+                (
+                    key,
+                    key.split(":")[-2],
+                    convert_bytes(self._index._redis_client.hgetall(key)),  # type: ignore
+                )
             )
 
-        deleted = self._index.drop_keys(keys)
+        deleted, failed_keys = self._index._drop_keys(keys)
+        failed = set(failed_keys)
 
-        for route_name, delete in to_be_deleted:
-            route = self.get(route_name)
+        for key, ref_route_name, reference in to_be_deleted:
+            if key in failed:
+                continue
+            route = self.get(ref_route_name)
             if not route:
-                raise ValueError(f"Route {route_name} not found in the SemanticRouter")
-            route.references.remove(delete["reference"])
+                raise ValueError(
+                    f"Route {ref_route_name} not found in the SemanticRouter"
+                )
+            route.references.remove(reference["reference"])
 
         self._update_router_state()
+
+        if failed:
+            logger.warning(
+                f"Failed to unlink {len(failed)} route reference key(s); they remain "
+                f"in the index and in the router config: {sorted(failed)}"
+            )
 
         return deleted
 
