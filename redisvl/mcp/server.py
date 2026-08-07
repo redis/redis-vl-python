@@ -282,16 +282,69 @@ class RedisVLMCPServer(FastMCP):
         if len(self._bindings) == 1:
             search_schema = next(iter(self._bindings.values())).schema
 
-        # Discovery is always available so clients can enumerate indexes.
-        register_list_indexes_tool(self)
-        register_search_tool(self, search_schema)
+        # An operator can turn off a built-in whose capability the server should
+        # not offer at all -- a read-only deployment, or one that should not
+        # advertise discovery.
+        config = getattr(self, "config", None)
+        enabled = (
+            config.server.builtin_tool_enabled
+            if config is not None
+            else lambda _name: True
+        )
+
+        registered: list[str] = []
+
+        # Discovery is on by default so clients can enumerate indexes.
+        if enabled("list-indexes"):
+            register_list_indexes_tool(self)
+            registered.append("list-indexes")
+        if enabled("search-records"):
+            register_search_tool(self, search_schema)
+            registered.append("search-records")
         # Expose upsert only when at least one binding is writable. A binding is
         # read-only under global read-only mode or its own read_only policy, both
         # of which are folded into effective_read_only; the per-call write check
         # in the tool then rejects writes to any individual read-only binding.
-        if any(not rt.effective_read_only for rt in self._bindings.values()):
+        if enabled("upsert-records") and any(
+            not rt.effective_read_only for rt in self._bindings.values()
+        ):
             register_upsert_tool(self)
+            registered.append("upsert-records")
+
+        self._warn_on_unusable_tool_surface(registered)
         self._tools_registered = True
+
+    def _warn_on_unusable_tool_surface(self, registered: list[str]) -> None:
+        """Warn about tool-set shapes that are valid config but unusable in practice.
+
+        Neither case is fatal -- an operator may be mid-rollout -- but both are
+        silent otherwise, and both present to a client as a server that simply
+        does not work.
+        """
+        if not registered:
+            # Deliberately does not attribute a cause: `upsert-records` can also
+            # be absent because every binding is read-only, not because
+            # `builtin_tools` disabled it.
+            logger.warning(
+                "MCP server registered no tools, so clients will see an empty "
+                "tool list. Check server.builtin_tools and read-only settings."
+            )
+            return
+
+        # `search-records`'s multi-index description tells clients to call
+        # list-indexes first, so disabling discovery leaves them unable to learn
+        # the logical ids the tool requires.
+        if (
+            len(self._bindings) > 1
+            and "search-records" in registered
+            and "list-indexes" not in registered
+        ):
+            logger.warning(
+                "MCP server has %d indexes and exposes search-records, but "
+                "list-indexes is disabled: clients cannot discover the logical "
+                "index ids that search-records requires.",
+                len(self._bindings),
+            )
 
     @asynccontextmanager
     async def _server_lifespan(self, _server: Any):

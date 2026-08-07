@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from redisvl.mcp.config import MCPConfig, load_mcp_config
+from redisvl.mcp.config import MCPConfig, builtin_tool_names, load_mcp_config
 from redisvl.schema import IndexSchema
 
 
@@ -558,3 +558,63 @@ def test_mcp_config_still_accepts_a_real_text_field():
     schema = binding.to_index_schema(_inspected_schema())
 
     binding.validate_runtime_mapping(schema)
+
+
+def test_mcp_config_builtin_tools_default_to_enabled():
+    config = MCPConfig.model_validate(_valid_config())
+
+    assert config.server.builtin_tools == {}
+    for tool_name in builtin_tool_names():
+        assert config.server.builtin_tool_enabled(tool_name) is True
+
+
+def test_mcp_config_builtin_tools_can_disable_a_builtin():
+    config = _valid_config()
+    config["server"]["builtin_tools"] = {
+        "search-records": "disabled",
+        "list-indexes": "enabled",
+    }
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.server.builtin_tool_enabled("search-records") is False
+    assert loaded.server.builtin_tool_enabled("list-indexes") is True
+    # Unmentioned built-ins stay enabled.
+    assert loaded.server.builtin_tool_enabled("upsert-records") is True
+
+
+def test_mcp_config_rejects_unknown_builtin_tool_names():
+    config = _valid_config()
+    # Underscores instead of hyphens -- the most likely typo, and one that would
+    # otherwise disable nothing while reading as though it had.
+    config["server"]["builtin_tools"] = {"search_records": "disabled"}
+
+    with pytest.raises(
+        ValueError, match="server.builtin_tools contains unknown tool names"
+    ):
+        MCPConfig.model_validate(config)
+
+
+def test_load_mcp_config_parses_builtin_tools_from_yaml(tmp_path: Path):
+    config_path = tmp_path / "mcp.yaml"
+    config_path.write_text(
+        """
+server:
+  redis_url: redis://localhost:6379
+  builtin_tools:
+    upsert-records: disabled
+indexes:
+    knowledge:
+      redis_name: docs-index
+      search:
+        type: fulltext
+      runtime:
+        text_field_name: content
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_mcp_config(str(config_path))
+
+    assert config.server.builtin_tool_enabled("upsert-records") is False
+    assert config.server.builtin_tool_enabled("search-records") is True

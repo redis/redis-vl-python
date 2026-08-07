@@ -82,7 +82,11 @@ def list_indexes(server: "RedisVLMCPServer") -> dict[str, Any]:
 
 
 def register_list_indexes_tool(server: "RedisVLMCPServer") -> None:
-    """Register the always-available, read-only `list-indexes` MCP tool."""
+    """Register the read-only `list-indexes` MCP tool.
+
+    Registered by default; an operator can turn it off through
+    ``server.builtin_tools``.
+    """
 
     async def list_indexes_tool():
         """FastMCP wrapper for the `list-indexes` tool."""

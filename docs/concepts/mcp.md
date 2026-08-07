@@ -86,7 +86,7 @@ MCP-reserved score metadata field names for the configured search mode.
 
 ## Read-Only and Read-Write Modes
 
-RedisVL MCP always registers `search-records` and `list-indexes`.
+RedisVL MCP registers `search-records` and `list-indexes` by default (see [Tool Surface](#tool-surface) for turning a built-in off deliberately).
 
 Write availability is enforced at two levels:
 
@@ -105,11 +105,21 @@ For configuration and the gateway boundary, see {doc}`/user_guide/how_to_guides/
 
 ## Tool Surface
 
-RedisVL MCP exposes up to three tools:
+RedisVL MCP exposes up to three built-in tools:
 
-- `list-indexes` enumerates the configured logical indexes for discovery (always available)
+- `list-indexes` enumerates the configured logical indexes for discovery
 - `search-records` searches a selected index using that index's server-owned search mode
 - `upsert-records` validates and upserts records into a selected writable index, embedding them only when that capability is configured
+
+Any of the three can be turned off with `server.builtin_tools` — useful for a server that should only ever read, or one that should not advertise discovery:
+
+```yaml
+server:
+  builtin_tools:
+    upsert-records: disabled
+```
+
+Only the three names above are accepted; anything else fails at startup rather than being silently ignored. A server whose tool set ends up unusable — no tools at all, or discovery disabled on a multi-index server, where clients cannot learn the logical index ids `search-records` requires — logs a warning at startup.
 
 These tools follow a stable contract:
 
