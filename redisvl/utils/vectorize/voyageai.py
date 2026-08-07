@@ -1,4 +1,5 @@
 import os
+import warnings
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
@@ -12,6 +13,29 @@ from redisvl.utils.vectorize.base import BaseVectorizer
 
 # ignore that voyageai isn't imported
 # mypy: disable-error-code="name-defined"
+
+# Sentinel used to detect when model is not explicitly passed to __init__
+_MODEL_NOT_SET = object()
+
+# Token limits for VoyageAI models (used for token-aware batching)
+VOYAGE_TOTAL_TOKEN_LIMITS = {
+    "voyage-context-3": 32_000,
+    "voyage-3.5-lite": 1_000_000,
+    "voyage-3.5": 320_000,
+    "voyage-2": 320_000,
+    "voyage-3-large": 120_000,
+    "voyage-code-3": 120_000,
+    "voyage-large-2-instruct": 120_000,
+    "voyage-finance-2": 120_000,
+    "voyage-multilingual-2": 120_000,
+    "voyage-law-2": 120_000,
+    "voyage-large-2": 120_000,
+    "voyage-3": 120_000,
+    "voyage-3-lite": 120_000,
+    "voyage-code-2": 120_000,
+    "voyage-multimodal-3": 32_000,
+    "voyage-multimodal-3.5": 32_000,
+}
 
 
 class VoyageAIVectorizer(BaseVectorizer):
@@ -87,13 +111,28 @@ class VoyageAIVectorizer(BaseVectorizer):
             input_type="query"
         )
 
+        # Using contextualized embeddings (voyage-context-3)
+        context_vectorizer = VoyageAIVectorizer(
+            model="voyage-context-3",
+            api_config={"api_key": "your-voyageai-api-key"}
+        )
+        # Context models automatically use contextualized_embed API
+        context_embeddings = context_vectorizer.embed_many(
+            contents=["chunk 1", "chunk 2", "chunk 3"],
+            input_type="document"
+        )
+
+        # Token counting for API usage management
+        token_counts = vectorizer.count_tokens(["text one", "text two"])
+        print(f"Token counts: {token_counts}")
+
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
-        model: str = "voyage-3-large",
+        model: str = _MODEL_NOT_SET,  # type: ignore[assignment]
         api_config: dict[str, Any] | None = None,
         dtype: str = "float32",
         cache: "EmbeddingsCache | None" = None,
@@ -105,6 +144,8 @@ class VoyageAIVectorizer(BaseVectorizer):
 
         Args:
             model (str): Model to use for embedding. Defaults to "voyage-3-large".
+                The default will be removed in the next major version; please specify
+                the model explicitly.
             api_config (Optional[Dict], optional): Dictionary containing the API key.
                 Defaults to None.
             dtype (str): the default datatype to use when embedding content as byte arrays.
@@ -122,6 +163,16 @@ class VoyageAIVectorizer(BaseVectorizer):
                 ffmpeg installed on the system. Image embeddings require pillow to be installed.
 
         """
+        if model is _MODEL_NOT_SET:
+            warnings.warn(
+                "Instantiating VoyageAIVectorizer without an explicit 'model' "
+                "parameter is deprecated. The default ('voyage-3-large') will be "
+                "removed in the next major version. Please pass model='voyage-3-large' "
+                "(or your preferred model) explicitly.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            model = "voyage-3-large"
         super().__init__(model=model, dtype=dtype, cache=cache)
         # Initialize client and set up the model
         self._setup(api_config, **kwargs)
@@ -318,7 +369,9 @@ class VoyageAIVectorizer(BaseVectorizer):
         Args:
             contents: List of items to embed - each item must be one of str, PIL.Image.Image, or
                 voyageai.video_utils.Video. Images and video require a multimodal model to be configured.
-            batch_size: Number of items to process in each API call
+            batch_size: Deprecated. Number of items to process in each API call.
+                Batch size is now determined automatically based on the model.
+                This parameter will be removed in the next major version.
             **kwargs: Additional parameters to pass to the VoyageAI API
 
         Returns:
@@ -336,8 +389,17 @@ class VoyageAIVectorizer(BaseVectorizer):
         # Validate inputs
         self._validate_input(contents, input_type, truncation)
 
-        # Determine batch size if not provided
-        if batch_size is None:
+        # Determine batch size - auto-determined based on model; explicit
+        # batch_size is deprecated.
+        if batch_size is not None:
+            warnings.warn(
+                "The 'batch_size' parameter is deprecated for VoyageAIVectorizer. "
+                "Batch size is now automatically determined based on the model's "
+                "token limits. This parameter will be removed in the next major version.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        else:
             batch_size = self._get_batch_size()
 
         try:
@@ -393,7 +455,9 @@ class VoyageAIVectorizer(BaseVectorizer):
         Args:
             contents: List of items to embed - each item must be one of str, PIL.Image.Image, or
                 voyageai.video_utils.Video. Images and video require a multimodal model to be configured.
-            batch_size: Number of texts to process in each API call
+            batch_size: Deprecated. Number of texts to process in each API call.
+                Batch size is now determined automatically based on the model.
+                This parameter will be removed in the next major version.
             **kwargs: Additional parameters to pass to the VoyageAI API
 
         Returns:
@@ -411,8 +475,17 @@ class VoyageAIVectorizer(BaseVectorizer):
         # Validate inputs
         self._validate_input(contents, input_type, truncation)
 
-        # Determine batch size if not provided
-        if batch_size is None:
+        # Determine batch size - auto-determined based on model; explicit
+        # batch_size is deprecated.
+        if batch_size is not None:
+            warnings.warn(
+                "The 'batch_size' parameter is deprecated for VoyageAIVectorizer. "
+                "Batch size is now automatically determined based on the model's "
+                "token limits. This parameter will be removed in the next major version.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        else:
             batch_size = self._get_batch_size()
 
         try:
@@ -447,6 +520,86 @@ class VoyageAIVectorizer(BaseVectorizer):
         if isinstance(content, Video):
             return content.to_bytes()
         return super()._serialize_for_cache(content)
+
+    def _is_context_model(self) -> bool:
+        """
+        Check if the current model is a contextualized embedding model.
+
+        Contextualized models (like voyage-context-3) use a different API
+        endpoint and expect inputs formatted differently.
+
+        Returns:
+            bool: True if the model is a context model, False otherwise.
+        """
+        return "context" in self.model
+
+    def count_tokens(self, texts: list[str]) -> list[int]:
+        """
+        Count tokens for the given texts using VoyageAI's local tokenizer.
+
+        This method runs entirely on the CPU using the HuggingFace ``tokenizers``
+        library — it does NOT make any network/API calls. It is safe to call
+        frequently (e.g., for token-aware batching) without incurring API costs
+        or latency.
+
+        Args:
+            texts: List of texts to count tokens for.
+
+        Returns:
+            list[int]: List of token counts for each text.
+
+        Raises:
+            ValueError: If tokenization fails.
+
+        Example:
+            >>> vectorizer = VoyageAIVectorizer(model="voyage-3.5")
+            >>> token_counts = vectorizer.count_tokens(["Hello world", "Another text"])
+            >>> print(token_counts)  # [2, 2]
+        """
+        if not texts:
+            return []
+
+        try:
+            # tokenize() is a local CPU operation using HuggingFace tokenizers,
+            # not a remote API call.
+            token_lists = self._client.tokenize(texts, model=self.model)
+            return [len(token_list) for token_list in token_lists]
+        except Exception as e:
+            raise ValueError(f"Token counting failed: {e}")
+
+    async def acount_tokens(self, texts: list[str]) -> list[int]:
+        """
+        Asynchronously count tokens for the given texts using VoyageAI's local tokenizer.
+
+        This method runs entirely on the CPU using the HuggingFace ``tokenizers``
+        library — it does NOT make any network/API calls. The underlying
+        tokenize operation is synchronous (CPU-bound), so this async wrapper
+        provides interface compatibility but does not yield to the event loop.
+
+        Args:
+            texts: List of texts to count tokens for.
+
+        Returns:
+            list[int]: List of token counts for each text.
+
+        Raises:
+            ValueError: If tokenization fails.
+
+        Example:
+            >>> vectorizer = VoyageAIVectorizer(model="voyage-3.5")
+            >>> token_counts = await vectorizer.acount_tokens(["Hello world", "Another text"])
+            >>> print(token_counts)  # [2, 2]
+        """
+        if not texts:
+            return []
+
+        try:
+            # tokenize() is a local CPU operation (HuggingFace tokenizers),
+            # not a remote API call. Synchronous even on AsyncClient.
+            token_lists = self._aclient.tokenize(texts, model=self.model)
+            return [len(token_list) for token_list in token_lists]
+        except Exception as e:
+            raise ValueError(f"Token counting failed: {e}")
 
     @property
     def type(self) -> str:
