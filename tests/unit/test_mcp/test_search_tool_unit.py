@@ -11,9 +11,11 @@ from redisvl.mcp.tools.search import (
     _build_fallback_hybrid_kwargs,
     _build_search_tool_description,
     _embed_query,
+    _validate_request,
     register_search_tool,
     search_records,
 )
+from redisvl.query import VectorQuery
 from redisvl.schema import IndexSchema
 
 
@@ -884,3 +886,65 @@ async def test_default_projection_always_produces_a_return_clause(
     # Non-empty is what makes RedisVL emit RETURN; empty would silently widen the
     # response to every field.
     assert built[0]["return_fields"], "empty projection would omit RETURN entirely"
+
+
+def test_empty_default_projection_still_yields_a_return_clause():
+    """The one case where a falsy `return_fields` legitimately reaches a query.
+
+    `None` and `[]` are kept distinct at the request boundary -- the branch is
+    `is None`, so an explicit `[]` is rejected rather than read as "omitted". But
+    the *default* projection is every non-vector field, so an index with only a
+    vector field resolves it to `[]`, and RedisVL reads a falsy `return_fields`
+    as "no projection" and omits RETURN.
+
+    That is safe here only because `VectorQuery` adds `vector_distance` to its own
+    return fields, so a RETURN clause is emitted anyway. This pins that
+    dependency: if it ever stops holding, an index like this would start
+    returning every stored field, embedding included. Fulltext and hybrid cannot
+    reach this state at all, because `text_field_name` is required to be a
+    non-vector field and therefore always lands in the projection.
+    """
+    vector_only = IndexSchema.from_dict(
+        {
+            "index": {"name": "vec-only", "prefix": "v", "storage_type": "hash"},
+            "fields": [
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "flat",
+                        "dims": 3,
+                        "distance_metric": "cosine",
+                        "datatype": "float32",
+                    },
+                }
+            ],
+        }
+    )
+    runtime = SimpleNamespace(default_limit=2, max_limit=5, max_result_window=100)
+
+    _, fields = _validate_request(
+        query="science",
+        limit=None,
+        offset=0,
+        return_fields=None,
+        runtime=runtime,
+        schema=vector_only,
+    )
+
+    # The default projection really is empty here, so this is not passing for
+    # some other reason.
+    assert fields == []
+
+    rendered = str(
+        VectorQuery(
+            vector=[0.1, 0.2, 0.3],
+            vector_field_name="embedding",
+            return_fields=fields,
+            num_results=2,
+        )
+    )
+
+    assert "RETURN" in rendered
+    # And what it returns is the score, not the embedding.
+    assert "embedding" not in rendered.split("RETURN", 1)[1]
