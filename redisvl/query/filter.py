@@ -687,6 +687,8 @@ class Timestamp(Num):
     - Unix timestamps (as integers or floats)
 
     All timestamps are converted to Unix timestamps in UTC for consistency.
+    Bare date values and date-only ISO strings are anchored to the UTC calendar
+    day, not the host's local day, and naive datetimes are read as UTC.
     """
 
     SUPPORTED_TYPES = (
@@ -718,8 +720,12 @@ class Timestamp(Num):
         """
         Convert various inputs to a Unix timestamp (seconds since epoch in UTC).
 
+        Naive datetimes are interpreted as UTC rather than local time.
+
         Args:
             value: A datetime, date, string, int, or float
+            end_date: For a bare date, anchor to the end of that UTC day
+                (23:59:59.999999) instead of the start (00:00:00).
 
         Returns:
             float: Unix timestamp
@@ -764,7 +770,8 @@ class Timestamp(Num):
     ) -> FilterExpression:
         """
         Filter for timestamps equal to the specified value.
-        For date objects (without time), this matches the entire day.
+        For date objects (without time), this matches the entire UTC calendar
+        day, from 00:00:00 to 23:59:59.999999 UTC.
 
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
@@ -773,17 +780,12 @@ class Timestamp(Num):
             self: The filter object for method chaining
         """
         if self._is_date(other):
-            # For date objects, match the entire day
+            # For date objects, match the entire day. Passing the date itself
+            # lets _convert_to_timestamp derive the UTC day bounds.
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
             assert isinstance(other, datetime.date)  # validate for mypy
-            start = datetime.datetime.combine(other, datetime.time.min).astimezone(
-                datetime.timezone.utc
-            )
-            end = datetime.datetime.combine(other, datetime.time.max).astimezone(
-                datetime.timezone.utc
-            )
-            return self.between(start, end)
+            return self.between(other, other)
 
         timestamp = self._convert_to_timestamp(other)
         self._set_value(timestamp, self.SUPPORTED_TYPES, FilterOperator.EQ)
@@ -794,7 +796,8 @@ class Timestamp(Num):
     ) -> FilterExpression:
         """
         Filter for timestamps not equal to the specified value.
-        For date objects (without time), this excludes the entire day.
+        For date objects (without time), this excludes the entire UTC calendar
+        day, from 00:00:00 to 23:59:59.999999 UTC.
 
         Args:
             other: A datetime, date, ISO string, or Unix timestamp
@@ -808,14 +811,8 @@ class Timestamp(Num):
             if isinstance(other, str):
                 other = datetime.datetime.strptime(other, "%Y-%m-%d").date()
             assert isinstance(other, datetime.date)  # validate for mypy
-            start = datetime.datetime.combine(other, datetime.time.min).astimezone(
-                datetime.timezone.utc
-            )
-            end = datetime.datetime.combine(other, datetime.time.max).astimezone(
-                datetime.timezone.utc
-            )
-            start_ts = self._convert_to_timestamp(start)
-            end_ts = self._convert_to_timestamp(end, end_date=True)
+            start_ts = self._convert_to_timestamp(other)
+            end_ts = self._convert_to_timestamp(other, end_date=True)
             return FilterExpression(
                 self.OPERATOR_MAP[FilterOperator.NE] % (self._field, start_ts, end_ts)
             )
