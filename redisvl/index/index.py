@@ -72,6 +72,7 @@ from redisvl.exceptions import (
     RedisSearchError,
     RedisVLError,
     SchemaValidationError,
+    _is_missing_index_error,
 )
 from redisvl.index.storage import BaseStorage, HashStorage, JsonStorage
 from redisvl.query import (
@@ -1079,12 +1080,19 @@ class SearchIndex(BaseSearchIndex):
         """Delete the search index while optionally dropping all keys associated
         with the index.
 
+        ``FT.DROPINDEX`` resolves index aliases, so if this schema's name happens
+        to be an alias, the index the alias points at is dropped instead -- along
+        with its documents when ``drop`` is True. :meth:`exists` reports an alias
+        as absent to keep :meth:`create` away from this path.
+
         Args:
             drop (bool, optional): Delete the key / documents pairs in the
                 index. Defaults to True.
 
-        raises:
-            redis.exceptions.ResponseError: If the index does not exist.
+        Raises:
+            RedisSearchError: If the index cannot be deleted, for example when it
+                does not exist. The original ``redis-py`` exception is available
+                as ``__cause__``.
         """
         try:
             # For Redis Cluster with drop=True, we need to handle key deletion manually
@@ -2008,8 +2016,23 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             bool: True if the index exists, False otherwise.
+
+        Raises:
+            RedisSearchError: If the check fails for any reason other than the
+                index not existing, such as a connection failure or insufficient
+                permissions. The original ``redis-py`` exception is available as
+                ``__cause__``.
         """
-        return self.schema.index.name in self.listall()
+        try:
+            info = self._info(self.schema.index.name, self._redis_client)
+        except RedisSearchError as e:
+            if _is_missing_index_error(e):
+                return False
+            raise
+        # FT.INFO answers for an alias's target, so compare the resolved name:
+        # reporting an alias as existing would let create(overwrite=True) drop
+        # the index it points at.
+        return info.get("index_name") == self.schema.index.name
 
     @staticmethod
     def _info(name: str, redis_client: SyncRedisClient) -> dict[str, Any]:
@@ -2388,12 +2411,19 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def delete(self, drop: bool = True):
         """Delete the search index.
 
+        ``FT.DROPINDEX`` resolves index aliases, so if this schema's name happens
+        to be an alias, the index the alias points at is dropped instead -- along
+        with its documents when ``drop`` is True. :meth:`exists` reports an alias
+        as absent to keep :meth:`create` away from this path.
+
         Args:
             drop (bool, optional): Delete the documents in the index.
                 Defaults to True.
 
         Raises:
-            redis.exceptions.ResponseError: If the index does not exist.
+            RedisSearchError: If the index cannot be deleted, for example when it
+                does not exist. The original ``redis-py`` exception is available
+                as ``__cause__``.
         """
         client = await self._get_client()
         try:
@@ -3234,8 +3264,24 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         Returns:
             bool: True if the index exists, False otherwise.
+
+        Raises:
+            RedisSearchError: If the check fails for any reason other than the
+                index not existing, such as a connection failure or insufficient
+                permissions. The original ``redis-py`` exception is available as
+                ``__cause__``.
         """
-        return self.schema.index.name in await self.listall()
+        client = await self._get_client()
+        try:
+            info = await self._info(self.schema.index.name, client)
+        except RedisSearchError as e:
+            if _is_missing_index_error(e):
+                return False
+            raise
+        # FT.INFO answers for an alias's target, so compare the resolved name:
+        # reporting an alias as existing would let create(overwrite=True) drop
+        # the index it points at.
+        return info.get("index_name") == self.schema.index.name
 
     async def info(self, name: str | None = None) -> dict[str, Any]:
         """Get information about the index.

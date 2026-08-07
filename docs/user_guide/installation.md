@@ -183,3 +183,41 @@ The Sentinel URL format supports:
 - Service name (defaults to `mymaster` if not specified)
 - Optional database number (defaults to 0)
 - Both sync (`SearchIndex`) and async (`AsyncSearchIndex`) connections
+
+## Redis permissions (ACLs)
+
+RedisVL works through Redis Search commands, so a connecting credential needs the `@search` ACL category, or the individual `FT.*` commands. Reading an index additionally requires key permissions covering its prefix: the [ACL documentation](https://redis.io/docs/latest/operate/oss_and_stack/management/security/acl/#command-categories) describes this rule for creating, modifying, and reading an index, and in practice `FT.INFO`, `FT.SEARCH`, and `FT.AGGREGATE` are denied when the index prefix falls outside the allowed key patterns. `FT.CREATE` is not checked this way, so a credential can create an index it is then unable to read.
+
+One command needs more than `@search`. Redis tags `FT._LIST` as `@admin` as well as `@search` and `@slow`, and ACL rules are applied left to right — so a rule that grants search access and then takes back administrative commands, such as `+@search -@admin` or `+@all -@admin`, denies it:
+
+```text
+User <name> has no permissions to run the 'FT._LIST' command
+```
+
+Note that `FT._LIST` does not *require* `@admin`: granting `+@search` on its own permits it. Only rules that subtract `@admin` after granting search are affected. To keep such a policy and still enumerate indexes, grant the command back explicitly with `+ft._list`.
+
+| Operation | Redis command | Permitted by `+@all -@admin` |
+|---|---|---|
+| `index.create()`, `index.exists()` | `FT.CREATE`, `FT.INFO` | Yes |
+| `index.query()`, `index.search()`, `index.aggregate()` | `FT.SEARCH`, `FT.AGGREGATE` | Yes |
+| `index.info()`, `rvl index info`, `rvl stats` | `FT.INFO` | Yes |
+| `index.load()` | `HSET` or `JSON.SET` (needs `@write` and key access) | Yes |
+| `index.delete()`, `rvl index delete`, `rvl index destroy` | `FT.DROPINDEX` | Yes |
+| Enumerating indexes (see below) | `FT._LIST` | No |
+
+`SemanticCache`, `SemanticMessageHistory`, `MessageHistory`, and `SemanticRouter` each call `index.create()` while being constructed, so they are covered by the first row.
+
+Index enumeration is the only thing an `-@admin` rule breaks. It is reached by `SearchIndex.listall()` and `AsyncSearchIndex.listall()`, by `rvl index listall`, and by the migration entry points that discover indexes for you: `rvl migrate helper`, `rvl migrate wizard` when no `-i/--index` is given, and `rvl migrate batch-plan --pattern`.
+
+Other categories gate different operations. `FT.DROPINDEX` is tagged `@dangerous` and `@write` as well as `@search`, so a policy that subtracts `@dangerous` denies `index.delete()`, `rvl index delete`, and `rvl index destroy`.
+
+Outside of Redis Search, RedisVL identifies itself on connect with `CLIENT SETINFO` and falls back to `ECHO`. A credential permitted to run neither currently fails when the connection is created, before any index operation.
+
+### Redis Cloud and Redis Software
+
+Both manage ACLs through their own control plane rather than the `ACL SETUSER` command, so permissions are attached to roles and users instead of being set on a connection.
+
+- **Redis Cloud** provides three predefined ACL rules that cannot be edited — Full-Access, Read-Write ("read and write commands and excludes dangerous commands"), and Read-Only — which you assign to a data access role. See [Configure permissions with Redis ACLs](https://redis.io/docs/latest/operate/rc/security/access-control/data-access-control/configure-acls/). Custom rules use the same syntax as above.
+- **Redis Software** ships one predefined ACL, Full Access, and you define others in the Cluster Manager UI or with a [`POST /v1/redis_acls`](https://redis.io/docs/latest/operate/rs/security/access-control/create-db-roles/) request. It [does not support every `ACL` command](https://redis.io/docs/latest/operate/rs/security/access-control/redis-acl-overview/#acl-command-support), nor nested selectors, nor `(` and `)` in key patterns.
+
+Because the predefined rules' exact command sets are not published, confirm a credential against the database rather than inferring what its policy name implies. Redis Software's documentation uses `+@read +FT.INFO +FT.SEARCH` as an example rule, which is a good illustration: it permits querying and `index.exists()`, but not `index.create()` or index enumeration. Grant `FT.CREATE` explicitly when the application creates its own index, which `SemanticCache`, `SemanticMessageHistory`, `MessageHistory`, and `SemanticRouter` all do.
