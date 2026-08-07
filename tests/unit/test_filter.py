@@ -1,4 +1,5 @@
 import calendar
+import operator
 import time as time_module
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -552,6 +553,120 @@ def test_timestamp_operators():
 
     ts = Timestamp("created_at").between(dt, dt2, inclusive="right")
     assert str(ts) == f"@created_at:[({ts_value} {ts_value2}]"
+
+
+# The four comparison operators, keyed by the symbol used in failure messages.
+TIMESTAMP_COMPARISONS = {
+    ">": operator.gt,
+    "<": operator.lt,
+    ">=": operator.ge,
+    "<=": operator.le,
+}
+
+
+def test_timestamp_comparison_operators_with_date():
+    """A bare date bounds the whole UTC day, so > and <= sit at its end.
+
+    Hard-coded against 2023-03-17T00:00:00Z / T23:59:59.999999Z so the test
+    cannot drift along with the implementation.
+    """
+    expected = {
+        ">": "@created_at:[(1679097599.999999 +inf]",
+        "<": "@created_at:[-inf (1679011200.0]",
+        ">=": "@created_at:[1679011200.0 +inf]",
+        "<=": "@created_at:[-inf 1679097599.999999]",
+    }
+
+    for symbol, op in TIMESTAMP_COMPARISONS.items():
+        # Bare dates and date-only ISO strings take the same branch
+        for value in (date(2023, 3, 17), "2023-03-17"):
+            assert (
+                str(op(Timestamp("created_at"), value)) == expected[symbol]
+            ), f"{symbol} {value!r}"
+
+
+def test_timestamp_between_date_only_string_matches_date_object():
+    """A date-only string endpoint spans the same whole day a date object does.
+
+    `end` is the interesting one: it goes through `end_date=True`, which only
+    reaches the end of the day if the string was coerced to a date first.
+    """
+    by_date = str(Timestamp("created_at").between(date(2023, 3, 1), date(2023, 3, 17)))
+    by_string = str(Timestamp("created_at").between("2023-03-01", "2023-03-17"))
+
+    assert by_string == by_date
+    assert by_date == "@created_at:[1677628800.0 1679097599.999999]"
+
+
+@pytest.mark.parametrize("symbol", list(TIMESTAMP_COMPARISONS))
+@pytest.mark.parametrize("value", ["2023-02-30", "2023-13-45", "0000-00-00"])
+def test_timestamp_date_shaped_but_invalid_string(symbol, value):
+    """Every operator rejects a date-shaped non-date the same way.
+
+    `_is_date_only` matches on the digit pattern alone, so these reach the
+    coercion and have to fall through to one shared error message.
+    """
+    with pytest.raises(ValueError, match=f"must be in ISO format: {value}"):
+        TIMESTAMP_COMPARISONS[symbol](Timestamp("created_at"), value)
+
+
+@pytest.mark.skipif(not hasattr(time_module, "tzset"), reason="tzset() is POSIX-only")
+@pytest.mark.parametrize(
+    "d",
+    [
+        date(2023, 3, 17),  # ordinary date
+        date(2023, 3, 12),  # US DST spring-forward
+        date(2023, 11, 5),  # US DST fall-back
+        date(1970, 1, 1),  # Unix epoch
+        date(2038, 1, 20),  # past the signed 32-bit rollover
+    ],
+)
+def test_timestamp_comparison_date_bounds_are_utc_days(d, monkeypatch):
+    """Comparison operators bound the UTC day, whatever the host's local zone.
+
+    CI runs in UTC, where the correct and the local-time conversions agree, so
+    this is the only test that would catch a regression to local-day bounds.
+    """
+    # calendar.timegm is a timezone-independent oracle that shares no code with
+    # the conversion path under test. Caveat for anyone extending the list above:
+    # adding the microseconds back on is float-exact only for non-negative
+    # timestamps, so a pre-epoch date such as 1969-12-31 fails here spuriously
+    # (oracle -1.0000000000287557e-06 vs. a correct -1e-06). Assert those against
+    # datetime.combine(d, time.max, tzinfo=timezone.utc).timestamp() instead.
+    start = float(calendar.timegm(datetime.combine(d, time.min).timetuple()))
+    end = float(calendar.timegm(datetime.combine(d, time.max).timetuple())) + 0.999999
+
+    # > and <= exclude/include the whole day, so they anchor to its end; >= and <
+    # anchor to its start.
+    expected = {
+        ">": f"@created_at:[({end} +inf]",
+        "<": f"@created_at:[-inf ({start}]",
+        ">=": f"@created_at:[{start} +inf]",
+        "<=": f"@created_at:[-inf {end}]",
+    }
+
+    try:
+        # Includes zones with non-hour offsets (+05:45, +12:45/+13:45), which an
+        # hour-granularity mistake would pass.
+        for tz in (
+            "UTC",
+            "America/New_York",
+            "Asia/Tokyo",
+            "Asia/Kathmandu",
+            "Pacific/Chatham",
+        ):
+            monkeypatch.setenv("TZ", tz)
+            time_module.tzset()
+
+            for symbol, op in TIMESTAMP_COMPARISONS.items():
+                for value in (d, d.isoformat()):
+                    assert (
+                        str(op(Timestamp("created_at"), value)) == expected[symbol]
+                    ), f"{symbol} {value!r} in TZ={tz}"
+    finally:
+        # Restore TZ and re-read it, so later tests see the original zone
+        monkeypatch.undo()
+        time_module.tzset()
 
 
 def test_timestamp_between():
