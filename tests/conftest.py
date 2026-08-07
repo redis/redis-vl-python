@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import subprocess
-import sys
 from datetime import datetime, timezone
 
 import pytest
@@ -12,12 +11,7 @@ from testcontainers.compose import DockerCompose
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.redis.utils import array_to_buffer
-
-# Check if we're on Python 3.14+ where sentence-transformers may not work
-SKIP_HF = sys.version_info >= (3, 14)
-
-if not SKIP_HF:
-    from redisvl.utils.vectorize import HFTextVectorizer
+from redisvl.utils.vectorize import HFTextVectorizer
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +219,6 @@ def cluster_client(redis_cluster_url):
 
 @pytest.fixture(scope="session")
 def hf_vectorizer():
-    if SKIP_HF:
-        pytest.skip("HFTextVectorizer not supported on Python 3.14+")
     return HFTextVectorizer(
         model="sentence-transformers/all-mpnet-base-v2",
         token=os.getenv("HF_TOKEN"),
@@ -236,15 +228,11 @@ def hf_vectorizer():
 
 @pytest.fixture(scope="session")
 def hf_vectorizer_float16():
-    if SKIP_HF:
-        pytest.skip("HFTextVectorizer not supported on Python 3.14+")
     return HFTextVectorizer(dtype="float16")
 
 
 @pytest.fixture(scope="session")
 def hf_vectorizer_with_model():
-    if SKIP_HF:
-        pytest.skip("HFTextVectorizer not supported on Python 3.14+")
     return HFTextVectorizer("sentence-transformers/all-mpnet-base-v2")
 
 
@@ -465,9 +453,6 @@ def pytest_collection_modifyitems(
     skip_cluster = pytest.mark.skip(
         reason="Skipping test because Redis cluster is not available. Use --run-cluster-tests to run these tests."
     )
-    skip_hf = pytest.mark.skip(
-        reason="Skipping test because sentence-transformers is not supported on Python 3.14+"
-    )
 
     # Apply skip markers independently based on flags
     for item in items:
@@ -475,8 +460,6 @@ def pytest_collection_modifyitems(
             item.add_marker(skip_api)
         if item.get_closest_marker("requires_cluster") and not run_cluster_tests:
             item.add_marker(skip_cluster)
-        if item.get_closest_marker("requires_hf") and SKIP_HF:
-            item.add_marker(skip_hf)
 
 
 @pytest.fixture
