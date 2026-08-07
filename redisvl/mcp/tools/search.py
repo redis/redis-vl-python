@@ -153,6 +153,17 @@ def _validate_request(
                 code=MCPErrorCode.INVALID_REQUEST,
                 retryable=False,
             )
+        if not return_fields:
+            # An empty projection reaches Redis as no RETURN clause at all, which
+            # returns *every* field -- including the vector this function refuses
+            # a few lines down. "Omit the argument" is the way to ask for the
+            # default projection.
+            raise RedisVLMCPError(
+                "return_fields must not be empty; omit it to use the default "
+                "projection",
+                code=MCPErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
         fields = []
         for field_name in return_fields:
             if not isinstance(field_name, str) or not field_name:

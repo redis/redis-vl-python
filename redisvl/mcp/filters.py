@@ -1,8 +1,32 @@
+import re
 from typing import Any, Iterable
 
 from redisvl.mcp.errors import MCPErrorCode, RedisVLMCPError
 from redisvl.query.filter import FilterExpression, Num, Tag, Text
 from redisvl.schema import IndexSchema
+from redisvl.utils.token_escaper import TokenEscaper
+
+# Text values reach the query string unescaped: `Text`'s operator templates are
+# `@field:("value")` for eq/ne and `@field:(value)` for like, so a caller value
+# containing a quote or a paren can close its own clause and inject arbitrary
+# RediSearch syntax after it -- including a `|` that escapes an enclosing AND.
+# Tag and numeric values are already escaped or type-checked upstream; text is
+# not, so this boundary escapes it before building the expression.
+_TEXT_ESCAPER = TokenEscaper()
+
+# `like` is the pattern operator, so the metacharacters that give a pattern its
+# meaning have to stay live: `*` and `?` for wildcards, `%` for fuzzy matching,
+# and a space for the implicit AND between terms. Escaping those does not fail
+# loudly -- it silently turns a documented pattern into a literal that matches
+# nothing -- so this set is the shared no-wildcard set minus `%` and space.
+#
+# Dropping them costs nothing in containment, because containment comes from the
+# delimiters rather than from these. With `(` and `)` escaped, the value cannot
+# close its own `@field:(...)`, so anything it carries -- including a `|`, which
+# no escaper in RedisVL touches -- stays scoped to this one field instead of
+# reaching the surrounding expression.
+_LIKE_ESCAPED_CHARS = re.compile(r"[,.<>{}\[\]\\\"\':;!@#$^&()\-+=~\/]")
+_LIKE_ESCAPER = TokenEscaper(escape_chars_re=_LIKE_ESCAPED_CHARS)
 
 
 def parse_filter(
@@ -132,17 +156,32 @@ def _parse_tag_expression(field_name: str, op: str, operand: Any) -> FilterExpre
     )
 
 
+def _escape_text(value: str) -> str:
+    """Escape a caller-supplied text value so it cannot leave its own clause."""
+    return _TEXT_ESCAPER.escape(value)
+
+
+def _escape_like_pattern(value: str) -> str:
+    """Escape a `like` pattern, leaving its pattern metacharacters intact."""
+    return _LIKE_ESCAPER.escape(value)
+
+
 def _parse_text_expression(field_name: str, op: str, operand: Any) -> FilterExpression:
     field = Text(field_name)
     if op == "eq":
-        return field == _require_string(operand, field_name, op)
+        return field == _escape_text(_require_string(operand, field_name, op))
     if op == "ne":
-        return field != _require_string(operand, field_name, op)
+        return field != _escape_text(_require_string(operand, field_name, op))
     if op == "like":
-        return field % _require_string(operand, field_name, op)
+        # An exact-match value is a literal, but a `like` value is a pattern, so
+        # the two need different escaping -- see `_LIKE_ESCAPED_CHARS`.
+        return field % _escape_like_pattern(_require_string(operand, field_name, op))
     if op == "in":
         return _combine_or(
-            [field == item for item in _require_string_list(operand, field_name, op)]
+            [
+                field == _escape_text(item)
+                for item in _require_string_list(operand, field_name, op)
+            ]
         )
     raise RedisVLMCPError(
         f"Unsupported operator '{op}' for text field '{field_name}'",

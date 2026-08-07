@@ -472,10 +472,22 @@ class MCPIndexBindingConfig(BaseModel):
         """Ensure runtime mappings point at explicit fields in the effective schema."""
         field_names = set(schema.field_names)
 
-        if self.uses_text_search and self.runtime.text_field_name not in field_names:
-            raise ValueError(
-                f"runtime.text_field_name '{self.runtime.text_field_name}' not found in schema"
-            )
+        if self.uses_text_search:
+            if self.runtime.text_field_name not in field_names:
+                raise ValueError(
+                    f"runtime.text_field_name '{self.runtime.text_field_name}' not found in schema"
+                )
+            # Membership alone is not enough: a vector field cannot be searched as
+            # text, and pointing at one leaves the default projection empty (it is
+            # every *non-vector* field). An empty projection reaches Redis as no
+            # RETURN clause at all, which returns every stored field -- including
+            # the embedding this tool refuses to return when asked for by name.
+            text_field = schema.fields.get(self.runtime.text_field_name)
+            if text_field is not None and text_field.type == "vector":
+                raise ValueError(
+                    f"runtime.text_field_name '{self.runtime.text_field_name}' is a "
+                    "vector field; text search requires a text or tag field"
+                )
 
         if (
             self.supports_server_side_embedding

@@ -525,3 +525,36 @@ def test_mcp_config_allows_linear_hybrid_fallback_params():
         schema=schema,
         supports_native_hybrid_search=False,
     )
+
+
+@pytest.mark.parametrize("search_type", ["fulltext", "hybrid"])
+def test_mcp_config_rejects_a_text_field_that_is_actually_the_vector_field(search_type):
+    """Membership in the schema is not enough -- the field must be text-searchable.
+
+    Pointing `text_field_name` at the vector field passes a name-only check while
+    leaving the default projection (every *non-vector* field) empty. An empty
+    projection reaches Redis as no RETURN clause, which returns every stored
+    field including the embedding, so this has to fail at startup.
+    """
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": search_type}
+    config["indexes"]["knowledge"]["runtime"]["text_field_name"] = "embedding"
+
+    binding = MCPConfig.model_validate(config).indexes["knowledge"]
+
+    # `to_index_schema` validates the runtime mapping against the effective
+    # schema, so startup fails here rather than at the first request.
+    with pytest.raises(ValueError, match="is a vector field"):
+        binding.to_index_schema(_inspected_schema())
+
+
+def test_mcp_config_still_accepts_a_real_text_field():
+    """The control: a genuine text field must keep validating."""
+    config = _valid_config()
+    config["indexes"]["knowledge"]["search"] = {"type": "fulltext"}
+    config["indexes"]["knowledge"]["runtime"]["text_field_name"] = "content"
+
+    binding = MCPConfig.model_validate(config).indexes["knowledge"]
+    schema = binding.to_index_schema(_inspected_schema())
+
+    binding.validate_runtime_mapping(schema)
