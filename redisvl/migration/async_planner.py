@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from contextlib import aclosing
+from typing import Any, AsyncGenerator, List, Optional, cast
 
 from redisvl.index import AsyncSearchIndex
 from redisvl.migration.models import (
@@ -274,15 +275,25 @@ class AsyncMigrationPlanner:
                 match_pattern = f"{prefix}{key_separator}*"
             # See the note in the sync planner's _sample_keys on why this
             # delegates to scan_iter rather than driving the cursor by hand.
-            async for key in client.scan_iter(
-                match=match_pattern,
-                count=max(self.key_sample_limit, 10),
-            ):
-                decoded_key = key.decode() if isinstance(key, bytes) else str(key)
-                if decoded_key not in key_sample:
-                    key_sample.append(decoded_key)
-                if len(key_sample) >= self.key_sample_limit:
-                    return key_sample
+            # aclosing because we return mid-iteration once the sample limit is
+            # hit: an async generator abandoned that way is only closed at loop
+            # shutdown, which warns that scan_iter's aclose was never awaited.
+            # scan_iter is annotated AsyncIterator, which does not advertise
+            # aclose, but every implementation of it is an async generator.
+            scanner = cast(
+                AsyncGenerator[Any, None],
+                client.scan_iter(
+                    match=match_pattern,
+                    count=max(self.key_sample_limit, 10),
+                ),
+            )
+            async with aclosing(scanner) as keys:
+                async for key in keys:
+                    decoded_key = key.decode() if isinstance(key, bytes) else str(key)
+                    if decoded_key not in key_sample:
+                        key_sample.append(decoded_key)
+                    if len(key_sample) >= self.key_sample_limit:
+                        return key_sample
         return key_sample
 
     def write_plan(self, plan: MigrationPlan, plan_out: str) -> None:
