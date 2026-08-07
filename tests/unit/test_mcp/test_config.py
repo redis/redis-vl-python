@@ -26,6 +26,25 @@ def _valid_config() -> dict:
     }
 
 
+def _profile_dict(**overrides) -> dict:
+    """Build one *unvalidated* profile dict.
+
+    Named for its return type on purpose: this file's job is to feed raw
+    payloads to the validator, so it must not be confused with a helper that
+    returns an already-validated MCPCustomToolConfig.
+    """
+    profile = {"name": "resolved-search", "description": "Search resolved records."}
+    profile.update(overrides)
+    return profile
+
+
+def _raw_config_with_profiles(*profiles: dict) -> dict:
+    """Build an unvalidated config dict carrying the given raw profile dicts."""
+    config = _valid_config()
+    config["custom_tools"] = list(profiles)
+    return config
+
+
 def _inspected_schema() -> dict:
     return {
         "index": {
@@ -618,3 +637,308 @@ indexes:
 
     assert config.server.builtin_tool_enabled("upsert-records") is False
     assert config.server.builtin_tool_enabled("search-records") is True
+
+
+def test_mcp_config_defaults_to_no_custom_tools():
+    config = MCPConfig.model_validate(_valid_config())
+
+    assert config.custom_tools == []
+
+
+def test_mcp_config_custom_tool_defaults():
+    config = MCPConfig.model_validate(_raw_config_with_profiles(_profile_dict()))
+
+    profile = config.custom_tools[0]
+    assert profile.name == "resolved-search"
+    assert profile.kind == "profile"
+    assert profile.based_on == "search-records"
+    # An unpinned profile is legal with one binding and resolves to it.
+    assert profile.index is None
+    assert profile.suppress_schema_hints is False
+    assert profile.lock.return_fields is None
+    assert profile.lock.filter is None
+    assert profile.params == {}
+    assert config.resolved_profile_index(profile) == "knowledge"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # One violation per position the pattern constrains: the anchored first
+        # character, and the body character class.
+        "1foo",
+        "shop.foo",
+    ],
+)
+def test_mcp_config_rejects_invalid_custom_tool_names(name):
+    with pytest.raises(ValueError, match="is invalid"):
+        MCPConfig.model_validate(_raw_config_with_profiles(_profile_dict(name=name)))
+
+
+@pytest.mark.parametrize(
+    ("name", "valid"),
+    [
+        # The pattern is `^[a-z][a-z0-9_-]{0,63}$`, so 64 characters is the
+        # inclusive ceiling and 65 is the first rejection. Nothing else pins this
+        # bound, and an off-by-one in the quantifier is otherwise invisible.
+        ("a" + "b" * 63, True),
+        ("a" + "b" * 64, False),
+    ],
+)
+def test_mcp_config_bounds_custom_tool_name_length_at_64_characters(name, valid):
+    config = _raw_config_with_profiles(_profile_dict(name=name))
+
+    if valid:
+        assert MCPConfig.model_validate(config).custom_tools[0].name == name
+    else:
+        with pytest.raises(ValueError, match="is invalid"):
+            MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_custom_tool_names_that_collide_with_builtins():
+    # One built-in stands in for the rest: the check is a membership test against
+    # builtin_tool_names(), not per-name logic.
+    name = "search-records"
+    assert name in builtin_tool_names()
+
+    with pytest.raises(ValueError, match="collides with a built-in tool"):
+        MCPConfig.model_validate(_raw_config_with_profiles(_profile_dict(name=name)))
+
+
+def test_mcp_config_rejects_unknown_custom_tool_params():
+    config = _raw_config_with_profiles(
+        _profile_dict(params={"search_type": {"expose": False}})
+    )
+
+    with pytest.raises(ValueError, match="params contains unknown arguments"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_max_on_params_other_than_limit():
+    # `limit` is the sole param with a cap; every other name takes the same
+    # rejection branch, so one stands in for all of them.
+    config = _raw_config_with_profiles(_profile_dict(params={"offset": {"max": 5}}))
+
+    with pytest.raises(ValueError, match="does not support 'max'"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_non_positive_param_max():
+    # 0 is the boundary: it is the largest value the `> 0` check must still refuse.
+    config = _raw_config_with_profiles(_profile_dict(params={"limit": {"max": 0}}))
+
+    with pytest.raises(ValueError, match="max must be greater than 0"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_hiding_the_query_param():
+    config = _raw_config_with_profiles(
+        _profile_dict(params={"query": {"expose": False}})
+    )
+
+    with pytest.raises(ValueError, match="params.query cannot be hidden"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_locking_return_fields_while_exposing_them():
+    config = _raw_config_with_profiles(
+        _profile_dict(
+            lock={"return_fields": ["content"]},
+            params={"return_fields": {"expose": True}},
+        )
+    )
+
+    with pytest.raises(ValueError, match="cannot both lock return_fields"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_allows_locking_return_fields_when_they_are_explicitly_hidden():
+    config = _raw_config_with_profiles(
+        _profile_dict(
+            lock={"return_fields": ["content"]},
+            params={"return_fields": {"expose": False}},
+        )
+    )
+
+    profile = MCPConfig.model_validate(config).custom_tools[0]
+
+    assert profile.lock.return_fields == ["content"]
+    assert profile.param_exposed("return_fields") is False
+
+
+def test_mcp_config_allows_locking_a_filter_while_the_caller_filter_stays_exposed():
+    config = _raw_config_with_profiles(
+        _profile_dict(
+            lock={"filter": {"field": "content", "op": "like", "value": "jam*"}},
+            params={"filter": {"expose": True}},
+        )
+    )
+
+    profile = MCPConfig.model_validate(config).custom_tools[0]
+
+    # Unlike return_fields, locked-plus-exposed is the intended narrowing case.
+    assert profile.param_exposed("filter") is True
+
+
+def test_mcp_config_rejects_empty_locked_return_fields():
+    config = _raw_config_with_profiles(_profile_dict(lock={"return_fields": []}))
+
+    with pytest.raises(ValueError, match="must contain at least one field"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_blank_locked_return_field_names():
+    # Whitespace rather than "": the empty string is already falsy, so only this
+    # one requires the check to `.strip()` before testing emptiness.
+    config = _raw_config_with_profiles(_profile_dict(lock={"return_fields": ["   "]}))
+
+    with pytest.raises(ValueError, match="must contain non-empty strings"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_duplicate_custom_tool_names():
+    config = _raw_config_with_profiles(
+        _profile_dict(), _profile_dict(description="Another description.")
+    )
+
+    with pytest.raises(ValueError, match="contains duplicate tool name"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_requires_custom_tool_index_when_multiple_bindings_exist():
+    config = _raw_config_with_profiles(_profile_dict())
+    config["indexes"]["tickets"] = deepcopy(config["indexes"]["knowledge"])
+
+    with pytest.raises(
+        ValueError, match="must set 'index' when multiple indexes are configured"
+    ):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_rejects_custom_tool_index_naming_an_unknown_binding():
+    config = _raw_config_with_profiles(_profile_dict(index="missing"))
+
+    with pytest.raises(ValueError, match="references unknown index"):
+        MCPConfig.model_validate(config)
+
+
+def test_mcp_config_resolves_a_pinned_custom_tool_index():
+    config = _raw_config_with_profiles(_profile_dict(index="tickets"))
+    config["indexes"]["tickets"] = deepcopy(config["indexes"]["knowledge"])
+
+    loaded = MCPConfig.model_validate(config)
+
+    assert loaded.resolved_profile_index(loaded.custom_tools[0]) == "tickets"
+
+
+def test_mcp_config_param_exposed_hides_return_fields_implicitly_when_locked():
+    config = _raw_config_with_profiles(
+        _profile_dict(lock={"return_fields": ["content"]})
+    )
+
+    profile = MCPConfig.model_validate(config).custom_tools[0]
+
+    # Locking implies hiding without the author having to say so twice.
+    assert profile.param_exposed("return_fields") is False
+    assert profile.param_exposed("filter") is True
+
+
+@pytest.mark.parametrize(
+    ("label", "profile_patch"),
+    [
+        # One case per model that declares `extra="forbid"` -- the profile itself,
+        # its `lock`, and a per-param policy. There are exactly three, and within
+        # any one of them every misspelling takes the identical pydantic branch.
+        ("profile", {"basedon": "search-records"}),
+        ("lock", {"lock": {"return_field": ["content"]}}),
+        ("params policy", {"params": {"limit": {"exposed": True}}}),
+    ],
+)
+def test_custom_tools_rejects_misspelled_keys(label, profile_patch):
+    del label
+    config = _valid_config()
+    profile = {"name": "resolved-search", "description": "Search resolved records."}
+    profile.update(profile_patch)
+    config["custom_tools"] = [profile]
+
+    # A dropped key would leave a tool that reads as locked in config while
+    # enforcing nothing, so unrecognized keys must fail rather than be ignored.
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        MCPConfig.model_validate(config)
+
+
+def test_custom_tools_rejects_a_limit_cap_above_the_bindings_max_limit():
+    config = _valid_config()
+    config["indexes"]["knowledge"]["runtime"]["default_limit"] = 5
+    config["indexes"]["knowledge"]["runtime"]["max_limit"] = 5
+    config["custom_tools"] = [
+        {
+            "name": "capped-search",
+            "description": "Search records.",
+            "params": {"limit": {"expose": False, "max": 10}},
+        }
+    ]
+
+    # With `limit` hidden the cap becomes the request size, so a cap the binding
+    # can never satisfy would make every call fail. Catch it before startup.
+    with pytest.raises(ValueError, match="exceeds the bound index's"):
+        MCPConfig.model_validate(config)
+
+
+@pytest.mark.parametrize("name", ["redisvl-search", "redisvl_search"])
+def test_custom_tools_rejects_both_reserved_prefix_separators(name):
+    config = _valid_config()
+    config["custom_tools"] = [{"name": name, "description": "Search records."}]
+
+    # The name pattern permits either separator, so both spellings of the
+    # reserved prefix have to be refused.
+    with pytest.raises(ValueError, match="reserved prefix"):
+        MCPConfig.model_validate(config)
+
+
+def test_load_mcp_config_parses_custom_tools_from_yaml(tmp_path: Path):
+    """The whole point is YAML authoring, so cover the real load path once."""
+    config_path = tmp_path / "mcp.yaml"
+    config_path.write_text(
+        """
+server:
+  redis_url: redis://localhost:6379
+  builtin_tools:
+    search-records: disabled
+indexes:
+    knowledge:
+      redis_name: docs-index
+      search:
+        type: fulltext
+      runtime:
+        text_field_name: content
+custom_tools:
+  - name: resolved-search
+    description: Search resolved records.
+    lock:
+      return_fields: [content]
+      filter:
+        field: category
+        op: eq
+        value: resolved
+    params:
+      limit:
+        max: 5
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_mcp_config(str(config_path))
+
+    profile = config.custom_tools[0]
+    assert profile.name == "resolved-search"
+    assert profile.lock.return_fields == ["content"]
+    assert profile.lock.filter == {
+        "field": "category",
+        "op": "eq",
+        "value": "resolved",
+    }
+    assert profile.param_max("limit") == 5
+    # Disabling the built-in a profile supersedes is the motivating pairing, so
+    # confirm both halves survive one load.
+    assert config.server.builtin_tool_enabled("search-records") is False
