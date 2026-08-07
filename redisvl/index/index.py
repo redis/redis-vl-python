@@ -252,6 +252,22 @@ def _agg_row_to_key(row: Any) -> str:
     return decoded[key_field_index + 1]
 
 
+def _dedupe_keys(keys: Iterable[str], seen: set[str]) -> list[str]:
+    """Filter ``keys`` down to those not already in ``seen``, updating ``seen``.
+
+    Repeats *within* ``keys`` are collapsed too, so one pass over a cursor page
+    yields each key at most once across the whole iteration. Cursor order falls
+    out of the implementation but nothing depends on it. See
+    :meth:`SearchIndex._iter_keys_by_filter` for why a cursor repeats keys.
+    """
+    fresh = []
+    for key in keys:
+        if key not in seen:
+            seen.add(key)
+            fresh.append(key)
+    return fresh
+
+
 def _update_script_and_args(
     is_json: bool, values: dict[str, Any]
 ) -> tuple[str, list[Any]]:
@@ -1388,11 +1404,14 @@ class SearchIndex(BaseSearchIndex):
         ``JSON.MERGE`` (RFC 7396), so nested objects merge recursively, arrays
         are replaced wholesale, and a ``None`` value deletes that path.
 
-        Because the read phase (an ``FT.AGGREGATE`` cursor) cannot safely run
-        while the index is being written, all matching keys are resolved into
-        memory *before* any write, then updated in batches. Memory use is
-        therefore proportional to the match count; for very large match sets,
-        narrow the filter and run in partitions (see the user guide).
+        The read phase (an ``FT.AGGREGATE`` cursor) is drained in full *before*
+        any write, holding every matching key in memory in between. Interleaving
+        the two does not terminate: RediSearch has no in-place update, so each
+        write appends a new, higher document id ahead of the cursor, which hands
+        that document back to be written again. Memory use is therefore
+        proportional to the match count; for very large match sets, narrow the
+        filter and run in partitions (see "Bulk Delete and Update" in the
+        search-and-indexing concepts guide).
 
         Args:
             filter_expression (Union[str, FilterExpression]): Selects the
@@ -1443,6 +1462,15 @@ class SearchIndex(BaseSearchIndex):
             isn't counted in ``processed``. ``processed`` therefore reflects the
             documents actually written, which can be less than ``matched`` under
             concurrent deletion.
+
+            ``processed`` counts **distinct** documents — a document is written
+            *at most* once, even though the resolving cursor can emit it on more
+            than one page — but there is no *at least* once guarantee. It can
+            exceed ``matched`` if the match set grew after the initial count, and
+            fall short of it either from a concurrent deletion or because the
+            cursor itself returned fewer rows than matched (which Redis
+            documents as possible). A short ``processed`` is therefore not
+            evidence of any particular cause.
         """
         _require_specific_filter(filter_expression, allow_all)
         if not values:
@@ -1475,13 +1503,27 @@ class SearchIndex(BaseSearchIndex):
     def _iter_keys_by_filter(
         self, filter_expression: str | FilterExpression, batch_size: int
     ) -> Iterator[list[str]]:
-        """Yield batches of document keys matching a filter using a cursor.
+        """Yield batches of distinct document keys matching a filter.
 
-        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` for resumable,
-        unbounded iteration (unlike ``FT.SEARCH`` + ``LIMIT``, which is capped
+        Uses ``FT.AGGREGATE ... LOAD 1 @__key WITHCURSOR`` to page through a
+        match set of any size (unlike ``FT.SEARCH`` + ``LIMIT``, which is capped
         by ``MAXSEARCHRESULTS`` and non-deterministic without a unique sort).
         The server-side cursor is always released on exit, even if iteration is
         abandoned early or errors.
+
+        Keys are de-duplicated because a cursor is a position in an ascending
+        walk of internal document ids, not a snapshot, so it can return the same
+        key on two pages — RediSearch has no in-place update, so any write
+        appends a new, higher id ahead of the cursor. Dropping the ``seen`` set
+        would make callers write and count a document twice, which churns the
+        index further and provokes more repeats. It does not help the opposite
+        direction: a cursor may also return *fewer* rows than matched, so a full
+        drain is no proof every match was seen.
+
+        Two consequences: a batch can be smaller than ``batch_size`` (an
+        all-repeat page yields nothing), and memory is ``O(match count)`` — this
+        is not a streaming iterator, so callers with very large match sets should
+        partition the filter.
         """
         request = (
             AggregateRequest(str(filter_expression))
@@ -1492,6 +1534,7 @@ class SearchIndex(BaseSearchIndex):
         name = self.schema.index.name
         ft = self._redis_client.ft(name)  # type: ignore[union-attr]
         cid = 0
+        seen: set[str] = set()
         try:
             result = ft.aggregate(request)
             while True:
@@ -1499,7 +1542,7 @@ class SearchIndex(BaseSearchIndex):
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = [_agg_row_to_key(row) for row in result.rows]
+                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
                 if keys:
                     yield keys
                 if not cid:
@@ -2655,9 +2698,11 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _iter_keys_by_filter(
         self, filter_expression: str | FilterExpression, batch_size: int
     ) -> AsyncGenerator[list[str], None]:
-        """Yield batches of document keys matching a filter using a cursor (async).
+        """Yield batches of distinct document keys matching a filter (async).
 
-        Always releases the server-side cursor on exit (see sync counterpart).
+        De-duplicates keys across cursor pages and always releases the
+        server-side cursor on exit. See the sync counterpart for why a cursor
+        repeats keys and why that makes memory ``O(match count)``.
         """
         client = await self._get_client()
         request = (
@@ -2669,6 +2714,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         name = self.schema.index.name
         ft = client.ft(name)
         cid = 0
+        seen: set[str] = set()
         try:
             result = await ft.aggregate(request)  # type: ignore[arg-type]
             while True:
@@ -2676,7 +2722,7 @@ class AsyncSearchIndex(BaseSearchIndex):
                 # block can release the cursor even if row parsing raises.
                 # A cursor id of 0 signals the server has released the cursor.
                 cid = result.cursor.cid if result.cursor else 0
-                keys = [_agg_row_to_key(row) for row in result.rows]
+                keys = _dedupe_keys((_agg_row_to_key(row) for row in result.rows), seen)
                 if keys:
                     yield keys
                 if not cid:
