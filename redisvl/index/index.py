@@ -25,6 +25,7 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
+from redis.exceptions import RedisClusterException
 
 from redisvl.query.hybrid import HybridQuery
 from redisvl.query.query import VectorQuery
@@ -222,8 +223,12 @@ class BulkResult:
         matched (int): Documents matching the filter when the run started.
         processed (int): Documents actually deleted/updated (for ``dry_run``,
             the number that *would* be processed).
-        completed (bool): False if the run stopped early (e.g. a delete hit its
-            runaway backstop under heavy concurrent inserts); re-run to finish.
+        completed (bool): False if the run stopped early — a delete hit its
+            runaway backstop under heavy concurrent inserts, or a delete batch
+            twice removed nothing (its keys failed to delete, or the index is
+            listing documents whose keys are already gone). Re-run to finish;
+            check the logged warning first, since the second case will not
+            resolve itself.
         dry_run (bool): True if this was a preview and nothing was mutated.
     """
 
@@ -261,6 +266,69 @@ def _require_specific_filter(
             "Refusing to run a bulk operation that matches all documents. "
             "Pass a specific filter_expression, set allow_all=True to override, "
             "or use clear() to intentionally remove every document."
+        )
+
+
+# Per-key cluster failures that the batched delete helpers log and skip rather
+# than raise. redis-py's cluster-specific errors are NOT RedisError subclasses
+# (RedisClusterException derives straight from Exception), so catching RedisError
+# alone would let SlotNotCoveredError — a routine occurrence during resharding or
+# failover, and exactly the partial-failure case these helpers exist for — escape
+# and abort the whole batch.
+_PER_KEY_DELETE_ERRORS = (redis.exceptions.RedisError, RedisClusterException)
+
+
+def _stalled(unremovable: set[str], batch_keys: list[str]) -> bool:
+    """Record a batch that removed nothing, and say whether the run is stuck.
+
+    ``clear`` and ``drop_by_filter`` re-query from offset 0 and bound themselves
+    by a count of *deletions*, so a batch that removes nothing leaves them looping
+    on the same documents with the counter flat — an unterminating loop.
+
+    Bailing out the first time a batch removes nothing would be wrong, though:
+    another client may have deleted exactly those documents between the search and
+    the delete, in which case they leave the index and the run could have carried
+    on. So the keys are accumulated instead, and the run is only declared stuck
+    once a fruitless batch brings back nothing that has not already failed. That
+    terminates — ``unremovable`` only grows, and it is bounded by the match set —
+    while still finishing the batches a transient race would otherwise abandon.
+    """
+    if unremovable.issuperset(batch_keys):
+        return True
+    unremovable.update(batch_keys)
+    return False
+
+
+def _warn_removed_nothing(
+    operation: str, batch_keys: list[str], failed_keys: list[str]
+) -> None:
+    """Log why a batched delete stopped before exhausting its match set.
+
+    ``clear`` and ``drop_by_filter`` both re-query from offset 0 and bound
+    themselves by a count of *deletions*, so a batch that removes nothing twice
+    over would leave them looping on the same documents forever. Both stop
+    instead, and this says why — distinguishing the two causes, because only one
+    of them is worth retrying: the deletes failed (on cluster they are issued per
+    key and logged rather than raised), or the index still lists documents whose
+    keys are already gone.
+    """
+    if failed_keys:
+        logger.warning(
+            "%s stopped after a batch removed nothing: %d of %d key(s) failed to "
+            "delete (e.g. %r). Re-run to continue once the cause is resolved.",
+            operation,
+            len(failed_keys),
+            len(batch_keys),
+            failed_keys[0],
+        )
+    else:
+        logger.warning(
+            "%s stopped after a batch removed nothing: none of the %d matched "
+            "key(s) still existed. The index is listing documents whose keys are "
+            "gone, so re-running will not clear them; rebuild the index to "
+            "reconcile it.",
+            operation,
+            len(batch_keys),
         )
 
 
@@ -1194,31 +1262,39 @@ class SearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
-    def _delete_batch(self, batch_keys: list[str]) -> int:
+    def _delete_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Delete a batch of keys from Redis.
 
-        For Redis Cluster, keys are deleted individually due to potential
-        cross-slot limitations. For standalone Redis, keys are deleted in
-        a single operation for better performance.
+        On Redis Cluster, keys are deleted one at a time. redis-py would happily
+        accept a variadic cross-slot ``DELETE`` (it splits the keys by slot
+        itself), but it returns a single summed count, so one failing slot would
+        cost us the whole batch's count and any idea of which keys survived.
+        Standalone Redis deletes in one round-trip.
 
         Args:
             batch_keys (List[str]): List of Redis keys to delete.
 
         Returns:
-            int: Count of records deleted from Redis.
+            Tuple[int, List[str]]: Count of records deleted from Redis, and the
+            keys whose ``DELETE`` raised. Only the per-key cluster path reports
+            failures — it logs and continues so one bad key does not abort the
+            batch. On standalone Redis a failure propagates to the caller, so the
+            failed list is always empty there.
         """
         client = cast(SyncRedisClient, self._redis_client)
         is_cluster = isinstance(client, RedisCluster)
+        failed: list[str] = []
         if is_cluster:
             records_deleted_in_batch = 0
             for key_to_delete in batch_keys:
                 try:
                     records_deleted_in_batch += cast(int, client.delete(key_to_delete))
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to delete key {key_to_delete}: {e}")
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to delete key {key_to_delete!r}: {e}")
+                    failed.append(key_to_delete)
         else:
             records_deleted_in_batch = cast(int, client.delete(*batch_keys))
-        return records_deleted_in_batch
+        return records_deleted_in_batch, failed
 
     def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
@@ -1248,8 +1324,13 @@ class SearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
 
         total_records_deleted: int = 0
-        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+        query.paging(0, batch_size)
+
+        # Keys a batch failed to remove. Re-querying from offset 0 hands them back
+        # every round, so without this the loop cannot terminate: the backstop
+        # above counts deletions, which stay flat. See _stalled().
+        unremovable: set[str] = set()
 
         while True:
             if total_records_deleted > max_records:
@@ -1263,34 +1344,17 @@ class SearchIndex(BaseSearchIndex):
                 )
                 break
 
-            query.paging(offset, batch_size)
             batch = self._query(query)
             if not batch:
                 break
 
             batch_keys = [record["id"] for record in batch]
-            records_deleted = self._delete_batch(batch_keys)
-            total_records_deleted += records_deleted
+            deleted, failed_keys = self._delete_batch(batch_keys)
+            total_records_deleted += deleted
 
-            if records_deleted:
-                # Deleted documents leave the index, so the next page of
-                # survivors is at offset 0 again.
-                offset = 0
-            else:
-                # Nothing in this page could be deleted, most plausibly a
-                # permission denial swallowed by _delete_batch's cluster branch.
-                # Page past it: the documents behind may still be deletable.
-                offset += batch_size
-                if offset > max_records:
-                    logger.warning(
-                        "clear() of index %s paged past its runaway backstop "
-                        "(%d) without being able to delete; %d records were "
-                        "deleted. Documents remain.",
-                        self.schema.index.name,
-                        max_records,
-                        total_records_deleted,
-                    )
-                    break
+            if not deleted and _stalled(unremovable, batch_keys):
+                _warn_removed_nothing("clear", batch_keys, failed_keys)
+                break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -1302,9 +1366,8 @@ class SearchIndex(BaseSearchIndex):
     def _unlink_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Unlink a batch of keys from Redis.
 
-        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
-        Cluster, keys are unlinked individually to avoid cross-slot errors;
-        for standalone Redis a single variadic ``UNLINK`` is used.
+        Mirrors ``_delete_batch``, including its per-key cluster loop and the
+        reason for it, but uses non-blocking ``UNLINK``.
 
         Args:
             batch_keys (List[str]): List of Redis keys to unlink.
@@ -1324,8 +1387,8 @@ class SearchIndex(BaseSearchIndex):
             for key_to_unlink in batch_keys:
                 try:
                     unlinked += cast(int, client.unlink(key_to_unlink))
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to unlink key {key_to_unlink!r}: {e}")
                     failed.append(key_to_unlink)
             return unlinked, failed
 
@@ -1381,11 +1444,12 @@ class SearchIndex(BaseSearchIndex):
             int: Count of records deleted from Redis.
 
         Note:
-            The returned count can be lower than ``len(keys)`` either because a
-            key did not exist or, on Redis Cluster, because its ``UNLINK``
-            failed (logged, not raised) — the count alone cannot tell those
-            apart. Callers that mirror the keyspace in their own state should use
-            ``_drop_keys``, which also returns the keys that failed.
+            The returned count can be lower than the number of keys requested,
+            either because a key did not exist or, on Redis Cluster, because its
+            ``UNLINK`` failed — a per-key cluster failure is logged rather than
+            raised so one bad key does not abort the batch, and the count alone
+            cannot tell the two cases apart. A single key passed as a ``str`` is
+            not batched, so a failure there does propagate to the caller.
         """
         if not isinstance(keys, list):
             return self._redis_client.unlink(keys)  # type: ignore
@@ -1500,8 +1564,9 @@ class SearchIndex(BaseSearchIndex):
 
         Returns:
             BulkResult: ``matched``/``processed`` counts, plus ``completed``
-            (False if the runaway backstop tripped) and ``dry_run``. Read the
-            fields explicitly (``result.processed``, ``result.completed``).
+            (False if the runaway backstop tripped, or if the run stopped on a
+            batch it could not remove) and ``dry_run``. Read the fields
+            explicitly (``result.processed``, ``result.completed``).
 
         See Also:
             :meth:`update_by_filter` (bulk partial update), :meth:`drop_documents`
@@ -1528,6 +1593,7 @@ class SearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
         total_deleted = 0
         completed = True
+        unremovable: set[str] = set()
         query = FilterQuery(filter_expression, return_fields=["id"])
         query.paging(0, batch_size)
 
@@ -1547,19 +1613,12 @@ class SearchIndex(BaseSearchIndex):
             batch_keys = [record["id"] for record in batch]
             unlinked, failed_keys = self._unlink_batch(batch_keys)
             total_deleted += unlinked
-            if failed_keys and not unlinked:
-                # Cluster unlinks per key and logs failures instead of raising,
-                # so a fully failed batch makes no progress: the same documents
-                # come back on the next offset-0 re-query and the loop would
-                # never terminate (the runaway backstop counts deletions only).
-                logger.warning(
-                    "drop_by_filter could not unlink %d key(s) (e.g. %s) and made "
-                    "no progress; returning an incomplete result. Re-run to continue.",
-                    len(failed_keys),
-                    failed_keys[0],
-                )
-                completed = False
-                break
+            if not unlinked:
+                if _stalled(unremovable, batch_keys):
+                    _warn_removed_nothing("drop_by_filter", batch_keys, failed_keys)
+                    completed = False
+                    break
+                continue
             if on_progress is not None:
                 on_progress(total_deleted, matched)
 
@@ -2647,21 +2706,22 @@ class AsyncSearchIndex(BaseSearchIndex):
         except Exception as e:
             raise RedisSearchError(f"Error while deleting index: {str(e)}") from e
 
-    async def _delete_batch(self, batch_keys: list[str]) -> int:
+    async def _delete_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Delete a batch of keys from Redis.
 
-        For Redis Cluster, keys are deleted individually due to potential
-        cross-slot limitations. For standalone Redis, keys are deleted in
-        a single operation for better performance.
+        See :meth:`SearchIndex._delete_batch` for the per-key cluster rationale
+        and the return contract.
 
         Args:
             batch_keys (List[str]): List of Redis keys to delete.
 
         Returns:
-            int: Count of records deleted from Redis.
+            Tuple[int, List[str]]: Count of records deleted, and the keys whose
+            ``DELETE`` raised.
         """
         client = await self._get_client()
         is_cluster = isinstance(client, AsyncRedisCluster)
+        failed: list[str] = []
         if is_cluster:
             records_deleted_in_batch = 0
             for key_to_delete in batch_keys:
@@ -2669,11 +2729,12 @@ class AsyncSearchIndex(BaseSearchIndex):
                     records_deleted_in_batch += cast(
                         int, await client.delete(key_to_delete)
                     )
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to delete key {key_to_delete}: {e}")
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to delete key {key_to_delete!r}: {e}")
+                    failed.append(key_to_delete)
         else:
             records_deleted_in_batch = await client.delete(*batch_keys)
-        return records_deleted_in_batch
+        return records_deleted_in_batch, failed
 
     async def clear(self) -> int:
         """Clear all keys in Redis associated with the index, leaving the index
@@ -2700,8 +2761,12 @@ class AsyncSearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
 
         total_records_deleted: int = 0
-        offset = 0
         query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+        query.paging(0, batch_size)
+
+        # See SearchIndex.clear: without this the loop cannot terminate when a
+        # batch removes nothing.
+        unremovable: set[str] = set()
 
         while True:
             if total_records_deleted > max_records:
@@ -2715,34 +2780,17 @@ class AsyncSearchIndex(BaseSearchIndex):
                 )
                 break
 
-            query.paging(offset, batch_size)
             batch = await self._query(query)
             if not batch:
                 break
 
             batch_keys = [record["id"] for record in batch]
-            records_deleted = await self._delete_batch(batch_keys)
-            total_records_deleted += records_deleted
+            deleted, failed_keys = await self._delete_batch(batch_keys)
+            total_records_deleted += deleted
 
-            if records_deleted:
-                # Deleted documents leave the index, so the next page of
-                # survivors is at offset 0 again.
-                offset = 0
-            else:
-                # Nothing in this page could be deleted, most plausibly a
-                # permission denial swallowed by _delete_batch's cluster branch.
-                # Page past it: the documents behind may still be deletable.
-                offset += batch_size
-                if offset > max_records:
-                    logger.warning(
-                        "clear() of index %s paged past its runaway backstop "
-                        "(%d) without being able to delete; %d records were "
-                        "deleted. Documents remain.",
-                        self.schema.index.name,
-                        max_records,
-                        total_records_deleted,
-                    )
-                    break
+            if not deleted and _stalled(unremovable, batch_keys):
+                _warn_removed_nothing("clear", batch_keys, failed_keys)
+                break
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
@@ -2754,10 +2802,8 @@ class AsyncSearchIndex(BaseSearchIndex):
     async def _unlink_batch(self, batch_keys: list[str]) -> tuple[int, list[str]]:
         """Unlink a batch of keys from Redis (async).
 
-        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. For Redis
-        Cluster, keys are unlinked individually to avoid cross-slot errors.
-
-        See :meth:`SearchIndex._unlink_batch` for the return contract.
+        Mirrors ``_delete_batch`` but uses non-blocking ``UNLINK``. See
+        :meth:`SearchIndex._unlink_batch` for the return contract.
         """
         client = await self._get_client()
 
@@ -2767,8 +2813,8 @@ class AsyncSearchIndex(BaseSearchIndex):
             for key_to_unlink in batch_keys:
                 try:
                     unlinked += cast(int, await client.unlink(key_to_unlink))
-                except redis.exceptions.RedisError as e:
-                    logger.warning(f"Failed to unlink key {key_to_unlink}: {e}")
+                except _PER_KEY_DELETE_ERRORS as e:
+                    logger.warning(f"Failed to unlink key {key_to_unlink!r}: {e}")
                     failed.append(key_to_unlink)
             return unlinked, failed
 
@@ -2811,11 +2857,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             int: Count of records deleted from Redis.
 
         Note:
-            The returned count can be lower than ``len(keys)`` either because a
-            key did not exist or, on Redis Cluster, because its ``UNLINK``
-            failed (logged, not raised) — the count alone cannot tell those
-            apart. Callers that mirror the keyspace in their own state should use
-            ``_drop_keys``, which also returns the keys that failed.
+            The returned count can be lower than the number of keys requested,
+            either because a key did not exist or, on Redis Cluster, because its
+            ``UNLINK`` failed — a per-key cluster failure is logged rather than
+            raised so one bad key does not abort the batch, and the count alone
+            cannot tell the two cases apart. A single key passed as a ``str`` is
+            not batched, so a failure there does propagate to the caller.
         """
         client = await self._get_client()
 
@@ -2920,6 +2967,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         max_records = ceil(matched * 1.5) + batch_size
         total_deleted = 0
         completed = True
+        unremovable: set[str] = set()
         query = FilterQuery(filter_expression, return_fields=["id"])
         query.paging(0, batch_size)
 
@@ -2939,17 +2987,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             batch_keys = [record["id"] for record in batch]
             unlinked, failed_keys = await self._unlink_batch(batch_keys)
             total_deleted += unlinked
-            if failed_keys and not unlinked:
-                # See SearchIndex.drop_by_filter: a fully failed cluster batch
-                # makes no progress and would otherwise loop forever.
-                logger.warning(
-                    "drop_by_filter could not unlink %d key(s) (e.g. %s) and made "
-                    "no progress; returning an incomplete result. Re-run to continue.",
-                    len(failed_keys),
-                    failed_keys[0],
-                )
-                completed = False
-                break
+            if not unlinked:
+                if _stalled(unremovable, batch_keys):
+                    _warn_removed_nothing("drop_by_filter", batch_keys, failed_keys)
+                    completed = False
+                    break
+                continue
             if on_progress is not None:
                 on_progress(total_deleted, matched)
 

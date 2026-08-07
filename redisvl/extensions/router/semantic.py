@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from redis.commands.search.aggregation import AggregateRequest, AggregateResult, Reducer
 from redis.exceptions import ResponseError
 
+from redisvl.exceptions import PartialDeletionError
 from redisvl.extensions.constants import (
     CREATE_INDEX_OVERWRITE_CONFLICT,
     EXTERNAL_INDEX_DROP_CONFLICT,
@@ -667,34 +668,45 @@ class SemanticRouter(BaseModel):
         Args:
             route_name (str): Name of the route to remove.
 
-        Note:
-            On Redis Cluster an individual reference key can fail to unlink
-            (logged, not raised). If any do, the route is kept with only those
-            references rather than dropped, so the persisted config keeps
-            describing what the index can still match.
+        Raises:
+            PartialDeletionError: If some of the route's reference keys could not
+                be unlinked. The route is then kept with exactly those references
+                and the config persisted before raising, so the router keeps
+                describing what the index can still match and a retry removes the
+                remainder.
         """
         route = self.get(route_name)
         if route is None:
             logger.warning(f"Route {route_name} is not found in the SemanticRouter")
-        else:
-            keys_by_reference = {
-                self._route_ref_key(
-                    self._index, route.name, hashify(reference)
-                ): reference
-                for reference in route.references
-            }
-            _, failed_keys = self._index._drop_keys(list(keys_by_reference))
-            remaining = [keys_by_reference[key] for key in failed_keys]
+            return
 
-            if remaining:
-                logger.warning(
-                    f"Failed to unlink {len(remaining)} reference key(s) for route "
-                    f"{route_name}; keeping the route with those references"
-                )
-                route.references = remaining
-            else:
-                self.routes = [r for r in self.routes if r.name != route_name]
-            self._update_router_state()
+        # Pairs, not a dict: references are not deduplicated on the way in, and
+        # collapsing two identical references here would silently drop one.
+        keyed_references = [
+            (
+                self._route_ref_key(self._index, route.name, hashify(reference)),
+                reference,
+            )
+            for reference in route.references
+        ]
+        keys = list({key for key, _ in keyed_references})
+        _, failed_keys = self._index._drop_keys(keys)
+        failed = set(failed_keys)
+        remaining = [ref for key, ref in keyed_references if key in failed]
+
+        if remaining:
+            route.references = remaining
+        else:
+            self.routes = [r for r in self.routes if r.name != route_name]
+        self._update_router_state()
+
+        if failed:
+            raise PartialDeletionError(
+                f"Failed to unlink {len(failed)} reference key(s) for route "
+                f"{route_name!r}, so the route was kept with those references. "
+                f"Retry to remove it.",
+                failed_keys=sorted(failed),
+            )
 
     def delete(self) -> None:
         """Delete the semantic router index and its persisted route config.
@@ -994,13 +1006,19 @@ class SemanticRouter(BaseModel):
         Returns:
             int: Number of objects deleted
 
+        Raises:
+            ValueError: If no references match the given route/ids/keys.
+            PartialDeletionError: If some keys could not be unlinked. Raised only
+                after the surviving references have been reconciled and persisted,
+                so a retry picks up exactly what is left.
+
         Note:
-            On Redis Cluster keys are unlinked one at a time and a per-key
-            failure is logged rather than raised. References whose key failed to
-            unlink are left in the persisted route config, because the hash is
-            still in the index and the router would keep matching it — dropping
-            it from the config would make the router claim a reference is gone
-            while still routing to it.
+            On Redis Cluster keys are unlinked one at a time and a per-key failure
+            is logged rather than raised. References whose key failed to unlink are
+            deliberately *kept* in the persisted route config: the hash is still in
+            the index and the router would keep matching it, so dropping it from
+            the config would leave the router claiming a reference is gone while
+            still routing to it.
         """
 
         if reference_ids and not keys:
@@ -1014,37 +1032,44 @@ class SemanticRouter(BaseModel):
         if not keys:
             raise ValueError(f"No references found for route {route_name}")
 
-        keys = convert_bytes(list(keys))
+        # Read each hash before deleting, so the in-memory routes can be reconciled
+        # against whichever keys actually go away. The hash stores its own
+        # route_name, which beats recovering it from the key: route names may
+        # themselves contain the key separator. Keying by key also collapses a
+        # caller-supplied duplicate, which would otherwise be removed twice.
+        stored_by_key = {
+            key: convert_bytes(self._index._redis_client.hgetall(key))  # type: ignore
+            for key in convert_bytes(list(keys))
+        }
 
-        to_be_deleted = []
-        for key in keys:
-            to_be_deleted.append(
-                (
-                    key,
-                    key.split(":")[-2],
-                    convert_bytes(self._index._redis_client.hgetall(key)),  # type: ignore
-                )
-            )
-
-        deleted, failed_keys = self._index._drop_keys(keys)
+        deleted, failed_keys = self._index._drop_keys(list(stored_by_key))
         failed = set(failed_keys)
 
-        for key, ref_route_name, reference in to_be_deleted:
+        # Past this point the keys are gone, so nothing here may raise before the
+        # config is persisted -- that would leave the config advertising references
+        # whose hashes no longer exist, the very divergence this reconciles.
+        for key, stored in stored_by_key.items():
             if key in failed:
                 continue
-            route = self.get(ref_route_name)
-            if not route:
-                raise ValueError(
-                    f"Route {ref_route_name} not found in the SemanticRouter"
+            route = self.get(stored.get("route_name", ""))
+            reference = stored.get("reference")
+            if route is None or reference not in route.references:
+                logger.warning(
+                    f"Deleted route reference {key!r} but found no matching "
+                    f"reference in the router config; the config may be stale."
                 )
-            route.references.remove(reference["reference"])
+                continue
+            route.references.remove(reference)
 
         self._update_router_state()
 
         if failed:
-            logger.warning(
-                f"Failed to unlink {len(failed)} route reference key(s); they remain "
-                f"in the index and in the router config: {sorted(failed)}"
+            raise PartialDeletionError(
+                f"Unlinked {deleted} route reference(s) but {len(failed)} failed; "
+                f"those references remain both in the index and in the router "
+                f"config. Retry to remove them.",
+                failed_keys=sorted(failed),
+                deleted=deleted,
             )
 
         return deleted
