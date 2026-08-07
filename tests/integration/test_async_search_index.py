@@ -225,9 +225,15 @@ async def test_search_index_set_client(client, redis_url, index_schema):
             await async_index.set_client(client)
             assert isinstance(async_index.client, AsyncRedis)
 
-            if async_index.client:
-                await async_index.disconnect()
+            # Passing a sync client to the async index converts it into a new
+            # async client with its own connection pool, so the object the index
+            # holds was created by RedisVL and the index owns it. Closing it
+            # does not touch the caller's sync client, which keeps its own pool.
+            assert async_index._owns_redis_client is True
+            await async_index.disconnect()
             assert async_index.client is None
+            # The caller's own client is unaffected.
+            assert client.ping() is True
 
 
 @pytest.mark.asyncio

@@ -963,10 +963,31 @@ class SearchIndex(BaseSearchIndex):
             ModuleNotFoundError: If required Redis modules are not installed.
         """
         self.invalidate_sql_schema_cache()
-        self.__redis_client = RedisConnectionFactory.get_redis_connection(
+        client = RedisConnectionFactory.get_redis_connection(
             redis_url=redis_url, **kwargs
         )
-        self._register_client_finalizer(self.__redis_client)
+        # Release the previous client and install the new one under a single
+        # lock hold. Releasing outside the lock would let another thread lazily
+        # create a client in between, whose finalizer would then be detached by
+        # the swap below without anything closing it.
+        with self._lock:
+            if client is self.__redis_client:
+                # The factory handed back the client already installed, so its
+                # provenance has not changed and ownership stays as it is.
+                # Claiming it here would let this index close a caller-provided
+                # client. Only reachable with a factory that reuses clients;
+                # Redis.from_url always builds a fresh one.
+                return
+            self._release_owned_client_locked()
+            self.__redis_client = client
+            # This index created the client, so it owns and must close it. The
+            # index may have been holding a caller-provided client until now
+            # (constructor injection or set_client), in which case ownership
+            # has to be taken back or nothing would ever close this one.
+            self._owns_redis_client = True
+            # A different client has not had this index's lib name applied yet.
+            self._validated_client = False
+            self._register_client_finalizer(client)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
     def set_client(self, redis_client: SyncRedisClient, **kwargs):
@@ -985,9 +1006,48 @@ class SearchIndex(BaseSearchIndex):
         """
         RedisConnectionFactory.validate_sync_redis(redis_client)
         self.invalidate_sql_schema_cache()
-        self.__redis_client = redis_client
-        self._register_client_finalizer(redis_client)
+        # Release the previous client and install the caller's under a single
+        # lock hold, for the reason described in connect().
+        with self._lock:
+            if redis_client is self.__redis_client:
+                # The client is already installed, so there is nothing to
+                # release and nothing about its provenance has changed. Leaving
+                # ownership alone matters: clearing it for a client this index
+                # created would strand that client, since a later swap only
+                # closes what the index owns and its finalizer is detached
+                # below.
+                return self
+            self._release_owned_client_locked()
+            # Clear ownership before installing the caller's client. disconnect()
+            # does not take this lock, so another thread must never see the
+            # caller's client while ownership still says the index owns it.
+            self._owns_redis_client = False
+            self.__redis_client = redis_client
+            # A replacement client has not had this index's lib name applied.
+            self._validated_client = False
+            self._detach_client_finalizer()
         return self
+
+    def _release_owned_client_locked(self) -> None:
+        """Close the current client if this index owns it. Call with ``_lock``
+        held, so releasing and replacing a client cannot interleave with the
+        lazy creation in the ``_redis_client`` property.
+
+        The reference is cleared before the close so a failed close cannot
+        leave the index holding a client it already closed, and the failure is
+        swallowed so it cannot abort the swap and orphan the replacement.
+        """
+        if self._owns_redis_client and self.__redis_client is not None:
+            client = self.__redis_client
+            self._detach_client_finalizer()
+            self.__redis_client = None
+            try:
+                client.close()
+            except Exception as e:
+                # Deliberately not exc_info: retaining the traceback keeps the
+                # frames, and therefore this index, reachable, which is the
+                # class of leak this lifecycle code exists to avoid.
+                logger.warning("Failed to close the Redis client being replaced: %s", e)
 
     def _check_svs_support(self) -> None:
         """Validate SVS-VAMANA support.
@@ -2214,7 +2274,8 @@ class AsyncSearchIndex(BaseSearchIndex):
         client = await RedisConnectionFactory._get_aredis_connection(
             redis_url=redis_url, **kwargs
         )
-        await self.set_client(client)
+        # This index created the client, so it owns and must close it.
+        await self._swap_client(client, owns=True)
 
     @deprecated_function("set_client", "Pass connection parameters in __init__.")
     async def set_client(self, redis_client: AsyncRedisClient | SyncRedisClient):
@@ -2222,12 +2283,78 @@ class AsyncSearchIndex(BaseSearchIndex):
         [DEPRECATED] Manually set the Redis client to use with the search index.
         This method is deprecated; please provide connection parameters in __init__.
         """
-        redis_client = await self._validate_client(redis_client)
+        # The caller owns the client they passed in, so this index must never
+        # close it. This matches __init__(redis_client=...) semantics.
+        return await self._swap_client(redis_client, owns=False)
+
+    async def _release_owned_client_locked(self) -> None:
+        """Close the current client if this index owns it. Call with ``_lock``
+        held, matching the sync counterpart.
+
+        The reference is cleared before awaiting the close so a failed or
+        in-flight close cannot leave the index holding a client it already
+        closed, and the failure is swallowed so it cannot abort the swap and
+        orphan the replacement.
+        """
+        if self._owns_redis_client and self._redis_client is not None:
+            client = self._redis_client
+            self._detach_client_finalizer()
+            self._redis_client = None
+            try:
+                await client.aclose()
+            except Exception as e:
+                # See the sync counterpart: no exc_info, so the traceback does
+                # not keep this index reachable.
+                logger.warning("Failed to close the Redis client being replaced: %s", e)
+
+    async def _swap_client(
+        self, redis_client: AsyncRedisClient | SyncRedisClient, *, owns: bool
+    ):
+        """Replace the active client, releasing the previous one if owned.
+
+        Args:
+            redis_client: The client to start using.
+            owns: Whether this index owns the new client and is therefore
+                responsible for closing it. Callers passing their own client
+                must use False so it is never closed on their behalf.
+        """
+        validated_client = await self._validate_client(redis_client)
+        # A deprecated sync client is converted into a *new* async client with
+        # its own connection pool, so that object is ours to close even though
+        # the caller supplied the original. The conversion does not share the
+        # caller's pool, so closing it leaves the caller's client working.
+        owns_client = owns or validated_client is not redis_client
         self.invalidate_sql_schema_cache()
-        await self.disconnect()
+        # Release the previous client and install the new one under a single
+        # lock hold. Releasing outside the lock would let another coroutine
+        # lazily create a client in between, whose finalizer would then be
+        # detached by the swap below without anything closing it. Holding the
+        # lock also means ownership is never observable out of step with the
+        # client it describes.
         async with self._lock:
-            self._redis_client = redis_client
-        self._register_client_finalizer(redis_client)
+            # Skip the release when the client being installed is the one
+            # already active: closing it would leave this index holding a
+            # client it had just closed.
+            if validated_client is self._redis_client:
+                # Already installed: nothing to release, and its provenance is
+                # unchanged, so ownership stays as it is. Clearing it for a
+                # client this index created would strand that client.
+                return self
+            await self._release_owned_client_locked()
+            if owns_client:
+                # Install first, then claim, so no reader can see a client this
+                # index does not own marked as owned.
+                self._redis_client = validated_client
+                self._owns_redis_client = True
+            else:
+                # Give up ownership first, for the same reason in reverse.
+                self._owns_redis_client = False
+                self._redis_client = validated_client
+            # A replacement client has not had this index's lib name applied.
+            self._validated_client = False
+            # No-op when ownership is False; also detaches any finalizer left
+            # over from a previously owned client.
+            self._register_client_finalizer(validated_client)
         return self
 
     async def _get_client(self) -> AsyncRedisClient:
