@@ -234,9 +234,9 @@ async def test_search_index_set_client(client, redis_url, index_schema):
 async def test_search_index_create(async_index):
     await async_index.create(overwrite=True, drop=True)
     assert await async_index.exists()
-    assert async_index.name in convert_bytes(
-        await async_index.client.execute_command("FT._LIST")
-    )
+    # exists() and listall() reach Redis by different commands, so keeping both
+    # assertions gives each an independent witness.
+    assert async_index.name in await async_index.listall()
 
 
 @pytest.mark.asyncio
@@ -244,9 +244,7 @@ async def test_search_index_delete(async_index):
     await async_index.create(overwrite=True, drop=True)
     await async_index.delete(drop=True)
     assert not await async_index.exists()
-    assert async_index.name not in convert_bytes(
-        await async_index.client.execute_command("FT._LIST")
-    )
+    assert async_index.name not in await async_index.listall()
 
 
 @pytest.mark.asyncio

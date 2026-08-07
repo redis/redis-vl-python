@@ -4,14 +4,17 @@ from unittest import mock
 
 import pytest
 from redis import Redis
+from redis.exceptions import NoPermissionError
 
 from redisvl.exceptions import QueryValidationError, RedisSearchError, RedisVLError
 from redisvl.index import SearchIndex
 from redisvl.query import VectorQuery
 from redisvl.query.query import FilterQuery
+from redisvl.redis.connection import RedisConnectionFactory
 from redisvl.redis.utils import convert_bytes
 from redisvl.schema import IndexSchema, StorageType
 from redisvl.schema.fields import VectorIndexAlgorithm
+from tests.conftest import skip_if_no_redis_search
 
 fields = [
     {"name": "test", "type": "tag"},
@@ -298,14 +301,88 @@ def test_search_index_connect(index, redis_url):
 def test_search_index_create(index):
     index.create(overwrite=True, drop=True)
     assert index.exists()
-    assert index.name in convert_bytes(index.client.execute_command("FT._LIST"))
+    # exists() and listall() reach Redis by different commands, so keeping both
+    # assertions gives each an independent witness.
+    assert index.name in index.listall()
 
 
 def test_search_index_delete(index):
     index.create(overwrite=True, drop=True)
     index.delete(drop=True)
     assert not index.exists()
-    assert index.name not in convert_bytes(index.client.execute_command("FT._LIST"))
+    assert index.name not in index.listall()
+
+
+def test_exists_under_acl_without_admin_commands(
+    index, client, redis_url, redis_test_name
+):
+    """exists() must work for a credential that grants search but drops @admin.
+
+    Redis tags FT._LIST @admin as well as @search, so this ACL shape used to
+    make exists() -- and therefore create() and every extension constructor --
+    fail outright. Only a live server can confirm FT.INFO is not gated the same
+    way, which is why this is an integration test.
+    """
+    # Probe with the unrestricted client: the module check itself uses FT._LIST.
+    skip_if_no_redis_search(client)
+    index.create(overwrite=True, drop=True)
+
+    username = redis_test_name("acl_no_admin")
+    password = "test-acl-password"
+    client.execute_command(
+        "ACL", "SETUSER", username, "on", f">{password}", "~*", "&*", "+@all", "-@admin"
+    )
+    restricted = None
+    try:
+        restricted = RedisConnectionFactory.get_redis_connection(
+            redis_url=redis_url, username=username, password=password
+        )
+        # Pin the premise so this test cannot quietly become vacuous: if a
+        # future Redis stops gating FT._LIST behind @admin, the reason for
+        # preferring FT.INFO is gone and we want to hear about it here.
+        with pytest.raises(NoPermissionError):
+            restricted.execute_command("FT._LIST")
+
+        restricted_index = SearchIndex(schema=index.schema, redis_client=restricted)
+        assert restricted_index.exists() is True
+    finally:
+        # Drop the ACL user before anything else that could raise: users are
+        # server-global, so a leaked one outlives this test and its worker.
+        client.execute_command("ACL", "DELUSER", username)
+        if restricted is not None:
+            restricted.close()
+        index.delete(drop=True)
+
+
+def test_exists_false_for_alias_pointing_at_another_index(
+    index, client, redis_test_name
+):
+    """An alias must not report as an existing index.
+
+    FT.INFO accepts an alias and answers for its target, where FT._LIST never
+    listed aliases at all. Left unhandled, that difference would make exists()
+    return True for an alias, and create(overwrite=True, drop=True) acts on
+    that answer by issuing FT.DROPINDEX <name> DD -- destroying the aliased
+    index and its documents.
+    """
+    index.create(overwrite=True, drop=True)
+    alias = redis_test_name("exists_alias")
+    client.execute_command("FT.ALIASADD", alias, index.name)
+    try:
+        alias_index = SearchIndex(
+            schema=IndexSchema.from_dict({"index": {"name": alias}, "fields": fields}),
+            redis_client=client,
+        )
+        assert alias_index.exists() is False
+        # And the guard must not be so strict that the real name breaks.
+        assert index.exists() is True
+    finally:
+        # Only FT.ALIASDEL removes an alias. Never call delete() or
+        # create(overwrite=True, drop=True) on alias_index here: FT.DROPINDEX
+        # resolves the alias and would drop the real index's data, which is the
+        # exact failure this test exists to catch.
+        client.execute_command("FT.ALIASDEL", alias)
+        index.delete(drop=True)
 
 
 @pytest.mark.parametrize("num_docs", [0, 1, 5, 10, 2042])

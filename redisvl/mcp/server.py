@@ -8,7 +8,7 @@ from typing import Any, Awaitable
 
 from redis import __version__ as redis_py_version
 
-from redisvl.exceptions import RedisSearchError
+from redisvl.exceptions import RedisSearchError, _is_missing_index_error
 from redisvl.index import AsyncSearchIndex
 from redisvl.mcp.auth import build_auth_provider, resolve_auth_config
 from redisvl.mcp.config import MCPConfig, MCPIndexBindingConfig, load_mcp_config
@@ -293,22 +293,6 @@ class RedisVLMCPServer(FastMCP):
             register_upsert_tool(self)
         self._tools_registered = True
 
-    @staticmethod
-    def _is_missing_index_error(exc: RedisSearchError) -> bool:
-        """Detect the Redis search errors that mean the configured index is absent.
-
-        Different RediSearch versions phrase the error differently
-        (``unknown index name``, ``no such index``, or ``SEARCH_INDEX_NOT_FOUND
-        Index not found``), so check for each known wording.
-        """
-        message = str(exc).lower()
-        return (
-            "unknown index name" in message
-            or "no such index" in message
-            or "search_index_not_found" in message
-            or "index not found" in message
-        )
-
     @asynccontextmanager
     async def _server_lifespan(self, _server: Any):
         """Bridge FastMCP lifespan hooks onto the server's explicit lifecycle."""
@@ -514,7 +498,7 @@ class RedisVLMCPServer(FastMCP):
                 timeout=timeout,
             )
         except RedisSearchError as exc:
-            if self._is_missing_index_error(exc):
+            if _is_missing_index_error(exc):
                 raise ValueError(
                     f"Configured Redis index '{binding.redis_name}' does not exist"
                 ) from exc

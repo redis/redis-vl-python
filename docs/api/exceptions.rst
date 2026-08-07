@@ -54,7 +54,7 @@ When each error is raised
    * - :class:`RedisSearchError`
      - An index or search operation fails, including errors returned by Redis
        itself.
-     - ``create()``, ``delete()``, ``search()``, ``aggregate()``
+     - ``create()``, ``exists()``, ``delete()``, ``search()``, ``aggregate()``
    * - :class:`RedisModuleVersionError`
      - The connected Redis or Redis Search version does not support a requested
        feature, such as an ``svs-vamana`` vector field.
@@ -144,6 +144,53 @@ unsupported feature from a genuine Redis failure.
         # Something went wrong talking to Redis, or the index definition was
         # rejected. The original redis-py exception is available as e.__cause__.
         print(f"Index creation failed: {e}")
+
+Insufficient permissions usually arrive as :class:`RedisSearchError` as well.
+``create()`` checks whether the index already exists before doing anything, so a
+credential that cannot run ``FT.INFO`` fails at that check rather than at
+``FT.CREATE``, with the chained ``redis.exceptions.NoPermissionError`` on
+``e.__cause__`` naming the denied command. The same applies to an existing index whose
+key prefix falls outside the credential's key patterns; for an index that does not exist
+yet, the check simply reports it as absent and ``create()`` proceeds.
+
+``listall()`` is the exception: it issues ``FT._LIST`` directly, so a permission failure
+there raises ``redis.exceptions.NoPermissionError`` itself rather than a wrapped
+:class:`RedisSearchError`. See :doc:`/user_guide/installation` for the ACL categories
+RedisVL needs.
+
+Telling "the index is missing" apart from other failures
+--------------------------------------------------------
+
+Redis Search reports an absent index as an ordinary error reply rather than a distinct
+type, and the wording has changed between versions -- older releases say ``Unknown index
+name``, Redis 8.6 and earlier say ``<name>: no such index``, and Redis 8.8 introduced
+``SEARCH_INDEX_NOT_FOUND Index not found: <name>``. There is no error code to branch on,
+so code that needs to distinguish "missing" from "something went wrong" has to match the
+message.
+
+:meth:`~redisvl.index.SearchIndex.exists` already does this for you, which is the reason
+to prefer it over catching errors from :meth:`~redisvl.index.SearchIndex.info`: it
+returns ``False`` only for a recognized missing-index reply and re-raises everything
+else, so a permission or connection failure is never reported as an absent index.
+
+.. code-block:: python
+
+    # Prefer this
+    if not index.exists():
+        index.create()
+
+    # over inspecting the error yourself, which couples your code to the
+    # wording of a particular Redis version
+    try:
+        index.info()
+    except RedisSearchError as e:
+        if "no such index" in str(e):  # breaks on Redis 8.8
+            index.create()
+
+When you do need the distinction elsewhere, read ``e.__cause__`` rather than the
+:class:`RedisSearchError` message: the wrapper interpolates the index name, so an index
+whose name happens to contain one of the wordings above would make an unrelated failure
+look like an absence.
 
 Catching everything
 -------------------
