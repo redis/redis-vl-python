@@ -330,7 +330,16 @@ def _has_missing_field_payload(
       match.
 
     Every other query passes through untouched.
+
+    A ``NOCONTENT`` query breaks both guarantees: the server then returns "the
+    document ids and not the content" for *every* healthy match (``RETURN 0`` acts
+    the same way), so no field payload is expected and its absence says nothing.
+    redis-py's ``Query.no_content()`` sets only ``_no_content`` and leaves
+    ``_return_fields`` untouched, so neither predicate above notices -- without
+    this short-circuit every healthy document would be reported as missing.
     """
+    if getattr(query, "_no_content", False):
+        return False
     if unpack_json:
         return "json" not in doc_dict
     if isinstance(query, BaseVectorQuery) and query.DISTANCE_ID in getattr(
@@ -426,7 +435,10 @@ def process_results(
                 return {"id": doc_dict.get("id"), **json_data}
             raise ValueError(f"Unable to parse json data from Redis {json_data}")
 
-        if norm_fn:
+        # The skip guard above guarantees the distance is present for a normal
+        # vector query, but not for a NOCONTENT one, where the server returns ids
+        # only and there is no distance to normalize.
+        if norm_fn and query.DISTANCE_ID in doc_dict:  # type: ignore
             # convert float back to string to be consistent
             doc_dict[query.DISTANCE_ID] = str(  # type: ignore
                 norm_fn(float(doc_dict[query.DISTANCE_ID]))  # type: ignore
@@ -523,8 +535,10 @@ def _page_had_matches(results: Any) -> bool:
 
     1. the server reported no more matches — iteration is genuinely done;
     2. the server reported matches whose field payload could not be
-       materialized, so ``process_results`` dropped them (the Redis 8.8+
-       background-WORKERS TTL/expiry race, see ``_has_missing_field_payload``).
+       materialized, so ``process_results`` dropped them -- a key that expires or
+       is updated mid-query is returned as a matched id with a ``nil`` field
+       array, and is still counted in the server's total (see
+       ``_has_missing_field_payload``).
 
     Stopping on case 2 silently truncates iteration and discards every remaining
     page. ``SearchResults.dropped_count`` tells the two apart: a page had matches
@@ -1974,7 +1988,12 @@ class SearchIndex(BaseSearchIndex):
             considerations and the expected volume of search results.
 
         Note:
-            For stable pagination, the query must have a `sort_by` clause.
+            For stable pagination, the query must have a `sort_by` clause on a
+            **unique** field. Redis documents that ``LIMIT`` without sorting is
+            non-deterministic, so pages may otherwise repeat or miss documents.
+            Very deep pagination is also bounded server-side by
+            ``search-max-search-results`` (1,000,000 by default, but 10,000 on
+            some managed tiers), past which the search errors rather than ending.
 
         Note:
             A yielded batch may contain fewer than ``page_size`` documents, and an
@@ -3216,7 +3235,12 @@ class AsyncSearchIndex(BaseSearchIndex):
             considerations and the expected volume of search results.
 
         Note:
-            For stable pagination, the query must have a `sort_by` clause.
+            For stable pagination, the query must have a `sort_by` clause on a
+            **unique** field. Redis documents that ``LIMIT`` without sorting is
+            non-deterministic, so pages may otherwise repeat or miss documents.
+            Very deep pagination is also bounded server-side by
+            ``search-max-search-results`` (1,000,000 by default, but 10,000 on
+            some managed tiers), past which the search errors rather than ending.
 
         Note:
             A yielded batch may contain fewer than ``page_size`` documents, and an

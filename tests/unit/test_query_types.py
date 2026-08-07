@@ -1291,6 +1291,44 @@ def test_filter_query_hash_id_only_not_skipped():
     assert results == [{"id": "doc:1"}]
 
 
+def test_no_content_query_not_skipped():
+    """Over-skip guard: a NOCONTENT query legitimately returns ids only.
+
+    The server "returns the document ids and not the content" for every healthy
+    match, so a missing field payload carries no information and must not be read
+    as the expiry race. redis-py's ``no_content()`` leaves ``_return_fields``
+    untouched, so both detection branches would otherwise fire on every document.
+    """
+    nocontent = Result([2, "doc:1", "doc:2"], False)
+
+    vector_query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        return_fields=["brand"],
+    ).no_content()
+    results = process_results(nocontent, vector_query, _hash_schema())
+    assert [doc["id"] for doc in results] == ["doc:1", "doc:2"]
+    assert results.dropped_count == 0
+
+    # JSON full-object unpack: no "json" key is expected under NOCONTENT either.
+    json_query = FilterQuery(Tag("brand") == "Nike").no_content()
+    results = process_results(nocontent, json_query, _json_schema())
+    assert [doc["id"] for doc in results] == ["doc:1", "doc:2"]
+    assert results.dropped_count == 0
+
+
+def test_no_content_query_with_normalize_does_not_raise():
+    """NOCONTENT leaves no distance to normalize; the branch must skip it."""
+    nocontent = Result([1, "doc:1"], False)
+    query = VectorQuery(
+        vector=sample_vector,
+        vector_field_name="user_embedding",
+        normalize_vector_distance=True,
+    ).no_content()
+    # Previously raised KeyError on doc_dict[query.DISTANCE_ID].
+    assert process_results(nocontent, query, _hash_schema()) == [{"id": "doc:1"}]
+
+
 def test_mixed_healthy_and_nil_doc():
     """In a mixed result, the healthy doc survives and the nil doc is dropped."""
     mixed = Result(
