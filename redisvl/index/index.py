@@ -2003,6 +2003,43 @@ class SearchIndex(BaseSearchIndex):
             # Increment the offset for the next batch of pagination
             offset += page_size
 
+    def iter(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> Generator[str, None, None]:
+        """Iterate lazily over document keys matching a filter expression.
+
+        Args:
+            filter_expression (Union[str, FilterExpression, None]): Selects the
+                documents to iterate over. Defaults to None (all documents).
+            batch_size (int): Number of keys fetched per query batch. Defaults to 500.
+
+        Yields:
+            str: Document key matching the filter.
+        """
+        filter_expr = (
+            FilterExpression("*")
+            if filter_expression is None
+            else filter_expression
+        )
+        query = FilterQuery(filter_expr, return_fields=["id"])
+        offset = 0
+        while True:
+            query.paging(offset, batch_size)
+            batch = self._query(query)
+            if not batch:
+                break
+            for record in batch:
+                yield record["id"]
+            offset += len(batch)
+            if len(batch) < batch_size:
+                break
+
+    def __iter__(self) -> Generator[str, None, None]:
+        """Yield document keys in the index."""
+        return self.iter()
+
     def listall(self) -> list[str]:
         """List all search indices in Redis database.
 
@@ -3245,6 +3282,43 @@ class AsyncSearchIndex(BaseSearchIndex):
                 break
             yield results
             first += page_size
+
+    async def aiter(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> AsyncGenerator[str, None]:
+        """Iterate lazily over document keys matching a filter expression asynchronously.
+
+        Args:
+            filter_expression (Union[str, FilterExpression, None]): Selects the
+                documents to iterate over. Defaults to None (all documents).
+            batch_size (int): Number of keys fetched per query batch. Defaults to 500.
+
+        Yields:
+            str: Document key matching the filter.
+        """
+        filter_expr = (
+            FilterExpression("*")
+            if filter_expression is None
+            else filter_expression
+        )
+        query = FilterQuery(filter_expr, return_fields=["id"])
+        offset = 0
+        while True:
+            query.paging(offset, batch_size)
+            batch = await self._query(query)
+            if not batch:
+                break
+            for record in batch:
+                yield record["id"]
+            offset += len(batch)
+            if len(batch) < batch_size:
+                break
+
+    def __aiter__(self) -> AsyncGenerator[str, None]:
+        """Yield document keys in the index asynchronously."""
+        return self.aiter()
 
     async def listall(self) -> list[str]:
         """List all search indices in Redis database.
