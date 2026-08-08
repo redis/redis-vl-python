@@ -1143,26 +1143,22 @@ class SearchIndex(BaseSearchIndex):
             records_deleted_in_batch = cast(int, client.delete(*batch_keys))
         return records_deleted_in_batch
 
-    def clear(self) -> int:
-        """Clear all keys in Redis associated with the index, leaving the index
-        available and in-place for future insertions or updates.
-
-        NOTE: This method requires custom behavior for Redis Cluster because
-        here, we can't easily give control of the keys we're clearing to the
-        user so they can separate them based on hash tag.
-
-        Returns:
-            int: Count of records deleted from Redis.
-        """
-        batch_size = 500
+    def _delete_where(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> int:
+        filter_expr = (
+            FilterExpression("*")
+            if filter_expression is None
+            else filter_expression
+        )
+        matched_count = cast(int, self.query(CountQuery(filter_expr)))
         max_ratio = 1.01
-
-        info = self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        max_records_deleted = ceil(matched_count * max_ratio)
         total_records_deleted: int = 0
-        query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+
+        query = FilterQuery(filter_expr, return_fields=["id"])
         query.paging(0, batch_size)
 
         while True:
@@ -1175,6 +1171,38 @@ class SearchIndex(BaseSearchIndex):
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
+
+    def delete_where(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> int:
+        """Delete documents matching a filter expression.
+
+        Args:
+            filter_expression (Union[str, FilterExpression, None]): Selects the
+                documents to delete. Defaults to None (all documents).
+            batch_size (int): Number of documents to resolve and delete per round-trip.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        return self._delete_where(
+            filter_expression=filter_expression, batch_size=batch_size
+        )
+
+    def clear(self) -> int:
+        """Clear all keys in Redis associated with the index, leaving the index
+        available and in-place for future insertions or updates.
+
+        NOTE: This method requires custom behavior for Redis Cluster because here,
+        we can't easily give control of the keys we're clearing to the user so they
+        can separate them based on hash tag.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        return self._delete_where(FilterExpression("*"))
 
     def invalidate_sql_schema_cache(self) -> None:
         """Clear cached sql-redis executors and schema state for this index."""
@@ -2477,26 +2505,22 @@ class AsyncSearchIndex(BaseSearchIndex):
             records_deleted_in_batch = await client.delete(*batch_keys)
         return records_deleted_in_batch
 
-    async def clear(self) -> int:
-        """Clear all keys in Redis associated with the index, leaving the index
-        available and in-place for future insertions or updates.
-
-        NOTE: This method requires custom behavior for Redis Cluster because here,
-        we can't easily give control of the keys we're clearing to the user so they
-        can separate them based on hash tag.
-
-        Returns:
-            int: Count of records deleted from Redis.
-        """
-        batch_size = 500
+    async def _adelete_where(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> int:
+        filter_expr = (
+            FilterExpression("*")
+            if filter_expression is None
+            else filter_expression
+        )
+        matched_count = cast(int, await self.query(CountQuery(filter_expr)))
         max_ratio = 1.01
-
-        info = await self.info()
-        max_records_deleted = ceil(
-            info["num_docs"] * max_ratio
-        )  # Allow to remove some additional concurrent inserts
+        max_records_deleted = ceil(matched_count * max_ratio)
         total_records_deleted: int = 0
-        query = FilterQuery(FilterExpression("*"), return_fields=["id"])
+
+        query = FilterQuery(filter_expr, return_fields=["id"])
         query.paging(0, batch_size)
 
         while True:
@@ -2509,6 +2533,38 @@ class AsyncSearchIndex(BaseSearchIndex):
 
         self.invalidate_sql_schema_cache()
         return total_records_deleted
+
+    async def adelete_where(
+        self,
+        filter_expression: str | FilterExpression | None = None,
+        batch_size: int = DEFAULT_BULK_BATCH_SIZE,
+    ) -> int:
+        """Delete documents matching a filter expression asynchronously.
+
+        Args:
+            filter_expression (Union[str, FilterExpression, None]): Selects the
+                documents to delete. Defaults to None (all documents).
+            batch_size (int): Number of documents to resolve and delete per round-trip.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        return await self._adelete_where(
+            filter_expression=filter_expression, batch_size=batch_size
+        )
+
+    async def clear(self) -> int:
+        """Clear all keys in Redis associated with the index, leaving the index
+        available and in-place for future insertions or updates.
+
+        NOTE: This method requires custom behavior for Redis Cluster because here,
+        we can't easily give control of the keys we're clearing to the user so they
+        can separate them based on hash tag.
+
+        Returns:
+            int: Count of records deleted from Redis.
+        """
+        return await self._adelete_where(FilterExpression("*"))
 
     def invalidate_sql_schema_cache(self) -> None:
         """Clear cached sql-redis executors and schema state for this index."""
