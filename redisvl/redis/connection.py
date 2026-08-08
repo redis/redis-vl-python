@@ -548,7 +548,10 @@ class RedisConnectionFactory:
         except ResponseError:
             # Fall back to a simple log echo
             if hasattr(client, "echo"):
-                client.echo(_lib_name)
+                try:
+                    client.echo(_lib_name)
+                except ResponseError as e:
+                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
         return client
 
     @staticmethod
@@ -607,7 +610,10 @@ class RedisConnectionFactory:
         except ResponseError:
             # Fall back to a simple log echo
             if hasattr(client, "echo"):
-                await client.echo(_lib_name)
+                try:
+                    await client.echo(_lib_name)
+                except ResponseError as e:
+                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
         return client
 
     @staticmethod
@@ -736,7 +742,10 @@ class RedisConnectionFactory:
             # Fall back to a simple log echo
             # For RedisCluster, echo is not available
             if hasattr(redis_client, "echo"):
-                redis_client.echo(_lib_name)
+                try:
+                    redis_client.echo(_lib_name)
+                except ResponseError as e:
+                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
 
         # Module validation removed - operations will fail naturally if modules are missing
 
@@ -761,7 +770,10 @@ class RedisConnectionFactory:
         except ResponseError:
             # Fall back to a simple log echo
             if hasattr(redis_client, "echo"):
-                await redis_client.echo(_lib_name)
+                try:
+                    await redis_client.echo(_lib_name)
+                except ResponseError as e:
+                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
 
         # Module validation removed - operations will fail naturally if modules are missing
 
