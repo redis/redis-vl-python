@@ -1149,9 +1149,7 @@ class SearchIndex(BaseSearchIndex):
         batch_size: int = DEFAULT_BULK_BATCH_SIZE,
     ) -> int:
         filter_expr = (
-            FilterExpression("*")
-            if filter_expression is None
-            else filter_expression
+            FilterExpression("*") if filter_expression is None else filter_expression
         )
         matched_count = cast(int, self.query(CountQuery(filter_expr)))
         max_ratio = 1.01
@@ -2511,9 +2509,7 @@ class AsyncSearchIndex(BaseSearchIndex):
         batch_size: int = DEFAULT_BULK_BATCH_SIZE,
     ) -> int:
         filter_expr = (
-            FilterExpression("*")
-            if filter_expression is None
-            else filter_expression
+            FilterExpression("*") if filter_expression is None else filter_expression
         )
         matched_count = cast(int, await self.query(CountQuery(filter_expr)))
         max_ratio = 1.01
