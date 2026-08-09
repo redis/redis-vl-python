@@ -204,15 +204,38 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        import openai
+
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the AzureOpenAI API: {str(ke)}")
+        except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
+            raise ValueError(
+                f"Azure OpenAI rejected the credentials used while determining embedding "
+                f"dimensions for deployment '{self.model}'. Check the api_key and "
+                f"azure_endpoint given in api_config, or the AZURE_OPENAI_API_KEY and "
+                f"AZURE_OPENAI_ENDPOINT environment variables: {str(e)}"
+            ) from e
+        except openai.NotFoundError as e:
+            raise ValueError(
+                f"Azure OpenAI does not recognize the deployment '{self.model}'. Azure "
+                f"addresses models by deployment name rather than model name -- check "
+                f"that the deployment exists in this resource: {str(e)}"
+            ) from e
+        except openai.APIConnectionError as e:
+            raise ValueError(
+                f"Could not reach the Azure OpenAI endpoint while determining embedding "
+                f"dimensions for deployment '{self.model}'. Check the endpoint URL, "
+                f"network access and any proxy configuration: {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Azure OpenAI deployment "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     @deprecated_argument("text", "content")
     @retry(

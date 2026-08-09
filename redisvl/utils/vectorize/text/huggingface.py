@@ -120,9 +120,22 @@ class HFTextVectorizer(BaseVectorizer):
             embedding = self._embed("dimension check")
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Empty response from the embedding model: {str(ke)}")
+        except OSError as e:
+            raise ValueError(
+                f"Could not load the local embedding model '{self.model}'. Check the "
+                f"model name or path and that the model has been downloaded: {str(e)}"
+            ) from e
+        except RuntimeError as e:
+            raise ValueError(
+                f"The local embedding model '{self.model}' failed while determining its "
+                f"dimensions. On CUDA this is commonly an out-of-memory or device "
+                f"mismatch -- retry with device='cpu': {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for local model "
+                f"'{self.model}': {str(e)}"
+            ) from e
         return len(embedding)
 
     @deprecated_argument("text", "content")

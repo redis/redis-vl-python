@@ -152,15 +152,36 @@ class OpenAITextVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        import openai
+
         try:
             # Use the parent embed() method which handles caching
             embedding = self._embed("dimension check")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the OpenAI API: {str(ke)}")
+        except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
+            raise ValueError(
+                f"OpenAI rejected the credentials used while determining embedding "
+                f"dimensions for model '{self.model}'. Check the api_key given in "
+                f"api_config, or the OPENAI_API_KEY environment variable: {str(e)}"
+            ) from e
+        except openai.NotFoundError as e:
+            raise ValueError(
+                f"OpenAI does not recognize the embedding model '{self.model}'. Check "
+                f"the model name against the provider's current model list: {str(e)}"
+            ) from e
+        except openai.APIConnectionError as e:
+            raise ValueError(
+                f"Could not reach the OpenAI API while determining embedding dimensions "
+                f"for model '{self.model}'. Check network access and any proxy "
+                f"configuration: {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for OpenAI model "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     @deprecated_argument("text", "content")
     @retry(

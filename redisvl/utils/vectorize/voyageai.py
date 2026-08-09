@@ -230,15 +230,37 @@ class VoyageAIVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        import voyageai.error
+
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check", input_type="document")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VoyageAI API: {str(ke)}")
+        except voyageai.error.AuthenticationError as e:
+            raise ValueError(
+                f"VoyageAI rejected the credentials used while determining embedding "
+                f"dimensions for model '{self.model}'. Check the api_key given in "
+                f"api_config, or the VOYAGE_API_KEY environment variable: {str(e)}"
+            ) from e
+        except voyageai.error.InvalidRequestError as e:
+            raise ValueError(
+                f"VoyageAI rejected the request used to determine embedding dimensions "
+                f"for model '{self.model}'. This usually means the model name is not "
+                f"recognized: {str(e)}"
+            ) from e
+        except voyageai.error.APIConnectionError as e:
+            raise ValueError(
+                f"Could not reach the VoyageAI API while determining embedding "
+                f"dimensions for model '{self.model}'. Check network access and any "
+                f"proxy configuration: {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for VoyageAI model "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     def _get_batch_size(self) -> int:
         """

@@ -153,15 +153,26 @@ class MistralAITextVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        from mistralai.models import SDKError
+
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the MISTRAL API: {str(ke)}")
+        except SDKError as e:
+            raise ValueError(
+                f"The Mistral API returned an error while determining embedding "
+                f"dimensions for model '{self.model}'. If this is an authentication "
+                f"failure check the api_key given in api_config or the MISTRAL_API_KEY "
+                f"environment variable; if it is a 404 check the model name: {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Mistral model "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     @deprecated_argument("text", "content")
     @retry(

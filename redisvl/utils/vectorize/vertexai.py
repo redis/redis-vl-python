@@ -228,15 +228,42 @@ class VertexAIVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        from google.api_core.exceptions import (
+            GoogleAPICallError,
+            NotFound,
+            PermissionDenied,
+            Unauthenticated,
+        )
+
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the VertexAI API: {str(ke)}")
+        except (PermissionDenied, Unauthenticated) as e:
+            raise ValueError(
+                f"Google Cloud rejected the credentials used while determining embedding "
+                f"dimensions for model '{self.model}'. Check "
+                f"GOOGLE_APPLICATION_CREDENTIALS and that the service account holds the "
+                f"Vertex AI User role: {str(e)}"
+            ) from e
+        except NotFound as e:
+            raise ValueError(
+                f"Vertex AI could not find the embedding model '{self.model}' in the "
+                f"configured project and location. Check the model name, GCP_PROJECT_ID "
+                f"and GCP_LOCATION: {str(e)}"
+            ) from e
+        except GoogleAPICallError as e:
+            raise ValueError(
+                f"The Vertex AI API returned an error while determining embedding "
+                f"dimensions for model '{self.model}': {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Vertex AI model "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),

@@ -189,15 +189,49 @@ class BedrockVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        from botocore.exceptions import BotoCoreError, ClientError
+
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the Bedrock API: {str(ke)}")
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in (
+                "UnrecognizedClientException",
+                "AccessDeniedException",
+                "InvalidSignatureException",
+                "ExpiredTokenException",
+            ):
+                raise ValueError(
+                    f"AWS rejected the credentials used while determining embedding "
+                    f"dimensions for Bedrock model '{self.model}'. Check "
+                    f"AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION, and that "
+                    f"the identity is allowed bedrock:InvokeModel: {str(e)}"
+                ) from e
+            if code in ("ResourceNotFoundException", "ValidationException"):
+                raise ValueError(
+                    f"Bedrock did not accept the model id '{self.model}' in this region. "
+                    f"Check the model id and that model access is enabled for your "
+                    f"account in AWS_REGION: {str(e)}"
+                ) from e
+            raise ValueError(
+                f"The Bedrock API returned an error while determining embedding "
+                f"dimensions for model '{self.model}': {str(e)}"
+            ) from e
+        except BotoCoreError as e:
+            raise ValueError(
+                f"Could not reach Bedrock while determining embedding dimensions for "
+                f"model '{self.model}'. Check network access, AWS_REGION and any proxy "
+                f"configuration: {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Bedrock model "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     @retry(
         wait=wait_random_exponential(min=1, max=60),

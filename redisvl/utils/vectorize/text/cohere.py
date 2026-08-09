@@ -162,15 +162,36 @@ class CohereTextVectorizer(BaseVectorizer):
         Raises:
             ValueError: If embedding dimensions cannot be determined
         """
+        import cohere
+        from cohere.core.api_error import ApiError
+
         try:
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check", input_type="search_document")
             return len(embedding)
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Unexpected response from the Cohere API: {str(ke)}")
+        except cohere.UnauthorizedError as e:
+            raise ValueError(
+                f"Cohere rejected the credentials used while determining embedding "
+                f"dimensions for model '{self.model}'. Check the api_key given in "
+                f"api_config, or the COHERE_API_KEY environment variable: {str(e)}"
+            ) from e
+        except cohere.NotFoundError as e:
+            raise ValueError(
+                f"Cohere does not recognize the embedding model '{self.model}'. Check "
+                f"the model name against the provider's current model list: {str(e)}"
+            ) from e
+        except ApiError as e:
+            raise ValueError(
+                f"The Cohere API returned an error while determining embedding "
+                f"dimensions for model '{self.model}': {str(e)}"
+            ) from e
         except Exception as e:  # pylint: disable=broad-except
-            # fall back (TODO get more specific)
-            raise ValueError(f"Error setting embedding model dimensions: {str(e)}")
+            raise ValueError(
+                f"Error setting embedding model dimensions for Cohere model "
+                f"'{self.model}': {str(e)}"
+            ) from e
 
     def _get_cohere_embedding_type(self, dtype: str) -> list[str]:
         """
