@@ -551,7 +551,9 @@ class RedisConnectionFactory:
                 try:
                     client.echo(_lib_name)
                 except ResponseError as e:
-                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
+                    logger.debug(
+                        f"Failed to echo lib_name due to ACL restrictions: {e}"
+                    )
         return client
 
     @staticmethod
@@ -613,7 +615,9 @@ class RedisConnectionFactory:
                 try:
                     await client.echo(_lib_name)
                 except ResponseError as e:
-                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
+                    logger.debug(
+                        f"Failed to echo lib_name due to ACL restrictions: {e}"
+                    )
         return client
 
     @staticmethod
@@ -745,7 +749,9 @@ class RedisConnectionFactory:
                 try:
                     redis_client.echo(_lib_name)
                 except ResponseError as e:
-                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
+                    logger.debug(
+                        f"Failed to echo lib_name due to ACL restrictions: {e}"
+                    )
 
         # Module validation removed - operations will fail naturally if modules are missing
 
@@ -773,7 +779,9 @@ class RedisConnectionFactory:
                 try:
                     await redis_client.echo(_lib_name)
                 except ResponseError as e:
-                    logger.debug(f"Failed to echo lib_name due to ACL restrictions: {e}")
+                    logger.debug(
+                        f"Failed to echo lib_name due to ACL restrictions: {e}"
+                    )
 
         # Module validation removed - operations will fail naturally if modules are missing
 
