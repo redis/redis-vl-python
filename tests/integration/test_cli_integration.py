@@ -2,8 +2,9 @@ import os
 import subprocess
 import sys
 import tempfile
-import yaml
+
 import pytest
+import yaml
 
 
 @pytest.fixture
@@ -38,10 +39,15 @@ def run_cli(*args, redis_url=None):
     env = os.environ.copy()
     if redis_url:
         env["REDIS_URL"] = redis_url
+    # `rvl index info` renders a box-drawing table. Without this the child
+    # process inherits a non-UTF-8 stdout encoding on some platforms and dies
+    # with a UnicodeEncodeError before printing anything.
+    env["PYTHONIOENCODING"] = "utf-8"
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         check=False,
     )
@@ -51,7 +57,11 @@ def run_cli(*args, redis_url=None):
 def test_cli_version():
     res = run_cli("version")
     assert res.returncode == 0
-    assert "redisvl" in res.stdout.lower() or "version" in res.stdout.lower() or "." in res.stdout
+    assert (
+        "redisvl" in res.stdout.lower()
+        or "version" in res.stdout.lower()
+        or "." in res.stdout
+    )
 
 
 def test_cli_index_lifecycle(redis_url, cli_schema_file):
@@ -74,7 +84,11 @@ def test_cli_index_lifecycle(redis_url, cli_schema_file):
     # 4. Get index stats
     stats_res = run_cli("stats", "-i", index_name, "--url", redis_url)
     assert stats_res.returncode == 0, f"stats failed: {stats_res.stderr}"
-    assert index_name in stats_res.stdout or "num_docs" in stats_res.stdout or "STAT" in stats_res.stdout
+    assert (
+        index_name in stats_res.stdout
+        or "num_docs" in stats_res.stdout
+        or "STAT" in stats_res.stdout
+    )
 
     # 5. Delete index
     delete_res = run_cli("index", "delete", "-i", index_name, "--url", redis_url)
@@ -91,15 +105,21 @@ def test_cli_index_lifecycle(redis_url, cli_schema_file):
 
 def test_cli_error_paths(redis_url):
     # Non-existent schema file
-    schema_res = run_cli("index", "create", "-s", "non_existent_file_xyz.yaml", "--url", redis_url)
+    schema_res = run_cli(
+        "index", "create", "-s", "non_existent_file_xyz.yaml", "--url", redis_url
+    )
     assert schema_res.returncode != 0
 
     # Info for non-existent index
-    info_res = run_cli("index", "info", "-i", "non_existent_index_xyz_9999", "--url", redis_url)
+    info_res = run_cli(
+        "index", "info", "-i", "non_existent_index_xyz_9999", "--url", redis_url
+    )
     assert info_res.returncode != 0
 
     # Stats for non-existent index
-    stats_res = run_cli("stats", "-i", "non_existent_index_xyz_9999", "--url", redis_url)
+    stats_res = run_cli(
+        "stats", "-i", "non_existent_index_xyz_9999", "--url", redis_url
+    )
     assert stats_res.returncode != 0
 
     # Invalid CLI subcommand
