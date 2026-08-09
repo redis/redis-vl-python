@@ -2019,9 +2019,7 @@ class SearchIndex(BaseSearchIndex):
             str: Document key matching the filter.
         """
         filter_expr = (
-            FilterExpression("*")
-            if filter_expression is None
-            else filter_expression
+            FilterExpression("*") if filter_expression is None else filter_expression
         )
         query = FilterQuery(filter_expr, return_fields=["id"])
         offset = 0
@@ -2035,10 +2033,6 @@ class SearchIndex(BaseSearchIndex):
             offset += len(batch)
             if len(batch) < batch_size:
                 break
-
-    def __iter__(self) -> Generator[str, None, None]:
-        """Yield document keys in the index."""
-        return self.iter()
 
     def listall(self) -> list[str]:
         """List all search indices in Redis database.
@@ -3299,9 +3293,7 @@ class AsyncSearchIndex(BaseSearchIndex):
             str: Document key matching the filter.
         """
         filter_expr = (
-            FilterExpression("*")
-            if filter_expression is None
-            else filter_expression
+            FilterExpression("*") if filter_expression is None else filter_expression
         )
         query = FilterQuery(filter_expr, return_fields=["id"])
         offset = 0
@@ -3315,10 +3307,6 @@ class AsyncSearchIndex(BaseSearchIndex):
             offset += len(batch)
             if len(batch) < batch_size:
                 break
-
-    def __aiter__(self) -> AsyncGenerator[str, None]:
-        """Yield document keys in the index asynchronously."""
-        return self.aiter()
 
     async def listall(self) -> list[str]:
         """List all search indices in Redis database.

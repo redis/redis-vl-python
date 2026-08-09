@@ -64,18 +64,16 @@ def redis_container(worker_id):
     os.environ["COMPOSE_PROJECT_NAME"] = f"redis_test_{worker_id}"
     os.environ.setdefault("REDIS_IMAGE", "redis:8.4")
 
-    try:
-        compose = DockerCompose(
-            context="tests",
-            compose_file_name="docker-compose.yml",
-            pull=True,
-        )
-        compose.start()
-        yield compose
-        compose.stop()
-    except Exception as e:
-        logger.warning(f"DockerCompose failed to start, falling back to local Redis: {e}")
-        yield None
+    compose = DockerCompose(
+        context="tests",
+        compose_file_name="docker-compose.yml",
+        pull=True,
+    )
+    compose.start()
+
+    yield compose
+
+    compose.stop()
 
 
 @pytest.fixture(scope="session")
@@ -186,13 +184,8 @@ def redis_url(redis_container):
     Use the `DockerCompose` fixture to get host/port of the 'redis' service
     on container port 6379 (mapped to an ephemeral port on the host).
     """
-    if redis_container is not None:
-        try:
-            host, port = redis_container.get_service_host_and_port("redis", 6379)
-            return f"redis://{host}:{port}"
-        except Exception:
-            pass
-    return os.getenv("REDIS_URL", "redis://localhost:6379")
+    host, port = redis_container.get_service_host_and_port("redis", 6379)
+    return f"redis://{host}:{port}"
 
 
 @pytest.fixture(scope="session")

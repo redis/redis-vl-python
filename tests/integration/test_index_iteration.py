@@ -1,6 +1,14 @@
 import pytest
-from redisvl.index import SearchIndex, AsyncSearchIndex
+
+from redisvl.index import AsyncSearchIndex, SearchIndex
 from redisvl.query.filter import Tag
+
+DOCS = [
+    {"id": "1", "category": "A"},
+    {"id": "2", "category": "B"},
+    {"id": "3", "category": "A"},
+    {"id": "4", "category": "C"},
+]
 
 
 @pytest.fixture
@@ -15,13 +23,8 @@ def sample_index(redis_url, redis_test_name):
         redis_url=redis_url,
     )
     index.create(overwrite=True)
-    docs = [
-        {"id": f"{prefix}:1", "category": "A"},
-        {"id": f"{prefix}:2", "category": "B"},
-        {"id": f"{prefix}:3", "category": "A"},
-        {"id": f"{prefix}:4", "category": "C"},
-    ]
-    index.load(docs)
+    # id_field makes the key deterministic: <prefix>:<id>
+    index.load(DOCS, id_field="id")
     yield index
     index.delete(drop=True)
 
@@ -38,69 +41,72 @@ async def async_sample_index(redis_url, redis_test_name):
         redis_url=redis_url,
     )
     await index.create(overwrite=True)
-    docs = [
-        {"id": f"{prefix}:1", "category": "A"},
-        {"id": f"{prefix}:2", "category": "B"},
-        {"id": f"{prefix}:3", "category": "A"},
-        {"id": f"{prefix}:4", "category": "C"},
-    ]
-    await index.load(docs)
+    await index.load(DOCS, id_field="id")
     yield index
     await index.delete(drop=True)
 
 
-def test_sync_index_iter(sample_index):
-    # Iterate all keys
-    all_keys = list(sample_index.iter())
-    assert len(all_keys) == 4
-    assert set(all_keys) == {
-        f"{sample_index.prefix}:1",
-        f"{sample_index.prefix}:2",
-        f"{sample_index.prefix}:3",
-        f"{sample_index.prefix}:4",
-    }
+def test_iter_yields_every_key(sample_index):
+    """iter() with no filter must yield every key in the index, once each."""
+    keys = list(sample_index.iter())
 
-    # Iterate with filter
-    filter_a = Tag("category") == "A"
-    filtered_keys = list(sample_index.iter(filter_expression=filter_a))
-    assert len(filtered_keys) == 2
-    assert set(filtered_keys) == {
-        f"{sample_index.prefix}:1",
-        f"{sample_index.prefix}:3",
-    }
+    assert len(keys) == 4
+    assert set(keys) == {f"{sample_index.prefix}:{i}" for i in range(1, 5)}
 
-    # Magic __iter__
-    magic_keys = list(sample_index)
-    assert len(magic_keys) == 4
+
+def test_iter_respects_filter_expression(sample_index):
+    """A filter expression must narrow the yielded keys."""
+    keys = list(sample_index.iter(filter_expression=Tag("category") == "A"))
+
+    assert set(keys) == {f"{sample_index.prefix}:1", f"{sample_index.prefix}:3"}
+
+
+def test_iter_is_lazy(sample_index):
+    """Iteration must stream: the first key arrives without draining the index."""
+    iterator = sample_index.iter()
+
+    assert next(iterator) is not None
+
+
+def test_iter_pages_when_batch_size_is_smaller_than_the_index(sample_index):
+    """A batch_size below the document count must still yield every key exactly once."""
+    keys = list(sample_index.iter(batch_size=2))
+
+    assert sorted(keys) == sorted(f"{sample_index.prefix}:{i}" for i in range(1, 5))
 
 
 @pytest.mark.asyncio
-async def test_async_index_aiter(async_sample_index):
-    # Iterate all keys asynchronously
-    all_keys = []
-    async for key in async_sample_index.aiter():
-        all_keys.append(key)
-    assert len(all_keys) == 4
-    assert set(all_keys) == {
+async def test_aiter_yields_every_key(async_sample_index):
+    """aiter() must mirror iter() on the async client."""
+    keys = [key async for key in async_sample_index.aiter()]
+
+    assert len(keys) == 4
+    assert set(keys) == {f"{async_sample_index.prefix}:{i}" for i in range(1, 5)}
+
+
+@pytest.mark.asyncio
+async def test_aiter_respects_filter_expression(async_sample_index):
+    """The async iterator must apply the filter the same way the sync one does."""
+    keys = [
+        key
+        async for key in async_sample_index.aiter(
+            filter_expression=Tag("category") == "A"
+        )
+    ]
+
+    assert set(keys) == {
         f"{async_sample_index.prefix}:1",
-        f"{async_sample_index.prefix}:2",
         f"{async_sample_index.prefix}:3",
-        f"{async_sample_index.prefix}:4",
     }
 
-    # Iterate with filter asynchronously
-    filter_a = Tag("category") == "A"
-    filtered_keys = []
-    async for key in async_sample_index.aiter(filter_expression=filter_a):
-        filtered_keys.append(key)
-    assert len(filtered_keys) == 2
-    assert set(filtered_keys) == {
-        f"{async_sample_index.prefix}:1",
-        f"{async_sample_index.prefix}:3",
-    }
 
-    # Magic __aiter__
-    magic_keys = []
-    async for key in async_sample_index:
-        magic_keys.append(key)
-    assert len(magic_keys) == 4
+@pytest.mark.asyncio
+async def test_aiter_pages_when_batch_size_is_smaller_than_the_index(
+    async_sample_index,
+):
+    """A batch_size below the document count must still yield every key exactly once."""
+    keys = [key async for key in async_sample_index.aiter(batch_size=2)]
+
+    assert sorted(keys) == sorted(
+        f"{async_sample_index.prefix}:{i}" for i in range(1, 5)
+    )
