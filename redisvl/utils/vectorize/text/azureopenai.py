@@ -2,7 +2,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
-from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 if TYPE_CHECKING:
@@ -210,26 +210,49 @@ class AzureOpenAITextVectorizer(BaseVectorizer):
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the AzureOpenAI API: {str(ke)}")
-        except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
+        except (ValueError, RetryError) as e:
+            # _embed()/_embed_many() are @retry-decorated with
+            # retry_if_not_exception_type(TypeError), so the ValueError they
+            # raise on a permanent failure (bad credentials, unknown model...)
+            # is itself retried until tenacity gives up and raises RetryError.
+            # Unwrap that first, then unwrap the ValueError it wraps, to reach
+            # the real SDK exception either way.
+            root: BaseException = e
+            if isinstance(root, RetryError):
+                root = root.last_attempt.exception() or root
+            # _embed()/_embed_many() wrap the SDK's own exception in a ValueError
+            # (or TypeError for VoyageAI's InvalidRequestError below), so dispatch
+            # on the wrapped cause instead of the wrapper -- catching the provider
+            # SDK's exception type here would never fire otherwise.
+            cause = root.__cause__ or root.__context__ or root
+            if isinstance(cause, (KeyError, IndexError)):
+                raise ValueError(
+                    f"Unexpected response from the AzureOpenAI API: {str(cause)}"
+                ) from e
+            if isinstance(
+                cause, (openai.AuthenticationError, openai.PermissionDeniedError)
+            ):
+                raise ValueError(
+                    f"Azure OpenAI rejected the credentials used while determining embedding "
+                    f"dimensions for deployment '{self.model}'. Check the api_key and "
+                    f"azure_endpoint given in api_config, or the AZURE_OPENAI_API_KEY and "
+                    f"AZURE_OPENAI_ENDPOINT environment variables: {str(cause)}"
+                ) from e
+            if isinstance(cause, openai.NotFoundError):
+                raise ValueError(
+                    f"Azure OpenAI does not recognize the deployment '{self.model}'. Azure "
+                    f"addresses models by deployment name rather than model name -- check "
+                    f"that the deployment exists in this resource: {str(cause)}"
+                ) from e
+            if isinstance(cause, openai.APIConnectionError):
+                raise ValueError(
+                    f"Could not reach the Azure OpenAI endpoint while determining embedding "
+                    f"dimensions for deployment '{self.model}'. Check the endpoint URL, "
+                    f"network access and any proxy configuration: {str(cause)}"
+                ) from e
             raise ValueError(
-                f"Azure OpenAI rejected the credentials used while determining embedding "
-                f"dimensions for deployment '{self.model}'. Check the api_key and "
-                f"azure_endpoint given in api_config, or the AZURE_OPENAI_API_KEY and "
-                f"AZURE_OPENAI_ENDPOINT environment variables: {str(e)}"
-            ) from e
-        except openai.NotFoundError as e:
-            raise ValueError(
-                f"Azure OpenAI does not recognize the deployment '{self.model}'. Azure "
-                f"addresses models by deployment name rather than model name -- check "
-                f"that the deployment exists in this resource: {str(e)}"
-            ) from e
-        except openai.APIConnectionError as e:
-            raise ValueError(
-                f"Could not reach the Azure OpenAI endpoint while determining embedding "
-                f"dimensions for deployment '{self.model}'. Check the endpoint URL, "
-                f"network access and any proxy configuration: {str(e)}"
+                f"Error setting embedding model dimensions for Azure OpenAI deployment "
+                f"'{self.model}': {str(e)}"
             ) from e
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(

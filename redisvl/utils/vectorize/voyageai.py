@@ -2,7 +2,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ConfigDict
-from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 if TYPE_CHECKING:
@@ -236,25 +236,45 @@ class VoyageAIVectorizer(BaseVectorizer):
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check", input_type="document")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the VoyageAI API: {str(ke)}")
-        except voyageai.error.AuthenticationError as e:
+        except (ValueError, RetryError) as e:
+            # _embed()/_embed_many() are @retry-decorated with
+            # retry_if_not_exception_type(TypeError), so the ValueError they
+            # raise on a permanent failure (bad credentials, unknown model...)
+            # is itself retried until tenacity gives up and raises RetryError.
+            # Unwrap that first, then unwrap the ValueError it wraps, to reach
+            # the real SDK exception either way.
+            root: BaseException = e
+            if isinstance(root, RetryError):
+                root = root.last_attempt.exception() or root
+            # _embed()/_embed_many() wrap the SDK's own exception in a ValueError,
+            # so dispatch on the wrapped cause instead of the wrapper -- catching
+            # the provider SDK's exception type here would never fire otherwise.
+            cause = root.__cause__ or root.__context__ or root
+            if isinstance(cause, (KeyError, IndexError)):
+                raise ValueError(
+                    f"Unexpected response from the VoyageAI API: {str(cause)}"
+                ) from e
+            if isinstance(cause, voyageai.error.AuthenticationError):
+                raise ValueError(
+                    f"VoyageAI rejected the credentials used while determining embedding "
+                    f"dimensions for model '{self.model}'. Check the api_key given in "
+                    f"api_config, or the VOYAGE_API_KEY environment variable: {str(cause)}"
+                ) from e
+            if isinstance(cause, voyageai.error.InvalidRequestError):
+                raise ValueError(
+                    f"VoyageAI rejected the request used to determine embedding dimensions "
+                    f"for model '{self.model}'. This usually means the model name is not "
+                    f"recognized: {str(cause)}"
+                ) from e
+            if isinstance(cause, voyageai.error.APIConnectionError):
+                raise ValueError(
+                    f"Could not reach the VoyageAI API while determining embedding "
+                    f"dimensions for model '{self.model}'. Check network access and any "
+                    f"proxy configuration: {str(cause)}"
+                ) from e
             raise ValueError(
-                f"VoyageAI rejected the credentials used while determining embedding "
-                f"dimensions for model '{self.model}'. Check the api_key given in "
-                f"api_config, or the VOYAGE_API_KEY environment variable: {str(e)}"
-            ) from e
-        except voyageai.error.InvalidRequestError as e:
-            raise ValueError(
-                f"VoyageAI rejected the request used to determine embedding dimensions "
-                f"for model '{self.model}'. This usually means the model name is not "
-                f"recognized: {str(e)}"
-            ) from e
-        except voyageai.error.APIConnectionError as e:
-            raise ValueError(
-                f"Could not reach the VoyageAI API while determining embedding "
-                f"dimensions for model '{self.model}'. Check network access and any "
-                f"proxy configuration: {str(e)}"
+                f"Error setting embedding model dimensions for VoyageAI model "
+                f"'{self.model}': {str(e)}"
             ) from e
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(

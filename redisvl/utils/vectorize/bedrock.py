@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ConfigDict
-from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_not_exception_type
 
 if TYPE_CHECKING:
@@ -195,37 +195,57 @@ class BedrockVectorizer(BaseVectorizer):
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check")
             return len(embedding)
-        except (KeyError, IndexError) as ke:
-            raise ValueError(f"Unexpected response from the Bedrock API: {str(ke)}")
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code in (
-                "UnrecognizedClientException",
-                "AccessDeniedException",
-                "InvalidSignatureException",
-                "ExpiredTokenException",
-            ):
+        except (ValueError, RetryError) as e:
+            # _embed()/_embed_many() are @retry-decorated with
+            # retry_if_not_exception_type(TypeError), so the ValueError they
+            # raise on a permanent failure (bad credentials, unknown model...)
+            # is itself retried until tenacity gives up and raises RetryError.
+            # Unwrap that first, then unwrap the ValueError it wraps, to reach
+            # the real SDK exception either way.
+            root: BaseException = e
+            if isinstance(root, RetryError):
+                root = root.last_attempt.exception() or root
+            # _embed()/_embed_many() wrap the SDK's own exception in a ValueError,
+            # so dispatch on the wrapped cause instead of the wrapper -- catching
+            # the provider SDK's exception type here would never fire otherwise.
+            cause = root.__cause__ or root.__context__ or root
+            if isinstance(cause, (KeyError, IndexError)):
                 raise ValueError(
-                    f"AWS rejected the credentials used while determining embedding "
-                    f"dimensions for Bedrock model '{self.model}'. Check "
-                    f"AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION, and that "
-                    f"the identity is allowed bedrock:InvokeModel: {str(e)}"
+                    f"Unexpected response from the Bedrock API: {str(cause)}"
                 ) from e
-            if code in ("ResourceNotFoundException", "ValidationException"):
+            if isinstance(cause, ClientError):
+                code = cause.response.get("Error", {}).get("Code", "")
+                if code in (
+                    "UnrecognizedClientException",
+                    "AccessDeniedException",
+                    "InvalidSignatureException",
+                    "ExpiredTokenException",
+                ):
+                    raise ValueError(
+                        f"AWS rejected the credentials used while determining embedding "
+                        f"dimensions for Bedrock model '{self.model}'. Check "
+                        f"AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION, and that "
+                        f"the identity is allowed bedrock:InvokeModel: {str(cause)}"
+                    ) from e
+                if code in ("ResourceNotFoundException", "ValidationException"):
+                    raise ValueError(
+                        f"Bedrock did not accept the model id '{self.model}' in this region. "
+                        f"Check the model id and that model access is enabled for your "
+                        f"account in AWS_REGION: {str(cause)}"
+                    ) from e
                 raise ValueError(
-                    f"Bedrock did not accept the model id '{self.model}' in this region. "
-                    f"Check the model id and that model access is enabled for your "
-                    f"account in AWS_REGION: {str(e)}"
+                    f"The Bedrock API returned an error while determining embedding "
+                    f"dimensions for model '{self.model}': {str(cause)}"
+                ) from e
+            if isinstance(cause, BotoCoreError):
+                raise ValueError(
+                    f"Could not reach Bedrock while determining embedding dimensions for "
+                    f"model '{self.model}'. Check network access, AWS_REGION and any proxy "
+                    f"configuration: {str(cause)}"
                 ) from e
             raise ValueError(
-                f"The Bedrock API returned an error while determining embedding "
-                f"dimensions for model '{self.model}': {str(e)}"
-            ) from e
-        except BotoCoreError as e:
-            raise ValueError(
-                f"Could not reach Bedrock while determining embedding dimensions for "
-                f"model '{self.model}'. Check network access, AWS_REGION and any proxy "
-                f"configuration: {str(e)}"
+                f"Error setting embedding model dimensions for Bedrock model "
+                f"'{self.model}': {str(e)}"
             ) from e
         except Exception as e:  # pylint: disable=broad-except
             raise ValueError(

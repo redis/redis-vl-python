@@ -113,7 +113,22 @@ class HFTextVectorizer(BaseVectorizer):
                 "Please install with `pip install sentence-transformers`"
             )
 
-        self._client = SentenceTransformer(model, **kwargs)
+        try:
+            self._client = SentenceTransformer(model, **kwargs)
+        except OSError as e:
+            # This is where a bad model name or path actually surfaces --
+            # _set_model_dims() never sees it, since loading happens here,
+            # before that method's try block runs.
+            raise ValueError(
+                f"Could not load the local embedding model '{model}'. Check the "
+                f"model name or path and that the model has been downloaded: {str(e)}"
+            ) from e
+        except RuntimeError as e:
+            raise ValueError(
+                f"The local embedding model '{model}' failed to load. On CUDA this is "
+                f"commonly an out-of-memory or device mismatch -- retry with "
+                f"device='cpu': {str(e)}"
+            ) from e
 
     def _set_model_dims(self):
         try:
