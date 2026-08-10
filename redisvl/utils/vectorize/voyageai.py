@@ -236,13 +236,17 @@ class VoyageAIVectorizer(BaseVectorizer):
             # Call the protected _embed method to avoid caching this test embedding
             embedding = self._embed("dimension check", input_type="document")
             return len(embedding)
-        except (ValueError, RetryError) as e:
+        except (ValueError, TypeError, RetryError) as e:
             # _embed()/_embed_many() are @retry-decorated with
             # retry_if_not_exception_type(TypeError), so the ValueError they
             # raise on a permanent failure (bad credentials, unknown model...)
             # is itself retried until tenacity gives up and raises RetryError.
-            # Unwrap that first, then unwrap the ValueError it wraps, to reach
-            # the real SDK exception either way.
+            # TypeError is different: _embed_many() re-raises
+            # voyageai.error.InvalidRequestError (an unrecognized model id, most
+            # commonly) as TypeError specifically so retry_if_not_exception_type
+            # skips it -- retrying a bad model id can't ever succeed. It arrives
+            # here as a plain TypeError, not wrapped in RetryError, so unwrap
+            # only if RetryError; TypeError already needs no unwrapping.
             root: BaseException = e
             if isinstance(root, RetryError):
                 root = root.last_attempt.exception() or root

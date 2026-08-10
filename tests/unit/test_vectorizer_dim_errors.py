@@ -296,6 +296,35 @@ def test_voyageai_dim_probe_reports_authentication_error():
     assert "VOYAGE_API_KEY" in message
 
 
+def test_voyageai_dim_probe_reports_unrecognized_model_id():
+    """VoyageAI's _embed_many() re-raises InvalidRequestError as TypeError --
+    deliberately, so retry_if_not_exception_type(TypeError) skips retrying it,
+    since a bad model id can never succeed no matter how many attempts. That
+    means it reaches _set_model_dims() as a bare TypeError, never wrapped in
+    RetryError. This drives the real _embed_many() code (only the client's
+    .embed() call is stubbed) so it proves the TypeError path is actually
+    caught, not just that the dispatch logic handles it when handed one."""
+    import voyageai.error
+
+    from redisvl.utils.vectorize.voyageai import VoyageAIVectorizer
+
+    bad_model = voyageai.error.InvalidRequestError("model not found")
+    mock_client = MagicMock()
+    mock_client.embed.side_effect = bad_model
+
+    def _fake_init(self, *a, **k):
+        self._client = mock_client
+        self._aclient = mock_client
+
+    with patch.object(VoyageAIVectorizer, "_initialize_client", _fake_init):
+        with pytest.raises(ValueError) as excinfo:
+            VoyageAIVectorizer(model="not-a-real-voyage-model")
+
+    message = str(excinfo.value)
+    assert "not-a-real-voyage-model" in message
+    assert "not recognized" in message
+
+
 def test_unanticipated_errors_still_become_valueerror():
     """The generic fallback must survive: no error may escape raw."""
     from redisvl.utils.vectorize.text.openai import OpenAITextVectorizer
