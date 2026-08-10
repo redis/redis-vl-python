@@ -136,9 +136,12 @@ class HFTextVectorizer(BaseVectorizer):
         except (KeyError, IndexError) as ke:
             raise ValueError(f"Empty response from the embedding model: {str(ke)}")
         except OSError as e:
+            # Unlike _initialize_client()'s OSError handler, this one fires
+            # after SentenceTransformer already loaded successfully -- the
+            # failure is in the dimension probe/encode call, not the load.
             raise ValueError(
-                f"Could not load the local embedding model '{self.model}'. Check the "
-                f"model name or path and that the model has been downloaded: {str(e)}"
+                f"The local embedding model '{self.model}' failed while determining its "
+                f"dimensions: {str(e)}"
             ) from e
         except RuntimeError as e:
             raise ValueError(

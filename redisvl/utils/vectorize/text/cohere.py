@@ -163,7 +163,11 @@ class CohereTextVectorizer(BaseVectorizer):
             ValueError: If embedding dimensions cannot be determined
         """
         import cohere
-        from cohere.core.api_error import ApiError
+
+        try:
+            from cohere.core.api_error import ApiError
+        except ImportError:
+            ApiError = None  # cohere<5 has no core.api_error module
 
         try:
             # Call the protected _embed method to avoid caching this test embedding
@@ -187,18 +191,23 @@ class CohereTextVectorizer(BaseVectorizer):
                 raise ValueError(
                     f"Unexpected response from the Cohere API: {str(cause)}"
                 ) from e
-            if isinstance(cause, cohere.UnauthorizedError):
+            # UnauthorizedError/NotFoundError only exist in cohere>=5; the
+            # package still supports cohere>=4.44, so guard the attribute
+            # lookup rather than referencing them unconditionally.
+            unauthorized_error = getattr(cohere, "UnauthorizedError", None)
+            not_found_error = getattr(cohere, "NotFoundError", None)
+            if unauthorized_error and isinstance(cause, unauthorized_error):
                 raise ValueError(
                     f"Cohere rejected the credentials used while determining embedding "
                     f"dimensions for model '{self.model}'. Check the api_key given in "
                     f"api_config, or the COHERE_API_KEY environment variable: {str(cause)}"
                 ) from e
-            if isinstance(cause, cohere.NotFoundError):
+            if not_found_error and isinstance(cause, not_found_error):
                 raise ValueError(
                     f"Cohere does not recognize the embedding model '{self.model}'. Check "
                     f"the model name against the provider's current model list: {str(cause)}"
                 ) from e
-            if isinstance(cause, ApiError):
+            if ApiError and isinstance(cause, ApiError):
                 raise ValueError(
                     f"The Cohere API returned an error while determining embedding "
                     f"dimensions for model '{self.model}': {str(cause)}"
