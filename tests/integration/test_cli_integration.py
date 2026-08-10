@@ -8,7 +8,7 @@ import yaml
 
 
 @pytest.fixture
-def cli_schema_file(redis_test_name):
+def cli_schema_file(redis_url, redis_test_name):
     """Creates a temporary schema YAML file for integration testing CLI commands."""
     index_name = redis_test_name("cli_int_index")
     prefix = redis_test_name("cli_int_doc")
@@ -31,6 +31,13 @@ def cli_schema_file(redis_test_name):
 
     if os.path.exists(temp_path):
         os.remove(temp_path)
+
+    # Belt-and-suspenders index teardown: a test that fails midway through the
+    # lifecycle (e.g. the assertion after `delete` never runs) must not leave
+    # the index behind for the next test run. `destroy` on an already-gone
+    # index is a no-op from the CLI's own error handling, so this is safe to
+    # run unconditionally.
+    run_cli("index", "destroy", "-i", index_name, "--url", redis_url)
 
 
 def run_cli(*args, redis_url=None):
@@ -94,13 +101,34 @@ def test_cli_index_lifecycle(redis_url, cli_schema_file):
     delete_res = run_cli("index", "delete", "-i", index_name, "--url", redis_url)
     assert delete_res.returncode == 0, f"delete failed: {delete_res.stderr}"
 
+    list_after_delete = run_cli("index", "listall", "--url", redis_url)
+    assert list_after_delete.returncode == 0, list_after_delete.stderr
+    assert index_name not in list_after_delete.stdout, (
+        "delete exited 0 but the index is still listed -- a no-op delete "
+        "against an already-gone index would pass this test if it only "
+        "checked the exit code"
+    )
+
     # 6. Re-create index to test destroy
     create_res2 = run_cli("index", "create", "-s", schema_path, "--url", redis_url)
     assert create_res2.returncode == 0, f"second create failed: {create_res2.stderr}"
 
+    list_after_recreate = run_cli("index", "listall", "--url", redis_url)
+    assert index_name in list_after_recreate.stdout, (
+        "second create exited 0 but the index isn't listed -- confirms the "
+        "index from step 5 was actually gone rather than the create being a "
+        "no-op against a still-existing index"
+    )
+
     # 7. Destroy index (with --drop / clear keys)
     destroy_res = run_cli("index", "destroy", "-i", index_name, "--url", redis_url)
     assert destroy_res.returncode == 0, f"destroy failed: {destroy_res.stderr}"
+
+    list_after_destroy = run_cli("index", "listall", "--url", redis_url)
+    assert list_after_destroy.returncode == 0, list_after_destroy.stderr
+    assert (
+        index_name not in list_after_destroy.stdout
+    ), "destroy exited 0 but the index is still listed"
 
 
 def test_cli_error_paths(redis_url):
