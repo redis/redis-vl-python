@@ -1013,6 +1013,13 @@ class SemanticRouter(BaseModel):
                 so a retry picks up exactly what is left.
 
         Note:
+            Deleting every reference of a route removes the route itself, matching
+            :meth:`remove_route`. A route with no references cannot match anything,
+            and :class:`~redisvl.extensions.router.schema.Route` rejects an empty
+            reference list, so persisting one would produce a config that
+            :meth:`from_existing` can no longer load.
+
+        Note:
             On Redis Cluster keys are unlinked one at a time and a per-key failure
             is logged rather than raised. References whose key failed to unlink are
             deliberately *kept* in the persisted route config: the hash is still in
@@ -1060,6 +1067,13 @@ class SemanticRouter(BaseModel):
                 )
                 continue
             route.references.remove(reference)
+
+        # A route whose last reference was just deleted has nothing left to match,
+        # and `Route` rejects an empty reference list -- persisting one would write a
+        # config that `from_existing`/`from_dict` can no longer load, bricking the
+        # router. Deleting every reference of a route removes the route, which is
+        # what `remove_route` does when all of its keys unlink.
+        self.routes = [route for route in self.routes if route.references]
 
         self._update_router_state()
 
