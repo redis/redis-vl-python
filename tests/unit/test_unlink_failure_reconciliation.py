@@ -240,9 +240,13 @@ class TestSemanticRouterReconcilesFailedUnlinks:
         }
         client.unlink.side_effect = _failing_on(set())
 
+        # The reference resolved and was reconciled away; splitting the key would
+        # have looked up a route named "billing" and left the config claiming
+        # "refund" while its hash was gone. That was its only reference, so the
+        # route goes too.
         assert router.delete_route_references(keys=[key]) == 1
-        assert router.get("support:billing").references == []
-        assert _persisted_routes(client)[0]["references"] == []
+        assert router.get("support:billing") is None
+        assert _persisted_routes(client) == []
 
     def test_delete_route_references_persists_when_the_hash_is_already_gone(self):
         """A vanished hash yields no reference to reconcile -- and must not raise.
@@ -283,3 +287,46 @@ class TestSemanticRouterReconcilesFailedUnlinks:
             router.remove_route("greeting")
 
         assert router.get("greeting").references == ["hello", "hello"]
+
+
+class TestPersistedConfigStaysLoadable:
+    """Whatever the delete paths persist must be readable back by ``from_existing``.
+
+    ``Route`` rejects an empty reference list, so a route emptied of references and
+    written out produced a config that ``from_existing``/``from_dict`` could not
+    parse -- ``ValidationError: References must not be empty`` -- leaving the router
+    unloadable with no way to repair it through the API.
+    """
+
+    def test_deleting_every_reference_removes_the_route(self):
+        router, client = _router()
+        keys = ["rtr:greeting:h1", "rtr:greeting:h2"]
+        client.hgetall.side_effect = lambda key: {
+            keys[0]: {"route_name": "greeting", "reference": "hello"},
+            keys[1]: {"route_name": "greeting", "reference": "hi there"},
+        }[key]
+        client.unlink.side_effect = _failing_on(set())
+
+        assert router.delete_route_references(keys=keys) == 2
+        assert router.get("greeting") is None
+        assert _persisted_routes(client) == []
+
+    def test_a_route_emptied_by_a_delete_is_never_persisted(self):
+        """Every persisted route must round-trip through ``Route`` validation."""
+        router, client = _router()
+        router.routes = [
+            Route(name="greeting", references=["hello"]),
+            Route(name="farewell", references=["bye"]),
+        ]
+        client.hgetall.side_effect = lambda key: {
+            "route_name": "greeting",
+            "reference": "hello",
+        }
+        client.unlink.side_effect = _failing_on(set())
+
+        router.delete_route_references(keys=["rtr:greeting:h1"])
+
+        persisted = _persisted_routes(client)
+        assert [r["name"] for r in persisted] == ["farewell"]
+        for route in persisted:
+            Route(**route)  # would raise on references=[]
