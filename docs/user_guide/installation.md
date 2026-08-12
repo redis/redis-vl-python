@@ -211,7 +211,9 @@ Index enumeration is the only thing an `-@admin` rule breaks. It is reached by `
 
 Other categories gate different operations. `FT.DROPINDEX` is tagged `@dangerous` and `@write` as well as `@search`, so a policy that subtracts `@dangerous` denies `index.delete()`, `rvl index delete`, and `rvl index destroy`.
 
-Outside of Redis Search, RedisVL identifies itself on connect with `CLIENT SETINFO` and falls back to `ECHO`. A credential permitted to run neither currently fails when the connection is created, before any index operation.
+Outside of Redis Search, RedisVL identifies itself on connect with `CLIENT SETINFO`. That command is tagged `@connection` and `@slow`, and belongs to neither `@read` nor `@write`, so a rule built up from those categories never grants it. A credential that cannot run it still connects: identification only populates the `lib-name` field that `CLIENT LIST` and `CLIENT INFO` display, so a refusal is ignored (and logged, if you have configured logging at debug level). Grant `+client|setinfo` if you want RedisVL to appear as the connecting library there — note that this labels the connection RedisVL opens, while redis-py labels the rest of the pool as plain `redis-py`.
+
+Cluster deployments need one more grant. `RedisCluster` discovers the topology with `CLUSTER SLOTS`, which is tagged `@slow` only, so a credential assembled from `+@read +@write` cannot open a clustered connection at all — redis-py reports this as `Redis Cluster cannot be connected`, with the underlying permission error chained beneath it. Grant `+cluster|slots` alongside the rules above.
 
 ### Redis Cloud and Redis Software
 

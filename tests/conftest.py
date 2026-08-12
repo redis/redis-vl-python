@@ -3,14 +3,17 @@ import logging
 import os
 import re
 import subprocess
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 
 import pytest
+from redis.exceptions import ResponseError
 from testcontainers.compose import DockerCompose
 
 from redisvl.index.index import AsyncSearchIndex, SearchIndex
 from redisvl.redis.connection import RedisConnectionFactory, is_version_gte
 from redisvl.redis.utils import array_to_buffer
+from redisvl.types import SyncRedisClient
 from redisvl.utils.vectorize import HFTextVectorizer
 
 logger = logging.getLogger(__name__)
@@ -204,6 +207,83 @@ def client(redis_url):
     """
     conn = RedisConnectionFactory.get_redis_connection(redis_url=redis_url)
     yield conn
+
+
+class _AclUser:
+    """A temporary ACL user, plus the RedisVL connections opened as them.
+
+    `username` and `password` are public so a test can hand them to anything
+    that takes connection kwargs, such as an extension constructor, instead of
+    going through `connect()`.
+    """
+
+    def __init__(self, username: str, password: str, redis_url: str):
+        self.username = username
+        self.password = password
+        self._redis_url = redis_url
+        self._clients: list[SyncRedisClient] = []
+
+    def connect(self, **kwargs):
+        """Open a RedisVL connection authenticated as this user."""
+        conn = RedisConnectionFactory.get_redis_connection(
+            redis_url=self._redis_url,
+            username=self.username,
+            password=self.password,
+            **kwargs,
+        )
+        self._clients.append(conn)
+        return conn
+
+    def close_all(self) -> None:
+        for conn in self._clients:
+            with suppress(Exception):
+                conn.close()
+
+
+@pytest.fixture
+def acl_user(client, redis_url, redis_test_name):
+    """Create a temporary ACL user, yielding a handle that connects as them.
+
+    The returned factory takes a required `name` and the ACL rules to apply, in
+    the order Redis applies them: rules are evaluated left to right, so
+    `+@all -@admin` and `-@admin +@all` do not mean the same thing. `on` and a
+    password are supplied here, so callers pass only key patterns, channel
+    patterns and command rules::
+
+        with acl_user("~*", "&*", "+@read", "+@write", name="read_write") as user:
+            restricted = user.connect()
+
+    Rules are applied after `reset`, because `ACL SETUSER` is additive and
+    usernames are derived from the test's node id -- without it, a run whose
+    teardown was skipped by a crash would layer new rules onto a stale user.
+
+    ACL users are server-global, so a leaked one outlives the test and its
+    worker; the user is dropped before the connections it authenticated. Redis
+    Software manages ACLs through its own control plane and does not support the
+    `>password` syntax used here, so tests built on this fixture only run
+    against Redis Open Source -- they skip elsewhere.
+    """
+
+    @contextmanager
+    def _make_acl_user(*rules: str, name: str):
+        username = redis_test_name(name)
+        password = "test-acl-password"
+        try:
+            client.execute_command(
+                "ACL", "SETUSER", username, "reset", "on", f">{password}", *rules
+            )
+        except ResponseError as e:
+            pytest.skip(f"Deployment does not support ACL SETUSER: {e}")
+        user = _AclUser(username, password, redis_url)
+        try:
+            yield user
+        finally:
+            try:
+                client.execute_command("ACL", "DELUSER", username)
+            finally:
+                user.close_all()
+
+    return _make_acl_user
 
 
 @pytest.fixture
