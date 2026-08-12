@@ -33,3 +33,10 @@ DIMENSIONS_FIELD_NAME: str = "dimensions"
 
 # SemanticRouter
 ROUTE_VECTOR_FIELD_NAME: str = "vector"
+
+# Raised by every constructor that accepts both `create_index` and `overwrite`.
+CREATE_INDEX_OVERWRITE_CONFLICT: str = (
+    "create_index=False and overwrite=True contradict each other: overwrite asks "
+    "RedisVL to drop and recreate the index, which it cannot do when it is told "
+    "not to manage the index at all."
+)

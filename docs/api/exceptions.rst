@@ -158,6 +158,10 @@ there raises ``redis.exceptions.NoPermissionError`` itself rather than a wrapped
 :class:`RedisSearchError`. See :doc:`/user_guide/installation` for the ACL categories
 RedisVL needs.
 
+When the credential genuinely cannot run ``FT.INFO``, this error is not something to
+handle: construct the extension with ``create_index=False`` instead, which skips the
+existence check entirely. See :doc:`/user_guide/installation`.
+
 Telling "the index is missing" apart from other failures
 --------------------------------------------------------
 
